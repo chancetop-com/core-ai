@@ -1,0 +1,105 @@
+.user-content {
+  display: flex;
+  margin-top: 20px;
+  justify-content: space-between;
+}
+
+.user-image,
+.user-main-content {
+  border: 1px solid #ccc;
+  flex: 1;
+}
+
+.user-image {
+  height: 450px;
+}
+
+.user-main-content {
+  margin-left: 15px;
+  height: 1100px;
+}
+
+.text-area-2 {
+  margin: 20px;
+  margin-top: 0;
+  height: 80px;
+}
+
+.text-area-2 div {
+  height: 80px;
+  padding: 10px;
+  padding-top: 5px;
+  margin-top: 20px;
+  background-color: #f9f9f9;
+  border: 1px solid #ccc;
+  overflow: auto;
+}
+
+.image-area-3 {
+  margin: 20px;
+  border: 1px solid #ccc;
+  height: 500px;
+  display: flex;
+  justify-content: initial;
+  align-items: center;
+  font-size: 18px;
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+.image-area-2 {
+  position: relative;
+  margin: 20px;
+  border: 1px solid #ccc;
+  height: 400px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 18px;
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+.image-area-2 img {
+  max-width: 100%;
+  max-height: 100%;
+  -o-object-fit: contain;
+  object-fit: cover;
+}
+
+.delete-button {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.change-button {
+  position: absolute;
+  right: 10px;
+  bottom: 50px;
+}
+
+.outfit-button {
+  position: absolute;
+  right: 10px;
+  bottom: 90px;
+}
+
+.theme-button {
+  position: absolute;
+  right: 10px;
+  bottom: 130px;
+}
+
+.style-button {
+  position: absolute;
+  right: 10px;
+  bottom: 170px;
+}
+
+.random-button {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}

@@ -1,0 +1,6 @@
+{
+  "extends": "./webpack/tsconfig.json",
+  "rules": {
+    "no-var-requires": false
+  }
+}

@@ -1,0 +1,124 @@
+.container {
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}
+
+.top-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.location,
+.idea {
+  display: flex;
+  align-items: center;
+}
+
+.idea-suggestion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+label {
+  margin-right: 10px;
+}
+
+input[type="text"] {
+  padding: 5px;
+  width: 500px;
+}
+
+select {
+  padding: 5px;
+  width: 200px;
+}
+
+.submit-button {
+  padding: 10px 20px;
+}
+
+.suggestions {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.suggestions label {
+  margin-right: 10px;
+}
+
+.suggestion-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.suggestion-button {
+  padding: 5px 10px;
+  font-size: 14px;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.suggestion-button:hover {
+  background-color: #e0e0e0;
+}
+
+.main-content {
+  border: 1px solid #ccc;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.text-area {
+  margin-bottom: 20px;
+}
+
+.text-area div {
+  height: 100px;
+  padding: 10px;
+  margin: 20px;
+  background-color: #f9f9f9;
+  border: 1px solid #ccc;
+  overflow: auto;
+}
+
+.image-area {
+  margin: 20px;
+  margin-top: 10px;
+  border: 1px solid #ccc;
+  height: 550px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+}
+
+.image-area img {
+  max-width: 100%;
+  max-height: 100%;
+  -o-object-fit: contain;
+  object-fit: cover;
+}
+
+.video-area {
+  margin: 20px;
+  border: 1px solid #ccc;
+  height: 600px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  position: relative;
+}
+
+.video-area video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

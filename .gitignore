@@ -1,0 +1,49 @@
+.DS_Store
+
+# Wiki (Not sure we should ignore this ...)
+/wiki
+
+# Intellij Configuration Files
+*.idea
+*.iml
+/.gradle
+/out
+
+# Eclipse Files
+.factorypath
+
+# VsCode Configuration Files
+.vscode
+
+# Log file
+*.log
+
+# BlueJ files
+*.ctxt
+
+# Build Files
+/build
+**/src/main/dist/
+**/src/dev/*
+
+/buildSrc/.gradle
+
+# Package Files #
+/classes/
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Frontend Files
+build/
+node_modules
+coverage/
+.module-cache
+.eslintcache
+
+/azure.properties
+.stylelintcache
+dist/
