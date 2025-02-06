@@ -7,12 +7,15 @@ import org.eclipse.lsp4j.ImplementationParams;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.ReferenceContext;
 import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameParams;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TypeDefinitionParams;
 import org.eclipse.lsp4j.WorkspaceDiagnosticParams;
 import org.eclipse.lsp4j.WorkspaceSymbolParams;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.eclipse.lsp4j.services.WorkspaceService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.concurrent.ExecutionException;
@@ -22,12 +25,31 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public abstract class LanguageServerService {
+    private final Logger logger = LoggerFactory.getLogger(LanguageServerService.class);
+
     private final LanguageServerConfig config;
     private final LanguageServerManager manager;
 
     protected LanguageServerService(LanguageServerConfig config, LanguageServerManager manager) {
         this.config = config;
         this.manager = manager;
+    }
+
+    public boolean renameSymbol(String workspace, String path, int line, int character, String newName) {
+        var params = new RenameParams(getTextDocumentIdentifier(workspace, path), new Position(line, character), newName);
+        var rst = getTextDocumentService(workspace).rename(params);
+        try {
+            var workspaceEdit = rst.get();
+            if (workspaceEdit == null) {
+                logger.info("No changes.");
+                return false;
+            }
+            logger.info("Changes: {}", workspaceEdit.getChanges());
+            return true;
+        } catch (InterruptedException | ExecutionException e) {
+            logger.error("Failed to rename symbol: {}", e.getMessage());
+        }
+        return false;
     }
 
     public String getWorkspaceDiagnostic(String workspace) {
