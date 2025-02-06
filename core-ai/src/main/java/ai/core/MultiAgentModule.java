@@ -1,6 +1,7 @@
 package ai.core;
 
 import ai.core.image.providers.LiteLLMImageProvider;
+import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.rag.vectorstore.milvus.MilvusConfig;
 import ai.core.rag.vectorstore.milvus.MilvusVectorStore;
@@ -34,9 +35,16 @@ public class MultiAgentModule extends Module {
     }
 
     private void bindServices() {
-        bind(LiteLLMProvider.class);
+        bind(new LiteLLMProvider(setupLLMProperties()));
         bind(LiteLLMImageProvider.class);
         bind(TaskService.class);
         bind(MilvusVectorStore.class);
+    }
+
+    private LLMProviderConfig setupLLMProperties() {
+        var config = new LLMProviderConfig("gpt-4o", 0.7d);
+        property("llm.temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
+        property("llm.model").ifPresent(config::setModel);
+        return config;
     }
 }

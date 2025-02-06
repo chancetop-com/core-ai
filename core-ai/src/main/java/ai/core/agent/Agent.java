@@ -39,6 +39,7 @@ public class Agent extends Node<Agent> {
     List<Function> functions;
     RagConfig ragConfig;
     Double temperature;
+    String model;
     ReflectionConfig reflectionConfig;
     LongTernMemory longTernMemory;
 
@@ -107,7 +108,7 @@ public class Agent extends Node<Agent> {
         }
         var reqMsg = Message.of(AgentRole.USER, getName(), query);
         addMessage(reqMsg);
-        var req = new CompletionRequest(getMessages(), functions, null);
+        var req = new CompletionRequest(getMessages(), functions, temperature, model);
         var rst = llmProvider.completion(req);
         setRawOutput(rst.choices.getFirst().message.content);
 
@@ -190,6 +191,7 @@ public class Agent extends Node<Agent> {
         private List<Function> functions = Lists.newArrayList();
         private RagConfig ragConfig;
         private Double temperature;
+        private String model;
         private ReflectionConfig reflectionConfig;
 
         public Builder promptTemplate(String promptTemplate) {
@@ -204,6 +206,11 @@ public class Agent extends Node<Agent> {
 
         public Builder temperature(Double temperature) {
             this.temperature = temperature;
+            return this;
+        }
+
+        public Builder model(String model) {
+            this.model = model;
             return this;
         }
 
@@ -240,7 +247,8 @@ public class Agent extends Node<Agent> {
             build(agent);
             agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
             agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
-            agent.temperature = this.temperature == null ? Double.valueOf(0.7) : this.temperature;
+            agent.temperature = this.temperature;
+            agent.model = this.model;
             agent.llmProvider = this.llmProvider;
             agent.functions = this.functions;
             agent.ragConfig = this.ragConfig;

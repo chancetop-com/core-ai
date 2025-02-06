@@ -9,12 +9,14 @@ import java.util.List;
  */
 public class CompletionRequest {
     public Double temperature;
+    public String model;
     public List<Message> messages;
     public List<Function> functions;
 
-    public CompletionRequest(List<Message> messages, List<Function> functions, Double temperature) {
+    public CompletionRequest(List<Message> messages, List<Function> functions, Double temperature, String model) {
         this.messages = messages;
         this.functions = functions;
-        this.temperature = temperature == null ? Double.valueOf(0.7) : temperature;
+        this.model = model;
+        this.temperature = temperature;
     }
 }

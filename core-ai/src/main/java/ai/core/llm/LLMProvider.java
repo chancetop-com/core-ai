@@ -10,9 +10,15 @@ import ai.core.llm.providers.inner.EmbeddingResponse;
 /**
  * @author stephen
  */
-public interface LLMProvider {
-    CompletionResponse completion(CompletionRequest request);
-    EmbeddingResponse embedding(EmbeddingRequest request);
-    CaptionImageResponse captionImage(CaptionImageRequest request);
-    int maxTokens();
+public abstract class LLMProvider {
+    public LLMProviderConfig config;
+
+    public LLMProvider(LLMProviderConfig config) {
+        this.config = config;
+    }
+
+    public abstract CompletionResponse completion(CompletionRequest request);
+    public abstract EmbeddingResponse embedding(EmbeddingRequest request);
+    public abstract CaptionImageResponse captionImage(CaptionImageRequest request);
+    public abstract int maxTokens();
 }

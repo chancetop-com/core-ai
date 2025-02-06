@@ -16,6 +16,7 @@ import ai.core.litellm.completion.RoleTypeAJAXView;
 import ai.core.litellm.completion.ToolAJAXView;
 import ai.core.litellm.completion.ToolTypeAJAXView;
 import ai.core.litellm.embedding.CreateEmbeddingAJAXRequest;
+import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.providers.inner.CaptionImageRequest;
 import ai.core.llm.providers.inner.CaptionImageResponse;
 import ai.core.llm.providers.inner.EmbeddingRequest;
@@ -39,9 +40,13 @@ import java.util.stream.Collectors;
 /**
  * @author stephen
  */
-public class LiteLLMProvider implements LLMProvider {
+public class LiteLLMProvider extends LLMProvider {
     @Inject
     LiteLLMService liteLLMService;
+
+    public LiteLLMProvider(LLMProviderConfig config) {
+        super(config);
+    }
 
     @Override
     public CompletionResponse completion(CompletionRequest dto) {
@@ -90,7 +95,7 @@ public class LiteLLMProvider implements LLMProvider {
 
     private CreateImageCompletionAJAXRequest toApiRequest(CaptionImageRequest dto) {
         var apiReq = new CreateImageCompletionAJAXRequest();
-        apiReq.model = "gpt-4o";
+        apiReq.model = dto.model() != null ? dto.model() : config.getModel();
         var message = new ImageMessageAJAXView();
         message.role = RoleTypeAJAXView.USER;
         var textContent = new ImageMessageAJAXView.ImageContent();
@@ -107,8 +112,8 @@ public class LiteLLMProvider implements LLMProvider {
 
     private CreateCompletionAJAXRequest toApiRequest(CompletionRequest dto) {
         var apiReq = new CreateCompletionAJAXRequest();
-        apiReq.model = "gpt-4o";
-        apiReq.temperature = dto.temperature;
+        apiReq.model = dto.model != null ? dto.model : config.getModel();
+        apiReq.temperature = dto.temperature != null ? dto.temperature : config.getTemperature();
         apiReq.messages = dto.messages.stream().map(v -> {
             var message = new MessageAJAXView();
             message.role = RoleTypeAJAXView.valueOf(v.role.name());
