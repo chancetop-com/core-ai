@@ -1,7 +1,7 @@
 package ai.core.defaultagents;
 
 import ai.core.agent.ImageAgent;
-import ai.core.image.ImageProvider;
+import ai.core.ImageProvider;
 
 /**
  * @author stephen

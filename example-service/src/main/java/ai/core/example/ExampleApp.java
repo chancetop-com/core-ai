@@ -9,6 +9,7 @@ import ai.core.example.service.ExampleService;
 import ai.core.example.service.SearchImageService;
 import ai.core.example.service.UserInfoService;
 import ai.core.example.service.WeatherService;
+import ai.core.lsp.LanguageServerModule;
 import com.microsoft.azure.cognitiveservices.search.imagesearch.BingImageSearchAPI;
 import com.microsoft.azure.cognitiveservices.search.imagesearch.BingImageSearchManager;
 import core.framework.module.App;
@@ -23,6 +24,7 @@ public class ExampleApp extends App {
         load(new SystemModule("sys.properties"));
         load(new MultiAgentModule());
         load(new HuggingFaceModule());
+        load(new LanguageServerModule());
         initBingSearch();
         bind(SearchImageService.class);
         bind(WeatherService.class);
@@ -30,6 +32,7 @@ public class ExampleApp extends App {
         bind(ChatAgent.class);
         bind(ExampleService.class);
         api().service(ExampleWebService.class, bind(ExampleWebServiceImpl.class));
+        load(new NaixtModule());
     }
 
     private void initBingSearch() {

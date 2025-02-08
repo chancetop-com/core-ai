@@ -1,6 +1,6 @@
 package ai.core;
 
-import ai.core.image.providers.LiteLLMImageProvider;
+import ai.core.providers.LiteLLMImageProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.rag.vectorstore.milvus.MilvusConfig;

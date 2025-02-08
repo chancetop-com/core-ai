@@ -1,4 +1,4 @@
-package ai.core.image;
+package ai.core;
 
 /**
  * @author stephen

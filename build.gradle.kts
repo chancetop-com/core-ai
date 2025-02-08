@@ -5,6 +5,11 @@ apply(plugin = "licenses")
 
 plugins {
     `java-library`
+    kotlin("jvm") version "1.9.20"
+}
+
+repositories {
+    mavenCentral()
 }
 
 subprojects {
@@ -101,6 +106,7 @@ project(":language-server-library") {
 
 
 project(":core-ai") {
+    apply(plugin = "kotlin")
     dependencies {
         implementation("com.wonder:core-ng")
         implementation(project(":litellm-library"))
@@ -110,6 +116,7 @@ project(":core-ai") {
         implementation("com.azure:azure-ai-openai:${Versions.AZURE_OPENAI_JAVA_VERSION}")
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")
         implementation("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
+        implementation("io.modelcontextprotocol:kotlin-sdk:${Versions.MCP_KOTLIN_SDK_VERSION}")
     }
 }
 
@@ -119,6 +126,7 @@ project(":example-service") {
         implementation(project(":core-ai"))
         implementation(project(":example-service-interface"))
         implementation(project(":huggingface-library"))
+        implementation(project(":language-server-library"))
         implementation("com.microsoft.azure.cognitiveservices:azure-cognitiveservices-imagesearch:${Versions.AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION}")
     }
 }
