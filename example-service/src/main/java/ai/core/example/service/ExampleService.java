@@ -199,7 +199,7 @@ public class ExampleService {
                 .systemPrompt("Your are an assistant help user get weather for example temperature or air quality of gaven cities. "
                               + "If query do not contain a city in the gave list, return 'I am weather toolkit, I don't known other things, so which city's weather you want to check?'.")
                 .promptTemplate("topic: ")
-                .functions(Functions.from(weatherService, "get", "getAirQuality"))
+                .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
                 .llmProvider(liteLLMProvider).build();
         return agent.run(prompt, null);
     }

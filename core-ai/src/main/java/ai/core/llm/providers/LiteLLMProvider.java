@@ -31,6 +31,7 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.providers.inner.Message;
 import ai.core.llm.providers.inner.Usage;
 import ai.core.rag.Embedding;
+import ai.core.tool.ToolCallParameter;
 import core.framework.inject.Inject;
 
 import java.util.List;
@@ -131,26 +132,26 @@ public class LiteLLMProvider extends LLMProvider {
             }
             return message;
         }).collect(Collectors.toList());
-        apiReq.tools = dto.functions.isEmpty() ? null : dto.functions.stream().map(v -> {
+        apiReq.tools = dto.toolCalls.isEmpty() ? null : dto.toolCalls.stream().map(v -> {
             var tool = new ToolAJAXView();
             tool.type = ToolTypeAJAXView.FUNCTION;
             var function = new FunctionAJAXView();
-            function.name = v.name;
-            function.description = v.description;
+            function.name = v.getName();
+            function.description = v.getDescription();
             var parameters = new ParameterAJAXView();
             parameters.type = ParameterTypeView.OBJECT;
-            parameters.required = v.parameters.stream().filter(p -> p.required).map(p -> p.name).toList();
-            parameters.properties = v.parameters.stream().collect(Collectors.toMap(p -> p.name, p -> {
+            parameters.required = v.getParameters().stream().filter(ToolCallParameter::getRequired).map(ToolCallParameter::getName).toList();
+            parameters.properties = v.getParameters().stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
                 var property = new PropertyAJAXView();
-                property.description = p.description;
-                property.type = ParameterTypeView.valueOf(p.type.getTypeName().substring(p.type.getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
+                property.description = p.getDescription();
+                property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
                 return property;
             }));
             function.parameters = parameters;
             tool.function = function;
             return tool;
         }).collect(Collectors.toList());
-        apiReq.toolChoice = dto.functions.isEmpty() ? null : "auto";
+        apiReq.toolChoice = dto.toolCalls.isEmpty() ? null : "auto";
         return apiReq;
     }
 }

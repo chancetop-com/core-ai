@@ -1,5 +1,6 @@
 package ai.core.tool.function;
 
+import ai.core.tool.ToolCallParameter;
 import ai.core.tool.function.annotation.CoreAiMethod;
 import ai.core.tool.function.annotation.CoreAiParameter;
 import ai.core.tool.function.converter.response.DefaultJsonResponseConverter;
@@ -20,31 +21,28 @@ import java.util.Map;
 /**
  * @author stephen
  */
-public class Function implements ToolCall {
+public class Function extends ToolCall {
 
     public static Builder builder() {
         return new Builder();
     }
 
-    public String name;
-    public String description;
-    public List<FunctionParameter> parameters;
-    public Object object;
-    public Method method;
-    public ResponseConverter responseConverter;
+    Object object;
+    Method method;
+    ResponseConverter responseConverter;
 
     @Override
     public String call(String text) {
         var argsMap = JSON.fromJSON(Map.class, text);
         try {
-            Object[] args = new Object[this.parameters.size()];
-            for (int i = 0; i < this.parameters.size(); i++) {
-                Object value = argsMap.get(this.parameters.get(i).name);
-                args[i] = ParameterTypeConverters.convert(value, this.parameters.get(i).type);
+            Object[] args = new Object[this.getParameters().size()];
+            for (int i = 0; i < this.getParameters().size(); i++) {
+                Object value = argsMap.get(this.getParameters().get(i).getName());
+                args[i] = ParameterTypeConverters.convert(value, this.getParameters().get(i).getType());
             }
             return responseConverter.convert(method.invoke(object, args));
         } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new RuntimeException(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), name, text, e.getMessage()), e);
+            throw new RuntimeException(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, e.getMessage()), e);
         }
     }
 
@@ -52,27 +50,27 @@ public class Function implements ToolCall {
         this.method = method;
 
         var functionDef = method.getAnnotation(CoreAiMethod.class);
-        this.name = functionDef.name();
-        this.description = functionDef.description();
+        this.setName(functionDef.name());
+        this.setDescription(functionDef.description());
 
-        var parameterList = new ArrayList<FunctionParameter>();
+        var parameterList = new ArrayList<ToolCallParameter>();
         java.lang.reflect.Parameter[] methodParameters = method.getParameters();
         for (java.lang.reflect.Parameter methodParameter : methodParameters) {
             var parameter = getParameter(methodParameter);
             parameterList.add(parameter);
         }
-        this.parameters = parameterList;
+        this.setParameters(parameterList);
     }
 
     @NotNull
-    private FunctionParameter getParameter(java.lang.reflect.Parameter methodParameter) {
+    private ToolCallParameter getParameter(java.lang.reflect.Parameter methodParameter) {
         var functionParam = methodParameter.getAnnotation(CoreAiParameter.class);
-        var parameter = new FunctionParameter();
-        parameter.name = functionParam.name();
-        parameter.description = functionParam.description();
-        parameter.type = methodParameter.getType();
-        parameter.required = functionParam.required();
-        parameter.enums = List.of(functionParam.enums());
+        var parameter = new ToolCallParameter();
+        parameter.setName(functionParam.name());
+        parameter.setDescription(functionParam.description());
+        parameter.setType(methodParameter.getType());
+        parameter.setRequired(functionParam.required());
+        parameter.setEnums(List.of(functionParam.enums()));
         return parameter;
     }
 
@@ -84,10 +82,10 @@ public class Function implements ToolCall {
     public static class FunctionDomain {
         public static FunctionDomain of(Function function) {
             var domain = new FunctionDomain();
-            domain.name = function.name;
-            domain.description = function.description;
+            domain.name = function.getName();
+            domain.description = function.getDescription();
             domain.parameters = new ArrayList<>(8);
-            for (var parameter : function.parameters) {
+            for (var parameter : function.getParameters()) {
                 domain.parameters.add(FunctionParameterDomain.of(parameter));
             }
             return domain;
@@ -104,13 +102,13 @@ public class Function implements ToolCall {
     }
 
     public static class FunctionParameterDomain {
-        public static FunctionParameterDomain of(FunctionParameter functionParameter) {
+        public static FunctionParameterDomain of(ToolCallParameter toolCallParameter) {
             var domain = new FunctionParameterDomain();
-            domain.name = functionParameter.name;
-            domain.description = functionParameter.description;
-            domain.type = functionParameter.type.getName();
-            domain.required = functionParameter.required;
-            domain.enums = functionParameter.enums;
+            domain.name = toolCallParameter.getName();
+            domain.description = toolCallParameter.getDescription();
+            domain.type = toolCallParameter.getType().getName();
+            domain.required = toolCallParameter.getRequired();
+            domain.enums = toolCallParameter.getEnums();
             return domain;
         }
 
@@ -131,23 +129,10 @@ public class Function implements ToolCall {
     }
 
     // keep if dev cannot add annotation in the method
-    public static class Builder {
-        private String name;
-        private String description;
+    public static class Builder extends ToolCall.Builder<Builder, Function> {
         private Object object;
         private Method method;
-        public List<FunctionParameter> parameters;
         public ResponseConverter responseConverter;
-
-        public Builder name(String name) {
-            this.name = name;
-            return this;
-        }
-
-        public Builder description(String description) {
-            this.description = description;
-            return this;
-        }
 
         public Builder object(Object object) {
             this.object = object;
@@ -159,20 +144,18 @@ public class Function implements ToolCall {
             return this;
         }
 
-        public Builder parameters(List<FunctionParameter> parameters) {
-            this.parameters = parameters;
-            return this;
-        }
-
         public Function build() {
             var function = new Function();
-            function.name = this.name;
-            function.description = this.description;
+            build(function);
             function.object = this.object;
             function.method = this.method;
-            function.parameters = this.parameters;
             function.responseConverter = this.responseConverter == null ? new DefaultJsonResponseConverter() : this.responseConverter;
             return function;
+        }
+
+        @Override
+        protected Builder self() {
+            return this;
         }
     }
 }

@@ -13,7 +13,7 @@ import ai.core.rag.RagConfig;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.termination.terminations.MaxRoundTermination;
-import ai.core.tool.function.Function;
+import ai.core.tool.ToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
 import core.framework.util.Lists;
@@ -21,6 +21,7 @@ import core.framework.util.Maps;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +37,7 @@ public class Agent extends Node<Agent> {
     String systemPrompt;
     String promptTemplate;
     LLMProvider llmProvider;
-    List<Function> functions;
+    List<ToolCall> toolCalls;
     RagConfig ragConfig;
     Double temperature;
     String model;
@@ -108,7 +109,7 @@ public class Agent extends Node<Agent> {
         }
         var reqMsg = Message.of(AgentRole.USER, getName(), query);
         addMessage(reqMsg);
-        var req = new CompletionRequest(getMessages(), functions, temperature, model);
+        var req = new CompletionRequest(getMessages(), toolCalls, temperature, model);
         var rst = llmProvider.completion(req);
         setRawOutput(rst.choices.getFirst().message.content);
 
@@ -135,7 +136,7 @@ public class Agent extends Node<Agent> {
 
     private String functionCall(Choice choice) {
         var toolCall = choice.message.toolCalls.getFirst();
-        var optional = functions.stream().filter(v -> v.name.equalsIgnoreCase(toolCall.function.name)).findFirst();
+        var optional = toolCalls.stream().filter(v -> v.getName().equalsIgnoreCase(toolCall.function.name)).findFirst();
         if (optional.isEmpty()) {
             throw new BadRequestException("tool call failed<optional empty>: " + JSON.toJSON(toolCall), "TOOL_CALL_FAILED");
         }
@@ -168,8 +169,8 @@ public class Agent extends Node<Agent> {
         return this.reflectionConfig;
     }
 
-    public List<Function> getFunctions() {
-        return this.functions;
+    public List<? extends ToolCall> getToolCalls() {
+        return this.toolCalls;
     }
 
     public LongTernMemory getLongTernMemory() {
@@ -188,7 +189,7 @@ public class Agent extends Node<Agent> {
         private String systemPrompt;
         private String promptTemplate;
         private LLMProvider llmProvider;
-        private List<Function> functions = Lists.newArrayList();
+        private List<ToolCall> toolCalls = Lists.newArrayList();
         private RagConfig ragConfig;
         private Double temperature;
         private String model;
@@ -219,8 +220,8 @@ public class Agent extends Node<Agent> {
             return this;
         }
 
-        public Builder functions(List<Function> functions) {
-            this.functions = functions;
+        public Builder toolCalls(List<? extends ToolCall> toolCalls) {
+            this.toolCalls = new ArrayList<>(toolCalls);
             return this;
         }
 
@@ -250,7 +251,7 @@ public class Agent extends Node<Agent> {
             agent.temperature = this.temperature;
             agent.model = this.model;
             agent.llmProvider = this.llmProvider;
-            agent.functions = this.functions;
+            agent.toolCalls = this.toolCalls;
             agent.ragConfig = this.ragConfig;
             agent.reflectionConfig = this.reflectionConfig;
             agent.setPersistence(new AgentPersistence());

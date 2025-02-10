@@ -1,21 +1,61 @@
-package ai.core.tool.function;
+package ai.core.tool;
 
 import java.util.List;
 
 /**
  * @author stephen
  */
-public class FunctionParameter {
+public class ToolCallParameter {
 
     public static Builder builder() {
         return new Builder();
     }
 
-    public String name;
-    public String description;
-    public Class<?> type;
-    public Boolean required;
-    public List<String> enums;
+    String name;
+    String description;
+    Class<?> type;
+    Boolean required;
+    List<String> enums;
+
+    public String getName() {
+        return name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public Class<?> getType() {
+        return type;
+    }
+
+    public Boolean getRequired() {
+        return required;
+    }
+
+    public List<String> getEnums() {
+        return enums;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public void setType(Class<?> type) {
+        this.type = type;
+    }
+
+    public void setRequired(Boolean required) {
+        this.required = required;
+    }
+
+    public void setEnums(List<String> enums) {
+        this.enums = enums;
+    }
 
     public static class Builder {
         private String name;
@@ -49,8 +89,8 @@ public class FunctionParameter {
             return this;
         }
 
-        public FunctionParameter build() {
-            var parameter = new FunctionParameter();
+        public ToolCallParameter build() {
+            var parameter = new ToolCallParameter();
             parameter.name = this.name;
             parameter.description = this.description;
             parameter.required = this.required == null ? Boolean.FALSE : this.required;

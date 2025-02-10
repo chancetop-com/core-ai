@@ -20,21 +20,21 @@ public class OrderIssueGroup {
                 .systemPrompt("You are an assistant help the system to fetch the user's information.")
                 .promptTemplate("Query:")
                 .llmProvider(liteLLMProvider)
-                .functions(Functions.from(userInfoService, "getUserInfo")).build();
+                .toolCalls(Functions.from(userInfoService, "getUserInfo")).build();
         var orderAgent = Agent.builder()
                 .name("order-agent")
                 .description("agent that know all about order")
                 .systemPrompt("You are an assistant that helps the system to fetch the user's orders.")
                 .promptTemplate("Query:")
                 .llmProvider(liteLLMProvider)
-                .functions(Functions.from(userInfoService, "getUserLastOrder")).build();
+                .toolCalls(Functions.from(userInfoService, "getUserLastOrder")).build();
         var issueAgent = Agent.builder()
                 .name("order-issue-agent")
                 .description("agent that help user to create order issue")
                 .systemPrompt("You are an assistant that helps users create order issues. You need to ask users for the necessary information to create an order issue if that information is not provide in the query.")
                 .promptTemplate("Query:")
                 .llmProvider(liteLLMProvider)
-                .functions(Functions.from(userInfoService, "createOrderIssue")).build();
+                .toolCalls(Functions.from(userInfoService, "createOrderIssue")).build();
         var userAgent = UserInputAgent.builder().persistenceProvider(persistenceProvider).build();
         return AgentGroup.builder()
                 .name("order-issue-agent-group")

@@ -5,7 +5,7 @@ import ai.core.agent.AgentGroup;
 import ai.core.agent.Node;
 import ai.core.agent.formatter.formatters.DefaultJsonFormatter;
 import ai.core.llm.LLMProvider;
-import ai.core.tool.function.Function;
+import ai.core.tool.ToolCall;
 import core.framework.api.json.Property;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
@@ -47,7 +47,7 @@ public class ModeratorAgent {
         return JSON.toJSON(AgentsInfoDTO.of(agents.stream().map(agent -> {
             var agentInfo = AgentInfoDTO.of(agent.getName(), agent.getDescription());
             if (agent instanceof Agent) {
-                agentInfo.functions = ((Agent) agent).getFunctions().stream().map(Function::toString).toList();
+                agentInfo.functions = ((Agent) agent).getToolCalls().stream().map(ToolCall::toString).toList();
             }
             return agentInfo;
         }).toList()));
