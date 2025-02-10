@@ -1,5 +1,6 @@
 package ai.core.example.api;
 
+import ai.core.example.api.naixt.MCPToolCallRequest;
 import ai.core.example.api.socialmedia.CotResponse;
 import ai.core.example.api.socialmedia.CreateSocialMediaIdeasResponse;
 import ai.core.example.api.socialmedia.CreateSocialMediaRequest;
@@ -127,4 +128,8 @@ public interface ExampleWebService {
     @PUT
     @Path("/example/huggingface/face-id")
     FaceIdImageResponse faceId(FaceIdImageRequest request);
+
+    @PUT
+    @Path("/example/mcp/git")
+    ChatResponse git(MCPToolCallRequest request);
 }

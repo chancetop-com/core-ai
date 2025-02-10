@@ -32,13 +32,13 @@ public class MultiAgentModule extends Module {
                 .username(property("sys.milvus.username").orElse(null))
                 .password(property("sys.milvus.password").orElse(null)).build();
         context.beanFactory.bind(MilvusClientV2.class, name, milvus);
+        bind(MilvusVectorStore.class);
     }
 
     private void bindServices() {
         bind(new LiteLLMProvider(setupLLMProperties()));
         bind(LiteLLMImageProvider.class);
         bind(TaskService.class);
-        bind(MilvusVectorStore.class);
     }
 
     private LLMProviderConfig setupLLMProperties() {

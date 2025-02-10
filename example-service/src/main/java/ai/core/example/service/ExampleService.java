@@ -11,6 +11,7 @@ import ai.core.defaultagents.DefaultImageGenerateAgent;
 import ai.core.defaultagents.PromptOptimizeAgent;
 import ai.core.defaultagents.SummaryAgent;
 import ai.core.defaultagents.ThinkingClaudeAgent;
+import ai.core.example.api.naixt.MCPToolCallRequest;
 import ai.core.example.api.socialmedia.CotResponse;
 import ai.core.example.api.socialmedia.CreateSocialMediaRequest;
 import ai.core.example.api.socialmedia.CreateSocialMediaResponse;
@@ -25,6 +26,8 @@ import ai.core.huggingface.flux.FluxIpAdapterRequest;
 import ai.core.huggingface.iclight.RelightingImageRequest;
 import ai.core.huggingface.iclight.RelightingWithBackgroundRequest;
 import ai.core.huggingface.rmbg.RemoveImageBackgroundRequest;
+import ai.core.mcp.client.MCPClientService;
+import ai.core.mcp.client.MCPServerConfig;
 import ai.core.providers.LiteLLMImageProvider;
 import ai.core.providers.inner.GenerateImageRequest;
 import ai.core.llm.providers.LiteLLMProvider;
@@ -34,6 +37,7 @@ import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import ai.core.prompt.Prompts;
 import ai.core.rag.vectorstore.milvus.MilvusVectorStore;
 import ai.core.tool.function.Functions;
+import ai.core.tool.mcp.MCPToolCalls;
 import ai.core.tool.tools.ExecutePythonScriptTool;
 import core.framework.api.json.Property;
 import core.framework.inject.Inject;
@@ -109,6 +113,18 @@ public class ExampleService {
         var agent = UserInputAgent.builder().persistenceProvider(persistenceProvider).build();
         agent.load(id);
         return agent.run(query, null);
+    }
+
+    public String mcpToolCallTest(MCPToolCallRequest request) {
+        var mcpClientService = new MCPClientService(new MCPServerConfig(request.host, request.port));
+        var agent = Agent.builder()
+                .name("mcp-tool-call-agent")
+                .description("mcp tool call agent")
+                .systemPrompt("you are a tool call agent")
+                .promptTemplate("")
+                .toolCalls(MCPToolCalls.from(mcpClientService))
+                .llmProvider(liteLLMProvider).build();
+        return agent.run(request.query, null);
     }
 
     public CreateSocialMediaResponse createSocialMediaPost(CreateSocialMediaRequest request) {

@@ -32,7 +32,7 @@ public class ExampleApp extends App {
         bind(ChatAgent.class);
         bind(ExampleService.class);
         api().service(ExampleWebService.class, bind(ExampleWebServiceImpl.class));
-        load(new NaixtModule());
+//        load(new NaixtModule());
     }
 
     private void initBingSearch() {

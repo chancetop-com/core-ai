@@ -7,7 +7,6 @@ import ai.core.tool.function.converter.response.DefaultJsonResponseConverter;
 import ai.core.tool.function.converter.ParameterTypeConverters;
 import ai.core.tool.function.converter.ResponseConverter;
 import ai.core.tool.ToolCall;
-import core.framework.api.json.Property;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
@@ -72,60 +71,6 @@ public class Function extends ToolCall {
         parameter.setRequired(functionParam.required());
         parameter.setEnums(List.of(functionParam.enums()));
         return parameter;
-    }
-
-    @Override
-    public String toString() {
-        return JSON.toJSON(FunctionDomain.of(this));
-    }
-
-    public static class FunctionDomain {
-        public static FunctionDomain of(Function function) {
-            var domain = new FunctionDomain();
-            domain.name = function.getName();
-            domain.description = function.getDescription();
-            domain.parameters = new ArrayList<>(8);
-            for (var parameter : function.getParameters()) {
-                domain.parameters.add(FunctionParameterDomain.of(parameter));
-            }
-            return domain;
-        }
-
-        @Property(name = "name")
-        public String name;
-
-        @Property(name = "description")
-        public String description;
-
-        @Property(name = "parameters")
-        public List<FunctionParameterDomain> parameters;
-    }
-
-    public static class FunctionParameterDomain {
-        public static FunctionParameterDomain of(ToolCallParameter toolCallParameter) {
-            var domain = new FunctionParameterDomain();
-            domain.name = toolCallParameter.getName();
-            domain.description = toolCallParameter.getDescription();
-            domain.type = toolCallParameter.getType().getName();
-            domain.required = toolCallParameter.getRequired();
-            domain.enums = toolCallParameter.getEnums();
-            return domain;
-        }
-
-        @Property(name = "name")
-        public String name;
-
-        @Property(name = "description")
-        public String description;
-
-        @Property(name = "type")
-        public String type;
-
-        @Property(name = "required")
-        public boolean required;
-
-        @Property(name = "enums")
-        public List<String> enums;
     }
 
     // keep if dev cannot add annotation in the method

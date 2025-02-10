@@ -1,7 +1,9 @@
 package ai.core.tool;
 
-import core.framework.util.Strings;
+import core.framework.api.json.Property;
+import core.framework.json.JSON;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -40,7 +42,56 @@ public abstract class ToolCall {
 
     @Override
     public String toString() {
-        return Strings.format("Tool name: {}\nTool description: {}", name, description);
+        return JSON.toJSON(ToolCallDomain.of(this));
+    }
+
+    public static class ToolCallDomain {
+        public static ToolCallDomain of(ToolCall function) {
+            var domain = new ToolCallDomain();
+            domain.name = function.getName();
+            domain.description = function.getDescription();
+            domain.parameters = new ArrayList<>(8);
+            for (var parameter : function.getParameters()) {
+                domain.parameters.add(ToolCallParameterDomain.of(parameter));
+            }
+            return domain;
+        }
+
+        @Property(name = "name")
+        public String name;
+
+        @Property(name = "description")
+        public String description;
+
+        @Property(name = "parameters")
+        public List<ToolCallParameterDomain> parameters;
+    }
+
+    public static class ToolCallParameterDomain {
+        public static ToolCallParameterDomain of(ToolCallParameter toolCallParameter) {
+            var domain = new ToolCallParameterDomain();
+            domain.name = toolCallParameter.getName();
+            domain.description = toolCallParameter.getDescription();
+            domain.type = toolCallParameter.getType().getName();
+            domain.required = toolCallParameter.getRequired();
+            domain.enums = toolCallParameter.getEnums();
+            return domain;
+        }
+
+        @Property(name = "name")
+        public String name;
+
+        @Property(name = "description")
+        public String description;
+
+        @Property(name = "type")
+        public String type;
+
+        @Property(name = "required")
+        public boolean required;
+
+        @Property(name = "enums")
+        public List<String> enums;
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {

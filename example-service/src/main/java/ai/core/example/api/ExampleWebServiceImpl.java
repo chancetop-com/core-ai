@@ -1,5 +1,6 @@
 package ai.core.example.api;
 
+import ai.core.example.api.naixt.MCPToolCallRequest;
 import ai.core.example.api.socialmedia.CotResponse;
 import ai.core.example.api.socialmedia.CreateSocialMediaIdeasResponse;
 import ai.core.example.api.socialmedia.CreateSocialMediaRequest;
@@ -172,5 +173,10 @@ public class ExampleWebServiceImpl implements ExampleWebService {
     @Override
     public FaceIdImageResponse faceId(FaceIdImageRequest request) {
         return exampleService.faceId(request.url, request.prompt);
+    }
+
+    @Override
+    public ChatResponse git(MCPToolCallRequest request) {
+        return toRsp(exampleService.mcpToolCallTest(request));
     }
 }
