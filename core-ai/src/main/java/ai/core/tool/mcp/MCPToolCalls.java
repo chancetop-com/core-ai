@@ -12,6 +12,9 @@ import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * @author stephen
+ */
 public class MCPToolCalls extends ArrayList<MCPToolCall> {
     @Serial
     private static final long serialVersionUID = 2202468890851081427L;
@@ -79,7 +82,6 @@ public class MCPToolCalls extends ArrayList<MCPToolCall> {
         if ("string".equalsIgnoreCase(typeStr)) {
             return String.class;
         }
-        // 添加其他类型映射
         return Object.class;
     }
 }
