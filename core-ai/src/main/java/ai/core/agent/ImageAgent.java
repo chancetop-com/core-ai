@@ -1,7 +1,7 @@
 package ai.core.agent;
 
-import ai.core.ImageProvider;
-import ai.core.providers.inner.GenerateImageRequest;
+import ai.core.image.ImageProvider;
+import ai.core.image.providers.inner.GenerateImageRequest;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import core.framework.crypto.Hash;
 import core.framework.util.Maps;

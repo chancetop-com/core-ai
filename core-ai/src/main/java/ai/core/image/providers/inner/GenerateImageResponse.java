@@ -1,4 +1,4 @@
-package ai.core.providers.inner;
+package ai.core.image.providers.inner;
 
 /**
  * @author stephen

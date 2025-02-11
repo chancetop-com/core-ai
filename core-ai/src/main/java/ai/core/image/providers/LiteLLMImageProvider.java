@@ -1,8 +1,8 @@
-package ai.core.providers;
+package ai.core.image.providers;
 
-import ai.core.ImageProvider;
-import ai.core.providers.inner.GenerateImageRequest;
-import ai.core.providers.inner.GenerateImageResponse;
+import ai.core.image.ImageProvider;
+import ai.core.image.providers.inner.GenerateImageRequest;
+import ai.core.image.providers.inner.GenerateImageResponse;
 import ai.core.litellm.LiteLLMService;
 import ai.core.litellm.image.CreateImageAJAXRequest;
 import core.framework.inject.Inject;

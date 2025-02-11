@@ -1,4 +1,4 @@
-package ai.core;
+package ai.core.image;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
