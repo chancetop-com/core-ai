@@ -1,7 +1,6 @@
 plugins {
     `kotlin-dsl`
     kotlin("plugin.serialization") version "1.9.20"
-    id("com.github.jk1.dependency-license-report") version "2.7"
 }
 
 repositories {

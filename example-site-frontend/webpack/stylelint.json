@@ -1,8 +1,0 @@
-{
-  "extends": "stylelint-config-standard",
-  "rules": {
-    "no-descending-specificity": null,
-    "color-function-notation": null,
-    "font-family-no-missing-generic-family-keyword": null
-  }
-}

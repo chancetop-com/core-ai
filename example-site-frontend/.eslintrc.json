@@ -1,3 +1,0 @@
-{
-  "extends": "./webpack/lint/.eslintrc.json"
-}

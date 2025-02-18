@@ -1,7 +1,4 @@
 apply(plugin = "project")
-apply(plugin = "azure-maven")
-apply(plugin = "publish")
-apply(plugin = "licenses")
 
 plugins {
     `java-library`
@@ -13,7 +10,7 @@ repositories {
 }
 
 subprojects {
-    group = "com.wonder"
+    group = "com.chancetop"
     version = "1.0.0"
 
     repositories {
@@ -47,11 +44,6 @@ subprojects {
             force("com.squareup.okio:okio:3.2.0")
         }
     }
-
-    dependencies {
-        // import a BOM
-        implementation(platform("com.wonder:wonder-dependencies:1.0.0"))
-    }
 }
 
 configure(
@@ -66,40 +58,40 @@ configure(
 ) {
     apply(plugin = "app")
     dependencies {
-        implementation("com.wonder:core-ng")
-        testImplementation("com.wonder:core-ng-test")
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
 }
 
 configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches(Regex("(-|\\w)+-interface-v\\d+$")) }) {
     apply(plugin = "lib")
     dependencies {
-        implementation("com.wonder:core-ng-api")
+        implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }
 }
 
 project(":litellm-library") {
     dependencies {
-        implementation("com.wonder:core-ng")
-        testImplementation("com.wonder:core-ng-test")
-        implementation("com.fasterxml.jackson.core:jackson-core")
-        implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
+        implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.JACKSON_VERSION}")
     }
 }
 
 project(":huggingface-library") {
     dependencies {
-        implementation("com.wonder:core-ng")
-        testImplementation("com.wonder:core-ng-test")
-        implementation("com.fasterxml.jackson.core:jackson-core")
-        implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
+        implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.JACKSON_VERSION}")
     }
 }
 
 project(":language-server-library") {
     dependencies {
-        implementation("com.wonder:core-ng")
-        testImplementation("com.wonder:core-ng-test")
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("org.eclipse.lsp4j:org.eclipse.lsp4j:${Versions.ECLIPSE_LSP4J_VERSION}")
     }
 }
@@ -108,9 +100,9 @@ project(":language-server-library") {
 project(":core-ai") {
     apply(plugin = "kotlin")
     dependencies {
-        implementation("com.wonder:core-ng")
         implementation(project(":litellm-library"))
-        testImplementation("com.wonder:core-ng-test")
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("com.google.guava:guava:${Versions.GOOGLE_GUAVA_JRE_VERSION}")
         implementation("com.theokanning.openai-gpt3-java:client:${Versions.OPENAI_JAVA_VERSION}")
         implementation("com.azure:azure-ai-openai:${Versions.AZURE_OPENAI_JAVA_VERSION}")
@@ -128,16 +120,5 @@ project(":example-service") {
         implementation(project(":huggingface-library"))
         implementation(project(":language-server-library"))
         implementation("com.microsoft.azure.cognitiveservices:azure-cognitiveservices-imagesearch:${Versions.AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION}")
-    }
-}
-
-
-project(":example-site") {
-    apply(plugin = "frontend")
-    project.ext["frontendDir"] = "${rootDir}/example-site-frontend"
-    dependencies {
-        implementation(project(":example-service-interface"))
-        implementation(project(":example-site-interface"))
-        implementation("com.wonder:azure-library")
     }
 }

@@ -1,8 +1,6 @@
 include("core-ai")
 include("litellm-library")
 include("example-service")
-include("example-site")
 include("example-service-interface")
-include("example-site-interface")
 include("huggingface-library")
 include("language-server-library")

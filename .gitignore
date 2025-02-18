@@ -47,3 +47,4 @@ coverage/
 /azure.properties
 .stylelintcache
 dist/
+**/bin/
