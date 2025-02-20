@@ -31,8 +31,8 @@ public interface ExampleWebService {
     ChatResponse userInputFinish(UserInputRequest request);
 
     @PUT
-    @Path("/example/wonder-chat")
-    ChatResponse wonderChat(ChatRequest request);
+    @Path("/example/thinking")
+    ChatResponse thinking(ChatRequest request);
 
     @PUT
     @Path("/example/chain")

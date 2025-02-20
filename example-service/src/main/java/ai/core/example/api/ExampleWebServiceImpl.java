@@ -39,7 +39,7 @@ public class ExampleWebServiceImpl implements ExampleWebService {
     }
 
     @Override
-    public ChatResponse wonderChat(ChatRequest request) {
+    public ChatResponse thinking(ChatRequest request) {
         return toRsp(exampleService.chat(request.query));
     }
 

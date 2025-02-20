@@ -13,8 +13,8 @@ import java.util.Map;
  */
 public class UserInfoService {
     Map<String, UserInfo> users = Map.of(
-            "1234567890", UserInfo.of("user-0001", "Stephen", "1234567890", "stephen@wonder.com"),
-            "0987654321", UserInfo.of("user-0002", "Celery", "0987654321", "celery@wonder.com"));
+            "1234567890", UserInfo.of("user-0001", "Stephen", "1234567890", "stephen@chancetop.com"),
+            "0987654321", UserInfo.of("user-0002", "Celery", "0987654321", "celery@chancetop.com"));
     Map<String, Order> orders = Map.of(
             "user-0001", Order.of("order-0001", "202501010001", 100, "ACCEPTED", ZonedDateTime.parse("2025-01-01T08:01:00Z")),
             "user-0002", Order.of("order-0002", "202501010002", 200, "COMPLETED", ZonedDateTime.parse("2025-01-01T08:02:00Z")));

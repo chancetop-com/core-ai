@@ -59,7 +59,6 @@ public class ExampleService {
 
     public String chat(String query) {
         var agent = ThinkingClaudeAgent.of(liteLLMProvider);
-//        return chatAgent.run(query);
         return agent.run(query, null);
     }
 
