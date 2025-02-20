@@ -33,6 +33,7 @@ import ai.core.llm.providers.inner.Usage;
 import ai.core.rag.Embedding;
 import ai.core.tool.ToolCallParameter;
 import core.framework.inject.Inject;
+import core.framework.util.Strings;
 
 import java.util.List;
 import java.util.Locale;
@@ -113,7 +114,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     private CreateCompletionAJAXRequest toApiRequest(CompletionRequest dto) {
         var apiReq = new CreateCompletionAJAXRequest();
-        apiReq.model = dto.model != null ? dto.model : config.getModel();
+        apiReq.model = Strings.isBlank(dto.model) ? config.getModel() : dto.model;
         apiReq.temperature = dto.temperature != null ? dto.temperature : config.getTemperature();
         apiReq.messages = dto.messages.stream().map(v -> {
             var message = new MessageAJAXView();

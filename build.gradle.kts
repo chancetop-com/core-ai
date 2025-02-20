@@ -2,6 +2,7 @@ apply(plugin = "project")
 
 plugins {
     `java-library`
+    `maven-publish`
     kotlin("jvm") version "1.9.20"
 }
 
@@ -42,6 +43,23 @@ subprojects {
     configurations.all {
         resolutionStrategy {
             force("com.squareup.okio:okio:3.2.0")
+        }
+    }
+
+    if (project.name.startsWith("core-ai") || project.name.endsWith("library")) {
+        apply(plugin = "maven-publish")
+        publishing {
+            publications {
+                create<MavenPublication>("maven") {
+                    from(components["java"])
+                }
+            }
+
+            repositories {
+                maven {
+                    url = uri(System.getProperty("user.home") + "/.m2/repository")
+                }
+            }
         }
     }
 }
