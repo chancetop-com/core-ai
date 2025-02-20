@@ -34,6 +34,8 @@ tasks.named<CreateStartScripts>("startScripts") {
 
     doLast {
         App.replaceText(property("windowsScript") as File, "APP_HOME_VAR", "%APP_HOME%")
+        // windows cannot run script when the classpath jar files are too much
+        App.replaceTextEx(property("windowsScript") as File, Regex("^set CLASSPATH=.*", RegexOption.MULTILINE), "set CLASSPATH=%APP_HOME%\\\\lib\\\\*")
         App.replaceText(property("unixScript") as File, "APP_HOME_VAR/web", "'\$APP_HOME/web'")
     }
 }
