@@ -48,16 +48,21 @@ subprojects {
 
     if (project.name.startsWith("core-ai") || project.name.endsWith("library")) {
         apply(plugin = "maven-publish")
+        val sourceJar by tasks.registering(Jar::class) {
+            archiveClassifier.set("sources")
+            from(sourceSets.main.get().allSource)
+        }
         publishing {
             publications {
                 create<MavenPublication>("maven") {
                     from(components["java"])
+                    artifact(sourceJar.get())
                 }
             }
 
             repositories {
                 maven {
-                    url = uri(System.getProperty("user.home") + "/.m2/repository")
+                    url = uri(System.getenv("MAVEN_REPO") ?: "${System.getProperty("user.home")}/.m2/repository")
                 }
             }
         }
