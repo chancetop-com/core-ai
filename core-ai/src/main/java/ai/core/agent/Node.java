@@ -134,6 +134,13 @@ public abstract class Node<T extends Node<T>> {
         return this.formatter;
     }
 
+    public void clearShortTermMemory() {
+        this.clearMessages();
+        this.setInput(null);
+        this.setOutput(null);
+        this.setRawOutput(null);
+    }
+
     @SuppressWarnings("unchecked")
     public void load(String id) {
         if (persistenceProvider == null) {
