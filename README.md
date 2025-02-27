@@ -11,6 +11,8 @@ Built-in template engine - Mustache
 > [mustache.java](https://github.com/spullara/mustache.java), [mustache](https://mustache.github.io/mustache.5.html)
 ### Variable (Context)
 Users can pass variables to the agent and compile them into the prompt template.
+
+*Note: The variables are used by the whole node, for example, the variables can be used by the agent, chain or group and their children if exists*
 ### Memory
 - Short-term memory is a built-in feature that allows agents to remember the last n messages.
 - Long-term memory is feature for app to pass the memory like user's information/user's config to the agent. this is different from the RAG context, because the RAG context is load everytime through query's similarity.

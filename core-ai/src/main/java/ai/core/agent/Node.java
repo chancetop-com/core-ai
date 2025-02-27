@@ -162,6 +162,7 @@ public abstract class Node<T extends Node<T>> {
         return this.id;
     }
 
+    // The variables are used by the whole node, for example, the variables can be used by the agent, chain or group and their children if exists
     public final String run(String query, Map<String, Object> variables) {
         try {
             return execute(query, variables);
