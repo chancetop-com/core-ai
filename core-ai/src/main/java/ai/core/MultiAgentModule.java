@@ -3,6 +3,7 @@ package ai.core;
 import ai.core.image.providers.LiteLLMImageProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.providers.LiteLLMProvider;
+import ai.core.persistence.providers.RedisPersistenceProvider;
 import ai.core.rag.vectorstore.milvus.MilvusConfig;
 import ai.core.rag.vectorstore.milvus.MilvusVectorStore;
 import ai.core.task.TaskService;
@@ -18,8 +19,16 @@ public class MultiAgentModule extends Module {
     @Override
     protected void initialize() {
         this.property("sys.milvus.uri").ifPresent(v -> configMilvus(null));
+        this.property("sys.persistence").ifPresent(this::configPersistence);
         load(new LiteLLMModule());
         bindServices();
+    }
+
+    private void configPersistence(String type) {
+        if ("redis".equals(type)) {
+            requiredProperty("sys.redis.host");
+            bind(RedisPersistenceProvider.class);
+        }
     }
 
     private void configMilvus(@Nullable String name) {

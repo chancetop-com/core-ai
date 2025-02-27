@@ -3,7 +3,6 @@ package ai.core.persistence.providers;
 import ai.core.persistence.PersistenceProvider;
 import core.framework.async.Executor;
 import core.framework.inject.Inject;
-import core.framework.web.exception.NotFoundException;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -32,7 +31,7 @@ public class TemporaryPersistenceProvider implements PersistenceProvider {
     @Override
     public Optional<String> load(String id) {
         if (!persistence.containsKey(id)) {
-            throw new NotFoundException("Persistence id not found, id = " + id);
+            return Optional.empty();
         }
         return Optional.of(persistence.get(id));
     }
