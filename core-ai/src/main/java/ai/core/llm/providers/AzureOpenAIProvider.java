@@ -99,7 +99,7 @@ public class AzureOpenAIProvider extends LLMProvider {
             } else if (msg.role == AgentRole.ASSISTANT) {
                 var message = new ChatRequestAssistantMessage(msg.content);
                 message.setName(msg.name);
-                message.setToolCalls(msg.toolCalls.stream().map(this::fromToolCall).toList());
+                message.setToolCalls(msg.toolCalls == null || msg.toolCalls.isEmpty() ? null : msg.toolCalls.stream().map(this::fromToolCall).toList());
                 message.setFunctionCall(fromFunctionCall(msg.functionCall));
                 return message;
             } else {
@@ -120,6 +120,7 @@ public class AzureOpenAIProvider extends LLMProvider {
     }
 
     private FunctionCall fromFunctionCall(ai.core.llm.providers.inner.FunctionCall functionCall) {
+        if (functionCall == null) return null;
         return new FunctionCall(functionCall.function.name, functionCall.function.arguments);
     }
 
