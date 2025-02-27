@@ -6,10 +6,12 @@ package ai.core.llm;
 public class LLMProviderConfig {
     private String model;
     private Double temperature;
+    private String embeddingModel;
 
-    public LLMProviderConfig(String model, Double temperature) {
+    public LLMProviderConfig(String model, Double temperature, String embeddingModel) {
         this.model = model;
         this.temperature = temperature;
+        this.embeddingModel = embeddingModel;
     }
 
     public void setModel(String model) {
@@ -26,5 +28,13 @@ public class LLMProviderConfig {
 
     public Double getTemperature() {
         return temperature;
+    }
+
+    public void setEmbeddingModel(String embeddingModel) {
+        this.embeddingModel = embeddingModel;
+    }
+
+    public String getEmbeddingModel() {
+        return embeddingModel;
     }
 }

@@ -10,9 +10,9 @@ import ai.core.defaultagents.SummaryAgent;
 import ai.core.defaultagents.ThinkingClaudeAgent;
 import ai.core.example.api.example.MCPToolCallRequest;
 import ai.core.example.api.example.OrderIssueResponse;
+import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.mcp.client.MCPClientService;
 import ai.core.mcp.client.MCPServerConfig;
-import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import ai.core.tool.function.Functions;
@@ -28,14 +28,14 @@ public class ExampleService {
     PersistenceProvider persistenceProvider = new TemporaryPersistenceProvider();
 
     @Inject
-    LiteLLMProvider liteLLMProvider;
+    AzureOpenAIProvider llmProvider;
     @Inject
     WeatherService weatherService;
     @Inject
     UserInfoService userInfoService;
 
     public OrderIssueResponse groupStart(String query) {
-        var group = OrderIssueGroup.create(liteLLMProvider, persistenceProvider, userInfoService);
+        var group = OrderIssueGroup.create(llmProvider, persistenceProvider, userInfoService);
         group.run(query, null);
         var rsp = new OrderIssueResponse();
         rsp.content = group.getOutput();
@@ -48,7 +48,7 @@ public class ExampleService {
     }
 
     public OrderIssueResponse groupFinish(String id, String query) {
-        var group = OrderIssueGroup.create(liteLLMProvider, persistenceProvider, userInfoService);
+        var group = OrderIssueGroup.create(llmProvider, persistenceProvider, userInfoService);
         group.load(id);
         group.run(query, null);
         var rsp = new OrderIssueResponse();
@@ -58,7 +58,7 @@ public class ExampleService {
     }
 
     public String chat(String query) {
-        var agent = ThinkingClaudeAgent.of(liteLLMProvider);
+        var agent = ThinkingClaudeAgent.of(llmProvider);
         return agent.run(query, null);
     }
 
@@ -82,20 +82,20 @@ public class ExampleService {
                 .systemPrompt("you are a tool call agent")
                 .promptTemplate("")
                 .toolCalls(MCPToolCalls.from(mcpClientService))
-                .llmProvider(liteLLMProvider).build();
+                .llmProvider(llmProvider).build();
         return agent.run(request.query, null);
     }
 
 
     public String optimize(String prompt) {
-        var agent = PromptOptimizeAgent.of(liteLLMProvider);
+        var agent = PromptOptimizeAgent.of(llmProvider);
         return agent.run(prompt, null);
     }
 
     public String summaryOptimize(String prompt) {
-        var agent = PromptOptimizeAgent.of(liteLLMProvider);
+        var agent = PromptOptimizeAgent.of(llmProvider);
         agent.run(prompt, null);
-        var summaryAgent = SummaryAgent.of(liteLLMProvider);
+        var summaryAgent = SummaryAgent.of(llmProvider);
         var summaryChain = AgentChain.builder().name("summary-chain").description("summary the chain").build();
         summaryChain.addNode(agent);
         summaryChain.addNode(summaryAgent);
@@ -109,13 +109,13 @@ public class ExampleService {
                 .description("con debater")
                 .systemPrompt("You are the negative side in a debate, and you do not support the viewpoint of the topic.You will analyze the arguments from the affirmative side and refute them one by one.")
                 .promptTemplate("pro viewpoints: ")
-                .llmProvider(liteLLMProvider).build();
+                .llmProvider(llmProvider).build();
         var conAgent = Agent.builder()
                 .name("debate-pro-agent")
                 .description("pro debater")
                 .systemPrompt("You are the affirmative side in a debate, and you support the viewpoint of the topic.you will elaborate and provide examples from multiple perspectives to illustrate why you support this viewpoint.")
                 .promptTemplate("topic: ")
-                .llmProvider(liteLLMProvider).build();
+                .llmProvider(llmProvider).build();
         conAgent.addStatusChangedEventListener(NodeStatus.RUNNING, new DefaultAgentRunningEventListener());
         var debateChain = AgentChain.builder().name("debate-chain").description("chain of debate").build();
         debateChain.addNode(proAgent);
@@ -132,7 +132,7 @@ public class ExampleService {
                               + "If query do not contain a city in the gave list, return 'I am weather toolkit, I don't known other things, so which city's weather you want to check?'.")
                 .promptTemplate("topic: ")
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
-                .llmProvider(liteLLMProvider).build();
+                .llmProvider(llmProvider).build();
         return agent.run(prompt, null);
     }
 }

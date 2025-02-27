@@ -139,20 +139,24 @@ public class LiteLLMProvider extends LLMProvider {
             var function = new FunctionAJAXView();
             function.name = v.getName();
             function.description = v.getDescription();
-            var parameters = new ParameterAJAXView();
-            parameters.type = ParameterTypeView.OBJECT;
-            parameters.required = v.getParameters().stream().filter(ToolCallParameter::getRequired).map(ToolCallParameter::getName).toList();
-            parameters.properties = v.getParameters().stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
-                var property = new PropertyAJAXView();
-                property.description = p.getDescription();
-                property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
-                return property;
-            }));
-            function.parameters = parameters;
+            function.parameters = toParameter(v.getParameters());
             tool.function = function;
             return tool;
         }).collect(Collectors.toList());
         apiReq.toolChoice = dto.toolCalls.isEmpty() ? null : "auto";
         return apiReq;
+    }
+
+    private ParameterAJAXView toParameter(List<ToolCallParameter> parameters) {
+        var ajax = new ParameterAJAXView();
+        ajax.type = ParameterTypeView.OBJECT;
+        ajax.required = parameters.stream().filter(ToolCallParameter::getRequired).map(ToolCallParameter::getName).toList();
+        ajax.properties = parameters.stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
+            var property = new PropertyAJAXView();
+            property.description = p.getDescription();
+            property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
+            return property;
+        }));
+        return ajax;
     }
 }
