@@ -76,7 +76,7 @@ public class AgentGroup extends Node<AgentGroup> {
             }
             next.clearMessages();
             query = output;
-            logger.info("round: {}, agent: {}, input: {}, output: {}", getRound(), next.getName(), getInput(), getOutput());
+            logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
         }
 
         return getOutput();
@@ -149,8 +149,8 @@ public class AgentGroup extends Node<AgentGroup> {
                 agent.moderator = ModeratorAgent.of(agent, this.llmProvider, this.description);
                 agent.planning = new DefaultPlanning();
             }
-            if (this.maxRound <= 0) {
-                this.maxRound = 5;
+            if (agent.getMaxRound() <= 0) {
+                agent.setMaxRound(5);
             }
             agent.llmProvider = this.llmProvider;
             agent.addTermination(new MaxRoundTermination());
