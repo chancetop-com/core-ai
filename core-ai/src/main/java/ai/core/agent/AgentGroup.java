@@ -1,10 +1,13 @@
 package ai.core.agent;
 
 import ai.core.agent.planning.DefaultPlanning;
-import ai.core.defaultagents.ModeratorAgent;
+import ai.core.defaultagents.DefaultModeratorAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.termination.Termination;
 import ai.core.termination.terminations.MaxRoundTermination;
+import ai.core.tool.ToolCall;
+import core.framework.api.json.Property;
+import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,6 +106,46 @@ public class AgentGroup extends Node<AgentGroup> {
         }).collect(Collectors.joining("\n"));
     }
 
+    @Override
+    public String toString() {
+        return JSON.toJSON(AgentsInfo.of(agents.stream().map(agent -> {
+            var agentInfo = AgentInfo.of(agent.getName(), agent.getDescription());
+            if (agent instanceof Agent) {
+                agentInfo.functions = ((Agent) agent).getToolCalls().stream().map(ToolCall::toString).toList();
+            }
+            return agentInfo;
+        }).toList()));
+    }
+
+    public static class AgentsInfo {
+        public static AgentsInfo of(List<AgentInfo> agents) {
+            var dto = new AgentsInfo();
+            dto.agents = agents;
+            return dto;
+        }
+
+        @Property(name = "agents")
+        public List<AgentInfo> agents;
+    }
+
+    public static class AgentInfo {
+        public static AgentInfo of(String name, String description) {
+            var dto = new AgentInfo();
+            dto.name = name;
+            dto.description = description;
+            return dto;
+        }
+
+        @Property(name = "name")
+        public String name;
+
+        @Property(name = "description")
+        public String description;
+
+        @Property(name = "functions")
+        public List<String> functions;
+    }
+
     public static class Builder extends Node.Builder<Builder, AgentGroup> {
         private List<Node<?>> agents;
         private LLMProvider llmProvider;
@@ -146,7 +189,9 @@ public class AgentGroup extends Node<AgentGroup> {
             agent.agents = this.agents;
             agent.planning = this.planning;
             if (agent.moderator == null && this.llmProvider != null) {
-                agent.moderator = ModeratorAgent.of(agent, this.llmProvider, this.description);
+                agent.moderator = DefaultModeratorAgent.of(agent, this.llmProvider);
+            }
+            if (agent.planning == null) {
                 agent.planning = new DefaultPlanning();
             }
             if (agent.getMaxRound() <= 0) {
