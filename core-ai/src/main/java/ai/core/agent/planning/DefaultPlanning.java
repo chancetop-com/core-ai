@@ -22,7 +22,7 @@ public class DefaultPlanning implements Planning {
         var rst = agent.run(query, variables);
         try {
             result = JSON.fromJSON(DefaultAgentPlanningResult.class, rst);
-            logger.info("Planning: {}", result);
+            logger.info("Planning: {}", rst);
         } catch (Exception e) {
             throw new RuntimeException(Strings.format("Failed to moderate: {}", rst), e);
         }
