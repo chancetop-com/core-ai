@@ -108,16 +108,20 @@ public class AgentGroup extends Node<AgentGroup> {
 
     @Override
     public String toString() {
-        return JSON.toJSON(AgentsInfo.of(agents.stream().map(agent -> {
-            var agentInfo = AgentInfo.of(agent.getName(), agent.getDescription());
-            if (agent instanceof Agent) {
-                agentInfo.functions = ((Agent) agent).getToolCalls().stream().map(ToolCall::toString).toList();
-            }
-            return agentInfo;
-        }).toList()));
+        return AgentsInfo.agentsInfo(agents);
     }
 
     public static class AgentsInfo {
+        public static String agentsInfo(List<Node<?>> agents) {
+            return JSON.toJSON(AgentsInfo.of(agents.stream().map(agent -> {
+                var agentInfo = AgentInfo.of(agent.getName(), agent.getDescription());
+                if (agent instanceof Agent) {
+                    agentInfo.functions = ((Agent) agent).getToolCalls().stream().map(ToolCall::toString).toList();
+                }
+                return agentInfo;
+            }).toList()));
+        }
+
         public static AgentsInfo of(List<AgentInfo> agents) {
             var dto = new AgentsInfo();
             dto.agents = agents;
@@ -150,6 +154,7 @@ public class AgentGroup extends Node<AgentGroup> {
         private List<Node<?>> agents;
         private LLMProvider llmProvider;
         private Planning planning;
+        private Agent moderator;
 
         @Override
         protected Builder self() {
@@ -171,6 +176,11 @@ public class AgentGroup extends Node<AgentGroup> {
             return this;
         }
 
+        public Builder moderator(Agent moderator) {
+            this.moderator = moderator;
+            return this;
+        }
+
         public AgentGroup build() {
             if (this.agents == null || this.agents.isEmpty()) {
                 throw new IllegalArgumentException("agents is required");
@@ -187,10 +197,11 @@ public class AgentGroup extends Node<AgentGroup> {
                 throw new IllegalArgumentException("persistenceProvider is required when have user input agent");
             }
             agent.agents = this.agents;
-            agent.planning = this.planning;
-            if (agent.moderator == null && this.llmProvider != null) {
+            agent.moderator = this.moderator;
+            if (agent.moderator == null) {
                 agent.moderator = DefaultModeratorAgent.of(agent, this.llmProvider);
             }
+            agent.planning = this.planning;
             if (agent.planning == null) {
                 agent.planning = new DefaultPlanning();
             }
