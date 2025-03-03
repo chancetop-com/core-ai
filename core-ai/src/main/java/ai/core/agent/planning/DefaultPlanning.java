@@ -6,6 +6,8 @@ import core.framework.api.json.Property;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 
+import java.util.Map;
+
 /**
  * @author stephen
  */
@@ -13,8 +15,8 @@ public class DefaultPlanning implements Planning {
     private DefaultAgentPlanningResult result;
 
     @Override
-    public void planning(Agent agent, String query) {
-        var rst = agent.run(query, null);
+    public void planning(Agent agent, String query, Map<String, Object> variables) {
+        var rst = agent.run(query, variables);
         try {
             result = JSON.fromJSON(DefaultAgentPlanningResult.class, rst);
         } catch (Exception e) {

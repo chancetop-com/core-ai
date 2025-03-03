@@ -51,7 +51,7 @@ public class AgentGroup extends Node<AgentGroup> {
 
         setRound(0);
         while (!terminateCheck()) {
-            planning.planning(moderator, query);
+            planning.planning(moderator, query, variables);
             if (Strings.isBlank(planning.nextAgentName())) {
                 if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())) {
                     updateNodeStatus(NodeStatus.COMPLETED);
