@@ -10,7 +10,7 @@ import ai.core.defaultagents.SummaryAgent;
 import ai.core.defaultagents.ThinkingClaudeAgent;
 import ai.core.example.api.example.MCPToolCallRequest;
 import ai.core.example.api.example.OrderIssueResponse;
-import ai.core.llm.providers.AzureOpenAIProvider;
+import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.mcp.client.MCPClientService;
 import ai.core.mcp.client.MCPServerConfig;
 import ai.core.persistence.PersistenceProvider;
@@ -28,7 +28,7 @@ public class ExampleService {
     PersistenceProvider persistenceProvider = new TemporaryPersistenceProvider();
 
     @Inject
-    AzureOpenAIProvider llmProvider;
+    AzureInferenceProvider llmProvider;
     @Inject
     WeatherService weatherService;
     @Inject

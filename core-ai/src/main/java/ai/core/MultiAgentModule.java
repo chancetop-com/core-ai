@@ -2,6 +2,7 @@ package ai.core;
 
 import ai.core.image.providers.LiteLLMImageProvider;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.persistence.providers.RedisPersistenceProvider;
@@ -36,6 +37,10 @@ public class MultiAgentModule extends Module {
             load(new LiteLLMModule());
             bind(new LiteLLMProvider(config));
             bind(LiteLLMImageProvider.class);
+            return;
+        }
+        if ("azure-inference".equals(type)) {
+            bind(new AzureInferenceProvider(config, requiredProperty("sys.llm.apikey"), property("sys.llm.endpoint").orElse(null)));
             return;
         }
         if ("azure".equals(type) || "openai".equals(type)) {

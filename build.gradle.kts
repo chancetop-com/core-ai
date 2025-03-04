@@ -129,6 +129,7 @@ project(":core-ai") {
         implementation("com.google.guava:guava:${Versions.GOOGLE_GUAVA_JRE_VERSION}")
         implementation("com.theokanning.openai-gpt3-java:client:${Versions.OPENAI_JAVA_VERSION}")
         implementation("com.azure:azure-ai-openai:${Versions.AZURE_OPENAI_JAVA_VERSION}")
+        implementation("com.azure:azure-ai-inference:${Versions.AZURE_INFERENCE_JAVA_VERSION}")
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")
         implementation("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
         implementation("io.modelcontextprotocol:kotlin-sdk:${Versions.MCP_KOTLIN_SDK_VERSION}")
