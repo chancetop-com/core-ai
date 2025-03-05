@@ -69,6 +69,7 @@ public class AgentGroup extends Node<AgentGroup> {
             setOutput(output);
             addMessages(next.getMessages());
             setRound(getRound() + 1);
+            logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
             if (next.getType() == NodeType.USER_INPUT && next.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
                 updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
                 return output;
@@ -79,7 +80,6 @@ public class AgentGroup extends Node<AgentGroup> {
             }
             next.clearMessages();
             query = output;
-            logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
         }
 
         return getOutput();

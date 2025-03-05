@@ -20,6 +20,8 @@ import core.framework.util.Lists;
 import core.framework.util.Maps;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,6 +32,7 @@ import java.util.Map;
  * @author stephen
  */
 public class Agent extends Node<Agent> {
+    private final Logger logger = LoggerFactory.getLogger(Agent.class);
     public static Builder builder() {
         return new Builder();
     }
@@ -113,6 +116,10 @@ public class Agent extends Node<Agent> {
         var rst = llmProvider.completion(req);
         setRawOutput(rst.choices.getFirst().message.content);
 
+        // remove think content
+        if (withThinkContent(rst)) {
+            removeThinkContent(rst);
+        }
         // format the LLM response
         if (getAgentFormatter() != null) {
             formatContent(rst, getAgentFormatter());
@@ -165,6 +172,19 @@ public class Agent extends Node<Agent> {
         }
     }
 
+    private boolean withThinkContent(CompletionResponse response) {
+        return !response.choices.isEmpty()
+                && response.choices.getFirst().message != null
+                && response.choices.getFirst().message.content != null
+                && response.choices.getFirst().message.content.contains("<think>");
+    }
+
+    private void removeThinkContent(CompletionResponse response) {
+        var text = response.choices.getFirst().message.content;
+        logger.info("think: {}", text.substring(0, text.indexOf("</think>") + 8));
+        response.choices.getFirst().message.content = text.substring(text.lastIndexOf("</think>") + 8);
+    }
+
     public ReflectionConfig getReflectionConfig() {
         return this.reflectionConfig;
     }
@@ -183,6 +203,10 @@ public class Agent extends Node<Agent> {
 
     public void clearLongTernMemory() {
         this.longTernMemory.clear();
+    }
+
+    public void setModel(String model) {
+        this.model = model;
     }
     
     public static class Builder extends Node.Builder<Builder, Agent> {
