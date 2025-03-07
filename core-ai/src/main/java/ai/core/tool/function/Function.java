@@ -34,9 +34,9 @@ public class Function extends ToolCall {
     public String call(String text) {
         var argsMap = JSON.fromJSON(Map.class, text);
         try {
-            Object[] args = new Object[this.getParameters().size()];
+            var args = new Object[this.getParameters().size()];
             for (int i = 0; i < this.getParameters().size(); i++) {
-                Object value = argsMap.get(this.getParameters().get(i).getName());
+                var value = argsMap.get(this.getParameters().get(i).getName());
                 args[i] = ParameterTypeConverters.convert(value, this.getParameters().get(i).getType());
             }
             return responseConverter.convert(method.invoke(object, args));
@@ -53,8 +53,8 @@ public class Function extends ToolCall {
         this.setDescription(functionDef.description());
 
         var parameterList = new ArrayList<ToolCallParameter>();
-        java.lang.reflect.Parameter[] methodParameters = method.getParameters();
-        for (java.lang.reflect.Parameter methodParameter : methodParameters) {
+        var methodParameters = method.getParameters();
+        for (var methodParameter : methodParameters) {
             var parameter = getParameter(methodParameter);
             parameterList.add(parameter);
         }

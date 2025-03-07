@@ -45,7 +45,7 @@ public class AzureInferenceModelsUtil {
     }
 
     public static ChatCompletionsOptions toAzureRequest(CompletionRequest request) {
-        var options = new ChatCompletionsOptions(fromMessages(request.messages));
+        var options = new ChatCompletionsOptions(fromMessages(request.model, request.messages));
         options.setModel(request.model);
         options.setTemperature(request.temperature);
         if (request.toolCalls != null && !request.toolCalls.isEmpty()) {
@@ -92,9 +92,9 @@ public class AzureInferenceModelsUtil {
         return AgentRole.valueOf(role.getValue().toUpperCase(Locale.ROOT));
     }
 
-    private static List<ChatRequestMessage> fromMessages(List<Message> messages) {
+    private static List<ChatRequestMessage> fromMessages(String model, List<Message> messages) {
         return messages.stream().map(msg -> {
-            if (msg.role == AgentRole.SYSTEM) {
+            if (msg.role == AgentRole.SYSTEM && !model.startsWith("o1")) {
                 return new ChatRequestSystemMessage(msg.content);
             } else if (msg.role == AgentRole.ASSISTANT) {
                 var message = new ChatRequestAssistantMessage(msg.content);

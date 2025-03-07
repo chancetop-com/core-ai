@@ -1,6 +1,13 @@
 package ai.core.agent.formatter.formatters;
 
 import ai.core.agent.formatter.Formatter;
+import core.framework.internal.json.JSONMapper;
+import core.framework.json.JSON;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.Map;
+
+import static com.fasterxml.jackson.core.json.JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS;
 
 /**
  * @author stephen
@@ -20,7 +27,7 @@ public class DefaultJsonFormatter implements Formatter {
     public String formatter(String rst) {
         var completion = rst;
         // Remove leading and trailing whitespace
-        completion = completion.trim();
+        completion = StringUtils.strip(completion, " \n\r\t");
 
         var splits = completion.split("```");
         // Check for and remove triple backticks and "json" identifier
@@ -35,7 +42,27 @@ public class DefaultJsonFormatter implements Formatter {
         }
 
         completion = completion.trim();
+
+        if (dirty) {
+            completion = dirtyJsonFormatter(completion);
+        }
+
         return completion;
+    }
+
+    private String dirtyJsonFormatter(String completion) {
+        try {
+            JSON.fromJSON(Map.class, completion);
+            return completion;
+        } catch (Exception e) {
+            if (e.getMessage().contains("Illegal unquoted character")) {
+                JSONMapper.OBJECT_MAPPER.enable(ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature());
+                var j = JSON.fromJSON(Map.class, completion);
+                JSONMapper.OBJECT_MAPPER.disable(ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature());
+                return JSON.toJSON(j);
+            }
+            return completion;
+        }
     }
 
     private String removeTripleBackticksAndJsonIdentified(String rst) {
