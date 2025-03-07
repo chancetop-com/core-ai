@@ -54,8 +54,8 @@ public class AzureOpenAIModelsUtil {
         return options;
     }
 
-    public static List<Choice> toChoice(List<ChatChoice> choices) {
-        return choices.stream().map(v -> new Choice(toFinishReason(v.getFinishReason()), toMessage(v.getMessage()))).toList();
+    public static List<Choice> toChoice(List<ChatChoice> choices, String name) {
+        return choices.stream().map(v -> new Choice(toFinishReason(v.getFinishReason()), toMessage(v.getMessage(), name))).toList();
     }
 
     public static Usage toUsage(CompletionsUsage usage) {
@@ -71,11 +71,11 @@ public class AzureOpenAIModelsUtil {
         return FinishReason.valueOf(finishReason.toString().toUpperCase(Locale.ROOT));
     }
 
-    private static Message toMessage(ChatResponseMessage message) {
+    private static Message toMessage(ChatResponseMessage message, String name) {
         return Message.of(
                 toAgentRole(message.getRole()),
                 message.getContent(),
-                null,
+                name,
                 null,
                 toFunctionCall(message.getFunctionCall()),
                 message.getToolCalls() == null || message.getToolCalls().isEmpty() ? null : message.getToolCalls().stream().map(v -> toFunctionCall((ChatCompletionsFunctionToolCall) v)).toList());

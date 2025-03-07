@@ -53,23 +53,27 @@ public class AgentGroup extends Node<AgentGroup> {
         setRound(0);
         while (!terminateCheck()) {
             var text = planning.planning(moderator, query, variables);
+            setRawOutput(text);
             addResponseChoiceMessages(List.of(
                     Message.of(AgentRole.USER, moderator.getName(), query),
-                    Message.of(AgentRole.ASSISTANT, text, null, null, null, null)));
+                    Message.of(AgentRole.ASSISTANT, planning.planningText(), moderator.getName(), null, null, null)));
             if (Strings.isBlank(planning.nextAgentName())) {
                 if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())) {
                     updateNodeStatus(NodeStatus.COMPLETED);
                     return getOutput();
                 }
-                throw new IllegalArgumentException("moderator return agent name is null");
+                query = "The next agent name is empty, please check the planning result";
+                continue;
             }
             var next = getAgentByName(planning.nextAgentName());
             if (next == null) {
-                throw new IllegalArgumentException("moderator return agent name not found");
+                query = "The next agent is not found, please check the planning result";
+                continue;
             }
             current = next.getName();
             setInput(planning.nextQuery());
             var output = next.run(planning.nextQuery(), variables);
+            setRawOutput(output);
             setOutput(output);
             addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
             setRound(getRound() + 1);

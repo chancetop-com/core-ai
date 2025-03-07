@@ -38,7 +38,7 @@ public class AzureOpenAIProvider extends LLMProvider {
     public CompletionResponse completion(CompletionRequest request) {
         request.model = getModel(request);
         var chatCompletion = client.getChatCompletions(request.model, AzureOpenAIModelsUtil.toAzureRequest(request));
-        return new CompletionResponse(AzureOpenAIModelsUtil.toChoice(chatCompletion.getChoices()), AzureOpenAIModelsUtil.toUsage(chatCompletion.getUsage()));
+        return new CompletionResponse(AzureOpenAIModelsUtil.toChoice(chatCompletion.getChoices(), request.messages.getLast().name), AzureOpenAIModelsUtil.toUsage(chatCompletion.getUsage()));
     }
 
     @Override

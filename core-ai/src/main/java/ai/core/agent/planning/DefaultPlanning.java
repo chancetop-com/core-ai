@@ -23,7 +23,7 @@ public class DefaultPlanning implements Planning {
         try {
             result = JSON.fromJSON(DefaultAgentPlanningResult.class, rst);
             logger.info("Planning: {}", rst);
-            return result.planning;
+            return rst;
         } catch (Exception e) {
             throw new RuntimeException(Strings.format("Failed to moderate: {}", rst), e);
         }
@@ -42,6 +42,11 @@ public class DefaultPlanning implements Planning {
     @Override
     public String nextAction() {
         return result.nextStep;
+    }
+
+    @Override
+    public String planningText() {
+        return result.planning;
     }
 
     public static class DefaultAgentPlanningResult {

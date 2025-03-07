@@ -13,4 +13,6 @@ public interface Planning {
     String nextQuery();
 
     String nextAction();
+
+    String planningText();
 }
