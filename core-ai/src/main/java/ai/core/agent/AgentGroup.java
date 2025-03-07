@@ -3,6 +3,7 @@ package ai.core.agent;
 import ai.core.agent.planning.DefaultPlanning;
 import ai.core.defaultagents.DefaultModeratorAgent;
 import ai.core.llm.LLMProvider;
+import ai.core.llm.providers.inner.Message;
 import ai.core.termination.Termination;
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.tool.ToolCall;
@@ -51,7 +52,10 @@ public class AgentGroup extends Node<AgentGroup> {
 
         setRound(0);
         while (!terminateCheck()) {
-            planning.planning(moderator, query, variables);
+            var text = planning.planning(moderator, query, variables);
+            addResponseChoiceMessages(List.of(
+                    Message.of(AgentRole.USER, moderator.getName(), query),
+                    Message.of(AgentRole.ASSISTANT, text, null, null, null, null)));
             if (Strings.isBlank(planning.nextAgentName())) {
                 if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())) {
                     updateNodeStatus(NodeStatus.COMPLETED);
@@ -67,7 +71,7 @@ public class AgentGroup extends Node<AgentGroup> {
             setInput(planning.nextQuery());
             var output = next.run(planning.nextQuery(), variables);
             setOutput(output);
-            addMessages(next.getMessages());
+            addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
             setRound(getRound() + 1);
             logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
             if (next.getType() == NodeType.USER_INPUT && next.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {

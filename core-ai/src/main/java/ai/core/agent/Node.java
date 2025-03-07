@@ -3,7 +3,6 @@ package ai.core.agent;
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
-import ai.core.llm.providers.inner.Choice;
 import ai.core.llm.providers.inner.CompletionResponse;
 import ai.core.llm.providers.inner.Message;
 import ai.core.persistence.Persistence;
@@ -57,6 +56,11 @@ public abstract class Node<T extends Node<T>> {
     public void addStatusChangedEventListeners(Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> listeners) {
         if (listeners == null || listeners.isEmpty()) return;
         statusChangedEventListeners.putAll(listeners);
+    }
+
+    public void addMessageUpdatedEventListener(MessageUpdatedEventListener<T> listener) {
+        if (listener == null) return;
+        messageUpdatedEventListener = listener;
     }
 
     @SuppressWarnings("unchecked")
@@ -252,10 +256,14 @@ public abstract class Node<T extends Node<T>> {
         this.terminations.addAll(terminations);
     }
 
+    void addResponseChoiceMessages(List<Message> messages) {
+        messages.forEach(this::addResponseChoiceMessage);
+    }
+
     @SuppressWarnings("unchecked")
-    void addResponseChoiceMessage(Choice choice) {
-        this.messages.add(choice.message);
-        this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, choice.message));
+    void addResponseChoiceMessage(Message message) {
+        this.messages.add(message);
+        this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, message));
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends Node<T>> {

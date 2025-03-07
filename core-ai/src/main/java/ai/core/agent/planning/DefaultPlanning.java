@@ -18,11 +18,12 @@ public class DefaultPlanning implements Planning {
     private DefaultAgentPlanningResult result;
 
     @Override
-    public void planning(Agent agent, String query, Map<String, Object> variables) {
+    public String planning(Agent agent, String query, Map<String, Object> variables) {
         var rst = agent.run(query, variables);
         try {
             result = JSON.fromJSON(DefaultAgentPlanningResult.class, rst);
             logger.info("Planning: {}", rst);
+            return result.planning;
         } catch (Exception e) {
             throw new RuntimeException(Strings.format("Failed to moderate: {}", rst), e);
         }

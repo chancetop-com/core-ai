@@ -72,7 +72,7 @@ public class Agent extends Node<Agent> {
         var choice = getChoice(rst);
 
         // add rsp to message list and call message event listener if it has
-        addResponseChoiceMessage(choice);
+        addResponseChoiceMessage(choice.message);
         setOutput(choice.message.content);
 
         // reflection if enabled
@@ -100,7 +100,7 @@ public class Agent extends Node<Agent> {
         while (!terminateCheck()) {
             var rst = completionWithFormat(getReflectionConfig().prompt());
             var choice = getChoice(rst);
-            addResponseChoiceMessage(choice);
+            addResponseChoiceMessage(choice.message);
             setOutput(choice.message.content);
             setRound(getRound() + 1);
         }

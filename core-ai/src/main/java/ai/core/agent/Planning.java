@@ -6,7 +6,7 @@ import java.util.Map;
  * @author stephen
  */
 public interface Planning {
-    void planning(Agent agent, String query, Map<String, Object> variables);
+    String planning(Agent agent, String query, Map<String, Object> variables);
 
     String nextAgentName();
 
