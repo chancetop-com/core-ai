@@ -32,10 +32,10 @@ import java.util.Map;
  * @author stephen
  */
 public class Agent extends Node<Agent> {
-    private final Logger logger = LoggerFactory.getLogger(Agent.class);
     public static Builder builder() {
         return new Builder();
     }
+    private final Logger logger = LoggerFactory.getLogger(Agent.class);
 
     String systemPrompt;
     String promptTemplate;
