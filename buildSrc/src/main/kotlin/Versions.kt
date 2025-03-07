@@ -2,7 +2,7 @@
  * @author stephen
  */
 object Versions {
-    const val CORE_FRAMEWORK_VERSION = "9.1.5"
+    const val CORE_FRAMEWORK_VERSION = "9.1.7"
     const val JACKSON_VERSION = "2.17.2"
     const val GOOGLE_GUAVA_JRE_VERSION = "33.3.1-jre"
     const val OPENAI_JAVA_VERSION = "0.18.2"
