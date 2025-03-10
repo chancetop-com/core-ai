@@ -143,7 +143,8 @@ public class AzureOpenAIModelsUtil {
         ajax.properties = parameters.stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
             var property = new PropertyView();
             property.description = p.getDescription();
-            property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
+//            property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
+            property.type = ParameterTypeView.STRING;
             return property;
         }));
         return ajax;
