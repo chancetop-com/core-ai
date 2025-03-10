@@ -4,7 +4,6 @@ import ai.core.agent.Agent;
 import ai.core.agent.Planning;
 import core.framework.api.json.Property;
 import core.framework.json.JSON;
-import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,13 +19,9 @@ public class DefaultPlanning implements Planning {
     @Override
     public String planning(Agent agent, String query, Map<String, Object> variables) {
         var rst = agent.run(query, variables);
-        try {
-            result = JSON.fromJSON(DefaultAgentPlanningResult.class, rst);
-            logger.info("Planning: {}", rst);
-            return rst;
-        } catch (Exception e) {
-            throw new RuntimeException(Strings.format("Failed to moderate: {}", rst), e);
-        }
+        result = JSON.fromJSON(DefaultAgentPlanningResult.class, rst);
+        logger.info("Planning: {}", rst);
+        return rst;
     }
 
     @Override

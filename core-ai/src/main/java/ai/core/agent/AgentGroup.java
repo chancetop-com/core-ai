@@ -52,11 +52,17 @@ public class AgentGroup extends Node<AgentGroup> {
 
         setRound(0);
         while (!terminateCheck()) {
-            var text = planning.planning(moderator, query, variables);
-            setRawOutput(text);
-            addResponseChoiceMessages(List.of(
-                    Message.of(AgentRole.USER, moderator.getName(), query),
-                    Message.of(AgentRole.ASSISTANT, planning.planningText(), moderator.getName(), null, null, null)));
+            try {
+                var text = planning.planning(moderator, query, variables);
+                setRawOutput(text);
+                addResponseChoiceMessages(List.of(
+                        Message.of(AgentRole.USER, moderator.getName(), query),
+                        Message.of(AgentRole.ASSISTANT, planning.planningText(), moderator.getName(), null, null, null)));
+            } catch (Exception e) {
+                logger.warn("Failed to planning", e);
+                query = Strings.format("JSON resolve failed, please check the planning result: ", e.getMessage());
+                continue;
+            }
             if (Strings.isBlank(planning.nextAgentName())) {
                 if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())) {
                     updateNodeStatus(NodeStatus.COMPLETED);
