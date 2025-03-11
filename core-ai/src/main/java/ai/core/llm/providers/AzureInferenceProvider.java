@@ -15,8 +15,11 @@ import com.azure.ai.inference.EmbeddingsClient;
 import com.azure.ai.inference.EmbeddingsClientBuilder;
 import com.azure.ai.inference.ModelServiceVersion;
 import com.azure.core.credential.AzureKeyCredential;
+import com.azure.core.http.HttpClient;
+import com.azure.core.util.HttpClientOptions;
 import core.framework.util.Strings;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -28,7 +31,11 @@ public class AzureInferenceProvider extends LLMProvider {
 
     public AzureInferenceProvider(LLMProviderConfig config, String apiKey, String endpoint) {
         super(config);
-        this.client = new ChatCompletionsClientBuilder().serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(new AzureKeyCredential(apiKey)).endpoint(endpoint).buildClient();
+        var options = new HttpClientOptions();
+        options.setConnectTimeout(Duration.ofMillis(1000));
+        options.setReadTimeout(Duration.ofSeconds(120));
+        options.setConnectionIdleTimeout(Duration.ofMinutes(5));
+        this.client = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(new AzureKeyCredential(apiKey)).endpoint(endpoint).buildClient();
         this.embeddingsClient = new EmbeddingsClientBuilder().credential(new AzureKeyCredential(apiKey)).endpoint(endpoint).buildClient();
     }
 
