@@ -78,7 +78,14 @@ public class AgentGroup extends Node<AgentGroup> {
             }
             current = next.getName();
             setInput(planning.nextQuery());
-            var output = next.run(planning.nextQuery(), variables);
+            String output;
+            try {
+                output = next.run(planning.nextQuery(), variables);
+            } catch (Exception e) {
+                logger.warn("Failed to run agent: {}", next.getName(), e);
+                query = Strings.format("Failed to run agent<{}>: {}", next.getName(), e.getMessage());
+                continue;
+            }
             setRawOutput(output);
             setOutput(output);
             addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
