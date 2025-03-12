@@ -66,8 +66,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     public int maxTokens() {
-        // 30k context * 10 round
-        return 30 * 1000 * 10;
+        return 32 * 1000;
     }
 
     private CompletionResponse toRsp(CreateCompletionAJAXResponse rsp, String name) {

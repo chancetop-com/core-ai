@@ -6,7 +6,7 @@ import ai.core.agent.NodeStatus;
 import ai.core.agent.UserInputAgent;
 import ai.core.agent.listener.listeners.DefaultAgentRunningEventListener;
 import ai.core.defaultagents.PromptOptimizeAgent;
-import ai.core.defaultagents.SummaryAgent;
+import ai.core.defaultagents.DefaultSummaryAgent;
 import ai.core.defaultagents.ThinkingClaudeAgent;
 import ai.core.example.api.example.MCPToolCallRequest;
 import ai.core.example.api.example.OrderIssueResponse;
@@ -95,12 +95,12 @@ public class ExampleService {
     public String summaryOptimize(String prompt) {
         var agent = PromptOptimizeAgent.of(llmProvider);
         agent.run(prompt, null);
-        var summaryAgent = SummaryAgent.of(llmProvider);
+        var summaryAgent = DefaultSummaryAgent.of(llmProvider);
         var summaryChain = AgentChain.builder().name("summary-chain").description("summary the chain").build();
         summaryChain.addNode(agent);
         summaryChain.addNode(summaryAgent);
         summaryChain.run(prompt, null);
-        return SummaryAgent.summaryTopic(summaryChain, summaryAgent);
+        return DefaultSummaryAgent.summaryTopic(summaryChain, summaryAgent);
     }
 
     public String debate(String topic) {

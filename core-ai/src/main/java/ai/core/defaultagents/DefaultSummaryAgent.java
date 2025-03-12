@@ -7,13 +7,17 @@ import ai.core.llm.LLMProvider;
 /**
  * @author stephen
  */
-public class SummaryAgent {
+public class DefaultSummaryAgent {
 
     public static Agent of(LLMProvider llmProvider) {
         return Agent.builder()
                 .name("summary-agent")
-                .systemPrompt("You are a helpful AI Assistant to help summarize from the conversation. Do not add any introductory phrases. Keep the summary results to fewer than 10 words.")
-                .promptTemplate("conversation: ")
+                .systemPrompt("""
+                You are a helpful AI Assistant to help summarize from the text.
+                Summarize the entire text, list the key information, remove what you consider to be redundant information, and keep the output within 5-10 sentences.
+                Do not add any introductory phrases.
+                """)
+                .promptTemplate("Query: ")
                 .llmProvider(llmProvider).build();
     }
 

@@ -56,7 +56,7 @@ public class AzureOpenAIProvider extends LLMProvider {
 
     @Override
     public int maxTokens() {
-        return 1000000;
+        return 128 * 1000;
     }
 
     private String getModel(CompletionRequest request) {

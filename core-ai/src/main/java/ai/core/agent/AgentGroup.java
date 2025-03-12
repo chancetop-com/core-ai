@@ -2,6 +2,7 @@ package ai.core.agent;
 
 import ai.core.agent.planning.DefaultPlanning;
 import ai.core.defaultagents.DefaultModeratorAgent;
+import ai.core.defaultagents.DefaultSummaryAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.providers.inner.Message;
 import ai.core.termination.Termination;
@@ -47,19 +48,13 @@ public class AgentGroup extends Node<AgentGroup> {
 
     String executeWithException(String rawQuery, Map<String, Object> variables) {
         var query = rawQuery;
-        setInput(query);
-        updateNodeStatus(NodeStatus.RUNNING);
-
+        startRunning(query);
         setRound(0);
         while (!terminateCheck()) {
             try {
                 var text = planning.planning(moderator, query, variables);
-                setRawOutput(text);
-                addResponseChoiceMessages(List.of(
-                        Message.of(AgentRole.USER, moderator.getName(), query),
-                        Message.of(AgentRole.ASSISTANT, planning.planningText(), moderator.getName(), null, null, null)));
+                planningFinished(query, text);
             } catch (Exception e) {
-                logger.warn("Failed to planning", e);
                 query = Strings.format("JSON resolve failed, please check the planning result: ", e.getMessage());
                 continue;
             }
@@ -82,13 +77,14 @@ public class AgentGroup extends Node<AgentGroup> {
             try {
                 output = next.run(planning.nextQuery(), variables);
             } catch (Exception e) {
-                logger.warn("Failed to run agent: {}", next.getName(), e);
                 query = Strings.format("Failed to run agent<{}>: {}", next.getName(), e.getMessage());
                 continue;
             }
-            setRawOutput(output);
-            setOutput(output);
-            addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
+            afterRunAgent(output, next);
+            query = output;
+            if (query.length() > llmProvider.maxTokens() / getMaxRound()) {
+                query = tooLongQuery(output);
+            }
             setRound(getRound() + 1);
             logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
             if (next.getType() == NodeType.USER_INPUT && next.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
@@ -100,10 +96,35 @@ public class AgentGroup extends Node<AgentGroup> {
                 return output;
             }
             next.clearMessages();
-            query = output;
         }
 
-        return getOutput();
+        return Strings.format("Run out of round: {}/{}, Last round output: {}", getRound(), getMaxRound(), getOutput());
+    }
+
+    private String tooLongQuery(String output) {
+        return "The output is too long for LLM, please re-planning the agent if the output summary is not enough, re-planning for example: adjust query, adjust tool parameters or use another tool, the output summary: \n" + DefaultSummaryAgent.of(llmProvider).run(truncateOutput(output), null);
+    }
+
+    private String truncateOutput(String output) {
+        return output.substring(0, Math.min(output.length(), llmProvider.maxTokens()));
+    }
+
+    private void afterRunAgent(String output, Node<?> next) {
+        setRawOutput(output);
+        setOutput(output);
+        addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
+    }
+
+    private void planningFinished(String query, String text) {
+        setRawOutput(text);
+        addResponseChoiceMessages(List.of(
+                Message.of(AgentRole.USER, moderator.getName(), query),
+                Message.of(AgentRole.ASSISTANT, planning.planningText(), moderator.getName(), null, null, null)));
+    }
+
+    private void startRunning(String query) {
+        setInput(query);
+        updateNodeStatus(NodeStatus.RUNNING);
     }
 
     public Node<?> getAgentByName(String name) {
