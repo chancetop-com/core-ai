@@ -51,9 +51,10 @@ public class AgentGroup extends Node<AgentGroup> {
         startRunning(query);
         setRound(0);
         while (!terminateCheck()) {
+            setRound(getRound() + 1);
             try {
                 var text = planning.planning(moderator, query, variables);
-                planningFinished(query, text);
+                planningFinished(query, text, current == null ? "user" : current);
             } catch (Exception e) {
                 query = Strings.format("JSON resolve failed, please check the planning result: ", e.getMessage());
                 continue;
@@ -73,19 +74,19 @@ public class AgentGroup extends Node<AgentGroup> {
             }
             current = next.getName();
             setInput(planning.nextQuery());
-            String output;
+            String output = "";
             try {
                 output = next.run(planning.nextQuery(), variables);
             } catch (Exception e) {
+                logger.warn("round: {}/{} failed, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), planning.nextQuery(), output);
                 query = Strings.format("Failed to run agent<{}>: {}", next.getName(), e.getMessage());
                 continue;
             }
             afterRunAgent(output, next);
             query = output;
-            if (query.length() > llmProvider.maxTokens() / getMaxRound()) {
+            if (tokenTooLong(query)) {
                 query = tooLongQuery(output);
             }
-            setRound(getRound() + 1);
             logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
             if (next.getType() == NodeType.USER_INPUT && next.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
                 updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
@@ -95,10 +96,13 @@ public class AgentGroup extends Node<AgentGroup> {
                 updateNodeStatus(NodeStatus.COMPLETED);
                 return output;
             }
-            next.clearMessages();
+            next.clearShortTermMemory();
         }
-
         return Strings.format("Run out of round: {}/{}, Last round output: {}", getRound(), getMaxRound(), getOutput());
+    }
+
+    private boolean tokenTooLong(String query) {
+        return query.length() + getCurrentTokens() > llmProvider.maxTokens() * 0.8;
     }
 
     private String tooLongQuery(String output) {
@@ -110,21 +114,39 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     private void afterRunAgent(String output, Node<?> next) {
-        setRawOutput(output);
+        setRawOutput(next.getRawOutput());
         setOutput(output);
+        addTokenCount(output.length());
         addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
     }
 
-    private void planningFinished(String query, String text) {
-        setRawOutput(text);
+    private void planningFinished(String query, String text, String queryFrom) {
+        setRawOutput(moderator.getRawOutput());
+        addTokenCount(text.length());
         addResponseChoiceMessages(List.of(
-                Message.of(AgentRole.USER, moderator.getName(), query),
-                Message.of(AgentRole.ASSISTANT, planning.planningText(), moderator.getName(), null, null, null)));
+                Message.of(AgentRole.USER, queryFrom, query),
+                Message.of(AgentRole.ASSISTANT, text, moderator.getName(), null, null, null)));
     }
 
     private void startRunning(String query) {
         setInput(query);
+        addTokenCount(query.length());
         updateNodeStatus(NodeStatus.RUNNING);
+    }
+
+    @Override
+    public void clearShortTermMemory() {
+        moderator.clearShortTermMemory();
+        current = null;
+        super.clearShortTermMemory();
+    }
+
+    public Agent getModerator() {
+        return moderator;
+    }
+
+    public Planning getPlanning() {
+        return planning;
     }
 
     public Node<?> getAgentByName(String name) {

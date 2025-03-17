@@ -110,9 +110,9 @@ public class Agent extends Node<Agent> {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessageWithLongTernMemory());
         }
-        var reqMsg = Message.of(AgentRole.USER, getName(), query);
+        var reqMsg = Message.of(AgentRole.USER, "user raw request/last agent output", query);
         addMessage(reqMsg);
-        var req = new CompletionRequest(getMessages(), toolCalls, temperature, model);
+        var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());
         var rst = llmProvider.completion(req);
         setRawOutput(rst.choices.getFirst().message.content);
 

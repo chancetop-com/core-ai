@@ -38,6 +38,7 @@ public abstract class Node<T extends Node<T>> {
     private String rawOutput;
     private int round;
     private int maxRound;
+    private int currentTokens;
     private final List<Message> messages;
 
     public Node() {
@@ -124,6 +125,10 @@ public abstract class Node<T extends Node<T>> {
 
     public int getMaxRound() {
         return this.maxRound;
+    }
+
+    public int getCurrentTokens() {
+        return this.currentTokens;
     }
 
     public NodeStatus getNodeStatus() {
@@ -244,6 +249,10 @@ public abstract class Node<T extends Node<T>> {
 
     void setInput(String input) {
         this.input = input;
+    }
+
+    void addTokenCount(int count) {
+        this.currentTokens += count;
     }
 
     void addTermination(Termination termination) {

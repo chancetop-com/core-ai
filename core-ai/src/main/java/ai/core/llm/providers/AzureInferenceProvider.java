@@ -43,7 +43,7 @@ public class AzureInferenceProvider extends LLMProvider {
     public CompletionResponse completion(CompletionRequest request) {
         request.model = getModel(request);
         var chatCompletion = client.complete(AzureInferenceModelsUtil.toAzureRequest(request));
-        return new CompletionResponse(AzureInferenceModelsUtil.toChoice(chatCompletion.getChoices(), request.messages.getLast().name), AzureInferenceModelsUtil.toUsage(chatCompletion.getUsage()));
+        return new CompletionResponse(AzureInferenceModelsUtil.toChoice(chatCompletion.getChoices(), request.name), AzureInferenceModelsUtil.toUsage(chatCompletion.getUsage()));
     }
 
     @Override

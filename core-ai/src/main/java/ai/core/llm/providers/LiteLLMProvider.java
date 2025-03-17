@@ -51,7 +51,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     public CompletionResponse completion(CompletionRequest dto) {
-        return toRsp(this.liteLLMService.completion(toApiRequest(dto)), dto.messages.getLast().name);
+        return toRsp(this.liteLLMService.completion(toApiRequest(dto)), dto.name);
     }
 
     @Override

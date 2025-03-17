@@ -133,6 +133,8 @@ project(":core-ai") {
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")
         implementation("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
         implementation("io.modelcontextprotocol:kotlin-sdk:${Versions.MCP_KOTLIN_SDK_VERSION}")
+        implementation("com.github.jelmerk:hnswlib-core:${Versions.HNSWLIB_JAVA_VERSION}")
+        implementation("com.github.jelmerk:hnswlib-utils:${Versions.HNSWLIB_JAVA_VERSION}")
     }
 }
 

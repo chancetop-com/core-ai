@@ -25,6 +25,12 @@ public class DefaultPlanning implements Planning {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public <T> T localPlanning(String planningText, Class<T> instanceClass) {
+        return (T) JSON.fromJSON(DefaultAgentPlanningResult.class, planningText);
+    }
+
+    @Override
     public String nextAgentName() {
         return result.name;
     }

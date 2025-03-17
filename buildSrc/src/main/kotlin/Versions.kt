@@ -13,4 +13,5 @@ object Versions {
     const val AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION = "1.0.2"
     const val ECLIPSE_LSP4J_VERSION="0.23.1"
     const val MCP_KOTLIN_SDK_VERSION = "0.3.0"
+    const val HNSWLIB_JAVA_VERSION = "1.2.0"
 }
