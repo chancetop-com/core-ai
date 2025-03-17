@@ -8,6 +8,7 @@ import com.github.jelmerk.hnswlib.core.DistanceFunctions;
 import com.github.jelmerk.hnswlib.core.Index;
 import com.github.jelmerk.hnswlib.core.SearchResult;
 import com.github.jelmerk.hnswlib.core.hnsw.HnswIndex;
+import core.framework.web.exception.NotFoundException;
 
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -22,6 +23,7 @@ public class HnswLibVectorStore implements VectorStore {
 
     @Override
     public List<Document> similaritySearch(SimilaritySearchRequest request) {
+        if (this.index == null) throw new NotFoundException("Index not loaded");
         var rsp = this.index.findNearest(request.embedding.toFloatArray(), request.topK);
         return rsp.stream()
                 .sorted(Comparator.comparingDouble(SearchResult::distance))

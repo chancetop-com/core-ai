@@ -6,6 +6,7 @@ import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.persistence.providers.RedisPersistenceProvider;
+import ai.core.rag.vectorstore.hnswlib.HnswLibVectorStore;
 import ai.core.rag.vectorstore.milvus.MilvusConfig;
 import ai.core.rag.vectorstore.milvus.MilvusVectorStore;
 import ai.core.task.TaskService;
@@ -28,6 +29,9 @@ public class MultiAgentModule extends Module {
         if ("milvus".equals(type)) {
             requiredProperty("sys.milvus.uri");
             configMilvus();
+        }
+        if ("hnsw".equals(type)) {
+            bind(HnswLibVectorStore.class);
         }
     }
 
