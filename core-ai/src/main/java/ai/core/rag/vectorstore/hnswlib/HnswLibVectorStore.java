@@ -30,11 +30,20 @@ public class HnswLibVectorStore implements VectorStore {
                 .map(v -> new Document(v.item().id, v.item().vector)).toList();
     }
 
-    public void load(String path) throws IOException {
+    public void loadDocuments(List<Document> documents, HnswConfig config) throws InterruptedException {
+        this.index = HnswIndex.newBuilder(config.dimensions(), mapToFunction(config.distanceFunction()), config.maxItemCount())
+                .withEf(config.efConstruction())
+                .withM(config.m())
+                .build();
+        var docs = documents.stream().map(v -> new HnswDocument(v.id, v.embedding.toFloatArray(), config.dimensions())).toList();
+        index.addAll(docs);
+    }
+
+    public void loadFile(String path) throws IOException {
         this.index = HnswIndex.load(Paths.get(path));
     }
 
-    public void save(String path, List<Document> documents, HnswConfig config) throws IOException, InterruptedException {
+    public void saveFile(String path, List<Document> documents, HnswConfig config) throws IOException, InterruptedException {
         if (path.isEmpty() || documents.isEmpty()) return;
         HnswIndex<String, float[], HnswDocument, Float> index = HnswIndex.newBuilder(config.dimensions(), mapToFunction(config.distanceFunction()), config.maxItemCount())
                 .withEf(config.efConstruction())

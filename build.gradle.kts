@@ -126,8 +126,6 @@ project(":core-ai") {
         implementation(project(":litellm-library"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("com.google.guava:guava:${Versions.GOOGLE_GUAVA_JRE_VERSION}")
-        implementation("com.theokanning.openai-gpt3-java:client:${Versions.OPENAI_JAVA_VERSION}")
         implementation("com.azure:azure-ai-openai:${Versions.AZURE_OPENAI_JAVA_VERSION}")
         implementation("com.azure:azure-ai-inference:${Versions.AZURE_INFERENCE_JAVA_VERSION}")
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")

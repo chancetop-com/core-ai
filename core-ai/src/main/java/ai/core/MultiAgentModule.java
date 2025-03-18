@@ -30,9 +30,6 @@ public class MultiAgentModule extends Module {
             requiredProperty("sys.milvus.uri");
             configMilvus();
         }
-        if ("hnsw".equals(type)) {
-            bind(HnswLibVectorStore.class);
-        }
     }
 
     private void configLLMProvider(String type) {
@@ -83,6 +80,7 @@ public class MultiAgentModule extends Module {
     }
 
     private void bindServices() {
+        bind(HnswLibVectorStore.class);
         bind(TaskService.class);
     }
 }
