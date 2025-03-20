@@ -50,7 +50,7 @@ public class ImageProcessUtils {
             var maskImage = ImageIO.read(new ByteArrayInputStream(maskData));
 
             if (baseImage.getWidth() != maskImage.getWidth() || baseImage.getHeight() != maskImage.getHeight()) {
-                throw new IllegalArgumentException("The original image and the mask must have the same dimensions.");
+                throw new IllegalArgumentException("The original image and the mask must have the same dimension.");
             }
 
             var resultImage = new BufferedImage(baseImage.getWidth(), baseImage.getHeight(), BufferedImage.TYPE_INT_ARGB);

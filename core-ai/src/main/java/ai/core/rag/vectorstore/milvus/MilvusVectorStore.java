@@ -1,13 +1,12 @@
 package ai.core.rag.vectorstore.milvus;
 
 import ai.core.document.Document;
-import ai.core.rag.Embedding;
+import ai.core.document.Embedding;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.rag.VectorStore;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import core.framework.inject.Inject;
-import core.framework.util.Maps;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
@@ -15,14 +14,17 @@ import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.vector.request.InsertReq;
+import io.milvus.v2.service.vector.request.QueryReq;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -50,15 +52,44 @@ public class MilvusVectorStore implements VectorStore {
                 .annsField(request.vectorField).build();
         var rsp = milvusClientV2.search(req);
         return rsp.getSearchResults().getFirst().stream().map(v -> {
-            var document = new Document();
-            document.content = (String) v.getEntity().get(request.queryField);
-            if (request.extraFields == null || request.extraFields.isEmpty()) return document;
-            document.extraField = Maps.newConcurrentHashMap();
-            for (var filed : request.extraFields) {
-                document.extraField.put(filed, v.getEntity().get(filed));
+            var extraField = request.extraFields == null || request.extraFields.isEmpty() ? null : new HashMap<String, Object>();
+            if (extraField != null) {
+                for (var filed : request.extraFields) {
+                    extraField.put(filed, v.getEntity().get(filed));
+                }
             }
-            return document;
+            return new Document(
+                    (String) v.getId(),
+                    Embedding.of((float[]) v.getEntity().get(request.vectorField)),
+                    (String) v.getEntity().get(request.queryField),
+                    extraField);
         }).collect(Collectors.toList());
+    }
+
+    @Override
+    public Optional<Document> get(String text) {
+        return Optional.of(milvusClientV2.query(QueryReq.builder()
+                .filter("query = " + text)
+                .outputFields(List.of("id", "query", "vector"))
+                .build()).getQueryResults().getFirst()).map(v -> {
+                    var entity = v.getEntity();
+                    return new Document((String) entity.get("id"), Embedding.of((float[]) entity.get("vector")), (String) entity.get("query"), null);
+                });
+    }
+
+    @Override
+    public List<Document> getAll(List<String> text) {
+        return List.of();
+    }
+
+    @Override
+    public void add(List<Document> documents) {
+
+    }
+
+    @Override
+    public void delete(List<String> texts) {
+
     }
 
     public boolean hasCollection(String collection) {

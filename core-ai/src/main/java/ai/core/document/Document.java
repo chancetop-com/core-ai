@@ -1,25 +1,33 @@
 package ai.core.document;
 
-import ai.core.rag.Embedding;
-
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.stream.IntStream;
+import java.util.UUID;
 
 /**
  * @author stephen
  */
 public class Document {
-    public String id;
-    public String content;
-    public Embedding embedding;
-    public Map<String, Object> extraField;
-
-    public Document() {
-
+    public static String toId(String text) {
+        return UUID.nameUUIDFromBytes(text.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-    public Document(String id, float[] vector) {
+    public String id;
+    public Embedding embedding;
+    public String content;
+    public Map<String, Object> extraField;
+
+    public Document(String id, Embedding embedding, String content, Map<String, Object> extraField) {
         this.id = id;
-        this.embedding = new Embedding(IntStream.range(0, vector.length).mapToObj(i -> (double) vector[i]).toList());
+        this.embedding = embedding;
+        this.content = content;
+        this.extraField = extraField;
+    }
+
+    public Document(String content, Embedding embedding, Map<String, Object> extraField) {
+        this.id = toId(content);
+        this.embedding = embedding;
+        this.content = content;
+        this.extraField = extraField;
     }
 }

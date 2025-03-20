@@ -6,6 +6,7 @@ import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.persistence.providers.RedisPersistenceProvider;
+import ai.core.rag.vectorstore.hnswlib.HnswConfig;
 import ai.core.rag.vectorstore.hnswlib.HnswLibVectorStore;
 import ai.core.rag.vectorstore.milvus.MilvusConfig;
 import ai.core.rag.vectorstore.milvus.MilvusVectorStore;
@@ -27,9 +28,15 @@ public class MultiAgentModule extends Module {
 
     private void configVectorStore(String type) {
         if ("milvus".equals(type)) {
-            requiredProperty("sys.milvus.uri");
             configMilvus();
         }
+        if ("hnswlib".equals(type)) {
+            configHnswLib();
+        }
+    }
+
+    private void configHnswLib() {
+        bind(new HnswLibVectorStore(HnswConfig.of(requiredProperty("sys.hnswlib.path"))));
     }
 
     private void configLLMProvider(String type) {
@@ -52,10 +59,10 @@ public class MultiAgentModule extends Module {
     }
 
     private LLMProviderConfig setupLLMProperties() {
-        var config = new LLMProviderConfig("gpt-4o", 0.7d, "text-embedding-ada-002");
+        var config = new LLMProviderConfig("gpt-4o", 0.7d, "text-embedding-3-large");
         property("llm.temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
         property("llm.model").ifPresent(config::setModel);
-        property("llm.embedding.model").ifPresent(config::setEmbeddingModel);
+        property("llm.embeddings.model").ifPresent(config::setEmbeddingModel);
         return config;
     }
 

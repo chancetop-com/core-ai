@@ -6,5 +6,5 @@ import java.util.List;
  * @author stephen
  */
 public interface TextSplitter {
-    List<String> split(String text);
+    List<TextChunk> split(String text);
 }

@@ -7,6 +7,7 @@ import ai.core.llm.providers.inner.CompletionResponse;
 import ai.core.llm.providers.inner.Message;
 import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
+import ai.core.rag.LongQueryHandler;
 import ai.core.termination.Termination;
 import core.framework.util.Lists;
 import core.framework.util.Maps;
@@ -33,6 +34,7 @@ public abstract class Node<T extends Node<T>> {
     private NodeStatus nodeStatus;
     private Persistence<T> persistence;
     private PersistenceProvider persistenceProvider;
+    private LongQueryHandler longQueryHandler;
     private String input;
     private String output;
     private String rawOutput;
@@ -143,11 +145,18 @@ public abstract class Node<T extends Node<T>> {
         return this.formatter;
     }
 
+    public LongQueryHandler getLongQueryRagHandler() {
+        return this.longQueryHandler;
+    }
+
     public void clearShortTermMemory() {
         this.clearMessages();
         this.setInput(null);
         this.setOutput(null);
         this.setRawOutput(null);
+        this.setCurrentTokens(0);
+        this.setRound(0);
+        this.nodeStatus = NodeStatus.INITED;
     }
 
     @SuppressWarnings("unchecked")
@@ -211,6 +220,10 @@ public abstract class Node<T extends Node<T>> {
         this.maxRound = maxRound;
     }
 
+    void setLongQueryRagHandler(LongQueryHandler longQueryHandler) {
+        this.longQueryHandler = longQueryHandler;
+    }
+
     void setTerminations(List<Termination> terminations) {
         this.terminations = terminations;
     }
@@ -255,6 +268,10 @@ public abstract class Node<T extends Node<T>> {
         this.currentTokens += count;
     }
 
+    void setCurrentTokens(int count) {
+        this.currentTokens = count;
+    }
+
     void addTermination(Termination termination) {
         if (termination == null) return;
         this.terminations.add(termination);
@@ -285,6 +302,7 @@ public abstract class Node<T extends Node<T>> {
         Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
         Persistence<T> persistence;
         PersistenceProvider persistenceProvider;
+        LongQueryHandler longQueryHandler;
         int maxRound;
 
         // This method needs to be overridden in the subclass Builders
@@ -340,6 +358,11 @@ public abstract class Node<T extends Node<T>> {
             return self();
         }
 
+        public B longQueryRagHandler(LongQueryHandler longQueryHandler) {
+            this.longQueryHandler = longQueryHandler;
+            return self();
+        }
+
         public void build(T node) {
             validation();
             node.setName(this.name);
@@ -352,6 +375,7 @@ public abstract class Node<T extends Node<T>> {
             node.setMessageUpdatedEventListener(this.messageUpdatedEventListener);
             node.setPersistence(this.persistence);
             node.setPersistenceProvider(this.persistenceProvider);
+            node.setLongQueryRagHandler(this.longQueryHandler);
             node.updateNodeStatus(NodeStatus.INITED);
         }
 

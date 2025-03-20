@@ -30,7 +30,7 @@ import ai.core.llm.providers.inner.FunctionCall;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.providers.inner.Message;
 import ai.core.llm.providers.inner.Usage;
-import ai.core.rag.Embedding;
+import ai.core.document.Embedding;
 import ai.core.tool.ToolCallParameter;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
@@ -55,8 +55,9 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     @Override
-    public EmbeddingResponse embedding(EmbeddingRequest dto) {
-        return new EmbeddingResponse(new Embedding(this.liteLLMService.embedding(toApiRequest(dto)).data.getFirst().embedding));
+    public EmbeddingResponse embeddings(EmbeddingRequest dto) {
+        var rsp = this.liteLLMService.embedding(toApiRequest(dto));
+        return new EmbeddingResponse(rsp.data.stream().map(v -> new EmbeddingResponse.EmbeddingData(dto.query().get(v.index), new Embedding(v.embedding))).toList());
     }
 
     @Override
@@ -66,7 +67,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     public int maxTokens() {
-        return 32 * 1000;
+        return 128 * 1000;
     }
 
     private CompletionResponse toRsp(CreateCompletionAJAXResponse rsp, String name) {

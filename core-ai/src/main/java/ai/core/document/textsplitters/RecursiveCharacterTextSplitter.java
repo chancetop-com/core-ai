@@ -1,5 +1,6 @@
 package ai.core.document.textsplitters;
 
+import ai.core.document.TextChunk;
 import ai.core.document.TextSplitter;
 
 import java.util.ArrayList;
@@ -48,8 +49,8 @@ public class RecursiveCharacterTextSplitter implements TextSplitter {
     }
 
     @Override
-    public List<String> split(String text) {
-        return split(text, this.separators);
+    public List<TextChunk> split(String text) {
+        return split(text, this.separators).stream().map(TextChunk::new).toList();
     }
 
     private List<String> split(String text, List<String> separators) {

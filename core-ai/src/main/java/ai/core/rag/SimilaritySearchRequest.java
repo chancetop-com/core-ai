@@ -1,5 +1,6 @@
 package ai.core.rag;
 
+import ai.core.document.Embedding;
 import ai.core.rag.filter.Expression;
 
 import java.util.List;
@@ -14,7 +15,7 @@ public class SimilaritySearchRequest {
 
     public Integer topK = 5;
     public Integer trunkSize = 1000; // ~200 words
-    public Integer dimension = 1536; // text-embedding-ada-002's dimension
+    public Integer dimension = 1536; // text-embeddings-ada-002's dimension
     public String queryField = "query";
     public String vectorField = "vector";
     public String collection;
@@ -24,16 +25,16 @@ public class SimilaritySearchRequest {
     public List<String> extraFields;
 
     public static class Builder {
-        public Integer topK = 5;
-        public Integer trunkSize = 1000; // ~200 words
-        public Integer dimension = 1536; // text-embedding-ada-002's dimension
-        public String queryField = "query";
-        public String vectorField = "vector";
-        public String collection;
-        public Double threshold = 0d;
-        public Expression expression;
-        public Embedding embedding;
-        public List<String> extraFields;
+        private Integer topK = 5;
+        private Integer trunkSize = 1000; // ~200 words
+        private Integer dimension = 1536; // text-embeddings-ada-002's dimension
+        private String queryField = "query";
+        private String vectorField = "vector";
+        private String collection;
+        private Double threshold = 0d;
+        private Expression expression;
+        private Embedding embedding;
+        private List<String> extraFields;
 
         public Builder topK(Integer topK) {
             this.topK = topK;
@@ -46,7 +47,7 @@ public class SimilaritySearchRequest {
         }
 
         public Builder dimension(Integer dimension) {
-            this.topK = dimension;
+            this.dimension = dimension;
             return this;
         }
 

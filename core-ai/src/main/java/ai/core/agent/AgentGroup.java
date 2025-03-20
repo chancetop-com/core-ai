@@ -2,7 +2,7 @@ package ai.core.agent;
 
 import ai.core.agent.planning.DefaultPlanning;
 import ai.core.defaultagents.DefaultModeratorAgent;
-import ai.core.defaultagents.DefaultSummaryAgent;
+import ai.core.document.Tokenizer;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.providers.inner.Message;
 import ai.core.termination.Termination;
@@ -31,32 +31,34 @@ public class AgentGroup extends Node<AgentGroup> {
     List<Node<?>> agents;
     Agent moderator;
     Planning planning;
-    private String current;
+    private String currentAgent;
+    private String currentQuery;
+    private int currentAgentsTokenCost;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
         try {
             return executeWithException(query, variables);
         } catch (Exception e) {
-            if (current == null) {
+            if (currentAgent == null) {
                 throw new RuntimeException(Strings.format("Failed at moderator: {}", e.getMessage()), e);
             }
-            var currentAgent = getAgentByName(current);
-            throw new RuntimeException(Strings.format("Failed at {}<{}>: {}", current, currentAgent.getId(), e.getMessage()), e);
+            var currentAgent = getAgentByName(this.currentAgent);
+            throw new RuntimeException(Strings.format("Failed at {}<{}>: {}", this.currentAgent, currentAgent.getId(), e.getMessage()), e);
         }
     }
 
     String executeWithException(String rawQuery, Map<String, Object> variables) {
-        var query = rawQuery;
-        startRunning(query);
+        currentQuery = rawQuery;
+        startRunning();
         setRound(0);
         while (!terminateCheck()) {
             setRound(getRound() + 1);
             try {
-                var text = planning.planning(moderator, query, variables);
-                planningFinished(query, text, current == null ? "user" : current);
+                var text = planning.planning(moderator, currentQuery, variables);
+                planningFinished(currentQuery, text, currentAgent == null ? "user" : currentAgent);
             } catch (Exception e) {
-                query = Strings.format("JSON resolve failed, please check the planning result: ", e.getMessage());
+                currentQuery = Strings.format("JSON resolve failed, please check the planning result: ", e.getMessage());
                 continue;
             }
             if (Strings.isBlank(planning.nextAgentName())) {
@@ -64,28 +66,27 @@ public class AgentGroup extends Node<AgentGroup> {
                     updateNodeStatus(NodeStatus.COMPLETED);
                     return getOutput();
                 }
-                query = "The next agent name is empty, please check the planning result";
+                currentQuery = "The next agent name is empty, please check the planning result";
                 continue;
             }
             var next = getAgentByName(planning.nextAgentName());
             if (next == null) {
-                query = "The next agent is not found, please check the planning result";
+                currentQuery = "The next agent is not found, please check the planning result";
                 continue;
             }
-            current = next.getName();
+            currentAgent = next.getName();
             setInput(planning.nextQuery());
             String output = "";
             try {
                 output = next.run(planning.nextQuery(), variables);
             } catch (Exception e) {
                 logger.warn("round: {}/{} failed, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), planning.nextQuery(), output);
-                query = Strings.format("Failed to run agent<{}>: {}", next.getName(), e.getMessage());
+                currentQuery = Strings.format("Failed to run agent<{}>: {}", next.getName(), e.getMessage());
                 continue;
             }
             afterRunAgent(output, next);
-            query = output;
-            if (tokenTooLong(query)) {
-                query = tooLongQuery(output);
+            if (tokenTooLong(currentQuery)) {
+                handleTooLong();
             }
             logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
             if (next.getType() == NodeType.USER_INPUT && next.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
@@ -102,42 +103,41 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     private boolean tokenTooLong(String query) {
-        return query.length() + getCurrentTokens() > llmProvider.maxTokens() * 0.8;
+        return Tokenizer.tokenCount(query) + getCurrentTokens() > llmProvider.maxTokens() * 0.8;
     }
 
-    private String tooLongQuery(String output) {
-        return "The output is too long for LLM, please re-planning the agent if the output summary is not enough, re-planning for example: adjust query, adjust tool parameters or use another tool, the output summary: \n" + DefaultSummaryAgent.of(llmProvider).run(truncateOutput(output), null);
-    }
-
-    private String truncateOutput(String output) {
-        return output.substring(0, Math.min(output.length(), llmProvider.maxTokens()));
+    private void handleTooLong() {
+        if (getLongQueryRagHandler() == null) {
+            throw new RuntimeException("Running out of tokens");
+        }
+        currentQuery = getLongQueryRagHandler().handler("", currentQuery);
     }
 
     private void afterRunAgent(String output, Node<?> next) {
         setRawOutput(next.getRawOutput());
         setOutput(output);
-        addTokenCount(output.length());
+        currentAgentsTokenCost += next.getCurrentTokens();
+        setCurrentTokens(currentAgentsTokenCost + moderator.getCurrentTokens());
         addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
+        currentQuery = output;
     }
 
     private void planningFinished(String query, String text, String queryFrom) {
         setRawOutput(moderator.getRawOutput());
-        addTokenCount(text.length());
         addResponseChoiceMessages(List.of(
                 Message.of(AgentRole.USER, queryFrom, query),
                 Message.of(AgentRole.ASSISTANT, text, moderator.getName(), null, null, null)));
     }
 
-    private void startRunning(String query) {
-        setInput(query);
-        addTokenCount(query.length());
+    private void startRunning() {
+        setInput(currentQuery);
         updateNodeStatus(NodeStatus.RUNNING);
     }
 
     @Override
     public void clearShortTermMemory() {
         moderator.clearShortTermMemory();
-        current = null;
+        currentAgent = null;
         super.clearShortTermMemory();
     }
 

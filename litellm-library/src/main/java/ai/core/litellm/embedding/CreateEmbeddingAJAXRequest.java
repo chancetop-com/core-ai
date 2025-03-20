@@ -4,6 +4,8 @@ import core.framework.api.json.Property;
 import core.framework.api.validate.NotBlank;
 import core.framework.api.validate.NotNull;
 
+import java.util.List;
+
 /**
  * @author stephen
  */
@@ -15,5 +17,5 @@ public class CreateEmbeddingAJAXRequest {
     @NotNull
     @NotBlank
     @Property(name = "input")
-    public String input;
+    public List<String> input;
 }

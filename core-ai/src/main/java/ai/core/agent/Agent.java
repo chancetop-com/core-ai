@@ -64,6 +64,7 @@ public class Agent extends Node<Agent> {
 
         // call LLM completion
         var rst = completionWithFormat(prompt);
+        addTokenCount(rst.usage.getTotalTokens());
 
         // update chain node status
         updateNodeStatus(NodeStatus.RUNNING);
@@ -157,7 +158,7 @@ public class Agent extends Node<Agent> {
 
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null) throw new RuntimeException("vectorStore cannot be null if useRag flag is enabled");
-        var embedding = llmProvider.embedding(new EmbeddingRequest(query)).embedding();
+        var embedding = llmProvider.embeddings(new EmbeddingRequest(List.of(query))).embeddings.getFirst().embedding;
         var context = ragConfig.vectorStore().similaritySearchText(SimilaritySearchRequest.builder()
                 .embedding(embedding)
                 .collection(ragConfig.collection())

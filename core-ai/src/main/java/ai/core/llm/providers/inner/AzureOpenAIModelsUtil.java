@@ -1,7 +1,7 @@
 package ai.core.llm.providers.inner;
 
 import ai.core.agent.AgentRole;
-import ai.core.rag.Embedding;
+import ai.core.document.Embedding;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import com.azure.ai.openai.models.ChatMessageImageContentItem;
@@ -62,9 +62,8 @@ public class AzureOpenAIModelsUtil {
         return new Usage(usage.getPromptTokens(), usage.getCompletionTokens(), usage.getTotalTokens());
     }
 
-    public static EmbeddingResponse toEmbeddingResponse(Embeddings embeddings) {
-        var data = embeddings.getData().getFirst().getEmbedding().stream().map(Float::doubleValue).toList();
-        return new EmbeddingResponse(new Embedding(data));
+    public static EmbeddingResponse toEmbeddingResponse(EmbeddingRequest request, Embeddings embeddings) {
+        return new EmbeddingResponse(embeddings.getData().stream().map(v -> new EmbeddingResponse.EmbeddingData(request.query().get(v.getPromptIndex()), Embedding.of(v.getEmbedding()))).toList());
     }
 
     private static FinishReason toFinishReason(CompletionsFinishReason finishReason) {

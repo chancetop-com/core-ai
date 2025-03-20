@@ -16,8 +16,6 @@ import com.azure.core.credential.AzureKeyCredential;
 import com.azure.core.credential.KeyCredential;
 import core.framework.util.Strings;
 
-import java.util.List;
-
 /**
  * @author stephen
  */
@@ -42,10 +40,10 @@ public class AzureOpenAIProvider extends LLMProvider {
     }
 
     @Override
-    public EmbeddingResponse embedding(EmbeddingRequest request) {
-        var embeddingsOptions = new EmbeddingsOptions(List.of(request.query()));
+    public EmbeddingResponse embeddings(EmbeddingRequest request) {
+        var embeddingsOptions = new EmbeddingsOptions(request.query());
         var embeddings = client.getEmbeddings(config.getEmbeddingModel(), embeddingsOptions);
-        return AzureOpenAIModelsUtil.toEmbeddingResponse(embeddings);
+        return AzureOpenAIModelsUtil.toEmbeddingResponse(request, embeddings);
     }
 
     @Override

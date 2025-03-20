@@ -133,6 +133,7 @@ project(":core-ai") {
         implementation("io.modelcontextprotocol:kotlin-sdk:${Versions.MCP_KOTLIN_SDK_VERSION}")
         implementation("com.github.jelmerk:hnswlib-core:${Versions.HNSWLIB_JAVA_VERSION}")
         implementation("com.github.jelmerk:hnswlib-utils:${Versions.HNSWLIB_JAVA_VERSION}")
+        implementation("com.knuddels:jtokkit:${Versions.JTOKKIT_VERSION}")
     }
 }
 

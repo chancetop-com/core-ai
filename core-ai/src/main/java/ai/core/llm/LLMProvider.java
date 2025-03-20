@@ -18,7 +18,7 @@ public abstract class LLMProvider {
     }
 
     public abstract CompletionResponse completion(CompletionRequest request);
-    public abstract EmbeddingResponse embedding(EmbeddingRequest request);
+    public abstract EmbeddingResponse embeddings(EmbeddingRequest request);
     public abstract CaptionImageResponse captionImage(CaptionImageRequest request);
     public abstract int maxTokens();
 }

@@ -517,8 +517,8 @@ class RecursiveCharacterTextSplitterTest {
         var chunks = textSplitter.split(text);
         assertNotNull(chunks);
         assertEquals(6, chunks.size());
-        for (String chunk : chunks) {
-            assertTrue(chunk.length() <= chunkSize);
+        for (var chunk : chunks) {
+            assertTrue(chunk.chunk().length() <= chunkSize);
         }
     }
 
@@ -529,10 +529,10 @@ class RecursiveCharacterTextSplitterTest {
         var chunks = textSplitter.split(text);
         assertNotNull(chunks);
         assertEquals(4, chunks.size());
-        assertEquals("Hello,", chunks.get(0));
-        assertEquals(" world.", chunks.get(1));
-        assertEquals(" This is a test", chunks.get(2));
-        assertEquals(".", chunks.get(3));
+        assertEquals("Hello,", chunks.get(0).chunk());
+        assertEquals(" world.", chunks.get(1).chunk());
+        assertEquals(" This is a test", chunks.get(2).chunk());
+        assertEquals(".", chunks.get(3).chunk());
     }
 
     @Test
@@ -542,6 +542,6 @@ class RecursiveCharacterTextSplitterTest {
         var chunks = textSplitter.split(text);
         assertNotNull(chunks);
         assertEquals(1, chunks.size());
-        assertEquals(text, chunks.getFirst());
+        assertEquals(text, chunks.getFirst().chunk());
     }
 }
