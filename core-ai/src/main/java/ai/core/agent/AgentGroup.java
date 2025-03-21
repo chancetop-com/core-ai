@@ -56,7 +56,6 @@ public class AgentGroup extends Node<AgentGroup> {
     String executeWithException(String rawQuery, Map<String, Object> variables) {
         currentQuery = rawQuery;
         startRunning();
-        setRound(0);
         while (!terminateCheck()) {
             setRound(getRound() + 1);
             try {
@@ -66,20 +65,12 @@ public class AgentGroup extends Node<AgentGroup> {
                 currentQuery = Strings.format("JSON resolve failed, please check the planning result: ", e.getMessage());
                 continue;
             }
-            if (Strings.isBlank(planning.nextAgentName())) {
-                if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())) {
-                    updateNodeStatus(NodeStatus.COMPLETED);
-                    return getOutput();
-                }
-                currentQuery = "The next agent name is empty, please check the planning result";
-                continue;
-            }
+            // planning think the previous round is completed
+            if (finished()) return getOutput();
+            if (planningFailed()) continue;
+
             var next = getAgentByName(planning.nextAgentName());
-            if (next == null) {
-                currentQuery = "The next agent is not found, please check the planning result";
-                continue;
-            }
-            currentAgent = next.getName();
+
             setInput(planning.nextQuery());
             String output = "";
             try {
@@ -89,22 +80,51 @@ public class AgentGroup extends Node<AgentGroup> {
                 currentQuery = Strings.format("Failed to run agent<{}>: {}", next.getName(), e.getMessage());
                 continue;
             }
+
             afterRunAgent(output, next);
+            currentQuery = output;
             if (tokenTooLong(currentQuery)) {
                 handleTooLong();
             }
             logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
-            if (next.getType() == NodeType.USER_INPUT && next.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
-                updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
-                return output;
-            }
-            if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())) {
-                updateNodeStatus(NodeStatus.COMPLETED);
-                return output;
-            }
+
+            if (waitingForUserInput(next)) return output;
+            // planning think this agent can finish the task
+            if (finished()) return output;
+
             next.clearShortTermMemory();
         }
+
         return Strings.format("Run out of round: {}/{}, Last round output: {}", getRound(), getMaxRound(), getOutput());
+    }
+
+    private boolean waitingForUserInput(Node<?> next) {
+        if (next.getType() == NodeType.USER_INPUT && next.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
+            updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean finished() {
+        if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())) {
+            updateNodeStatus(NodeStatus.COMPLETED);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean planningFailed() {
+        if (Strings.isBlank(planning.nextAgentName())) {
+            currentQuery = "The next agent name is empty, please check the planning result";
+            return true;
+        }
+        var next = getAgentByName(planning.nextAgentName());
+        if (next == null) {
+            currentQuery = "The next agent is not found, please check the planning result";
+            return true;
+        }
+        return false;
     }
 
     private boolean tokenTooLong(String query) {
@@ -122,11 +142,11 @@ public class AgentGroup extends Node<AgentGroup> {
         setRawOutput(next.getRawOutput());
         setOutput(output);
         addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
-        currentQuery = output;
     }
 
     private void planningFinished(String query, String text, String queryFrom) {
         setRawOutput(moderator.getRawOutput());
+        setOutput(moderator.getOutput());
         addResponseChoiceMessages(List.of(
                 Message.of(AgentRole.USER, queryFrom, query),
                 Message.of(AgentRole.ASSISTANT, text, moderator.getName(), null, null, null)));
@@ -153,7 +173,7 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     public Node<?> getAgentByName(String name) {
-        return agents.stream().filter(node -> node.getName().equals(name)).findFirst().orElseThrow(() -> new RuntimeException("agent not found: " + name));
+        return agents.stream().filter(node -> node.getName().equals(name)).findFirst().orElse(null);
     }
 
     public List<Node<?>> getAgents() {
