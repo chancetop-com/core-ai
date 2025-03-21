@@ -228,7 +228,7 @@ public abstract class Node<T extends Node<T>> {
         this.maxRound = maxRound;
     }
 
-    void setLongQueryRagHandler(LongQueryHandler longQueryHandler) {
+    void setLongQueryHandler(LongQueryHandler longQueryHandler) {
         this.longQueryHandler = longQueryHandler;
     }
 
@@ -385,7 +385,7 @@ public abstract class Node<T extends Node<T>> {
             return self();
         }
 
-        public B longQueryRagHandler(LongQueryHandler longQueryHandler) {
+        public B longQueryHandler(LongQueryHandler longQueryHandler) {
             this.longQueryHandler = longQueryHandler;
             return self();
         }
@@ -407,7 +407,7 @@ public abstract class Node<T extends Node<T>> {
             node.setMessageUpdatedEventListener(this.messageUpdatedEventListener);
             node.setPersistence(this.persistence);
             node.setPersistenceProvider(this.persistenceProvider);
-            node.setLongQueryRagHandler(this.longQueryHandler);
+            node.setLongQueryHandler(this.longQueryHandler);
             node.setParentNode(this.parent);
             node.updateNodeStatus(NodeStatus.INITED);
         }
