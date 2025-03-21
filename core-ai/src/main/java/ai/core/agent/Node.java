@@ -294,11 +294,11 @@ public abstract class Node<T extends Node<T>> {
         return Tokenizer.tokenCount(query) + getCurrentTokenUsage().getTotalTokens() > max * 0.8;
     }
 
-    String handleToShortQuery(String currentQuery) {
+    String handleToShortQuery(String currentQuery, String question) {
         if (getLongQueryHandler() == null) {
-            throw new RuntimeException("Running out of tokens, and the long query handler is not set");
+            return "The result text is too long for LLM, please re-planning to ensure the task can proceed.";
         }
-        var rst = getLongQueryHandler().handler("", currentQuery);
+        var rst = getLongQueryHandler().handler(question, currentQuery);
         addTokenCost(rst.usage());
         return rst.shorterQuery();
     }

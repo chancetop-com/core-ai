@@ -8,6 +8,8 @@ import ai.core.document.TextSplitter;
 import ai.core.document.textsplitters.RecursiveCharacterTextSplitter;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.providers.inner.EmbeddingRequest;
+import ai.core.llm.providers.inner.Usage;
+import core.framework.util.Strings;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -57,15 +59,21 @@ public class LongQueryHandler {
     }
 
     private LongQueryHandlerResult longQueryRag(String question, String query, TextSplitter textSplitter) {
-        var chunks = textSplitter.split(query);
-        var embeddingTexts = chunks.stream().map(TextChunk::embeddingText).collect(Collectors.toList());
+        // to question cannot rag
+        if (Strings.isBlank(query) && Strings.isBlank(question)) return new LongQueryHandlerResult(query, new Usage());
+        var embeddingTexts = textSplitter.split(query).stream().map(TextChunk::embeddingText).collect(Collectors.toList());
         var documents = vectorStore.getAll(embeddingTexts);
         embeddingTexts.removeAll(documents.stream().map(v -> v.content).toList());
-        var rsp = llmProvider.embeddings(new EmbeddingRequest(embeddingTexts));
-        var missingDocuments = rsp.embeddings.stream().map(v -> new Document(v.text, v.embedding, null)).toList();
-        vectorStore.add(missingDocuments);
-        var embedding = llmProvider.embeddings(new EmbeddingRequest(List.of(question))).embeddings.getFirst().embedding;
-        var text = vectorStore.similaritySearchText(SimilaritySearchRequest.builder().topK(1).embedding(embedding).build());
+        var usage = new Usage();
+        if (!embeddingTexts.isEmpty()) {
+            var rsp = llmProvider.embeddings(new EmbeddingRequest(embeddingTexts));
+            var missingDocuments = rsp.embeddings.stream().map(v -> new Document(v.text, v.embedding, null)).toList();
+            vectorStore.add(missingDocuments);
+            usage.add(rsp.usage);
+        }
+        var rsp = llmProvider.embeddings(new EmbeddingRequest(List.of(question)));
+        var text = vectorStore.similaritySearchText(SimilaritySearchRequest.builder().topK(1).embedding(rsp.embeddings.getFirst().embedding).build());
+        usage.add(rsp.usage);
         return new LongQueryHandlerResult(text, rsp.usage);
     }
 }

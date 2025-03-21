@@ -54,7 +54,7 @@ public class AgentGroup extends Node<AgentGroup> {
         while (!terminateCheck()) {
             setRound(getRound() + 1);
             if (currentTokenUsageOutOfMax(currentQuery, llmProvider.maxTokens())) {
-                currentQuery = handleToShortQuery(currentQuery);
+                currentQuery = handleToShortQuery(currentQuery, getPreviousQuery());
             }
 
             try {
@@ -77,7 +77,7 @@ public class AgentGroup extends Node<AgentGroup> {
             try {
                 output = currentAgent.run(planning.nextQuery(), variables);
             } catch (Exception e) {
-                logger.warn("round: {}/{} failed, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), currentAgent.getName(), planning.nextQuery(), output);
+                logger.warn("round: {}/{} failed, agent: {}, planning: {}, input: {}", getRound(), getMaxRound(), currentAgent.getName(), planning.nextQuery(), currentAgent.getInput());
                 currentQuery = Strings.format("Failed to run agent<{}>: {}", currentAgent.getName(), e.getMessage());
                 continue;
             }
@@ -95,6 +95,10 @@ public class AgentGroup extends Node<AgentGroup> {
         }
 
         return Strings.format("Run out of round: {}/{}, Last round output: {}", getRound(), getMaxRound(), getOutput());
+    }
+
+    private String getPreviousQuery() {
+        return currentAgent == null ? null : moderator.getMessages().getLast().content;
     }
 
     private void roundCompleted() {

@@ -3,7 +3,6 @@ package ai.core.tool.function;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.function.annotation.CoreAiMethod;
 import ai.core.tool.function.annotation.CoreAiParameter;
-import ai.core.tool.function.converter.response.DefaultJsonResponseConverter;
 import ai.core.tool.function.converter.ParameterTypeConverters;
 import ai.core.tool.function.converter.ResponseConverter;
 import ai.core.tool.ToolCall;
@@ -39,7 +38,8 @@ public class Function extends ToolCall {
                 var value = argsMap.get(this.getParameters().get(i).getName());
                 args[i] = ParameterTypeConverters.convert(value, this.getParameters().get(i).getType());
             }
-            return responseConverter.convert(method.invoke(object, args));
+            var rst = method.invoke(object, args);
+            return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
         } catch (IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, e.getMessage()), e);
         }
@@ -94,7 +94,7 @@ public class Function extends ToolCall {
             build(function);
             function.object = this.object;
             function.method = this.method;
-            function.responseConverter = this.responseConverter == null ? new DefaultJsonResponseConverter() : this.responseConverter;
+            function.responseConverter = this.responseConverter;
             return function;
         }
 

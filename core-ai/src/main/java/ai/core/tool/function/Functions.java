@@ -1,7 +1,6 @@
 package ai.core.tool.function;
 
 import ai.core.tool.function.annotation.CoreAiMethod;
-import ai.core.tool.function.converter.response.DefaultJsonResponseConverter;
 
 import java.io.Serial;
 import java.lang.reflect.Method;
@@ -48,7 +47,6 @@ public class Functions extends ArrayList<Function> {
             if (!Modifier.isStatic(method.getModifiers())) {
                 function.object = object;
             }
-            function.responseConverter = new DefaultJsonResponseConverter();
             functions.add(function);
         }
 
