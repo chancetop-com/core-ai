@@ -16,6 +16,7 @@ import com.azure.ai.inference.models.ChatRequestAssistantMessage;
 import com.azure.ai.inference.models.ChatRequestMessage;
 import com.azure.ai.inference.models.ChatRequestSystemMessage;
 import com.azure.ai.inference.models.EmbeddingsResult;
+import com.azure.ai.inference.models.EmbeddingsUsage;
 import com.azure.ai.inference.models.FunctionCall;
 import com.azure.ai.inference.models.ChatRequestUserMessage;
 import com.azure.ai.inference.models.FunctionDefinition;
@@ -62,8 +63,17 @@ public class AzureInferenceModelsUtil {
         return new Usage(usage.getPromptTokens(), usage.getCompletionTokens(), usage.getTotalTokens());
     }
 
+    public static Usage toUsage(EmbeddingsUsage usage) {
+        return new Usage(usage.getPromptTokens(), 0, usage.getTotalTokens());
+    }
+
     public static EmbeddingResponse toEmbeddingResponse(EmbeddingRequest request, EmbeddingsResult embeddings) {
-        return new EmbeddingResponse(embeddings.getData().stream().map(v -> new EmbeddingResponse.EmbeddingData(request.query().get(v.getIndex()), Embedding.of(v.getEmbeddingList()))).toList());
+        return new EmbeddingResponse(
+                embeddings.getData()
+                        .stream()
+                        .map(v -> new EmbeddingResponse.EmbeddingData(request.query().get(v.getIndex()), Embedding.of(v.getEmbeddingList())))
+                        .toList(),
+                toUsage(embeddings.getUsage()));
     }
 
     private static FinishReason toFinishReason(CompletionsFinishReason finishReason) {

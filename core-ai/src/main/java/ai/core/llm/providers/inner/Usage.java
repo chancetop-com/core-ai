@@ -7,6 +7,7 @@ import ai.core.litellm.completion.UsageAJAXView;
  */
 public class Usage {
     private int promptTokens;
+    // completionTokens the number of tokens used for completion, caption will be 0
     private int completionTokens;
     private int totalTokens;
 

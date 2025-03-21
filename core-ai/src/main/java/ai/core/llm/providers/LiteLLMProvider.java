@@ -57,12 +57,13 @@ public class LiteLLMProvider extends LLMProvider {
     @Override
     public EmbeddingResponse embeddings(EmbeddingRequest dto) {
         var rsp = this.liteLLMService.embedding(toApiRequest(dto));
-        return new EmbeddingResponse(rsp.data.stream().map(v -> new EmbeddingResponse.EmbeddingData(dto.query().get(v.index), new Embedding(v.embedding))).toList());
+        return new EmbeddingResponse(rsp.data.stream().map(v -> new EmbeddingResponse.EmbeddingData(dto.query().get(v.index), new Embedding(v.embedding))).toList(), new Usage(rsp.usage));
     }
 
     @Override
     public CaptionImageResponse captionImage(CaptionImageRequest dto) {
-        return new CaptionImageResponse(liteLLMService.imageCompletion(toApiRequest(dto)).choices.getFirst().message.content);
+        var rsp = liteLLMService.imageCompletion(toApiRequest(dto));
+        return new CaptionImageResponse(rsp.choices.getFirst().message.content, new Usage(rsp.usage));
     }
 
     @Override

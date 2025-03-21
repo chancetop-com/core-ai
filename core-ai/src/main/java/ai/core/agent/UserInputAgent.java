@@ -27,6 +27,11 @@ public class UserInputAgent extends Node<UserInputAgent> {
         return query;
     }
 
+    @Override
+    void setChildrenParentNode() {
+
+    }
+
     public static class Builder extends Node.Builder<Builder, UserInputAgent> {
         @Override
         protected Builder self() {

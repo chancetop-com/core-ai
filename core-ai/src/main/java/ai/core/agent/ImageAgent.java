@@ -37,6 +37,11 @@ public class ImageAgent extends Node<ImageAgent> {
         return output;
     }
 
+    @Override
+    void setChildrenParentNode() {
+
+    }
+
     public static class Builder extends Node.Builder<Builder, ImageAgent> {
         String prompt;
         ImageProvider imageProvider;

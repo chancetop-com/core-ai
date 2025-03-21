@@ -9,9 +9,11 @@ import java.util.List;
  */
 public class EmbeddingResponse {
     public List<EmbeddingData> embeddings;
+    public Usage usage;
 
-    public EmbeddingResponse(List<EmbeddingData> embeddings) {
+    public EmbeddingResponse(List<EmbeddingData> embeddings, Usage usage) {
         this.embeddings = embeddings;
+        this.usage = usage;
     }
 
     public static class EmbeddingData {

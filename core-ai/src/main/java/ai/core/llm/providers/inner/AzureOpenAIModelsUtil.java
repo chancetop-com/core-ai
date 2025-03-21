@@ -17,6 +17,7 @@ import com.azure.ai.openai.models.ChatRequestAssistantMessage;
 import com.azure.ai.openai.models.ChatRequestMessage;
 import com.azure.ai.openai.models.ChatRequestSystemMessage;
 import com.azure.ai.openai.models.Embeddings;
+import com.azure.ai.openai.models.EmbeddingsUsage;
 import com.azure.ai.openai.models.FunctionCall;
 import com.azure.ai.openai.models.ChatRequestUserMessage;
 import com.azure.ai.openai.models.ChatChoice;
@@ -62,8 +63,17 @@ public class AzureOpenAIModelsUtil {
         return new Usage(usage.getPromptTokens(), usage.getCompletionTokens(), usage.getTotalTokens());
     }
 
+    public static Usage toUsage(EmbeddingsUsage usage) {
+        return new Usage(usage.getPromptTokens(), 0, usage.getTotalTokens());
+    }
+
     public static EmbeddingResponse toEmbeddingResponse(EmbeddingRequest request, Embeddings embeddings) {
-        return new EmbeddingResponse(embeddings.getData().stream().map(v -> new EmbeddingResponse.EmbeddingData(request.query().get(v.getPromptIndex()), Embedding.of(v.getEmbedding()))).toList());
+        return new EmbeddingResponse(
+                embeddings.getData()
+                        .stream()
+                        .map(v -> new EmbeddingResponse.EmbeddingData(request.query().get(v.getPromptIndex()), Embedding.of(v.getEmbedding())))
+                        .toList(),
+                toUsage(embeddings.getUsage()));
     }
 
     private static FinishReason toFinishReason(CompletionsFinishReason finishReason) {

@@ -21,11 +21,18 @@ public class VisionAgent extends Node<VisionAgent> {
     String execute(String query, Map<String, Object> variables) {
         setInput(query);
 
-        var output = llmProvider.captionImage(new CaptionImageRequest(prompt, query, null)).caption();
+        var rsp = llmProvider.captionImage(new CaptionImageRequest(prompt, query, null));
+        addTokenCount(rsp.usage().getTotalTokens());
+        var output = rsp.caption();
 
         setOutput(output);
         updateNodeStatus(NodeStatus.COMPLETED);
         return output;
+    }
+
+    @Override
+    void setChildrenParentNode() {
+
     }
 
     public static class Builder extends Node.Builder<Builder, VisionAgent> {

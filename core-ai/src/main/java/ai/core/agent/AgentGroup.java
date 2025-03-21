@@ -33,7 +33,6 @@ public class AgentGroup extends Node<AgentGroup> {
     Planning planning;
     private String currentAgent;
     private String currentQuery;
-    private int currentAgentsTokenCost;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -46,6 +45,12 @@ public class AgentGroup extends Node<AgentGroup> {
             var currentAgent = getAgentByName(this.currentAgent);
             throw new RuntimeException(Strings.format("Failed at {}<{}>: {}", this.currentAgent, currentAgent.getId(), e.getMessage()), e);
         }
+    }
+
+    @Override
+    void setChildrenParentNode() {
+        agents.forEach(v -> v.setParentNode(this));
+        moderator.setParentNode(this);
     }
 
     String executeWithException(String rawQuery, Map<String, Object> variables) {
@@ -116,8 +121,6 @@ public class AgentGroup extends Node<AgentGroup> {
     private void afterRunAgent(String output, Node<?> next) {
         setRawOutput(next.getRawOutput());
         setOutput(output);
-        currentAgentsTokenCost += next.getCurrentTokens();
-        setCurrentTokens(currentAgentsTokenCost + moderator.getCurrentTokens());
         addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
         currentQuery = output;
     }
@@ -274,6 +277,7 @@ public class AgentGroup extends Node<AgentGroup> {
             }
             agent.llmProvider = this.llmProvider;
             agent.addTermination(new MaxRoundTermination());
+            agent.setChildrenParentNode();
             return agent;
         }
     }

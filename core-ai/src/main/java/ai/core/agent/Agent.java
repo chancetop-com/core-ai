@@ -64,7 +64,6 @@ public class Agent extends Node<Agent> {
 
         // call LLM completion
         var rst = completionWithFormat(prompt);
-        addTokenCount(rst.usage.getTotalTokens());
 
         // update chain node status
         updateNodeStatus(NodeStatus.RUNNING);
@@ -88,6 +87,11 @@ public class Agent extends Node<Agent> {
 
         updateNodeStatus(NodeStatus.COMPLETED);
         return getOutput();
+    }
+
+    @Override
+    void setChildrenParentNode() {
+
     }
 
     private Choice getChoice(CompletionResponse rst) {
@@ -115,6 +119,7 @@ public class Agent extends Node<Agent> {
         addMessage(reqMsg);
         var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());
         var rst = llmProvider.completion(req);
+        addTokenCount(rst.usage.getTotalTokens());
         setRawOutput(rst.choices.getFirst().message.content);
 
         // remove think content

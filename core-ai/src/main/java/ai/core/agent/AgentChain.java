@@ -67,6 +67,11 @@ public class AgentChain extends Node<AgentChain> {
         return input;
     }
 
+    @Override
+    void setChildrenParentNode() {
+        nodes.forEach(v -> v.setParentNode(this));
+    }
+
     public static class Builder extends Node.Builder<Builder, AgentChain> {
         List<Node<?>> nodes;
 
@@ -86,6 +91,7 @@ public class AgentChain extends Node<AgentChain> {
             build(chain);
             chain.nodes = this.nodes;
             chain.setPersistence(new AgentChainPersistence());
+            chain.setChildrenParentNode();
             return chain;
         }
     }

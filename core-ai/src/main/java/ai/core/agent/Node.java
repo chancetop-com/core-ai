@@ -41,6 +41,7 @@ public abstract class Node<T extends Node<T>> {
     private int round;
     private int maxRound;
     private int currentTokens;
+    private Node<?> parent;
     private final List<Message> messages;
 
     public Node() {
@@ -133,6 +134,10 @@ public abstract class Node<T extends Node<T>> {
         return this.currentTokens;
     }
 
+    public Node<?> getParentNode() {
+        return this.parent;
+    }
+
     public NodeStatus getNodeStatus() {
         return this.nodeStatus;
     }
@@ -154,7 +159,6 @@ public abstract class Node<T extends Node<T>> {
         this.setInput(null);
         this.setOutput(null);
         this.setRawOutput(null);
-        this.setCurrentTokens(0);
         this.setRound(0);
         this.nodeStatus = NodeStatus.INITED;
     }
@@ -191,6 +195,8 @@ public abstract class Node<T extends Node<T>> {
     }
 
     abstract String execute(String query, Map<String, Object> variables);
+
+    abstract void setChildrenParentNode();
 
     void setRawOutput(String output) {
         this.rawOutput = output;
@@ -266,10 +272,13 @@ public abstract class Node<T extends Node<T>> {
 
     void addTokenCount(int count) {
         this.currentTokens += count;
+        if (this.parent != null) {
+            this.parent.addTokenCount(count);
+        }
     }
 
-    void setCurrentTokens(int count) {
-        this.currentTokens = count;
+    void setParentNode(Node<?> parent) {
+        this.parent = parent;
     }
 
     void addTermination(Termination termination) {
@@ -303,6 +312,7 @@ public abstract class Node<T extends Node<T>> {
         Persistence<T> persistence;
         PersistenceProvider persistenceProvider;
         LongQueryHandler longQueryHandler;
+        Node<?> parent;
         int maxRound;
 
         // This method needs to be overridden in the subclass Builders
@@ -363,6 +373,11 @@ public abstract class Node<T extends Node<T>> {
             return self();
         }
 
+        public B parent(Node<?> parent) {
+            this.parent = parent;
+            return self();
+        }
+
         public void build(T node) {
             validation();
             node.setName(this.name);
@@ -376,6 +391,7 @@ public abstract class Node<T extends Node<T>> {
             node.setPersistence(this.persistence);
             node.setPersistenceProvider(this.persistenceProvider);
             node.setLongQueryRagHandler(this.longQueryHandler);
+            node.setParentNode(this.parent);
             node.updateNodeStatus(NodeStatus.INITED);
         }
 

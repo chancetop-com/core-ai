@@ -49,7 +49,7 @@ public class AzureOpenAIProvider extends LLMProvider {
     @Override
     public CaptionImageResponse captionImage(CaptionImageRequest request) {
         var chatCompletion = client.getChatCompletions(request.model(), AzureOpenAIModelsUtil.toAzureRequest(request));
-        return new CaptionImageResponse(chatCompletion.getChoices().getFirst().getMessage().getContent());
+        return new CaptionImageResponse(chatCompletion.getChoices().getFirst().getMessage().getContent(), AzureOpenAIModelsUtil.toUsage(chatCompletion.getUsage()));
     }
 
     @Override

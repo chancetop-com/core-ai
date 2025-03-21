@@ -55,8 +55,8 @@ public class AzureInferenceProvider extends LLMProvider {
 
     @Override
     public CaptionImageResponse captionImage(CaptionImageRequest request) {
-        var chatCompletion = chatClient.complete(AzureInferenceModelsUtil.toAzureRequest(request));
-        return new CaptionImageResponse(chatCompletion.getChoice().getMessage().getContent());
+        var captionRsp = chatClient.complete(AzureInferenceModelsUtil.toAzureRequest(request));
+        return new CaptionImageResponse(captionRsp.getChoice().getMessage().getContent(), AzureInferenceModelsUtil.toUsage(captionRsp.getUsage()));
     }
 
     @Override
