@@ -3,6 +3,7 @@ package ai.core.agent;
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
+import ai.core.document.Tokenizer;
 import ai.core.llm.providers.inner.CompletionResponse;
 import ai.core.llm.providers.inner.Message;
 import ai.core.llm.providers.inner.Usage;
@@ -287,6 +288,19 @@ public abstract class Node<T extends Node<T>> {
     void addTermination(Termination termination) {
         if (termination == null) return;
         this.terminations.add(termination);
+    }
+
+    boolean currentTokenUsageOutOfMax(String query, int max) {
+        return Tokenizer.tokenCount(query) + getCurrentTokenUsage().getTotalTokens() > max * 0.8;
+    }
+
+    String handleToShortQuery(String currentQuery) {
+        if (getLongQueryHandler() == null) {
+            throw new RuntimeException("Running out of tokens, and the long query handler is not set");
+        }
+        var rst = getLongQueryHandler().handler("", currentQuery);
+        addTokenCost(rst.usage());
+        return rst.shorterQuery();
     }
 
     void addTerminations(List<Termination> terminations) {

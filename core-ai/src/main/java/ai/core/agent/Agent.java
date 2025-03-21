@@ -62,6 +62,10 @@ public class Agent extends Node<Agent> {
         // compile and execute template
         prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
 
+        if (currentTokenUsageOutOfMax(prompt, llmProvider.maxTokens())) {
+            prompt = handleToShortQuery(prompt);
+        }
+
         // call LLM completion
         var rst = completionWithFormat(prompt);
 

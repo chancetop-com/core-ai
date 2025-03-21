@@ -2,7 +2,6 @@ package ai.core.agent;
 
 import ai.core.agent.planning.DefaultPlanning;
 import ai.core.defaultagents.DefaultModeratorAgent;
-import ai.core.document.Tokenizer;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.providers.inner.Message;
 import ai.core.termination.Termination;
@@ -54,9 +53,8 @@ public class AgentGroup extends Node<AgentGroup> {
         startRunning();
         while (!terminateCheck()) {
             setRound(getRound() + 1);
-
-            if (tokenTooLong(currentQuery)) {
-                handleTooLong();
+            if (currentTokenUsageOutOfMax(currentQuery, llmProvider.maxTokens())) {
+                currentQuery = handleToShortQuery(currentQuery);
             }
 
             try {
@@ -130,19 +128,6 @@ public class AgentGroup extends Node<AgentGroup> {
             return true;
         }
         return false;
-    }
-
-    private boolean tokenTooLong(String query) {
-        return Tokenizer.tokenCount(query) + getCurrentTokenUsage().getTotalTokens() > llmProvider.maxTokens() * 0.8;
-    }
-
-    private void handleTooLong() {
-        if (getLongQueryHandler() == null) {
-            throw new RuntimeException("Running out of tokens, and the long query handler is not set");
-        }
-        var rst = getLongQueryHandler().handler("", currentQuery);
-        currentQuery = rst.shorterQuery();
-        addTokenCost(rst.usage());
     }
 
     private void afterRunAgent(String output) {
