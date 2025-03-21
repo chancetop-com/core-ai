@@ -25,8 +25,8 @@ import java.util.List;
  * @author stephen
  */
 public class ExampleService {
-    PersistenceProvider persistenceProvider = new TemporaryPersistenceProvider();
-
+    @Inject
+    TemporaryPersistenceProvider persistenceProvider;
     @Inject
     AzureInferenceProvider llmProvider;
     @Inject

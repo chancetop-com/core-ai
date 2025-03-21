@@ -6,6 +6,7 @@ import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.persistence.providers.RedisPersistenceProvider;
+import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import ai.core.rag.vectorstore.hnswlib.HnswConfig;
 import ai.core.rag.vectorstore.hnswlib.HnswLibVectorStore;
 import ai.core.rag.vectorstore.milvus.MilvusConfig;
@@ -87,7 +88,7 @@ public class MultiAgentModule extends Module {
     }
 
     private void bindServices() {
-        bind(HnswLibVectorStore.class);
         bind(TaskService.class);
+        bind(TemporaryPersistenceProvider.class);
     }
 }
