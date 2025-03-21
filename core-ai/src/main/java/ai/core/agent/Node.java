@@ -5,6 +5,7 @@ import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.llm.providers.inner.CompletionResponse;
 import ai.core.llm.providers.inner.Message;
+import ai.core.llm.providers.inner.Usage;
 import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.rag.LongQueryHandler;
@@ -40,9 +41,9 @@ public abstract class Node<T extends Node<T>> {
     private String rawOutput;
     private int round;
     private int maxRound;
-    private int currentTokens;
     private Node<?> parent;
     private final List<Message> messages;
+    private final Usage currentTokenUsage = new Usage();
 
     public Node() {
         this.id = UUID.randomUUID().toString();
@@ -130,8 +131,8 @@ public abstract class Node<T extends Node<T>> {
         return this.maxRound;
     }
 
-    public int getCurrentTokens() {
-        return this.currentTokens;
+    public Usage getCurrentTokenUsage() {
+        return this.currentTokenUsage;
     }
 
     public Node<?> getParentNode() {
@@ -150,7 +151,7 @@ public abstract class Node<T extends Node<T>> {
         return this.formatter;
     }
 
-    public LongQueryHandler getLongQueryRagHandler() {
+    public LongQueryHandler getLongQueryHandler() {
         return this.longQueryHandler;
     }
 
@@ -270,10 +271,12 @@ public abstract class Node<T extends Node<T>> {
         this.input = input;
     }
 
-    void addTokenCount(int count) {
-        this.currentTokens += count;
+    void addTokenCost(Usage cost) {
+        this.currentTokenUsage.setCompletionTokens(this.currentTokenUsage.getCompletionTokens() + cost.getCompletionTokens());
+        this.currentTokenUsage.setPromptTokens(this.currentTokenUsage.getPromptTokens() + cost.getPromptTokens());
+        this.currentTokenUsage.setTotalTokens(this.currentTokenUsage.getTotalTokens() + cost.getTotalTokens());
         if (this.parent != null) {
-            this.parent.addTokenCount(count);
+            this.parent.addTokenCost(cost);
         }
     }
 

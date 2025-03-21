@@ -2,6 +2,7 @@ package ai.core.defaultagents;
 
 import ai.core.agent.Agent;
 import ai.core.agent.AgentChain;
+import ai.core.agent.Node;
 import ai.core.llm.LLMProvider;
 
 /**
@@ -10,6 +11,10 @@ import ai.core.llm.LLMProvider;
 public class DefaultSummaryAgent {
 
     public static Agent of(LLMProvider llmProvider) {
+        return of(llmProvider, null);
+    }
+
+    public static Agent of(LLMProvider llmProvider, Node<?> node) {
         return Agent.builder()
                 .name("summary-agent")
                 .systemPrompt("""
@@ -18,6 +23,7 @@ public class DefaultSummaryAgent {
                 Do not add any introductory phrases.
                 """)
                 .promptTemplate("Query: ")
+                .parent(node)
                 .llmProvider(llmProvider).build();
     }
 

@@ -119,7 +119,7 @@ public class Agent extends Node<Agent> {
         addMessage(reqMsg);
         var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());
         var rst = llmProvider.completion(req);
-        addTokenCount(rst.usage.getTotalTokens());
+        addTokenCost(rst.usage);
         setRawOutput(rst.choices.getFirst().message.content);
 
         // remove think content
@@ -163,7 +163,9 @@ public class Agent extends Node<Agent> {
 
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null) throw new RuntimeException("vectorStore cannot be null if useRag flag is enabled");
-        var embedding = llmProvider.embeddings(new EmbeddingRequest(List.of(query))).embeddings.getFirst().embedding;
+        var rsp = llmProvider.embeddings(new EmbeddingRequest(List.of(query)));
+        addTokenCost(rsp.usage);
+        var embedding = rsp.embeddings.getFirst().embedding;
         var context = ragConfig.vectorStore().similaritySearchText(SimilaritySearchRequest.builder()
                 .embedding(embedding)
                 .collection(ragConfig.collection())

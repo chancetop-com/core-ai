@@ -22,7 +22,7 @@ public class VisionAgent extends Node<VisionAgent> {
         setInput(query);
 
         var rsp = llmProvider.captionImage(new CaptionImageRequest(prompt, query, null));
-        addTokenCount(rsp.usage().getTotalTokens());
+        addTokenCost(rsp.usage());
         var output = rsp.caption();
 
         setOutput(output);

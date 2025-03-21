@@ -14,6 +14,7 @@ public record Embedding(List<Double> vectors) {
         }
         return new Embedding(list);
     }
+
     public static Embedding of(List<Float> vectors) {
         var list = new ArrayList<Double>();
         for (var vector : vectors) {
@@ -21,6 +22,7 @@ public record Embedding(List<Double> vectors) {
         }
         return new Embedding(list);
     }
+
     public float[] toFloatArray() {
         var array = new float[vectors.size()];
         for (int i = 0; i < vectors.size(); i++) {

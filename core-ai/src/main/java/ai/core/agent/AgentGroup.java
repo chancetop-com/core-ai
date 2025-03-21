@@ -31,7 +31,7 @@ public class AgentGroup extends Node<AgentGroup> {
     List<Node<?>> agents;
     Agent moderator;
     Planning planning;
-    private String currentAgent;
+    private Node<?> currentAgent;
     private String currentQuery;
 
     @Override
@@ -39,10 +39,6 @@ public class AgentGroup extends Node<AgentGroup> {
         try {
             return executeWithException(query, variables);
         } catch (Exception e) {
-            if (currentAgent == null) {
-                throw new RuntimeException(Strings.format("Failed at moderator: {}", e.getMessage()), e);
-            }
-            var currentAgent = getAgentByName(this.currentAgent);
             throw new RuntimeException(Strings.format("Failed at {}<{}>: {}", this.currentAgent, currentAgent.getId(), e.getMessage()), e);
         }
     }
@@ -58,48 +54,57 @@ public class AgentGroup extends Node<AgentGroup> {
         startRunning();
         while (!terminateCheck()) {
             setRound(getRound() + 1);
+
+            if (tokenTooLong(currentQuery)) {
+                handleTooLong();
+            }
+
             try {
+                currentAgent = moderator;
                 var text = planning.planning(moderator, currentQuery, variables);
-                planningFinished(currentQuery, text, currentAgent == null ? "user" : currentAgent);
+                planningFinished(currentQuery, text, currentAgent == null ? "user" : currentAgent.getName());
             } catch (Exception e) {
                 currentQuery = Strings.format("JSON resolve failed, please check the planning result: ", e.getMessage());
                 continue;
             }
+
             // planning think the previous round is completed
             if (finished()) return getOutput();
             if (planningFailed()) continue;
 
-            var next = getAgentByName(planning.nextAgentName());
-
+            currentAgent = getAgentByName(planning.nextAgentName());
             setInput(planning.nextQuery());
             String output = "";
+
             try {
-                output = next.run(planning.nextQuery(), variables);
+                output = currentAgent.run(planning.nextQuery(), variables);
             } catch (Exception e) {
-                logger.warn("round: {}/{} failed, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), planning.nextQuery(), output);
-                currentQuery = Strings.format("Failed to run agent<{}>: {}", next.getName(), e.getMessage());
+                logger.warn("round: {}/{} failed, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), currentAgent.getName(), planning.nextQuery(), output);
+                currentQuery = Strings.format("Failed to run agent<{}>: {}", currentAgent.getName(), e.getMessage());
                 continue;
             }
 
-            afterRunAgent(output, next);
+            afterRunAgent(output);
             currentQuery = output;
-            if (tokenTooLong(currentQuery)) {
-                handleTooLong();
-            }
-            logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), next.getName(), getInput(), getOutput());
 
-            if (waitingForUserInput(next)) return output;
+            logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), currentAgent.getName(), getInput(), getOutput());
+
+            if (waitingForUserInput()) return output;
             // planning think this agent can finish the task
             if (finished()) return output;
 
-            next.clearShortTermMemory();
+            roundCompleted();
         }
 
         return Strings.format("Run out of round: {}/{}, Last round output: {}", getRound(), getMaxRound(), getOutput());
     }
 
-    private boolean waitingForUserInput(Node<?> next) {
-        if (next.getType() == NodeType.USER_INPUT && next.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
+    private void roundCompleted() {
+        currentAgent.clearShortTermMemory();
+    }
+
+    private boolean waitingForUserInput() {
+        if (currentAgent.getType() == NodeType.USER_INPUT && currentAgent.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
             updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
             return true;
         }
@@ -128,20 +133,22 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     private boolean tokenTooLong(String query) {
-        return Tokenizer.tokenCount(query) + getCurrentTokens() > llmProvider.maxTokens() * 0.8;
+        return Tokenizer.tokenCount(query) + getCurrentTokenUsage().getTotalTokens() > llmProvider.maxTokens() * 0.8;
     }
 
     private void handleTooLong() {
-        if (getLongQueryRagHandler() == null) {
-            throw new RuntimeException("Running out of tokens");
+        if (getLongQueryHandler() == null) {
+            throw new RuntimeException("Running out of tokens, and the long query handler is not set");
         }
-        currentQuery = getLongQueryRagHandler().handler("", currentQuery);
+        var rst = getLongQueryHandler().handler("", currentQuery);
+        currentQuery = rst.shorterQuery();
+        addTokenCost(rst.usage());
     }
 
-    private void afterRunAgent(String output, Node<?> next) {
-        setRawOutput(next.getRawOutput());
+    private void afterRunAgent(String output) {
+        setRawOutput(currentAgent.getRawOutput());
         setOutput(output);
-        addResponseChoiceMessages(next.getMessages().subList(1, next.getMessages().size()));
+        addResponseChoiceMessages(currentAgent.getMessages().subList(1, currentAgent.getMessages().size()));
     }
 
     private void planningFinished(String query, String text, String queryFrom) {

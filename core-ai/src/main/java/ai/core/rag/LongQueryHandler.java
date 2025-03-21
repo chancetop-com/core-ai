@@ -28,7 +28,7 @@ public class LongQueryHandler {
         this.textSplitter = textSplitter;
     }
 
-    public String handler(String question, String query) {
+    public LongQueryHandlerResult handler(String question, String query) {
         return switch (type) {
             case SUMMARY -> longQuerySummary(query);
             case RAG -> longQueryRag(question, query, textSplitter);
@@ -36,22 +36,27 @@ public class LongQueryHandler {
         };
     }
 
-    private String longQueryAgent(String question, String query) {
+    private LongQueryHandlerResult longQueryAgent(String question, String query) {
         if (query.length() > llmProvider.maxTokens()) {
             return longQueryRag(question, query, new RecursiveCharacterTextSplitter());
         }
-        return DefaultAnswerRetrievalAgent.of(llmProvider).run("", DefaultAnswerRetrievalAgent.buildContext(question, query));
+        var agent = DefaultAnswerRetrievalAgent.of(llmProvider);
+        var rst = agent.run("", DefaultAnswerRetrievalAgent.buildContext(question, query));
+        return new LongQueryHandlerResult(rst, agent.getCurrentTokenUsage());
     }
 
-    private String longQuerySummary(String query) {
-        return "The output is too long for LLM, please re-planning the agent if the output summary is not enough, re-planning for example: adjust query, adjust tool parameters or use another tool, the output summary: \n" + DefaultSummaryAgent.of(llmProvider).run(truncateQuery(query), null);
+    private LongQueryHandlerResult longQuerySummary(String query) {
+        var agent = DefaultSummaryAgent.of(llmProvider);
+        var rst = "The output is too long for LLM, please re-planning the agent if the output summary is not enough, re-planning for example: adjust query, adjust tool parameters or use another tool, the output summary: \n"
+                + agent.run(truncateQuery(query), null);
+        return new LongQueryHandlerResult(rst, agent.getCurrentTokenUsage());
     }
 
     private String truncateQuery(String query) {
         return query.substring(0, Math.min(query.length(), llmProvider.maxTokens()));
     }
 
-    private String longQueryRag(String question, String query, TextSplitter textSplitter) {
+    private LongQueryHandlerResult longQueryRag(String question, String query, TextSplitter textSplitter) {
         var chunks = textSplitter.split(query);
         var embeddingTexts = chunks.stream().map(TextChunk::embeddingText).collect(Collectors.toList());
         var documents = vectorStore.getAll(embeddingTexts);
@@ -60,6 +65,7 @@ public class LongQueryHandler {
         var missingDocuments = rsp.embeddings.stream().map(v -> new Document(v.text, v.embedding, null)).toList();
         vectorStore.add(missingDocuments);
         var embedding = llmProvider.embeddings(new EmbeddingRequest(List.of(question))).embeddings.getFirst().embedding;
-        return vectorStore.similaritySearchText(SimilaritySearchRequest.builder().topK(1).embedding(embedding).build());
+        var text = vectorStore.similaritySearchText(SimilaritySearchRequest.builder().topK(1).embedding(embedding).build());
+        return new LongQueryHandlerResult(text, rsp.usage);
     }
 }

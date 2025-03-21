@@ -1,6 +1,7 @@
 package ai.core.defaultagents;
 
 import ai.core.agent.Agent;
+import ai.core.agent.Node;
 import ai.core.llm.LLMProvider;
 
 import java.util.Map;
@@ -10,6 +11,10 @@ import java.util.Map;
  */
 public class DefaultAnswerRetrievalAgent {
     public static Agent of(LLMProvider llmProvider) {
+        return of(llmProvider, null);
+    }
+
+    public static Agent of(LLMProvider llmProvider, Node<?> node) {
         return Agent.builder()
                 .name("answer-retrieval-agent")
                 .description("This agent is retrieval answer from information that provided by user.")
@@ -23,6 +28,7 @@ public class DefaultAnswerRetrievalAgent {
                         information:
                         {{information}}
                         """)
+                .parent(node)
                 .llmProvider(llmProvider).build();
     }
 
