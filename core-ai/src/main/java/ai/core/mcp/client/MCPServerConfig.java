@@ -3,5 +3,5 @@ package ai.core.mcp.client;
 /**
  * @author stephen
  */
-public record MCPServerConfig(String host, int port) {
+public record MCPServerConfig(String host, int port, String name, String description) {
 }

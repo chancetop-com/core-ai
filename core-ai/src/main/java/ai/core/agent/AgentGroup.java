@@ -278,10 +278,12 @@ public class AgentGroup extends Node<AgentGroup> {
             if (haveUserInputAgent && persistenceProvider == null) {
                 throw new IllegalArgumentException("persistenceProvider is required when have user input agent");
             }
+            agent.addTermination(new MaxRoundTermination());
+            agent.llmProvider = this.llmProvider;
             agent.agents = this.agents;
             agent.moderator = this.moderator;
             if (agent.moderator == null) {
-                agent.moderator = DefaultModeratorAgent.of(agent, this.llmProvider);
+                agent.moderator = DefaultModeratorAgent.of(this.llmProvider, this.llmProvider.config.getModel(), this.description, this.agents, null);
             }
             agent.planning = this.planning;
             if (agent.planning == null) {
@@ -290,8 +292,6 @@ public class AgentGroup extends Node<AgentGroup> {
             if (agent.getMaxRound() <= 0) {
                 agent.setMaxRound(5);
             }
-            agent.llmProvider = this.llmProvider;
-            agent.addTermination(new MaxRoundTermination());
             agent.setChildrenParentNode();
             return agent;
         }
