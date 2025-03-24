@@ -72,7 +72,7 @@ public class AgentGroup extends Node<AgentGroup> {
 
             currentAgent = getAgentByName(planning.nextAgentName());
             setInput(planning.nextQuery());
-            String output = "";
+            String output;
 
             try {
                 output = currentAgent.run(planning.nextQuery(), variables);
@@ -142,7 +142,6 @@ public class AgentGroup extends Node<AgentGroup> {
 
     private void planningFinished(String query, String text, String queryFrom) {
         setRawOutput(moderator.getRawOutput());
-        setOutput(moderator.getOutput());
         addResponseChoiceMessages(List.of(
                 Message.of(AgentRole.USER, queryFrom, query),
                 Message.of(AgentRole.ASSISTANT, text, moderator.getName(), null, null, null)));
