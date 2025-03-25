@@ -190,12 +190,16 @@ public class AgentGroup extends Node<AgentGroup> {
 
     @Override
     public String toString() {
-        return AgentsInfo.agentsInfo(agents);
+        return AgentsInfo.agentsInfo(getName(), getDescription(), agents);
     }
 
     public static class AgentsInfo {
         public static String agentsInfo(List<Node<?>> agents) {
-            return JSON.toJSON(AgentsInfo.of(agents.stream().map(agent -> {
+            return agentsInfo("", "", agents);
+        }
+
+        public static String agentsInfo(String name, String description, List<Node<?>> agents) {
+            return JSON.toJSON(AgentsInfo.of(name, description, agents.stream().map(agent -> {
                 var agentInfo = AgentInfo.of(agent.getName(), agent.getDescription());
                 if (agent instanceof Agent) {
                     agentInfo.functions = ((Agent) agent).getToolCalls().stream().map(ToolCall::toString).toList();
@@ -204,11 +208,19 @@ public class AgentGroup extends Node<AgentGroup> {
             }).toList()));
         }
 
-        public static AgentsInfo of(List<AgentInfo> agents) {
+        public static AgentsInfo of(String name, String description, List<AgentInfo> agents) {
             var dto = new AgentsInfo();
+            dto.name = name;
+            dto.description = description;
             dto.agents = agents;
             return dto;
         }
+
+        @Property(name = "name")
+        public String name;
+
+        @Property(name = "description")
+        public String description;
 
         @Property(name = "agents")
         public List<AgentInfo> agents;

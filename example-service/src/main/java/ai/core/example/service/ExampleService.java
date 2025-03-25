@@ -75,7 +75,7 @@ public class ExampleService {
     }
 
     public String mcpToolCallTest(MCPToolCallRequest request) {
-        var mcpClientService = new MCPClientService(new MCPServerConfig(request.host, request.port, "git", "git operator"));
+        var mcpClientService = new MCPClientService(new MCPServerConfig(request.url, "git", "git operator"));
         var agent = Agent.builder()
                 .name("mcp-tool-call-agent")
                 .description("mcp tool call agent")

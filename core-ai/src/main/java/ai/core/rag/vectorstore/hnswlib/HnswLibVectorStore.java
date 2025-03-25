@@ -10,12 +10,14 @@ import com.github.jelmerk.hnswlib.core.DistanceFunctions;
 import com.github.jelmerk.hnswlib.core.Index;
 import com.github.jelmerk.hnswlib.core.SearchResult;
 import com.github.jelmerk.hnswlib.core.hnsw.HnswIndex;
+import core.framework.json.JSON;
 import core.framework.web.exception.NotFoundException;
 
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -46,7 +48,7 @@ public class HnswLibVectorStore implements VectorStore {
     }
 
     private static HnswDocument fromDocument(Document document) {
-        return new HnswDocument(document.id, document.embedding.toFloatArray(), document.content, document.extraField);
+        return new HnswDocument(document.id, document.embedding.toFloatArray(), document.content, JSON.toJSON(document.extraField));
     }
 
     public static Index<String, float[], HnswDocument, Float> load(String path) throws IOException {
@@ -66,6 +68,7 @@ public class HnswLibVectorStore implements VectorStore {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public List<Document> similaritySearch(SimilaritySearchRequest request) {
         if (this.index == null) throw new NotFoundException("Index not loaded, please loadDocuments/loadFile first");
         var rsp = this.index.findNearest(request.embedding.toFloatArray(), request.topK);
@@ -75,7 +78,7 @@ public class HnswLibVectorStore implements VectorStore {
                         v.item().id(),
                         Embedding.of(v.item().vector()),
                         v.item().content(),
-                        v.item().extraField())).toList();
+                        (Map<String, Object>) JSON.fromJSON(Map.class, v.item().extraField()))).toList();
     }
 
     @Override
@@ -111,7 +114,8 @@ public class HnswLibVectorStore implements VectorStore {
         index.save(Paths.get(config.path()));
     }
 
+    @SuppressWarnings("unchecked")
     private Document toDocument(HnswDocument hnswDocument) {
-        return new Document(hnswDocument.id(), Embedding.of(hnswDocument.vector()), hnswDocument.content(), hnswDocument.extraField());
+        return new Document(hnswDocument.id(), Embedding.of(hnswDocument.vector()), hnswDocument.content(), (Map<String, Object>) JSON.fromJSON(Map.class, hnswDocument.extraField()));
     }
 }

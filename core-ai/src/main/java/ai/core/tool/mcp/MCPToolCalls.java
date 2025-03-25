@@ -2,15 +2,12 @@ package ai.core.tool.mcp;
 
 import ai.core.mcp.client.MCPClientService;
 import ai.core.tool.ToolCallParameter;
-import io.modelcontextprotocol.kotlin.sdk.Tool;
-import kotlinx.serialization.json.JsonArray;
-import kotlinx.serialization.json.JsonObject;
-import kotlinx.serialization.json.JsonElement;
-import kotlinx.serialization.json.JsonPrimitive;
+import io.modelcontextprotocol.spec.McpSchema;
 
 import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -24,31 +21,32 @@ public class MCPToolCalls extends ArrayList<MCPToolCall> {
         var mcpTollCalls = new MCPToolCalls();
         for (var tool : tools) {
             mcpTollCalls.add(MCPToolCall.builder()
-                    .name(tool.getName())
-                    .description(tool.getDescription())
-                    .parameters(buildParameters(tool.getInputSchema()))
+                    .name(tool.name())
+                    .description(tool.description())
+                    .parameters(buildParameters(tool.inputSchema()))
                     .mcpClientService(mcpClientService).build());
         }
         return mcpTollCalls;
     }
 
-    private static List<ToolCallParameter> buildParameters(Tool.Input inputSchema) {
+    @SuppressWarnings("rawtypes")
+    private static List<ToolCallParameter> buildParameters(McpSchema.JsonSchema inputSchema) {
         var parameters = new ArrayList<ToolCallParameter>();
-        var required = inputSchema.getRequired();
-        var properties = inputSchema.getProperties();
+        var required = inputSchema.required();
+        var properties = inputSchema.properties();
 
         for (var entry : properties.entrySet()) {
             var propValue = entry.getValue();
 
-            if (propValue instanceof JsonObject propObj) {
+            if (propValue instanceof Map propObj) {
                 var name = entry.getKey();
-                var type = getStringValue(propObj.get("type"));
+                var type = (String) propObj.get("type");
                 var enums = getListValue(propObj.get("enum"));
-                var title = getStringValue(propObj.get("title"));
+                var description = (String) propObj.get("description");
 
                 var parameter = ToolCallParameter.builder()
                         .name(name)
-                        .description(title)
+                        .description(description)
                         .type(mapType(type))
                         .required(required != null && required.contains(name))
                         .enums(enums)
@@ -59,23 +57,15 @@ public class MCPToolCalls extends ArrayList<MCPToolCall> {
         return parameters;
     }
 
-    private static List<String> getListValue(JsonElement element) {
+    @SuppressWarnings("rawtypes")
+    private static List<String> getListValue(Object element) {
         var enumValues = new ArrayList<String>();
-        if (element instanceof JsonArray jsonArray) {
+        if (element instanceof List jsonArray) {
             for (var jsonElement : jsonArray) {
-                if (jsonElement instanceof JsonPrimitive) {
-                    enumValues.add(((JsonPrimitive) jsonElement).getContent());
-                }
+                enumValues.add((String) jsonElement);
             }
         }
         return enumValues;
-    }
-
-    private static String getStringValue(JsonElement element) {
-        if (element instanceof JsonPrimitive) {
-            return ((JsonPrimitive) element).getContent();
-        }
-        return null;
     }
 
     private static Class<?> mapType(String typeStr) {

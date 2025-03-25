@@ -1,14 +1,11 @@
 package ai.core.mcp.client
 
-
-import core.framework.internal.log.LogManager
-import io.ktor.client.*
-import io.modelcontextprotocol.kotlin.sdk.Implementation
-import io.modelcontextprotocol.kotlin.sdk.Prompt
-import io.modelcontextprotocol.kotlin.sdk.Resource
-import io.modelcontextprotocol.kotlin.sdk.Tool
-import io.modelcontextprotocol.kotlin.sdk.client.Client
-import io.modelcontextprotocol.kotlin.sdk.client.mcpSseTransport
+import io.modelcontextprotocol.client.McpAsyncClient
+import io.modelcontextprotocol.client.McpClient
+import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport
+import io.modelcontextprotocol.spec.McpSchema.*
+import reactor.core.publisher.Mono
+import java.time.Duration
 
 /**
  * @author stephen
@@ -16,34 +13,32 @@ import io.modelcontextprotocol.kotlin.sdk.client.mcpSseTransport
 object MCPClient {
     private const val MCP_CLIENT_NAME_PREFIX: String = "CoreAI-MCP-Client-"
     private const val MCP_VERSION: String = "1.0.0"
+    private const val MCP_DEFAULT_TIMEOUT_IN_SECONDS: Long = 3
 
-    suspend fun connect(h: String, p: Int): Client {
-        val client = Client(Implementation(MCP_CLIENT_NAME_PREFIX + LogManager.APP_NAME, MCP_VERSION))
-        val transport = HttpClient {
-            install(io.ktor.client.plugins.sse.SSE)
-        }.mcpSseTransport {
-            url {
-                host = h
-                port = p
-            }
-        }
-        client.connect(transport)
-        return client
+    fun connect(url: String): McpAsyncClient {
+        val transport = HttpClientSseClientTransport(url)
+        val builder = McpClient.async(transport)
+        transport.connect {
+            Mono.empty()
+        }.block(Duration.ofSeconds(MCP_DEFAULT_TIMEOUT_IN_SECONDS))
+        val client = builder.build()
+        client.initialize().block(Duration.ofSeconds(MCP_DEFAULT_TIMEOUT_IN_SECONDS))
+        return client;
     }
 
-    suspend fun listTools(client: Client): List<Tool> {
-        return client.listTools()?.tools ?: emptyList()
+    fun listTools(client: McpAsyncClient): List<Tool> {
+        return client.listTools().block(Duration.ofSeconds(MCP_DEFAULT_TIMEOUT_IN_SECONDS))?.tools ?: emptyList()
     }
 
-    suspend fun listPrompts(client: Client): List<Prompt> {
-        return client.listPrompts()?.prompts ?: emptyList()
+    fun listPrompts(client: McpAsyncClient): List<Prompt> {
+        return client.listPrompts().block(Duration.ofSeconds(MCP_DEFAULT_TIMEOUT_IN_SECONDS))?.prompts ?: emptyList()
     }
 
-    suspend fun listResources(client: Client): List<Resource> {
-        return client.listResources()?.resources ?: emptyList()
+    fun listResources(client: McpAsyncClient): List<Resource> {
+        return client.listResources().block(Duration.ofSeconds(MCP_DEFAULT_TIMEOUT_IN_SECONDS))?.resources ?: emptyList()
     }
 
-    suspend fun callTool(client: Client, tool: String, args: Map<String, String>) {
-        client.callTool(tool, args)
+    fun callTool(client: McpAsyncClient, request: CallToolRequest): Mono<CallToolResult> {
+        return client.callTool(request)
     }
 }
