@@ -16,12 +16,16 @@ import com.azure.ai.inference.EmbeddingsClientBuilder;
 import com.azure.ai.inference.ModelServiceVersion;
 import com.azure.ai.inference.models.EmbeddingEncodingFormat;
 import com.azure.ai.inference.models.EmbeddingInputType;
+import com.azure.core.credential.AccessToken;
 import com.azure.core.credential.AzureKeyCredential;
+import com.azure.core.credential.TokenCredential;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.HttpClientOptions;
 import core.framework.util.Strings;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.time.OffsetDateTime;
 
 /**
  * @author stephen
@@ -30,14 +34,21 @@ public class AzureInferenceProvider extends LLMProvider {
     private final ChatCompletionsClient chatClient;
     private final EmbeddingsClient embeddingsClient;
 
-    public AzureInferenceProvider(LLMProviderConfig config, String apiKey, String endpoint) {
+    public AzureInferenceProvider(LLMProviderConfig config, String apiKey, String endpoint, boolean azureKeyCredential) {
         super(config);
         var options = new HttpClientOptions();
         options.setConnectTimeout(Duration.ofMillis(1000));
         options.setReadTimeout(Duration.ofSeconds(120));
         options.setConnectionIdleTimeout(Duration.ofMinutes(5));
-        this.chatClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(new AzureKeyCredential(apiKey)).endpoint(endpoint).buildClient();
-        this.embeddingsClient = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(new AzureKeyCredential(apiKey)).endpoint(endpoint).buildClient();
+        if (!azureKeyCredential) {
+            TokenCredential tokenCredential = request -> Mono.just(new AccessToken(apiKey, OffsetDateTime.MAX));
+            this.chatClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildClient();
+            this.embeddingsClient = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildClient();
+        } else {
+            var keyCredential = new AzureKeyCredential(apiKey);
+            this.chatClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(keyCredential).endpoint(endpoint).buildClient();
+            this.embeddingsClient = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(keyCredential).endpoint(endpoint).buildClient();
+        }
     }
 
     @Override

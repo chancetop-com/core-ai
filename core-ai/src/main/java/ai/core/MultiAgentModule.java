@@ -41,7 +41,7 @@ public class MultiAgentModule extends Module {
     }
 
     private void configLLMProvider(String type) {
-        var config = setupLLMProperties();
+        var config = setupLLMProperties(type);
         if ("litellm".equals(type)) {
             load(new LiteLLMModule());
             bind(new LiteLLMProvider(config));
@@ -49,7 +49,11 @@ public class MultiAgentModule extends Module {
             return;
         }
         if ("azure-inference".equals(type)) {
-            bind(new AzureInferenceProvider(config, requiredProperty("sys.llm.apikey"), property("sys.llm.endpoint").orElse(null)));
+            bind(new AzureInferenceProvider(config, requiredProperty("sys.llm.apikey"), property("sys.llm.endpoint").orElse(null), true));
+            return;
+        }
+        if ("deepseek".equals(type)) {
+            bind(new AzureInferenceProvider(config, requiredProperty("sys.llm.apikey"), property("sys.llm.endpoint").orElse(null), false));
             return;
         }
         if ("azure".equals(type) || "openai".equals(type)) {
@@ -59,12 +63,21 @@ public class MultiAgentModule extends Module {
         throw new RuntimeException("Unsupported LLM provider: " + type);
     }
 
-    private LLMProviderConfig setupLLMProperties() {
-        var config = new LLMProviderConfig("gpt-4o", 0.7d, "text-embedding-3-large");
+    private LLMProviderConfig setupLLMProperties(String type) {
+        var config = new LLMProviderConfig(getProviderDefaultChatModel(type), 0.7d, "text-embedding-3-large");
         property("llm.temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
         property("llm.model").ifPresent(config::setModel);
         property("llm.embeddings.model").ifPresent(config::setEmbeddingModel);
         return config;
+    }
+
+    private String getProviderDefaultChatModel(String type) {
+        return switch (type) {
+            case "azure-inference" -> "o1-mini";
+            case "deepseek" -> "deepseek-chat";
+            case "openai", "azure" -> "gpt-4o";
+            default -> "gpt-3.5-turbo";
+        };
     }
 
     private void configPersistence(String type) {
