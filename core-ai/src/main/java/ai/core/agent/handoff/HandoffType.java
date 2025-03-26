@@ -10,6 +10,8 @@ public enum HandoffType {
     AUTO,
     @Property(name = "DIRECT")
     DIRECT,
+    @Property(name = "HYBRID")
+    HYBRID,
     @Property(name = "MANUAL")
     MANUAL
 }

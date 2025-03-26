@@ -4,6 +4,7 @@ import ai.core.agent.handoff.handoffs.AutoHandoff;
 import ai.core.agent.handoff.handoffs.DirectHandoff;
 import ai.core.agent.handoff.Handoff;
 import ai.core.agent.handoff.HandoffType;
+import ai.core.agent.handoff.handoffs.HybridAutoDirectHandoff;
 import ai.core.agent.planning.Planning;
 import ai.core.agent.planning.plannings.DefaultPlanning;
 import ai.core.defaultagents.DefaultModeratorAgent;
@@ -322,18 +323,7 @@ public class AgentGroup extends Node<AgentGroup> {
             agent.moderator = this.moderator;
             agent.handoffType = this.handoffType;
             agent.handoff = this.handoff;
-            if (handoffType == null) {
-                agent.handoffType = HandoffType.AUTO;
-            }
-            if (agent.handoffType == HandoffType.DIRECT) {
-                agent.handoff = new DirectHandoff();
-            }
-            if (agent.handoffType == HandoffType.AUTO && agent.handoff == null) {
-                agent.handoff = new AutoHandoff();
-            }
-            if (agent.handoffType == HandoffType.MANUAL && agent.handoff == null) {
-                throw new RuntimeException("handoff is required when handoffType is MANUAL");
-            }
+            buildHandoff(agent);
             if (agent.handoffType == HandoffType.AUTO && agent.moderator == null) {
                 agent.moderator = DefaultModeratorAgent.of(this.llmProvider, this.llmProvider.config.getModel(), this.description, this.agents, null);
             }
@@ -346,6 +336,27 @@ public class AgentGroup extends Node<AgentGroup> {
             }
             agent.setChildrenParentNode();
             return agent;
+        }
+
+        private void buildHandoff(AgentGroup agent) {
+            if (agent.handoffType != HandoffType.MANUAL && agent.handoff != null) {
+                throw new IllegalArgumentException("handoff is unnecessary when handoffType is not MANUAL");
+            }
+            if (handoffType == null) {
+                agent.handoffType = HandoffType.AUTO;
+            }
+            if (agent.handoffType == HandoffType.DIRECT) {
+                agent.handoff = new DirectHandoff();
+            }
+            if (agent.handoffType == HandoffType.HYBRID) {
+                agent.handoff = new HybridAutoDirectHandoff();
+            }
+            if (agent.handoffType == HandoffType.AUTO) {
+                agent.handoff = new AutoHandoff();
+            }
+            if (agent.handoffType == HandoffType.MANUAL && agent.handoff == null) {
+                throw new IllegalArgumentException("handoff is required when handoffType is MANUAL");
+            }
         }
     }
 }

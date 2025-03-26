@@ -43,6 +43,7 @@ public abstract class Node<T extends Node<T>> {
     private int round;
     private int maxRound;
     private Node<?> parent;
+    private Node<?> next;
     private final List<Message> messages;
     private final Usage currentTokenUsage = new Usage();
 
@@ -156,6 +157,10 @@ public abstract class Node<T extends Node<T>> {
         return this.longQueryHandler;
     }
 
+    public Node<?> getNext() {
+        return next;
+    }
+
     public void setRawOutput(String output) {
         this.rawOutput = output;
     }
@@ -175,6 +180,10 @@ public abstract class Node<T extends Node<T>> {
         this.setRawOutput(null);
         this.setRound(0);
         this.nodeStatus = NodeStatus.INITED;
+    }
+
+    public void setNext(Node<?> node) {
+        this.next = node;
     }
 
     @SuppressWarnings("unchecked")
