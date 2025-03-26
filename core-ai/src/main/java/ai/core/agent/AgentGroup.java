@@ -114,7 +114,7 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     private boolean finished() {
-        if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())) {
+        if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction()) && Strings.isBlank(planning.nextAgentName())) {
             updateNodeStatus(NodeStatus.COMPLETED);
             return true;
         }

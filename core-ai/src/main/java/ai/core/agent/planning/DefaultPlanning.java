@@ -54,13 +54,13 @@ public class DefaultPlanning implements Planning {
         @Property(name = "planning")
         public String planning;
 
-        @Property(name = "name")
+        @Property(name = "next_agent_name")
         public String name;
 
-        @Property(name = "query")
+        @Property(name = "next_query")
         public String query;
 
-        @Property(name = "next_step")
+        @Property(name = "next_step_action")
         public String nextStep;
     }
 }
