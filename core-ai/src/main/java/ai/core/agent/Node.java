@@ -75,8 +75,8 @@ public abstract class Node<T extends Node<T>> {
         getStatusChangedEventListener(nodeStatus).ifPresent(listener -> listener.eventHandler((T) this));
     }
 
-    boolean terminateCheck() {
-        return !terminations.isEmpty() && terminations.stream().anyMatch(v -> v.terminate(this));
+    boolean notTerminated() {
+        return terminations.isEmpty() || terminations.stream().noneMatch(v -> v.terminate(this));
     }
 
     void formatContent(CompletionResponse rst, Formatter formatter) {
@@ -156,6 +156,18 @@ public abstract class Node<T extends Node<T>> {
         return this.longQueryHandler;
     }
 
+    public void setRawOutput(String output) {
+        this.rawOutput = output;
+    }
+
+    public void setOutput(String output) {
+        this.output = output;
+    }
+
+    void setInput(String input) {
+        this.input = input;
+    }
+
     public void clearShortTermMemory() {
         this.clearMessages();
         this.setInput(null);
@@ -199,14 +211,6 @@ public abstract class Node<T extends Node<T>> {
     abstract String execute(String query, Map<String, Object> variables);
 
     abstract void setChildrenParentNode();
-
-    void setRawOutput(String output) {
-        this.rawOutput = output;
-    }
-
-    void setOutput(String output) {
-        this.output = output;
-    }
 
     void setName(String name) {
         this.name = name;
@@ -268,10 +272,6 @@ public abstract class Node<T extends Node<T>> {
         this.messages.clear();
     }
 
-    void setInput(String input) {
-        this.input = input;
-    }
-
     void addTokenCost(Usage cost) {
         this.currentTokenUsage.setCompletionTokens(this.currentTokenUsage.getCompletionTokens() + cost.getCompletionTokens());
         this.currentTokenUsage.setPromptTokens(this.currentTokenUsage.getPromptTokens() + cost.getPromptTokens());
@@ -308,7 +308,7 @@ public abstract class Node<T extends Node<T>> {
         this.terminations.addAll(terminations);
     }
 
-    void addResponseChoiceMessages(List<Message> messages) {
+    public void addResponseChoiceMessages(List<Message> messages) {
         messages.forEach(this::addResponseChoiceMessage);
     }
 

@@ -1,7 +1,6 @@
 package ai.core.defaultagents;
 
 import ai.core.agent.Agent;
-import ai.core.agent.AgentChain;
 import ai.core.agent.Node;
 import ai.core.llm.LLMProvider;
 
@@ -25,9 +24,5 @@ public class DefaultSummaryAgent {
                 .promptTemplate("Query: ")
                 .parent(node)
                 .llmProvider(llmProvider).build();
-    }
-
-    public static String summaryTopic(AgentChain agentChain, Agent agent) {
-        return agent.run(agentChain.getConversationText(), null);
     }
 }

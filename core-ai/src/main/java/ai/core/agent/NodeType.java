@@ -5,7 +5,6 @@ package ai.core.agent;
  */
 public enum NodeType {
     AGENT,
-    CHAIN,
     GROUP,
     USER_INPUT
 }

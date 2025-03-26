@@ -106,7 +106,7 @@ public class Agent extends Node<Agent> {
         // never start if we do not have termination or something
         validation();
         setRound(1);
-        while (!terminateCheck()) {
+        while (notTerminated()) {
             var rst = completionWithFormat(getReflectionConfig().prompt());
             var choice = getChoice(rst);
             addResponseChoiceMessage(choice.message);

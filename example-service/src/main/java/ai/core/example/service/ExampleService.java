@@ -1,7 +1,8 @@
 package ai.core.example.service;
 
 import ai.core.agent.Agent;
-import ai.core.agent.AgentChain;
+import ai.core.agent.AgentGroup;
+import ai.core.agent.handoff.HandoffType;
 import ai.core.agent.NodeStatus;
 import ai.core.agent.UserInputAgent;
 import ai.core.agent.listener.listeners.DefaultAgentRunningEventListener;
@@ -13,7 +14,6 @@ import ai.core.example.api.example.OrderIssueResponse;
 import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.mcp.client.MCPClientService;
 import ai.core.mcp.client.MCPServerConfig;
-import ai.core.persistence.PersistenceProvider;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import ai.core.tool.function.Functions;
 import ai.core.tool.mcp.MCPToolCalls;
@@ -96,11 +96,14 @@ public class ExampleService {
         var agent = PromptOptimizeAgent.of(llmProvider);
         agent.run(prompt, null);
         var summaryAgent = DefaultSummaryAgent.of(llmProvider);
-        var summaryChain = AgentChain.builder().name("summary-chain").description("summary the chain").build();
-        summaryChain.addNode(agent);
-        summaryChain.addNode(summaryAgent);
-        summaryChain.run(prompt, null);
-        return DefaultSummaryAgent.summaryTopic(summaryChain, summaryAgent);
+        var summaryChain = AgentGroup.builder()
+                .name("summary-chain")
+                .description("summary the chain")
+                .agents(List.of(agent, summaryAgent))
+                .handoffType(HandoffType.DIRECT)
+                .maxRound(1)
+                .llmProvider(llmProvider).build();
+        return summaryChain.run(prompt, null);
     }
 
     public String debate(String topic) {
@@ -117,11 +120,14 @@ public class ExampleService {
                 .promptTemplate("topic: ")
                 .llmProvider(llmProvider).build();
         conAgent.addStatusChangedEventListener(NodeStatus.RUNNING, new DefaultAgentRunningEventListener());
-        var debateChain = AgentChain.builder().name("debate-chain").description("chain of debate").build();
-        debateChain.addNode(proAgent);
-        debateChain.addNode(conAgent);
-        debateChain.run(topic, null);
-        return debateChain.getConversationText();
+        var debateChain = AgentGroup.builder()
+                .name("debate-chain")
+                .description("chain of debate")
+                .agents(List.of(proAgent, conAgent))
+                .handoffType(HandoffType.DIRECT)
+                .maxRound(3)
+                .llmProvider(llmProvider).build();
+        return debateChain.run(topic, null);
     }
 
     public String function(String prompt) {

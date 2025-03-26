@@ -1,4 +1,6 @@
-package ai.core.agent;
+package ai.core.agent.planning;
+
+import ai.core.agent.Agent;
 
 import java.util.Map;
 
@@ -7,6 +9,8 @@ import java.util.Map;
  */
 public interface Planning {
     String planning(Agent agent, String query, Map<String, Object> variables);
+
+    <T> void planning(T instance);
 
     <T> T localPlanning(String planningText, Class<T> instanceClass);
 

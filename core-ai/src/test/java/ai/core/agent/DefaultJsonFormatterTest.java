@@ -1,7 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.formatter.formatters.DefaultJsonFormatter;
-import ai.core.agent.planning.DefaultPlanning;
+import ai.core.agent.planning.plannings.DefaultPlanningResult;
 import core.framework.json.JSON;
 import org.junit.jupiter.api.Test;
 
@@ -83,6 +83,6 @@ class DefaultJsonFormatterTest {
                 有时 setDefaultButton 似乎不生效，导致回车键不能触发发送按钮。请分析可能的原因并提供解决方案。"
                 }""";
         var result = formatter.formatter(input);
-        JSON.fromJSON(DefaultPlanning.DefaultAgentPlanningResult.class, result);
+        JSON.fromJSON(DefaultPlanningResult.class, result);
     }
 }

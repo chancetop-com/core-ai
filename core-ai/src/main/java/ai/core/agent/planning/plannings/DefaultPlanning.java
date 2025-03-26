@@ -1,8 +1,7 @@
-package ai.core.agent.planning;
+package ai.core.agent.planning.plannings;
 
 import ai.core.agent.Agent;
-import ai.core.agent.Planning;
-import core.framework.api.json.Property;
+import ai.core.agent.planning.Planning;
 import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,20 +13,25 @@ import java.util.Map;
  */
 public class DefaultPlanning implements Planning {
     private final Logger logger = LoggerFactory.getLogger(DefaultPlanning.class);
-    private DefaultAgentPlanningResult result;
+    private DefaultPlanningResult result;
 
     @Override
     public String planning(Agent agent, String query, Map<String, Object> variables) {
         var rst = agent.run(query, variables);
-        result = JSON.fromJSON(DefaultAgentPlanningResult.class, rst);
+        result = JSON.fromJSON(DefaultPlanningResult.class, rst);
         logger.info("Planning: {}", rst);
         return rst;
     }
 
     @Override
+    public <T> void planning(T instance) {
+        result = (DefaultPlanningResult) instance;
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public <T> T localPlanning(String planningText, Class<T> instanceClass) {
-        return (T) JSON.fromJSON(DefaultAgentPlanningResult.class, planningText);
+        return (T) JSON.fromJSON(DefaultPlanningResult.class, planningText);
     }
 
     @Override
@@ -48,19 +52,5 @@ public class DefaultPlanning implements Planning {
     @Override
     public String planningText() {
         return result.planning;
-    }
-
-    public static class DefaultAgentPlanningResult {
-        @Property(name = "planning")
-        public String planning;
-
-        @Property(name = "next_agent_name")
-        public String name;
-
-        @Property(name = "next_query")
-        public String query;
-
-        @Property(name = "next_step_action")
-        public String nextStep;
     }
 }

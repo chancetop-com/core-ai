@@ -1,9 +1,13 @@
 package ai.core.agent;
 
-import ai.core.agent.planning.DefaultPlanning;
+import ai.core.agent.handoff.handoffs.AutoHandoff;
+import ai.core.agent.handoff.handoffs.DirectHandoff;
+import ai.core.agent.handoff.Handoff;
+import ai.core.agent.handoff.HandoffType;
+import ai.core.agent.planning.Planning;
+import ai.core.agent.planning.plannings.DefaultPlanning;
 import ai.core.defaultagents.DefaultModeratorAgent;
 import ai.core.llm.LLMProvider;
-import ai.core.llm.providers.inner.Message;
 import ai.core.termination.Termination;
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.tool.ToolCall;
@@ -30,6 +34,8 @@ public class AgentGroup extends Node<AgentGroup> {
     List<Node<?>> agents;
     Agent moderator;
     Planning planning;
+    HandoffType handoffType;
+    Handoff handoff;
     private Node<?> currentAgent;
     private String currentQuery;
 
@@ -51,23 +57,21 @@ public class AgentGroup extends Node<AgentGroup> {
     String executeWithException(String rawQuery, Map<String, Object> variables) {
         currentQuery = rawQuery;
         startRunning();
-        while (!terminateCheck()) {
-            setRound(getRound() + 1);
+        while (notTerminated()) {
             if (currentTokenUsageOutOfMax(currentQuery, llmProvider.maxTokens())) {
                 currentQuery = handleToShortQuery(currentQuery, getPreviousQuery());
             }
 
             try {
-                currentAgent = moderator;
-                var text = planning.planning(moderator, currentQuery, variables);
-                planningFinished(currentQuery, text, currentAgent == null ? "user" : currentAgent.getName());
+                handoff.handoff(this, planning, variables);
             } catch (Exception e) {
                 currentQuery = Strings.format("JSON resolve failed, please check the planning result: ", e.getMessage());
+                setRound(getRound() + 1);
                 continue;
             }
 
             // planning think the previous round is completed
-            if (finished()) return getOutput();
+            if (finished(false)) return getOutput();
             if (planningFailed()) continue;
 
             currentAgent = getAgentByName(planning.nextAgentName());
@@ -79,6 +83,7 @@ public class AgentGroup extends Node<AgentGroup> {
             } catch (Exception e) {
                 logger.warn("round: {}/{} failed, agent: {}, planning: {}, input: {}", getRound(), getMaxRound(), currentAgent.getName(), planning.nextQuery(), currentAgent.getInput());
                 currentQuery = Strings.format("Failed to run agent<{}>: {}", currentAgent.getName(), e.getMessage());
+                setRound(getRound() + 1);
                 continue;
             }
 
@@ -89,9 +94,10 @@ public class AgentGroup extends Node<AgentGroup> {
 
             if (waitingForUserInput()) return output;
             // planning think this agent can finish the task
-            if (finished()) return output;
+            if (finished(true)) return output;
 
             roundCompleted();
+            setRound(getRound() + 1);
         }
 
         return Strings.format("Run out of round: {}/{}, Last round output: {}", getRound(), getMaxRound(), getOutput());
@@ -113,8 +119,10 @@ public class AgentGroup extends Node<AgentGroup> {
         return false;
     }
 
-    private boolean finished() {
-        if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction()) && Strings.isBlank(planning.nextAgentName())) {
+    private boolean finished(boolean isCurrentRoundFinished) {
+        if (Termination.DEFAULT_TERMINATION_WORD.equals(planning.nextAction())
+                && isCurrentRoundFinished
+                || Strings.isBlank(planning.nextAgentName())) {
             updateNodeStatus(NodeStatus.COMPLETED);
             return true;
         }
@@ -140,15 +148,9 @@ public class AgentGroup extends Node<AgentGroup> {
         addResponseChoiceMessages(currentAgent.getMessages().subList(1, currentAgent.getMessages().size()));
     }
 
-    private void planningFinished(String query, String text, String queryFrom) {
-        setRawOutput(moderator.getRawOutput());
-        addResponseChoiceMessages(List.of(
-                Message.of(AgentRole.USER, queryFrom, query),
-                Message.of(AgentRole.ASSISTANT, text, moderator.getName(), null, null, null)));
-    }
-
     private void startRunning() {
         setInput(currentQuery);
+        setRound(1);
         updateNodeStatus(NodeStatus.RUNNING);
     }
 
@@ -159,20 +161,32 @@ public class AgentGroup extends Node<AgentGroup> {
         super.clearShortTermMemory();
     }
 
+    public Node<?> getCurrentAgent() {
+        return currentAgent;
+    }
+
     public Agent getModerator() {
         return moderator;
+    }
+
+    public void moderatorSpeaking() {
+        currentAgent = moderator;
     }
 
     public Planning getPlanning() {
         return planning;
     }
 
-    public Node<?> getAgentByName(String name) {
-        return agents.stream().filter(node -> node.getName().equals(name)).findFirst().orElse(null);
-    }
-
     public List<Node<?>> getAgents() {
         return agents;
+    }
+
+    public String getCurrentQuery() {
+        return currentQuery;
+    }
+
+    public Node<?> getAgentByName(String name) {
+        return agents.stream().filter(node -> node.getName().equals(name)).findFirst().orElse(null);
     }
 
     public String getConversation() {
@@ -249,6 +263,8 @@ public class AgentGroup extends Node<AgentGroup> {
         private LLMProvider llmProvider;
         private Planning planning;
         private Agent moderator;
+        private HandoffType handoffType;
+        private Handoff handoff;
 
         @Override
         protected Builder self() {
@@ -275,6 +291,16 @@ public class AgentGroup extends Node<AgentGroup> {
             return this;
         }
 
+        public Builder handoffType(HandoffType handoffType) {
+            this.handoffType = handoffType;
+            return this;
+        }
+
+        public Builder handoff(Handoff handoff) {
+            this.handoff = handoff;
+            return this;
+        }
+
         public AgentGroup build() {
             if (this.agents == null || this.agents.isEmpty()) {
                 throw new IllegalArgumentException("agents is required");
@@ -294,7 +320,21 @@ public class AgentGroup extends Node<AgentGroup> {
             agent.llmProvider = this.llmProvider;
             agent.agents = this.agents;
             agent.moderator = this.moderator;
-            if (agent.moderator == null) {
+            agent.handoffType = this.handoffType;
+            agent.handoff = this.handoff;
+            if (handoffType == null) {
+                agent.handoffType = HandoffType.AUTO;
+            }
+            if (agent.handoffType == HandoffType.DIRECT) {
+                agent.handoff = new DirectHandoff();
+            }
+            if (agent.handoffType == HandoffType.AUTO && agent.handoff == null) {
+                agent.handoff = new AutoHandoff();
+            }
+            if (agent.handoffType == HandoffType.MANUAL && agent.handoff == null) {
+                throw new RuntimeException("handoff is required when handoffType is MANUAL");
+            }
+            if (agent.handoffType == HandoffType.AUTO && agent.moderator == null) {
                 agent.moderator = DefaultModeratorAgent.of(this.llmProvider, this.llmProvider.config.getModel(), this.description, this.agents, null);
             }
             agent.planning = this.planning;
