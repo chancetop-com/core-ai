@@ -119,6 +119,12 @@ public class Agent extends Node<Agent> {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessageWithLongTernMemory());
         }
+
+        // add group context if needed
+        if (getUseGroupContext() != null && getUseGroupContext() && getParentNode() != null) {
+            addMessages(getParentNode().getMessages());
+        }
+
         var reqMsg = Message.of(AgentRole.USER, "user raw request/last agent output", query);
         addMessage(reqMsg);
         var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());

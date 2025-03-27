@@ -17,7 +17,7 @@ public class AutoHandoff implements Handoff {
     public void handoff(AgentGroup agentGroup, Planning planning, Map<String, Object> variables) {
         var currentAgent = agentGroup.getCurrentAgent();
         agentGroup.moderatorSpeaking();
-        var text = planning.planning(agentGroup.getModerator(), agentGroup.getCurrentQuery(), variables);
+        var text = planning.agentPlanning(agentGroup.getModerator(), agentGroup.getCurrentQuery(), variables);
         agentGroup.setRawOutput(agentGroup.getModerator().getRawOutput());
         agentGroup.addResponseChoiceMessages(List.of(
                 Message.of(AgentRole.USER, currentAgent == null ? "user" : currentAgent.getName(), agentGroup.getCurrentQuery()),

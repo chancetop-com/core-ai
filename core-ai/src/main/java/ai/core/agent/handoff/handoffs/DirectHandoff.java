@@ -24,7 +24,7 @@ public class DirectHandoff implements Handoff {
         }
         directPlanning.planning = "direct handoff to " + directPlanning.name;
         directPlanning.query = agentGroup.getOutput() == null ? agentGroup.getInput() : agentGroup.getOutput();
-        planning.planning(directPlanning);
+        planning.directPlanning(directPlanning);
     }
 
     private String getNextAgentNameOf(List<Node<?>> agents, String name) {

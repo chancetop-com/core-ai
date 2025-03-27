@@ -16,7 +16,7 @@ public class DefaultPlanning implements Planning {
     private DefaultPlanningResult result;
 
     @Override
-    public String planning(Agent agent, String query, Map<String, Object> variables) {
+    public String agentPlanning(Agent agent, String query, Map<String, Object> variables) {
         var rst = agent.run(query, variables);
         result = JSON.fromJSON(DefaultPlanningResult.class, rst);
         logger.info("Planning: {}", rst);
@@ -24,13 +24,13 @@ public class DefaultPlanning implements Planning {
     }
 
     @Override
-    public <T> void planning(T instance) {
+    public <T> void directPlanning(T instance) {
         result = (DefaultPlanningResult) instance;
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> T localPlanning(String planningText, Class<T> instanceClass) {
+    public <T> T explainPlanning(String planningText, Class<T> instanceClass) {
         return (T) JSON.fromJSON(DefaultPlanningResult.class, planningText);
     }
 

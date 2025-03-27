@@ -8,11 +8,11 @@ import java.util.Map;
  * @author stephen
  */
 public interface Planning {
-    String planning(Agent agent, String query, Map<String, Object> variables);
+    String agentPlanning(Agent agent, String query, Map<String, Object> variables);
 
-    <T> void planning(T instance);
+    <T> void directPlanning(T instance);
 
-    <T> T localPlanning(String planningText, Class<T> instanceClass);
+    <T> T explainPlanning(String planningText, Class<T> instanceClass);
 
     String nextAgentName();
 

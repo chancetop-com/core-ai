@@ -37,6 +37,7 @@ public abstract class Node<T extends Node<T>> {
     private Persistence<T> persistence;
     private PersistenceProvider persistenceProvider;
     private LongQueryHandler longQueryHandler;
+    private Boolean useGroupContext;
     private String input;
     private String output;
     private String rawOutput;
@@ -135,6 +136,10 @@ public abstract class Node<T extends Node<T>> {
 
     public Usage getCurrentTokenUsage() {
         return this.currentTokenUsage;
+    }
+
+    public Boolean getUseGroupContext() {
+        return this.useGroupContext;
     }
 
     public Node<?> getParentNode() {
@@ -294,6 +299,10 @@ public abstract class Node<T extends Node<T>> {
         this.parent = parent;
     }
 
+    void setUseGroupContext(Boolean useGroupContext) {
+        this.useGroupContext = useGroupContext;
+    }
+
     void addTermination(Termination termination) {
         if (termination == null) return;
         this.terminations.add(termination);
@@ -338,6 +347,7 @@ public abstract class Node<T extends Node<T>> {
         Persistence<T> persistence;
         PersistenceProvider persistenceProvider;
         LongQueryHandler longQueryHandler;
+        Boolean useGroupContext;
         Node<?> parent;
         int maxRound;
 
@@ -404,6 +414,11 @@ public abstract class Node<T extends Node<T>> {
             return self();
         }
 
+        public B useGroupContext(Boolean useGroupContext) {
+            this.useGroupContext = useGroupContext;
+            return self();
+        }
+
         public void build(T node) {
             validation();
             node.setName(this.name);
@@ -418,6 +433,7 @@ public abstract class Node<T extends Node<T>> {
             node.setPersistenceProvider(this.persistenceProvider);
             node.setLongQueryHandler(this.longQueryHandler);
             node.setParentNode(this.parent);
+            node.setUseGroupContext(this.useGroupContext);
             node.updateNodeStatus(NodeStatus.INITED);
         }
 
