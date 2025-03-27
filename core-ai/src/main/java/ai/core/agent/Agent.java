@@ -46,6 +46,7 @@ public class Agent extends Node<Agent> {
     String model;
     ReflectionConfig reflectionConfig;
     LongTernMemory longTernMemory;
+    Boolean useGroupContext;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -95,7 +96,6 @@ public class Agent extends Node<Agent> {
 
     @Override
     void setChildrenParentNode() {
-
     }
 
     private Choice getChoice(CompletionResponse rst) {
@@ -203,6 +203,10 @@ public class Agent extends Node<Agent> {
         response.choices.getFirst().message.content = text.substring(text.lastIndexOf("</think>") + 8);
     }
 
+    public Boolean getUseGroupContext() {
+        return this.useGroupContext;
+    }
+
     public ReflectionConfig getReflectionConfig() {
         return this.reflectionConfig;
     }
@@ -236,6 +240,7 @@ public class Agent extends Node<Agent> {
         private Double temperature;
         private String model;
         private ReflectionConfig reflectionConfig;
+        private Boolean useGroupContext;
 
         public Builder promptTemplate(String promptTemplate) {
             this.promptTemplate = promptTemplate;
@@ -277,6 +282,11 @@ public class Agent extends Node<Agent> {
             return this;
         }
 
+        public Builder useGroupContext(Boolean useGroupContext) {
+            this.useGroupContext = useGroupContext;
+            return this;
+        }
+
         public Agent build() {
             var agent = new Agent();
             this.nodeType = NodeType.AGENT;
@@ -296,6 +306,7 @@ public class Agent extends Node<Agent> {
             agent.toolCalls = this.toolCalls;
             agent.ragConfig = this.ragConfig;
             agent.reflectionConfig = this.reflectionConfig;
+            agent.useGroupContext = this.useGroupContext;
             agent.setPersistence(new AgentPersistence());
             if (agent.reflectionConfig != null) {
                 agent.setMaxRound(agent.reflectionConfig.maxRound());
