@@ -3,6 +3,7 @@ package ai.core.agent.handoff.handoffs;
 import ai.core.agent.AgentGroup;
 import ai.core.agent.Node;
 import ai.core.agent.handoff.Handoff;
+import ai.core.agent.handoff.HandoffType;
 import ai.core.agent.planning.Planning;
 import ai.core.agent.planning.plannings.DefaultPlanningResult;
 import ai.core.termination.Termination;
@@ -14,6 +15,7 @@ import java.util.Map;
  * @author stephen
  */
 public class DirectHandoff implements Handoff {
+
     @Override
     public void handoff(AgentGroup agentGroup, Planning planning, Map<String, Object> variables) {
         var currentAgent = agentGroup.getCurrentAgent();
@@ -25,6 +27,11 @@ public class DirectHandoff implements Handoff {
         directPlanning.planning = "direct handoff to " + directPlanning.name;
         directPlanning.query = agentGroup.getOutput() == null ? agentGroup.getInput() : agentGroup.getOutput();
         planning.directPlanning(directPlanning);
+    }
+
+    @Override
+    public HandoffType getType() {
+        return HandoffType.DIRECT;
     }
 
     private String getNextAgentNameOf(List<Node<?>> agents, String name) {

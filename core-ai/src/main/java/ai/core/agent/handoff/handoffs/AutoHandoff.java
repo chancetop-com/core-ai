@@ -1,26 +1,30 @@
 package ai.core.agent.handoff.handoffs;
 
+import ai.core.agent.Agent;
 import ai.core.agent.AgentGroup;
-import ai.core.agent.AgentRole;
 import ai.core.agent.handoff.Handoff;
+import ai.core.agent.handoff.HandoffType;
 import ai.core.agent.planning.Planning;
-import ai.core.llm.providers.inner.Message;
 
-import java.util.List;
 import java.util.Map;
 
 /**
  * @author stephen
  */
-public class AutoHandoff implements Handoff {
+public record AutoHandoff(Agent moderator) implements Handoff {
+
     @Override
     public void handoff(AgentGroup agentGroup, Planning planning, Map<String, Object> variables) {
-        var currentAgent = agentGroup.getCurrentAgent();
-        agentGroup.moderatorSpeaking();
-        var text = planning.agentPlanning(agentGroup.getModerator(), agentGroup.getCurrentQuery(), variables);
-        agentGroup.setRawOutput(agentGroup.getModerator().getRawOutput());
-        agentGroup.addResponseChoiceMessages(List.of(
-                Message.of(AgentRole.USER, currentAgent == null ? "user" : currentAgent.getName(), agentGroup.getCurrentQuery()),
-                Message.of(AgentRole.ASSISTANT, text, agentGroup.getModerator().getName(), null, null, null)));
+        if (moderator.getParentNode() == null) {
+            moderator.setParentNode(agentGroup);
+        }
+        agentGroup.setCurrentAgent(moderator);
+        var text = planning.agentPlanning(moderator, agentGroup.getCurrentQuery(), variables);
+        agentGroup.setRawOutput(text);
+    }
+
+    @Override
+    public HandoffType getType() {
+        return HandoffType.AUTO;
     }
 }

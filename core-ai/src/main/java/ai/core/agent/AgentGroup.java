@@ -1,9 +1,9 @@
 package ai.core.agent;
 
-import ai.core.agent.handoff.handoffs.AutoHandoff;
-import ai.core.agent.handoff.handoffs.DirectHandoff;
-import ai.core.agent.handoff.Handoff;
 import ai.core.agent.handoff.HandoffType;
+import ai.core.agent.handoff.handoffs.AutoHandoff;
+import ai.core.agent.handoff.Handoff;
+import ai.core.agent.handoff.handoffs.DirectHandoff;
 import ai.core.agent.handoff.handoffs.HybridAutoDirectHandoff;
 import ai.core.agent.planning.Planning;
 import ai.core.agent.planning.plannings.DefaultPlanning;
@@ -33,9 +33,7 @@ public class AgentGroup extends Node<AgentGroup> {
 
     LLMProvider llmProvider;
     List<Node<?>> agents;
-    Agent moderator;
     Planning planning;
-    HandoffType handoffType;
     Handoff handoff;
     private Node<?> currentAgent;
     private String currentQuery;
@@ -52,7 +50,9 @@ public class AgentGroup extends Node<AgentGroup> {
     @Override
     void setChildrenParentNode() {
         agents.forEach(v -> v.setParentNode(this));
-        moderator.setParentNode(this);
+        if (handoff instanceof AutoHandoff) {
+            ((AutoHandoff) handoff).moderator().setParentNode(this);
+        }
     }
 
     String executeWithException(String rawQuery, Map<String, Object> variables) {
@@ -105,7 +105,7 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     private String getPreviousQuery() {
-        return currentAgent == null ? null : moderator.getMessages().getLast().content;
+        return currentAgent == null ? currentQuery : getMessages().getLast().content;
     }
 
     private void roundCompleted() {
@@ -146,7 +146,6 @@ public class AgentGroup extends Node<AgentGroup> {
     private void afterRunAgent(String output) {
         setRawOutput(currentAgent.getRawOutput());
         setOutput(output);
-        addResponseChoiceMessages(currentAgent.getMessages().subList(1, currentAgent.getMessages().size()));
     }
 
     private void startRunning() {
@@ -157,7 +156,9 @@ public class AgentGroup extends Node<AgentGroup> {
 
     @Override
     public void clearShortTermMemory() {
-        moderator.clearShortTermMemory();
+        if (handoff instanceof AutoHandoff) {
+            ((AutoHandoff) handoff).moderator().clearShortTermMemory();
+        }
         currentAgent = null;
         super.clearShortTermMemory();
     }
@@ -166,12 +167,12 @@ public class AgentGroup extends Node<AgentGroup> {
         return currentAgent;
     }
 
-    public Agent getModerator() {
-        return moderator;
+    public void setCurrentAgent(Node<?> currentAgent) {
+        this.currentAgent = currentAgent;
     }
 
-    public void moderatorSpeaking() {
-        currentAgent = moderator;
+    public Handoff getHandoff() {
+        return handoff;
     }
 
     public Planning getPlanning() {
@@ -263,7 +264,6 @@ public class AgentGroup extends Node<AgentGroup> {
         private List<Node<?>> agents;
         private LLMProvider llmProvider;
         private Planning planning;
-        private Agent moderator;
         private HandoffType handoffType;
         private Handoff handoff;
 
@@ -284,11 +284,6 @@ public class AgentGroup extends Node<AgentGroup> {
 
         public Builder planning(Planning planning) {
             this.planning = planning;
-            return this;
-        }
-
-        public Builder moderator(Agent moderator) {
-            this.moderator = moderator;
             return this;
         }
 
@@ -320,13 +315,7 @@ public class AgentGroup extends Node<AgentGroup> {
             agent.addTermination(new MaxRoundTermination());
             agent.llmProvider = this.llmProvider;
             agent.agents = this.agents;
-            agent.moderator = this.moderator;
-            agent.handoffType = this.handoffType;
             agent.handoff = this.handoff;
-            buildHandoff(agent);
-            if (agent.handoffType == HandoffType.AUTO && agent.moderator == null) {
-                agent.moderator = DefaultModeratorAgent.of(this.llmProvider, this.llmProvider.config.getModel(), this.description, this.agents, null);
-            }
             agent.planning = this.planning;
             if (agent.planning == null) {
                 agent.planning = new DefaultPlanning();
@@ -334,29 +323,35 @@ public class AgentGroup extends Node<AgentGroup> {
             if (agent.getMaxRound() <= 0) {
                 agent.setMaxRound(5);
             }
+            if (handoff == null) {
+                buildHandoff(agent);
+            }
+            buildHandoff(agent);
             agent.setChildrenParentNode();
             return agent;
         }
 
         private void buildHandoff(AgentGroup agent) {
-            if (agent.handoffType != HandoffType.MANUAL && agent.handoff != null) {
-                throw new IllegalArgumentException("handoff is unnecessary when handoffType is not MANUAL");
-            }
-            if (handoffType == null) {
-                agent.handoffType = HandoffType.AUTO;
-            }
-            if (agent.handoffType == HandoffType.DIRECT) {
-                agent.handoff = new DirectHandoff();
-            }
-            if (agent.handoffType == HandoffType.HYBRID) {
-                agent.handoff = new HybridAutoDirectHandoff();
-            }
-            if (agent.handoffType == HandoffType.AUTO) {
-                agent.handoff = new AutoHandoff();
-            }
-            if (agent.handoffType == HandoffType.MANUAL && agent.handoff == null) {
+            if (handoff != null) return;
+            if (handoffType == HandoffType.MANUAL && agent.handoff == null) {
                 throw new IllegalArgumentException("handoff is required when handoffType is MANUAL");
             }
+            if (handoffType == null) {
+                handoffType = HandoffType.HYBRID;
+            }
+            if (handoffType == HandoffType.DIRECT) {
+                agent.handoff = new DirectHandoff();
+            }
+            if (handoffType == HandoffType.HYBRID) {
+                agent.handoff = new HybridAutoDirectHandoff(buildDefaultModeratorAgent());
+            }
+            if (handoffType == HandoffType.AUTO) {
+                agent.handoff = new AutoHandoff(buildDefaultModeratorAgent());
+            }
+        }
+
+        private Agent buildDefaultModeratorAgent() {
+            return DefaultModeratorAgent.of(this.llmProvider, this.llmProvider.config.getModel(), this.description, this.agents, null);
         }
     }
 }

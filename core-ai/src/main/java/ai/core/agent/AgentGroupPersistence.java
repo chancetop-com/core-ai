@@ -1,5 +1,7 @@
 package ai.core.agent;
 
+import ai.core.agent.handoff.handoffs.AutoHandoff;
+import ai.core.agent.handoff.handoffs.HybridAutoDirectHandoff;
 import ai.core.llm.providers.inner.Message;
 import ai.core.persistence.Persistence;
 import core.framework.api.json.Property;
@@ -12,22 +14,33 @@ import java.util.List;
  */
 public class AgentGroupPersistence implements Persistence<AgentGroup> {
     @Override
-    public String serialization(AgentGroup chainNode) {
-        return JSON.toJSON(AgentGroupPersistenceDomain.of(chainNode.getMessages(), chainNode.moderator.getMessages()));
+    public String serialization(AgentGroup agent) {
+        var domain = AgentGroupPersistenceDomain.of(agent.getMessages());
+        if (agent.handoff instanceof AutoHandoff handoff) {
+            domain.moderatorMessages = handoff.moderator().getMessages();
+        }
+        if (agent.handoff instanceof HybridAutoDirectHandoff handoff) {
+            domain.moderatorMessages = handoff.getAutoHandoff().moderator().getMessages();
+        }
+        return JSON.toJSON(domain);
     }
 
     @Override
-    public void deserialization(AgentGroup group, String t) {
+    public void deserialization(AgentGroup agent, String t) {
         var domain = JSON.fromJSON(AgentGroupPersistenceDomain.class, t);
-        group.addMessages(domain.messages);
-        group.moderator.addMessages(domain.moderatorMessages);
+        agent.addMessages(domain.messages);
+        if (agent.handoff instanceof AutoHandoff handoff) {
+            handoff.moderator().addMessages(domain.moderatorMessages);
+        }
+        if (agent.handoff instanceof HybridAutoDirectHandoff handoff) {
+            handoff.getAutoHandoff().moderator().addMessages(domain.moderatorMessages);
+        }
     }
 
     public static class AgentGroupPersistenceDomain {
-        public static AgentGroupPersistenceDomain of(List<Message> messages, List<Message> moderatorMessages) {
+        public static AgentGroupPersistenceDomain of(List<Message> messages) {
             var domain = new AgentGroupPersistenceDomain();
             domain.messages = messages;
-            domain.moderatorMessages = moderatorMessages;
             return domain;
         }
 

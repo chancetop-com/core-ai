@@ -290,7 +290,7 @@ public abstract class Node<T extends Node<T>> {
         }
     }
 
-    void setParentNode(Node<?> parent) {
+    public void setParentNode(Node<?> parent) {
         this.parent = parent;
     }
 
@@ -325,6 +325,9 @@ public abstract class Node<T extends Node<T>> {
     void addResponseChoiceMessage(Message message) {
         this.messages.add(message);
         this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, message));
+        if (this.parent != null) {
+            this.parent.addResponseChoiceMessage(message);
+        }
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends Node<T>> {

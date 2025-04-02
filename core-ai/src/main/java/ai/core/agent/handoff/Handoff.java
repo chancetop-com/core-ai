@@ -10,4 +10,6 @@ import java.util.Map;
  */
 public interface Handoff {
     void handoff(AgentGroup agentGroup, Planning planning, Map<String, Object> variables);
+
+    HandoffType getType();
 }
