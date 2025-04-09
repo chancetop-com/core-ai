@@ -33,4 +33,6 @@ public class Message {
     public String toolCallId;
     public FunctionCall functionCall;
     public List<FunctionCall> toolCalls;
+    public String agentName;
+    public String groupName;
 }

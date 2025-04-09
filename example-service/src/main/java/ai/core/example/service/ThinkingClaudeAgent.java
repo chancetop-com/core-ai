@@ -1,4 +1,4 @@
-package ai.core.defaultagents;
+package ai.core.example.service;
 
 import ai.core.agent.Agent;
 import ai.core.llm.LLMProvider;

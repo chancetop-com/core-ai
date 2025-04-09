@@ -6,5 +6,6 @@ package ai.core.agent;
 public enum AgentRole {
     USER,
     ASSISTANT,
-    SYSTEM
+    SYSTEM,
+    TOOL
 }

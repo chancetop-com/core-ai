@@ -42,7 +42,7 @@ public class DefaultTextSplitterAgent {
                         SPECIAL_SYMBOL_SPLITTER_SUMMARY))
                 .promptTemplate("""
                         Original text:
-                         {{text}}
+                        {{{text}}}
                         """)
                 .model(model)
                 .llmProvider(llmProvider).build();

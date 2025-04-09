@@ -19,7 +19,7 @@ public class DefaultPlanning implements Planning {
     public String agentPlanning(Agent agent, String query, Map<String, Object> variables) {
         var rst = agent.run(query, variables);
         result = JSON.fromJSON(DefaultPlanningResult.class, rst);
-        logger.info("Planning: {}", rst);
+        logger.info("{}[{}] Planning: {}", agent.getParentNode().getName(), agent.getName(), rst);
         return rst;
     }
 

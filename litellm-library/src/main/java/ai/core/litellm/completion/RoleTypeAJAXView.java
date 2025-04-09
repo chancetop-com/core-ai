@@ -11,5 +11,7 @@ public enum RoleTypeAJAXView {
     @Property(name = "assistant")
     ASSISTANT,
     @Property(name = "system")
-    SYSTEM
+    SYSTEM,
+    @Property(name = "tool")
+    TOOL
 }

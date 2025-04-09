@@ -24,9 +24,9 @@ public class DefaultAnswerRetrievalAgent {
                         """)
                 .promptTemplate("""
                         question:
-                        {{question}}
+                        {{{question}}}
                         information:
-                        {{information}}
+                        {{{information}}}
                         """)
                 .parent(node)
                 .llmProvider(llmProvider).build();

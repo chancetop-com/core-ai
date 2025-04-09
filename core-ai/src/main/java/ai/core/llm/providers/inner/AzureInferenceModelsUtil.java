@@ -15,6 +15,7 @@ import com.azure.ai.inference.models.ChatMessageTextContentItem;
 import com.azure.ai.inference.models.ChatRequestAssistantMessage;
 import com.azure.ai.inference.models.ChatRequestMessage;
 import com.azure.ai.inference.models.ChatRequestSystemMessage;
+import com.azure.ai.inference.models.ChatRequestToolMessage;
 import com.azure.ai.inference.models.EmbeddingsResult;
 import com.azure.ai.inference.models.EmbeddingsUsage;
 import com.azure.ai.inference.models.FunctionCall;
@@ -108,6 +109,10 @@ public class AzureInferenceModelsUtil {
             } else if (msg.role == AgentRole.ASSISTANT) {
                 var message = new ChatRequestAssistantMessage(msg.content);
                 message.setToolCalls(msg.toolCalls == null || msg.toolCalls.isEmpty() ? null : msg.toolCalls.stream().map(AzureInferenceModelsUtil::fromToolCall).toList());
+                return message;
+            } else if (msg.role == AgentRole.TOOL) {
+                var message = new ChatRequestToolMessage(msg.toolCallId);
+                message.setContent(msg.content);
                 return message;
             } else {
                 return new ChatRequestUserMessage(msg.content);

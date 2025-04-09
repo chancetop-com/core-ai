@@ -16,6 +16,7 @@ import com.azure.ai.openai.models.ChatCompletionsToolDefinition;
 import com.azure.ai.openai.models.ChatRequestAssistantMessage;
 import com.azure.ai.openai.models.ChatRequestMessage;
 import com.azure.ai.openai.models.ChatRequestSystemMessage;
+import com.azure.ai.openai.models.ChatRequestToolMessage;
 import com.azure.ai.openai.models.Embeddings;
 import com.azure.ai.openai.models.EmbeddingsUsage;
 import com.azure.ai.openai.models.FunctionCall;
@@ -119,6 +120,8 @@ public class AzureOpenAIModelsUtil {
                 message.setToolCalls(msg.toolCalls == null || msg.toolCalls.isEmpty() ? null : msg.toolCalls.stream().map(AzureOpenAIModelsUtil::fromToolCall).toList());
                 message.setFunctionCall(fromFunctionCall(msg.functionCall));
                 return message;
+            } else if (msg.role == AgentRole.TOOL) {
+                return new ChatRequestToolMessage(msg.content, msg.toolCallId);
             } else {
                 return new ChatRequestUserMessage(msg.content);
             }

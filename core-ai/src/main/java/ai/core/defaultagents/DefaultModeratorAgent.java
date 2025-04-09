@@ -40,7 +40,7 @@ public class DefaultModeratorAgent {
                         If you think we already finish the task, please return the "next_step_action" valued: TERMINATE and leave the "next_agent_name" empty.
                         If you sure that the next agent is the last one and it can finish the task, please return the "next_step_action" valued: TERMINATE and place the agent name in the key "next_agent_name".
                         If you are re-planning because of some reason, please include the reason information in the query for the next agent.
-                        Return a json that contain your planning steps and the agent's name and a string query generated for the selected agent, for example:
+                        Return a json at the end of your output that contain your planning steps and the agent's name and a string query generated for the selected agent, for example:
                         {
                             "planning": "1. step1; 2. step2; 3. step3. next step we are going to fetch the user's information",
                             "next_step_action": "TERMINATE",
@@ -48,7 +48,7 @@ public class DefaultModeratorAgent {
                             "next_query": "list the user's most recent orders"
                         }.
                         Please clearly indicate the next step in your planning.
-                        Only return the json, do not print anything else.
+                        You need to carefully analyze the output of the previous round of the agent to determine whether it was an error, a failure, or a success.
                         Always remember the goal and the agents list.
                         Here is the agent list:
                         """, goal, AgentGroup.AgentsInfo.agentsInfo(agents)))

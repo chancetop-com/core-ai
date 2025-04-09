@@ -82,8 +82,8 @@ public class AgentGroup extends Node<AgentGroup> {
             try {
                 output = currentAgent.run(planning.nextQuery(), variables);
             } catch (Exception e) {
-                logger.warn("round: {}/{} failed, agent: {}, planning: {}, input: {}", getRound(), getMaxRound(), currentAgent.getName(), planning.nextQuery(), currentAgent.getInput());
-                currentQuery = Strings.format("Failed to run agent<{}>: {}", currentAgent.getName(), e.getMessage());
+                logger.warn("round: {}/{} failed\n agent: {}\nerror: {}\n planning: {}\n input: {}", getRound(), getMaxRound(), currentAgent.getName(), e.getMessage(), planning.nextQuery(), currentAgent.getInput());
+                currentQuery = Strings.format("Failed to run agent<{}>: {}\n input: {}", currentAgent.getName(), e.getMessage(), currentAgent.getInput());
                 setRound(getRound() + 1);
                 continue;
             }
@@ -91,7 +91,7 @@ public class AgentGroup extends Node<AgentGroup> {
             afterRunAgent(output);
             currentQuery = output;
 
-            logger.info("round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), currentAgent.getName(), getInput(), getOutput());
+            logger.info("group round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), currentAgent.getName(), getInput(), getOutput());
 
             if (waitingForUserInput()) return output;
             // planning think this agent can finish the task

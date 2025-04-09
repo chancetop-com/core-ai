@@ -13,6 +13,7 @@ import ai.core.rag.RagConfig;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.termination.terminations.MaxRoundTermination;
+import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
@@ -67,39 +68,38 @@ public class Agent extends Node<Agent> {
             prompt = handleToShortQuery(prompt, null);
         }
 
-        // call LLM completion
-        var rst = completionWithFormat(prompt);
-
         // update chain node status
         updateNodeStatus(NodeStatus.RUNNING);
 
-        // we always use the first choice
-        var choice = getChoice(rst);
-
-        // add rsp to message list and call message event listener if it has
-        addResponseChoiceMessage(choice.message);
-        setOutput(choice.message.content);
+        // chat with LLM the first time
+        chat(prompt);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
             reflection();
         }
 
-        // function call
-        if (choice.finishReason == FinishReason.TOOL_CALLS) {
-            setOutput(functionCall(choice));
-        }
-
         updateNodeStatus(NodeStatus.COMPLETED);
         return getOutput();
     }
 
-    @Override
-    void setChildrenParentNode() {
-    }
+    private void chat(String query) {
+        // call LLM completion
+        var rst = completionWithFormat(query);
 
-    private Choice getChoice(CompletionResponse rst) {
-        return rst.choices.getFirst();
+        // we always use the first choice
+        var choice = getChoice(rst);
+        setMessageAgentInfo(choice.message);
+
+        // add rsp to message list and call message event listener if it has
+        addResponseChoiceMessage(choice.message);
+        setOutput(choice.message.content);
+
+        // function call
+        if (choice.finishReason == FinishReason.TOOL_CALLS) {
+            setOutput(functionCall(choice));
+            addResponseChoiceMessage(buildToolcallResultMessage(choice));
+        }
     }
 
     private void reflection() {
@@ -107,10 +107,8 @@ public class Agent extends Node<Agent> {
         validation();
         setRound(1);
         while (notTerminated()) {
-            var rst = completionWithFormat(getReflectionConfig().prompt());
-            var choice = getChoice(rst);
-            addResponseChoiceMessage(choice.message);
-            setOutput(choice.message.content);
+            logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
+            chat(reflectionConfig.prompt());
             setRound(getRound() + 1);
         }
     }
@@ -128,7 +126,10 @@ public class Agent extends Node<Agent> {
         var reqMsg = Message.of(AgentRole.USER, "user raw request/last agent output", query);
         addMessage(reqMsg);
         var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());
+
+        // completion with llm provider
         var rst = llmProvider.completion(req);
+
         addTokenCost(rst.usage);
         setRawOutput(rst.choices.getFirst().message.content);
 
@@ -149,6 +150,27 @@ public class Agent extends Node<Agent> {
         return rst;
     }
 
+    private void setMessageAgentInfo(Message msg) {
+        msg.agentName = getName();
+        if (getParentNode() != null) {
+            msg.groupName = getParentNode().getName();
+        }
+    }
+
+    private Message buildToolcallResultMessage(Choice choice) {
+        var msg = Message.of(AgentRole.TOOL, getOutput(), getName(), choice.message.toolCalls.getFirst().id, null, null);
+        setMessageAgentInfo(msg);
+        return msg;
+    }
+
+    @Override
+    void setChildrenParentNode() {
+    }
+
+    private Choice getChoice(CompletionResponse rst) {
+        return rst.choices.getFirst();
+    }
+
     private Message buildSystemMessageWithLongTernMemory() {
         String prompt = systemPrompt;
         if (!getLongTernMemory().isEmpty()) {
@@ -165,6 +187,7 @@ public class Agent extends Node<Agent> {
         }
         var function = optional.get();
         try {
+            logger.info("function call {}: {}", toolCall.function.name, toolCall.function.arguments);
             return function.call(toolCall.function.arguments);
         } catch (Exception e) {
             throw new BadRequestException("tool call failed<execute>: " + JSON.toJSON(toolCall), "TOOL_CALL_FAILED", e);
@@ -240,7 +263,8 @@ public class Agent extends Node<Agent> {
         private Double temperature;
         private String model;
         private ReflectionConfig reflectionConfig;
-        private Boolean useGroupContext;
+        private Boolean useGroupContext = false;
+        private Boolean enableReflection = false;
 
         public Builder promptTemplate(String promptTemplate) {
             this.promptTemplate = promptTemplate;
@@ -287,6 +311,11 @@ public class Agent extends Node<Agent> {
             return this;
         }
 
+        public Builder enableReflection(Boolean enableReflection) {
+            this.enableReflection = enableReflection;
+            return this;
+        }
+
         public Agent build() {
             var agent = new Agent();
             this.nodeType = NodeType.AGENT;
@@ -308,9 +337,13 @@ public class Agent extends Node<Agent> {
             agent.reflectionConfig = this.reflectionConfig;
             agent.useGroupContext = this.useGroupContext;
             agent.setPersistence(new AgentPersistence());
+            if (this.enableReflection && this.reflectionConfig == null) {
+                agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
+            }
             if (agent.reflectionConfig != null) {
                 agent.setMaxRound(agent.reflectionConfig.maxRound());
                 agent.addTermination(new MaxRoundTermination());
+                agent.addTermination(new StopMessageTermination());
             }
             if (agent.ragConfig == null) {
                 agent.ragConfig = new RagConfig();
