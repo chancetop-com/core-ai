@@ -21,6 +21,8 @@ public class DefaultShellCommandAgent {
                         Analyze user requirements and write instructions tailored to the user's operating system environment based on available tools to fulfill those requirements.
                         Tools available to you: {}.
                         Do not use any other tools except the available tools.
+                        You need to carefully analyze the result of the command execution and determine whether it is a syntax error or an actual result failure, and decide whether it is necessary to attempt an alternative solution.
+                        When dealing with path-related information, try to output the absolute path as much as possible.If encountering a relative path, the result should carefully (don't miss directory for example two level directory have the same name) combine the workspace path and the output path to provide an absolute path.
                         """, String.join(", ", tools)))
                 .promptTemplate("""
                         System: {{{system_environment}}}
