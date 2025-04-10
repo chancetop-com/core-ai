@@ -13,6 +13,12 @@ import java.util.List;
  * @author stephen
  */
 public class DefaultModeratorAgent {
+    public static Agent of(LLMProvider llmProvider, String model, String goal, List<Node<?>> agents) {
+        return of(llmProvider, model, goal, agents, "", "");
+    }
+    public static Agent of(LLMProvider llmProvider, String model, String goal, List<Node<?>> agents, String contextVariableTemplate) {
+        return of(llmProvider, model, goal, agents, "", contextVariableTemplate);
+    }
     /**
      * Create a moderator agent for a role play game to solve task by guide the conversation and choose the next speaker agent.
      *
@@ -23,7 +29,7 @@ public class DefaultModeratorAgent {
      * @param contextVariableTemplate promptTemplate that provider the context variables if needed, null for no context provided to moderator
      * @return the moderator agent
      */
-    public static Agent of(LLMProvider llmProvider, String model, String goal, List<Node<?>> agents, String contextVariableTemplate) {
+    public static Agent of(LLMProvider llmProvider, String model, String goal, List<Node<?>> agents, String additionSystemPrompt, String contextVariableTemplate) {
         return Agent.builder()
                 .name("moderator-agent")
                 .description("moderator of a role play game to solve task by guide the conversation and choose the next speaker agent")
@@ -50,8 +56,8 @@ public class DefaultModeratorAgent {
                         Please clearly indicate the next step in your planning.
                         You need to carefully analyze the output of the previous round of the agent to determine whether it was an error, a failure, or a success.
                         Always remember the goal and the agents list.
-                        Here is the agent list:
-                        """, goal, AgentGroup.AgentsInfo.agentsInfo(agents)))
+                        {}
+                        """, goal, AgentGroup.AgentsInfo.agentsInfo(agents), additionSystemPrompt))
                 .promptTemplate(Strings.format("""
                         {}
                         Previous agent output/raw input:

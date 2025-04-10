@@ -13,6 +13,9 @@ import java.util.List;
  */
 public class DefaultShellCommandAgent {
     public static Agent of(LLMProvider llmProvider, List<String> tools) {
+        return of(llmProvider, tools, "", "");
+    }
+    public static Agent of(LLMProvider llmProvider, List<String> tools, String additionSystemPrompt, String contextVariableTemplate) {
         return Agent.builder()
                 .name("shell-command-agent")
                 .description(Strings.format("Write and execute shell command based on these tools: {}.", String.join(", ", tools)))
@@ -23,12 +26,14 @@ public class DefaultShellCommandAgent {
                         Do not use any other tools except the available tools.
                         You need to carefully analyze the result of the command execution and determine whether it is a syntax error or an actual result failure, and decide whether it is necessary to attempt an alternative solution.
                         When dealing with path-related information, try to output the absolute path as much as possible.If encountering a relative path, the result should carefully (don't miss directory for example two level directory have the same name) combine the workspace path and the output path to provide an absolute path.
-                        """, String.join(", ", tools)))
-                .promptTemplate("""
+                        {}
+                        """, String.join(", ", tools), additionSystemPrompt))
+                .promptTemplate(Strings.format("""
                         System: {{{system_environment}}}
                         Shell: java processBuilder
+                        {}
                         Request:
-                        """)
+                        """, contextVariableTemplate))
                 .toolCalls(List.of(
                         ShellCommandTool.builder()
                                 .name("shell-command-exec")

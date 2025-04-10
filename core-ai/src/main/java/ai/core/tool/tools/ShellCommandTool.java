@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.utils.InputStreamUtil;
+import ai.core.utils.ShellUtil;
 import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -77,14 +77,8 @@ public class ShellCommandTool extends ToolCall {
     public String call(String text) {
         var argsMap = JSON.fromJSON(Map.class, text);
         var workspaceDir = (String) argsMap.get("workspace_dir");
-        var osName = System.getProperty("os.name").toLowerCase(Locale.getDefault());
         var command = (String) argsMap.get("command");
-        List<String> commands;
-        if (osName.contains("win")) {
-            commands = Arrays.asList("powershell", "-Command", command);
-        } else {
-            commands = Arrays.stream(command.split(" ")).toList();
-        }
+        var commands = Arrays.stream((ShellUtil.getPreferredShellCommandPrefix(ShellUtil.getSystemType()) + command).split(" ")).toList();
         return exec(commands, workspaceDir, DEFAULT_TIMEOUT_SECONDS);
     }
 
