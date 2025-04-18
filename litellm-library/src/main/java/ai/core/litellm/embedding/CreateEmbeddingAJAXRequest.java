@@ -11,11 +11,11 @@ import java.util.List;
  */
 public class CreateEmbeddingAJAXRequest {
     @NotNull
+    @NotBlank
     @Property(name = "model")
     public String model = "text-embedding-ada-002";
 
     @NotNull
-    @NotBlank
     @Property(name = "input")
     public List<String> input;
 }

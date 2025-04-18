@@ -201,7 +201,6 @@ public class Agent extends Node<Agent> {
         var embedding = rsp.embeddings.getFirst().embedding;
         var context = ragConfig.vectorStore().similaritySearchText(SimilaritySearchRequest.builder()
                 .embedding(embedding)
-                .collection(ragConfig.collection())
                 .threshold(ragConfig.threshold())
                 .topK(ragConfig.topK()).build());
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);

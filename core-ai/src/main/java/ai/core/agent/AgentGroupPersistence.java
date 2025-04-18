@@ -16,8 +16,8 @@ public class AgentGroupPersistence implements Persistence<AgentGroup> {
     @Override
     public String serialization(AgentGroup agent) {
         var domain = AgentGroupPersistenceDomain.of(agent.getMessages());
-        if (agent.handoff instanceof AutoHandoff handoff) {
-            domain.moderatorMessages = handoff.moderator().getMessages();
+        if (agent.handoff instanceof AutoHandoff(Agent moderator)) {
+            domain.moderatorMessages = moderator.getMessages();
         }
         if (agent.handoff instanceof HybridAutoDirectHandoff handoff) {
             domain.moderatorMessages = handoff.getAutoHandoff().moderator().getMessages();
@@ -29,8 +29,8 @@ public class AgentGroupPersistence implements Persistence<AgentGroup> {
     public void deserialization(AgentGroup agent, String t) {
         var domain = JSON.fromJSON(AgentGroupPersistenceDomain.class, t);
         agent.addMessages(domain.messages);
-        if (agent.handoff instanceof AutoHandoff handoff) {
-            handoff.moderator().addMessages(domain.moderatorMessages);
+        if (agent.handoff instanceof AutoHandoff(Agent moderator)) {
+            moderator.addMessages(domain.moderatorMessages);
         }
         if (agent.handoff instanceof HybridAutoDirectHandoff handoff) {
             handoff.getAutoHandoff().moderator().addMessages(domain.moderatorMessages);

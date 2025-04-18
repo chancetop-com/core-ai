@@ -65,8 +65,7 @@ public abstract class Node<T extends Node<T>> {
         statusChangedEventListeners.putAll(listeners);
     }
 
-    public void addMessageUpdatedEventListener(MessageUpdatedEventListener<T> listener) {
-        if (listener == null) return;
+    public void setMessageUpdatedEventListener(MessageUpdatedEventListener<T> listener) {
         messageUpdatedEventListener = listener;
     }
 
@@ -255,10 +254,6 @@ public abstract class Node<T extends Node<T>> {
 
     void setStatusChangedEventListeners(Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> listeners) {
         this.statusChangedEventListeners = listeners;
-    }
-
-    void setMessageUpdatedEventListener(MessageUpdatedEventListener<T> listener) {
-        this.messageUpdatedEventListener = listener;
     }
 
     void setPersistence(Persistence<T> persistence) {

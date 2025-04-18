@@ -71,6 +71,11 @@ public class LiteLLMProvider extends LLMProvider {
         return 128 * 1000;
     }
 
+    @Override
+    public String name() {
+        return "litellm";
+    }
+
     private CompletionResponse toRsp(CreateCompletionAJAXResponse rsp, String name) {
         return new CompletionResponse(rsp.choices.stream().map(v ->
                 new Choice(FinishReason.valueOf(v.finishReason.name()), Message.of(

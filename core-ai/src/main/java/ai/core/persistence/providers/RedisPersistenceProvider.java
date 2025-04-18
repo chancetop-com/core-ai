@@ -5,6 +5,7 @@ import core.framework.inject.Inject;
 import core.framework.redis.Redis;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -16,12 +17,17 @@ public class RedisPersistenceProvider implements PersistenceProvider {
 
     @Override
     public void save(String id, String context) {
-        redis.set(id, context, Duration.ofMinutes(30));
+        redis.set(id, context, Duration.ofHours(6));
     }
 
     @Override
     public void clear() {
 
+    }
+
+    @Override
+    public void delete(List<String> ids) {
+        redis.del(ids.toArray(String[]::new));
     }
 
     @Override

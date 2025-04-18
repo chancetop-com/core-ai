@@ -75,6 +75,11 @@ public class AzureInferenceProvider extends LLMProvider {
         return 128 * 1000;
     }
 
+    @Override
+    public String name() {
+        return "azure-inference";
+    }
+
     private String getModel(CompletionRequest request) {
         return Strings.isBlank(request.model) ? config.getModel() : request.model;
     }

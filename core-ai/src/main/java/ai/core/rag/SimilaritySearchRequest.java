@@ -18,7 +18,6 @@ public class SimilaritySearchRequest {
     public Integer dimension = 1536; // text-embeddings-ada-002's dimension
     public String queryField = "query";
     public String vectorField = "vector";
-    public String collection;
     public Double threshold = 0d;
     public Expression expression;
     public Embedding embedding;
@@ -30,7 +29,6 @@ public class SimilaritySearchRequest {
         private Integer dimension = 1536; // text-embeddings-ada-002's dimension
         private String queryField = "query";
         private String vectorField = "vector";
-        private String collection;
         private Double threshold = 0d;
         private Expression expression;
         private Embedding embedding;
@@ -61,11 +59,6 @@ public class SimilaritySearchRequest {
             return this;
         }
 
-        public Builder collection(String collection) {
-            this.collection = collection;
-            return this;
-        }
-
         public Builder threshold(Double threshold) {
             this.threshold = threshold;
             return this;
@@ -93,7 +86,6 @@ public class SimilaritySearchRequest {
             req.dimension = this.dimension;
             req.queryField = this.queryField;
             req.vectorField = this.vectorField;
-            req.collection = this.collection;
             req.threshold = this.threshold;
             req.expression = this.expression;
             req.embedding = this.embedding;

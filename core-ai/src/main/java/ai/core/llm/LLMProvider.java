@@ -17,8 +17,13 @@ public abstract class LLMProvider {
         this.config = config;
     }
 
+    public void setConfig(LLMProviderConfig config) {
+        this.config = config;
+    }
+
     public abstract CompletionResponse completion(CompletionRequest request);
     public abstract EmbeddingResponse embeddings(EmbeddingRequest request);
     public abstract CaptionImageResponse captionImage(CaptionImageRequest request);
     public abstract int maxTokens();
+    public abstract String name();
 }

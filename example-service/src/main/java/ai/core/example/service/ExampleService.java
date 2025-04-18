@@ -9,6 +9,17 @@ import ai.core.agent.listener.listeners.DefaultAgentRunningEventListener;
 import ai.core.defaultagents.DefaultSummaryAgent;
 import ai.core.example.api.example.MCPToolCallRequest;
 import ai.core.example.api.example.OrderIssueResponse;
+import ai.core.flow.Flow;
+import ai.core.flow.FlowPersistence;
+import ai.core.flow.edges.ConnectionEdge;
+import ai.core.flow.edges.SettingEdge;
+import ai.core.flow.nodes.AgentFlowNode;
+import ai.core.flow.nodes.DeepSeekFlowNode;
+import ai.core.flow.nodes.EmptyFlowNode;
+import ai.core.flow.nodes.OperatorSwitchFlowNode;
+import ai.core.flow.nodes.ThrowErrorFlowNode;
+import ai.core.flow.nodes.WebhookTriggerFlowNode;
+import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.mcp.client.MCPClientService;
 import ai.core.mcp.client.MCPServerConfig;
@@ -18,6 +29,7 @@ import ai.core.tool.mcp.MCPToolCalls;
 import core.framework.inject.Inject;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * @author stephen
@@ -31,6 +43,40 @@ public class ExampleService {
     WeatherService weatherService;
     @Inject
     UserInfoService userInfoService;
+    @Inject
+    LLMProviders llmProviders;
+
+    public String flow(String query) {
+        var nodeTrigger = new WebhookTriggerFlowNode(UUID.randomUUID().toString(), "Webhook", "https://localhost/webhook");
+        var nodeAgent = new AgentFlowNode(UUID.randomUUID().toString(), "Agent");
+        var nodeSwitch = new OperatorSwitchFlowNode(UUID.randomUUID().toString(), "Switch");
+        var nodeEmpty = new EmptyFlowNode(UUID.randomUUID().toString(), "Empty");
+        var nodeError = new ThrowErrorFlowNode(UUID.randomUUID().toString(), "Error", "test throw error node");
+        var edgeTrigger = new ConnectionEdge(UUID.randomUUID().toString());
+        var edgeAgent = new ConnectionEdge(UUID.randomUUID().toString());
+        var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "1");
+        var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "2");
+        edgeTrigger.connect(nodeTrigger.getId(), nodeAgent.getId());
+        edgeAgent.connect(nodeAgent.getId(), nodeSwitch.getId());
+        edgeSwitch1.connect(nodeSwitch.getId(), nodeError.getId());
+        edgeSwitch2.connect(nodeSwitch.getId(), nodeEmpty.getId());
+        var nodeDeepSeek = new DeepSeekFlowNode(UUID.randomUUID().toString(), "DeepSeek", llmProviders);
+        var edgeDeepSeek = new SettingEdge(UUID.randomUUID().toString());
+        edgeDeepSeek.connect(nodeAgent.getId(), nodeDeepSeek.getId());
+        nodeAgent.setSystemPrompt("""
+                Your are a calculator, you can do any math calculation, only return the result.
+                """);
+        var flow = Flow.builder()
+                .id("test_id")
+                .name("test_flow")
+                .description("test flow")
+                .persistence(new FlowPersistence())
+                .persistenceProvider(new TemporaryPersistenceProvider())
+                .nodes(List.of(nodeTrigger, nodeAgent, nodeSwitch, nodeEmpty, nodeError, nodeDeepSeek))
+                .edges(List.of(edgeTrigger, edgeAgent, edgeSwitch1, edgeSwitch2, edgeDeepSeek))
+                .build();
+        return flow.execute(nodeTrigger.getId(), query, null);
+    }
 
     public OrderIssueResponse groupStart(String query) {
         var group = OrderIssueGroup.create(llmProvider, persistenceProvider, userInfoService);

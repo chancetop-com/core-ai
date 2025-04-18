@@ -17,7 +17,6 @@ public class RagConfig {
     Integer topK = 5;
     Double threshold = 0d;
     VectorStore vectorStore;
-    String collection;
 
     public boolean useRag() {
         return useRag;
@@ -35,21 +34,11 @@ public class RagConfig {
         return vectorStore;
     }
 
-    public String collection() {
-        return collection;
-    }
-
     public static class Builder {
         private boolean useRag = false;
         private Integer topK = 5;
         private Double threshold = 0d;
         private VectorStore vectorStore;
-        private String collection;
-
-        public Builder collection(String collection) {
-            this.collection = collection;
-            return this;
-        }
 
         public Builder useRag(Boolean useRag) {
             this.useRag = useRag;
@@ -77,7 +66,6 @@ public class RagConfig {
             conf.topK = this.topK;
             conf.threshold = this.threshold;
             conf.vectorStore = this.vectorStore;
-            conf.collection = this.collection;
             return conf;
         }
     }

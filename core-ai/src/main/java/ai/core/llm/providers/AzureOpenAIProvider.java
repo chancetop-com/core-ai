@@ -57,6 +57,11 @@ public class AzureOpenAIProvider extends LLMProvider {
         return 128 * 1000;
     }
 
+    @Override
+    public String name() {
+        return "azure, openai";
+    }
+
     private String getModel(CompletionRequest request) {
         return Strings.isBlank(request.model) ? config.getModel() : request.model;
     }

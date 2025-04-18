@@ -1,11 +1,5 @@
 package ai.core.rag.vectorstore.milvus;
 
-import core.framework.internal.module.ModuleContext;
-import io.milvus.v2.client.ConnectConfig;
-import io.milvus.v2.client.MilvusClientV2;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * @author stephen
  */
@@ -15,25 +9,20 @@ public class MilvusConfig {
         return new Builder();
     }
 
+    String uri;
+    String token;
+    String database;
+    String username;
+    String password;
+    String collection;
+
     public static class Builder {
-        private final Logger logger = LoggerFactory.getLogger(Builder.class);
-        private ModuleContext context;
-        private String name;
         private String uri;
         private String token;
         private String database;
         private String username;
         private String password;
-
-        public Builder context(ModuleContext context) {
-            this.context = context;
-            return this;
-        }
-
-        public Builder name(String name) {
-            this.name = name;
-            return this;
-        }
+        private String collection;
 
         public Builder uri(String uri) {
             this.uri = uri;
@@ -60,17 +49,20 @@ public class MilvusConfig {
             return this;
         }
 
-        public MilvusClientV2 build() {
-            this.logger.info("create milvus client, name={}", this.name);
-            var config = ConnectConfig.builder()
-                    .uri(uri)
-                    .token(token)
-                    .username(username)
-                    .password(password)
-                    .dbName(database).build();
-            var milvus = new MilvusClientV2(config);
-            this.context.shutdownHook.add(6, timeout -> milvus.close());
-            return milvus;
+        public Builder collection(String collection) {
+            this.collection = collection;
+            return this;
+        }
+
+        public MilvusConfig build() {
+            var config = new MilvusConfig();
+            config.uri = this.uri;
+            config.token = this.token;
+            config.database = this.database;
+            config.username = this.username;
+            config.password = this.password;
+            config.collection = this.collection;
+            return config;
         }
     }
 }

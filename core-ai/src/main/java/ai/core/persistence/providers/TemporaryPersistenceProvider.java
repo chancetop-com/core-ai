@@ -6,6 +6,7 @@ import core.framework.inject.Inject;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -21,11 +22,16 @@ public class TemporaryPersistenceProvider implements PersistenceProvider {
     @Override
     public void save(String id, String context) {
         persistence.put(id, context);
-        executor.submit("clear-persistence", () -> persistence.remove(id), Duration.ofMinutes(15));
+        executor.submit("clear-persistence", () -> delete(List.of(id)), Duration.ofMinutes(15));
     }
 
     @Override
     public void clear() {
+    }
+
+    @Override
+    public void delete(List<String> ids) {
+        ids.forEach(persistence::remove);
     }
 
     @Override

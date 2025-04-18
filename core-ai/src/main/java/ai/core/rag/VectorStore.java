@@ -23,4 +23,6 @@ public interface VectorStore {
     void add(List<Document> documents);
 
     void delete(List<String> texts);
+
+    String name();
 }

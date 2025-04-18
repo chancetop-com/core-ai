@@ -6,7 +6,7 @@ import ai.core.rag.SimilaritySearchRequest;
 import ai.core.rag.VectorStore;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import core.framework.inject.Inject;
+import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
@@ -32,11 +32,26 @@ import java.util.stream.Collectors;
  */
 public class MilvusVectorStore implements VectorStore {
     private final Logger logger = LoggerFactory.getLogger(MilvusVectorStore.class);
-    @Inject
-    MilvusClientV2 milvusClientV2;
+    private final MilvusConfig config;
+    private MilvusClientV2 milvusClientV2;
+
+    public MilvusVectorStore(MilvusConfig config) {
+        this.config = config;
+    }
+
+    private void init() {
+        var connectConfig = ConnectConfig.builder()
+                .uri(config.uri)
+                .token(config.token)
+                .username(config.username)
+                .password(config.password)
+                .dbName(config.database).build();
+        this.milvusClientV2 = new MilvusClientV2(connectConfig);
+    }
 
     @Override
     public List<Document> similaritySearch(SimilaritySearchRequest request) {
+        if (milvusClientV2 == null) init();
         List<String> outputFields;
         if (request.extraFields != null && !request.extraFields.isEmpty()) {
             outputFields = new ArrayList<>(request.extraFields);
@@ -46,7 +61,7 @@ public class MilvusVectorStore implements VectorStore {
         }
         var req = SearchReq.builder()
                 .data(List.of(new FloatVec(request.embedding.vectors().stream().map(Double::floatValue).toList())))
-                .collectionName(request.collection)
+                .collectionName(config.collection)
                 .topK(request.topK)
                 .outputFields(outputFields)
                 .annsField(request.vectorField).build();
@@ -90,6 +105,11 @@ public class MilvusVectorStore implements VectorStore {
     @Override
     public void delete(List<String> texts) {
 
+    }
+
+    @Override
+    public String name() {
+        return "Milvus";
     }
 
     public boolean hasCollection(String collection) {

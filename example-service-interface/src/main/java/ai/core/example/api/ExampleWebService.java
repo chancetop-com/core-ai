@@ -11,6 +11,10 @@ import core.framework.api.web.service.Path;
  */
 public interface ExampleWebService {
     @PUT
+    @Path("/example/flow")
+    ChatResponse flow(ChatRequest request);
+
+    @PUT
     @Path("/example/agent")
     ChatResponse agent(ChatRequest request);
 

@@ -14,6 +14,11 @@ public class ExampleWebServiceImpl implements ExampleWebService {
     ExampleService exampleService;
 
     @Override
+    public ChatResponse flow(ChatRequest request) {
+        return toRsp(exampleService.flow(request.query));
+    }
+
+    @Override
     public ChatResponse agent(ChatRequest request) {
         return toRsp(exampleService.optimize(request.query));
     }

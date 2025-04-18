@@ -2,18 +2,24 @@ package ai.core;
 
 import ai.core.image.providers.LiteLLMImageProvider;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.LLMProviderType;
+import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
+import ai.core.persistence.PersistenceProviderType;
+import ai.core.persistence.PersistenceProviders;
+import ai.core.persistence.providers.FilePersistenceProvider;
 import ai.core.persistence.providers.RedisPersistenceProvider;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
+import ai.core.rag.VectorStoreType;
+import ai.core.rag.VectorStores;
 import ai.core.rag.vectorstore.hnswlib.HnswConfig;
 import ai.core.rag.vectorstore.hnswlib.HnswLibVectorStore;
 import ai.core.rag.vectorstore.milvus.MilvusConfig;
 import ai.core.rag.vectorstore.milvus.MilvusVectorStore;
 import ai.core.task.TaskService;
 import core.framework.module.Module;
-import io.milvus.v2.client.MilvusClientV2;
 
 /**
  * @author stephen
@@ -21,87 +27,131 @@ import io.milvus.v2.client.MilvusClientV2;
 public class MultiAgentModule extends Module {
     @Override
     protected void initialize() {
-        this.property("sys.persistence").ifPresent(this::configPersistence);
-        this.property("sys.vector.store").ifPresent(this::configVectorStore);
-        configLLMProvider(requiredProperty("sys.llm.provider"));
+        configPersistenceProvider();
+        configVectorStore();
+        configLLMProvider();
         bindServices();
     }
 
-    private void configVectorStore(String type) {
-        if ("milvus".equals(type)) {
-            configMilvus();
-        }
-        if ("hnswlib".equals(type)) {
-            configHnswLib();
-        }
+    private void configPersistenceProvider() {
+        var providers = new PersistenceProviders();
+        bind(providers);
+        configRedisPersistenceProvider(providers);
+        configTemporaryPersistenceProvider(providers);
+        configFilePersistenceProvider(providers);
     }
 
-    private void configHnswLib() {
-        bind(new HnswLibVectorStore(HnswConfig.of(requiredProperty("sys.hnswlib.path"))));
+    private void configVectorStore() {
+        var vectorStores = new VectorStores();
+        bind(vectorStores);
+        configMilvus(vectorStores);
+        configHnswLib(vectorStores);
     }
 
-    private void configLLMProvider(String type) {
-        var config = setupLLMProperties(type);
-        if ("litellm".equals(type)) {
-            load(new LiteLLMModule());
-            bind(new LiteLLMProvider(config));
-            bind(LiteLLMImageProvider.class);
-            return;
-        }
-        if ("azure-inference".equals(type)) {
-            bind(new AzureInferenceProvider(config, requiredProperty("sys.llm.apikey"), property("sys.llm.endpoint").orElse(null), true));
-            return;
-        }
-        if ("deepseek".equals(type)) {
-            bind(new AzureInferenceProvider(config, requiredProperty("sys.llm.apikey"), property("sys.llm.endpoint").orElse(null), false));
-            return;
-        }
-        if ("azure".equals(type) || "openai".equals(type)) {
-            bind(new AzureOpenAIProvider(config, requiredProperty("sys.llm.apikey"), property("sys.llm.endpoint").orElse(null)));
-            return;
-        }
-        throw new RuntimeException("Unsupported LLM provider: " + type);
+    private void configLLMProvider() {
+        var config = setupLLMProperties();
+        var providers = new LLMProviders();
+        bind(providers);
+        configLiteLLM(providers, config);
+        configAzureInference(providers, config);
+        configDeepSeek(providers, config);
+        configAzureOpenAI(providers, config);
+        configOpenAI(providers, config);
     }
 
-    private LLMProviderConfig setupLLMProperties(String type) {
-        var config = new LLMProviderConfig(getProviderDefaultChatModel(type), 0.7d, "text-embedding-3-large");
+    private void configOpenAI(LLMProviders providers, LLMProviderConfig config) {
+        property("openai.api.key").ifPresent(key -> {
+            var provider = new AzureOpenAIProvider(config, key, null);
+            bind(provider);
+            providers.addProvider(LLMProviderType.OPENAI, provider);
+        });
+    }
+
+    private void configAzureOpenAI(LLMProviders providers, LLMProviderConfig config) {
+        property("azure.api.key").ifPresent(key -> property("azure.api.base").ifPresent(base -> {
+            var provider = new AzureOpenAIProvider(config, key, base);
+            bind(provider);
+            providers.addProvider(LLMProviderType.AZURE, provider);
+        }));
+    }
+
+    private void configAzureInference(LLMProviders providers, LLMProviderConfig config) {
+        property("azure.ai.api.key").ifPresent(key -> property("azure.ai.api.base").ifPresent(base -> {
+            var provider = new AzureInferenceProvider(config, key, base, true);
+            bind(provider);
+            providers.addProvider(LLMProviderType.AZURE_INFERENCE, provider);
+        }));
+    }
+
+    private void configDeepSeek(LLMProviders providers, LLMProviderConfig config) {
+        property("deepseek.api.key").ifPresent(key -> {
+            var provider = new AzureInferenceProvider(config, key, "https://api.deepseek.com/v1", false);
+            bind(provider);
+            providers.addProvider(LLMProviderType.DEEPSEEK, provider);
+        });
+    }
+
+    private void configLiteLLM(LLMProviders providers, LLMProviderConfig config) {
+        load(new LiteLLMModule());
+        var provider = new LiteLLMProvider(config);
+        bind(provider);
+        bind(LiteLLMImageProvider.class);
+        providers.addProvider(LLMProviderType.LITELLM, provider);
+    }
+
+    private LLMProviderConfig setupLLMProperties() {
+        var config = new LLMProviderConfig(LLMProviders.getProviderDefaultChatModel(LLMProviderType.OPENAI), 0.7d, "text-embedding-3-large");
         property("llm.temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
         property("llm.model").ifPresent(config::setModel);
         property("llm.embeddings.model").ifPresent(config::setEmbeddingModel);
         return config;
     }
 
-    private String getProviderDefaultChatModel(String type) {
-        return switch (type) {
-            case "azure-inference" -> "o1-mini";
-            case "deepseek" -> "deepseek-chat";
-            case "openai", "azure" -> "gpt-4o";
-            default -> "gpt-3.5-turbo";
-        };
+    private void configRedisPersistenceProvider(PersistenceProviders providers) {
+        property("sys.redis.host").ifPresent(host -> {
+            var provider = new RedisPersistenceProvider();
+            bind(provider);
+            providers.addPersistenceProvider(PersistenceProviderType.REDIS, provider);
+        });
     }
 
-    private void configPersistence(String type) {
-        if ("redis".equals(type)) {
-            requiredProperty("sys.redis.host");
-            bind(RedisPersistenceProvider.class);
-        }
+    private void configFilePersistenceProvider(PersistenceProviders providers) {
+        property("sys.persistence.file.directory").ifPresent(dir -> {
+            var provider = new FilePersistenceProvider(dir);
+            bind(provider);
+            providers.addPersistenceProvider(PersistenceProviderType.FILE, provider);
+        });
     }
 
-    private void configMilvus() {
-        var milvus = MilvusConfig.builder()
-                .context(this.context)
-                .name("milvus")
-                .uri(requiredProperty("sys.milvus.uri"))
-                .token(property("sys.milvus.token").orElse(null))
-                .database(property("sys.milvus.database").orElse(null))
-                .username(property("sys.milvus.username").orElse(null))
-                .password(property("sys.milvus.password").orElse(null)).build();
-        context.beanFactory.bind(MilvusClientV2.class, "milvus-client", milvus);
-        bind(MilvusVectorStore.class);
+    private void configTemporaryPersistenceProvider(PersistenceProviders providers) {
+        var provider = new TemporaryPersistenceProvider();
+        bind(provider);
+        providers.addPersistenceProvider(PersistenceProviderType.TEMPORARY, provider);
+    }
+
+    private void configHnswLib(VectorStores vectorStores) {
+        property("sys.hnswlib.path").ifPresent(path -> {
+            var vectorStore = new HnswLibVectorStore(HnswConfig.of(path));
+            bind(vectorStore);
+            vectorStores.addVectorStore(VectorStoreType.HNSW_LIB, vectorStore);
+        });
+    }
+
+    private void configMilvus(VectorStores vectorStores) {
+        property("sys.milvus.uri").ifPresent(uri -> {
+            var config = MilvusConfig.builder()
+                    .uri(uri)
+                    .token(property("sys.milvus.token").orElse(null))
+                    .database(property("sys.milvus.database").orElse(null))
+                    .username(property("sys.milvus.username").orElse(null))
+                    .password(property("sys.milvus.password").orElse(null)).build();
+            var vectorStore = new MilvusVectorStore(config);
+            bind(vectorStore);
+            vectorStores.addVectorStore(VectorStoreType.MILVUS, vectorStore);
+        });
     }
 
     private void bindServices() {
         bind(TaskService.class);
-        bind(TemporaryPersistenceProvider.class);
     }
 }

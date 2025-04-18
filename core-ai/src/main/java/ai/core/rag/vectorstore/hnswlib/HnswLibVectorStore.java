@@ -56,10 +56,13 @@ public class HnswLibVectorStore implements VectorStore {
     }
 
     private final HnswConfig config;
-    private final Index<String, float[], HnswDocument, Float> index;
+    private Index<String, float[], HnswDocument, Float> index;
 
     public HnswLibVectorStore(HnswConfig config) {
         this.config = config;
+    }
+
+    public void init() {
         try {
             this.index = load(config.path());
         } catch (IOException e) {
@@ -70,9 +73,10 @@ public class HnswLibVectorStore implements VectorStore {
     @Override
     @SuppressWarnings("unchecked")
     public List<Document> similaritySearch(SimilaritySearchRequest request) {
-        if (this.index == null) throw new NotFoundException("Index not loaded, please loadDocuments/loadFile first");
+        if (this.index == null) init();
         var rsp = this.index.findNearest(request.embedding.toFloatArray(), request.topK);
         return rsp.stream()
+                .filter(v -> v.distance() <= request.threshold)
                 .sorted(Comparator.comparingDouble(SearchResult::distance))
                 .map(v -> new Document(
                         v.item().id(),
@@ -108,6 +112,11 @@ public class HnswLibVectorStore implements VectorStore {
 
     public void delete(String text) {
         this.index.remove(Document.toId(text), 0);
+    }
+
+    @Override
+    public String name() {
+        return "HNSWLib";
     }
 
     public void save() throws IOException, InterruptedException {
