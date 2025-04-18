@@ -1,5 +1,6 @@
 package ai.core.flow.nodes;
 
+import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
 import ai.core.flow.FlowNodeType;
@@ -33,7 +34,7 @@ public class WebhookTriggerFlowNode extends FlowNode<WebhookTriggerFlowNode> {
     }
 
     @Override
-    public void init(List<FlowNode<?>> settings) {
+    public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
 
     }
 

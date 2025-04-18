@@ -49,7 +49,7 @@ public class Flow {
         var currentNodeSettings = getNodeSettings(currentNode);
         if (!currentNodeSettings.isEmpty()) {
             initSettings(currentNodeSettings);
-            currentNode.init(currentNodeSettings);
+            currentNode.init(currentNodeSettings, edges);
         }
 
         var rst = new FlowNodeResult(input);
@@ -77,7 +77,7 @@ public class Flow {
     }
 
     private void initSettings(List<FlowNode<?>> currentNodeSettings) {
-        currentNodeSettings.forEach(setting -> setting.init(currentNodeSettings));
+        currentNodeSettings.forEach(setting -> setting.init(currentNodeSettings, edges));
     }
 
     public void check() {

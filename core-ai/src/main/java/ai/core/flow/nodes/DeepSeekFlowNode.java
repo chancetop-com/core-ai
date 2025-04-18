@@ -1,5 +1,6 @@
 package ai.core.flow.nodes;
 
+import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
 import ai.core.llm.LLMProviderConfig;
@@ -30,7 +31,7 @@ public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
     }
 
     @Override
-    public void init(List<FlowNode<?>> settings) {
+    public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
         if (!getInitialized()) {
             if (getModel() == null) setModel("deepseek-chat");
             if (getTemperature() == null) setTemperature(0.7);

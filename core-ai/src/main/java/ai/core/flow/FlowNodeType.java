@@ -11,6 +11,7 @@ public enum FlowNodeType {
     LLM,
     AGENT_TOOL,
     RAG,
+    HANDOFF,
     OPERATOR_IF,
     OPERATOR_SWITCH,
     OPERATOR_FILTER,

@@ -1,5 +1,6 @@
 package ai.core.flow.nodes;
 
+import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
 import ai.core.rag.RagConfig;
@@ -31,7 +32,7 @@ public class MilvusFlowNode extends RagFlowNode<MilvusFlowNode> {
     }
 
     @Override
-    public void init(List<FlowNode<?>> settings) {
+    public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
         if (!getInitialized()) {
             setVectorStore(vectorStores.getVectorStore(VectorStoreType.MILVUS));
             setRagConfig(RagConfig.builder().useRag(true).topK(getTopK()).threshold(getThreshold()).vectorStore(getVectorStore()).build());

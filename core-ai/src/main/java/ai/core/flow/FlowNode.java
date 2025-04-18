@@ -38,7 +38,7 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
 
     public abstract FlowNodeResult execute(String input, Map<String, Object> variables);
 
-    public abstract void init(List<FlowNode<?>> settings);
+    public abstract void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges);
 
     public abstract void check(List<FlowNode<?>> settings);
 

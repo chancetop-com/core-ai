@@ -2,6 +2,7 @@ package ai.core.flow.nodes;
 
 import ai.core.agent.Agent;
 import ai.core.agent.formatter.formatters.DefaultJsonFormatter;
+import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
 import ai.core.flow.FlowNodeType;
@@ -10,6 +11,7 @@ import ai.core.rag.RagConfig;
 import ai.core.reflection.Reflection;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.tool.ToolCall;
+import core.framework.api.json.Property;
 import core.framework.json.JSON;
 
 import java.util.ArrayList;
@@ -51,7 +53,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
     }
 
     @Override
-    public void init(List<FlowNode<?>> settings) {
+    public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
         if (!getInitialized()) {
             settings.forEach(setting -> {
                 if (!(setting instanceof LLMFlowNode<?> || setting instanceof RagFlowNode<?> || setting instanceof ToolFlowNode<?>)) {
@@ -161,6 +163,10 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
         return useJsonFormat;
     }
 
+    public Agent getAgent() {
+        return agent;
+    }
+
     private void initNullParams() {
         if (description == null) {
             description = "AI Agent Assistant";
@@ -207,24 +213,54 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
     }
 
     public static class Domain extends FlowNode.Domain<Domain> {
+        @Property(name = "system_prompt")
         public String systemPrompt;
+        @Property(name = "description")
         public String description;
+        @Property(name = "prompt_template")
         public String promptTemplate;
+        @Property(name = "use_group_context")
         public Boolean useGroupContext;
+        @Property(name = "use_json_format")
+        public Boolean useJsonFormat;
+        @Property(name = "reflection_enabled")
         public Boolean reflectionEnabled;
+        @Property(name = "reflection_max_round")
         public Integer reflectionMaxRound;
+        @Property(name = "reflection_min_round")
         public Integer reflectionMinRound;
+        @Property(name = "reflection_prompt")
         public String reflectionPrompt;
 
         @Override
         public Domain from(FlowNode<?> node) {
             this.fromBase(node);
+            var agentNode = (AgentFlowNode) node;
+            this.systemPrompt = agentNode.getSystemPrompt();
+            this.description = agentNode.getDescription();
+            this.promptTemplate = agentNode.getPromptTemplate();
+            this.useGroupContext = agentNode.getUseGroupContext();
+            this.useJsonFormat = agentNode.getUseJsonFormat();
+            this.reflectionEnabled = agentNode.getReflectionEnabled();
+            this.reflectionMaxRound = agentNode.getReflectionMaxRound();
+            this.reflectionMinRound = agentNode.getReflectionMinRound();
+            this.reflectionPrompt = agentNode.getReflectionPrompt();
             return this;
         }
 
         @Override
         public void setupNode(FlowNode<?> node) {
             this.setupNodeBase(node);
+            var agentNode = (AgentFlowNode) node;
+            agentNode.setSystemPrompt(this.systemPrompt);
+            agentNode.setDescription(this.description);
+            agentNode.setPromptTemplate(this.promptTemplate);
+            agentNode.setUseGroupContext(this.useGroupContext);
+            agentNode.setUseJsonFormat(this.useJsonFormat);
+            agentNode.setReflectionEnabled(this.reflectionEnabled);
+            agentNode.setReflectionMaxRound(this.reflectionMaxRound);
+            agentNode.setReflectionMinRound(this.reflectionMinRound);
+            agentNode.setReflectionPrompt(this.reflectionPrompt);
         }
     }
 }

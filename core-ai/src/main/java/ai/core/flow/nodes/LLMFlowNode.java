@@ -4,6 +4,7 @@ import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeType;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
+import core.framework.api.json.Property;
 
 /**
  * @author stephen
@@ -64,8 +65,11 @@ public abstract class LLMFlowNode<T extends LLMFlowNode<T>> extends FlowNode<LLM
     }
 
     public abstract static class Domain<T extends Domain<T>> extends FlowNode.Domain<Domain<T>> {
+        @Property(name = "model")
         public String model;
+        @Property(name = "temperature")
         public Double temperature;
+        @Property(name = "embedding_model")
         public String embeddingModel;
 
         public void fromLLMBase(LLMFlowNode<?> node) {

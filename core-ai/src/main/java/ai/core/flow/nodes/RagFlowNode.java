@@ -4,6 +4,7 @@ import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeType;
 import ai.core.rag.RagConfig;
 import ai.core.rag.VectorStore;
+import core.framework.api.json.Property;
 
 /**
  * @author stephen
@@ -55,7 +56,9 @@ public abstract class RagFlowNode<T extends RagFlowNode<T>> extends FlowNode<Rag
     }
 
     public abstract static class Domain<T extends Domain<T>> extends FlowNode.Domain<Domain<T>> {
+        @Property(name = "topK")
         public Integer topK = 5;
+        @Property(name = "threshold")
         public Double threshold = 0d;
 
         public void fromRagBase(RagFlowNode<?> node) {
