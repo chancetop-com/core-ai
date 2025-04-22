@@ -5,7 +5,6 @@ import ai.core.flow.nodes.EmptyFlowNode;
 import ai.core.flow.nodes.OperatorSwitchFlowNode;
 import ai.core.flow.nodes.ThrowErrorFlowNode;
 import ai.core.flow.nodes.WebhookTriggerFlowNode;
-import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -28,8 +27,6 @@ class FlowTest {
                 .id("test_id")
                 .name("test_flow")
                 .description("test flow")
-                .persistence(new FlowPersistence())
-                .persistenceProvider(new TemporaryPersistenceProvider())
                 .nodes(List.of(nodeTrigger, nodeSwitch, nodeEmpty, nodeError))
                 .edges(List.of(edgeTrigger, edgeSwitch1, edgeSwitch2))
                 .build();

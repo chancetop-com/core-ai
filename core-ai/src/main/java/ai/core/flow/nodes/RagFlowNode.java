@@ -62,14 +62,14 @@ public abstract class RagFlowNode<T extends RagFlowNode<T>> extends FlowNode<Rag
         public Double threshold = 0d;
 
         public void fromRagBase(RagFlowNode<?> node) {
-            this.topK = node.topK;
-            this.threshold = node.threshold;
+            this.topK = node.getTopK();
+            this.threshold = node.getThreshold();
             from((FlowNode<?>) node);
         }
 
         public void setupRagNodeBase(RagFlowNode<?> node) {
-            node.topK = this.topK;
-            node.threshold = this.threshold;
+            node.setTopK(this.topK);
+            node.setThreshold(this.threshold);
             setupNode((FlowNode<?>) node);
         }
 

@@ -91,7 +91,7 @@ public class AgentGroupFlowNode extends FlowNode<AgentGroupFlowNode> {
     private Optional<FlowNode<?>> findNextFlowNodeThroughEdgeById(String id, List<FlowEdge<?>> edges, List<FlowNode<?>> settings) {
         var settingsMap = settings.stream().collect(Collectors.toMap(FlowNode::getId, Function.identity()));
         return edges.stream()
-                .filter(edge -> edge.getType() == FlowEdgeType.FLOW)
+                .filter(edge -> edge.getType() == FlowEdgeType.CONNECTION)
                 .filter(edge -> edge.getSourceNodeId().equals(id))
                 .<FlowNode<?>>map(edge -> settingsMap.get(edge.getTargetNodeId())).findFirst();
     }
@@ -127,6 +127,22 @@ public class AgentGroupFlowNode extends FlowNode<AgentGroupFlowNode> {
         JSON.fromJSON(Domain.class, c).setupNode(node);
     }
 
+    public String getDescription() {
+        return description;
+    }
+
+    public Integer getMaxRound() {
+        return maxRound;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public void setMaxRound(Integer maxRound) {
+        this.maxRound = maxRound;
+    }
+
     public static class Domain extends FlowNode.Domain<Domain> {
         public String description;
         public Integer maxRound;
@@ -135,8 +151,8 @@ public class AgentGroupFlowNode extends FlowNode<AgentGroupFlowNode> {
         public Domain from(FlowNode<?> node) {
             this.fromBase(node);
             var agentGroupNode = (AgentGroupFlowNode) node;
-            this.description = agentGroupNode.description;
-            this.maxRound = agentGroupNode.maxRound;
+            this.description = agentGroupNode.getDescription();
+            this.maxRound = agentGroupNode.getMaxRound();
             return this;
         }
 
@@ -144,8 +160,8 @@ public class AgentGroupFlowNode extends FlowNode<AgentGroupFlowNode> {
         public void setupNode(FlowNode<?> node) {
             this.setupNodeBase(node);
             var agentGroupNode = (AgentGroupFlowNode) node;
-            agentGroupNode.description = this.description;
-            agentGroupNode.maxRound = this.maxRound;
+            agentGroupNode.setDescription(this.description);
+            agentGroupNode.setMaxRound(this.maxRound);
         }
     }
 }

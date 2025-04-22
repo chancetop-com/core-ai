@@ -73,16 +73,16 @@ public abstract class LLMFlowNode<T extends LLMFlowNode<T>> extends FlowNode<LLM
         public String embeddingModel;
 
         public void fromLLMBase(LLMFlowNode<?> node) {
-            this.model = node.model;
-            this.temperature = node.temperature;
-            this.embeddingModel = node.embeddingModel;
+            this.model = node.getModel();
+            this.temperature = node.getTemperature();
+            this.embeddingModel = node.getEmbeddingModel();
             from((FlowNode<?>) node);
         }
 
         public void setupLLMNodeBase(LLMFlowNode<?> node) {
-            node.model = this.model;
-            node.temperature = this.temperature;
-            node.embeddingModel = this.embeddingModel;
+            node.setModel(this.model);
+            node.setTemperature(this.temperature);
+            node.setEmbeddingModel(this.embeddingModel);
             setupNode((FlowNode<?>) node);
         }
 

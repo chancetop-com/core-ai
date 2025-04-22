@@ -12,7 +12,6 @@ import ai.core.example.api.example.OrderIssueResponse;
 import ai.core.flow.Flow;
 import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
-import ai.core.flow.FlowPersistence;
 import ai.core.flow.edges.ConnectionEdge;
 import ai.core.flow.edges.SettingEdge;
 import ai.core.flow.nodes.AgentFlowNode;
@@ -116,8 +115,6 @@ public class ExampleService {
 
     private String executeFlow(FlowNode<?> nodeTrigger, List<FlowNode<?>> nodes, List<FlowEdge<?>> edges, String query) {
         var flow = Flow.builder().id("test_id").name("test_flow").description("test flow")
-                .persistence(new FlowPersistence())
-                .persistenceProvider(new TemporaryPersistenceProvider())
                 .nodes(nodes)
                 .edges(edges)
                 .flowOutputUpdatedEventListener((node, q, rst) -> logger.info("Workflow[{}], input: {}, result: {}", node.getName(), q, rst.text()))

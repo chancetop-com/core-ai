@@ -9,7 +9,6 @@ import ai.core.flow.nodes.OperatorSwitchFlowNode;
 import ai.core.flow.nodes.ThrowErrorFlowNode;
 import ai.core.flow.nodes.WebhookTriggerFlowNode;
 import ai.core.llm.LLMProviders;
-import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -39,8 +38,6 @@ class FlowPersistenceTest {
                 .id("test_id")
                 .name("test_flow")
                 .description("test flow")
-                .persistence(new FlowPersistence())
-                .persistenceProvider(new TemporaryPersistenceProvider())
                 .nodes(List.of(nodeTrigger, nodeAgent, nodeSwitch, nodeEmpty, nodeError, nodeDeepSeek))
                 .edges(List.of(edgeTrigger, edgeAgent, edgeSwitch1, edgeSwitch2, edgeDeepSeek))
                 .build();
@@ -62,5 +59,12 @@ class FlowPersistenceTest {
         flow.deserialization(payload);
         assert flow.getNodes().size() == 6;
         assert flow.getEdges().size() == 5;
+    }
+
+    @Test
+    void testEmptyFlow() {
+        var flow = new Flow();
+        var text = flow.serialization();
+        assert text != null;
     }
 }

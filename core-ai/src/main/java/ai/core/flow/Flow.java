@@ -3,12 +3,11 @@ package ai.core.flow;
 import ai.core.flow.listener.FlowNodeChangedEventListener;
 import ai.core.flow.listener.FlowNodeOutputUpdatedEventListener;
 import ai.core.persistence.Persistence;
-import ai.core.persistence.PersistenceProvider;
-import core.framework.web.exception.NotFoundException;
 
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -22,24 +21,23 @@ public class Flow {
     String id;
     String name;
     String description;
-    List<FlowNode<?>> nodes;
-    List<FlowEdge<?>> edges;
+    List<FlowNode<?>> nodes = List.of();
+    List<FlowEdge<?>> edges = List.of();
     Persistence<Flow> persistence;
-    PersistenceProvider persistenceProvider;
     String currentNodeId;
     String currentInput;
-    Map<String, Object> currentVariables;
+    Map<String, Object> currentVariables = Map.of();
     FlowNodeChangedEventListener flowNodeChangedEventListener;
     FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
 
     public Flow() {
-
+        this.id = UUID.randomUUID().toString();
+        this.persistence = new FlowPersistence();
     }
 
-    public Flow(String id, Persistence<Flow> persistence, PersistenceProvider persistenceProvider) {
+    public Flow(String id) {
         this.id = id;
-        this.persistence = persistence;
-        this.persistenceProvider = persistenceProvider;
+        this.persistence = new FlowPersistence();
     }
 
     public String execute(String nodeId, String input, Map<String, Object> variables) {
@@ -99,7 +97,6 @@ public class Flow {
 
     public void check() {
         if (persistence == null) throw new IllegalArgumentException("Persistence is not set");
-        if (persistenceProvider == null) throw new IllegalArgumentException("Persistence provider is not set");
         if (nodes.isEmpty()) throw new IllegalArgumentException("Nodes cannot be empty");
         if (edges.isEmpty()) throw new IllegalArgumentException("Edges cannot be empty");
         if (id == null || id.isBlank()) throw new IllegalArgumentException("Flow ID cannot be null or empty");
@@ -137,10 +134,6 @@ public class Flow {
         return persistence;
     }
 
-    public PersistenceProvider getPersistenceProvider() {
-        return persistenceProvider;
-    }
-
     public FlowNodeChangedEventListener getFlowNodeStatusChangedEventListener() {
         return flowNodeChangedEventListener;
     }
@@ -169,10 +162,6 @@ public class Flow {
         this.persistence = persistence;
     }
 
-    public void setPersistenceProvider(PersistenceProvider persistenceProvider) {
-        this.persistenceProvider = persistenceProvider;
-    }
-
     public void setFlowNodeStatusChangedEventListener(FlowNodeChangedEventListener flowNodeChangedEventListener) {
         this.flowNodeChangedEventListener = flowNodeChangedEventListener;
     }
@@ -188,7 +177,7 @@ public class Flow {
 
     public Map<FlowEdge<?>, FlowNode<?>> getNextNodes(FlowNode<?> node) {
         return edges.stream()
-                .filter(edge -> edge.type == FlowEdgeType.FLOW)
+                .filter(edge -> edge.type == FlowEdgeType.CONNECTION)
                 .filter(edge -> edge.getSourceNodeId().equals(node.id))
                 .collect(Collectors.toMap(edge -> edge, edge -> getNodeById(edge.getTargetNodeId())));
     }
@@ -219,26 +208,12 @@ public class Flow {
         persistence.deserialization(this, text);
     }
 
-    public void load(String id) {
-        if (persistence == null) throw new IllegalArgumentException("Persistence is not set");
-        if (persistenceProvider == null) throw new IllegalArgumentException("Persistence provider is not set");
-        persistence.deserialization(this, persistenceProvider.load(id).orElseThrow(() -> new NotFoundException("Flow not found: " + id)));
-    }
-
-    public void save() {
-        if (persistence == null) throw new IllegalArgumentException("Persistence is not set");
-        if (persistenceProvider == null) throw new IllegalArgumentException("Persistence provider is not set");
-        persistenceProvider.save(id, persistence.serialization(this));
-    }
-
     public static class Builder {
         private String id;
         private String name;
         private String description;
         private List<FlowNode<?>> nodes;
         private List<FlowEdge<?>> edges;
-        private Persistence<Flow> persistence;
-        private PersistenceProvider persistenceProvider;
         private FlowNodeChangedEventListener flowNodeChangedEventListener;
         private FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
 
@@ -267,16 +242,6 @@ public class Flow {
             return this;
         }
 
-        public Builder persistence(Persistence<Flow> persistence) {
-            this.persistence = persistence;
-            return this;
-        }
-
-        public Builder persistenceProvider(PersistenceProvider persistenceProvider) {
-            this.persistenceProvider = persistenceProvider;
-            return this;
-        }
-
         public Builder flowNodeStatusChangedEventListener(FlowNodeChangedEventListener flowNodeChangedEventListener) {
             this.flowNodeChangedEventListener = flowNodeChangedEventListener;
             return this;
@@ -288,7 +253,7 @@ public class Flow {
         }
 
         public Flow build() {
-            Flow flow = new Flow(id, persistence, persistenceProvider);
+            Flow flow = new Flow(id);
             flow.setName(name);
             flow.setDescription(description);
             flow.setNodes(nodes);

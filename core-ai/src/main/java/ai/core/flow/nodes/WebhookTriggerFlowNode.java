@@ -28,6 +28,10 @@ public class WebhookTriggerFlowNode extends FlowNode<WebhookTriggerFlowNode> {
         return webhookUrl;
     }
 
+    public void setWebhookUrl(String webhookUrl) {
+        this.webhookUrl = webhookUrl;
+    }
+
     @Override
     public FlowNodeResult execute(String input, Map<String, Object> variables) {
         return null;

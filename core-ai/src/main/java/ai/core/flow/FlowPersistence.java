@@ -57,6 +57,7 @@ public class FlowPersistence implements Persistence<Flow> {
         public Map<String, Object> currentVariables;
 
         public FlowPersistenceDomain from(Flow flow) {
+            if (flow.id == null) throw new IllegalArgumentException("flow id cannot be null");
             this.id = flow.id;
             this.name = flow.name;
             this.description = flow.description;

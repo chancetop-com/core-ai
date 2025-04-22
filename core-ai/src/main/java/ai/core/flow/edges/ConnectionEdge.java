@@ -15,11 +15,11 @@ public class ConnectionEdge extends FlowEdge<ConnectionEdge> {
     }
 
     public ConnectionEdge(String id) {
-        super(id, "Connection", FlowEdgeType.FLOW, ConnectionEdge.class);
+        super(id, "Connection", FlowEdgeType.CONNECTION, ConnectionEdge.class);
     }
 
     public ConnectionEdge(String id, String value) {
-        super(id, "Connection", FlowEdgeType.FLOW, ConnectionEdge.class);
+        super(id, "Connection", FlowEdgeType.CONNECTION, ConnectionEdge.class);
         this.value = value;
     }
 
