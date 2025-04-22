@@ -10,15 +10,22 @@ import ai.core.defaultagents.DefaultSummaryAgent;
 import ai.core.example.api.example.MCPToolCallRequest;
 import ai.core.example.api.example.OrderIssueResponse;
 import ai.core.flow.Flow;
+import ai.core.flow.FlowEdge;
+import ai.core.flow.FlowNode;
 import ai.core.flow.FlowPersistence;
 import ai.core.flow.edges.ConnectionEdge;
 import ai.core.flow.edges.SettingEdge;
 import ai.core.flow.nodes.AgentFlowNode;
+import ai.core.flow.nodes.AgentGroupFlowNode;
 import ai.core.flow.nodes.DeepSeekFlowNode;
 import ai.core.flow.nodes.EmptyFlowNode;
+import ai.core.flow.nodes.HybridHandoffFlowNode;
 import ai.core.flow.nodes.OperatorSwitchFlowNode;
 import ai.core.flow.nodes.ThrowErrorFlowNode;
 import ai.core.flow.nodes.WebhookTriggerFlowNode;
+import ai.core.flow.nodes.builtinnodes.BuiltinModeratorAgentFlowNode;
+import ai.core.flow.nodes.builtinnodes.BuiltinPythonAgentFlowNode;
+import ai.core.flow.nodes.builtinnodes.BuiltinPythonToolFlowNode;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.mcp.client.MCPClientService;
@@ -26,7 +33,10 @@ import ai.core.mcp.client.MCPServerConfig;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import ai.core.tool.function.Functions;
 import ai.core.tool.mcp.MCPToolCalls;
+import com.google.common.collect.Lists;
 import core.framework.inject.Inject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.UUID;
@@ -35,6 +45,7 @@ import java.util.UUID;
  * @author stephen
  */
 public class ExampleService {
+    private final Logger logger = LoggerFactory.getLogger(ExampleService.class);
     @Inject
     TemporaryPersistenceProvider persistenceProvider;
     @Inject
@@ -52,28 +63,64 @@ public class ExampleService {
         var nodeSwitch = new OperatorSwitchFlowNode(UUID.randomUUID().toString(), "Switch");
         var nodeEmpty = new EmptyFlowNode(UUID.randomUUID().toString(), "Empty");
         var nodeError = new ThrowErrorFlowNode(UUID.randomUUID().toString(), "Error", "test throw error node");
-        var edgeTrigger = new ConnectionEdge(UUID.randomUUID().toString());
-        var edgeAgent = new ConnectionEdge(UUID.randomUUID().toString());
-        var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "1");
-        var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "2");
-        edgeTrigger.connect(nodeTrigger.getId(), nodeAgent.getId());
-        edgeAgent.connect(nodeAgent.getId(), nodeSwitch.getId());
-        edgeSwitch1.connect(nodeSwitch.getId(), nodeError.getId());
-        edgeSwitch2.connect(nodeSwitch.getId(), nodeEmpty.getId());
+        var edgeTrigger = new ConnectionEdge(UUID.randomUUID().toString()).connect(nodeTrigger.getId(), nodeAgent.getId());
+        var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "1").connect(nodeSwitch.getId(), nodeError.getId());
+        var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "0").connect(nodeSwitch.getId(), nodeEmpty.getId());
         var nodeDeepSeek = new DeepSeekFlowNode(UUID.randomUUID().toString(), "DeepSeek", llmProviders);
-        var edgeDeepSeek = new SettingEdge(UUID.randomUUID().toString());
-        edgeDeepSeek.connect(nodeAgent.getId(), nodeDeepSeek.getId());
-        nodeAgent.setSystemPrompt("""
-                Your are a calculator, you can do any math calculation, only return the result.
+        var edgeDeepSeek = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgent.getId(), nodeDeepSeek.getId());
+        nodeAgent.setSystemPrompt("Your are a calculator, you can do any math calculation.\nDon't output your analysis or thinking process, only output the question and answer.");
+        List<FlowNode<?>> nodes = Lists.newArrayList(nodeTrigger, nodeAgent, nodeSwitch, nodeEmpty, nodeError, nodeDeepSeek);
+        List<FlowEdge<?>> edges = Lists.newArrayList(edgeTrigger, edgeSwitch1, edgeSwitch2, edgeDeepSeek);
+
+        // agent group flow node
+        var nodeAgentGroup = new AgentGroupFlowNode(UUID.randomUUID().toString(), "AgentGroup", "An agent group that write code to verify the calculation in query.", 3);
+        var edgeAgent = new ConnectionEdge(UUID.randomUUID().toString()).connect(nodeAgent.getId(), nodeAgentGroup.getId());
+        var edgeAgentGroup = new ConnectionEdge(UUID.randomUUID().toString()).connect(nodeAgentGroup.getId(), nodeSwitch.getId());
+        // agent group llm settings
+        var edgeDeepSeek2 = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgentGroup.getId(), nodeDeepSeek.getId());
+        // agent group handoff settings
+        var nodeHandoff = new HybridHandoffFlowNode(UUID.randomUUID().toString(), "HybridHandoff");
+        var edgeHandoff = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgentGroup.getId(), nodeHandoff.getId());
+        // agent group handoff's moderator agent settings
+        var nodeAgentModerator = BuiltinModeratorAgentFlowNode.of();
+        var edgeAgentModerator = new SettingEdge(UUID.randomUUID().toString()).connect(nodeHandoff.getId(), nodeAgentModerator.getId());
+        var edgeAgentModeratorLLM = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgentModerator.getId(), nodeDeepSeek.getId());
+        // agent group agents settings - requirement extractor agent
+        var nodeRequirement = new AgentFlowNode(UUID.randomUUID().toString(), "Original Calc Requirement Extractor");
+        nodeRequirement.setDescription("Extract the original calculation request from the query.Only output the query, do not add the calculation result.");
+        nodeRequirement.setSystemPrompt("""
+                Analysis the query and extract the original calculate request.
+                Only output the query, do not add the calculation result.
                 """);
-        var flow = Flow.builder()
-                .id("test_id")
-                .name("test_flow")
-                .description("test flow")
+        var edgeRequirement = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgentGroup.getId(), nodeRequirement.getId());
+        var edgeRequirementLLM = new SettingEdge(UUID.randomUUID().toString()).connect(nodeRequirement.getId(), nodeDeepSeek.getId());
+        // agent group agents settings - python agent
+        var nodePythonExecutor = BuiltinPythonAgentFlowNode.of("""
+                Python code only print the calculate result number, do not add any other information.
+                Last line of the code should be the `print(y - x)` statement.
+                Do not use sympy or any other library to do the calculation.
+                """);
+        var edgePythonExecutor = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgentGroup.getId(), nodePythonExecutor.getId());
+        var edgePythonLLM = new SettingEdge(UUID.randomUUID().toString()).connect(nodePythonExecutor.getId(), nodeDeepSeek.getId());
+        // python agent tool settings
+        var nodePythonTool = BuiltinPythonToolFlowNode.of();
+        var edgePythonTool = new SettingEdge(UUID.randomUUID().toString()).connect(nodePythonExecutor.getId(), nodePythonTool.getId());
+
+        List<FlowNode<?>> groupNodes = Lists.newArrayList(nodeAgentGroup, nodeHandoff, nodeAgentModerator, nodeRequirement, nodePythonExecutor, nodePythonTool);
+        List<FlowEdge<?>> groupEdges = Lists.newArrayList(edgeAgent, edgeAgentGroup, edgeDeepSeek2, edgeHandoff, edgeAgentModerator, edgeAgentModeratorLLM, edgeRequirement, edgeRequirementLLM, edgePythonExecutor, edgePythonLLM, edgePythonTool);
+
+        nodes.addAll(groupNodes);
+        edges.addAll(groupEdges);
+        return executeFlow(nodeTrigger, nodes, edges, query);
+    }
+
+    private String executeFlow(FlowNode<?> nodeTrigger, List<FlowNode<?>> nodes, List<FlowEdge<?>> edges, String query) {
+        var flow = Flow.builder().id("test_id").name("test_flow").description("test flow")
                 .persistence(new FlowPersistence())
                 .persistenceProvider(new TemporaryPersistenceProvider())
-                .nodes(List.of(nodeTrigger, nodeAgent, nodeSwitch, nodeEmpty, nodeError, nodeDeepSeek))
-                .edges(List.of(edgeTrigger, edgeAgent, edgeSwitch1, edgeSwitch2, edgeDeepSeek))
+                .nodes(nodes)
+                .edges(edges)
+                .flowOutputUpdatedEventListener((node, q, rst) -> logger.info("Workflow[{}], input: {}, result: {}", node.getName(), q, rst.text()))
                 .build();
         return flow.execute(nodeTrigger.getId(), query, null);
     }

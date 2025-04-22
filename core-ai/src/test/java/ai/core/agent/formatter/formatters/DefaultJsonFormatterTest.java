@@ -1,6 +1,5 @@
-package ai.core.agent;
+package ai.core.agent.formatter.formatters;
 
-import ai.core.agent.formatter.formatters.DefaultJsonFormatter;
 import ai.core.agent.planning.plannings.DefaultPlanningResult;
 import core.framework.json.JSON;
 import org.junit.jupiter.api.Test;

@@ -27,9 +27,9 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
 
     public FlowNode(String id, String name, String typeName, String typeDescription, FlowNodeType type, Class<?> cls) {
         this.id = id;
-        this.typeName = name;
-        this.name = typeName;
+        this.typeName = typeName;
         this.typeDescription = typeDescription;
+        this.name = name;
         this.type = type;
         this.position = new FlowNodePosition(0, 0);
         this.initialized = false;
@@ -42,7 +42,14 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
 
     public abstract void check(List<FlowNode<?>> settings);
 
+    public void initialize(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
+        if (getInitialized()) return;
+        init(settings, edges);
+        setInitialized(true);
+    }
+
     public FlowNode<?> selectNextNodeByEdgeValue(FlowNodeResult rst, Map<FlowEdge<?>, FlowNode<?>> candidates) {
+        if (rst.text() == null) throw new NotFoundException("Cannot find next flow node by edges, previous output is null");
         FlowNode<?> nextNode = null;
         for (var entry : candidates.entrySet()) {
             if (!(entry.getKey() instanceof ConnectionEdge)) continue;

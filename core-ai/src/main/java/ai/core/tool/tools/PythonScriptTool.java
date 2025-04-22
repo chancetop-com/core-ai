@@ -7,11 +7,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -24,15 +25,16 @@ public class PythonScriptTool extends ToolCall {
         return new Builder();
     }
 
-    public static String exec(String path, List<String> args, String dir, long timeout) {
-        var command = new ArrayList<>(Arrays.asList("python", path));
-        command.addAll(args);
-        var pb = new ProcessBuilder(command);
-        pb.environment().put("PYTHONIOENCODING", "utf-8");
-        pb.directory(new File(Objects.requireNonNullElse(dir, ".")));
-
+    public static String exec(String code, long timeout) {
+        var dir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
+        var tmp = core.framework.util.Files.tempFile();
         try {
-            pb.directory(new File(Objects.requireNonNullElse(dir, ".")));
+            Files.writeString(tmp, code);
+
+            var command = new ArrayList<>(Arrays.asList("python", tmp.toAbsolutePath().toString()));
+            var pb = new ProcessBuilder(command);
+            pb.environment().put("PYTHONIOENCODING", "utf-8");
+            pb.directory(new File(dir));
             var process = pb.start();
 
             boolean timedOut = waitFor(process, timeout);
@@ -61,6 +63,16 @@ public class PythonScriptTool extends ToolCall {
 
         } catch (Exception e) {
             return e.getMessage();
+        } finally {
+            deleteTempFile(tmp);
+        }
+    }
+
+    private static void deleteTempFile(Path tmp) {
+        try {
+            Files.deleteIfExists(tmp);
+        } catch (IOException e) {
+            LOGGER.warn("Failed to delete temp file: {}, {}", tmp, e.getMessage());
         }
     }
 
@@ -86,10 +98,8 @@ public class PythonScriptTool extends ToolCall {
     @Override
     public String call(String text) {
         var argsMap = JSON.fromJSON(Map.class, text);
-        var workspaceDir = (String) argsMap.get("workspace_dir");
-        var command = (String) argsMap.get("command");
-        var splits = command.split(" ");
-        return exec(splits[0], Arrays.asList(splits).subList(1, splits.length), workspaceDir, DEFAULT_TIMEOUT_SECONDS);
+        var code = (String) argsMap.get("code");
+        return exec(code, DEFAULT_TIMEOUT_SECONDS);
     }
 
     public static class Builder extends ToolCall.Builder<Builder, PythonScriptTool> {

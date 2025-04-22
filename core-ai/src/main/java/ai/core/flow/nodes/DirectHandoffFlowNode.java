@@ -29,10 +29,7 @@ public class DirectHandoffFlowNode extends HandoffFlowNode<DirectHandoffFlowNode
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (!getInitialized()) {
-            setHandoff(new DirectHandoff());
-        }
-        setInitialized(true);
+        setHandoff(new DirectHandoff());
     }
 
     @Override

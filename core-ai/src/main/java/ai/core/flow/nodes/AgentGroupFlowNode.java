@@ -37,8 +37,10 @@ public class AgentGroupFlowNode extends FlowNode<AgentGroupFlowNode> {
 
     }
 
-    public AgentGroupFlowNode(String id, String name) {
+    public AgentGroupFlowNode(String id, String name, String description, Integer maxRound) {
         super(id, name, "AgentGroup", "AI Agent Group Node", FlowNodeType.AGENT_GROUP, AgentGroupFlowNode.class);
+        this.description = description;
+        this.maxRound = maxRound;
     }
 
     @Override
@@ -48,33 +50,30 @@ public class AgentGroupFlowNode extends FlowNode<AgentGroupFlowNode> {
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (!getInitialized()) {
-            settings.forEach(setting -> {
-                if (setting instanceof LLMFlowNode<?> llmFlowNode) {
-                    llmProvider = llmFlowNode.getLlmProvider();
-                }
-                if (setting instanceof AgentFlowNode agentFlowNode) {
-                    agents.add(agentFlowNode.getAgent());
-                    setupNext(agentFlowNode.getAgent(), agentFlowNode.getId(), settings, edges);
-                }
-                if (setting instanceof AgentGroupFlowNode agentGroupFlowNode) {
-                    agents.add(agentGroupFlowNode.getAgentGroup());
-                    setupNext(agentGroupFlowNode.getAgentGroup(), agentGroupFlowNode.getId(), settings, edges);
-                }
-                if (setting instanceof HandoffFlowNode<?> handoffFlowNode) {
-                    handoff = handoffFlowNode.getHandoff();
-                }
-            });
-            this.agentGroup = AgentGroup.builder()
-                    .name(getName())
-                    .description(description)
-                    .maxRound(maxRound)
-                    .llmProvider(llmProvider)
-                    .agents(agents)
-                    .planning(new DefaultPlanning())
-                    .handoff(handoff).build();
-        }
-        setInitialized(true);
+        settings.forEach(setting -> {
+            if (setting instanceof LLMFlowNode<?> llmFlowNode) {
+                llmProvider = llmFlowNode.getLlmProvider();
+            }
+            if (setting instanceof AgentFlowNode agentFlowNode) {
+                agents.add(agentFlowNode.getAgent());
+                setupNext(agentFlowNode.getAgent(), agentFlowNode.getId(), settings, edges);
+            }
+            if (setting instanceof AgentGroupFlowNode agentGroupFlowNode) {
+                agents.add(agentGroupFlowNode.getAgentGroup());
+                setupNext(agentGroupFlowNode.getAgentGroup(), agentGroupFlowNode.getId(), settings, edges);
+            }
+            if (setting instanceof HandoffFlowNode<?> handoffFlowNode) {
+                handoff = handoffFlowNode.getHandoff();
+            }
+        });
+        this.agentGroup = AgentGroup.builder()
+                .name(getName())
+                .description(description)
+                .maxRound(maxRound)
+                .llmProvider(llmProvider)
+                .agents(agents)
+                .planning(new DefaultPlanning())
+                .handoff(handoff).build();
     }
 
     private void setupNext(Node<?> agent, String id, List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
@@ -101,16 +100,16 @@ public class AgentGroupFlowNode extends FlowNode<AgentGroupFlowNode> {
     public void check(List<FlowNode<?>> settings) {
         var llmExist = settings.stream().anyMatch(setting -> setting instanceof LLMFlowNode<?>);
         if (!llmExist) {
-            throw new IllegalArgumentException("AgentFlowNode must have LLMFlowNode as setting");
+            throw new IllegalArgumentException("AgentGroupFlowNode must have LLMFlowNode as setting: " + this.getName());
         }
         var agentExist = settings.stream().anyMatch(setting -> setting instanceof AgentFlowNode);
         var agentGroupExist = settings.stream().anyMatch(setting -> setting instanceof AgentGroupFlowNode);
         if (!agentExist && !agentGroupExist) {
-            throw new IllegalArgumentException("AgentGroupFlowNode must have AgentFlowNode or AgentGroupFlowNode as setting");
+            throw new IllegalArgumentException("AgentGroupFlowNode must have AgentFlowNode or AgentGroupFlowNode as setting: " + this.getName());
         }
         var handoffExist = settings.stream().anyMatch(setting -> setting instanceof HandoffFlowNode<?>);
         if (!handoffExist) {
-            throw new IllegalArgumentException("AgentGroupFlowNode must have HandoffFlowNode as setting");
+            throw new IllegalArgumentException("AgentGroupFlowNode must have HandoffFlowNode as setting: " + this.getName());
         }
     }
 

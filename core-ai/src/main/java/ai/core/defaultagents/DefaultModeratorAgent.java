@@ -1,43 +1,23 @@
 package ai.core.defaultagents;
 
 import ai.core.agent.Agent;
-import ai.core.agent.AgentGroup;
-import ai.core.agent.Node;
 import ai.core.agent.formatter.formatters.DefaultJsonFormatter;
 import ai.core.llm.LLMProvider;
 import core.framework.util.Strings;
-
-import java.util.List;
 
 /**
  * @author stephen
  */
 public class DefaultModeratorAgent {
-    public static Agent of(LLMProvider llmProvider, String model, String goal, List<Node<?>> agents) {
-        return of(llmProvider, model, goal, agents, "", "");
-    }
-    public static Agent of(LLMProvider llmProvider, String model, String goal, List<Node<?>> agents, String contextVariableTemplate) {
-        return of(llmProvider, model, goal, agents, "", contextVariableTemplate);
-    }
-    /**
-     * Create a moderator agent for a role play game to solve task by guide the conversation and choose the next speaker agent.
-     *
-     * @param llmProvider the LLM provider
-     * @param model the model
-     * @param goal the goal, the task to solve
-     * @param agents the agents list
-     * @param contextVariableTemplate promptTemplate that provider the context variables if needed, null for no context provided to moderator
-     * @return the moderator agent
-     */
-    public static Agent of(LLMProvider llmProvider, String model, String goal, List<Node<?>> agents, String additionSystemPrompt, String contextVariableTemplate) {
-        return Agent.builder()
-                .name("moderator-agent")
-                .description("moderator of a role play game to solve task by guide the conversation and choose the next speaker agent")
-                .systemPrompt(Strings.format("""
+    public static final String DEFAULT_MODERATOR_AGENT_NAME = "moderator-agent";
+    public static final String DEFAULT_MODERATOR_AGENT_DESCRIPTION = "moderator of a role play game to solve task by guide the conversation and choose the next speaker agent";
+
+    public static String defaultModeratorSystemPrompt(String additionSystemPrompt) {
+        return Strings.format("""
                         You are in a role play game to solve task by guide the conversation and choose the next speaker agent, the goal is:
-                        {}.
+                        {{{system.agent.group.description}}}.
                         The following agents list are available:
-                        {}.
+                        {{{system.agent.group.agents}}}.
                         You need carefully review the capabilities of each agent, including the inputs and outputs of their tolls and functions to planning the conversation and choose the next agent to play.
                         Read the conversation, then select the next agent from the agents list to play.
                         Because the next agent cannot read the whole conversation, please generate the detailed query for the next agent, including all necessary context that next agent might need.
@@ -57,12 +37,36 @@ public class DefaultModeratorAgent {
                         You need to carefully analyze the output of the previous round of the agent to determine whether it was an error, a failure, or a success.
                         Always remember the goal and the agents list.
                         {}
-                        """, goal, AgentGroup.AgentsInfo.agentsInfo(agents), additionSystemPrompt))
-                .promptTemplate(Strings.format("""
+                        """, additionSystemPrompt == null ? "" : additionSystemPrompt);
+    }
+
+    public static String defaultModeratorPromptTemplate(String contextVariableTemplate) {
+        return Strings.format("""
                         {}
                         Previous agent output/raw input:
-                        """, contextVariableTemplate == null ? "" : contextVariableTemplate))
+                        """, contextVariableTemplate == null ? "" : contextVariableTemplate);
+    }
+
+    public static Agent of(LLMProvider llmProvider, String model) {
+        return of(llmProvider, model, "", "");
+    }
+
+    /**
+     * Create a moderator agent for a role play game to solve task by guide the conversation and choose the next speaker agent.
+     *
+     * @param llmProvider the LLM provider
+     * @param model the model
+     * @param contextVariableTemplate promptTemplate that provider the context variables if needed, null for no context provided to moderator
+     * @return the moderator agent
+     */
+    public static Agent of(LLMProvider llmProvider, String model, String additionSystemPrompt, String contextVariableTemplate) {
+        return Agent.builder()
+                .name(DEFAULT_MODERATOR_AGENT_NAME)
+                .description(DEFAULT_MODERATOR_AGENT_DESCRIPTION)
+                .systemPrompt(defaultModeratorSystemPrompt(additionSystemPrompt))
+                .promptTemplate(defaultModeratorPromptTemplate(contextVariableTemplate))
                 .formatter(new DefaultJsonFormatter(true))
+                .useGroupContext(true)
                 .model(model)
                 .llmProvider(llmProvider).build();
     }

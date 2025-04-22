@@ -9,6 +9,7 @@ import ai.core.agent.planning.Planning;
 import ai.core.agent.planning.plannings.DefaultPlanning;
 import ai.core.defaultagents.DefaultModeratorAgent;
 import ai.core.llm.LLMProvider;
+import ai.core.prompt.SystemVariables;
 import ai.core.termination.Termination;
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.tool.ToolCall;
@@ -56,6 +57,7 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     String executeWithException(String rawQuery, Map<String, Object> variables) {
+        setupAgentGroupSystemVariables();
         currentQuery = rawQuery;
         startRunning();
         while (notTerminated()) {
@@ -72,7 +74,7 @@ public class AgentGroup extends Node<AgentGroup> {
             }
 
             // planning think the previous round is completed
-            if (finished(false)) return getOutput();
+            if (finished(false)) return getOutput() == null ? getInput() : getOutput();
             if (planningFailed()) continue;
 
             currentAgent = getAgentByName(planning.nextAgentName());
@@ -102,6 +104,12 @@ public class AgentGroup extends Node<AgentGroup> {
         }
 
         return Strings.format("Run out of round: {}/{}, Last round output: {}", getRound(), getMaxRound(), getOutput());
+    }
+
+    private void setupAgentGroupSystemVariables() {
+        var systemVariables = getSystemVariables();
+        systemVariables.put(SystemVariables.AGENT_GROUP_CURRENT_ROUND, getRound());
+        systemVariables.put(SystemVariables.AGENT_GROUP_CURRENT_INPUT, getInput());
     }
 
     private String getPreviousQuery() {
@@ -260,7 +268,7 @@ public class AgentGroup extends Node<AgentGroup> {
         public List<String> functions;
     }
 
-    public static class Builder extends Node.Builder<Builder, AgentGroup> {
+    public static class Builder extends NodeBuilder<Builder, AgentGroup> {
         private List<Node<?>> agents;
         private LLMProvider llmProvider;
         private Planning planning;
@@ -304,6 +312,12 @@ public class AgentGroup extends Node<AgentGroup> {
             if (this.llmProvider == null) {
                 throw new IllegalArgumentException("llmProvider is required");
             }
+            if (name == null) {
+                name = "assistant-agent-group";
+            }
+            if (description == null) {
+                description = "assistant agent group that help with user";
+            }
             var agent = new AgentGroup();
             this.nodeType = NodeType.GROUP;
             persistence(new AgentGroupPersistence());
@@ -328,6 +342,12 @@ public class AgentGroup extends Node<AgentGroup> {
             }
             buildHandoff(agent);
             agent.setChildrenParentNode();
+
+            var systemVariables = agent.getSystemVariables();
+            systemVariables.put(SystemVariables.AGENT_GROUP_AGENTS, AgentsInfo.agentsInfo(agents));
+            systemVariables.put(SystemVariables.AGENT_GROUP_NAME, agent.getName());
+            systemVariables.put(SystemVariables.AGENT_GROUP_DESCRIPTION, agent.getDescription());
+            systemVariables.put(SystemVariables.AGENT_GROUP_MAX_ROUND, agent.getMaxRound());
             return agent;
         }
 
@@ -351,7 +371,7 @@ public class AgentGroup extends Node<AgentGroup> {
         }
 
         private Agent buildDefaultModeratorAgent() {
-            return DefaultModeratorAgent.of(this.llmProvider, this.llmProvider.config.getModel(), this.description, this.agents, null);
+            return DefaultModeratorAgent.of(this.llmProvider, this.llmProvider.config.getModel());
         }
     }
 }

@@ -32,14 +32,11 @@ public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (!getInitialized()) {
-            if (getModel() == null) setModel("deepseek-chat");
-            if (getTemperature() == null) setTemperature(0.7);
-            setLlmProviderConfig(new LLMProviderConfig(getModel(), getTemperature(), getEmbeddingModel()));
-            setLlmProvider(llmProviders.getProviderByName("DeepSeek"));
-            getLlmProvider().setConfig(getLlmProviderConfig());
-        }
-        setInitialized(true);
+        if (getModel() == null) setModel("deepseek-chat");
+        if (getTemperature() == null) setTemperature(0.7);
+        setLlmProviderConfig(new LLMProviderConfig(getModel(), getTemperature(), getEmbeddingModel()));
+        setLlmProvider(llmProviders.getProviderByName("DeepSeek"));
+        getLlmProvider().setConfig(getLlmProviderConfig());
     }
 
     @Override

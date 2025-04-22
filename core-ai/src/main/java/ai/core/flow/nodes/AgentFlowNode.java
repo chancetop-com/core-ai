@@ -1,7 +1,7 @@
 package ai.core.flow.nodes;
 
 import ai.core.agent.Agent;
-import ai.core.agent.formatter.formatters.DefaultJsonFormatter;
+import ai.core.agent.formatter.Formatters;
 import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
@@ -30,7 +30,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
     private Integer reflectionMaxRound;
     private Integer reflectionMinRound;
     private String reflectionPrompt;
-    private Boolean useJsonFormat;
+    private String formatter;
 
     private LLMProvider llmProvider;
     private final List<ToolCall> toolCalls = new ArrayList<>();
@@ -46,6 +46,13 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
         super(id, name, "Agent", "AI Agent Node", FlowNodeType.AGENT, AgentFlowNode.class);
     }
 
+    public AgentFlowNode(String id, String name, String description, String systemPrompt, String promptTemplate) {
+        super(id, name, "Agent", "AI Agent Node", FlowNodeType.AGENT, AgentFlowNode.class);
+        this.description = description;
+        this.systemPrompt = systemPrompt;
+        this.promptTemplate = promptTemplate;
+    }
+
     @Override
     public FlowNodeResult execute(String input, Map<String, Object> variables) {
         if (agent == null) throw new IllegalArgumentException("Agent is not setup successfully");
@@ -54,41 +61,38 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (!getInitialized()) {
-            settings.forEach(setting -> {
-                if (!(setting instanceof LLMFlowNode<?> || setting instanceof RagFlowNode<?> || setting instanceof ToolFlowNode<?>)) {
-                    throw new IllegalArgumentException("AgentFlowNode only support LLMFlowNode or RagFlowNode or ToolFlowNode settings");
-                }
-                if (setting instanceof LLMFlowNode<?> llmFlowNode) {
-                    this.llmProvider = llmFlowNode.getLlmProvider();
-                }
-                if (setting instanceof RagFlowNode<?> ragFlowNode) {
-                    this.ragConfig = ragFlowNode.getRagConfig();
-                }
-                if (setting instanceof ToolFlowNode<?> toolFlowNode) {
-                    this.toolCalls.add(toolFlowNode.getToolCall());
-                }
-            });
-            if (llmProvider == null) {
-                throw new IllegalArgumentException("AgentFlowNode must have LLMFlowNode as setting");
+        settings.forEach(setting -> {
+            if (!(setting instanceof LLMFlowNode<?> || setting instanceof RagFlowNode<?> || setting instanceof ToolFlowNode<?>)) {
+                throw new IllegalArgumentException("AgentFlowNode only support LLMFlowNode or RagFlowNode or ToolFlowNode settings: " + this.getName());
             }
-            initNullParams();
-            var builder = Agent.builder()
-                    .name(getName())
-                    .description(description)
-                    .systemPrompt(systemPrompt)
-                    .promptTemplate(promptTemplate)
-                    .llmProvider(llmProvider)
-                    .useGroupContext(useGroupContext)
-                    .reflectionConfig(new ReflectionConfig(reflectionEnabled, reflectionMaxRound, reflectionMinRound, reflectionPrompt))
-                    .ragConfig(ragConfig)
-                    .toolCalls(toolCalls);
-            if (useJsonFormat != null) {
-                builder.formatter(new DefaultJsonFormatter());
+            if (setting instanceof LLMFlowNode<?> llmFlowNode) {
+                this.llmProvider = llmFlowNode.getLlmProvider();
             }
-            agent = builder.build();
+            if (setting instanceof RagFlowNode<?> ragFlowNode) {
+                this.ragConfig = ragFlowNode.getRagConfig();
+            }
+            if (setting instanceof ToolFlowNode<?> toolFlowNode) {
+                this.toolCalls.add(toolFlowNode.getToolCall());
+            }
+        });
+        if (llmProvider == null) {
+            throw new IllegalArgumentException("AgentFlowNode must have LLMFlowNode as setting: " + this.getName());
         }
-        setInitialized(true);
+        initNullParams();
+        var builder = Agent.builder()
+                .name(getName())
+                .description(description)
+                .systemPrompt(systemPrompt)
+                .promptTemplate(promptTemplate)
+                .llmProvider(llmProvider)
+                .useGroupContext(useGroupContext)
+                .reflectionConfig(new ReflectionConfig(reflectionEnabled, reflectionMaxRound, reflectionMinRound, reflectionPrompt))
+                .ragConfig(ragConfig)
+                .toolCalls(toolCalls);
+        if (formatter != null) {
+            builder.formatter(Formatters.getFormatter(formatter));
+        }
+        agent = builder.build();
     }
 
     public void setDescription(String description) {
@@ -123,8 +127,8 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
         this.reflectionPrompt = reflectionPrompt;
     }
 
-    public void setUseJsonFormat(Boolean useJsonFormat) {
-        this.useJsonFormat = useJsonFormat;
+    public void setFormatter(String formatter) {
+        this.formatter = formatter;
     }
 
     public String getDescription() {
@@ -159,8 +163,8 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
         return reflectionPrompt;
     }
 
-    public Boolean getUseJsonFormat() {
-        return useJsonFormat;
+    public String getFormatter() {
+        return formatter;
     }
 
     public Agent getAgent() {
@@ -198,7 +202,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
     public void check(List<FlowNode<?>> settings) {
         var llmExist = settings.stream().anyMatch(setting -> setting instanceof LLMFlowNode<?>);
         if (!llmExist) {
-            throw new IllegalArgumentException("AgentFlowNode must have LLMFlowNode as setting");
+            throw new IllegalArgumentException("AgentFlowNode must have LLMFlowNode as setting: " + this.getName());
         }
     }
 
@@ -221,8 +225,6 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
         public String promptTemplate;
         @Property(name = "use_group_context")
         public Boolean useGroupContext;
-        @Property(name = "use_json_format")
-        public Boolean useJsonFormat;
         @Property(name = "reflection_enabled")
         public Boolean reflectionEnabled;
         @Property(name = "reflection_max_round")
@@ -231,6 +233,8 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
         public Integer reflectionMinRound;
         @Property(name = "reflection_prompt")
         public String reflectionPrompt;
+        @Property(name = "formatter")
+        public String formatter;
 
         @Override
         public Domain from(FlowNode<?> node) {
@@ -240,7 +244,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
             this.description = agentNode.getDescription();
             this.promptTemplate = agentNode.getPromptTemplate();
             this.useGroupContext = agentNode.getUseGroupContext();
-            this.useJsonFormat = agentNode.getUseJsonFormat();
+            this.formatter = agentNode.getFormatter();
             this.reflectionEnabled = agentNode.getReflectionEnabled();
             this.reflectionMaxRound = agentNode.getReflectionMaxRound();
             this.reflectionMinRound = agentNode.getReflectionMinRound();
@@ -256,7 +260,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
             agentNode.setDescription(this.description);
             agentNode.setPromptTemplate(this.promptTemplate);
             agentNode.setUseGroupContext(this.useGroupContext);
-            agentNode.setUseJsonFormat(this.useJsonFormat);
+            agentNode.setFormatter(this.formatter);
             agentNode.setReflectionEnabled(this.reflectionEnabled);
             agentNode.setReflectionMaxRound(this.reflectionMaxRound);
             agentNode.setReflectionMinRound(this.reflectionMinRound);

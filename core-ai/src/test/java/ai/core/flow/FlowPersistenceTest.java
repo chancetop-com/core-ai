@@ -26,17 +26,12 @@ class FlowPersistenceTest {
         var nodeSwitch = new OperatorSwitchFlowNode(UUID.randomUUID().toString(), "Switch");
         var nodeEmpty = new EmptyFlowNode(UUID.randomUUID().toString(), "Empty");
         var nodeError = new ThrowErrorFlowNode(UUID.randomUUID().toString(), "Error", "test throw error node");
-        var edgeTrigger = new ConnectionEdge(UUID.randomUUID().toString());
-        var edgeAgent = new ConnectionEdge(UUID.randomUUID().toString());
-        var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "1");
-        var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "2");
-        edgeTrigger.connect(nodeTrigger.getId(), nodeAgent.getId());
-        edgeAgent.connect(nodeAgent.getId(), nodeSwitch.getId());
-        edgeSwitch1.connect(nodeSwitch.getId(), nodeError.getId());
-        edgeSwitch2.connect(nodeSwitch.getId(), nodeEmpty.getId());
+        var edgeTrigger = new ConnectionEdge(UUID.randomUUID().toString()).connect(nodeTrigger.getId(), nodeAgent.getId());
+        var edgeAgent = new ConnectionEdge(UUID.randomUUID().toString()).connect(nodeAgent.getId(), nodeSwitch.getId());
+        var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "1").connect(nodeSwitch.getId(), nodeError.getId());
+        var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "2").connect(nodeSwitch.getId(), nodeEmpty.getId());
         var nodeDeepSeek = new DeepSeekFlowNode(UUID.randomUUID().toString(), "DeepSeek", llmProviders);
-        var edgeDeepSeek = new SettingEdge(UUID.randomUUID().toString());
-        edgeDeepSeek.connect(nodeAgent.getId(), nodeDeepSeek.getId());
+        var edgeDeepSeek = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgent.getId(), nodeDeepSeek.getId());
         nodeAgent.setSystemPrompt("""
                 Your are a calculator, you can do any math calculation, only return the result.
                 """);

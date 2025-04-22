@@ -8,55 +8,28 @@ import ai.core.tool.ToolCall;
  * @author stephen
  */
 public abstract class ToolFlowNode<T extends ToolFlowNode<T>> extends FlowNode<ToolFlowNode<T>> {
-    private Integer topK = 5;
-    private Double threshold = 0d;
-    private ToolCall toolCall;
+    ToolCall toolCall;
 
     public ToolFlowNode() {
 
     }
 
-    public ToolFlowNode(String id, String name, String typeName, String typeDescription, Class<?> cls) {
-        super(id, name, typeName, typeDescription, FlowNodeType.RAG, cls);
-    }
-
-    public Integer getTopK() {
-        return topK;
-    }
-
-    public void setTopK(Integer topK) {
-        this.topK = topK;
-    }
-
-    public Double getThreshold() {
-        return threshold;
-    }
-
-    public void setThreshold(Double threshold) {
-        this.threshold = threshold;
+    public ToolFlowNode(String id, String name, String typeName, String typeDescription, Class<?> cls, ToolCall toolCall) {
+        super(id, name, typeName, typeDescription, FlowNodeType.TOOL, cls);
+        this.toolCall = toolCall;
     }
 
     public ToolCall getToolCall() {
         return toolCall;
     }
 
-    public void setToolCall(ToolCall toolCall) {
-        this.toolCall = toolCall;
-    }
-
     public abstract static class Domain<T extends Domain<T>> extends FlowNode.Domain<Domain<T>> {
-        public Integer topK = 5;
-        public Double threshold = 0d;
 
-        public void fromRagBase(ToolFlowNode<?> node) {
-            this.topK = node.topK;
-            this.threshold = node.threshold;
+        public void fromToolBase(ToolFlowNode<?> node) {
             from((FlowNode<?>) node);
         }
 
-        public void setupRagNodeBase(ToolFlowNode<?> node) {
-            node.topK = this.topK;
-            node.threshold = this.threshold;
+        public void setupToolNodeBase(ToolFlowNode<?> node) {
             setupNode((FlowNode<?>) node);
         }
 

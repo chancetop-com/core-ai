@@ -35,7 +35,7 @@ public class VisionAgent extends Node<VisionAgent> {
 
     }
 
-    public static class Builder extends Node.Builder<Builder, VisionAgent> {
+    public static class Builder extends NodeBuilder<Builder, VisionAgent> {
         String prompt;
         LLMProvider llmProvider;
 

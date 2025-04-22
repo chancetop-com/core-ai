@@ -29,19 +29,16 @@ public class HybridHandoffFlowNode extends HandoffFlowNode<HybridHandoffFlowNode
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (!getInitialized()) {
-            var agentNode = settings.stream().filter(v -> v instanceof AgentFlowNode).findFirst().orElseThrow(() -> new IllegalArgumentException("AutoHandoffFlowNode must have AgentFlowNode as setting"));
-            var agent = ((AgentFlowNode) agentNode).getAgent();
-            setHandoff(new AutoHandoff(agent));
-        }
-        setInitialized(true);
+        var agentNode = settings.stream().filter(v -> v instanceof AgentFlowNode).findFirst().orElseThrow(() -> new IllegalArgumentException("HybridHandoffFlowNode must have AgentFlowNode as setting: " + this.getName()));
+        var agent = ((AgentFlowNode) agentNode).getAgent();
+        setHandoff(new AutoHandoff(agent));
     }
 
     @Override
     public void check(List<FlowNode<?>> settings) {
         var agentExist = settings.stream().anyMatch(setting -> setting instanceof AgentFlowNode);
         if (!agentExist) {
-            throw new IllegalArgumentException("HybridHandoffFlowNode must have AgentFlowNode as setting");
+            throw new IllegalArgumentException("HybridHandoffFlowNode must have AgentFlowNode as setting: " + this.getName());
         }
     }
 

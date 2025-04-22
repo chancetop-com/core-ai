@@ -32,7 +32,7 @@ public class UserInputAgent extends Node<UserInputAgent> {
 
     }
 
-    public static class Builder extends Node.Builder<Builder, UserInputAgent> {
+    public static class Builder extends NodeBuilder<Builder, UserInputAgent> {
         @Override
         protected Builder self() {
             return this;

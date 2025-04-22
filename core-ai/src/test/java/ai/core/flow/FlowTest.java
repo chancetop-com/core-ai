@@ -21,12 +21,9 @@ class FlowTest {
         var nodeSwitch = new OperatorSwitchFlowNode(UUID.randomUUID().toString(), "Switch");
         var nodeEmpty = new EmptyFlowNode(UUID.randomUUID().toString(), "Empty");
         var nodeError = new ThrowErrorFlowNode(UUID.randomUUID().toString(), "Error", "test switch error");
-        var edgeTrigger = new ConnectionEdge(UUID.randomUUID().toString());
-        var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "switch 1");
-        var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "switch 2");
-        edgeTrigger.connect(nodeTrigger.getId(), nodeSwitch.getId());
-        edgeSwitch1.connect(nodeSwitch.getId(), nodeEmpty.getId());
-        edgeSwitch2.connect(nodeSwitch.getId(), nodeError.getId());
+        var edgeTrigger = new ConnectionEdge(UUID.randomUUID().toString()).connect(nodeTrigger.getId(), nodeSwitch.getId());
+        var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "switch 1").connect(nodeSwitch.getId(), nodeEmpty.getId());
+        var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "switch 2").connect(nodeSwitch.getId(), nodeError.getId());
         return Flow.builder()
                 .id("test_id")
                 .name("test_flow")

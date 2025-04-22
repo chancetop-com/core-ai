@@ -26,9 +26,10 @@ public abstract class FlowEdge<T extends FlowEdge<T>> implements Persistence<T> 
 
     public abstract void check();
 
-    public void connect(String sourceNodeId, String targetNodeId) {
+    public FlowEdge<?> connect(String sourceNodeId, String targetNodeId) {
         this.sourceNodeId = sourceNodeId;
         this.targetNodeId = targetNodeId;
+        return this;
     }
 
     public String getId() {

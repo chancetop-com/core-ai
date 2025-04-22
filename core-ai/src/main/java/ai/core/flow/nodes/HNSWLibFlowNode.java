@@ -32,8 +32,7 @@ public class HNSWLibFlowNode extends RagFlowNode<HNSWLibFlowNode> {
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (!getInitialized()) setVectorStore(vectorStores.getVectorStore(VectorStoreType.HNSW_LIB));
-        setInitialized(true);
+        setVectorStore(vectorStores.getVectorStore(VectorStoreType.HNSW_LIB));
     }
 
     @Override

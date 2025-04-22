@@ -4,6 +4,7 @@ import ai.core.tool.ToolCall;
 import ai.core.utils.InputStreamUtil;
 import ai.core.utils.ShellUtil;
 import core.framework.json.JSON;
+import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,7 +12,6 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -24,10 +24,12 @@ public class ShellCommandTool extends ToolCall {
         return new Builder();
     }
 
-    public static String exec(List<String> commands, String dir, long timeout) {
+    public static String exec(List<String> commands, String workdir, long timeout) {
+        var dir = workdir;
+        if (Strings.isBlank(dir)) dir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
         var pb = new ProcessBuilder(commands);
         try {
-            pb.directory(new File(Objects.requireNonNullElse(dir, ".")));
+            pb.directory(new File(dir));
             var process = pb.start();
 
             boolean timedOut = waitFor(process, timeout);

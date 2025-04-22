@@ -8,6 +8,7 @@ import ai.core.llm.providers.inner.EmbeddingRequest;
 import ai.core.llm.providers.inner.FinishReason;
 import ai.core.llm.providers.inner.Message;
 import ai.core.memory.memories.LongTernMemory;
+import ai.core.prompt.SystemVariables;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
 import ai.core.rag.SimilaritySearchRequest;
@@ -28,6 +29,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -51,6 +53,7 @@ public class Agent extends Node<Agent> {
 
     @Override
     String execute(String query, Map<String, Object> variables) {
+        setupAgentSystemVariables();
         setInput(query);
 
         var prompt = promptTemplate + query;
@@ -81,6 +84,9 @@ public class Agent extends Node<Agent> {
 
         updateNodeStatus(NodeStatus.COMPLETED);
         return getOutput();
+    }
+
+    private void setupAgentSystemVariables() {
     }
 
     private void chat(String query) {
@@ -172,7 +178,11 @@ public class Agent extends Node<Agent> {
     }
 
     private Message buildSystemMessageWithLongTernMemory() {
-        String prompt = systemPrompt;
+        var prompt = systemPrompt;
+        if (getParentNode() != null && getUseGroupContext()) {
+            this.putSystemVariable(getParentNode().getSystemVariables());
+        }
+        prompt = new MustachePromptTemplate().execute(prompt, getSystemVariables(), Hash.md5Hex(promptTemplate));
         if (!getLongTernMemory().isEmpty()) {
             prompt += LongTernMemory.TEMPLATE + getLongTernMemory().toString();
         }
@@ -252,8 +262,8 @@ public class Agent extends Node<Agent> {
     public void setModel(String model) {
         this.model = model;
     }
-    
-    public static class Builder extends Node.Builder<Builder, Agent> {
+
+    public static class Builder extends NodeBuilder<Builder, Agent> {
         private String systemPrompt;
         private String promptTemplate;
         private LLMProvider llmProvider;
@@ -350,6 +360,9 @@ public class Agent extends Node<Agent> {
             if (agent.longTernMemory == null) {
                 agent.longTernMemory = new LongTernMemory();
             }
+
+            var systemVariables = agent.getSystemVariables();
+            systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
             return agent;
         }
 

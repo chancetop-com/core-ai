@@ -1,5 +1,7 @@
 package ai.core.flow;
 
+import ai.core.flow.listener.FlowNodeChangedEventListener;
+import ai.core.flow.listener.FlowNodeOutputUpdatedEventListener;
 import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
 import core.framework.web.exception.NotFoundException;
@@ -27,6 +29,8 @@ public class Flow {
     String currentNodeId;
     String currentInput;
     Map<String, Object> currentVariables;
+    FlowNodeChangedEventListener flowNodeChangedEventListener;
+    FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
 
     public Flow() {
 
@@ -46,10 +50,15 @@ public class Flow {
         currentVariables = variables;
 
         var currentNode = getNodeById(nodeId);
+
+        if (flowNodeChangedEventListener != null) {
+            flowNodeChangedEventListener.eventHandler(currentNode);
+        }
+
         var currentNodeSettings = getNodeSettings(currentNode);
         if (!currentNodeSettings.isEmpty()) {
             initSettings(currentNodeSettings);
-            currentNode.init(currentNodeSettings, edges);
+            currentNode.initialize(currentNodeSettings, edges);
         }
 
         var rst = new FlowNodeResult(input);
@@ -60,6 +69,10 @@ public class Flow {
                 FlowNodeType.TOOL,
                 FlowNodeType.OPERATOR_FILTER).contains(currentNode.type)) {
             rst = currentNode.execute(input, variables);
+        }
+
+        if (flowNodeOutputUpdatedEventListener != null) {
+            flowNodeOutputUpdatedEventListener.eventHandler(currentNode, currentInput, rst);
         }
 
         var nextNodes = getNextNodes(currentNode);
@@ -77,7 +90,11 @@ public class Flow {
     }
 
     private void initSettings(List<FlowNode<?>> currentNodeSettings) {
-        currentNodeSettings.forEach(setting -> setting.init(currentNodeSettings, edges));
+        currentNodeSettings.forEach(setting -> {
+            var settings = getNodeSettings(setting);
+            if (!settings.isEmpty()) initSettings(settings);
+            setting.initialize(settings, edges);
+        });
     }
 
     public void check() {
@@ -124,6 +141,14 @@ public class Flow {
         return persistenceProvider;
     }
 
+    public FlowNodeChangedEventListener getFlowNodeStatusChangedEventListener() {
+        return flowNodeChangedEventListener;
+    }
+
+    public FlowNodeOutputUpdatedEventListener getFlowOutputUpdatedEventListener() {
+        return flowNodeOutputUpdatedEventListener;
+    }
+
     public void setName(String name) {
         this.name = name;
     }
@@ -146,6 +171,14 @@ public class Flow {
 
     public void setPersistenceProvider(PersistenceProvider persistenceProvider) {
         this.persistenceProvider = persistenceProvider;
+    }
+
+    public void setFlowNodeStatusChangedEventListener(FlowNodeChangedEventListener flowNodeChangedEventListener) {
+        this.flowNodeChangedEventListener = flowNodeChangedEventListener;
+    }
+
+    public void setFlowOutputUpdatedEventListener(FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener) {
+        this.flowNodeOutputUpdatedEventListener = flowNodeOutputUpdatedEventListener;
     }
 
     public void validate() {
@@ -206,6 +239,8 @@ public class Flow {
         private List<FlowEdge<?>> edges;
         private Persistence<Flow> persistence;
         private PersistenceProvider persistenceProvider;
+        private FlowNodeChangedEventListener flowNodeChangedEventListener;
+        private FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
 
         public Builder id(String id) {
             this.id = id;
@@ -242,12 +277,24 @@ public class Flow {
             return this;
         }
 
+        public Builder flowNodeStatusChangedEventListener(FlowNodeChangedEventListener flowNodeChangedEventListener) {
+            this.flowNodeChangedEventListener = flowNodeChangedEventListener;
+            return this;
+        }
+
+        public Builder flowOutputUpdatedEventListener(FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener) {
+            this.flowNodeOutputUpdatedEventListener = flowNodeOutputUpdatedEventListener;
+            return this;
+        }
+
         public Flow build() {
             Flow flow = new Flow(id, persistence, persistenceProvider);
             flow.setName(name);
             flow.setDescription(description);
             flow.setNodes(nodes);
             flow.setEdges(edges);
+            flow.setFlowNodeStatusChangedEventListener(flowNodeChangedEventListener);
+            flow.setFlowOutputUpdatedEventListener(flowNodeOutputUpdatedEventListener);
             return flow;
         }
     }

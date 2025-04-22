@@ -42,7 +42,7 @@ public class ImageAgent extends Node<ImageAgent> {
 
     }
 
-    public static class Builder extends Node.Builder<Builder, ImageAgent> {
+    public static class Builder extends NodeBuilder<Builder, ImageAgent> {
         String prompt;
         ImageProvider imageProvider;
 
