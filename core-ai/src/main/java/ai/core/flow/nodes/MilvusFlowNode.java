@@ -5,7 +5,6 @@ import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
 import ai.core.rag.RagConfig;
 import ai.core.rag.VectorStoreType;
-import ai.core.rag.VectorStores;
 import core.framework.json.JSON;
 
 import java.util.List;
@@ -15,15 +14,13 @@ import java.util.Map;
  * @author stephen
  */
 public class MilvusFlowNode extends RagFlowNode<MilvusFlowNode> {
-    VectorStores vectorStores;
 
     public MilvusFlowNode() {
-
+        super("Milvus", "Milvus RAG", MilvusFlowNode.class);
     }
 
-    public MilvusFlowNode(String id, String name, VectorStores vectorStores) {
+    public MilvusFlowNode(String id, String name) {
         super(id, name, "Milvus", "Milvus RAG", MilvusFlowNode.class);
-        this.vectorStores = vectorStores;
     }
 
     @Override
@@ -33,7 +30,7 @@ public class MilvusFlowNode extends RagFlowNode<MilvusFlowNode> {
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        setVectorStore(vectorStores.getVectorStore(VectorStoreType.MILVUS));
+        setVectorStore(getVectorStores().getVectorStore(VectorStoreType.MILVUS));
         setRagConfig(RagConfig.builder().useRag(true).topK(getTopK()).threshold(getThreshold()).vectorStore(getVectorStore()).build());
     }
 

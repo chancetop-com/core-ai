@@ -34,7 +34,7 @@ public class AgentGroupFlowNode extends FlowNode<AgentGroupFlowNode> {
     private AgentGroup agentGroup;
 
     public AgentGroupFlowNode() {
-
+        super("AgentGroup", "AI Agent Group Node", FlowNodeType.AGENT_GROUP, AgentGroupFlowNode.class);
     }
 
     public AgentGroupFlowNode(String id, String name, String description, Integer maxRound) {

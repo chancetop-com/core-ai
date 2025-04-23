@@ -15,7 +15,7 @@ import java.util.Map;
 public class FunctionToolFlowNode extends ToolFlowNode<FunctionToolFlowNode> {
 
     public FunctionToolFlowNode() {
-
+        super("FunctionTool", "Function Tool", FunctionToolFlowNode.class);
     }
 
     public FunctionToolFlowNode(String id, String name, ToolCall toolCall) {

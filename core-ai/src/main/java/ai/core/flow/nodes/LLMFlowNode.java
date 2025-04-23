@@ -4,6 +4,7 @@ import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeType;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.LLMProviders;
 import core.framework.api.json.Property;
 
 /**
@@ -15,9 +16,10 @@ public abstract class LLMFlowNode<T extends LLMFlowNode<T>> extends FlowNode<LLM
     private String embeddingModel;
     private LLMProvider llmProvider;
     private LLMProviderConfig llmProviderConfig;
+    private LLMProviders llmProviders;
 
-    public LLMFlowNode() {
-
+    public LLMFlowNode(String typeName, String typeDescription, Class<?> cls) {
+        super(typeName, typeDescription, FlowNodeType.LLM, cls);
     }
 
     public LLMFlowNode(String id, String name, String typeName, String typeDescription, Class<?> cls) {
@@ -54,6 +56,14 @@ public abstract class LLMFlowNode<T extends LLMFlowNode<T>> extends FlowNode<LLM
 
     void setLlmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
+    }
+
+    public LLMProviders getLlmProviders() {
+        return llmProviders;
+    }
+
+    public void setLlmProviders(LLMProviders llmProviders) {
+        this.llmProviders = llmProviders;
     }
 
     public LLMProviderConfig getLlmProviderConfig() {

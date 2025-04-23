@@ -15,7 +15,7 @@ import java.util.Map;
 public class OperatorSwitchFlowNode extends FlowNode<OperatorSwitchFlowNode> {
 
     public OperatorSwitchFlowNode() {
-
+        super("Switch", "Switch Node", FlowNodeType.OPERATOR_SWITCH, OperatorSwitchFlowNode.class);
     }
 
     public OperatorSwitchFlowNode(String id, String name) {

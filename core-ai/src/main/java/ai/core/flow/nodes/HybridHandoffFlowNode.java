@@ -15,7 +15,7 @@ import java.util.Map;
 public class HybridHandoffFlowNode extends HandoffFlowNode<HybridHandoffFlowNode> {
 
     public HybridHandoffFlowNode() {
-
+        super("Hybrid Handoff", "Hybrid Auto and Direct handoff method, direct if agent in group is connect to next agent", HybridHandoffFlowNode.class);
     }
 
     public HybridHandoffFlowNode(String id, String name) {

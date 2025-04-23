@@ -39,7 +39,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
     private Agent agent;
 
     public AgentFlowNode() {
-
+        super("Agent", "AI Agent Node", FlowNodeType.AGENT, AgentFlowNode.class);
     }
 
     public AgentFlowNode(String id, String name) {

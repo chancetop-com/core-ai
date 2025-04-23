@@ -65,7 +65,7 @@ public class ExampleService {
         var edgeTrigger = new ConnectionEdge(UUID.randomUUID().toString()).connect(nodeTrigger.getId(), nodeAgent.getId());
         var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "1").connect(nodeSwitch.getId(), nodeError.getId());
         var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "0").connect(nodeSwitch.getId(), nodeEmpty.getId());
-        var nodeDeepSeek = new DeepSeekFlowNode(UUID.randomUUID().toString(), "DeepSeek", llmProviders);
+        var nodeDeepSeek = new DeepSeekFlowNode(UUID.randomUUID().toString(), "DeepSeek");
         var edgeDeepSeek = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgent.getId(), nodeDeepSeek.getId());
         nodeAgent.setSystemPrompt("Your are a calculator, you can do any math calculation.\nDon't output your analysis or thinking process, only output the question and answer.");
         List<FlowNode<?>> nodes = Lists.newArrayList(nodeTrigger, nodeAgent, nodeSwitch, nodeEmpty, nodeError, nodeDeepSeek);

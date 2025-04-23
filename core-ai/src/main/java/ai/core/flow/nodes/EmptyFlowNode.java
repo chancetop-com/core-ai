@@ -15,7 +15,7 @@ import java.util.Map;
 public class EmptyFlowNode extends FlowNode<EmptyFlowNode> {
 
     public EmptyFlowNode() {
-
+        super("Empty", "Empty Node", FlowNodeType.EMPTY, EmptyFlowNode.class);
     }
 
     public EmptyFlowNode(String id, String name) {

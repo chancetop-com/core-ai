@@ -10,8 +10,8 @@ import ai.core.tool.ToolCall;
 public abstract class ToolFlowNode<T extends ToolFlowNode<T>> extends FlowNode<ToolFlowNode<T>> {
     ToolCall toolCall;
 
-    public ToolFlowNode() {
-
+    public ToolFlowNode(String typeName, String typeDescription, Class<?> cls) {
+        super(typeName, typeDescription, FlowNodeType.TOOL, cls);
     }
 
     public ToolFlowNode(String id, String name, String typeName, String typeDescription, Class<?> cls, ToolCall toolCall) {

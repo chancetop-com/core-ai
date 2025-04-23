@@ -2,7 +2,11 @@ package ai.core.flow;
 
 import ai.core.flow.listener.FlowNodeChangedEventListener;
 import ai.core.flow.listener.FlowNodeOutputUpdatedEventListener;
+import ai.core.flow.nodes.LLMFlowNode;
+import ai.core.flow.nodes.RagFlowNode;
+import ai.core.llm.LLMProviders;
 import ai.core.persistence.Persistence;
+import ai.core.rag.VectorStores;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +33,8 @@ public class Flow {
     Map<String, Object> currentVariables = Map.of();
     FlowNodeChangedEventListener flowNodeChangedEventListener;
     FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
+    private LLMProviders llmProviders;
+    private VectorStores vectorStores;
 
     public Flow() {
         this.id = UUID.randomUUID().toString();
@@ -89,6 +95,14 @@ public class Flow {
 
     private void initSettings(List<FlowNode<?>> currentNodeSettings) {
         currentNodeSettings.forEach(setting -> {
+            // init llm providers
+            if (setting instanceof LLMFlowNode<?> llmFlowNode && llmProviders != null) {
+                llmFlowNode.setLlmProviders(llmProviders);
+            }
+            // init rag providers
+            if (setting instanceof RagFlowNode<?> ragFlowNode && vectorStores != null) {
+                ragFlowNode.setVectorStores(vectorStores);
+            }
             var settings = getNodeSettings(setting);
             if (!settings.isEmpty()) initSettings(settings);
             setting.initialize(settings, edges);
@@ -102,6 +116,12 @@ public class Flow {
         if (id == null || id.isBlank()) throw new IllegalArgumentException("Flow ID cannot be null or empty");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Flow name cannot be null or empty");
         if (description == null || description.isBlank()) throw new IllegalArgumentException("Flow description cannot be null or empty");
+        if (nodes.stream().anyMatch(v -> v.type == FlowNodeType.LLM) && llmProviders == null) {
+            throw new IllegalArgumentException("LLMProviders cannot be null if LLM node is present");
+        }
+        if (nodes.stream().anyMatch(v -> v.type == FlowNodeType.RAG) && vectorStores == null) {
+            throw new IllegalArgumentException("VectorStores cannot be null if RAG node is present");
+        }
         nodes.forEach(flowNode -> flowNode.check(getNodeSettings(flowNode)));
         edges.forEach(FlowEdge::check);
     }
@@ -156,6 +176,14 @@ public class Flow {
 
     public void setEdges(List<FlowEdge<?>> edges) {
         this.edges = edges;
+    }
+
+    public void setLlmProviders(LLMProviders llmProviders) {
+        this.llmProviders = llmProviders;
+    }
+
+    public void setVectorStores(VectorStores vectorStores) {
+        this.vectorStores = vectorStores;
     }
 
     public void setPersistence(Persistence<Flow> persistence) {
@@ -216,6 +244,8 @@ public class Flow {
         private List<FlowEdge<?>> edges;
         private FlowNodeChangedEventListener flowNodeChangedEventListener;
         private FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
+        private LLMProviders llmProviders;
+        private VectorStores vectorStores;
 
         public Builder id(String id) {
             this.id = id;
@@ -252,12 +282,24 @@ public class Flow {
             return this;
         }
 
+        public Builder llmProviders(LLMProviders llmProviders) {
+            this.llmProviders = llmProviders;
+            return this;
+        }
+
+        public Builder vectorStores(VectorStores vectorStores) {
+            this.vectorStores = vectorStores;
+            return this;
+        }
+
         public Flow build() {
             Flow flow = new Flow(id);
             flow.setName(name);
             flow.setDescription(description);
             flow.setNodes(nodes);
             flow.setEdges(edges);
+            flow.setLlmProviders(llmProviders);
+            flow.setVectorStores(vectorStores);
             flow.setFlowNodeStatusChangedEventListener(flowNodeChangedEventListener);
             flow.setFlowOutputUpdatedEventListener(flowNodeOutputUpdatedEventListener);
             return flow;

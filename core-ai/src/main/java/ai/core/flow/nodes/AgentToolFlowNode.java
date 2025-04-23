@@ -15,7 +15,7 @@ import java.util.Map;
 public class AgentToolFlowNode extends FlowNode<AgentToolFlowNode> {
 
     public AgentToolFlowNode() {
-
+        super("Tool", "Agent Tool Node", FlowNodeType.EMPTY, AgentToolFlowNode.class);
     }
 
     public AgentToolFlowNode(String id, String name) {

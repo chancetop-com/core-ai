@@ -4,7 +4,7 @@ import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
 import ai.core.llm.LLMProviderConfig;
-import ai.core.llm.LLMProviders;
+import ai.core.llm.LLMProviderType;
 import core.framework.json.JSON;
 
 import java.util.List;
@@ -14,15 +14,12 @@ import java.util.Map;
  * @author stephen
  */
 public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
-    LLMProviders llmProviders;
 
     public DeepSeekFlowNode() {
-
+        super("DeepSeek", "DeepSeek AI Model Provider", DeepSeekFlowNode.class);
     }
-
-    public DeepSeekFlowNode(String id, String name, LLMProviders llmProviders) {
+    public DeepSeekFlowNode(String id, String name) {
         super(id, name, "DeepSeek", "DeepSeek AI Model Provider", DeepSeekFlowNode.class);
-        this.llmProviders = llmProviders;
     }
 
     @Override
@@ -35,7 +32,7 @@ public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
         if (getModel() == null) setModel("deepseek-chat");
         if (getTemperature() == null) setTemperature(0.7);
         setLlmProviderConfig(new LLMProviderConfig(getModel(), getTemperature(), getEmbeddingModel()));
-        setLlmProvider(llmProviders.getProviderByName("DeepSeek"));
+        setLlmProvider(getLlmProviders().getProvider(LLMProviderType.DEEPSEEK));
         getLlmProvider().setConfig(getLlmProviderConfig());
     }
 

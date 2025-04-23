@@ -16,7 +16,7 @@ public class WebhookTriggerFlowNode extends FlowNode<WebhookTriggerFlowNode> {
     private String webhookUrl;
 
     public WebhookTriggerFlowNode() {
-
+        super("Webhook", "Webhook Trigger Node", FlowNodeType.TRIGGER, WebhookTriggerFlowNode.class);
     }
 
     public WebhookTriggerFlowNode(String id, String name, String baseUrl) {

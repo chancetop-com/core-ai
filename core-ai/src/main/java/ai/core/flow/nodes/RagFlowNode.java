@@ -4,6 +4,7 @@ import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeType;
 import ai.core.rag.RagConfig;
 import ai.core.rag.VectorStore;
+import ai.core.rag.VectorStores;
 import core.framework.api.json.Property;
 
 /**
@@ -14,9 +15,10 @@ public abstract class RagFlowNode<T extends RagFlowNode<T>> extends FlowNode<Rag
     private Double threshold = 0d;
     private RagConfig ragConfig;
     private VectorStore vectorStore;
+    private VectorStores vectorStores;
 
-    public RagFlowNode() {
-
+    public RagFlowNode(String typeName, String typeDescription, Class<?> cls) {
+        super(typeName, typeDescription, FlowNodeType.RAG, cls);
     }
 
     public RagFlowNode(String id, String name, String typeName, String typeDescription, Class<?> cls) {
@@ -53,6 +55,14 @@ public abstract class RagFlowNode<T extends RagFlowNode<T>> extends FlowNode<Rag
 
     public void setVectorStore(VectorStore vectorStore) {
         this.vectorStore = vectorStore;
+    }
+
+    public VectorStores getVectorStores() {
+        return vectorStores;
+    }
+
+    public void setVectorStores(VectorStores vectorStores) {
+        this.vectorStores = vectorStores;
     }
 
     public abstract static class Domain<T extends Domain<T>> extends FlowNode.Domain<Domain<T>> {

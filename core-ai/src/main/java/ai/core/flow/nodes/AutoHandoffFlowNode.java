@@ -15,7 +15,7 @@ import java.util.Map;
 public class AutoHandoffFlowNode extends HandoffFlowNode<AutoHandoffFlowNode> {
 
     public AutoHandoffFlowNode() {
-
+        super("Auto Handoff", "Auto handoff by LLM in group planning", AutoHandoffFlowNode.class);
     }
 
     public AutoHandoffFlowNode(String id, String name) {

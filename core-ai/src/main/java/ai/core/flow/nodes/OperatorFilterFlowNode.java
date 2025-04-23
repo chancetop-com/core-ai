@@ -15,7 +15,7 @@ import java.util.Map;
 public class OperatorFilterFlowNode extends FlowNode<OperatorFilterFlowNode> {
 
     public OperatorFilterFlowNode() {
-
+        super("Filter", "Operator Filter Node", FlowNodeType.OPERATOR_FILTER, OperatorFilterFlowNode.class);
     }
 
     public OperatorFilterFlowNode(String id, String name) {

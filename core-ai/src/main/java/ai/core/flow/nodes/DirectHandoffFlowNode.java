@@ -15,7 +15,7 @@ import java.util.Map;
 public class DirectHandoffFlowNode extends HandoffFlowNode<DirectHandoffFlowNode> {
 
     public DirectHandoffFlowNode() {
-
+        super("Direct Handoff", "Direct handoff to next agent in group planning", DirectHandoffFlowNode.class);
     }
 
     public DirectHandoffFlowNode(String id, String name) {

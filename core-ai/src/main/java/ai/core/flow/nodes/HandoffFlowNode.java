@@ -10,8 +10,8 @@ import ai.core.flow.FlowNodeType;
 public abstract class HandoffFlowNode<T extends HandoffFlowNode<T>> extends FlowNode<HandoffFlowNode<T>> {
     private Handoff handoff;
 
-    public HandoffFlowNode() {
-
+    public HandoffFlowNode(String typeName, String typeDescription, Class<?> cls) {
+        super(typeName, typeDescription, FlowNodeType.HANDOFF, cls);
     }
 
     public HandoffFlowNode(String id, String name, String typeName, String typeDescription, Class<?> cls) {

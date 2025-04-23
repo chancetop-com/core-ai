@@ -15,7 +15,7 @@ import java.util.Map;
 public class OperatorIfFlowNode extends FlowNode<OperatorIfFlowNode> {
 
     public OperatorIfFlowNode() {
-
+        super("If", "If Node", FlowNodeType.OPERATOR_IF, OperatorIfFlowNode.class);
     }
 
     public OperatorIfFlowNode(String id, String name) {

@@ -8,7 +8,6 @@ import ai.core.flow.nodes.EmptyFlowNode;
 import ai.core.flow.nodes.OperatorSwitchFlowNode;
 import ai.core.flow.nodes.ThrowErrorFlowNode;
 import ai.core.flow.nodes.WebhookTriggerFlowNode;
-import ai.core.llm.LLMProviders;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,7 +18,6 @@ import java.util.UUID;
  */
 class FlowPersistenceTest {
     private Flow setup() {
-        var llmProviders = new LLMProviders();
         var nodeTrigger = new WebhookTriggerFlowNode(UUID.randomUUID().toString(), "Webhook", "https://localhost/webhook");
         var nodeAgent = new AgentFlowNode(UUID.randomUUID().toString(), "Agent");
         var nodeSwitch = new OperatorSwitchFlowNode(UUID.randomUUID().toString(), "Switch");
@@ -29,7 +27,7 @@ class FlowPersistenceTest {
         var edgeAgent = new ConnectionEdge(UUID.randomUUID().toString()).connect(nodeAgent.getId(), nodeSwitch.getId());
         var edgeSwitch1 = new ConnectionEdge(UUID.randomUUID().toString(), "1").connect(nodeSwitch.getId(), nodeError.getId());
         var edgeSwitch2 = new ConnectionEdge(UUID.randomUUID().toString(), "2").connect(nodeSwitch.getId(), nodeEmpty.getId());
-        var nodeDeepSeek = new DeepSeekFlowNode(UUID.randomUUID().toString(), "DeepSeek", llmProviders);
+        var nodeDeepSeek = new DeepSeekFlowNode(UUID.randomUUID().toString(), "DeepSeek");
         var edgeDeepSeek = new SettingEdge(UUID.randomUUID().toString()).connect(nodeAgent.getId(), nodeDeepSeek.getId());
         nodeAgent.setSystemPrompt("""
                 Your are a calculator, you can do any math calculation, only return the result.

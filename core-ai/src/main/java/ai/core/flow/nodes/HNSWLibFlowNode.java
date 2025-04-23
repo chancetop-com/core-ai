@@ -4,7 +4,6 @@ import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
 import ai.core.rag.VectorStoreType;
-import ai.core.rag.VectorStores;
 import core.framework.json.JSON;
 
 import java.util.List;
@@ -14,15 +13,13 @@ import java.util.Map;
  * @author stephen
  */
 public class HNSWLibFlowNode extends RagFlowNode<HNSWLibFlowNode> {
-    VectorStores vectorStores;
 
     public HNSWLibFlowNode() {
-
+        super("HNSWLib", "HNSWLib RAG", HNSWLibFlowNode.class);
     }
 
-    public HNSWLibFlowNode(String id, String name, VectorStores vectorStores) {
+    public HNSWLibFlowNode(String id, String name) {
         super(id, name, "HNSWLib", "HNSWLib RAG", HNSWLibFlowNode.class);
-        this.vectorStores = vectorStores;
     }
 
     @Override
@@ -32,7 +29,7 @@ public class HNSWLibFlowNode extends RagFlowNode<HNSWLibFlowNode> {
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        setVectorStore(vectorStores.getVectorStore(VectorStoreType.HNSW_LIB));
+        setVectorStore(getVectorStores().getVectorStore(VectorStoreType.HNSW_LIB));
     }
 
     @Override

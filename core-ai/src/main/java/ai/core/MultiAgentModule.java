@@ -49,14 +49,13 @@ public class MultiAgentModule extends Module {
     }
 
     private void configLLMProvider() {
-        var config = setupLLMProperties();
         var providers = new LLMProviders();
         bind(providers);
-        configLiteLLM(providers, config);
-        configAzureInference(providers, config);
-        configDeepSeek(providers, config);
-        configAzureOpenAI(providers, config);
-        configOpenAI(providers, config);
+        configLiteLLM(providers, setupLLMProperties(LLMProviderType.LITELLM));
+        configAzureInference(providers, setupLLMProperties(LLMProviderType.AZURE_INFERENCE));
+        configDeepSeek(providers, setupLLMProperties(LLMProviderType.DEEPSEEK));
+        configAzureOpenAI(providers, setupLLMProperties(LLMProviderType.AZURE));
+        configOpenAI(providers, setupLLMProperties(LLMProviderType.OPENAI));
     }
 
     private void configOpenAI(LLMProviders providers, LLMProviderConfig config) {
@@ -92,15 +91,17 @@ public class MultiAgentModule extends Module {
     }
 
     private void configLiteLLM(LLMProviders providers, LLMProviderConfig config) {
-        load(new LiteLLMModule());
-        var provider = new LiteLLMProvider(config);
-        bind(provider);
-        bind(LiteLLMImageProvider.class);
-        providers.addProvider(LLMProviderType.LITELLM, provider);
+        property("litellm.api.base").ifPresent(base -> {
+            load(new LiteLLMModule());
+            var provider = new LiteLLMProvider(config);
+            bind(provider);
+            bind(LiteLLMImageProvider.class);
+            providers.addProvider(LLMProviderType.LITELLM, provider);
+        });
     }
 
-    private LLMProviderConfig setupLLMProperties() {
-        var config = new LLMProviderConfig(LLMProviders.getProviderDefaultChatModel(LLMProviderType.OPENAI), 0.7d, "text-embedding-3-large");
+    private LLMProviderConfig setupLLMProperties(LLMProviderType type) {
+        var config = new LLMProviderConfig(LLMProviders.getProviderDefaultChatModel(type), 0.7d, "text-embedding-3-large");
         property("llm.temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
         property("llm.model").ifPresent(config::setModel);
         property("llm.embeddings.model").ifPresent(config::setEmbeddingModel);

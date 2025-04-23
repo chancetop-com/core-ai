@@ -17,8 +17,7 @@ import java.time.Duration;
 public class LiteLLMModule extends Module {
     @Override
     protected void initialize() {
-        loadProperties("litellm.properties");
-        bindAPIClients(requiredProperty("litellm.server"), requiredProperty("litellm.token"));
+        bindAPIClients(requiredProperty("litellm.api.base"), property("litellm.token").orElse(""));
         bindServices();
     }
 

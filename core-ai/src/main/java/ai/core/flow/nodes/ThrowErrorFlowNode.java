@@ -16,7 +16,7 @@ public class ThrowErrorFlowNode extends FlowNode<ThrowErrorFlowNode> {
     private String message;
 
     public ThrowErrorFlowNode() {
-
+        super("Error", "Throw Error Node", FlowNodeType.EXECUTE, ThrowErrorFlowNode.class);
     }
 
     public ThrowErrorFlowNode(String id, String name, String message) {

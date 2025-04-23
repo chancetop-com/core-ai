@@ -21,8 +21,12 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
     FlowNodePosition position;
     Boolean initialized;
 
-    public FlowNode() {
-
+    public FlowNode(String typeName, String typeDescription, FlowNodeType type, Class<?> cls) {
+        this.typeName = typeName;
+        this.typeDescription = typeDescription;
+        this.type = type;
+        this.initialized = false;
+        ClassUtil.checkNoArgConstructor(cls);
     }
 
     public FlowNode(String id, String name, String typeName, String typeDescription, FlowNodeType type, Class<?> cls) {
