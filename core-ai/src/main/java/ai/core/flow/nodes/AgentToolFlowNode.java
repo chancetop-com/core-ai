@@ -15,11 +15,11 @@ import java.util.Map;
 public class AgentToolFlowNode extends FlowNode<AgentToolFlowNode> {
 
     public AgentToolFlowNode() {
-        super("Tool", "Agent Tool Node", FlowNodeType.EMPTY, AgentToolFlowNode.class);
+        super("Tool", "Agent Tool Node", FlowNodeType.AGENT_TOOL, AgentToolFlowNode.class);
     }
 
     public AgentToolFlowNode(String id, String name) {
-        super(id, name, "Tool", "Agent Tool Node", FlowNodeType.EMPTY, AgentToolFlowNode.class);
+        super(id, name, "Tool", "Agent Tool Node", FlowNodeType.AGENT_TOOL, AgentToolFlowNode.class);
     }
 
     @Override

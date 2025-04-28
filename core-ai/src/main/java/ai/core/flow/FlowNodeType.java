@@ -15,7 +15,6 @@ public enum FlowNodeType {
     OPERATOR_IF,
     OPERATOR_SWITCH,
     OPERATOR_FILTER,
-    EMPTY,
     EXECUTE,
     STOP
 }

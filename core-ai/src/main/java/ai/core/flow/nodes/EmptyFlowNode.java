@@ -15,11 +15,11 @@ import java.util.Map;
 public class EmptyFlowNode extends FlowNode<EmptyFlowNode> {
 
     public EmptyFlowNode() {
-        super("Empty", "Empty Node", FlowNodeType.EMPTY, EmptyFlowNode.class);
+        super("Empty", "Empty Node", FlowNodeType.STOP, EmptyFlowNode.class);
     }
 
     public EmptyFlowNode(String id, String name) {
-        super(id, name, "Empty", "Empty Node", FlowNodeType.EMPTY, EmptyFlowNode.class);
+        super(id, name, "Empty", "Empty Node", FlowNodeType.STOP, EmptyFlowNode.class);
     }
 
     @Override
