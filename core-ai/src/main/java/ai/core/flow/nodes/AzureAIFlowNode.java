@@ -14,13 +14,13 @@ import java.util.Map;
 /**
  * @author stephen
  */
-public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
+public class AzureAIFlowNode extends LLMFlowNode<AzureAIFlowNode> {
 
-    public DeepSeekFlowNode() {
-        super("DeepSeek", "DeepSeek AI Model Provider", DeepSeekFlowNode.class);
+    public AzureAIFlowNode() {
+        super("Azure AI", "Azure AI Model Provider", AzureAIFlowNode.class);
     }
-    public DeepSeekFlowNode(String id, String name) {
-        super(id, name, "DeepSeek", "DeepSeek AI Model Provider", DeepSeekFlowNode.class);
+    public AzureAIFlowNode(String id, String name) {
+        super(id, name, "Azure AI", "Azure AI Model Provider", AzureAIFlowNode.class);
     }
 
     @Override
@@ -30,10 +30,10 @@ public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (getModel() == null) setModel(LLMProviders.getProviderDefaultChatModel(LLMProviderType.DEEPSEEK));
+        if (getModel() == null) setModel(LLMProviders.getProviderDefaultChatModel(LLMProviderType.AZURE_INFERENCE));
         if (getTemperature() == null) setTemperature(0.7);
         setLlmProviderConfig(new LLMProviderConfig(getModel(), getTemperature(), getEmbeddingModel()));
-        setLlmProvider(getLlmProviders().getProvider(LLMProviderType.DEEPSEEK));
+        setLlmProvider(getLlmProviders().getProvider(LLMProviderType.AZURE_INFERENCE));
         getLlmProvider().setConfig(getLlmProviderConfig());
     }
 
@@ -43,12 +43,12 @@ public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
     }
 
     @Override
-    public String serialization(LLMFlowNode<DeepSeekFlowNode> node) {
+    public String serialization(LLMFlowNode<AzureAIFlowNode> node) {
         return JSON.toJSON(new Domain().from(node));
     }
 
     @Override
-    public void deserialization(LLMFlowNode<DeepSeekFlowNode> node, String c) {
+    public void deserialization(LLMFlowNode<AzureAIFlowNode> node, String c) {
         JSON.fromJSON(Domain.class, c).setupNode(node);
     }
 

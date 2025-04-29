@@ -14,13 +14,13 @@ import java.util.Map;
 /**
  * @author stephen
  */
-public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
+public class LitellmFlowNode extends LLMFlowNode<LitellmFlowNode> {
 
-    public DeepSeekFlowNode() {
-        super("DeepSeek", "DeepSeek AI Model Provider", DeepSeekFlowNode.class);
+    public LitellmFlowNode() {
+        super("Litellm", "Litellm AI Model Provider", LitellmFlowNode.class);
     }
-    public DeepSeekFlowNode(String id, String name) {
-        super(id, name, "DeepSeek", "DeepSeek AI Model Provider", DeepSeekFlowNode.class);
+    public LitellmFlowNode(String id, String name) {
+        super(id, name, "Litellm", "Litellm AI Model Provider", LitellmFlowNode.class);
     }
 
     @Override
@@ -30,10 +30,10 @@ public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
 
     @Override
     public void init(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (getModel() == null) setModel(LLMProviders.getProviderDefaultChatModel(LLMProviderType.DEEPSEEK));
+        if (getModel() == null) setModel(LLMProviders.getProviderDefaultChatModel(LLMProviderType.LITELLM));
         if (getTemperature() == null) setTemperature(0.7);
         setLlmProviderConfig(new LLMProviderConfig(getModel(), getTemperature(), getEmbeddingModel()));
-        setLlmProvider(getLlmProviders().getProvider(LLMProviderType.DEEPSEEK));
+        setLlmProvider(getLlmProviders().getProvider(LLMProviderType.LITELLM));
         getLlmProvider().setConfig(getLlmProviderConfig());
     }
 
@@ -43,12 +43,12 @@ public class DeepSeekFlowNode extends LLMFlowNode<DeepSeekFlowNode> {
     }
 
     @Override
-    public String serialization(LLMFlowNode<DeepSeekFlowNode> node) {
+    public String serialization(LLMFlowNode<LitellmFlowNode> node) {
         return JSON.toJSON(new Domain().from(node));
     }
 
     @Override
-    public void deserialization(LLMFlowNode<DeepSeekFlowNode> node, String c) {
+    public void deserialization(LLMFlowNode<LitellmFlowNode> node, String c) {
         JSON.fromJSON(Domain.class, c).setupNode(node);
     }
 
