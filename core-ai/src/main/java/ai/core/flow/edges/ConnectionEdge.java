@@ -28,6 +28,10 @@ public class ConnectionEdge extends FlowEdge<ConnectionEdge> {
 
     }
 
+    public void setValue(String value) {
+        this.value = value;
+    }
+
     public String getValue() {
         return value;
     }
@@ -43,15 +47,19 @@ public class ConnectionEdge extends FlowEdge<ConnectionEdge> {
     }
 
     public static class Domain extends FlowEdge.Domain<Domain> {
+        private String value;
+
         @Override
         public Domain from(FlowEdge<?> node) {
             this.fromBase(node);
+            this.value = ((ConnectionEdge) node).getValue();
             return this;
         }
 
         @Override
         public void setup(FlowEdge<?> node) {
             this.setupBase(node);
+            ((ConnectionEdge) node).setValue(this.value);
         }
     }
 }
