@@ -57,7 +57,7 @@ public class OperatorSwitchFlowNode extends FlowNode<OperatorSwitchFlowNode> {
     }
 
     public static class Domain extends FlowNode.Domain<Domain> {
-        private List<String> values;
+        public List<String> values;
 
         @Override
         public Domain from(FlowNode<?> node) {

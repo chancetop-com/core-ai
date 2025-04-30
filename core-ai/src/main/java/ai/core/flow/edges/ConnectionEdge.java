@@ -47,7 +47,7 @@ public class ConnectionEdge extends FlowEdge<ConnectionEdge> {
     }
 
     public static class Domain extends FlowEdge.Domain<Domain> {
-        private String value;
+        public String value;
 
         @Override
         public Domain from(FlowEdge<?> node) {
