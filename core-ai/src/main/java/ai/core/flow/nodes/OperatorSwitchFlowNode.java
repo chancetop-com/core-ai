@@ -13,6 +13,7 @@ import java.util.Map;
  * @author stephen
  */
 public class OperatorSwitchFlowNode extends FlowNode<OperatorSwitchFlowNode> {
+    private List<String> values;
 
     public OperatorSwitchFlowNode() {
         super("Switch", "Switch Node", FlowNodeType.OPERATOR_SWITCH, OperatorSwitchFlowNode.class);
@@ -20,6 +21,14 @@ public class OperatorSwitchFlowNode extends FlowNode<OperatorSwitchFlowNode> {
 
     public OperatorSwitchFlowNode(String id, String name) {
         super(id, name, "Switch", "Switch Node", FlowNodeType.OPERATOR_SWITCH, OperatorSwitchFlowNode.class);
+    }
+
+    public void setValues(List<String> values) {
+        this.values = values;
+    }
+
+    public List<String> getValues() {
+        return values;
     }
 
     @Override
@@ -48,15 +57,19 @@ public class OperatorSwitchFlowNode extends FlowNode<OperatorSwitchFlowNode> {
     }
 
     public static class Domain extends FlowNode.Domain<Domain> {
+        private List<String> values;
+
         @Override
         public Domain from(FlowNode<?> node) {
             this.fromBase(node);
+            this.values = ((OperatorSwitchFlowNode) node).getValues();
             return this;
         }
 
         @Override
         public void setupNode(FlowNode<?> node) {
             this.setupNodeBase(node);
+            ((OperatorSwitchFlowNode) node).setValues(this.values);
         }
     }
 }
