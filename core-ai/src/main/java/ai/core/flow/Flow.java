@@ -7,6 +7,7 @@ import ai.core.flow.nodes.RagFlowNode;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.Persistence;
 import ai.core.rag.VectorStores;
+import core.framework.util.Strings;
 
 import java.util.List;
 import java.util.Map;
@@ -47,6 +48,15 @@ public class Flow {
     }
 
     public String execute(String nodeId, String input, Map<String, Object> variables) {
+        try {
+            return run(nodeId, input, variables);
+        } catch (Exception e) {
+            var currentNode = getNodeById(currentNodeId);
+            return Strings.format("Exception at {}: {}", currentNode.getName(), e.getMessage());
+        }
+    }
+
+    public String run(String nodeId, String input, Map<String, Object> variables) {
         validate();
 
         currentNodeId = nodeId;
