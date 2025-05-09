@@ -104,7 +104,7 @@ public class Agent extends Node<Agent> {
         // function call
         if (choice.finishReason == FinishReason.TOOL_CALLS) {
             setOutput(functionCall(choice));
-            addResponseChoiceMessage(buildToolcallResultMessage(choice));
+            addResponseChoiceMessage(buildToolCallResultMessage(choice));
         }
     }
 
@@ -163,7 +163,7 @@ public class Agent extends Node<Agent> {
         }
     }
 
-    private LLMMessage buildToolcallResultMessage(Choice choice) {
+    private LLMMessage buildToolCallResultMessage(Choice choice) {
         var msg = LLMMessage.of(AgentRole.TOOL, getOutput(), getName(), choice.message.toolCalls.getFirst().id, null, null);
         setMessageAgentInfo(msg);
         return msg;

@@ -15,8 +15,6 @@ import java.util.Map;
 /**
  * @author stephen
  */
-
-
 public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>> {
     String name;
     String description;
