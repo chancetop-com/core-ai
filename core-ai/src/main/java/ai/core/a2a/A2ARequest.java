@@ -7,8 +7,6 @@ import java.util.Map;
 /**
  * @author stephen
  */
-public class A2ARequest {
-    public String id;
-    public TaskMessage message;
-    public Map<String, String> metadata;
+public record A2ARequest(String id, TaskMessage message, Map<String, String> metadata) {
+
 }
