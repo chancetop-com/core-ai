@@ -7,6 +7,11 @@ import ai.core.flow.nodes.RagFlowNode;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.Persistence;
 import ai.core.rag.VectorStores;
+import ai.core.task.Task;
+import ai.core.task.TaskArtifact;
+import ai.core.task.TaskMessage;
+import ai.core.task.TaskRoleType;
+import ai.core.task.TaskStatus;
 import core.framework.util.Strings;
 
 import java.util.List;
@@ -34,6 +39,7 @@ public class Flow {
     Map<String, Object> currentVariables = Map.of();
     FlowNodeChangedEventListener flowNodeChangedEventListener;
     FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
+    private Task task;
     private LLMProviders llmProviders;
     private VectorStores vectorStores;
 
@@ -47,16 +53,39 @@ public class Flow {
         this.persistence = new FlowPersistence();
     }
 
-    public String execute(String nodeId, String input, Map<String, Object> variables) {
+    public String run(String nodeId, String input, Map<String, Object> variables) {
         try {
-            return run(nodeId, input, variables);
+            return execute(nodeId, input, variables);
         } catch (Exception e) {
             var currentNode = getNodeById(currentNodeId);
             return Strings.format("Exception at {}: {}", currentNode.getName(), e.getMessage());
         }
     }
 
-    public String run(String nodeId, String input, Map<String, Object> variables) {
+    public void run(String nodeId, Task task, Map<String, Object> variables) {
+        if (task == null) throw new IllegalArgumentException("Task cannot be null");
+        if (this.task == null) this.task = task;
+        var lastMessage = task.getLastMessage();
+        // need user input but new query not yet submitted, return and wait
+        if (task.getStatus() == TaskStatus.INPUT_REQUIRED && lastMessage.getRole() != TaskRoleType.USER) {
+            throw new IllegalArgumentException("Task is waiting for user input, please submit the query first");
+        }
+        // task is completed, failed, canceled or unknown
+        if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.FAILED || task.getStatus() == TaskStatus.CANCELED || task.getStatus() == TaskStatus.UNKNOWN) {
+            throw new IllegalArgumentException("Task is already completed, failed, canceled or unknown");
+        }
+        task.setStatus(TaskStatus.WORKING);
+        try {
+            var rst = run(nodeId, lastMessage.getTextPart().getText(), variables);
+            task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
+            task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
+            task.setStatus(TaskStatus.COMPLETED);
+        } catch (Exception e) {
+            task.setStatus(TaskStatus.FAILED);
+        }
+    }
+
+    private String execute(String nodeId, String input, Map<String, Object> variables) {
         validate();
 
         currentNodeId = nodeId;

@@ -1,17 +1,23 @@
 package ai.core.task.parts;
 
 import ai.core.task.Part;
+import ai.core.task.PartType;
 
 /**
  * @author stephen
  */
 public class FilePart extends Part<FilePart> {
-    public File file;
+    private final File file;
 
-    public static class File {
-        public String name;
-        public String mimeType;
-        public String bytes;
-        public String uri;
+    public FilePart(File file) {
+        super(PartType.FILE);
+        this.file = file;
+    }
+
+    public File getFile() {
+        return file;
+    }
+
+    public record File(String name, String mimeType, String bytes, String uri) {
     }
 }

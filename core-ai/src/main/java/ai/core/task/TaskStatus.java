@@ -8,7 +8,7 @@ public enum TaskStatus {
     WORKING,
     INPUT_REQUIRED,
     COMPLETED,
-    CANCELLED,
+    CANCELED,
     FAILED,
     UNKNOWN
 }

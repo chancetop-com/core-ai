@@ -35,6 +35,6 @@ class FlowTest {
     @Test
     void test() {
         var flow = setup();
-        Assertions.assertThrows(RuntimeException.class, () -> flow.execute(flow.getNodeByName("Switch").getId(), "switch 2", null));
+        Assertions.assertThrows(RuntimeException.class, () -> flow.run(flow.getNodeByName("Switch").getId(), "switch 2", null));
     }
 }

@@ -11,6 +11,11 @@ import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.SystemVariables;
 import ai.core.rag.LongQueryHandler;
+import ai.core.task.Task;
+import ai.core.task.TaskArtifact;
+import ai.core.task.TaskMessage;
+import ai.core.task.TaskRoleType;
+import ai.core.task.TaskStatus;
 import ai.core.termination.Termination;
 import core.framework.util.Lists;
 import core.framework.util.Maps;
@@ -30,10 +35,8 @@ public abstract class Node<T extends Node<T>> {
     private String name;
     private String description;
     private NodeType nodeType;
-    private List<Termination> terminations;
     private Formatter formatter;
     private MessageUpdatedEventListener<T> messageUpdatedEventListener;
-    private Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
     private NodeStatus nodeStatus;
     private Persistence<T> persistence;
     private PersistenceProvider persistenceProvider;
@@ -45,6 +48,9 @@ public abstract class Node<T extends Node<T>> {
     private Integer maxRound;
     private Node<?> parent;
     private Node<?> next;
+    private Task task;
+    private final List<Termination> terminations;
+    private final Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
     private final List<LLMMessage> messages;
     private final Usage currentTokenUsage = new Usage();
     private final Map<String, Object> systemVariables = Maps.newHashMap();
@@ -227,6 +233,29 @@ public abstract class Node<T extends Node<T>> {
         }
     }
 
+    public final void run(Task task, Map<String, Object> variables) {
+        if (task == null) throw new IllegalArgumentException("Task cannot be null");
+        if (this.task == null) this.task = task;
+        var lastMessage = task.getLastMessage();
+        // need user input but new query not yet submitted, return and wait
+        if (task.getStatus() == TaskStatus.INPUT_REQUIRED && lastMessage.getRole() != TaskRoleType.USER) {
+            throw new IllegalArgumentException("Task is waiting for user input, please submit the query first");
+        }
+        // task is completed, failed, canceled or unknown
+        if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.FAILED || task.getStatus() == TaskStatus.CANCELED || task.getStatus() == TaskStatus.UNKNOWN) {
+            throw new IllegalArgumentException("Task is already completed, failed, canceled or unknown");
+        }
+        task.setStatus(TaskStatus.WORKING);
+        try {
+            var rst = run(lastMessage.getTextPart().getText(), variables);
+            task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
+            task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
+            task.setStatus(TaskStatus.COMPLETED);
+        } catch (Exception e) {
+            task.setStatus(TaskStatus.FAILED);
+        }
+    }
+
     private void setupNodeSystemVariables(String query) {
         systemVariables.put(SystemVariables.NODE_CURRENT_ROUND, this.round);
         systemVariables.put(SystemVariables.NODE_CURRENT_INPUT, query);
@@ -260,16 +289,8 @@ public abstract class Node<T extends Node<T>> {
         this.longQueryHandler = longQueryHandler;
     }
 
-    void setTerminations(List<Termination> terminations) {
-        this.terminations = terminations;
-    }
-
     void setFormatter(Formatter formatter) {
         this.formatter = formatter;
-    }
-
-    void setStatusChangedEventListeners(Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> listeners) {
-        this.statusChangedEventListeners = listeners;
     }
 
     void setPersistence(Persistence<T> persistence) {
