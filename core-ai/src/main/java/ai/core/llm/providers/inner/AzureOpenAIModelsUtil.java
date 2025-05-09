@@ -81,8 +81,8 @@ public class AzureOpenAIModelsUtil {
         return FinishReason.valueOf(finishReason.toString().toUpperCase(Locale.ROOT));
     }
 
-    private static Message toMessage(ChatResponseMessage message, String name) {
-        return Message.of(
+    private static LLMMessage toMessage(ChatResponseMessage message, String name) {
+        return LLMMessage.of(
                 toAgentRole(message.getRole()),
                 message.getContent(),
                 name,
@@ -91,26 +91,26 @@ public class AzureOpenAIModelsUtil {
                 message.getToolCalls() == null || message.getToolCalls().isEmpty() ? null : message.getToolCalls().stream().map(v -> toFunctionCall((ChatCompletionsFunctionToolCall) v)).toList());
     }
 
-    private static ai.core.llm.providers.inner.FunctionCall toFunctionCall(FunctionCall v) {
+    private static LLMFunction.FunctionCall toFunctionCall(FunctionCall v) {
         if (v == null) return null;
-        return ai.core.llm.providers.inner.FunctionCall.of(
+        return LLMFunction.FunctionCall.of(
                 null,
                 null,
-                Function.of(v.getName(), v.getArguments()));
+                LLMFunction.of(v.getName(), v.getArguments()));
     }
 
-    private static ai.core.llm.providers.inner.FunctionCall toFunctionCall(ChatCompletionsFunctionToolCall v) {
-        return ai.core.llm.providers.inner.FunctionCall.of(
+    private static LLMFunction.FunctionCall toFunctionCall(ChatCompletionsFunctionToolCall v) {
+        return LLMFunction.FunctionCall.of(
                 v.getId(),
                 v.getType(),
-                Function.of(v.getFunction().getName(), v.getFunction().getArguments()));
+                LLMFunction.of(v.getFunction().getName(), v.getFunction().getArguments()));
     }
 
     private static AgentRole toAgentRole(ChatRole role) {
         return AgentRole.valueOf(role.getValue().toUpperCase(Locale.ROOT));
     }
 
-    private static List<ChatRequestMessage> fromMessages(List<Message> messages) {
+    private static List<ChatRequestMessage> fromMessages(List<LLMMessage> messages) {
         return messages.stream().map(msg -> {
             if (msg.role == AgentRole.SYSTEM) {
                 return new ChatRequestSystemMessage(msg.content);
@@ -128,7 +128,7 @@ public class AzureOpenAIModelsUtil {
         }).toList();
     }
 
-    private static ChatCompletionsToolCall fromToolCall(ai.core.llm.providers.inner.FunctionCall toolCall) {
+    private static ChatCompletionsToolCall fromToolCall(LLMFunction.FunctionCall toolCall) {
         return new ChatCompletionsFunctionToolCall(toolCall.id, fromFunctionCall(toolCall));
     }
 
@@ -139,7 +139,7 @@ public class AzureOpenAIModelsUtil {
         return new ChatCompletionsFunctionToolDefinition(func);
     }
 
-    private static FunctionCall fromFunctionCall(ai.core.llm.providers.inner.FunctionCall functionCall) {
+    private static FunctionCall fromFunctionCall(LLMFunction.FunctionCall functionCall) {
         if (functionCall == null) return null;
         return new FunctionCall(functionCall.function.name, functionCall.function.arguments);
     }

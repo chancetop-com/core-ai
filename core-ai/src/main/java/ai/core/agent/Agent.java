@@ -6,7 +6,7 @@ import ai.core.llm.providers.inner.CompletionRequest;
 import ai.core.llm.providers.inner.CompletionResponse;
 import ai.core.llm.providers.inner.EmbeddingRequest;
 import ai.core.llm.providers.inner.FinishReason;
-import ai.core.llm.providers.inner.Message;
+import ai.core.llm.providers.inner.LLMMessage;
 import ai.core.memory.memories.LongTernMemory;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.engines.MustachePromptTemplate;
@@ -129,7 +129,7 @@ public class Agent extends Node<Agent> {
             addMessages(getParentNode().getMessages());
         }
 
-        var reqMsg = Message.of(AgentRole.USER, "user raw request/last agent output", query);
+        var reqMsg = LLMMessage.of(AgentRole.USER, "user raw request/last agent output", query);
         addMessage(reqMsg);
         var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());
 
@@ -156,15 +156,15 @@ public class Agent extends Node<Agent> {
         return rst;
     }
 
-    private void setMessageAgentInfo(Message msg) {
+    private void setMessageAgentInfo(LLMMessage msg) {
         msg.agentName = getName();
         if (getParentNode() != null) {
             msg.groupName = getParentNode().getName();
         }
     }
 
-    private Message buildToolcallResultMessage(Choice choice) {
-        var msg = Message.of(AgentRole.TOOL, getOutput(), getName(), choice.message.toolCalls.getFirst().id, null, null);
+    private LLMMessage buildToolcallResultMessage(Choice choice) {
+        var msg = LLMMessage.of(AgentRole.TOOL, getOutput(), getName(), choice.message.toolCalls.getFirst().id, null, null);
         setMessageAgentInfo(msg);
         return msg;
     }
@@ -177,7 +177,7 @@ public class Agent extends Node<Agent> {
         return rst.choices.getFirst();
     }
 
-    private Message buildSystemMessageWithLongTernMemory() {
+    private LLMMessage buildSystemMessageWithLongTernMemory() {
         var prompt = systemPrompt;
         if (getParentNode() != null && getUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
@@ -186,7 +186,7 @@ public class Agent extends Node<Agent> {
         if (!getLongTernMemory().isEmpty()) {
             prompt += LongTernMemory.TEMPLATE + getLongTernMemory().toString();
         }
-        return Message.of(AgentRole.SYSTEM, getName(), prompt);
+        return LLMMessage.of(AgentRole.SYSTEM, getName(), prompt);
     }
 
     private String functionCall(Choice choice) {

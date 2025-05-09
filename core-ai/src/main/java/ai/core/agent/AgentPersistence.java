@@ -1,6 +1,6 @@
 package ai.core.agent;
 
-import ai.core.llm.providers.inner.Message;
+import ai.core.llm.providers.inner.LLMMessage;
 import ai.core.persistence.Persistence;
 import core.framework.api.json.Property;
 import core.framework.json.JSON;
@@ -24,13 +24,13 @@ public class AgentPersistence implements Persistence<Agent> {
 
     public static class AgentPersistenceDomain {
 
-        public static AgentPersistenceDomain of(List<Message> messages) {
+        public static AgentPersistenceDomain of(List<LLMMessage> messages) {
             var domain = new AgentPersistenceDomain();
             domain.messages = messages;
             return domain;
         }
 
         @Property(name = "messages")
-        public List<Message> messages;
+        public List<LLMMessage> messages;
     }
 }

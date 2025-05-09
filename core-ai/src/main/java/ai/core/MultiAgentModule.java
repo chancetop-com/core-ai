@@ -18,7 +18,6 @@ import ai.core.rag.vectorstore.hnswlib.HnswConfig;
 import ai.core.rag.vectorstore.hnswlib.HnswLibVectorStore;
 import ai.core.rag.vectorstore.milvus.MilvusConfig;
 import ai.core.rag.vectorstore.milvus.MilvusVectorStore;
-import ai.core.task.TaskService;
 import core.framework.module.Module;
 
 /**
@@ -30,7 +29,6 @@ public class MultiAgentModule extends Module {
         configPersistenceProvider();
         configVectorStore();
         configLLMProvider();
-        bindServices();
     }
 
     private void configPersistenceProvider() {
@@ -150,9 +148,5 @@ public class MultiAgentModule extends Module {
             bind(vectorStore);
             vectorStores.addVectorStore(VectorStoreType.MILVUS, vectorStore);
         });
-    }
-
-    private void bindServices() {
-        bind(TaskService.class);
     }
 }

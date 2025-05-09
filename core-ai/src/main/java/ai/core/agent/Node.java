@@ -5,7 +5,7 @@ import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.document.Tokenizer;
 import ai.core.llm.providers.inner.CompletionResponse;
-import ai.core.llm.providers.inner.Message;
+import ai.core.llm.providers.inner.LLMMessage;
 import ai.core.llm.providers.inner.Usage;
 import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
@@ -45,7 +45,7 @@ public abstract class Node<T extends Node<T>> {
     private Integer maxRound;
     private Node<?> parent;
     private Node<?> next;
-    private final List<Message> messages;
+    private final List<LLMMessage> messages;
     private final Usage currentTokenUsage = new Usage();
     private final Map<String, Object> systemVariables = Maps.newHashMap();
 
@@ -146,7 +146,7 @@ public abstract class Node<T extends Node<T>> {
         return this.nodeStatus;
     }
 
-    public List<Message> getMessages() {
+    public List<LLMMessage> getMessages() {
         return this.messages;
     }
 
@@ -280,11 +280,11 @@ public abstract class Node<T extends Node<T>> {
         this.persistenceProvider = persistenceProvider;
     }
 
-    void addMessage(Message message) {
+    void addMessage(LLMMessage message) {
         this.messages.add(message);
     }
 
-    void addMessages(List<Message> messages) {
+    void addMessages(List<LLMMessage> messages) {
         this.messages.addAll(messages);
     }
 
@@ -332,12 +332,12 @@ public abstract class Node<T extends Node<T>> {
         this.terminations.addAll(terminations);
     }
 
-    public void addResponseChoiceMessages(List<Message> messages) {
+    public void addResponseChoiceMessages(List<LLMMessage> messages) {
         messages.forEach(this::addResponseChoiceMessage);
     }
 
     @SuppressWarnings("unchecked")
-    void addResponseChoiceMessage(Message message) {
+    void addResponseChoiceMessage(LLMMessage message) {
         this.messages.add(message);
         this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, message));
         if (this.parent != null) {

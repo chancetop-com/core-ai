@@ -25,10 +25,9 @@ import ai.core.llm.providers.inner.Choice;
 import ai.core.llm.providers.inner.CompletionRequest;
 import ai.core.llm.providers.inner.CompletionResponse;
 import ai.core.llm.providers.inner.FinishReason;
-import ai.core.llm.providers.inner.Function;
-import ai.core.llm.providers.inner.FunctionCall;
+import ai.core.llm.providers.inner.LLMFunction;
 import ai.core.llm.LLMProvider;
-import ai.core.llm.providers.inner.Message;
+import ai.core.llm.providers.inner.LLMMessage;
 import ai.core.llm.providers.inner.Usage;
 import ai.core.document.Embedding;
 import ai.core.tool.ToolCallParameter;
@@ -78,7 +77,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     private CompletionResponse toRsp(CreateCompletionAJAXResponse rsp, String name) {
         return new CompletionResponse(rsp.choices.stream().map(v ->
-                new Choice(FinishReason.valueOf(v.finishReason.name()), Message.of(
+                new Choice(FinishReason.valueOf(v.finishReason.name()), LLMMessage.of(
                         AgentRole.valueOf(v.message.role.name()),
                         v.message.content,
                         name,
@@ -88,9 +87,9 @@ public class LiteLLMProvider extends LLMProvider {
                 new Usage(rsp.usage));
     }
 
-    private FunctionCall buildFunctionCall(FunctionCallAJAXView v) {
-        return FunctionCall.of(v.id,
-                v.type, Function.of(v.function.name,
+    private LLMFunction.FunctionCall buildFunctionCall(FunctionCallAJAXView v) {
+        return LLMFunction.FunctionCall.of(v.id,
+                v.type, LLMFunction.of(v.function.name,
                 v.function.arguments));
     }
 

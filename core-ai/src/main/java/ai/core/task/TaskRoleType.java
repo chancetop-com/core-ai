@@ -3,7 +3,7 @@ package ai.core.task;
 /**
  * @author stephen
  */
-public enum TaskHistoryType {
-    AGENT,
-    USER
+public enum TaskRoleType {
+    USER,
+    AGENT
 }

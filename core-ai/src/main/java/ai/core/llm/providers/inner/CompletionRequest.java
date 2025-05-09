@@ -11,10 +11,10 @@ public class CompletionRequest {
     public String name;
     public Double temperature;
     public String model;
-    public List<Message> messages;
+    public List<LLMMessage> messages;
     public List<ToolCall> toolCalls;
 
-    public CompletionRequest(List<Message> messages, List<ToolCall> toolCalls, Double temperature, String model, String name) {
+    public CompletionRequest(List<LLMMessage> messages, List<ToolCall> toolCalls, Double temperature, String model, String name) {
         this.messages = messages;
         this.toolCalls = toolCalls;
         this.model = model;

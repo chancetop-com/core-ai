@@ -1,6 +1,6 @@
 package ai.core.agent;
 
-import ai.core.llm.providers.inner.Message;
+import ai.core.llm.providers.inner.LLMMessage;
 
 import java.util.Map;
 
@@ -17,11 +17,11 @@ public class UserInputAgent extends Node<UserInputAgent> {
     String execute(String query, Map<String, Object> variables) {
         if (this.getNodeStatus() == NodeStatus.INITED) {
             this.setInput(query);
-            addMessage(Message.of(AgentRole.ASSISTANT, this.getName(), query));
+            addMessage(LLMMessage.of(AgentRole.ASSISTANT, this.getName(), query));
             this.updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
         } else if (this.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
             this.setOutput(query);
-            addMessage(Message.of(AgentRole.USER, this.getName(), query));
+            addMessage(LLMMessage.of(AgentRole.USER, this.getName(), query));
             this.updateNodeStatus(NodeStatus.COMPLETED);
         }
         return query;

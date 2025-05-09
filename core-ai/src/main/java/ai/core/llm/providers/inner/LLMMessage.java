@@ -7,17 +7,17 @@ import java.util.List;
 /**
  * @author stephen
  */
-public class Message {
-    public static Message of(AgentRole role, String agentName, String content) {
-        var message = new Message();
+public class LLMMessage {
+    public static LLMMessage of(AgentRole role, String agentName, String content) {
+        var message = new LLMMessage();
         message.role = role;
         message.content = content;
         message.name = agentName;
         return message;
     }
 
-    public static Message of(AgentRole role, String content, String name, String toolCallId, FunctionCall functionCall, List<FunctionCall> toolCalls) {
-        var message = new Message();
+    public static LLMMessage of(AgentRole role, String content, String name, String toolCallId, LLMFunction.FunctionCall functionCall, List<LLMFunction.FunctionCall> toolCalls) {
+        var message = new LLMMessage();
         message.role = role;
         message.content = content;
         message.name = name;
@@ -31,8 +31,8 @@ public class Message {
     public String content;
     public String name;
     public String toolCallId;
-    public FunctionCall functionCall;
-    public List<FunctionCall> toolCalls;
+    public LLMFunction.FunctionCall functionCall;
+    public List<LLMFunction.FunctionCall> toolCalls;
     public String agentName;
     public String groupName;
 }
