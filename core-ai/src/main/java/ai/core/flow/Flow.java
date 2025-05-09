@@ -1,7 +1,9 @@
 package ai.core.flow;
 
+import ai.core.agent.NodeStatus;
 import ai.core.flow.listener.FlowNodeChangedEventListener;
 import ai.core.flow.listener.FlowNodeOutputUpdatedEventListener;
+import ai.core.flow.nodes.AgentFlowNode;
 import ai.core.flow.nodes.LLMFlowNode;
 import ai.core.flow.nodes.RagFlowNode;
 import ai.core.llm.LLMProviders;
@@ -40,6 +42,7 @@ public class Flow {
     FlowNodeChangedEventListener flowNodeChangedEventListener;
     FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
     private Task task;
+    private FlowStatus status;
     private LLMProviders llmProviders;
     private VectorStores vectorStores;
 
@@ -76,10 +79,14 @@ public class Flow {
         }
         task.setStatus(TaskStatus.WORKING);
         try {
-            var rst = run(nodeId, lastMessage.getTextPart().getText(), variables);
+            var rst = execute(nodeId, lastMessage.getTextPart().getText(), variables);
             task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
             task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
-            task.setStatus(TaskStatus.COMPLETED);
+            if (status == FlowStatus.WAITING_FOR_USER_INPUT) {
+                task.setStatus(TaskStatus.INPUT_REQUIRED);
+            } else {
+                task.setStatus(TaskStatus.COMPLETED);
+            }
         } catch (Exception e) {
             task.setStatus(TaskStatus.FAILED);
         }
@@ -112,6 +119,10 @@ public class Flow {
                 FlowNodeType.TOOL,
                 FlowNodeType.OPERATOR_FILTER).contains(currentNode.type)) {
             rst = currentNode.execute(input, variables);
+            if (currentNode instanceof AgentFlowNode agentFlowNode && agentFlowNode.getAgent().getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
+                status = FlowStatus.WAITING_FOR_USER_INPUT;
+                return rst.text();
+            }
         }
 
         if (flowNodeOutputUpdatedEventListener != null) {
@@ -120,6 +131,7 @@ public class Flow {
 
         var nextNodes = getNextNodes(currentNode);
         if (nextNodes.isEmpty()) {
+            status = FlowStatus.SUCCESS;
             return rst.text();
         }
 

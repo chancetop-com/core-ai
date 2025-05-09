@@ -250,7 +250,11 @@ public abstract class Node<T extends Node<T>> {
             var rst = run(lastMessage.getTextPart().getText(), variables);
             task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
             task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
-            task.setStatus(TaskStatus.COMPLETED);
+            if (nodeStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
+                task.setStatus(TaskStatus.INPUT_REQUIRED);
+            } else {
+                task.setStatus(TaskStatus.COMPLETED);
+            }
         } catch (Exception e) {
             task.setStatus(TaskStatus.FAILED);
         }
