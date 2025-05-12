@@ -38,6 +38,6 @@ public class AuthorizationInterceptor implements WebServiceClientInterceptor {
                 throw new RuntimeException(e);
             }
         }
-        request.headers.put("Authorization", "Basic " + token);
+        request.headers.put("Authorization", "Bearer " + token);
     }
 }
