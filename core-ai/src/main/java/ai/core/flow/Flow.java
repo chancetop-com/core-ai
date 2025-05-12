@@ -93,11 +93,11 @@ public class Flow {
     }
 
     private String execute(String nodeId, String input, Map<String, Object> variables) {
-        validate();
-
         currentNodeId = nodeId;
         currentInput = input;
         currentVariables = variables;
+
+        validate();
 
         var currentNode = getNodeById(nodeId);
 
