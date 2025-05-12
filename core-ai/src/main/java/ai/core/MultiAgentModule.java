@@ -59,7 +59,7 @@ public class MultiAgentModule extends Module {
     private void configOpenAI(LLMProviders providers, LLMProviderConfig config) {
         property("openai.api.key").ifPresent(key -> {
             var provider = new AzureOpenAIProvider(config, key, null);
-            bind(provider);
+            bind(AzureOpenAIProvider.class, "openai", provider);
             providers.addProvider(LLMProviderType.OPENAI, provider);
         });
     }
@@ -83,7 +83,7 @@ public class MultiAgentModule extends Module {
     private void configDeepSeek(LLMProviders providers, LLMProviderConfig config) {
         property("deepseek.api.key").ifPresent(key -> {
             var provider = new AzureInferenceProvider(config, key, "https://api.deepseek.com/v1", false);
-            bind(provider);
+            bind(AzureInferenceProvider.class, "deepseek", provider);
             providers.addProvider(LLMProviderType.DEEPSEEK, provider);
         });
     }
