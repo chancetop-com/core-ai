@@ -116,7 +116,6 @@ public class AzureOpenAIModelsUtil {
                 return new ChatRequestSystemMessage(msg.content);
             } else if (msg.role == AgentRole.ASSISTANT) {
                 var message = new ChatRequestAssistantMessage(msg.content);
-                message.setName(msg.name);
                 message.setToolCalls(msg.toolCalls == null || msg.toolCalls.isEmpty() ? null : msg.toolCalls.stream().map(AzureOpenAIModelsUtil::fromToolCall).toList());
                 message.setFunctionCall(fromFunctionCall(msg.functionCall));
                 return message;

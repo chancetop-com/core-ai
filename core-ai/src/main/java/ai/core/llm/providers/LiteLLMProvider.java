@@ -124,7 +124,6 @@ public class LiteLLMProvider extends LLMProvider {
             var message = new MessageAJAXView();
             message.role = RoleTypeAJAXView.valueOf(v.role.name());
             message.content = v.content;
-            message.name = v.name;
             message.toolCallId = v.toolCallId;
             if (v.functionCall != null) {
                 var functionCall = new FunctionCallAJAXView();
