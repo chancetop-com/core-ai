@@ -8,6 +8,7 @@ import core.framework.http.ContentType;
 import core.framework.http.HTTPRequest;
 import core.framework.internal.json.JSONAnnotationIntrospector;
 import core.framework.json.JSON;
+import core.framework.util.Strings;
 import core.framework.web.service.WebServiceClientInterceptor;
 
 import java.nio.charset.StandardCharsets;
@@ -38,6 +39,8 @@ public class AuthorizationInterceptor implements WebServiceClientInterceptor {
                 throw new RuntimeException(e);
             }
         }
-        request.headers.put("Authorization", "Bearer " + token);
+        if (!Strings.isBlank(token)) {
+            request.headers.put("Authorization", "Bearer " + token);
+        }
     }
 }
