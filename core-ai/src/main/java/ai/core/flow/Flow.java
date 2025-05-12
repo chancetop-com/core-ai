@@ -166,7 +166,6 @@ public class Flow {
         if (edges.isEmpty()) throw new IllegalArgumentException("Edges cannot be empty");
         if (id == null || id.isBlank()) throw new IllegalArgumentException("Flow ID cannot be null or empty");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Flow name cannot be null or empty");
-        if (description == null || description.isBlank()) throw new IllegalArgumentException("Flow description cannot be null or empty");
         if (nodes.stream().anyMatch(v -> v.type == FlowNodeType.LLM) && llmProviders == null) {
             throw new IllegalArgumentException("LLMProviders cannot be null if LLM node is present");
         }
