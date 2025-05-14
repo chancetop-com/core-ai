@@ -122,6 +122,8 @@ public class Agent extends Node<Agent> {
     private CompletionResponse completionWithFormat(String query) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessageWithLongTernMemory());
+            // add task context if existed
+            addTaskHistoriesToMessages();
         }
 
         // add group context if needed

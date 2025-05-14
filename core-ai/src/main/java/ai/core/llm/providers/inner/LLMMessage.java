@@ -8,6 +8,13 @@ import java.util.List;
  * @author stephen
  */
 public class LLMMessage {
+    public static LLMMessage of(AgentRole role, String content) {
+        var message = new LLMMessage();
+        message.role = role;
+        message.content = content;
+        return message;
+    }
+
     public static LLMMessage of(AgentRole role, String agentName, String content) {
         var message = new LLMMessage();
         message.role = role;

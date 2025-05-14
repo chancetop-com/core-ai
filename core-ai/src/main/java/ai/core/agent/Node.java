@@ -313,6 +313,24 @@ public abstract class Node<T extends Node<T>> {
         this.messages.addAll(messages);
     }
 
+    void addTaskHistoriesToMessages() {
+        if (this.task == null) return;
+        var histories = this.task.getHistory();
+        addMessages(histories.stream().map(this::toLLMMessage).toList());
+    }
+
+    private LLMMessage toLLMMessage(TaskMessage message) {
+        return LLMMessage.of(toLLMRole(message.getRole()), message.getTextPart().getText());
+    }
+
+    private AgentRole toLLMRole(TaskRoleType role) {
+        return switch (role) {
+            case USER -> AgentRole.USER;
+            case AGENT -> AgentRole.ASSISTANT;
+            default -> throw new IllegalArgumentException("Unsupported role: " + role);
+        };
+    }
+
     void clearMessages() {
         this.messages.clear();
     }

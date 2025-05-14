@@ -9,6 +9,7 @@ import core.framework.json.JSON;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -30,7 +31,7 @@ public class TaskPersistence implements Persistence<Task> {
             message.setMetadata(v.metadata);
             message.setParts(v.parts.stream().<Part<?>>map(TaskPersistenceDomain::fromPart).toList());
             return message;
-        }).toList());
+        }).collect(Collectors.toList()));
         task.setArtifacts(domain.artifacts.stream().map(v -> new TaskArtifact(
                 v.name,
                 v.description,
@@ -38,7 +39,7 @@ public class TaskPersistence implements Persistence<Task> {
                 v.metadata,
                 v.index,
                 v.append,
-                v.lastChunk)).toList());
+                v.lastChunk)).collect(Collectors.toList()));
     }
 
     public static class TaskPersistenceDomain {
