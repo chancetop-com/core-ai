@@ -1,6 +1,6 @@
 package ai.core.tool.function;
 
-import ai.core.tool.function.annotation.CoreAiMethod;
+import ai.core.api.tool.function.CoreAiMethod;
 
 import java.io.Serial;
 import java.lang.reflect.Method;

@@ -124,6 +124,7 @@ project(":core-ai") {
     apply(plugin = "kotlin")
     dependencies {
         implementation(project(":litellm-library"))
+        implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
@@ -142,6 +143,7 @@ project(":core-ai") {
 project(":example-service") {
     dependencies {
         implementation(project(":core-ai"))
+        implementation(project(":core-ai-api"))
         implementation(project(":example-service-interface"))
         implementation(project(":huggingface-library"))
         implementation(project(":language-server-library"))

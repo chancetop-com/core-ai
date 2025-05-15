@@ -1,4 +1,4 @@
-package ai.core.tool.function.annotation;
+package ai.core.api.tool.function;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Inherited;

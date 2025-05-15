@@ -1,7 +1,7 @@
 package ai.core.example.service;
 
-import ai.core.tool.function.annotation.CoreAiMethod;
-import ai.core.tool.function.annotation.CoreAiParameter;
+import ai.core.api.tool.function.CoreAiMethod;
+import ai.core.api.tool.function.CoreAiParameter;
 import core.framework.web.exception.BadRequestException;
 
 import java.util.Map;
