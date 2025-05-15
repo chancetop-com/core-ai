@@ -119,7 +119,7 @@ public class ExampleService {
                 .edges(edges)
                 .flowOutputUpdatedEventListener((node, q, rst) -> logger.info("Workflow[{}], input: {}, result: {}", node.getName(), q, rst.text()))
                 .build();
-        return flow.execute(nodeTrigger.getId(), query, null);
+        return flow.run(nodeTrigger.getId(), query, null);
     }
 
     public OrderIssueResponse groupStart(String query) {
