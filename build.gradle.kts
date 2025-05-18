@@ -140,6 +140,13 @@ project(":core-ai") {
 }
 
 
+project(":core-ai-api") {
+    dependencies {
+        implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
+    }
+}
+
+
 project(":example-service") {
     dependencies {
         implementation(project(":core-ai"))

@@ -1,0 +1,41 @@
+package ai.core.api.mcp;
+
+import core.framework.api.json.Property;
+import core.framework.api.validate.NotNull;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * @author stephen
+ */
+public class JsonSchema {
+    @Property(name = "type")
+    public PropertyType type;
+
+    @Property(name = "properties")
+    public Map<String, PropertySchema> properties;
+
+    @Property(name = "required")
+    public List<String> required;
+
+    @Property(name = "additionalProperties")
+    public Boolean additionalProperties;
+
+    public enum PropertyType {
+        @Property(name = "string")
+        STRING,
+        @Property(name = "object")
+        OBJECT
+    }
+
+    public static class PropertySchema {
+        @NotNull
+        @Property(name = "type")
+        public PropertyType type;
+
+        @NotNull
+        @Property(name = "description")
+        public String description;
+    }
+}
