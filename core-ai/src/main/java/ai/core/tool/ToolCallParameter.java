@@ -1,11 +1,28 @@
 package ai.core.tool;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Set;
 
 /**
  * @author stephen
  */
 public class ToolCallParameter {
+    public final static Set<Class<?>> SUPPORT_TYPES = Set.of(
+            String.class,
+            Boolean.class,
+            Integer.class,
+            Long.class,
+            Double.class,
+            BigDecimal.class,
+            LocalDate.class,
+            LocalDateTime.class,
+            ZonedDateTime.class,
+            LocalTime.class);
 
     public static Builder builder() {
         return new Builder();

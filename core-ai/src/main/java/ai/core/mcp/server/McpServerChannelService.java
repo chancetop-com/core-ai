@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * @author stephen
  */
-public class McpChannelService {
+public class McpServerChannelService {
     @Inject
     Executor executor;
 

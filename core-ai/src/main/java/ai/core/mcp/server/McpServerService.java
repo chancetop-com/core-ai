@@ -10,7 +10,6 @@ import ai.core.api.mcp.kafka.McpToolCallEvent;
 import ai.core.api.mcp.schema.Implementation;
 import ai.core.api.mcp.schema.InitializeRequest;
 import ai.core.api.mcp.schema.InitializeResult;
-import ai.core.api.mcp.schema.PaginationRequest;
 import ai.core.api.mcp.schema.PromptCapabilities;
 import ai.core.api.mcp.schema.ResourceCapabilities;
 import ai.core.api.mcp.schema.ServerCapabilities;
@@ -24,7 +23,6 @@ import core.framework.async.Executor;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.kafka.MessagePublisher;
-import core.framework.util.Lists;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.NotFoundException;
 
@@ -35,33 +33,49 @@ import java.util.stream.Collectors;
 /**
  * @author stephen
  */
-public class McpService {
+public class McpServerService {
     @Inject
-    McpChannelService mcpChannelService;
+    McpServerChannelService mcpServerChannelService;
     @Inject
     Executor executor;
     @Inject
     MessagePublisher<McpToolCallEvent> messagePublisher;
+
+    private McpServerToolLoader toolLoader;
     private String name = "chancetop-api-mcp-server";
     private String version = "1.0.0";
-    private final List<ToolCall> toolCalls = Lists.newArrayList();
+    private List<ToolCall> toolCalls;
+    private boolean initialized = false;
+
+    private void initialize() {
+        if (toolLoader == null) {
+            throw new RuntimeException("tool loader not initialized");
+        }
+        this.toolCalls = toolLoader.load();
+        initialized = true;
+    }
 
     public void setInfo(String name, String version) {
         this.name = name;
         this.version = version;
     }
 
-    public void addTools(List<ToolCall> toolCalls) {
-        this.toolCalls.addAll(toolCalls);
+    public void setToolLoader(McpServerToolLoader toolLoader) {
+        this.toolLoader = toolLoader;
+    }
+
+    public void reload() {
+        initialize();
     }
 
     public void handle(String requestId, JsonRpcRequest req) {
-        var channel = mcpChannelService.getChannel(requestId);
+        if (!initialized) initialize();
+        var channel = mcpServerChannelService.getChannel(requestId);
         var response = handleEvent(requestId, req);
         channel.send(response);
     }
 
-    public JsonRpcResponse handleEvent(String requestId, JsonRpcRequest request) {
+    private JsonRpcResponse handleEvent(String requestId, JsonRpcRequest request) {
         var rsp = JsonRpcResponse.of(Constants.JSONRPC_VERSION, request.id);
         try {
             switch (request.method) {
@@ -123,9 +137,9 @@ public class McpService {
     }
 
     private void handleToolsList(JsonRpcRequest request, JsonRpcResponse rsp) {
-        var req = JSON.fromJSON(PaginationRequest.class, request.params);
+//        var req = JSON.fromJSON(PaginationRequest.class, request.params);
         var rst = new ListToolsResult();
-        rst.nextCursor = req.cursor;
+//        rst.nextCursor = req.cursor;
         rst.tools = toolCalls.stream().map(this::toMcpTool).toList();
         rsp.result = JSON.toJSON(rst);
     }
@@ -152,10 +166,11 @@ public class McpService {
         var map = toolCalls.stream().collect(Collectors.toMap(ToolCall::getName, Function.identity()));
         var tool = map.get(req.name);
         if (tool == null) throw new NotFoundException("Tool not existed: " + request.params);
-        executor.submit("mcp-handle-tool-call", () -> {
-            var rst = tool.call(req.arguments);
-            messagePublisher.publish(requestId, McpToolCallEvent.of(requestId, rst));
-        });
+        rsp.result = tool.call(req.arguments);
+//        executor.submit("mcp-handle-tool-call", () -> {
+//            var rst = tool.call(req.arguments);
+//            messagePublisher.publish(requestId, McpToolCallEvent.of(requestId, rst));
+//        });
     }
 
     private void handleNotificationToolsListChanged(JsonRpcRequest request, JsonRpcResponse rsp) {

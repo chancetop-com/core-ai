@@ -27,12 +27,18 @@ public class Function extends ToolCall {
 
     Object object;
     Method method;
+    Boolean dynamicArguments;
     ResponseConverter responseConverter;
 
     @Override
     public String call(String text) {
-        var argsMap = JSON.fromJSON(Map.class, text);
         try {
+            if (dynamicArguments != null && dynamicArguments) {
+                // args convert by method itself
+                var rst = method.invoke(object, List.of(this.getName(), text).toArray());
+                return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
+            }
+            var argsMap = JSON.fromJSON(Map.class, text);
             var args = new Object[this.getParameters().size()];
             for (int i = 0; i < this.getParameters().size(); i++) {
                 var value = argsMap.get(this.getParameters().get(i).getName());
@@ -77,7 +83,8 @@ public class Function extends ToolCall {
     public static class Builder extends ToolCall.Builder<Builder, Function> {
         private Object object;
         private Method method;
-        public ResponseConverter responseConverter;
+        private ResponseConverter responseConverter;
+        private Boolean dynamicArguments;
 
         public Builder object(Object object) {
             this.object = object;
@@ -89,12 +96,23 @@ public class Function extends ToolCall {
             return this;
         }
 
+        public Builder responseConverter(ResponseConverter responseConverter) {
+            this.responseConverter = responseConverter;
+            return this;
+        }
+
+        public Builder dynamicArguments(Boolean dynamicArguments) {
+            this.dynamicArguments = dynamicArguments;
+            return this;
+        }
+
         public Function build() {
             var function = new Function();
             build(function);
             function.object = this.object;
             function.method = this.method;
             function.responseConverter = this.responseConverter;
+            function.dynamicArguments = this.dynamicArguments;
             return function;
         }
 

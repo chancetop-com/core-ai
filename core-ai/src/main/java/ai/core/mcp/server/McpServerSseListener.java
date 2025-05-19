@@ -14,17 +14,20 @@ import java.util.UUID;
 /**
  * @author stephen
  */
-public class McpSseListener implements ChannelListener<JsonRpcResponse> {
+public class McpServerSseListener implements ChannelListener<JsonRpcResponse> {
     @Inject
-    McpService mcpService;
+    McpServerService mcpServerService;
     @Inject
-    McpChannelService channelService;
+    McpServerChannelService channelService;
 
     @Override
     public void onConnect(Request request, Channel<JsonRpcResponse> channel, @Nullable String s) {
-        var req = JSON.fromJSON(JsonRpcRequest.class, new String(request.body().orElseThrow()));
+        if (request.body().isEmpty()) return;
+        var newJsonText = JsonParamsConverter.convert(new String(request.body().orElseThrow()));
+        var req = JSON.fromJSON(JsonRpcRequest.class, newJsonText);
         var requestId = UUID.randomUUID().toString();
         channelService.connect(requestId, channel);
-        mcpService.handle(requestId, req);
+        mcpServerService.handle(requestId, req);
+        channelService.close(channel);
     }
 }
