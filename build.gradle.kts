@@ -12,7 +12,7 @@ repositories {
 
 subprojects {
     group = "com.chancetop"
-    version = "1.0.0-SNAPSHOT"
+    version = "1.1.0"
 
     repositories {
         maven {

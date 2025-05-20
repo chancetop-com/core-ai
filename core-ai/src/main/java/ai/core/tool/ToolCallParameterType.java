@@ -2,6 +2,9 @@ package ai.core.tool;
 
 import core.framework.api.json.Property;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * @author stephen
  */
@@ -24,8 +27,28 @@ public enum ToolCallParameterType {
     LOCALDATETIME,
     @Property(name = "Long")
     LONG,
+    @Property(name = "List")
+    LIST,
+    @Property(name = "Map")
+    MAP,
     @Property(name = "BigDecimal")
     BIGDECIMAL;
+
+    public static List<Class<?>> getAllTypes() {
+        return List.of(
+                STRING.getType(),
+                BOOLEAN.getType(),
+                DOUBLE.getType(),
+                LOCALDATE.getType(),
+                ZONEDDATETIME.getType(),
+                INTEGER.getType(),
+                LOCALTIME.getType(),
+                LOCALDATETIME.getType(),
+                LONG.getType(),
+                BIGDECIMAL.getType(),
+                LIST.getType(),
+                MAP.getType());
+    }
 
     public Class<?> getType() {
         return switch (this) {
@@ -39,6 +62,8 @@ public enum ToolCallParameterType {
             case LOCALDATETIME -> java.time.LocalDateTime.class;
             case LONG -> Long.class;
             case BIGDECIMAL -> java.math.BigDecimal.class;
+            case LIST -> List.class;
+            case MAP -> Map.class;
         };
     }
 }
