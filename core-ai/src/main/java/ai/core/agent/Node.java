@@ -256,6 +256,7 @@ public abstract class Node<T extends Node<T>> {
                 task.setStatus(TaskStatus.COMPLETED);
             }
         } catch (Exception e) {
+            task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, e.getMessage())));
             task.setStatus(TaskStatus.FAILED);
         }
     }
