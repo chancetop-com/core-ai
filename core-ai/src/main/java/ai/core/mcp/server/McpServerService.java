@@ -99,6 +99,7 @@ public class McpServerService {
                 case METHOD_ROOTS_LIST -> handleRootsList(request, rsp);
                 case METHOD_NOTIFICATION_ROOTS_LIST_CHANGED -> handleNotificationRootsListChanged(request, rsp);
                 case METHOD_SAMPLING_CREATE_MESSAGE -> handleSamplingCreateMessage(request, rsp);
+                default -> throw new NotFoundException("Method not found: " + request.method);
             }
         } catch (Exception e) {
             rsp.error = new JsonRpcError();
@@ -167,10 +168,10 @@ public class McpServerService {
         var tool = map.get(req.name);
         if (tool == null) throw new NotFoundException("Tool not existed: " + request.params);
         rsp.result = tool.call(req.arguments);
-//        executor.submit("mcp-handle-tool-call", () -> {
-//            var rst = tool.call(req.arguments);
-//            messagePublisher.publish(requestId, McpToolCallEvent.of(requestId, rst));
-//        });
+        executor.submit("mcp-handle-tool-call", () -> {
+            var rst = tool.call(req.arguments);
+            messagePublisher.publish(requestId, McpToolCallEvent.of(requestId, rst));
+        });
     }
 
     private void handleNotificationToolsListChanged(JsonRpcRequest request, JsonRpcResponse rsp) {

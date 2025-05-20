@@ -3,6 +3,6 @@ package ai.core.mcp.client;
 /**
  * @author stephen
  */
-public interface MCPToolCallMessageHandler {
+public interface McpClientToolCallMessageHandler {
     void resultHandler(String message);
 }

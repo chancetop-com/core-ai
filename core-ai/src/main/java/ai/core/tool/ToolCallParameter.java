@@ -12,7 +12,7 @@ import java.util.Set;
  * @author stephen
  */
 public class ToolCallParameter {
-    public final static Set<Class<?>> SUPPORT_TYPES = Set.of(
+    public static final Set<Class<?>> SUPPORT_TYPES = Set.of(
             String.class,
             Boolean.class,
             Integer.class,

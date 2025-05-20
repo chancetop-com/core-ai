@@ -1,43 +1,34 @@
 package ai.core.tool.mcp;
 
-import ai.core.mcp.client.MCPClientService;
+import ai.core.mcp.client.McpClientService;
 import ai.core.tool.ToolCall;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 
 /**
  * @author stephen
  */
-public class MCPToolCall extends ToolCall {
+public class McpToolCall extends ToolCall {
 
     public static Builder builder() {
         return new Builder();
     }
 
-    MCPClientService mcpClientService;
+    McpClientService mcpClientService;
 
     @Override
     public String call(String text) {
-        var future = new CompletableFuture<>();
-        mcpClientService.callTool(this.getName(), text, future::complete);
-        try {
-            return (String) future.get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+        return mcpClientService.callTool(this.getName(), text);
     }
 
     public static class Builder extends ToolCall.Builder<Builder, ToolCall> {
-        private MCPClientService mcpClientService;
+        private McpClientService mcpClientService;
 
-        public Builder mcpClientService(MCPClientService mcpClientService) {
+        public Builder mcpClientService(McpClientService mcpClientService) {
             this.mcpClientService = mcpClientService;
             return this;
         }
 
-        public MCPToolCall build() {
-            var toolCall = new MCPToolCall();
+        public McpToolCall build() {
+            var toolCall = new McpToolCall();
             if (mcpClientService == null) {
                 throw new RuntimeException("MCPClientService is required");
             }

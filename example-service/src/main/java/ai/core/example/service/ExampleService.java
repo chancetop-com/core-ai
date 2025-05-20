@@ -27,11 +27,11 @@ import ai.core.flow.nodes.builtinnodes.BuiltinPythonAgentFlowNode;
 import ai.core.flow.nodes.builtinnodes.BuiltinPythonToolFlowNode;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.AzureInferenceProvider;
-import ai.core.mcp.client.MCPClientService;
-import ai.core.mcp.client.MCPServerConfig;
+import ai.core.mcp.client.McpClientService;
+import ai.core.mcp.client.McpClientServerConfig;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
 import ai.core.tool.function.Functions;
-import ai.core.tool.mcp.MCPToolCalls;
+import ai.core.tool.mcp.McpToolCalls;
 import com.google.common.collect.Lists;
 import core.framework.inject.Inject;
 import org.slf4j.Logger;
@@ -163,13 +163,13 @@ public class ExampleService {
     }
 
     public String mcpToolCallTest(MCPToolCallRequest request) {
-        var mcpClientService = new MCPClientService(new MCPServerConfig(request.url, "git", "git operator"));
+        var mcpClientService = new McpClientService(new McpClientServerConfig(request.url, "git", "git operator"));
         var agent = Agent.builder()
                 .name("mcp-tool-call-agent")
                 .description("mcp tool call agent")
                 .systemPrompt("you are a tool call agent")
                 .promptTemplate("")
-                .toolCalls(MCPToolCalls.from(mcpClientService))
+                .toolCalls(McpToolCalls.from(mcpClientService))
                 .llmProvider(llmProvider).build();
         return agent.run(request.query, null);
     }
