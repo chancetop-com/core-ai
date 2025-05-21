@@ -51,11 +51,17 @@ public class McpClientService {
         try (var response = client.sse(request)) {
             for (var event : response) {
                 var rsp = JSON.fromJSON(JsonRpcResponse.class, event.data());
+                if (rsp.result == null && rsp.error == null) {
+                    return "Call tool with no result & no error";
+                }
+                if (rsp.result == null) {
+                    return rsp.error.message;
+                }
                 return JSON.fromJSON(CallToolResult.class, rsp.result).content.getFirst().content;
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        return "";
+        return "Call tool with no result & no error";
     }
 }

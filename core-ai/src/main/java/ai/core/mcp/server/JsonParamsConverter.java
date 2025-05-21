@@ -18,4 +18,14 @@ public class JsonParamsConverter {
             throw new RuntimeException("Failed to convert JSON params", e);
         }
     }
+
+    public static String revert(String text) {
+        try {
+            var mapper = new ObjectMapper();
+            var node = mapper.readTree(text);
+            return mapper.writeValueAsString(node);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to revert text params", e);
+        }
+    }
 }

@@ -27,6 +27,7 @@ public class McpServerSseListener implements ChannelListener<JsonRpcResponse> {
         ActionLogContext.put("mcp-server-sse-connect", new String(request.body().orElseThrow()));
         var newJsonText = JsonParamsConverter.convert(new String(request.body().orElseThrow()));
         var req = JSON.fromJSON(JsonRpcRequest.class, newJsonText);
+        req.params = JsonParamsConverter.revert(req.params);
         var requestId = UUID.randomUUID().toString();
         channelService.connect(requestId, channel);
         mcpServerService.handle(requestId, req);
