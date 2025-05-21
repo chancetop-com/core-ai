@@ -3,7 +3,6 @@ apply(plugin = "project")
 plugins {
     `java-library`
     `maven-publish`
-    kotlin("jvm") version "1.9.20"
 }
 
 repositories {
@@ -12,7 +11,6 @@ repositories {
 
 subprojects {
     group = "com.chancetop"
-    version = "1.1.1"
 
     repositories {
         maven {
@@ -25,6 +23,12 @@ subprojects {
             url = uri("https://neowu.github.io/maven-repo/")
             content {
                 includeGroupByRegex("core\\.framework.*")
+            }
+        }
+        maven {
+            url = uri("https://chancetop-com.github.io/maven-repo/")
+            content {
+                includeGroupByRegex("com\\.chancetop.*")
             }
         }
     }
@@ -46,7 +50,7 @@ subprojects {
         }
     }
 
-    if (project.name.startsWith("core-ai") || project.name.endsWith("library")) {
+    if (project.name.startsWith("core-ai") || project.name.endsWith("library") || project.name.endsWith("api")) {
         apply(plugin = "maven-publish")
         val sourceJar by tasks.registering(Jar::class) {
             archiveClassifier.set("sources")
@@ -94,6 +98,7 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
 }
 
 project(":litellm-library") {
+    version = "1.1.1"
     dependencies {
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -103,6 +108,7 @@ project(":litellm-library") {
 }
 
 project(":huggingface-library") {
+    version = "1.1.0"
     dependencies {
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -112,6 +118,7 @@ project(":huggingface-library") {
 }
 
 project(":language-server-library") {
+    version = "1.1.0"
     dependencies {
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -120,10 +127,17 @@ project(":language-server-library") {
 }
 
 
+val useLocalProjects = project.hasProperty("useLocalProjects")
 project(":core-ai") {
+    version = "1.1.3"
     dependencies {
-        implementation(project(":litellm-library"))
-        implementation(project(":core-ai-api"))
+        if (useLocalProjects) {
+            implementation(project(":core-ai-api"))
+            implementation(project(":litellm-library"))
+        } else {
+            implementation("com.chancetop:core-ai-api:1.1.1")
+            implementation("com.chancetop:litellm-library:1.1.1")
+        }
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
@@ -139,6 +153,7 @@ project(":core-ai") {
 
 
 project(":core-ai-api") {
+    version = "1.1.1"
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }

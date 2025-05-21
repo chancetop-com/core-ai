@@ -168,10 +168,10 @@ public class McpServerService {
         var tool = map.get(req.name);
         if (tool == null) throw new NotFoundException("Tool not existed: " + request.params);
         rsp.result = tool.call(req.arguments);
-        executor.submit("mcp-handle-tool-call", () -> {
-            var rst = tool.call(req.arguments);
-            messagePublisher.publish(requestId, McpToolCallEvent.of(requestId, rst));
-        });
+//        executor.submit("mcp-handle-tool-call", () -> {
+//            var rst = tool.call(req.arguments);
+//            messagePublisher.publish(requestId, McpToolCallEvent.of(requestId, rst));
+//        });
     }
 
     private void handleNotificationToolsListChanged(JsonRpcRequest request, JsonRpcResponse rsp) {

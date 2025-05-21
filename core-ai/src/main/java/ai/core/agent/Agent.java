@@ -202,7 +202,7 @@ public class Agent extends Node<Agent> {
             logger.info("function call {}: {}", toolCall.function.name, toolCall.function.arguments);
             return function.call(toolCall.function.arguments);
         } catch (Exception e) {
-            throw new BadRequestException("tool call failed<execute>: " + JSON.toJSON(toolCall), "TOOL_CALL_FAILED", e);
+            throw new BadRequestException(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(toolCall), e.getMessage()), "TOOL_CALL_FAILED", e);
         }
     }
 
