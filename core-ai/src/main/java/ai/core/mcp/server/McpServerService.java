@@ -23,6 +23,7 @@ import core.framework.async.Executor;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.kafka.MessagePublisher;
+import core.framework.log.ActionLogContext;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.NotFoundException;
 
@@ -72,6 +73,7 @@ public class McpServerService {
         if (!initialized) initialize();
         var channel = mcpServerChannelService.getChannel(requestId);
         var response = handleEvent(requestId, req);
+        ActionLogContext.put("mcp-server-response", JSON.toJSON(response));
         channel.send(response);
     }
 
