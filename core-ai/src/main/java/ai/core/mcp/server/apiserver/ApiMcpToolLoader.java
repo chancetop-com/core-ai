@@ -41,7 +41,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
 
     private ToolCall toToolCall(ApiDefinition.Operation operation, ApiDefinition.Service service, ApiDefinition api) {
         var method = Arrays.stream(DynamicApiCaller.class.getMethods()).filter(v -> v.getName().equals("callApi")).findFirst().orElseThrow();
-        var params = operation.pathParams.stream().map(this::toParamFromPathParam).collect(Collectors.toList());
+        var params = operation.pathParams.stream().map(v -> toParamFromPathParam(v, api)).collect(Collectors.toList());
         if (operation.requestType != null) {
             params.addAll(toParamFromRequestType(operation.requestType, api));
         }
@@ -93,14 +93,25 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         }
     }
 
-    private ToolCallParameter toParamFromPathParam(ApiDefinition.PathParam pathParam) {
+    private ToolCallParameter toParamFromPathParam(ApiDefinition.PathParam pathParam, ApiDefinition api) {
         var param = new ToolCallParameter();
         param.setName(pathParam.name);
         param.setDescription(pathParam.description == null ? pathParam.name : pathParam.description);
         param.setRequired(true);
-        var type = ToolCallParameterType.valueOf(pathParam.type.toUpperCase(Locale.ROOT)).getType();
+        var type = (Class<?>) String.class;
+        if (isEnum(pathParam)) {
+            var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
+            var e = typeMap.get(pathParam.type);
+            param.setEnums(e.enumConstants.stream().map(v -> v.name).toList());
+        } else {
+            type = ToolCallParameterType.valueOf(pathParam.type.toUpperCase(Locale.ROOT)).getType();
+        }
         param.setType(type);
         return param;
+    }
+
+    public boolean isEnum(ApiDefinition.PathParam pathParam) {
+        return Arrays.stream(ToolCallParameterType.values()).noneMatch(v -> v.name().equalsIgnoreCase(pathParam.type));
     }
 
     public record OperationContext(ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
