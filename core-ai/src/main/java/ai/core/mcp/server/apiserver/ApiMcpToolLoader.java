@@ -75,20 +75,23 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
     private void buildTypeParams(ApiDefinitionType requestType, List<ToolCallParameter> params, ApiDefinition api) {
         var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
         var types = Arrays.stream(ToolCallParameterType.values()).map(v -> v.name().toUpperCase(Locale.ROOT)).collect(Collectors.toSet());
-        if ("enum".equalsIgnoreCase(requestType.type)) {
-            var param = new ToolCallParameter();
-            param.setName(requestType.name);
-            param.setDescription(requestType.name);
-            param.setEnums(requestType.enumConstants.stream().map(v -> v.name).toList());
-            params.add(param);
-            return;
-        }
         for (var field : requestType.fields) {
             if (!types.contains(field.type.toUpperCase(Locale.ROOT)) && !typeMap.containsKey(field.type)) {
                 throw new ConflictException("Unsupported type: " + field.type);
             }
             if (typeMap.containsKey(field.type)) {
-                buildTypeParams(typeMap.get(field.type), params, api);
+                var subType = typeMap.get(field.type);
+                if ("enum".equalsIgnoreCase(subType.type)) {
+                    var param = new ToolCallParameter();
+                    param.setName(field.name);
+                    param.setDescription(requestType.name);
+                    param.setRequired(field.constraints.notNull);
+                    param.setType(String.class);
+                    param.setEnums(subType.enumConstants.stream().map(v -> v.name).toList());
+                    params.add(param);
+                } else {
+                    buildTypeParams(typeMap.get(field.type), params, api);
+                }
             } else {
                 var param = new ToolCallParameter();
                 param.setName(field.name);
