@@ -50,6 +50,7 @@ public class Agent extends Node<Agent> {
     ReflectionConfig reflectionConfig;
     LongTernMemory longTernMemory;
     Boolean useGroupContext;
+    Boolean summaryToolResult;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -75,11 +76,15 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-        chat(prompt);
+        var reason = chat(prompt);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
             reflection();
+        }
+
+        if (reason == FinishReason.TOOL_CALLS && summaryToolResult) {
+            chat("summary");
         }
 
         updateNodeStatus(NodeStatus.COMPLETED);
@@ -89,7 +94,7 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private void chat(String query) {
+    private FinishReason chat(String query) {
         // call LLM completion
         var rst = completionWithFormat(query);
 
@@ -106,6 +111,8 @@ public class Agent extends Node<Agent> {
             setOutput(functionCall(choice));
             addResponseChoiceMessage(buildToolCallResultMessage(choice));
         }
+
+        return choice.finishReason;
     }
 
     private void reflection() {
@@ -276,6 +283,7 @@ public class Agent extends Node<Agent> {
         private ReflectionConfig reflectionConfig;
         private Boolean useGroupContext = false;
         private Boolean enableReflection = false;
+        private Boolean summaryToolResult = false;
 
         public Builder promptTemplate(String promptTemplate) {
             this.promptTemplate = promptTemplate;
@@ -327,6 +335,11 @@ public class Agent extends Node<Agent> {
             return this;
         }
 
+        public Builder summaryToolResult(Boolean summaryToolResult) {
+            this.summaryToolResult = summaryToolResult;
+            return this;
+        }
+
         public Agent build() {
             var agent = new Agent();
             this.nodeType = NodeType.AGENT;
@@ -347,6 +360,7 @@ public class Agent extends Node<Agent> {
             agent.ragConfig = this.ragConfig;
             agent.reflectionConfig = this.reflectionConfig;
             agent.useGroupContext = this.useGroupContext;
+            agent.summaryToolResult = this.summaryToolResult;
             agent.setPersistence(new AgentPersistence());
             if (this.enableReflection && this.reflectionConfig == null) {
                 agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();

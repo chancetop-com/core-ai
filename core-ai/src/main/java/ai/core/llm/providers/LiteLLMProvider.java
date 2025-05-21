@@ -123,7 +123,7 @@ public class LiteLLMProvider extends LLMProvider {
         apiReq.messages = dto.messages.stream().map(v -> {
             var message = new MessageAJAXView();
             message.role = RoleTypeAJAXView.valueOf(v.role.name());
-            message.content = v.content;
+            message.content = v.content == null ? "" : v.content;
             message.toolCallId = v.toolCallId;
             if (v.functionCall != null) {
                 var functionCall = new FunctionCallAJAXView();
