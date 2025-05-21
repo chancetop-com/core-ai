@@ -317,7 +317,9 @@ public abstract class Node<T extends Node<T>> {
     void addTaskHistoriesToMessages() {
         if (this.task == null) return;
         var histories = this.task.getHistory();
-        addMessages(histories.stream().map(this::toLLMMessage).toList());
+        if (histories.size() <= 1) return;
+        var subHistories = histories.subList(0, histories.size() - 1);
+        addMessages(subHistories.stream().map(this::toLLMMessage).toList());
     }
 
     private LLMMessage toLLMMessage(TaskMessage message) {

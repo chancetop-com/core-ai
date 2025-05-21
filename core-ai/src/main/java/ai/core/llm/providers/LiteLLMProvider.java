@@ -126,13 +126,10 @@ public class LiteLLMProvider extends LLMProvider {
             message.content = v.content == null ? "" : v.content;
             message.toolCallId = v.toolCallId;
             if (v.functionCall != null) {
-                var functionCall = new FunctionCallAJAXView();
-                functionCall.id = v.functionCall.id;
-                functionCall.type = v.functionCall.type;
-                functionCall.function = new FunctionCallAJAXView.Function();
-                functionCall.function.name = v.functionCall.function.name;
-                functionCall.function.arguments = v.functionCall.function.arguments;
-                message.functionCall = functionCall;
+                message.functionCall = toFunction(v.functionCall);
+            }
+            if (v.toolCalls != null && !v.toolCalls.isEmpty()) {
+                message.toolCalls = v.toolCalls.stream().map(this::toFunction).toList();
             }
             return message;
         }).collect(Collectors.toList());
@@ -148,6 +145,17 @@ public class LiteLLMProvider extends LLMProvider {
         }).collect(Collectors.toList());
         apiReq.toolChoice = dto.toolCalls.isEmpty() ? null : "auto";
         return apiReq;
+    }
+
+    private FunctionCallAJAXView toFunction(LLMFunction.FunctionCall toolCall) {
+        var function = new FunctionCallAJAXView();
+        function.id = toolCall.id;
+        function.type = toolCall.type;
+        function.function = new FunctionCallAJAXView.Function();
+        function.function.name = toolCall.function.name;
+        function.function.arguments = toolCall.function.arguments;
+        return function;
+
     }
 
     private ParameterAJAXView toParameter(List<ToolCallParameter> parameters) {
