@@ -1,0 +1,111 @@
+package ai.core.mcp.server.apiserver;
+
+import ai.core.mcp.server.McpServerToolLoader;
+import ai.core.mcp.server.apiserver.domain.ApiDefinition;
+import ai.core.mcp.server.apiserver.domain.ApiDefinitionType;
+import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallParameter;
+import ai.core.tool.ToolCallParameterType;
+import ai.core.tool.function.Function;
+import core.framework.util.Lists;
+import core.framework.web.exception.ConflictException;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+/**
+ * @author stephen
+ */
+public class ApiMcpToolLoader implements McpServerToolLoader {
+    private final ApiLoader apiLoader;
+    private DynamicApiCaller dynamicApiCaller;
+
+    public ApiMcpToolLoader(ApiLoader apiLoader) {
+        this.apiLoader = apiLoader;
+    }
+
+    @Override
+    public List<ToolCall> load() {
+        var apis = apiLoader.load();
+        dynamicApiCaller = new DynamicApiCaller(apis);
+        return apis.stream()
+                .flatMap(api -> api.services.stream()
+                        .flatMap(service -> service.operations.stream()
+                                .map(operation -> new OperationContext(api, service, operation))))
+                .map(ctx -> toToolCall(ctx.operation(), ctx.service(), ctx.api()))
+                .toList();
+    }
+
+    private ToolCall toToolCall(ApiDefinition.Operation operation, ApiDefinition.Service service, ApiDefinition api) {
+        var method = Arrays.stream(DynamicApiCaller.class.getMethods()).filter(v -> v.getName().equals("callApi")).findFirst().orElseThrow();
+        var params = operation.pathParams.stream().map(this::toParamFromPathParam).collect(Collectors.toList());
+        if (operation.requestType != null) {
+            params.addAll(toParamFromRequestType(operation.requestType, api));
+        }
+        return Function.builder()
+                .name(OperationContext.toFunctionCallName(operation, service, api))
+                .description(operation.description)
+                .object(dynamicApiCaller)
+                .method(method)
+                .dynamicArguments(true)
+                .parameters(params).build();
+    }
+
+    private List<ToolCallParameter> toParamFromRequestType(String type, ApiDefinition api) {
+        var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
+        var requestType = typeMap.get(type);
+        List<ToolCallParameter> params = Lists.newArrayList();
+        buildTypeParams(requestType, params, api);
+        checkDuplicateName(params);
+        return params;
+    }
+
+    private void checkDuplicateName(List<ToolCallParameter> params) {
+        var names = new HashSet<String>();
+        for (var param : params) {
+            if (!names.add(param.getName())) {
+                throw new ConflictException("DUPLICATE_PARAMETER_NAME_EXCEPTION", "Not supported, duplicate parameter name: " + param.getName());
+            }
+        }
+    }
+
+    private void buildTypeParams(ApiDefinitionType requestType, List<ToolCallParameter> params, ApiDefinition api) {
+        var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
+        var types = Arrays.stream(ToolCallParameterType.values()).map(v -> v.name().toUpperCase(Locale.ROOT)).collect(Collectors.toSet());
+        for (var field : requestType.fields) {
+            if (!types.contains(field.type.toUpperCase(Locale.ROOT)) && !typeMap.containsKey(field.type)) {
+                throw new ConflictException("Unsupported type: " + field.type);
+            }
+            if (typeMap.containsKey(field.type)) {
+                buildTypeParams(typeMap.get(field.type), params, api);
+            } else {
+                var param = new ToolCallParameter();
+                param.setName(field.name);
+                param.setDescription(field.description == null ? field.name : field.description);
+                param.setRequired(field.constraints.notNull);
+                var type = ToolCallParameterType.valueOf(field.type.toUpperCase(Locale.ROOT)).getType();
+                param.setType(type);
+                params.add(param);
+            }
+        }
+    }
+
+    private ToolCallParameter toParamFromPathParam(ApiDefinition.PathParam pathParam) {
+        var param = new ToolCallParameter();
+        param.setName(pathParam.name);
+        param.setDescription(pathParam.description == null ? pathParam.name : pathParam.description);
+        param.setRequired(true);
+        var type = ToolCallParameterType.valueOf(pathParam.type.toUpperCase(Locale.ROOT)).getType();
+        param.setType(type);
+        return param;
+    }
+
+    public record OperationContext(ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
+        public static String toFunctionCallName(ApiDefinition.Operation operation, ApiDefinition.Service service, ApiDefinition api) {
+            return api.app + "." + service.name + "." + operation.name;
+        }
+    }
+}

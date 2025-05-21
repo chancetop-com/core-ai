@@ -15,6 +15,8 @@ import ai.core.api.mcp.schema.ResourceCapabilities;
 import ai.core.api.mcp.schema.ServerCapabilities;
 import ai.core.api.mcp.schema.ToolCapabilities;
 import ai.core.api.mcp.schema.tool.CallToolRequest;
+import ai.core.api.mcp.schema.tool.CallToolResult;
+import ai.core.api.mcp.schema.tool.Content;
 import ai.core.api.mcp.schema.tool.ListToolsResult;
 import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.tool.ToolCall;
@@ -43,7 +45,7 @@ public class McpServerService {
     MessagePublisher<McpToolCallEvent> messagePublisher;
 
     private McpServerToolLoader toolLoader;
-    private String name = "chancetop-api-mcp-server";
+    private String name = "chancetop-mcp-server";
     private String version = "1.0.0";
     private List<ToolCall> toolCalls;
     private boolean initialized = false;
@@ -169,7 +171,12 @@ public class McpServerService {
         var map = toolCalls.stream().collect(Collectors.toMap(ToolCall::getName, Function.identity()));
         var tool = map.get(req.name);
         if (tool == null) throw new NotFoundException("Tool not existed: " + request.params);
-        rsp.result = tool.call(req.arguments);
+        var rst = new CallToolResult();
+        var content = new Content();
+        content.type = Content.ContentType.TEXT;
+        content.content = tool.call(req.arguments);
+        rst.content = List.of(content);
+        rsp.result = JSON.toJSON(rst);
 //        executor.submit("mcp-handle-tool-call", () -> {
 //            var rst = tool.call(req.arguments);
 //            messagePublisher.publish(requestId, McpToolCallEvent.of(requestId, rst));
