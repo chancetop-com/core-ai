@@ -75,6 +75,14 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
     private void buildTypeParams(ApiDefinitionType requestType, List<ToolCallParameter> params, ApiDefinition api) {
         var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
         var types = Arrays.stream(ToolCallParameterType.values()).map(v -> v.name().toUpperCase(Locale.ROOT)).collect(Collectors.toSet());
+        if ("enum".equalsIgnoreCase(requestType.type)) {
+            var param = new ToolCallParameter();
+            param.setName(requestType.name);
+            param.setDescription(requestType.name);
+            param.setEnums(requestType.enumConstants.stream().map(v -> v.name).toList());
+            params.add(param);
+            return;
+        }
         for (var field : requestType.fields) {
             if (!types.contains(field.type.toUpperCase(Locale.ROOT)) && !typeMap.containsKey(field.type)) {
                 throw new ConflictException("Unsupported type: " + field.type);
@@ -99,7 +107,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         param.setDescription(pathParam.description == null ? pathParam.name : pathParam.description);
         param.setRequired(true);
         var type = (Class<?>) String.class;
-        if (isEnum(pathParam)) {
+        if (isEnum(pathParam.type)) {
             var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
             var e = typeMap.get(pathParam.type);
             param.setEnums(e.enumConstants.stream().map(v -> v.name).toList());
@@ -110,8 +118,8 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         return param;
     }
 
-    public boolean isEnum(ApiDefinition.PathParam pathParam) {
-        return Arrays.stream(ToolCallParameterType.values()).noneMatch(v -> v.name().equalsIgnoreCase(pathParam.type));
+    public boolean isEnum(String type) {
+        return Arrays.stream(ToolCallParameterType.values()).noneMatch(v -> v.name().equalsIgnoreCase(type));
     }
 
     public record OperationContext(ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
