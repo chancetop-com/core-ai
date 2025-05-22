@@ -9,7 +9,7 @@ import core.framework.api.validate.NotNull;
 public class PropertyAJAXView {
     @NotNull
     @Property(name = "type")
-    public ParameterTypeView type;
+    public String type;
 
     @NotNull
     @Property(name = "description")

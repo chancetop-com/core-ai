@@ -35,6 +35,7 @@ import core.framework.inject.Inject;
 import core.framework.util.Strings;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -166,7 +167,7 @@ public class LiteLLMProvider extends LLMProvider {
             var property = new PropertyAJAXView();
             property.description = p.getDescription();
 //            property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
-            property.type = ParameterTypeView.STRING;
+            property.type = p.getType().getSimpleName().substring(p.getType().getSimpleName().lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
             return property;
         }));
         return ajax;

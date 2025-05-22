@@ -32,7 +32,7 @@ public class JsonSchema {
     public static class PropertySchema {
         @NotNull
         @Property(name = "type")
-        public PropertyType type;
+        public String type;
 
         @NotNull
         @Property(name = "description")

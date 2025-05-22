@@ -45,7 +45,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
             var parameter = ToolCallParameter.builder()
                     .name(name)
                     .description(description)
-                    .type(mapType(type.name()))
+                    .type(mapType(type))
                     .required(required != null && required.contains(name))
 //                    .enums(enums)
                     .build();

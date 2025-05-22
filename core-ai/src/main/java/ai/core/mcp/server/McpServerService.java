@@ -30,6 +30,7 @@ import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.NotFoundException;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -159,7 +160,7 @@ public class McpServerService {
         schema.properties = toolCall.getParameters().stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
             var property = new JsonSchema.PropertySchema();
             property.description = p.getDescription();
-            property.type = JsonSchema.PropertyType.STRING;
+            property.type = p.getType().getSimpleName().substring(p.getType().getSimpleName().lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
             return property;
         }));
         tool.inputSchema = schema;

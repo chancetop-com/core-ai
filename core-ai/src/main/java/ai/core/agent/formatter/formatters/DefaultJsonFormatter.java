@@ -25,6 +25,9 @@ public class DefaultJsonFormatter implements Formatter {
 
     @Override
     public String formatter(String rst) {
+        if (rst == null || rst.isEmpty()) {
+            return rst;
+        }
         var completion = rst;
         // Remove leading and trailing whitespace
         completion = StringUtils.strip(completion, " \n\r\t");
