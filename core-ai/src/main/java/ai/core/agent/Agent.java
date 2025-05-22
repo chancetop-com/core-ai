@@ -50,7 +50,6 @@ public class Agent extends Node<Agent> {
     ReflectionConfig reflectionConfig;
     LongTernMemory longTernMemory;
     Boolean useGroupContext;
-    Boolean summaryToolResult;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -76,15 +75,19 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-        var reason = chat(prompt);
+        var choice = chat(prompt, null);
+
+        // function call
+        if (choice.finishReason == FinishReason.TOOL_CALLS) {
+            var callRst = functionCall(choice);
+            setOutput(callRst);
+            // send the tool call result to the LLM
+            chat(callRst, choice.message.toolCalls.getFirst().id);
+        }
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
             reflection();
-        }
-
-        if (reason == FinishReason.TOOL_CALLS && summaryToolResult) {
-            chat("summary");
         }
 
         updateNodeStatus(NodeStatus.COMPLETED);
@@ -94,25 +97,19 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private FinishReason chat(String query) {
+    private Choice chat(String query, String toolCallId) {
         // call LLM completion
-        var rst = completionWithFormat(query);
+        var rst = completionWithFormat(query, toolCallId);
 
         // we always use the first choice
         var choice = getChoice(rst);
         setMessageAgentInfo(choice.message);
 
         // add rsp to message list and call message event listener if it has
-        addResponseChoiceMessage(choice.message);
+        addMessage(choice.message);
         setOutput(choice.message.content);
 
-        // function call
-        if (choice.finishReason == FinishReason.TOOL_CALLS) {
-            setOutput(functionCall(choice));
-            addResponseChoiceMessage(buildToolCallResultMessage(choice));
-        }
-
-        return choice.finishReason;
+        return choice;
     }
 
     private void reflection() {
@@ -121,12 +118,13 @@ public class Agent extends Node<Agent> {
         setRound(1);
         while (notTerminated()) {
             logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
-            chat(reflectionConfig.prompt());
+            chat(reflectionConfig.prompt(), null);
             setRound(getRound() + 1);
         }
     }
 
-    private CompletionResponse completionWithFormat(String query) {
+    private CompletionResponse completionWithFormat(String query, String toolCallId) {
+        var isToolResult = toolCallId != null;
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessageWithLongTernMemory());
             // add task context if existed
@@ -134,11 +132,11 @@ public class Agent extends Node<Agent> {
         }
 
         // add group context if needed
-        if (getUseGroupContext() != null && getUseGroupContext() && getParentNode() != null) {
+        if (!isToolResult && getUseGroupContext() != null && getUseGroupContext() && getParentNode() != null) {
             addMessages(getParentNode().getMessages());
         }
 
-        var reqMsg = LLMMessage.of(AgentRole.USER, "user raw request/last agent output", query);
+        var reqMsg = LLMMessage.of(isToolResult ? AgentRole.TOOL : AgentRole.USER, query, buildRequestName(isToolResult), toolCallId, null, null);
         addMessage(reqMsg);
         var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());
 
@@ -165,17 +163,15 @@ public class Agent extends Node<Agent> {
         return rst;
     }
 
+    private String buildRequestName(boolean isToolCall) {
+        return isToolCall ? "tool-call" : "user raw request/last agent output";
+    }
+
     private void setMessageAgentInfo(LLMMessage msg) {
         msg.agentName = getName();
         if (getParentNode() != null) {
             msg.groupName = getParentNode().getName();
         }
-    }
-
-    private LLMMessage buildToolCallResultMessage(Choice choice) {
-        var msg = LLMMessage.of(AgentRole.TOOL, getOutput(), getName(), choice.message.toolCalls.getFirst().id, null, null);
-        setMessageAgentInfo(msg);
-        return msg;
     }
 
     @Override
@@ -195,7 +191,7 @@ public class Agent extends Node<Agent> {
         if (!getLongTernMemory().isEmpty()) {
             prompt += LongTernMemory.TEMPLATE + getLongTernMemory().toString();
         }
-        return LLMMessage.of(AgentRole.SYSTEM, getName(), prompt);
+        return LLMMessage.of(AgentRole.SYSTEM, prompt, getName());
     }
 
     private String functionCall(Choice choice) {
@@ -283,7 +279,6 @@ public class Agent extends Node<Agent> {
         private ReflectionConfig reflectionConfig;
         private Boolean useGroupContext = false;
         private Boolean enableReflection = false;
-        private Boolean summaryToolResult = false;
 
         public Builder promptTemplate(String promptTemplate) {
             this.promptTemplate = promptTemplate;
@@ -335,11 +330,6 @@ public class Agent extends Node<Agent> {
             return this;
         }
 
-        public Builder summaryToolResult(Boolean summaryToolResult) {
-            this.summaryToolResult = summaryToolResult;
-            return this;
-        }
-
         public Agent build() {
             var agent = new Agent();
             this.nodeType = NodeType.AGENT;
@@ -360,7 +350,6 @@ public class Agent extends Node<Agent> {
             agent.ragConfig = this.ragConfig;
             agent.reflectionConfig = this.reflectionConfig;
             agent.useGroupContext = this.useGroupContext;
-            agent.summaryToolResult = this.summaryToolResult;
             agent.setPersistence(new AgentPersistence());
             if (this.enableReflection && this.reflectionConfig == null) {
                 agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();

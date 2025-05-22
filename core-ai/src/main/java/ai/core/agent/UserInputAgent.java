@@ -17,11 +17,11 @@ public class UserInputAgent extends Node<UserInputAgent> {
     String execute(String query, Map<String, Object> variables) {
         if (this.getNodeStatus() == NodeStatus.INITED) {
             this.setInput(query);
-            addMessage(LLMMessage.of(AgentRole.ASSISTANT, this.getName(), query));
+            addMessage(LLMMessage.of(AgentRole.ASSISTANT, query, this.getName()));
             this.updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
         } else if (this.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
             this.setOutput(query);
-            addMessage(LLMMessage.of(AgentRole.USER, this.getName(), query));
+            addMessage(LLMMessage.of(AgentRole.USER, query, this.getName()));
             this.updateNodeStatus(NodeStatus.COMPLETED);
         }
         return query;

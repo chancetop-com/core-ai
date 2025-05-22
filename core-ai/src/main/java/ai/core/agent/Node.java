@@ -184,6 +184,10 @@ public abstract class Node<T extends Node<T>> {
         this.systemVariables.put(key, value);
     }
 
+    public Task getTask() {
+        return this.task;
+    }
+
     void setInput(String input) {
         this.input = input;
     }
@@ -307,7 +311,11 @@ public abstract class Node<T extends Node<T>> {
     }
 
     void addMessage(LLMMessage message) {
-        this.messages.add(message);
+        if (message.role == AgentRole.ASSISTANT || message.role == AgentRole.TOOL) {
+            addAssistantOrToolMessage(message);
+        } else {
+            addMessage(message);
+        }
     }
 
     void addMessages(List<LLMMessage> messages) {
@@ -379,15 +387,15 @@ public abstract class Node<T extends Node<T>> {
     }
 
     public void addResponseChoiceMessages(List<LLMMessage> messages) {
-        messages.forEach(this::addResponseChoiceMessage);
+        messages.forEach(this::addAssistantOrToolMessage);
     }
 
     @SuppressWarnings("unchecked")
-    void addResponseChoiceMessage(LLMMessage message) {
+    void addAssistantOrToolMessage(LLMMessage message) {
         this.messages.add(message);
         this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, message));
         if (this.parent != null) {
-            this.parent.addResponseChoiceMessage(message);
+            this.parent.addAssistantOrToolMessage(message);
         }
     }
 }
