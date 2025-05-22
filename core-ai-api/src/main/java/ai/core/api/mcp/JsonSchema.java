@@ -25,17 +25,29 @@ public class JsonSchema {
     public enum PropertyType {
         @Property(name = "string")
         STRING,
+        @Property(name = "number")
+        NUMBER,
+        @Property(name = "integer")
+        INTEGER,
+        @Property(name = "boolean")
+        BOOLEAN,
         @Property(name = "object")
-        OBJECT
+        OBJECT,
+        @Property(name = "array")
+        ARRAY,
+        @Property(name = "null")
+        NULL
     }
 
     public static class PropertySchema {
         @NotNull
         @Property(name = "type")
-        public String type;
+        public PropertyType type;
 
-        @NotNull
         @Property(name = "description")
         public String description;
+
+        @Property(name = "format")
+        public String format;
     }
 }

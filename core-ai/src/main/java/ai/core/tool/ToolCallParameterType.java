@@ -3,6 +3,7 @@ package ai.core.tool;
 import core.framework.api.json.Property;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -48,6 +49,11 @@ public enum ToolCallParameterType {
                 BIGDECIMAL.getType(),
                 LIST.getType(),
                 MAP.getType());
+    }
+
+    public static ToolCallParameterType getByType(Class<?> c) {
+        var type =  c.getSimpleName().substring(c.getSimpleName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
+        return ToolCallParameterType.valueOf(type);
     }
 
     public Class<?> getType() {

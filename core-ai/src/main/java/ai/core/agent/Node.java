@@ -250,19 +250,19 @@ public abstract class Node<T extends Node<T>> {
             throw new IllegalArgumentException("Task is already completed, failed, canceled or unknown");
         }
         task.setStatus(TaskStatus.WORKING);
-        try {
-            var rst = run(lastMessage.getTextPart().getText(), variables);
-            task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
-            task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
-            if (nodeStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
-                task.setStatus(TaskStatus.INPUT_REQUIRED);
-            } else {
-                task.setStatus(TaskStatus.COMPLETED);
-            }
-        } catch (Exception e) {
-            task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, e.getMessage())));
-            task.setStatus(TaskStatus.FAILED);
+//        try {
+        var rst = run(lastMessage.getTextPart().getText(), variables);
+        task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
+        task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
+        if (nodeStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
+            task.setStatus(TaskStatus.INPUT_REQUIRED);
+        } else {
+            task.setStatus(TaskStatus.COMPLETED);
         }
+//        } catch (Exception e) {
+//            task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, e.getMessage())));
+//            task.setStatus(TaskStatus.FAILED);
+//        }
     }
 
     private void setupNodeSystemVariables(String query) {

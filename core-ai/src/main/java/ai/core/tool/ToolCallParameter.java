@@ -12,6 +12,7 @@ public class ToolCallParameter {
 
     String name;
     String description;
+    String format;
     Class<?> type;
     Boolean required;
     List<String> enums;
@@ -22,6 +23,10 @@ public class ToolCallParameter {
 
     public String getDescription() {
         return description;
+    }
+
+    public String getFormat() {
+        return format;
     }
 
     public Class<?> getType() {
@@ -48,6 +53,10 @@ public class ToolCallParameter {
         this.type = type;
     }
 
+    public void setFormat(String format) {
+        this.format = format;
+    }
+
     public void setRequired(Boolean required) {
         this.required = required;
     }
@@ -62,9 +71,15 @@ public class ToolCallParameter {
         private Class<?> type;
         private Boolean required;
         private List<String> enums;
+        private String format;
 
         public Builder name(String name) {
             this.name = name;
+            return this;
+        }
+
+        public Builder format(String format) {
+            this.format = format;
             return this;
         }
 
@@ -91,6 +106,7 @@ public class ToolCallParameter {
         public ToolCallParameter build() {
             var parameter = new ToolCallParameter();
             parameter.name = this.name;
+            parameter.format = this.format;
             parameter.description = this.description;
             parameter.required = this.required == null ? Boolean.FALSE : this.required;
             parameter.type = this.type == null ? String.class : this.type;

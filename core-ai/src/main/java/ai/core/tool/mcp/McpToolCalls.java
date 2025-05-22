@@ -2,13 +2,12 @@ package ai.core.tool.mcp;
 
 import ai.core.api.mcp.JsonSchema;
 import ai.core.mcp.client.McpClientService;
+import ai.core.utils.JsonSchemaHelper;
 import ai.core.tool.ToolCallParameter;
-import ai.core.tool.ToolCallParameterType;
 
 import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * @author stephen
@@ -45,16 +44,13 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
             var parameter = ToolCallParameter.builder()
                     .name(name)
                     .description(description)
-                    .type(mapType(type))
+                    .type(JsonSchemaHelper.mapType(type))
+                    .format(value.format)
                     .required(required != null && required.contains(name))
 //                    .enums(enums)
                     .build();
             parameters.add(parameter);
         }
         return parameters;
-    }
-
-    private static Class<?> mapType(String typeStr) {
-        return ToolCallParameterType.valueOf(typeStr.toUpperCase(Locale.ROOT)).getType();
     }
 }

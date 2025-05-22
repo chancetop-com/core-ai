@@ -31,6 +31,8 @@ import ai.core.llm.providers.inner.LLMMessage;
 import ai.core.llm.providers.inner.Usage;
 import ai.core.document.Embedding;
 import ai.core.tool.ToolCallParameter;
+import ai.core.tool.ToolCallParameterType;
+import ai.core.utils.JsonSchemaHelper;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
 
@@ -156,7 +158,6 @@ public class LiteLLMProvider extends LLMProvider {
         function.function.name = toolCall.function.name;
         function.function.arguments = toolCall.function.arguments;
         return function;
-
     }
 
     private ParameterAJAXView toParameter(List<ToolCallParameter> parameters) {
@@ -166,8 +167,10 @@ public class LiteLLMProvider extends LLMProvider {
         ajax.properties = parameters.stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
             var property = new PropertyAJAXView();
             property.description = p.getDescription();
+            // todo: add support for format
+//            property.format = p.getFormat();
 //            property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
-            property.type = p.getType().getSimpleName().substring(p.getType().getSimpleName().lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+            property.type = JsonSchemaHelper.buildJsonSchemaType(p.getType()).name().toLowerCase(Locale.ROOT);
             return property;
         }));
         return ajax;

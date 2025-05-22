@@ -1,5 +1,6 @@
 package ai.core.mcp.server.apiserver;
 
+import ai.core.utils.JsonSchemaHelper;
 import ai.core.mcp.server.McpServerToolLoader;
 import ai.core.mcp.server.apiserver.domain.ApiDefinition;
 import ai.core.mcp.server.apiserver.domain.ApiDefinitionType;
@@ -97,8 +98,9 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
                 param.setName(field.name);
                 param.setDescription(field.description == null ? field.name : field.description);
                 param.setRequired(field.constraints.notNull);
-                var type = ToolCallParameterType.valueOf(field.type.toUpperCase(Locale.ROOT)).getType();
-                param.setType(type);
+                var type = ToolCallParameterType.valueOf(field.type.toUpperCase(Locale.ROOT));
+                param.setType(type.getType());
+                param.setFormat(JsonSchemaHelper.buildJsonSchemaFormat(type));
                 params.add(param);
             }
         }
@@ -109,15 +111,16 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         param.setName(pathParam.name);
         param.setDescription(pathParam.description == null ? pathParam.name : pathParam.description);
         param.setRequired(true);
-        var type = (Class<?>) String.class;
+        var type = ToolCallParameterType.STRING;
         if (isEnum(pathParam.type)) {
             var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));
             var e = typeMap.get(pathParam.type);
             param.setEnums(e.enumConstants.stream().map(v -> v.name).toList());
         } else {
-            type = ToolCallParameterType.valueOf(pathParam.type.toUpperCase(Locale.ROOT)).getType();
+            type = ToolCallParameterType.valueOf(pathParam.type.toUpperCase(Locale.ROOT));
         }
-        param.setType(type);
+        param.setType(type.getType());
+        param.setFormat(JsonSchemaHelper.buildJsonSchemaFormat(type));
         return param;
     }
 
