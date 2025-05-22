@@ -314,7 +314,7 @@ public abstract class Node<T extends Node<T>> {
         if (message.role == AgentRole.ASSISTANT || message.role == AgentRole.TOOL) {
             addAssistantOrToolMessage(message);
         } else {
-            addMessage(message);
+            this.messages.add(message);
         }
     }
 

@@ -129,7 +129,7 @@ project(":language-server-library") {
 
 val useLocalProjects = project.hasProperty("useLocalProjects")
 project(":core-ai") {
-    version = "1.1.17"
+    version = "1.1.18"
     dependencies {
         if (useLocalProjects) {
             implementation(project(":core-ai-api"))
