@@ -15,7 +15,7 @@ public class LLMMessage {
         return message;
     }
 
-    public static LLMMessage of(AgentRole role, String agentName, String content) {
+    public static LLMMessage of(AgentRole role, String content, String agentName) {
         var message = new LLMMessage();
         message.role = role;
         message.content = content;
