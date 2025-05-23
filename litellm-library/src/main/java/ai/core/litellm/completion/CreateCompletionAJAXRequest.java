@@ -1,7 +1,6 @@
 package ai.core.litellm.completion;
 
 import core.framework.api.json.Property;
-import core.framework.api.validate.Max;
 import core.framework.api.validate.NotNull;
 
 import java.util.List;
@@ -12,16 +11,14 @@ import java.util.List;
 public class CreateCompletionAJAXRequest {
     @NotNull
     @Property(name = "model")
-    public String model = "gpt-3.5-turbo-instruct";
+    public String model;
 
     @NotNull
     @Property(name = "messages")
     public List<MessageAJAXView> messages;
 
-    @NotNull
-    @Max(2)
     @Property(name = "temperature")
-    public Double temperature = 0.7d;
+    public Double temperature;
 
     @Property(name = "tools")
     public List<ToolAJAXView> tools;

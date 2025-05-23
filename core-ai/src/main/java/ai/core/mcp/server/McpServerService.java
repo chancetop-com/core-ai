@@ -162,6 +162,7 @@ public class McpServerService {
             var property = new JsonSchema.PropertySchema();
             property.description = p.getDescription();
             property.type = JsonSchemaHelper.buildJsonSchemaType(p.getType());
+            property.enums = p.getEnums();
             property.format = p.getFormat();
             return property;
         }));

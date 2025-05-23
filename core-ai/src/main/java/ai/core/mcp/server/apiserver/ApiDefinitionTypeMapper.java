@@ -24,7 +24,7 @@ public class ApiDefinitionTypeMapper {
             var fieldType = field.type;
 
             var nestedType = findTypeByName(fieldType);
-            if (nestedType != null) {
+            if (nestedType != null && !"enum".equalsIgnoreCase(nestedType.type)) {
                 var nestedMap = buildMap(nestedType, input);
                 if (!nestedMap.isEmpty()) {
                     result.put(fieldName, nestedMap);
@@ -45,7 +45,7 @@ public class ApiDefinitionTypeMapper {
             var fieldType = field.type;
 
             var nestedType = findTypeByName(fieldType);
-            if (nestedType != null) {
+            if (nestedType != null && !"enum".equalsIgnoreCase(nestedType.type)) {
                 var nestedMap = buildParamsMap(nestedType, input);
                 if (!nestedMap.isEmpty()) {
                     result.put(fieldName, new AbstractMap.SimpleEntry<>(nestedMap, Map.class));

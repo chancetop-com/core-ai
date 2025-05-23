@@ -47,6 +47,9 @@ public class JsonSchema {
         @Property(name = "description")
         public String description;
 
+        @Property(name = "enum")
+        public List<String> enums;
+
         @Property(name = "format")
         public String format;
     }

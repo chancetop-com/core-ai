@@ -3,6 +3,8 @@ package ai.core.litellm.completion;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
+import java.util.List;
+
 /**
  * @author stephen
  */
@@ -14,4 +16,7 @@ public class PropertyAJAXView {
     @NotNull
     @Property(name = "description")
     public String description;
+
+    @Property(name = "enum")
+    public List<String> enums;
 }

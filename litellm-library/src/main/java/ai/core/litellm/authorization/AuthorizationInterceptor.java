@@ -1,8 +1,8 @@
 package ai.core.litellm.authorization;
 
+import ai.core.litellm.completion.CreateCompletionAJAXRequest;
 import ai.core.litellm.completion.CreateImageCompletionAJAXRequest;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPRequest;
@@ -29,14 +29,21 @@ public class AuthorizationInterceptor implements WebServiceClientInterceptor {
 
     @Override
     public void onRequest(HTTPRequest request) {
-        var body = new String(request.body, StandardCharsets.UTF_8);
         // tricky part
-        if (request.uri.contains("/chat/completions") && body.contains("__image_completion_flag__")) {
-            var data = JSON.fromJSON(CreateImageCompletionAJAXRequest.class, body);
+        if (request.uri.contains("/chat/completions")) {
+            var body = new String(request.body, StandardCharsets.UTF_8);
+            byte[] data;
             try {
-                request.body(mapper.writeValueAsString(data).getBytes(StandardCharsets.UTF_8), ContentType.APPLICATION_JSON);
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
+                if (body.contains("__image_completion_flag__")) {
+                    var j = JSON.fromJSON(CreateImageCompletionAJAXRequest.class, body);
+                    data = mapper.writeValueAsString(j).getBytes(StandardCharsets.UTF_8);
+                } else {
+                    var j = JSON.fromJSON(CreateCompletionAJAXRequest.class, body);
+                    data = mapper.writeValueAsString(j).getBytes(StandardCharsets.UTF_8);
+                }
+                request.body(data, ContentType.APPLICATION_JSON);
+            } catch (Exception e) {
+                throw new RuntimeException("failed to parse request body", e);
             }
         }
         if (!Strings.isBlank(token)) {

@@ -47,7 +47,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
                     .type(JsonSchemaHelper.mapType(type))
                     .format(value.format)
                     .required(required != null && required.contains(name))
-//                    .enums(enums)
+                    .enums(value.enums)
                     .build();
             parameters.add(parameter);
         }

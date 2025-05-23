@@ -98,7 +98,7 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
 }
 
 project(":litellm-library") {
-    version = "1.1.4"
+    version = "1.1.8"
     dependencies {
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -129,14 +129,14 @@ project(":language-server-library") {
 
 val useLocalProjects = project.hasProperty("useLocalProjects")
 project(":core-ai") {
-    version = "1.1.30"
+    version = "1.1.38"
     dependencies {
         if (useLocalProjects) {
             implementation(project(":core-ai-api"))
             implementation(project(":litellm-library"))
         } else {
-            implementation("com.chancetop:core-ai-api:1.1.4")
-            implementation("com.chancetop:litellm-library:1.1.4")
+            implementation("com.chancetop:core-ai-api:1.1.5")
+            implementation("com.chancetop:litellm-library:1.1.8")
         }
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -153,7 +153,7 @@ project(":core-ai") {
 
 
 project(":core-ai-api") {
-    version = "1.1.4"
+    version = "1.1.5"
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }

@@ -122,10 +122,15 @@ public class LiteLLMProvider extends LLMProvider {
     private CreateCompletionAJAXRequest toApiRequest(CompletionRequest dto) {
         var apiReq = new CreateCompletionAJAXRequest();
         apiReq.model = Strings.isBlank(dto.model) ? config.getModel() : dto.model;
-        apiReq.temperature = dto.temperature != null ? dto.temperature : config.getTemperature();
+        if (!(dto.model.startsWith("o1") || dto.model.startsWith("o3-"))) {
+            apiReq.temperature = dto.temperature != null ? dto.temperature : config.getTemperature();
+        }
         apiReq.messages = dto.messages.stream().map(v -> {
             var message = new MessageAJAXView();
             message.role = RoleTypeAJAXView.valueOf(v.role.name());
+            if (message.role == RoleTypeAJAXView.SYSTEM && dto.model.startsWith("o1")) {
+                message.role = RoleTypeAJAXView.USER;
+            }
             message.content = v.content == null ? "" : v.content;
             message.toolCallId = v.toolCallId;
             if (v.functionCall != null) {
@@ -167,6 +172,7 @@ public class LiteLLMProvider extends LLMProvider {
         ajax.properties = parameters.stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
             var property = new PropertyAJAXView();
             property.description = p.getDescription();
+            property.enums = p.getEnums();
             // todo: add support for format
 //            property.format = p.getFormat();
 //            property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));

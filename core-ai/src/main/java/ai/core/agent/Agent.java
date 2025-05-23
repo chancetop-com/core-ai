@@ -50,9 +50,12 @@ public class Agent extends Node<Agent> {
     ReflectionConfig reflectionConfig;
     LongTernMemory longTernMemory;
     Boolean useGroupContext;
+    Integer maxToolCallCount;
+    Integer currentToolCallCount;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
+        currentToolCallCount = 0;
         setupAgentSystemVariables();
         setInput(query);
 
@@ -75,15 +78,7 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-        var choice = chat(prompt, null);
-
-        // function call
-        if (choice.finishReason == FinishReason.TOOL_CALLS) {
-            var callRst = functionCall(choice);
-            setOutput(callRst);
-            // send the tool call result to the LLM
-            chat(callRst, choice.message.toolCalls.getFirst().id);
-        }
+        chat(prompt, null);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
@@ -97,7 +92,7 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private Choice chat(String query, String toolCallId) {
+    private void chat(String query, String toolCallId) {
         // call LLM completion
         var rst = completionWithFormat(query, toolCallId);
 
@@ -109,7 +104,14 @@ public class Agent extends Node<Agent> {
         addMessage(choice.message);
         setOutput(choice.message.content);
 
-        return choice;
+        // function call loop
+        if (choice.finishReason == FinishReason.TOOL_CALLS && currentToolCallCount < maxToolCallCount) {
+            currentToolCallCount += 1;
+            var callRst = functionCall(choice);
+            setOutput(callRst);
+            // send the tool call result to the LLM
+            chat(callRst, choice.message.toolCalls.getFirst().id);
+        }
     }
 
     private void reflection() {
@@ -279,9 +281,15 @@ public class Agent extends Node<Agent> {
         private ReflectionConfig reflectionConfig;
         private Boolean useGroupContext = false;
         private Boolean enableReflection = false;
+        private Integer maxToolCallCount;
 
         public Builder promptTemplate(String promptTemplate) {
             this.promptTemplate = promptTemplate;
+            return this;
+        }
+
+        public Builder maxToolCallCount(Integer maxToolCallCount) {
+            this.maxToolCallCount = maxToolCallCount;
             return this;
         }
 
@@ -343,6 +351,7 @@ public class Agent extends Node<Agent> {
             build(agent);
             agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
             agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
+            agent.maxToolCallCount = this.maxToolCallCount == null ? 3 : this.maxToolCallCount;
             agent.temperature = this.temperature;
             agent.model = this.model;
             agent.llmProvider = this.llmProvider;

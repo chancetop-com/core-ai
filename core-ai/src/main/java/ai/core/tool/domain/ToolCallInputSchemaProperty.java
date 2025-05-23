@@ -30,15 +30,9 @@ public class ToolCallInputSchemaProperty {
     @Property(name = "type")
     public JsonSchema.PropertyType type;
 
-    private Boolean required = Boolean.FALSE;
+    @Property(name = "required")
+    public Boolean required;
 
-    private List<String> enums = List.of();
-
-    public Boolean getRequired() {
-        return required;
-    }
-
-    public List<String> getEnums() {
-        return enums;
-    }
+    @Property(name = "enums")
+    public List<String> enums;
 }
