@@ -129,7 +129,7 @@ public class ExampleService {
         rsp.content = group.getOutput();
         rsp.conversation = List.of(group.getConversation().split("\n"));
         if (group.getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
-            rsp.id = group.save();
+            rsp.id = group.save(UUID.randomUUID().toString());
             return rsp;
         }
         return rsp;
@@ -153,7 +153,7 @@ public class ExampleService {
     public String userInputStart() {
         var agent = UserInputAgent.builder().persistenceProvider(persistenceProvider).build();
         agent.run("test need user input", null);
-        return agent.save();
+        return agent.save(UUID.randomUUID().toString());
     }
 
     public String userInputFinish(String id, String query) {
@@ -163,7 +163,7 @@ public class ExampleService {
     }
 
     public String mcpToolCallTest(MCPToolCallRequest request) {
-        var mcpClientService = new McpClientService(new McpClientServerConfig(request.url, "git", "git operator"));
+        var mcpClientService = new McpClientService(new McpClientServerConfig(request.url, "sse", "git", "git operator"));
         var agent = Agent.builder()
                 .name("mcp-tool-call-agent")
                 .description("mcp tool call agent")

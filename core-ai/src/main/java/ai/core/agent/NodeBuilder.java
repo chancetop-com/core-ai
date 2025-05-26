@@ -11,6 +11,7 @@ import ai.core.termination.Termination;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * @author stephen
@@ -28,6 +29,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     LongQueryHandler longQueryHandler;
     Node<?> parent;
     Integer maxRound;
+    String id;
 
     // This method needs to be overridden in the subclass Builders
     protected abstract B self();
@@ -92,9 +94,15 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         return self();
     }
 
+    public B id(String id) {
+        this.id = id;
+        return self();
+    }
+
     public void build(T node) {
         validation();
         if (maxRound == null) maxRound = 0;
+        node.setId(this.id == null ? UUID.randomUUID().toString() : this.id);
         node.setName(this.name);
         node.setDescription(this.description);
         node.setFormatter(this.formatter);

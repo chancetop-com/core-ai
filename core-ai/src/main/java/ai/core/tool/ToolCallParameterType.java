@@ -52,7 +52,7 @@ public enum ToolCallParameterType {
     }
 
     public static ToolCallParameterType getByType(Class<?> c) {
-        var type =  c.getSimpleName().substring(c.getSimpleName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
+        var type = c.getSimpleName().substring(c.getSimpleName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
         return ToolCallParameterType.valueOf(type);
     }
 

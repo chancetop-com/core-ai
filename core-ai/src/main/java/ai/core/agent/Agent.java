@@ -78,11 +78,11 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-        chat(prompt, null);
+        chat(prompt, null, variables);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
-            reflection();
+            reflection(variables);
         }
 
         updateNodeStatus(NodeStatus.COMPLETED);
@@ -92,9 +92,9 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private void chat(String query, String toolCallId) {
+    private void chat(String query, String toolCallId, Map<String, Object> variables) {
         // call LLM completion
-        var rst = completionWithFormat(query, toolCallId);
+        var rst = completionWithFormat(query, toolCallId, variables);
 
         // we always use the first choice
         var choice = getChoice(rst);
@@ -110,25 +110,25 @@ public class Agent extends Node<Agent> {
             var callRst = functionCall(choice);
             setOutput(callRst);
             // send the tool call result to the LLM
-            chat(callRst, choice.message.toolCalls.getFirst().id);
+            chat(callRst, choice.message.toolCalls.getFirst().id, variables);
         }
     }
 
-    private void reflection() {
+    private void reflection(Map<String, Object> variables) {
         // never start if we do not have termination or something
         validation();
         setRound(1);
         while (notTerminated()) {
             logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
-            chat(reflectionConfig.prompt(), null);
+            chat(reflectionConfig.prompt(), null, variables);
             setRound(getRound() + 1);
         }
     }
 
-    private CompletionResponse completionWithFormat(String query, String toolCallId) {
+    private CompletionResponse completionWithFormat(String query, String toolCallId, Map<String, Object> variables) {
         var isToolResult = toolCallId != null;
         if (getMessages().isEmpty()) {
-            addMessage(buildSystemMessageWithLongTernMemory());
+            addMessage(buildSystemMessageWithLongTernMemory(variables));
             // add task context if existed
             addTaskHistoriesToMessages();
         }
@@ -139,6 +139,7 @@ public class Agent extends Node<Agent> {
         }
 
         var reqMsg = LLMMessage.of(isToolResult ? AgentRole.TOOL : AgentRole.USER, query, buildRequestName(isToolResult), toolCallId, null, null);
+        removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
         var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());
 
@@ -165,6 +166,16 @@ public class Agent extends Node<Agent> {
         return rst;
     }
 
+    private void removeLastAssistantToolCallMessageIfNotToolResult(LLMMessage reqMsg) {
+        var lastMessage = getMessages().getLast();
+        if (lastMessage.role == AgentRole.ASSISTANT
+                && lastMessage.toolCalls != null
+                && !lastMessage.toolCalls.isEmpty()
+                && reqMsg.role != AgentRole.TOOL) {
+            removeMessage(lastMessage);
+        }
+    }
+
     private String buildRequestName(boolean isToolCall) {
         return isToolCall ? "tool-call" : "user raw request/last agent output";
     }
@@ -184,12 +195,15 @@ public class Agent extends Node<Agent> {
         return rst.choices.getFirst();
     }
 
-    private LLMMessage buildSystemMessageWithLongTernMemory() {
+    private LLMMessage buildSystemMessageWithLongTernMemory(Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && getUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
         }
-        prompt = new MustachePromptTemplate().execute(prompt, getSystemVariables(), Hash.md5Hex(promptTemplate));
+        Map<String, Object> var = Maps.newConcurrentHashMap();
+        if (variables != null) var.putAll(variables);
+        var.putAll(getSystemVariables());
+        prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
         if (!getLongTernMemory().isEmpty()) {
             prompt += LongTernMemory.TEMPLATE + getLongTernMemory().toString();
         }

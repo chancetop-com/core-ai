@@ -4,6 +4,7 @@ package ai.core.prompt;
  * @author stephen
  */
 public class SystemVariables {
+    public static final String SYSTEM_CURRENT_TIME = "system.time";
     public static final String NODE_NAME = "system.node.name";
     public static final String NODE_DESCRIPTION = "system.node.description";
     public static final String NODE_CURRENT_ROUND = "system.node.current.round";

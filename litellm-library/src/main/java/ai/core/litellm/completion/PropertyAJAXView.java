@@ -17,6 +17,9 @@ public class PropertyAJAXView {
     @Property(name = "description")
     public String description;
 
+    @Property(name = "format")
+    public String format;
+
     @Property(name = "enum")
     public List<String> enums;
 }

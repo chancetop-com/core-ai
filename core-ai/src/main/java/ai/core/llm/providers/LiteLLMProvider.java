@@ -31,7 +31,6 @@ import ai.core.llm.providers.inner.LLMMessage;
 import ai.core.llm.providers.inner.Usage;
 import ai.core.document.Embedding;
 import ai.core.tool.ToolCallParameter;
-import ai.core.tool.ToolCallParameterType;
 import ai.core.utils.JsonSchemaHelper;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
@@ -173,9 +172,7 @@ public class LiteLLMProvider extends LLMProvider {
             var property = new PropertyAJAXView();
             property.description = p.getDescription();
             property.enums = p.getEnums();
-            // todo: add support for format
-//            property.format = p.getFormat();
-//            property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
+            property.format = p.getFormat();
             property.type = JsonSchemaHelper.buildJsonSchemaType(p.getType()).name().toLowerCase(Locale.ROOT);
             return property;
         }));

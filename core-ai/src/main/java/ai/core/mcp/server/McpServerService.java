@@ -21,7 +21,6 @@ import ai.core.api.mcp.schema.tool.ListToolsResult;
 import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
-import ai.core.tool.ToolCallParameterType;
 import ai.core.utils.JsonSchemaHelper;
 import core.framework.async.Executor;
 import core.framework.inject.Inject;

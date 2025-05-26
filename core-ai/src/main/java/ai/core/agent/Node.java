@@ -21,17 +21,17 @@ import core.framework.util.Lists;
 import core.framework.util.Maps;
 import core.framework.util.Strings;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * @author stephen
  */
 public abstract class Node<T extends Node<T>> {
-    private final String id;
+    private String id;
     private String name;
     private String description;
     private NodeType nodeType;
@@ -56,7 +56,6 @@ public abstract class Node<T extends Node<T>> {
     private final Map<String, Object> systemVariables = Maps.newHashMap();
 
     public Node() {
-        this.id = UUID.randomUUID().toString();
         this.nodeStatus = NodeStatus.INITED;
         this.messages = Lists.newArrayList();
         this.terminations = Lists.newArrayList();
@@ -212,18 +211,19 @@ public abstract class Node<T extends Node<T>> {
         }
         if (persistenceProvider.load(id).isPresent()) {
             persistence.deserialization((T) this, persistenceProvider.load(id).get());
+            this.id = id;
             return;
         }
         throw new NoSuchElementException("No data found");
     }
 
     @SuppressWarnings("unchecked")
-    public String save() {
+    public String save(String id) {
         if (persistenceProvider == null) {
             throw new RuntimeException("PersistenceProvider is not set");
         }
-        persistenceProvider.save(this.id, persistence.serialization((T) this));
-        return this.id;
+        persistenceProvider.save(id, persistence.serialization((T) this));
+        return id;
     }
 
     // The variables are used by the whole node, for example, the variables can be used by the agent, chain or group and their children if exists
@@ -246,9 +246,9 @@ public abstract class Node<T extends Node<T>> {
             throw new IllegalArgumentException("Task is waiting for user input, please submit the query first");
         }
         // task is completed, failed, canceled or unknown
-        if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.FAILED || task.getStatus() == TaskStatus.CANCELED || task.getStatus() == TaskStatus.UNKNOWN) {
-            throw new IllegalArgumentException("Task is already completed, failed, canceled or unknown");
-        }
+//        if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.FAILED || task.getStatus() == TaskStatus.CANCELED || task.getStatus() == TaskStatus.UNKNOWN) {
+//            throw new IllegalArgumentException("Task is already completed, failed, canceled or unknown");
+//        }
         task.setStatus(TaskStatus.WORKING);
 //        try {
         var rst = run(lastMessage.getTextPart().getText(), variables);
@@ -266,8 +266,9 @@ public abstract class Node<T extends Node<T>> {
     }
 
     private void setupNodeSystemVariables(String query) {
-        systemVariables.put(SystemVariables.NODE_CURRENT_ROUND, this.round);
+        if (this.round != null) systemVariables.put(SystemVariables.NODE_CURRENT_ROUND, this.round);
         systemVariables.put(SystemVariables.NODE_CURRENT_INPUT, query);
+        systemVariables.put(SystemVariables.SYSTEM_CURRENT_TIME, ZonedDateTime.now());
     }
 
     abstract String execute(String query, Map<String, Object> variables);
@@ -322,6 +323,10 @@ public abstract class Node<T extends Node<T>> {
         this.messages.addAll(messages);
     }
 
+    void removeMessage(LLMMessage message) {
+        this.messages.remove(message);
+    }
+
     void addTaskHistoriesToMessages() {
         if (this.task == null) return;
         var histories = this.task.getHistory();
@@ -366,6 +371,10 @@ public abstract class Node<T extends Node<T>> {
     void addTermination(Termination termination) {
         if (termination == null) return;
         this.terminations.add(termination);
+    }
+
+    void setId(String id) {
+        this.id = id;
     }
 
     boolean currentTokenUsageOutOfMax(String query, Integer max) {
