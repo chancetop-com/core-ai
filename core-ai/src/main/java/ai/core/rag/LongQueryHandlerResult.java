@@ -1,6 +1,6 @@
 package ai.core.rag;
 
-import ai.core.llm.providers.inner.Usage;
+import ai.core.llm.domain.Usage;
 
 /**
  * @author stephen

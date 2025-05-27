@@ -1,11 +1,11 @@
 package ai.core.llm;
 
-import ai.core.llm.providers.inner.CaptionImageRequest;
-import ai.core.llm.providers.inner.CaptionImageResponse;
-import ai.core.llm.providers.inner.CompletionRequest;
-import ai.core.llm.providers.inner.CompletionResponse;
-import ai.core.llm.providers.inner.EmbeddingRequest;
-import ai.core.llm.providers.inner.EmbeddingResponse;
+import ai.core.llm.domain.CaptionImageRequest;
+import ai.core.llm.domain.CaptionImageResponse;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
 
 /**
  * @author stephen

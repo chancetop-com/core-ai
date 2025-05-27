@@ -44,12 +44,12 @@ public class DefaultShellCommandAgent {
                         ToolCallParameter.builder()
                                 .name("workspace_dir")
                                 .description("the workspace dir that to run the command")
-                                .type(String.class)
+                                .classType(String.class)
                                 .required(true).build(),
                         ToolCallParameter.builder()
                                 .name("command")
                                 .description("the command string")
-                                .type(String.class)
+                                .classType(String.class)
                                 .required(true).build())
                 ).build();
     }

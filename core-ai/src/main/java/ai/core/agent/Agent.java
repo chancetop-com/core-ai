@@ -1,12 +1,14 @@
 package ai.core.agent;
 
 import ai.core.llm.LLMProvider;
-import ai.core.llm.providers.inner.Choice;
-import ai.core.llm.providers.inner.CompletionRequest;
-import ai.core.llm.providers.inner.CompletionResponse;
-import ai.core.llm.providers.inner.EmbeddingRequest;
-import ai.core.llm.providers.inner.FinishReason;
-import ai.core.llm.providers.inner.LLMMessage;
+import ai.core.llm.domain.Choice;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Tool;
 import ai.core.memory.memories.LongTernMemory;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.engines.MustachePromptTemplate;
@@ -138,10 +140,10 @@ public class Agent extends Node<Agent> {
             addMessages(getParentNode().getMessages());
         }
 
-        var reqMsg = LLMMessage.of(isToolResult ? AgentRole.TOOL : AgentRole.USER, query, buildRequestName(isToolResult), toolCallId, null, null);
+        var reqMsg = Message.of(isToolResult ? RoleType.TOOL : RoleType.USER, query, buildRequestName(isToolResult), toolCallId, null, null);
         removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
-        var req = new CompletionRequest(getMessages(), toolCalls, temperature, model, this.getName());
+        var req = CompletionRequest.of(getMessages(), toReqTools(toolCalls), temperature, model, this.getName());
 
         // completion with llm provider
         var rst = llmProvider.completion(req);
@@ -166,24 +168,28 @@ public class Agent extends Node<Agent> {
         return rst;
     }
 
-    private void removeLastAssistantToolCallMessageIfNotToolResult(LLMMessage reqMsg) {
+    private List<Tool> toReqTools(List<ToolCall> toolCalls) {
+        return toolCalls.stream().map(ToolCall::toTool).toList();
+    }
+
+    private void removeLastAssistantToolCallMessageIfNotToolResult(Message reqMsg) {
         var lastMessage = getMessages().getLast();
-        if (lastMessage.role == AgentRole.ASSISTANT
+        if (lastMessage.role == RoleType.ASSISTANT
                 && lastMessage.toolCalls != null
                 && !lastMessage.toolCalls.isEmpty()
-                && reqMsg.role != AgentRole.TOOL) {
+                && reqMsg.role != RoleType.TOOL) {
             removeMessage(lastMessage);
         }
     }
 
     private String buildRequestName(boolean isToolCall) {
-        return isToolCall ? "tool-call" : "user raw request/last agent output";
+        return isToolCall ? "tool" : "user";
     }
 
-    private void setMessageAgentInfo(LLMMessage msg) {
-        msg.agentName = getName();
+    private void setMessageAgentInfo(Message msg) {
+        msg.setAgentName(getName());
         if (getParentNode() != null) {
-            msg.groupName = getParentNode().getName();
+            msg.setGroupName(getParentNode().getName());
         }
     }
 
@@ -195,7 +201,7 @@ public class Agent extends Node<Agent> {
         return rst.choices.getFirst();
     }
 
-    private LLMMessage buildSystemMessageWithLongTernMemory(Map<String, Object> variables) {
+    private Message buildSystemMessageWithLongTernMemory(Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && getUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
@@ -207,7 +213,7 @@ public class Agent extends Node<Agent> {
         if (!getLongTernMemory().isEmpty()) {
             prompt += LongTernMemory.TEMPLATE + getLongTernMemory().toString();
         }
-        return LLMMessage.of(AgentRole.SYSTEM, prompt, getName());
+        return Message.of(RoleType.SYSTEM, prompt, getName());
     }
 
     private String functionCall(Choice choice) {

@@ -42,7 +42,7 @@ public class Function extends ToolCall {
             var args = new Object[this.getParameters().size()];
             for (int i = 0; i < this.getParameters().size(); i++) {
                 var value = argsMap.get(this.getParameters().get(i).getName());
-                args[i] = ParameterTypeConverters.convert(value, this.getParameters().get(i).getType());
+                args[i] = ParameterTypeConverters.convert(value, this.getParameters().get(i).getClassType());
             }
             var rst = method.invoke(object, args);
             return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
@@ -73,7 +73,7 @@ public class Function extends ToolCall {
         var parameter = new ToolCallParameter();
         parameter.setName(functionParam.name());
         parameter.setDescription(functionParam.description());
-        parameter.setType(methodParameter.getType());
+        parameter.setClassType(methodParameter.getType());
         parameter.setRequired(functionParam.required());
         parameter.setEnums(List.of(functionParam.enums()));
         return parameter;

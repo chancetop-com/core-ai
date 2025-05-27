@@ -1,7 +1,7 @@
 package ai.core.agent;
 
 import ai.core.llm.LLMProvider;
-import ai.core.llm.providers.inner.CaptionImageRequest;
+import ai.core.llm.domain.CaptionImageRequest;
 
 import java.util.Map;
 

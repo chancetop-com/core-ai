@@ -109,12 +109,12 @@ project(":language-server-library") {
 
 val useLocalProjects = project.hasProperty("useLocalProjects")
 project(":core-ai") {
-    version = "1.1.53"
+    version = "1.1.54"
     dependencies {
         if (useLocalProjects) {
             implementation(project(":core-ai-api"))
         } else {
-            implementation("com.chancetop:core-ai-api:1.1.6")
+            implementation("com.chancetop:core-ai-api:1.1.7")
         }
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -131,7 +131,7 @@ project(":core-ai") {
 
 
 project(":core-ai-api") {
-    version = "1.1.6"
+    version = "1.1.7"
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }

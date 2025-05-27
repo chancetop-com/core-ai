@@ -13,7 +13,8 @@ public class ToolCallParameter {
     String name;
     String description;
     String format;
-    Class<?> type;
+    ToolCallParameterType type;
+    Class<?> classType;
     Boolean required;
     List<String> enums;
     Class<?> itemType;
@@ -32,7 +33,11 @@ public class ToolCallParameter {
         return format;
     }
 
-    public Class<?> getType() {
+    public Class<?> getClassType() {
+        return classType;
+    }
+
+    public ToolCallParameterType getType() {
         return type;
     }
 
@@ -64,8 +69,13 @@ public class ToolCallParameter {
         this.description = description;
     }
 
-    public void setType(Class<?> type) {
+    public void setClassType(Class<?> classType) {
+        this.classType = classType;
+    }
+
+    public void setType(ToolCallParameterType type) {
         this.type = type;
+        this.classType = type.getType();
     }
 
     public void setFormat(String format) {
@@ -95,7 +105,8 @@ public class ToolCallParameter {
     public static class Builder {
         private String name;
         private String description;
-        private Class<?> type;
+        private Class<?> classType;
+        private ToolCallParameterType type;
         private Boolean required;
         private List<String> enums;
         private String format;
@@ -118,8 +129,14 @@ public class ToolCallParameter {
             return this;
         }
 
-        public Builder type(Class<?> type) {
+        public Builder classType(Class<?> type) {
+            this.classType = type;
+            return this;
+        }
+
+        public Builder type(ToolCallParameterType type) {
             this.type = type;
+            this.classType = type.getType();
             return this;
         }
 
@@ -153,11 +170,12 @@ public class ToolCallParameter {
             parameter.name = this.name;
             parameter.items = this.items;
             parameter.itemType = this.itemType;
+            parameter.type = this.type;
             parameter.format = this.format;
             parameter.itemEnums = this.itemEnums;
             parameter.description = this.description;
             parameter.required = this.required == null ? Boolean.FALSE : this.required;
-            parameter.type = this.type == null ? String.class : this.type;
+            parameter.classType = this.classType == null ? String.class : this.classType;
             parameter.enums = this.enums;
             return parameter;
         }

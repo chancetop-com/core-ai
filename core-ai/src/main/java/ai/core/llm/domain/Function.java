@@ -1,21 +1,20 @@
-package ai.core.llm.providers.inner.litellm;
+package ai.core.llm.domain;
 
+import ai.core.api.jsonschema.JsonSchema;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
 /**
  * @author stephen
  */
-public class FunctionAJAXView {
+public class Function {
     @NotNull
     @Property(name = "name")
     public String name;
-
     @NotNull
     @Property(name = "description")
     public String description;
-
     @NotNull
     @Property(name = "parameters")
-    public ParameterAJAXView parameters;
+    public JsonSchema parameters;
 }

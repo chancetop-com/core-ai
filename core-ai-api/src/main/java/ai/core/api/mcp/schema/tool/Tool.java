@@ -1,6 +1,6 @@
 package ai.core.api.mcp.schema.tool;
 
-import ai.core.api.mcp.JsonSchema;
+import ai.core.api.jsonschema.JsonSchema;
 import core.framework.api.json.Property;
 
 /**

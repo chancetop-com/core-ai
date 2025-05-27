@@ -3,12 +3,12 @@ package ai.core.llm.providers;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.providers.inner.AzureInferenceModelsUtil;
-import ai.core.llm.providers.inner.CaptionImageRequest;
-import ai.core.llm.providers.inner.CaptionImageResponse;
-import ai.core.llm.providers.inner.CompletionRequest;
-import ai.core.llm.providers.inner.CompletionResponse;
-import ai.core.llm.providers.inner.EmbeddingRequest;
-import ai.core.llm.providers.inner.EmbeddingResponse;
+import ai.core.llm.domain.CaptionImageRequest;
+import ai.core.llm.domain.CaptionImageResponse;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
 import com.azure.ai.inference.ChatCompletionsClient;
 import com.azure.ai.inference.ChatCompletionsClientBuilder;
 import com.azure.ai.inference.EmbeddingsClient;
@@ -55,7 +55,7 @@ public class AzureInferenceProvider extends LLMProvider {
     public CompletionResponse completion(CompletionRequest request) {
         request.model = getModel(request);
         var chatCompletion = chatClient.complete(AzureInferenceModelsUtil.toAzureRequest(request));
-        return new CompletionResponse(AzureInferenceModelsUtil.toChoice(chatCompletion.getChoices(), request.name), AzureInferenceModelsUtil.toUsage(chatCompletion.getUsage()));
+        return CompletionResponse.of(AzureInferenceModelsUtil.toChoice(chatCompletion.getChoices(), request.getName()), AzureInferenceModelsUtil.toUsage(chatCompletion.getUsage()));
     }
 
     @Override

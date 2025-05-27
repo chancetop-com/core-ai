@@ -9,6 +9,7 @@ import ai.core.agent.planning.Planning;
 import ai.core.agent.planning.plannings.DefaultPlanning;
 import ai.core.defaultagents.DefaultModeratorAgent;
 import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.RoleType;
 import ai.core.prompt.SystemVariables;
 import ai.core.termination.Termination;
 import ai.core.termination.terminations.MaxRoundTermination;
@@ -200,14 +201,14 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     public String getConversation() {
-        return getMessages().stream().filter(v -> v.role != AgentRole.SYSTEM).map(v -> {
-            if (v.role == AgentRole.USER) {
-                return Strings.format("{}<request>: {}", v.name, v.content);
+        return getMessages().stream().filter(v -> v.role != RoleType.SYSTEM).map(v -> {
+            if (v.role == RoleType.USER) {
+                return Strings.format("{}<request>: {}", v.getName(), v.content);
             }
             if (v.toolCalls == null || v.toolCalls.isEmpty()) {
-                return Strings.format("{}<response>: {}", v.name, v.content);
+                return Strings.format("{}<response>: {}", v.getName(), v.content);
             } else {
-                return Strings.format("{}<response>: {}; {function: {}({})}", v.name, v.content, v.toolCalls.getFirst().function.name, v.toolCalls.getFirst().function.arguments);
+                return Strings.format("{}<response>: {}; {function: {}({})}", v.getName(), v.content, v.toolCalls.getFirst().function.name, v.toolCalls.getFirst().function.arguments);
             }
         }).collect(Collectors.joining("\n"));
     }

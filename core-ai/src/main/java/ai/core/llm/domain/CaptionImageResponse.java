@@ -1,4 +1,4 @@
-package ai.core.llm.providers.inner;
+package ai.core.llm.domain;
 
 /**
  * @author stephen

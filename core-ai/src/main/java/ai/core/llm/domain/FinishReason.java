@@ -1,11 +1,11 @@
-package ai.core.llm.providers.inner.litellm;
+package ai.core.llm.domain;
 
 import core.framework.api.json.Property;
 
 /**
  * @author stephen
  */
-public enum FinishReasonAJAXVIEW {
+public enum FinishReason {
     @Property(name = "stop")
     STOP,
     @Property(name = "tool_calls")

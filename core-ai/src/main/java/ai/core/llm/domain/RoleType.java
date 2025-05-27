@@ -1,11 +1,11 @@
-package ai.core.llm.providers.inner.litellm;
+package ai.core.llm.domain;
 
 import core.framework.api.json.Property;
 
 /**
  * @author stephen
  */
-public enum RoleTypeAJAXView {
+public enum RoleType {
     @Property(name = "user")
     USER,
     @Property(name = "assistant")

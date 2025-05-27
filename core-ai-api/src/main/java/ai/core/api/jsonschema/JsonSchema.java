@@ -1,4 +1,4 @@
-package ai.core.api.mcp;
+package ai.core.api.jsonschema;
 
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;

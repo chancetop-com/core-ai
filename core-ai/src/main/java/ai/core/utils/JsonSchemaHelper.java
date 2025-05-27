@@ -1,6 +1,6 @@
 package ai.core.utils;
 
-import ai.core.api.mcp.JsonSchema;
+import ai.core.api.jsonschema.JsonSchema;
 import ai.core.tool.ToolCallParameterType;
 
 import java.util.List;

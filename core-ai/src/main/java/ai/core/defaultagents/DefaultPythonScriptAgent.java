@@ -43,7 +43,7 @@ public class DefaultPythonScriptAgent {
                         ToolCallParameter.builder()
                                 .name("code")
                                 .description("the code of the python script")
-                                .type(String.class)
+                                .classType(String.class)
                                 .required(true).build())
                 ).build();
     }

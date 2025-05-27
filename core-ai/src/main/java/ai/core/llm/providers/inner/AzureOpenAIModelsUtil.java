@@ -1,9 +1,18 @@
 package ai.core.llm.providers.inner;
 
-import ai.core.agent.AgentRole;
+import ai.core.api.jsonschema.JsonSchema;
 import ai.core.document.Embedding;
-import ai.core.tool.ToolCall;
-import ai.core.tool.ToolCallParameter;
+import ai.core.llm.domain.CaptionImageRequest;
+import ai.core.llm.domain.Choice;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
+import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.FunctionCall;
+import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Tool;
+import ai.core.llm.domain.Usage;
 import com.azure.ai.openai.models.ChatMessageImageContentItem;
 import com.azure.ai.openai.models.ChatMessageImageUrl;
 import com.azure.ai.openai.models.ChatMessageTextContentItem;
@@ -19,7 +28,6 @@ import com.azure.ai.openai.models.ChatRequestSystemMessage;
 import com.azure.ai.openai.models.ChatRequestToolMessage;
 import com.azure.ai.openai.models.Embeddings;
 import com.azure.ai.openai.models.EmbeddingsUsage;
-import com.azure.ai.openai.models.FunctionCall;
 import com.azure.ai.openai.models.ChatRequestUserMessage;
 import com.azure.ai.openai.models.ChatChoice;
 import com.azure.ai.openai.models.CompletionsUsage;
@@ -31,7 +39,6 @@ import core.framework.json.JSON;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -50,14 +57,14 @@ public class AzureOpenAIModelsUtil {
         var options = new ChatCompletionsOptions(fromMessages(request.messages));
         options.setModel(request.model);
         options.setTemperature(request.temperature);
-        if (request.toolCalls != null && !request.toolCalls.isEmpty()) {
-            options.setTools(request.toolCalls.stream().map(AzureOpenAIModelsUtil::fromToolCall).toList());
+        if (request.tools != null && !request.tools.isEmpty()) {
+            options.setTools(request.tools.stream().map(AzureOpenAIModelsUtil::fromToolCall).toList());
         }
         return options;
     }
 
     public static List<Choice> toChoice(List<ChatChoice> choices, String name) {
-        return choices.stream().map(v -> new Choice(toFinishReason(v.getFinishReason()), toMessage(v.getMessage(), name))).toList();
+        return choices.stream().map(v -> Choice.of(toFinishReason(v.getFinishReason()), toMessage(v.getMessage(), name))).toList();
     }
 
     public static Usage toUsage(CompletionsUsage usage) {
@@ -69,10 +76,10 @@ public class AzureOpenAIModelsUtil {
     }
 
     public static EmbeddingResponse toEmbeddingResponse(EmbeddingRequest request, Embeddings embeddings) {
-        return new EmbeddingResponse(
+        return EmbeddingResponse.of(
                 embeddings.getData()
                         .stream()
-                        .map(v -> new EmbeddingResponse.EmbeddingData(request.query().get(v.getPromptIndex()), Embedding.of(v.getEmbedding())))
+                        .map(v -> EmbeddingResponse.EmbeddingData.of(request.query().get(v.getPromptIndex()), Embedding.of(v.getEmbedding())))
                         .toList(),
                 toUsage(embeddings.getUsage()));
     }
@@ -81,8 +88,8 @@ public class AzureOpenAIModelsUtil {
         return FinishReason.valueOf(finishReason.toString().toUpperCase(Locale.ROOT));
     }
 
-    private static LLMMessage toMessage(ChatResponseMessage message, String name) {
-        return LLMMessage.of(
+    private static Message toMessage(ChatResponseMessage message, String name) {
+        return Message.of(
                 toAgentRole(message.getRole()),
                 message.getContent(),
                 name,
@@ -91,35 +98,35 @@ public class AzureOpenAIModelsUtil {
                 message.getToolCalls() == null || message.getToolCalls().isEmpty() ? null : message.getToolCalls().stream().map(v -> toFunctionCall((ChatCompletionsFunctionToolCall) v)).toList());
     }
 
-    private static LLMFunction.FunctionCall toFunctionCall(FunctionCall v) {
+    private static FunctionCall toFunctionCall(com.azure.ai.openai.models.FunctionCall v) {
         if (v == null) return null;
-        return LLMFunction.FunctionCall.of(
+        return FunctionCall.of(
                 null,
                 null,
-                LLMFunction.of(v.getName(), v.getArguments()));
+                v.getName(), v.getArguments());
     }
 
-    private static LLMFunction.FunctionCall toFunctionCall(ChatCompletionsFunctionToolCall v) {
-        return LLMFunction.FunctionCall.of(
+    private static FunctionCall toFunctionCall(ChatCompletionsFunctionToolCall v) {
+        return FunctionCall.of(
                 v.getId(),
                 v.getType(),
-                LLMFunction.of(v.getFunction().getName(), v.getFunction().getArguments()));
+                v.getFunction().getName(), v.getFunction().getArguments());
     }
 
-    private static AgentRole toAgentRole(ChatRole role) {
-        return AgentRole.valueOf(role.getValue().toUpperCase(Locale.ROOT));
+    private static RoleType toAgentRole(ChatRole role) {
+        return RoleType.valueOf(role.getValue().toUpperCase(Locale.ROOT));
     }
 
-    private static List<ChatRequestMessage> fromMessages(List<LLMMessage> messages) {
+    private static List<ChatRequestMessage> fromMessages(List<Message> messages) {
         return messages.stream().map(msg -> {
-            if (msg.role == AgentRole.SYSTEM) {
+            if (msg.role == RoleType.SYSTEM) {
                 return new ChatRequestSystemMessage(msg.content);
-            } else if (msg.role == AgentRole.ASSISTANT) {
+            } else if (msg.role == RoleType.ASSISTANT) {
                 var message = new ChatRequestAssistantMessage(msg.content);
                 message.setToolCalls(msg.toolCalls == null || msg.toolCalls.isEmpty() ? null : msg.toolCalls.stream().map(AzureOpenAIModelsUtil::fromToolCall).toList());
                 message.setFunctionCall(fromFunctionCall(msg.functionCall));
                 return message;
-            } else if (msg.role == AgentRole.TOOL) {
+            } else if (msg.role == RoleType.TOOL) {
                 return new ChatRequestToolMessage(msg.content, msg.toolCallId);
             } else {
                 return new ChatRequestUserMessage(msg.content);
@@ -127,37 +134,23 @@ public class AzureOpenAIModelsUtil {
         }).toList();
     }
 
-    private static ChatCompletionsToolCall fromToolCall(LLMFunction.FunctionCall toolCall) {
+    private static ChatCompletionsToolCall fromToolCall(FunctionCall toolCall) {
         return new ChatCompletionsFunctionToolCall(toolCall.id, fromFunctionCall(toolCall));
     }
 
-    private static ChatCompletionsToolDefinition fromToolCall(ToolCall toolCall) {
-        var func = new ChatCompletionsFunctionToolDefinitionFunction(toolCall.getName());
-        func.setDescription(toolCall.getDescription());
-        func.setParameters(fromParameter(toolCall.getParameters()));
+    private static ChatCompletionsToolDefinition fromToolCall(Tool toolCall) {
+        var func = new ChatCompletionsFunctionToolDefinitionFunction(toolCall.function.name);
+        func.setDescription(toolCall.function.description);
+        func.setParameters(fromParameter(toolCall.function.parameters));
         return new ChatCompletionsFunctionToolDefinition(func);
     }
 
-    private static FunctionCall fromFunctionCall(LLMFunction.FunctionCall functionCall) {
+    private static com.azure.ai.openai.models.FunctionCall fromFunctionCall(FunctionCall functionCall) {
         if (functionCall == null) return null;
-        return new FunctionCall(functionCall.function.name, functionCall.function.arguments);
+        return new com.azure.ai.openai.models.FunctionCall(functionCall.function.name, functionCall.function.arguments);
     }
 
-    private static BinaryData fromParameter(List<ToolCallParameter> parameters) {
-        return BinaryData.fromString(JSON.toJSON(toParameter(parameters)));
-    }
-
-    private static ParameterObjectView toParameter(List<ToolCallParameter> parameters) {
-        var ajax = new ParameterObjectView();
-        ajax.type = ParameterTypeView.OBJECT;
-        ajax.required = parameters.stream().filter(ToolCallParameter::getRequired).map(ToolCallParameter::getName).toList();
-        ajax.properties = parameters.stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
-            var property = new PropertyView();
-            property.description = p.getDescription();
-//            property.type = ParameterTypeView.valueOf(p.getType().getTypeName().substring(p.getType().getTypeName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT));
-            property.type = ParameterTypeView.STRING;
-            return property;
-        }));
-        return ajax;
+    private static BinaryData fromParameter(JsonSchema parameters) {
+        return BinaryData.fromString(JSON.toJSON(parameters));
     }
 }

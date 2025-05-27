@@ -1,6 +1,6 @@
 package ai.core.tool.mcp;
 
-import ai.core.api.mcp.JsonSchema;
+import ai.core.api.jsonschema.JsonSchema;
 import ai.core.mcp.client.McpClientService;
 import ai.core.utils.JsonSchemaHelper;
 import ai.core.tool.ToolCallParameter;
@@ -43,7 +43,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         var parameter = ToolCallParameter.builder()
                 .name(name)
                 .description(property.description)
-                .type(JsonSchemaHelper.mapType(property.type))
+                .classType(JsonSchemaHelper.mapType(property.type))
                 .format(property.format)
                 .required(json.required != null && json.required.contains(name))
                 .enums(property.enums)

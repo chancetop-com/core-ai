@@ -2,7 +2,7 @@ package ai.core.agent;
 
 import ai.core.agent.handoff.handoffs.AutoHandoff;
 import ai.core.agent.handoff.handoffs.HybridAutoDirectHandoff;
-import ai.core.llm.providers.inner.LLMMessage;
+import ai.core.llm.domain.Message;
 import ai.core.persistence.Persistence;
 import core.framework.api.json.Property;
 import core.framework.json.JSON;
@@ -38,16 +38,16 @@ public class AgentGroupPersistence implements Persistence<AgentGroup> {
     }
 
     public static class AgentGroupPersistenceDomain {
-        public static AgentGroupPersistenceDomain of(List<LLMMessage> messages) {
+        public static AgentGroupPersistenceDomain of(List<Message> messages) {
             var domain = new AgentGroupPersistenceDomain();
             domain.messages = messages;
             return domain;
         }
 
         @Property(name = "messages")
-        public List<LLMMessage> messages;
+        public List<Message> messages;
 
         @Property(name = "moderator_messages")
-        public List<LLMMessage> moderatorMessages;
+        public List<Message> moderatorMessages;
     }
 }

@@ -104,7 +104,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         param.setName(field.name);
         param.setDescription(field.description == null ? field.name : field.description);
         param.setRequired(field.constraints.notNull);
-        param.setType(List.class);
+        param.setClassType(List.class);
         var itemType = field.typeParams.getFirst();
         if (typeMap.containsKey(itemType)) {
             var subType = typeMap.get(field.typeParams.getFirst());
@@ -129,7 +129,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         param.setName(field.name);
         param.setDescription(requestType.name);
         param.setRequired(field.constraints.notNull);
-        param.setType(String.class);
+        param.setClassType(String.class);
         param.setEnums(toEnumConstants(subType));
         return param;
     }
@@ -144,7 +144,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         param.setDescription(field.description == null ? field.name : field.description);
         param.setRequired(field.constraints.notNull);
         var type = ToolCallParameterType.valueOf(field.type.toUpperCase(Locale.ROOT));
-        param.setType(type.getType());
+        param.setClassType(type.getType());
         param.setFormat(JsonSchemaHelper.buildJsonSchemaFormat(type));
         return param;
     }
@@ -165,7 +165,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         } else {
             type = ToolCallParameterType.valueOf(pathParam.type.toUpperCase(Locale.ROOT));
         }
-        param.setType(type.getType());
+        param.setClassType(type.getType());
         param.setFormat(JsonSchemaHelper.buildJsonSchemaFormat(type));
         return param;
     }

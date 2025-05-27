@@ -3,12 +3,12 @@ package ai.core.llm.providers;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.providers.inner.AzureOpenAIModelsUtil;
-import ai.core.llm.providers.inner.CaptionImageRequest;
-import ai.core.llm.providers.inner.CaptionImageResponse;
-import ai.core.llm.providers.inner.CompletionRequest;
-import ai.core.llm.providers.inner.CompletionResponse;
-import ai.core.llm.providers.inner.EmbeddingRequest;
-import ai.core.llm.providers.inner.EmbeddingResponse;
+import ai.core.llm.domain.CaptionImageRequest;
+import ai.core.llm.domain.CaptionImageResponse;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
 import com.azure.ai.openai.OpenAIClient;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.ai.openai.models.EmbeddingsOptions;
@@ -36,7 +36,7 @@ public class AzureOpenAIProvider extends LLMProvider {
     public CompletionResponse completion(CompletionRequest request) {
         request.model = getModel(request);
         var chatCompletion = client.getChatCompletions(request.model, AzureOpenAIModelsUtil.toAzureRequest(request));
-        return new CompletionResponse(AzureOpenAIModelsUtil.toChoice(chatCompletion.getChoices(), request.name), AzureOpenAIModelsUtil.toUsage(chatCompletion.getUsage()));
+        return CompletionResponse.of(AzureOpenAIModelsUtil.toChoice(chatCompletion.getChoices(), request.getName()), AzureOpenAIModelsUtil.toUsage(chatCompletion.getUsage()));
     }
 
     @Override

@@ -1,6 +1,6 @@
 package ai.core.tool.domain;
 
-import ai.core.api.mcp.JsonSchema;
+import ai.core.api.jsonschema.JsonSchema;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.utils.JsonSchemaHelper;
@@ -17,7 +17,7 @@ public class ToolCallInputSchemaProperty {
         var domain = new ToolCallInputSchemaProperty();
         domain.name = toolCallParameter.getName();
         domain.description = toolCallParameter.getDescription();
-        domain.type = JsonSchemaHelper.buildJsonSchemaType(toolCallParameter.getType());
+        domain.type = JsonSchemaHelper.buildJsonSchemaType(toolCallParameter.getClassType());
         domain.required = toolCallParameter.getRequired();
         domain.enums = toolCallParameter.getEnums();
         if (domain.type == JsonSchema.PropertyType.ARRAY) {

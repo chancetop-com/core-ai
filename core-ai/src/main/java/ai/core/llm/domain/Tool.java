@@ -1,4 +1,4 @@
-package ai.core.llm.providers.inner.litellm;
+package ai.core.llm.domain;
 
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
@@ -6,11 +6,10 @@ import core.framework.api.validate.NotNull;
 /**
  * @author stephen
  */
-public class ToolAJAXView {
+public class Tool {
     @NotNull
     @Property(name = "type")
-    public ToolTypeAJAXView type;
-
+    public ToolType type;
     @Property(name = "function")
-    public FunctionAJAXView function;
+    public Function function;
 }

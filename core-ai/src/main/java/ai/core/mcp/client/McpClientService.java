@@ -33,7 +33,9 @@ public class McpClientService {
         var req = JsonRpcRequest.of(Constants.JSONRPC_VERSION, MethodEnum.METHOD_TOOLS_LIST, UUID.randomUUID().toString(), "");
         request.body = JSON.toJSON(req).getBytes();
         try (var response = client.sse(request)) {
-            for (var event : response) {
+            var iterator = response.iterator();
+            if (iterator.hasNext()) {
+                var event = iterator.next();
                 var rsp = JSON.fromJSON(JsonRpcResponse.class, event.data());
                 return JSON.fromJSON(ListToolsResult.class, rsp.result).tools;
             }
@@ -49,7 +51,9 @@ public class McpClientService {
         var req = JsonRpcRequest.of(Constants.JSONRPC_VERSION, MethodEnum.METHOD_TOOLS_CALL, UUID.randomUUID().toString(), params);
         request.body = JSON.toJSON(req).getBytes();
         try (var response = client.sse(request)) {
-            for (var event : response) {
+            var iterator = response.iterator();
+            if (iterator.hasNext()) {
+                var event = iterator.next();
                 var rsp = JSON.fromJSON(JsonRpcResponse.class, event.data());
                 if (rsp.result == null && rsp.error == null) {
                     return "Call tool with no result & no error";

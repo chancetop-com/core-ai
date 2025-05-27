@@ -1,14 +1,17 @@
-package ai.core.llm.providers.inner;
+package ai.core.llm.domain;
 
-import ai.core.llm.providers.inner.litellm.UsageAJAXView;
+import core.framework.api.json.Property;
 
 /**
  * @author stephen
  */
 public class Usage {
+    @Property(name = "prompt_tokens")
     private int promptTokens;
+    @Property(name = "completion_tokens")
     // completionTokens the number of tokens used for completion, caption will be 0
     private int completionTokens;
+    @Property(name = "total_tokens")
     private int totalTokens;
 
     public Usage(int promptTokens, int completionTokens, int totalTokens) {
@@ -18,12 +21,6 @@ public class Usage {
     }
 
     public Usage() {
-    }
-
-    public Usage(UsageAJAXView usageAJAXView) {
-        this.promptTokens = usageAJAXView.promptTokens;
-        this.completionTokens = usageAJAXView.completionTokens;
-        this.totalTokens = usageAJAXView.totalTokens;
     }
 
     public int getPromptTokens() {

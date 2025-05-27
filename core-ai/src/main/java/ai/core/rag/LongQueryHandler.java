@@ -7,8 +7,8 @@ import ai.core.document.TextChunk;
 import ai.core.document.TextSplitter;
 import ai.core.document.textsplitters.RecursiveCharacterTextSplitter;
 import ai.core.llm.LLMProvider;
-import ai.core.llm.providers.inner.EmbeddingRequest;
-import ai.core.llm.providers.inner.Usage;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.Usage;
 import core.framework.util.Strings;
 
 import java.util.List;

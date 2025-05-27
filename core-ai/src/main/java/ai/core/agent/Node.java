@@ -4,9 +4,10 @@ import ai.core.agent.formatter.Formatter;
 import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.document.Tokenizer;
-import ai.core.llm.providers.inner.CompletionResponse;
-import ai.core.llm.providers.inner.LLMMessage;
-import ai.core.llm.providers.inner.Usage;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Usage;
 import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.SystemVariables;
@@ -26,11 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * @author stephen
  */
 public abstract class Node<T extends Node<T>> {
+    private static final String NAME_REGEX_PATTERN = "^[^\\\\s<|\\\\\\\\/>]+$";
     private String id;
     private String name;
     private String description;
@@ -51,9 +54,10 @@ public abstract class Node<T extends Node<T>> {
     private Task task;
     private final List<Termination> terminations;
     private final Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
-    private final List<LLMMessage> messages;
+    private final List<Message> messages;
     private final Usage currentTokenUsage = new Usage();
     private final Map<String, Object> systemVariables = Maps.newHashMap();
+    private final Pattern compiledPattern = Pattern.compile(NAME_REGEX_PATTERN);
 
     public Node() {
         this.nodeStatus = NodeStatus.INITED;
@@ -151,7 +155,7 @@ public abstract class Node<T extends Node<T>> {
         return this.nodeStatus;
     }
 
-    public List<LLMMessage> getMessages() {
+    public List<Message> getMessages() {
         return this.messages;
     }
 
@@ -276,7 +280,18 @@ public abstract class Node<T extends Node<T>> {
     abstract void setChildrenParentNode();
 
     void setName(String name) {
+        if (!validateString(name)) {
+            throw new IllegalArgumentException("Invalid name: " + name + ", it must match the pattern: " + NAME_REGEX_PATTERN);
+        }
         this.name = name;
+    }
+
+    private boolean validateString(String input) {
+        if (input == null) {
+            return false;
+        }
+        var matcher = compiledPattern.matcher(input);
+        return matcher.matches();
     }
 
     void setDescription(String description) {
@@ -311,19 +326,19 @@ public abstract class Node<T extends Node<T>> {
         this.persistenceProvider = persistenceProvider;
     }
 
-    void addMessage(LLMMessage message) {
-        if (message.role == AgentRole.ASSISTANT || message.role == AgentRole.TOOL) {
+    void addMessage(Message message) {
+        if (message.role == RoleType.ASSISTANT || message.role == RoleType.TOOL) {
             addAssistantOrToolMessage(message);
         } else {
             this.messages.add(message);
         }
     }
 
-    void addMessages(List<LLMMessage> messages) {
+    void addMessages(List<Message> messages) {
         this.messages.addAll(messages);
     }
 
-    void removeMessage(LLMMessage message) {
+    void removeMessage(Message message) {
         this.messages.remove(message);
     }
 
@@ -335,14 +350,14 @@ public abstract class Node<T extends Node<T>> {
         addMessages(subHistories.stream().map(this::toLLMMessage).toList());
     }
 
-    private LLMMessage toLLMMessage(TaskMessage message) {
-        return LLMMessage.of(toLLMRole(message.getRole()), message.getTextPart().getText());
+    private Message toLLMMessage(TaskMessage message) {
+        return Message.of(toRoleType(message.getRole()), message.getTextPart().getText());
     }
 
-    private AgentRole toLLMRole(TaskRoleType role) {
+    private RoleType toRoleType(TaskRoleType role) {
         return switch (role) {
-            case USER -> AgentRole.USER;
-            case AGENT -> AgentRole.ASSISTANT;
+            case USER -> RoleType.USER;
+            case AGENT -> RoleType.ASSISTANT;
             default -> throw new IllegalArgumentException("Unsupported role: " + role);
         };
     }
@@ -395,12 +410,12 @@ public abstract class Node<T extends Node<T>> {
         this.terminations.addAll(terminations);
     }
 
-    public void addResponseChoiceMessages(List<LLMMessage> messages) {
+    public void addResponseChoiceMessages(List<Message> messages) {
         messages.forEach(this::addAssistantOrToolMessage);
     }
 
     @SuppressWarnings("unchecked")
-    void addAssistantOrToolMessage(LLMMessage message) {
+    void addAssistantOrToolMessage(Message message) {
         this.messages.add(message);
         this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, message));
         if (this.parent != null) {

@@ -1,9 +1,16 @@
 package ai.core.tool;
 
+import ai.core.api.jsonschema.JsonSchema;
+import ai.core.llm.domain.Function;
+import ai.core.llm.domain.Tool;
+import ai.core.llm.domain.ToolType;
 import ai.core.tool.domain.ToolCallDTO;
+import ai.core.utils.JsonSchemaHelper;
 import core.framework.json.JSON;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -42,6 +49,61 @@ public abstract class ToolCall {
     @Override
     public String toString() {
         return JSON.toJSON(ToolCallDTO.of(this));
+    }
+
+    public Tool toTool() {
+        var tool = new Tool();
+        tool.type = ToolType.FUNCTION;
+        var func = new Function();
+        func.name = name;
+        func.description = description;
+        func.parameters = toJsonSchema();
+        tool.function = func;
+        return tool;
+    }
+
+    public JsonSchema toJsonSchema() {
+        return toJsonSchema(parameters, JsonSchema.PropertyType.OBJECT, null);
+    }
+
+    private JsonSchema toJsonSchema(List<ToolCallParameter> parameters, JsonSchema.PropertyType propertyType, ToolCallParameter parent) {
+        var schema = new JsonSchema();
+        schema.type = propertyType;
+        if (parent != null) {
+            schema.enums = parent.getItemEnums();
+        }
+        schema.required = parameters.stream().filter(
+                v -> v.getRequired() != null
+                        && v.getRequired()
+                        && v.getName() != null).map(ToolCallParameter::getName).toList();
+        schema.properties = parameters.stream().filter(v -> v.getName() != null).collect(Collectors.toMap(ToolCallParameter::getName, this::toSchemaProperty));
+        return schema;
+    }
+
+    private JsonSchema.PropertySchema toSchemaProperty(ToolCallParameter p) {
+        var property = new JsonSchema.PropertySchema();
+        property.description = p.getDescription();
+        property.type = JsonSchemaHelper.buildJsonSchemaType(p.getClassType());
+        property.enums = p.getEnums();
+        property.format = p.getFormat();
+        if (property.type == JsonSchema.PropertyType.ARRAY) {
+            if (p.getItems() != null && !p.getItems().isEmpty()) {
+                property.items = toJsonSchema(p.getItems(), toType(p.getItemType()), p);
+            } else {
+                property.items = new JsonSchema();
+                property.items.type = toType(p.getItemType());
+                property.enums = p.getItemEnums();
+            }
+        }
+        return property;
+    }
+
+    private JsonSchema.PropertyType toType(Class<?> c) {
+        var n = c.getSimpleName().substring(c.getSimpleName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
+        if ("object".equalsIgnoreCase(n)) {
+            return JsonSchema.PropertyType.OBJECT;
+        }
+        return JsonSchemaHelper.buildJsonSchemaType(c);
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {
