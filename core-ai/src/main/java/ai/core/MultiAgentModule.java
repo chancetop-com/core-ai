@@ -90,8 +90,7 @@ public class MultiAgentModule extends Module {
 
     private void configLiteLLM(LLMProviders providers, LLMProviderConfig config) {
         property("litellm.api.base").ifPresent(base -> {
-            load(new LiteLLMModule());
-            var provider = new LiteLLMProvider(config);
+            var provider = new LiteLLMProvider(config, requiredProperty("litellm.api.base"), property("litellm.api.key").orElse(""));
             bind(provider);
             bind(LiteLLMImageProvider.class);
             providers.addProvider(LLMProviderType.LITELLM, provider);

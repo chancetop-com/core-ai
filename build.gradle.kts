@@ -97,26 +97,6 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
     }
 }
 
-project(":litellm-library") {
-    version = "1.1.11"
-    dependencies {
-        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
-        implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.JACKSON_VERSION}")
-    }
-}
-
-project(":huggingface-library") {
-    version = "1.1.0"
-    dependencies {
-        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
-        implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.JACKSON_VERSION}")
-    }
-}
-
 project(":language-server-library") {
     version = "1.1.0"
     dependencies {
@@ -129,14 +109,12 @@ project(":language-server-library") {
 
 val useLocalProjects = project.hasProperty("useLocalProjects")
 project(":core-ai") {
-    version = "1.1.51"
+    version = "1.1.53"
     dependencies {
         if (useLocalProjects) {
             implementation(project(":core-ai-api"))
-            implementation(project(":litellm-library"))
         } else {
             implementation("com.chancetop:core-ai-api:1.1.6")
-            implementation("com.chancetop:litellm-library:1.1.11")
         }
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -165,7 +143,6 @@ project(":example-service") {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
         implementation(project(":example-service-interface"))
-        implementation(project(":huggingface-library"))
         implementation(project(":language-server-library"))
         implementation("com.microsoft.azure.cognitiveservices:azure-cognitiveservices-imagesearch:${Versions.AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION}")
     }

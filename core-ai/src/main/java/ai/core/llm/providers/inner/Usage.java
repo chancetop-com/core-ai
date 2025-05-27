@@ -1,6 +1,6 @@
 package ai.core.llm.providers.inner;
 
-import ai.core.litellm.completion.UsageAJAXView;
+import ai.core.llm.providers.inner.litellm.UsageAJAXView;
 
 /**
  * @author stephen

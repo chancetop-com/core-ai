@@ -2,20 +2,6 @@ package ai.core.llm.providers;
 
 import ai.core.agent.AgentRole;
 import ai.core.api.mcp.JsonSchema;
-import ai.core.litellm.LiteLLMService;
-import ai.core.litellm.completion.CreateCompletionAJAXRequest;
-import ai.core.litellm.completion.CreateCompletionAJAXResponse;
-import ai.core.litellm.completion.CreateImageCompletionAJAXRequest;
-import ai.core.litellm.completion.FunctionAJAXView;
-import ai.core.litellm.completion.FunctionCallAJAXView;
-import ai.core.litellm.completion.ImageMessageAJAXView;
-import ai.core.litellm.completion.MessageAJAXView;
-import ai.core.litellm.completion.ParameterAJAXView;
-import ai.core.litellm.completion.PropertyAJAXView;
-import ai.core.litellm.completion.RoleTypeAJAXView;
-import ai.core.litellm.completion.ToolAJAXView;
-import ai.core.litellm.completion.ToolTypeAJAXView;
-import ai.core.litellm.embedding.CreateEmbeddingAJAXRequest;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.providers.inner.CaptionImageRequest;
 import ai.core.llm.providers.inner.CaptionImageResponse;
@@ -29,13 +15,30 @@ import ai.core.llm.providers.inner.LLMFunction;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.providers.inner.LLMMessage;
 import ai.core.llm.providers.inner.Usage;
-import ai.core.document.Embedding;
+import ai.core.llm.providers.inner.litellm.CreateCompletionAJAXRequest;
+import ai.core.llm.providers.inner.litellm.CreateCompletionAJAXResponse;
+import ai.core.llm.providers.inner.litellm.FunctionAJAXView;
+import ai.core.llm.providers.inner.litellm.FunctionCallAJAXView;
+import ai.core.llm.providers.inner.litellm.MessageAJAXView;
+import ai.core.llm.providers.inner.litellm.ParameterAJAXView;
+import ai.core.llm.providers.inner.litellm.PropertyAJAXView;
+import ai.core.llm.providers.inner.litellm.RoleTypeAJAXView;
+import ai.core.llm.providers.inner.litellm.ToolAJAXView;
+import ai.core.llm.providers.inner.litellm.ToolTypeAJAXView;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.utils.JsonSchemaHelper;
-import core.framework.inject.Inject;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import core.framework.http.ContentType;
+import core.framework.http.HTTPClient;
+import core.framework.http.HTTPMethod;
+import core.framework.http.HTTPRequest;
+import core.framework.internal.json.JSONAnnotationIntrospector;
+import core.framework.json.JSON;
 import core.framework.util.Strings;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -44,28 +47,32 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class LiteLLMProvider extends LLMProvider {
-    @Inject
-    LiteLLMService liteLLMService;
+    private final String url;
+    private final String token;
+    private final ObjectMapper mapper;
 
-    public LiteLLMProvider(LLMProviderConfig config) {
+    public LiteLLMProvider(LLMProviderConfig config, String url, String token) {
         super(config);
+        this.url = url;
+        this.token = token;
+        this.mapper = new ObjectMapper();
+        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        mapper.setAnnotationIntrospector(new JSONAnnotationIntrospector());
     }
 
     @Override
     public CompletionResponse completion(CompletionRequest dto) {
-        return toRsp(this.liteLLMService.completion(toApiRequest(dto)), dto.name);
+        return toRsp(chatCompletion(toApiRequest(dto)), dto.name);
     }
 
     @Override
     public EmbeddingResponse embeddings(EmbeddingRequest dto) {
-        var rsp = this.liteLLMService.embedding(toApiRequest(dto));
-        return new EmbeddingResponse(rsp.data.stream().map(v -> new EmbeddingResponse.EmbeddingData(dto.query().get(v.index), new Embedding(v.embedding))).toList(), new Usage(rsp.usage));
+        return null;
     }
 
     @Override
     public CaptionImageResponse captionImage(CaptionImageRequest dto) {
-        var rsp = liteLLMService.completion(toApiRequest(dto));
-        return new CaptionImageResponse(rsp.choices.getFirst().message.content, new Usage(rsp.usage));
+        return null;
     }
 
     @Override
@@ -76,6 +83,26 @@ public class LiteLLMProvider extends LLMProvider {
     @Override
     public String name() {
         return "litellm";
+    }
+
+    public CreateCompletionAJAXResponse chatCompletion(CreateCompletionAJAXRequest request) {
+        var client = HTTPClient.builder().trustAll().build();
+        var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
+        req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
+        try {
+            var body = mapper.writeValueAsString(request).getBytes(StandardCharsets.UTF_8);
+            req.body(body, ContentType.APPLICATION_JSON);
+            if (!Strings.isBlank(token)) {
+                req.headers.put("Authorization", "Bearer " + token);
+            }
+            var rsp = client.execute(req);
+            if (rsp.statusCode != 200) {
+                throw new RuntimeException(rsp.text());
+            }
+            return JSON.fromJSON(CreateCompletionAJAXResponse.class, rsp.text());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create completion: " + e.getMessage(), e);
+        }
     }
 
     private CompletionResponse toRsp(CreateCompletionAJAXResponse rsp, String name) {
@@ -94,29 +121,6 @@ public class LiteLLMProvider extends LLMProvider {
         return LLMFunction.FunctionCall.of(v.id,
                 v.type, LLMFunction.of(v.function.name,
                 v.function.arguments));
-    }
-
-    private CreateEmbeddingAJAXRequest toApiRequest(EmbeddingRequest dto) {
-        var req = new CreateEmbeddingAJAXRequest();
-        req.input = dto.query();
-        return req;
-    }
-
-    private CreateImageCompletionAJAXRequest toApiRequest(CaptionImageRequest dto) {
-        var apiReq = new CreateImageCompletionAJAXRequest();
-        apiReq.model = dto.model() != null ? dto.model() : config.getModel();
-        var message = new ImageMessageAJAXView();
-        message.role = RoleTypeAJAXView.USER;
-        var textContent = new ImageMessageAJAXView.ImageContent();
-        textContent.type = ImageMessageAJAXView.Type.TEXT;
-        textContent.text = dto.query();
-        var urlContent = new ImageMessageAJAXView.ImageContent();
-        urlContent.type = ImageMessageAJAXView.Type.IMAGE_URL;
-        urlContent.imageUrl = new ImageMessageAJAXView.ImageUrl();
-        urlContent.imageUrl.url = dto.url();
-        message.content = List.of(textContent, urlContent);
-        apiReq.messages = List.of(message);
-        return apiReq;
     }
 
     private CreateCompletionAJAXRequest toApiRequest(CompletionRequest dto) {
@@ -203,7 +207,7 @@ public class LiteLLMProvider extends LLMProvider {
         return buildJsonSchemaType(t);
     }
 
-    public static String buildJsonSchemaType(ToolCallParameterType p) {
+    private String buildJsonSchemaType(ToolCallParameterType p) {
         var supportType = ToolCallParameterType.getByType(p.getType());
         return switch (supportType) {
             case STRING, ZONEDDATETIME, LOCALDATE, LOCALDATETIME, LOCALTIME -> JsonSchema.PropertyType.STRING.name();
