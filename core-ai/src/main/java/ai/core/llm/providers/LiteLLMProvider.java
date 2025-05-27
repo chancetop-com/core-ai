@@ -1,6 +1,7 @@
 package ai.core.llm.providers;
 
 import ai.core.agent.AgentRole;
+import ai.core.api.mcp.JsonSchema;
 import ai.core.litellm.LiteLLMService;
 import ai.core.litellm.completion.CreateCompletionAJAXRequest;
 import ai.core.litellm.completion.CreateCompletionAJAXResponse;
@@ -10,7 +11,6 @@ import ai.core.litellm.completion.FunctionCallAJAXView;
 import ai.core.litellm.completion.ImageMessageAJAXView;
 import ai.core.litellm.completion.MessageAJAXView;
 import ai.core.litellm.completion.ParameterAJAXView;
-import ai.core.litellm.completion.ParameterTypeView;
 import ai.core.litellm.completion.PropertyAJAXView;
 import ai.core.litellm.completion.RoleTypeAJAXView;
 import ai.core.litellm.completion.ToolAJAXView;
@@ -31,6 +31,7 @@ import ai.core.llm.providers.inner.LLMMessage;
 import ai.core.llm.providers.inner.Usage;
 import ai.core.document.Embedding;
 import ai.core.tool.ToolCallParameter;
+import ai.core.tool.ToolCallParameterType;
 import ai.core.utils.JsonSchemaHelper;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
@@ -63,7 +64,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     public CaptionImageResponse captionImage(CaptionImageRequest dto) {
-        var rsp = liteLLMService.imageCompletion(toApiRequest(dto));
+        var rsp = liteLLMService.completion(toApiRequest(dto));
         return new CaptionImageResponse(rsp.choices.getFirst().message.content, new Usage(rsp.usage));
     }
 
@@ -146,7 +147,7 @@ public class LiteLLMProvider extends LLMProvider {
             var function = new FunctionAJAXView();
             function.name = v.getName();
             function.description = v.getDescription();
-            function.parameters = toParameter(v.getParameters());
+            function.parameters = toParameter(v.getParameters(), "object", null);
             tool.function = function;
             return tool;
         }).collect(Collectors.toList());
@@ -164,18 +165,53 @@ public class LiteLLMProvider extends LLMProvider {
         return function;
     }
 
-    private ParameterAJAXView toParameter(List<ToolCallParameter> parameters) {
+    private ParameterAJAXView toParameter(List<ToolCallParameter> parameters, String propertyType, ToolCallParameter parent) {
         var ajax = new ParameterAJAXView();
-        ajax.type = ParameterTypeView.OBJECT;
+        ajax.type = propertyType;
+        if (parent != null) {
+            ajax.enums = parent.getItemEnums();
+        }
         ajax.required = parameters.stream().filter(ToolCallParameter::getRequired).map(ToolCallParameter::getName).toList();
-        ajax.properties = parameters.stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
-            var property = new PropertyAJAXView();
-            property.description = p.getDescription();
-            property.enums = p.getEnums();
-            property.format = p.getFormat();
-            property.type = JsonSchemaHelper.buildJsonSchemaType(p.getType()).name().toLowerCase(Locale.ROOT);
-            return property;
-        }));
+        ajax.properties = parameters.stream().collect(Collectors.toMap(ToolCallParameter::getName, this::toProperty));
         return ajax;
+    }
+
+    private PropertyAJAXView toProperty(ToolCallParameter p) {
+        var property = new PropertyAJAXView();
+        property.description = p.getDescription();
+        property.enums = p.getEnums();
+        property.format = p.getFormat();
+        property.type = JsonSchemaHelper.buildJsonSchemaType(p.getType()).name().toLowerCase(Locale.ROOT);
+        if (p.getType().equals(List.class)) {
+            if (p.getItems() != null && !p.getItems().isEmpty()) {
+                property.items = toParameter(p.getItems(), toType(p.getItemType()).toLowerCase(Locale.ROOT), p);
+            } else {
+                property.items = new ParameterAJAXView();
+                property.items.type = toType(p.getItemType()).toLowerCase(Locale.ROOT);
+                property.enums = p.getItemEnums();
+            }
+        }
+        return property;
+    }
+
+    private String toType(Class<?> c) {
+        var n = c.getSimpleName().substring(c.getSimpleName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
+        if ("object".equalsIgnoreCase(n)) {
+            return "object";
+        }
+        var t = ToolCallParameterType.getByType(c);
+        return buildJsonSchemaType(t);
+    }
+
+    public static String buildJsonSchemaType(ToolCallParameterType p) {
+        var supportType = ToolCallParameterType.getByType(p.getType());
+        return switch (supportType) {
+            case STRING, ZONEDDATETIME, LOCALDATE, LOCALDATETIME, LOCALTIME -> JsonSchema.PropertyType.STRING.name();
+            case DOUBLE, BIGDECIMAL -> JsonSchema.PropertyType.NUMBER.name();
+            case INTEGER, LONG -> JsonSchema.PropertyType.INTEGER.name();
+            case LIST -> JsonSchema.PropertyType.ARRAY.name();
+            case BOOLEAN -> JsonSchema.PropertyType.BOOLEAN.name();
+            case MAP -> JsonSchema.PropertyType.OBJECT.name();
+        };
     }
 }

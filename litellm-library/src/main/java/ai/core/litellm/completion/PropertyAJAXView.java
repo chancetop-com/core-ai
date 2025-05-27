@@ -22,4 +22,7 @@ public class PropertyAJAXView {
 
     @Property(name = "enum")
     public List<String> enums;
+
+    @Property(name = "items")
+    public ParameterAJAXView items;
 }

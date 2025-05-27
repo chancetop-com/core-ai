@@ -22,8 +22,7 @@ public class JsonSchemaHelper {
             case STRING, ZONEDDATETIME, LOCALDATE, LOCALDATETIME, LOCALTIME -> JsonSchema.PropertyType.STRING;
             case DOUBLE, BIGDECIMAL -> JsonSchema.PropertyType.NUMBER;
             case INTEGER, LONG -> JsonSchema.PropertyType.INTEGER;
-            // todo: add support for list
-            case LIST -> JsonSchema.PropertyType.STRING;
+            case LIST -> JsonSchema.PropertyType.ARRAY;
             case BOOLEAN -> JsonSchema.PropertyType.BOOLEAN;
             case MAP -> JsonSchema.PropertyType.OBJECT;
         };

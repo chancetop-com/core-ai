@@ -31,26 +31,32 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
 
     private static List<ToolCallParameter> buildParameters(JsonSchema inputSchema) {
         var parameters = new ArrayList<ToolCallParameter>();
-        var required = inputSchema.required;
         var properties = inputSchema.properties;
 
         for (var entry : properties.entrySet()) {
-            var value = entry.getValue();
-            var name = entry.getKey();
-            var type = value.type;
-//            var enums = value.enums;
-            var description = value.description;
-
-            var parameter = ToolCallParameter.builder()
-                    .name(name)
-                    .description(description)
-                    .type(JsonSchemaHelper.mapType(type))
-                    .format(value.format)
-                    .required(required != null && required.contains(name))
-                    .enums(value.enums)
-                    .build();
-            parameters.add(parameter);
+            parameters.addAll(buildParameters(entry.getKey(), entry.getValue(), inputSchema));
         }
         return parameters;
+    }
+
+    public static List<ToolCallParameter> buildParameters(String name, JsonSchema.PropertySchema property, JsonSchema json) {
+        var parameter = ToolCallParameter.builder()
+                .name(name)
+                .description(property.description)
+                .type(JsonSchemaHelper.mapType(property.type))
+                .format(property.format)
+                .required(json.required != null && json.required.contains(name))
+                .enums(property.enums)
+                .build();
+        if (property.type == JsonSchema.PropertyType.ARRAY) {
+            parameter.setItemType(JsonSchemaHelper.mapType(property.items.type));
+            if (property.items.enums != null && !property.items.enums.isEmpty()) {
+                parameter.setItemEnums(property.items.enums);
+            }
+            if (property.items.type == JsonSchema.PropertyType.OBJECT) {
+                parameter.setItems(buildParameters(property.items));
+            }
+        }
+        return List.of(parameter);
     }
 }

@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -80,30 +81,72 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
             if (!types.contains(field.type.toUpperCase(Locale.ROOT)) && !typeMap.containsKey(field.type)) {
                 throw new ConflictException("Unsupported type: " + field.type);
             }
+            // todo support map
+            if ("list".equalsIgnoreCase(field.type)) {
+                params.add(toParamList(field, typeMap, api));
+                continue;
+            }
             if (typeMap.containsKey(field.type)) {
                 var subType = typeMap.get(field.type);
                 if ("enum".equalsIgnoreCase(subType.type)) {
-                    var param = new ToolCallParameter();
-                    param.setName(field.name);
-                    param.setDescription(requestType.name);
-                    param.setRequired(field.constraints.notNull);
-                    param.setType(String.class);
-                    param.setEnums(subType.enumConstants.stream().map(v -> v.name).toList());
-                    params.add(param);
+                    params.add(toParamEnum(field, requestType, subType));
                 } else {
                     buildTypeParams(typeMap.get(field.type), params, api);
                 }
             } else {
-                var param = new ToolCallParameter();
-                param.setName(field.name);
-                param.setDescription(field.description == null ? field.name : field.description);
-                param.setRequired(field.constraints.notNull);
-                var type = ToolCallParameterType.valueOf(field.type.toUpperCase(Locale.ROOT));
-                param.setType(type.getType());
-                param.setFormat(JsonSchemaHelper.buildJsonSchemaFormat(type));
-                params.add(param);
+                params.add(toParam(field));
             }
         }
+    }
+
+    private ToolCallParameter toParamList(ApiDefinitionType.Field field, Map<String, ApiDefinitionType> typeMap, ApiDefinition api) {
+        var param = new ToolCallParameter();
+        param.setName(field.name);
+        param.setDescription(field.description == null ? field.name : field.description);
+        param.setRequired(field.constraints.notNull);
+        param.setType(List.class);
+        var itemType = field.typeParams.getFirst();
+        if (typeMap.containsKey(itemType)) {
+            var subType = typeMap.get(field.typeParams.getFirst());
+            if ("enum".equalsIgnoreCase(subType.type)) {
+                param.setItemType(String.class);
+                param.setItemEnums(toEnumConstants(subType));
+            } else {
+                param.setItemType(Object.class);
+                List<ToolCallParameter> params = Lists.newArrayList();
+                buildTypeParams(subType, params, api);
+                param.setItems(params);
+            }
+        } else {
+            var type = ToolCallParameterType.valueOf(itemType.toUpperCase(Locale.ROOT));
+            param.setItemType(type.getType());
+        }
+        return param;
+    }
+
+    private ToolCallParameter toParamEnum(ApiDefinitionType.Field field, ApiDefinitionType requestType, ApiDefinitionType subType) {
+        var param = new ToolCallParameter();
+        param.setName(field.name);
+        param.setDescription(requestType.name);
+        param.setRequired(field.constraints.notNull);
+        param.setType(String.class);
+        param.setEnums(toEnumConstants(subType));
+        return param;
+    }
+
+    private List<String> toEnumConstants(ApiDefinitionType requestType) {
+        return requestType.enumConstants.stream().map(v -> v.name).toList();
+    }
+
+    private ToolCallParameter toParam(ApiDefinitionType.Field field) {
+        var param = new ToolCallParameter();
+        param.setName(field.name);
+        param.setDescription(field.description == null ? field.name : field.description);
+        param.setRequired(field.constraints.notNull);
+        var type = ToolCallParameterType.valueOf(field.type.toUpperCase(Locale.ROOT));
+        param.setType(type.getType());
+        param.setFormat(JsonSchemaHelper.buildJsonSchemaFormat(type));
+        return param;
     }
 
     private ToolCallParameter toParamFromPathParam(ApiDefinition.PathParam pathParam, ApiDefinition api) {
@@ -111,6 +154,9 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         param.setName(pathParam.name);
         param.setDescription(pathParam.description == null ? pathParam.name : pathParam.description);
         param.setRequired(true);
+        if ("list".equalsIgnoreCase(pathParam.type)) {
+            param.setItemType(ToolCallParameterType.valueOf(pathParam.type.toUpperCase(Locale.ROOT)).getType());
+        }
         var type = ToolCallParameterType.STRING;
         if (isEnum(pathParam.type)) {
             var typeMap = api.types.stream().collect(Collectors.toMap(v -> v.name, java.util.function.Function.identity()));

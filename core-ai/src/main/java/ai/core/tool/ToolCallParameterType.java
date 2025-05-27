@@ -56,6 +56,11 @@ public enum ToolCallParameterType {
         return ToolCallParameterType.valueOf(type);
     }
 
+    public boolean basicType() {
+        var basicTypes = List.of(STRING, BOOLEAN, DOUBLE, LOCALDATE, ZONEDDATETIME, INTEGER, LOCALTIME, LOCALDATETIME, LONG, BIGDECIMAL);
+        return basicTypes.contains(this);
+    }
+
     public Class<?> getType() {
         return switch (this) {
             case STRING -> String.class;

@@ -22,13 +22,13 @@ public class LiteLLMModule extends Module {
     }
 
     private void bindServices() {
-        bind(LiteLLMService.class);
+        var service = new LiteLLMService(requiredProperty("litellm.api.base"), property("litellm.api.key").orElse(""));
+        bind(service);
     }
 
     private void bindAPIClients(String server, String token) {
         var interceptor = bind(new AuthorizationInterceptor(token));
         var client = HTTPClient.builder().maxRetries(2).timeout(Duration.ofMinutes(1)).trustAll().build();
-        api().client(CompletionAJAXWebService.class, server, client).intercept(interceptor);
         api().client(ModelAJAXWebService.class, server, client).intercept(interceptor);
         api().client(EmbeddingAJAXWebService.class, server, client).intercept(interceptor);
         api().client(ImageAJAXWebService.class, server, client).intercept(interceptor);

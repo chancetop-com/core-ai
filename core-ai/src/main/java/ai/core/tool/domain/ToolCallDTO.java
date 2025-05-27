@@ -1,7 +1,6 @@
 package ai.core.tool.domain;
 
 import ai.core.tool.ToolCall;
-import ai.core.tool.ToolCallParameter;
 import core.framework.api.json.Property;
 
 /**
@@ -12,10 +11,7 @@ public class ToolCallDTO {
         var domain = new ToolCallDTO();
         domain.name = function.getName();
         domain.description = function.getDescription();
-        domain.inputSchema = new ToolCallInputSchema();
-        domain.inputSchema.type = "object";
-        domain.inputSchema.properties = function.getParameters().stream().map(ToolCallInputSchemaProperty::of).toList();
-        domain.inputSchema.required = function.getParameters().stream().filter(ToolCallParameter::getRequired).map(ToolCallParameter::getName).toList();
+        domain.inputSchema = ToolCallInputSchema.of(function.getParameters(), "object");
         return domain;
     }
 

@@ -21,6 +21,7 @@ import ai.core.api.mcp.schema.tool.ListToolsResult;
 import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
+import ai.core.tool.ToolCallParameterType;
 import ai.core.utils.JsonSchemaHelper;
 import core.framework.async.Executor;
 import core.framework.inject.Inject;
@@ -31,6 +32,7 @@ import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.NotFoundException;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -154,19 +156,48 @@ public class McpServerService {
         var tool = new Tool();
         tool.name = toolCall.getName();
         tool.description = toolCall.getDescription();
-        var schema = new JsonSchema();
-        schema.type = JsonSchema.PropertyType.OBJECT;
-        schema.required = toolCall.getParameters().stream().filter(ToolCallParameter::getRequired).map(ToolCallParameter::getName).toList();
-        schema.properties = toolCall.getParameters().stream().collect(Collectors.toMap(ToolCallParameter::getName, p -> {
-            var property = new JsonSchema.PropertySchema();
-            property.description = p.getDescription();
-            property.type = JsonSchemaHelper.buildJsonSchemaType(p.getType());
-            property.enums = p.getEnums();
-            property.format = p.getFormat();
-            return property;
-        }));
-        tool.inputSchema = schema;
+        tool.inputSchema = toJsonSchema(toolCall.getParameters(), JsonSchema.PropertyType.OBJECT, null);
         return tool;
+    }
+
+    private JsonSchema toJsonSchema(List<ToolCallParameter> parameters, JsonSchema.PropertyType propertyType, ToolCallParameter parent) {
+        var schema = new JsonSchema();
+        schema.type = propertyType;
+        if (parent != null) {
+            schema.enums = parent.getItemEnums();
+        }
+        schema.required = parameters.stream().filter(
+                v -> v.getRequired() != null
+                && v.getRequired()
+                && v.getName() != null).map(ToolCallParameter::getName).toList();
+        schema.properties = parameters.stream().filter(v -> v.getName() != null).collect(Collectors.toMap(ToolCallParameter::getName, this::toSchemaProperty));
+        return schema;
+    }
+
+    private JsonSchema.PropertySchema toSchemaProperty(ToolCallParameter p) {
+        var property = new JsonSchema.PropertySchema();
+        property.description = p.getDescription();
+        property.type = JsonSchemaHelper.buildJsonSchemaType(p.getType());
+        property.enums = p.getEnums();
+        property.format = p.getFormat();
+        if (property.type == JsonSchema.PropertyType.ARRAY) {
+            if (p.getItems() != null && !p.getItems().isEmpty()) {
+                property.items = toJsonSchema(p.getItems(), toType(p.getItemType()), p);
+            } else {
+                property.items = new JsonSchema();
+                property.items.type = toType(p.getItemType());
+                property.enums = p.getItemEnums();
+            }
+        }
+        return property;
+    }
+
+    private JsonSchema.PropertyType toType(Class<?> c) {
+        var n = c.getSimpleName().substring(c.getSimpleName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
+        if ("object".equalsIgnoreCase(n)) {
+            return JsonSchema.PropertyType.OBJECT;
+        }
+        return JsonSchemaHelper.buildJsonSchemaType(c);
     }
 
     private void handleToolsCall(String requestId, JsonRpcRequest request, JsonRpcResponse rsp) {

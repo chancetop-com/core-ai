@@ -16,6 +16,9 @@ public class ToolCallParameter {
     Class<?> type;
     Boolean required;
     List<String> enums;
+    Class<?> itemType;
+    List<ToolCallParameter> items;
+    List<String> itemEnums;
 
     public String getName() {
         return name;
@@ -39,6 +42,18 @@ public class ToolCallParameter {
 
     public List<String> getEnums() {
         return enums;
+    }
+
+    public Class<?> getItemType() {
+        return itemType;
+    }
+
+    public List<String> getItemEnums() {
+        return itemEnums;
+    }
+
+    public List<ToolCallParameter> getItems() {
+        return items;
     }
 
     public void setName(String name) {
@@ -65,6 +80,18 @@ public class ToolCallParameter {
         this.enums = enums;
     }
 
+    public void setItemEnums(List<String> itemEnums) {
+        this.itemEnums = itemEnums;
+    }
+
+    public void setItemType(Class<?> itemType) {
+        this.itemType = itemType;
+    }
+
+    public void setItems(List<ToolCallParameter> items) {
+        this.items = items;
+    }
+
     public static class Builder {
         private String name;
         private String description;
@@ -72,6 +99,9 @@ public class ToolCallParameter {
         private Boolean required;
         private List<String> enums;
         private String format;
+        private List<ToolCallParameter> items;
+        private Class<?> itemType;
+        private List<String> itemEnums;
 
         public Builder name(String name) {
             this.name = name;
@@ -103,10 +133,28 @@ public class ToolCallParameter {
             return this;
         }
 
+        public Builder items(List<ToolCallParameter> items) {
+            this.items = items;
+            return this;
+        }
+
+        public Builder itemEnums(List<String> itemEnums) {
+            this.itemEnums = itemEnums;
+            return this;
+        }
+
+        public Builder itemType(Class<?> itemType) {
+            this.itemType = itemType;
+            return this;
+        }
+
         public ToolCallParameter build() {
             var parameter = new ToolCallParameter();
             parameter.name = this.name;
+            parameter.items = this.items;
+            parameter.itemType = this.itemType;
             parameter.format = this.format;
+            parameter.itemEnums = this.itemEnums;
             parameter.description = this.description;
             parameter.required = this.required == null ? Boolean.FALSE : this.required;
             parameter.type = this.type == null ? String.class : this.type;

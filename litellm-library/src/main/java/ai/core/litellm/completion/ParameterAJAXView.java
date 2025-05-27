@@ -12,7 +12,10 @@ import java.util.Map;
 public class ParameterAJAXView {
     @NotNull
     @Property(name = "type")
-    public ParameterTypeView type;
+    public String type;
+
+    @Property(name = "enum")
+    public List<String> enums;
 
     @NotNull
     @Property(name = "properties")

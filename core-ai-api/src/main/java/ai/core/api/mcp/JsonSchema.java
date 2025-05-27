@@ -13,6 +13,9 @@ public class JsonSchema {
     @Property(name = "type")
     public PropertyType type;
 
+    @Property(name = "enum")
+    public List<String> enums;
+
     @Property(name = "properties")
     public Map<String, PropertySchema> properties;
 
@@ -49,6 +52,9 @@ public class JsonSchema {
 
         @Property(name = "enum")
         public List<String> enums;
+
+        @Property(name = "items")
+        public JsonSchema items;
 
         @Property(name = "format")
         public String format;
