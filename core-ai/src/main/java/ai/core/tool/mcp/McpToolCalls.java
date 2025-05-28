@@ -23,6 +23,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
             mcpTollCalls.add(McpToolCall.builder()
                     .name(tool.name)
                     .description(tool.description)
+                    .needAuth(tool.needAuth)
                     .parameters(buildParameters(tool.inputSchema))
                     .mcpClientService(mcpClientService).build());
         }

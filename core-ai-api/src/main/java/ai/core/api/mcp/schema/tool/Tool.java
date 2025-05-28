@@ -13,6 +13,9 @@ public class Tool {
     @Property(name = "description")
     public String description;
 
+    @Property(name = "need_auth")
+    public Boolean needAuth;
+
     @Property(name = "inputSchema")
     public JsonSchema inputSchema;
 }

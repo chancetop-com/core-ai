@@ -57,6 +57,7 @@ public class Function extends ToolCall {
         var functionDef = method.getAnnotation(CoreAiMethod.class);
         this.setName(functionDef.name());
         this.setDescription(functionDef.description());
+        this.setNeedAuth(functionDef.neeAuth());
 
         var parameterList = new ArrayList<ToolCallParameter>();
         var methodParameters = method.getParameters();

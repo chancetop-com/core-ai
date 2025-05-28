@@ -19,6 +19,7 @@ public abstract class ToolCall {
     String name;
     String description;
     List<ToolCallParameter> parameters;
+    Boolean needAuth;
 
     public abstract String call(String text);
 
@@ -34,6 +35,10 @@ public abstract class ToolCall {
         return parameters;
     }
 
+    public Boolean getNeedAuth() {
+        return needAuth;
+    }
+
     public void setName(String name) {
         this.name = name;
     }
@@ -44,6 +49,10 @@ public abstract class ToolCall {
 
     public void setParameters(List<ToolCallParameter> parameters) {
         this.parameters = parameters;
+    }
+
+    public void setNeedAuth(Boolean needAuth) {
+        this.needAuth = needAuth;
     }
 
     @Override
@@ -109,7 +118,8 @@ public abstract class ToolCall {
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {
         String name;
         String description;
-        public List<ToolCallParameter> parameters;
+        List<ToolCallParameter> parameters;
+        Boolean needAuth;
 
         // This method needs to be overridden in the subclass Builders
         protected abstract B self();
@@ -129,6 +139,11 @@ public abstract class ToolCall {
             return self();
         }
 
+        public B needAuth(Boolean needAuth) {
+            this.needAuth = needAuth;
+            return self();
+        }
+
         public void build(T toolCall) {
             if (name == null) {
                 throw new RuntimeException("name is required");
@@ -142,6 +157,7 @@ public abstract class ToolCall {
             toolCall.name = name;
             toolCall.description = description;
             toolCall.parameters = parameters;
+            toolCall.needAuth = needAuth != null ? needAuth : false;
         }
     }
 }
