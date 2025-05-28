@@ -176,9 +176,9 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
 
     public record OperationContext(ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
         public static String toFunctionCallName(ApiDefinition.Operation operation, ApiDefinition.Service service, ApiDefinition api) {
-            var name = api.app + "." + service.name + "." + operation.name;
+            var name = api.app + "_" + service.name + "_" + operation.name;
             if (name.length() >= 64) {
-                name = service.name + "." + operation.name;
+                name = service.name + "_" + operation.name;
             }
             if (name.length() >= 64) {
                 name = operation.name;
