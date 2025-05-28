@@ -157,7 +157,7 @@ public abstract class ToolCall {
             toolCall.name = name;
             toolCall.description = description;
             toolCall.parameters = parameters;
-            toolCall.needAuth = needAuth != null ? needAuth : false;
+            toolCall.needAuth = needAuth != null && needAuth;
         }
     }
 }

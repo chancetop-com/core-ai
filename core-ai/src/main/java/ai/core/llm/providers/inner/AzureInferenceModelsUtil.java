@@ -36,7 +36,6 @@ import com.azure.ai.inference.models.CompletionsFinishReason;
 import com.azure.ai.inference.models.ChatResponseMessage;
 import com.azure.ai.inference.models.ChatRole;
 import com.azure.core.util.BinaryData;
-import core.framework.json.JSON;
 
 import java.util.List;
 import java.util.Locale;

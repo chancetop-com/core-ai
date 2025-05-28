@@ -36,7 +36,6 @@ import com.azure.ai.openai.models.CompletionsFinishReason;
 import com.azure.ai.openai.models.ChatResponseMessage;
 import com.azure.ai.openai.models.ChatRole;
 import com.azure.core.util.BinaryData;
-import core.framework.json.JSON;
 
 import java.util.List;
 import java.util.Locale;

@@ -107,7 +107,7 @@ project(":language-server-library") {
 }
 
 
-val useLocalProjects = project.hasProperty("useLocalProjects")
+val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
     version = "1.1.58"
     dependencies {
