@@ -59,7 +59,6 @@ public class Agent extends Node<Agent> {
 
     @Override
     String execute(String query, Map<String, Object> variables) {
-        currentToolCallCount = 0;
         setupAgentSystemVariables();
         setInput(query);
 
@@ -82,7 +81,7 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-        chat(List.of(prompt), null, variables);
+        chat(prompt, variables);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
@@ -96,9 +95,46 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private void chat(List<String> query, List<FunctionCall> toolCalls, Map<String, Object> variables) {
+    private void chat(String query, Map<String, Object> variables) {
         // call LLM completion
-        var rst = completionWithFormat(query, toolCalls, variables);
+        var rst = chatByUser(query, variables);
+
+        // we always use the first choice
+        var choice = getChoice(rst);
+        setMessageAgentInfo(choice.message);
+
+        // add rsp to message list and call message event listener if it has
+        addMessage(choice.message);
+        setOutput(choice.message.content);
+
+        // function call loop
+        if (choice.finishReason == FinishReason.TOOL_CALLS) {
+            currentToolCallCount = 0;
+            chatByToolCall(choice);
+        }
+    }
+
+    private void reflection(Map<String, Object> variables) {
+        // never start if we do not have termination or something
+        validation();
+        setRound(1);
+        while (notTerminated()) {
+            logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
+            chat(reflectionConfig.prompt(), variables);
+            setRound(getRound() + 1);
+        }
+    }
+
+    private CompletionResponse chatByUser(String query, Map<String, Object> variables) {
+        buildUserQueryToMessage(query, variables);
+        return completionWithFormat();
+    }
+
+    private void chatByToolCall(Choice toolChoice) {
+        currentToolCallCount += 1;
+        var callRst = toolChoice.message.toolCalls.stream().map(this::functionCall).toList();
+        // send the tool call result to the LLM
+        var rst = chatByToolCall(callRst, toolChoice.message.toolCalls);
 
         // we always use the first choice
         var choice = getChoice(rst);
@@ -110,27 +146,16 @@ public class Agent extends Node<Agent> {
 
         // function call loop
         if (choice.finishReason == FinishReason.TOOL_CALLS && currentToolCallCount < maxToolCallCount) {
-            currentToolCallCount += 1;
-            var callRst = choice.message.toolCalls.stream().map(this::functionCall).toList();
-            setOutput(String.join(",", callRst));
-            // send the tool call result to the LLM
-            chat(callRst, choice.message.toolCalls, variables);
+            chatByToolCall(choice);
         }
     }
 
-    private void reflection(Map<String, Object> variables) {
-        // never start if we do not have termination or something
-        validation();
-        setRound(1);
-        while (notTerminated()) {
-            logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
-            chat(List.of(reflectionConfig.prompt()), null, variables);
-            setRound(getRound() + 1);
-        }
+    private CompletionResponse chatByToolCall(List<String> toolResult, List<FunctionCall> toolCalls) {
+        buildToolResultToMessage(toolResult, toolCalls);
+        return completionWithFormat();
     }
 
-    private CompletionResponse completionWithFormat(List<String> query, List<FunctionCall> toolCalls, Map<String, Object> variables) {
-        var isToolResult = toolCalls != null && !toolCalls.isEmpty();
+    private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessageWithLongTernMemory(variables));
             // add task context if existed
@@ -138,23 +163,26 @@ public class Agent extends Node<Agent> {
         }
 
         // add group context if needed
-        if (!isToolResult && getUseGroupContext() != null && getUseGroupContext() && getParentNode() != null) {
+        if (getUseGroupContext() && getParentNode() != null) {
             addMessages(getParentNode().getMessages());
         }
 
-        if (isToolResult) {
-            if (query.size() != toolCalls.size()) {
-                throw new ConflictException("Tool calls size must match query size, toolCalls: " + toolCalls.size() + ", query: " + query.size(), "TOOL_CALLS_SIZE_MISMATCH");
-            }
-            for (int i = 0; i < toolCalls.size(); i++) {
-                var reqMsg = Message.of(RoleType.TOOL, query.get(i), buildRequestName(true), toolCalls.get(i).id, null, null);
-                addMessage(reqMsg);
-            }
-        } else {
-            var reqMsg = Message.of(RoleType.USER, query.getFirst(), buildRequestName(false), null, null, null);
-            removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
+        var reqMsg = Message.of(RoleType.USER, query, buildRequestName(false), null, null, null);
+        removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
+        addMessage(reqMsg);
+    }
+
+    private void buildToolResultToMessage(List<String> toolResult, List<FunctionCall> toolCalls) {
+        if (toolResult.size() != toolCalls.size()) {
+            throw new ConflictException("Tool calls size must match query size, toolCalls: " + toolCalls.size() + ", query: " + toolResult.size(), "TOOL_CALLS_SIZE_MISMATCH");
+        }
+        for (int i = 0; i < toolCalls.size(); i++) {
+            var reqMsg = Message.of(RoleType.TOOL, toolResult.get(i), buildRequestName(true), toolCalls.get(i).id, null, null);
             addMessage(reqMsg);
         }
+    }
+
+    private CompletionResponse completionWithFormat() {
         var req = CompletionRequest.of(getMessages(), toReqTools(this.toolCalls), temperature, model, this.getName());
 
         // completion with llm provider
