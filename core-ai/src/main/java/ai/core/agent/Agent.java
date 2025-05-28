@@ -6,6 +6,7 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
@@ -24,6 +25,7 @@ import core.framework.util.Lists;
 import core.framework.util.Maps;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
+import core.framework.web.exception.ConflictException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,7 +82,7 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-        chat(prompt, null, variables);
+        chat(List.of(prompt), null, variables);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
@@ -94,9 +96,9 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private void chat(String query, String toolCallId, Map<String, Object> variables) {
+    private void chat(List<String> query, List<FunctionCall> toolCalls, Map<String, Object> variables) {
         // call LLM completion
-        var rst = completionWithFormat(query, toolCallId, variables);
+        var rst = completionWithFormat(query, toolCalls, variables);
 
         // we always use the first choice
         var choice = getChoice(rst);
@@ -109,10 +111,10 @@ public class Agent extends Node<Agent> {
         // function call loop
         if (choice.finishReason == FinishReason.TOOL_CALLS && currentToolCallCount < maxToolCallCount) {
             currentToolCallCount += 1;
-            var callRst = functionCall(choice);
-            setOutput(callRst);
+            var callRst = choice.message.toolCalls.stream().map(this::functionCall).toList();
+            setOutput(String.join(",", callRst));
             // send the tool call result to the LLM
-            chat(callRst, choice.message.toolCalls.getFirst().id, variables);
+            chat(callRst, choice.message.toolCalls, variables);
         }
     }
 
@@ -122,13 +124,13 @@ public class Agent extends Node<Agent> {
         setRound(1);
         while (notTerminated()) {
             logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
-            chat(reflectionConfig.prompt(), null, variables);
+            chat(List.of(reflectionConfig.prompt()), null, variables);
             setRound(getRound() + 1);
         }
     }
 
-    private CompletionResponse completionWithFormat(String query, String toolCallId, Map<String, Object> variables) {
-        var isToolResult = toolCallId != null;
+    private CompletionResponse completionWithFormat(List<String> query, List<FunctionCall> toolCalls, Map<String, Object> variables) {
+        var isToolResult = toolCalls != null && !toolCalls.isEmpty();
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessageWithLongTernMemory(variables));
             // add task context if existed
@@ -140,10 +142,20 @@ public class Agent extends Node<Agent> {
             addMessages(getParentNode().getMessages());
         }
 
-        var reqMsg = Message.of(isToolResult ? RoleType.TOOL : RoleType.USER, query, buildRequestName(isToolResult), toolCallId, null, null);
-        removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
-        addMessage(reqMsg);
-        var req = CompletionRequest.of(getMessages(), toReqTools(toolCalls), temperature, model, this.getName());
+        if (isToolResult) {
+            if (query.size() != toolCalls.size()) {
+                throw new ConflictException("Tool calls size must match query size, toolCalls: " + toolCalls.size() + ", query: " + query.size(), "TOOL_CALLS_SIZE_MISMATCH");
+            }
+            for (int i = 0; i < toolCalls.size(); i++) {
+                var reqMsg = Message.of(RoleType.TOOL, query.get(i), buildRequestName(true), toolCalls.get(i).id, null, null);
+                addMessage(reqMsg);
+            }
+        } else {
+            var reqMsg = Message.of(RoleType.USER, query.getFirst(), buildRequestName(false), null, null, null);
+            removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
+            addMessage(reqMsg);
+        }
+        var req = CompletionRequest.of(getMessages(), toReqTools(this.toolCalls), temperature, model, this.getName());
 
         // completion with llm provider
         var rst = llmProvider.completion(req);
@@ -216,8 +228,7 @@ public class Agent extends Node<Agent> {
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
 
-    private String functionCall(Choice choice) {
-        var toolCall = choice.message.toolCalls.getFirst();
+    private String functionCall(FunctionCall toolCall) {
         var optional = toolCalls.stream().filter(v -> v.getName().equalsIgnoreCase(toolCall.function.name)).findFirst();
         if (optional.isEmpty()) {
             throw new BadRequestException("tool call failed<optional empty>: " + JSON.toJSON(toolCall), "TOOL_CALL_FAILED");

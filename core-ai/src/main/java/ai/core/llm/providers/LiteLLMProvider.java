@@ -95,7 +95,7 @@ public class LiteLLMProvider extends LLMProvider {
                 throw new RuntimeException(rsp.text());
             }
             var rst = JSON.fromJSON(CompletionResponse.class, rsp.text());
-            rst.choices.forEach(v ->{
+            rst.choices.forEach(v -> {
                 if (v.message.content == null) {
                     v.message.content = "";
                 }
