@@ -13,8 +13,7 @@ public class LLMProviders {
         return switch (type) {
             case AZURE_INFERENCE -> "o1-mini";
             case DEEPSEEK -> "deepseek-chat";
-            case OPENAI, AZURE -> "gpt-4o";
-            default -> "gpt-3.5-turbo";
+            default -> "gpt-4o";
         };
     }
 
