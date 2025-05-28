@@ -29,6 +29,13 @@ public class LLMProviders {
         return providers.get(type);
     }
 
+    public LLMProvider getProvider() {
+        if (providers.isEmpty()) {
+            throw new IllegalStateException("No LLM providers configured");
+        }
+        return providers.values().iterator().next();
+    }
+
     public LLMProvider getProviderByName(String name) {
         return providers.get(LLMProviderType.fromName(name));
     }
