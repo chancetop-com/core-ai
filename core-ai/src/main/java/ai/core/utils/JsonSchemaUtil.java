@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * @author stephen
  */
-public class JsonSchemaHelper {
+public class JsonSchemaUtil {
     public static JsonSchema.PropertyType buildJsonSchemaType(Class<?> c) {
         var t = ToolCallParameterType.getByType(c);
         return buildJsonSchemaType(t);

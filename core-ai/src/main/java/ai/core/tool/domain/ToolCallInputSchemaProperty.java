@@ -3,7 +3,7 @@ package ai.core.tool.domain;
 import ai.core.api.jsonschema.JsonSchema;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
-import ai.core.utils.JsonSchemaHelper;
+import ai.core.utils.JsonSchemaUtil;
 import core.framework.api.json.Property;
 
 import java.util.List;
@@ -17,7 +17,7 @@ public class ToolCallInputSchemaProperty {
         var domain = new ToolCallInputSchemaProperty();
         domain.name = toolCallParameter.getName();
         domain.description = toolCallParameter.getDescription();
-        domain.type = JsonSchemaHelper.buildJsonSchemaType(toolCallParameter.getClassType());
+        domain.type = JsonSchemaUtil.buildJsonSchemaType(toolCallParameter.getClassType());
         domain.required = toolCallParameter.getRequired();
         domain.enums = toolCallParameter.getEnums();
         if (domain.type == JsonSchema.PropertyType.ARRAY) {
@@ -28,7 +28,7 @@ public class ToolCallInputSchemaProperty {
 
     public static String toType(Class<?> itemType) {
         var basic = ToolCallParameterType.getByType(itemType).basicType();
-        return basic ? JsonSchemaHelper.buildJsonSchemaType(itemType).name().toLowerCase(Locale.ROOT) : "object";
+        return basic ? JsonSchemaUtil.buildJsonSchemaType(itemType).name().toLowerCase(Locale.ROOT) : "object";
     }
 
     @Property(name = "name")

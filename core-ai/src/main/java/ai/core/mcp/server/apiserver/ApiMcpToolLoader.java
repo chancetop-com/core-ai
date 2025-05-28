@@ -1,6 +1,6 @@
 package ai.core.mcp.server.apiserver;
 
-import ai.core.utils.JsonSchemaHelper;
+import ai.core.utils.JsonSchemaUtil;
 import ai.core.mcp.server.McpServerToolLoader;
 import ai.core.mcp.server.apiserver.domain.ApiDefinition;
 import ai.core.mcp.server.apiserver.domain.ApiDefinitionType;
@@ -145,7 +145,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         param.setRequired(field.constraints.notNull);
         var type = ToolCallParameterType.valueOf(field.type.toUpperCase(Locale.ROOT));
         param.setClassType(type.getType());
-        param.setFormat(JsonSchemaHelper.buildJsonSchemaFormat(type));
+        param.setFormat(JsonSchemaUtil.buildJsonSchemaFormat(type));
         return param;
     }
 
@@ -166,7 +166,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
             type = ToolCallParameterType.valueOf(pathParam.type.toUpperCase(Locale.ROOT));
         }
         param.setClassType(type.getType());
-        param.setFormat(JsonSchemaHelper.buildJsonSchemaFormat(type));
+        param.setFormat(JsonSchemaUtil.buildJsonSchemaFormat(type));
         return param;
     }
 

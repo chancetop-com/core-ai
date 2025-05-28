@@ -5,7 +5,7 @@ import ai.core.llm.domain.Function;
 import ai.core.llm.domain.Tool;
 import ai.core.llm.domain.ToolType;
 import ai.core.tool.domain.ToolCallDTO;
-import ai.core.utils.JsonSchemaHelper;
+import ai.core.utils.JsonSchemaUtil;
 import core.framework.json.JSON;
 
 import java.util.List;
@@ -92,7 +92,7 @@ public abstract class ToolCall {
     private JsonSchema toSchemaProperty(ToolCallParameter p) {
         var property = new JsonSchema();
         property.description = p.getDescription();
-        property.type = JsonSchemaHelper.buildJsonSchemaType(p.getClassType());
+        property.type = JsonSchemaUtil.buildJsonSchemaType(p.getClassType());
         property.enums = p.getEnums();
         property.format = p.getFormat();
         if (property.type == JsonSchema.PropertyType.ARRAY) {
@@ -112,7 +112,7 @@ public abstract class ToolCall {
         if ("object".equalsIgnoreCase(n)) {
             return JsonSchema.PropertyType.OBJECT;
         }
-        return JsonSchemaHelper.buildJsonSchemaType(c);
+        return JsonSchemaUtil.buildJsonSchemaType(c);
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {

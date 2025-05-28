@@ -9,21 +9,15 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.RoleType;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.introspect.VisibilityChecker;
+import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
-import core.framework.internal.json.JSONAnnotationIntrospector;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 
 import java.nio.charset.StandardCharsets;
-
-import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
-import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.PUBLIC_ONLY;
 
 /**
  * @author stephen
@@ -31,16 +25,11 @@ import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.PUBLIC_
 public class LiteLLMProvider extends LLMProvider {
     private final String url;
     private final String token;
-    private final ObjectMapper mapper;
 
     public LiteLLMProvider(LLMProviderConfig config, String url, String token) {
         super(config);
         this.url = url;
         this.token = token;
-        this.mapper = new ObjectMapper();
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        mapper.setVisibility(new VisibilityChecker.Std(NONE, NONE, NONE, NONE, PUBLIC_ONLY));
-        mapper.setAnnotationIntrospector(new JSONAnnotationIntrospector());
     }
 
     @Override
@@ -85,7 +74,7 @@ public class LiteLLMProvider extends LLMProvider {
         var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
         try {
-            var body = mapper.writeValueAsString(request).getBytes(StandardCharsets.UTF_8);
+            var body = JsonUtil.toJson(request).getBytes(StandardCharsets.UTF_8);
             req.body(body, ContentType.APPLICATION_JSON);
             if (!Strings.isBlank(token)) {
                 req.headers.put("Authorization", "Bearer " + token);

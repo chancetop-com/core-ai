@@ -13,6 +13,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
 import ai.core.llm.domain.Usage;
+import ai.core.utils.JsonUtil;
 import com.azure.ai.inference.models.ChatCompletionsFunctionToolCall;
 import com.azure.ai.inference.models.ChatCompletionsFunctionToolDefinition;
 import com.azure.ai.inference.models.ChatCompletionsOptions;
@@ -141,6 +142,6 @@ public class AzureInferenceModelsUtil {
     }
 
     private static BinaryData fromParameter(JsonSchema parameters) {
-        return BinaryData.fromString(JSON.toJSON(parameters));
+        return BinaryData.fromString(JsonUtil.toJson(parameters));
     }
 }

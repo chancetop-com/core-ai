@@ -2,7 +2,7 @@ package ai.core.tool.mcp;
 
 import ai.core.api.jsonschema.JsonSchema;
 import ai.core.mcp.client.McpClientService;
-import ai.core.utils.JsonSchemaHelper;
+import ai.core.utils.JsonSchemaUtil;
 import ai.core.tool.ToolCallParameter;
 
 import java.io.Serial;
@@ -44,13 +44,13 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         var parameter = ToolCallParameter.builder()
                 .name(name)
                 .description(property.description)
-                .classType(JsonSchemaHelper.mapType(property.type))
+                .classType(JsonSchemaUtil.mapType(property.type))
                 .format(property.format)
                 .required(json.required != null && json.required.contains(name))
                 .enums(property.enums)
                 .build();
         if (property.type == JsonSchema.PropertyType.ARRAY) {
-            parameter.setItemType(JsonSchemaHelper.mapType(property.items.type));
+            parameter.setItemType(JsonSchemaUtil.mapType(property.items.type));
             if (property.items.enums != null && !property.items.enums.isEmpty()) {
                 parameter.setItemEnums(property.items.enums);
             }
