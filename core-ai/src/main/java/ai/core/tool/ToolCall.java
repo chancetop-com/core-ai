@@ -89,8 +89,8 @@ public abstract class ToolCall {
         return schema;
     }
 
-    private JsonSchema.PropertySchema toSchemaProperty(ToolCallParameter p) {
-        var property = new JsonSchema.PropertySchema();
+    private JsonSchema toSchemaProperty(ToolCallParameter p) {
+        var property = new JsonSchema();
         property.description = p.getDescription();
         property.type = JsonSchemaHelper.buildJsonSchemaType(p.getClassType());
         property.enums = p.getEnums();

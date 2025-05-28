@@ -40,7 +40,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         return parameters;
     }
 
-    public static List<ToolCallParameter> buildParameters(String name, JsonSchema.PropertySchema property, JsonSchema json) {
+    public static List<ToolCallParameter> buildParameters(String name, JsonSchema property, JsonSchema json) {
         var parameter = ToolCallParameter.builder()
                 .name(name)
                 .description(property.description)
