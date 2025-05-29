@@ -26,7 +26,6 @@ import ai.core.flow.nodes.builtinnodes.BuiltinModeratorAgentFlowNode;
 import ai.core.flow.nodes.builtinnodes.BuiltinPythonAgentFlowNode;
 import ai.core.flow.nodes.builtinnodes.BuiltinPythonToolFlowNode;
 import ai.core.llm.LLMProviders;
-import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.mcp.client.McpClientService;
 import ai.core.mcp.client.McpClientServerConfig;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
@@ -47,8 +46,6 @@ public class ExampleService {
     private final Logger logger = LoggerFactory.getLogger(ExampleService.class);
     @Inject
     TemporaryPersistenceProvider persistenceProvider;
-    @Inject
-    AzureInferenceProvider llmProvider;
     @Inject
     WeatherService weatherService;
     @Inject
@@ -123,7 +120,7 @@ public class ExampleService {
     }
 
     public OrderIssueResponse groupStart(String query) {
-        var group = OrderIssueGroup.create(llmProvider, persistenceProvider, userInfoService);
+        var group = OrderIssueGroup.create(llmProviders.getProvider(), persistenceProvider, userInfoService);
         group.run(query, null);
         var rsp = new OrderIssueResponse();
         rsp.content = group.getOutput();
@@ -136,7 +133,7 @@ public class ExampleService {
     }
 
     public OrderIssueResponse groupFinish(String id, String query) {
-        var group = OrderIssueGroup.create(llmProvider, persistenceProvider, userInfoService);
+        var group = OrderIssueGroup.create(llmProviders.getProvider(), persistenceProvider, userInfoService);
         group.load(id);
         group.run(query, null);
         var rsp = new OrderIssueResponse();
@@ -146,7 +143,7 @@ public class ExampleService {
     }
 
     public String chat(String query) {
-        var agent = ThinkingClaudeAgent.of(llmProvider);
+        var agent = ThinkingClaudeAgent.of(llmProviders.getProvider());
         return agent.run(query, null);
     }
 
@@ -170,27 +167,27 @@ public class ExampleService {
                 .systemPrompt("you are a tool call agent")
                 .promptTemplate("")
                 .toolCalls(McpToolCalls.from(mcpClientService))
-                .llmProvider(llmProvider).build();
+                .llmProvider(llmProviders.getProvider()).build();
         return agent.run(request.query, null);
     }
 
 
     public String optimize(String prompt) {
-        var agent = PromptOptimizeAgent.of(llmProvider);
+        var agent = PromptOptimizeAgent.of(llmProviders.getProvider());
         return agent.run(prompt, null);
     }
 
     public String summaryOptimize(String prompt) {
-        var agent = PromptOptimizeAgent.of(llmProvider);
+        var agent = PromptOptimizeAgent.of(llmProviders.getProvider());
         agent.run(prompt, null);
-        var summaryAgent = DefaultSummaryAgent.of(llmProvider);
+        var summaryAgent = DefaultSummaryAgent.of(llmProviders.getProvider());
         var summaryChain = AgentGroup.builder()
                 .name("summary-chain")
                 .description("summary the chain")
                 .agents(List.of(agent, summaryAgent))
                 .handoffType(HandoffType.DIRECT)
                 .maxRound(1)
-                .llmProvider(llmProvider).build();
+                .llmProvider(llmProviders.getProvider()).build();
         return summaryChain.run(prompt, null);
     }
 
@@ -200,13 +197,13 @@ public class ExampleService {
                 .description("con debater")
                 .systemPrompt("You are the negative side in a debate, and you do not support the viewpoint of the topic.You will analyze the arguments from the affirmative side and refute them one by one.")
                 .promptTemplate("pro viewpoints: ")
-                .llmProvider(llmProvider).build();
+                .llmProvider(llmProviders.getProvider()).build();
         var conAgent = Agent.builder()
                 .name("debate-pro-agent")
                 .description("pro debater")
                 .systemPrompt("You are the affirmative side in a debate, and you support the viewpoint of the topic.you will elaborate and provide examples from multiple perspectives to illustrate why you support this viewpoint.")
                 .promptTemplate("topic: ")
-                .llmProvider(llmProvider).build();
+                .llmProvider(llmProviders.getProvider()).build();
         conAgent.addStatusChangedEventListener(NodeStatus.RUNNING, new DefaultAgentRunningEventListener());
         var debateChain = AgentGroup.builder()
                 .name("debate-chain")
@@ -214,7 +211,7 @@ public class ExampleService {
                 .agents(List.of(proAgent, conAgent))
                 .handoffType(HandoffType.DIRECT)
                 .maxRound(3)
-                .llmProvider(llmProvider).build();
+                .llmProvider(llmProviders.getProvider()).build();
         return debateChain.run(topic, null);
     }
 
@@ -226,7 +223,7 @@ public class ExampleService {
                               + "If query do not contain a city in the gave list, return 'I am weather toolkit, I don't known other things, so which city's weather you want to check?'.")
                 .promptTemplate("topic: ")
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
-                .llmProvider(llmProvider).build();
+                .llmProvider(llmProviders.getProvider()).build();
         return agent.run(prompt, null);
     }
 }
