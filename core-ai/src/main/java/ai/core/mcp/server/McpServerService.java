@@ -19,15 +19,16 @@ import ai.core.api.mcp.schema.tool.Content;
 import ai.core.api.mcp.schema.tool.ListToolsResult;
 import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.tool.ToolCall;
+import ai.core.utils.JsonUtil;
 import core.framework.async.Executor;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.kafka.MessagePublisher;
 import core.framework.log.ActionLogContext;
-import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.NotFoundException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -112,10 +113,6 @@ public class McpServerService {
     }
 
     private void handleInitialize(JsonRpcRequest request, JsonRpcResponse rsp) {
-        var req = (InitializeRequest) request.params;
-        if (req.protocolVersion.startsWith("2024")) {
-            throw new ConflictException("Protocol Version 2024-* Not Support");
-        }
         var rst = new InitializeResult();
         rst.serverInfo = serverInfo();
         rst.protocolVersion = Constants.LATEST_PROTOCOL_VERSION;
@@ -140,9 +137,7 @@ public class McpServerService {
     }
 
     private void handleToolsList(JsonRpcRequest request, JsonRpcResponse rsp) {
-//        var req = JSON.fromJSON(PaginationRequest.class, request.params);
         var rst = new ListToolsResult();
-//        rst.nextCursor = req.cursor;
         rst.tools = toolCalls.stream().map(this::toMcpTool).toList();
         rsp.result = JSON.toJSON(rst);
     }
@@ -156,7 +151,7 @@ public class McpServerService {
     }
 
     private void handleToolsCall(String requestId, JsonRpcRequest request, JsonRpcResponse rsp) {
-        var req = (CallToolRequest) request.params;
+        var req = JsonUtil.fromJson(CallToolRequest.class, (Map<?, ?>) request.params);
         var map = toolCalls.stream().collect(Collectors.toMap(ToolCall::getName, Function.identity()));
         var tool = map.get(req.name);
         if (tool == null) throw new NotFoundException("Tool not existed: " + request.params);
@@ -166,10 +161,6 @@ public class McpServerService {
         content.content = tool.call(req.arguments);
         rst.content = List.of(content);
         rsp.result = JSON.toJSON(rst);
-//        executor.submit("mcp-handle-tool-call", () -> {
-//            var rst = tool.call(req.arguments);
-//            messagePublisher.publish(requestId, McpToolCallEvent.of(requestId, rst));
-//        });
     }
 
     private void handleNotificationToolsListChanged(JsonRpcRequest request, JsonRpcResponse rsp) {

@@ -8,6 +8,7 @@ import ai.core.api.mcp.schema.tool.CallToolRequest;
 import ai.core.api.mcp.schema.tool.CallToolResult;
 import ai.core.api.mcp.schema.tool.ListToolsResult;
 import ai.core.api.mcp.schema.tool.Tool;
+import ai.core.utils.JsonUtil;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -47,14 +48,14 @@ public class McpClientService {
 
     public String callTool(String name, String text) {
         var request = new HTTPRequest(HTTPMethod.POST, config.url());
-        var params = JSON.toJSON(CallToolRequest.of(name, text));
+        var params = CallToolRequest.of(name, text);
         var req = JsonRpcRequest.of(Constants.JSONRPC_VERSION, MethodEnum.METHOD_TOOLS_CALL, UUID.randomUUID().toString(), params);
-        request.body = JSON.toJSON(req).getBytes();
+        request.body = JsonUtil.toJson(req).getBytes();
         try (var response = client.sse(request)) {
             var iterator = response.iterator();
             if (iterator.hasNext()) {
                 var event = iterator.next();
-                var rsp = JSON.fromJSON(JsonRpcResponse.class, event.data());
+                var rsp = JsonUtil.fromJson(JsonRpcResponse.class, event.data());
                 if (rsp.result == null && rsp.error == null) {
                     return "Call tool with no result & no error";
                 }

@@ -109,7 +109,7 @@ project(":language-server-library") {
 
 val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
-    version = "1.1.60"
+    version = "1.1.61"
     dependencies {
         if (useLocalProjects) {
             implementation(project(":core-ai-api"))

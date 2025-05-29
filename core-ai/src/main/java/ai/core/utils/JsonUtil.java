@@ -7,6 +7,7 @@ import core.framework.internal.json.JSONAnnotationIntrospector;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Map;
 
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.PUBLIC_ONLY;
@@ -42,6 +43,15 @@ public class JsonUtil {
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    public static <T> T fromJson(Class<T> instanceClass, Map<?, ?> map) {
+        T result = OBJECT_MAPPER.convertValue(map, instanceClass);
+        if (result == null) {
+            throw new Error("invalid json value, value=" + map);
+        } else {
+            return result;
         }
     }
 }
