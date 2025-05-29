@@ -71,7 +71,7 @@ public class DynamicApiCaller {
             if (requestType == null) {
                 throw new IllegalArgumentException("Request type not found: " + operation.requestType);
             }
-            if (req.method == HTTPMethod.GET) {
+            if (req.method == HTTPMethod.GET || req.method == HTTPMethod.DELETE) {
                 req.params.putAll(setupParams(apiDefinition, requestType, argsMap));
             } else {
                 req.body(setupBody(apiDefinition, requestType, argsMap), ContentType.APPLICATION_JSON);

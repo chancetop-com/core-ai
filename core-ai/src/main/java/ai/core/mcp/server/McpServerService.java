@@ -112,7 +112,7 @@ public class McpServerService {
     }
 
     private void handleInitialize(JsonRpcRequest request, JsonRpcResponse rsp) {
-        var req = JSON.fromJSON(InitializeRequest.class, request.params);
+        var req = (InitializeRequest) request.params;
         if (req.protocolVersion.startsWith("2024")) {
             throw new ConflictException("Protocol Version 2024-* Not Support");
         }
@@ -156,7 +156,7 @@ public class McpServerService {
     }
 
     private void handleToolsCall(String requestId, JsonRpcRequest request, JsonRpcResponse rsp) {
-        var req = JSON.fromJSON(CallToolRequest.class, request.params);
+        var req = (CallToolRequest) request.params;
         var map = toolCalls.stream().collect(Collectors.toMap(ToolCall::getName, Function.identity()));
         var tool = map.get(req.name);
         if (tool == null) throw new NotFoundException("Tool not existed: " + request.params);

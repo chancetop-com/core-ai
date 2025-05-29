@@ -109,12 +109,12 @@ project(":language-server-library") {
 
 val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
-    version = "1.1.59"
+    version = "1.1.60"
     dependencies {
         if (useLocalProjects) {
             implementation(project(":core-ai-api"))
         } else {
-            implementation("com.chancetop:core-ai-api:1.1.8")
+            implementation("com.chancetop:core-ai-api:1.1.9")
         }
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -131,7 +131,7 @@ project(":core-ai") {
 
 
 project(":core-ai-api") {
-    version = "1.1.8"
+    version = "1.1.9"
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }

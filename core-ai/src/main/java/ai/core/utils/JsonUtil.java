@@ -31,4 +31,17 @@ public class JsonUtil {
             }
         }
     }
+
+    public static <T> T fromJson(Class<T> instanceClass, String json) {
+        try {
+            T result = OBJECT_MAPPER.readValue(json, instanceClass);
+            if (result == null) {
+                throw new Error("invalid json value, value=" + json);
+            } else {
+                return result;
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 }
