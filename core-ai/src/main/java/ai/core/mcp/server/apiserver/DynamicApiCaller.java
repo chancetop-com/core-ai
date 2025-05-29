@@ -73,6 +73,7 @@ public class DynamicApiCaller {
             }
             if (req.method == HTTPMethod.GET || req.method == HTTPMethod.DELETE) {
                 req.params.putAll(setupParams(apiDefinition, requestType, argsMap));
+                req.uri = req.requestURI();
             } else {
                 req.body(setupBody(apiDefinition, requestType, argsMap), ContentType.APPLICATION_JSON);
             }
