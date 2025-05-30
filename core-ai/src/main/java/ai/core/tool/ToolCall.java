@@ -4,9 +4,8 @@ import ai.core.api.jsonschema.JsonSchema;
 import ai.core.llm.domain.Function;
 import ai.core.llm.domain.Tool;
 import ai.core.llm.domain.ToolType;
-import ai.core.tool.domain.ToolCallDTO;
 import ai.core.utils.JsonSchemaUtil;
-import core.framework.json.JSON;
+import ai.core.utils.JsonUtil;
 
 import java.util.List;
 import java.util.Locale;
@@ -57,7 +56,7 @@ public abstract class ToolCall {
 
     @Override
     public String toString() {
-        return JSON.toJSON(ToolCallDTO.of(this));
+        return JsonUtil.toJson(toTool());
     }
 
     public Tool toTool() {

@@ -7,7 +7,6 @@ import ai.core.api.mcp.JsonRpcRequest;
 import ai.core.api.mcp.JsonRpcResponse;
 import ai.core.api.mcp.kafka.McpToolCallEvent;
 import ai.core.api.mcp.schema.Implementation;
-import ai.core.api.mcp.schema.InitializeRequest;
 import ai.core.api.mcp.schema.InitializeResult;
 import ai.core.api.mcp.schema.PromptCapabilities;
 import ai.core.api.mcp.schema.ResourceCapabilities;
