@@ -1,13 +1,13 @@
 package ai.core.persistence;
 
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 
 /**
  * @author stephen
  */
 public class PersistenceProviders {
-    Map<PersistenceProviderType, PersistenceProvider> persistenceProviders = new HashMap<>();
+    Map<PersistenceProviderType, PersistenceProvider> persistenceProviders = new EnumMap<>(PersistenceProviderType.class);
     PersistenceProviderType defaultPersistenceProviderType;
 
     public PersistenceProvider getDefaultPersistenceProvider() {

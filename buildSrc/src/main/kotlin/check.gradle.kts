@@ -19,8 +19,7 @@ subprojects {
 
     checkstyle {
         dependencies {
-            checkstyle("com.puppycrawl.tools:checkstyle:10.13.0")
-            checkstyle("org.codehaus.plexus:plexus-container-default:2.1.1")
+            checkstyle("com.puppycrawl.tools:checkstyle:10.23.0")
             checkstyle("com.github.sevntu-checkstyle:sevntu-checks:1.44.1")
         }
 
@@ -48,25 +47,20 @@ subprojects {
     pmd {
         ruleSets = listOf()
         ruleSetFiles = rootProject.files("buildSrc/src/main/check/pmd.xml")
-        toolVersion = "6.55.0"
+        toolVersion = "7.13.0"
         isConsoleOutput = true
 
         tasks.withType<Pmd> {
             group = "verification"
         }
-
-        dependencies {
-            pmd("net.sourceforge.pmd:pmd-java:6.55.0")
-            pmd("org.ow2.asm:asm:9.6")
-        }
     }
 
     spotbugs {
         dependencies {
-            spotbugsPlugins("com.mebigfatguy.sb-contrib:sb-contrib:7.6.4")
+            spotbugsPlugins("com.mebigfatguy.sb-contrib:sb-contrib:7.6.9")
         }
 
-        toolVersion = "4.8.3"
+        toolVersion = "4.9.3"
         reportLevel = Confidence.LOW
         extraArgs = listOf("-longBugCodes")
         excludeFilter = rootProject.file("buildSrc/src/main/check/spotbugs-suppressions.xml")
@@ -74,7 +68,7 @@ subprojects {
     }
 
     jacoco {
-        toolVersion = "0.8.10"
+        toolVersion = "0.8.13"
 
         tasks.named<JacocoReport>("testCodeCoverageReport") {
             reports {

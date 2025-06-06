@@ -34,7 +34,7 @@ public abstract class ToolCall {
         return parameters;
     }
 
-    public Boolean getNeedAuth() {
+    public Boolean isNeedAuth() {
         return needAuth;
     }
 
@@ -81,8 +81,8 @@ public abstract class ToolCall {
             schema.enums = parent.getItemEnums();
         }
         schema.required = parameters.stream().filter(
-                v -> v.getRequired() != null
-                        && v.getRequired()
+                v -> v.isRequired() != null
+                        && v.isRequired()
                         && v.getName() != null).map(ToolCallParameter::getName).toList();
         schema.properties = parameters.stream().filter(v -> v.getName() != null).collect(Collectors.toMap(ToolCallParameter::getName, this::toSchemaProperty));
         return schema;

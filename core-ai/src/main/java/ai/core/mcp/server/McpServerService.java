@@ -101,7 +101,9 @@ public class McpServerService {
                 case METHOD_ROOTS_LIST -> handleRootsList(request, rsp);
                 case METHOD_NOTIFICATION_ROOTS_LIST_CHANGED -> handleNotificationRootsListChanged(request, rsp);
                 case METHOD_SAMPLING_CREATE_MESSAGE -> handleSamplingCreateMessage(request, rsp);
-                default -> throw new NotFoundException("Method not found: " + request.method);
+                default -> {
+
+                }
             }
         } catch (Exception e) {
             rsp.error = new JsonRpcError();
@@ -111,6 +113,7 @@ public class McpServerService {
         return rsp;
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleInitialize(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new InitializeResult();
         rst.serverInfo = serverInfo();
@@ -127,14 +130,17 @@ public class McpServerService {
         return Implementation.of(name, version);
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleNotificationInitialized(JsonRpcRequest request, JsonRpcResponse rsp) {
 
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handlePing(JsonRpcRequest request, JsonRpcResponse rsp) {
 
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleToolsList(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new ListToolsResult();
         rst.tools = toolCalls.stream().map(this::toMcpTool).toList();
@@ -149,6 +155,7 @@ public class McpServerService {
         return tool;
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleToolsCall(String requestId, JsonRpcRequest request, JsonRpcResponse rsp) {
         var req = JsonUtil.fromJson(CallToolRequest.class, (Map<?, ?>) request.params);
         var map = toolCalls.stream().collect(Collectors.toMap(ToolCall::getName, Function.identity()));
@@ -162,68 +169,83 @@ public class McpServerService {
         rsp.result = JSON.toJSON(rst);
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleNotificationToolsListChanged(JsonRpcRequest request, JsonRpcResponse rsp) {
 
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleResourcesList(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new ListToolsResult();
         rst.tools = List.of();
         rsp.result = JSON.toJSON(rst);
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleSamplingCreateMessage(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleNotificationRootsListChanged(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleRootsList(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new ListToolsResult();
         rst.tools = List.of();
         rsp.result = JSON.toJSON(rst);
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleNotificationMessage(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleLoggingSetLevel(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleNotificationPromptsListChanged(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handlePromptGet(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handlePromptList(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new ListToolsResult();
         rst.tools = List.of();
         rsp.result = JSON.toJSON(rst);
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleResourcesUnsubscribe(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleResourcesSubscribe(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleResourcesTemplatesList(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleNotificationResourcesListChanged(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleResourcesRead(JsonRpcRequest request, JsonRpcResponse rsp) {
         
     }

@@ -14,7 +14,7 @@ import ai.core.rag.DistanceMetricType;
  */
 public record HnswConfig(String path, int dimension, int maxItemCount, int ef, int efConstruction, int m, DistanceMetricType metricType) {
     public static HnswConfig of(String path) {
-        return HnswConfig.of(path, 1536);
+        return of(path, 1536);
     }
     public static HnswConfig of(String path, int dimension) {
         return new HnswConfig(path, dimension, dimension, 40, 200, 16, DistanceMetricType.EUCLIDEAN);

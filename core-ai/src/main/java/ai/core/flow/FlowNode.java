@@ -47,7 +47,7 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
     public abstract void check(List<FlowNode<?>> settings);
 
     public void initialize(List<FlowNode<?>> settings, List<FlowEdge<?>> edges) {
-        if (getInitialized()) return;
+        if (isInitialized()) return;
         init(settings, edges);
         setInitialized(true);
     }
@@ -121,7 +121,7 @@ public abstract class FlowNode<T extends FlowNode<T>> implements Persistence<T> 
         this.parameterJson = parameterJson;
     }
 
-    public Boolean getInitialized() {
+    public Boolean isInitialized() {
         return initialized;
     }
 

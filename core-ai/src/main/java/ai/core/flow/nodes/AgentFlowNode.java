@@ -143,11 +143,11 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
         return promptTemplate;
     }
 
-    public Boolean getUseGroupContext() {
+    public Boolean isUseGroupContext() {
         return useGroupContext;
     }
 
-    public Boolean getReflectionEnabled() {
+    public Boolean isReflectionEnabled() {
         return reflectionEnabled;
     }
 
@@ -243,9 +243,9 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
             this.systemPrompt = agentNode.getSystemPrompt();
             this.description = agentNode.getDescription();
             this.promptTemplate = agentNode.getPromptTemplate();
-            this.useGroupContext = agentNode.getUseGroupContext();
+            this.useGroupContext = agentNode.isUseGroupContext();
             this.formatter = agentNode.getFormatter();
-            this.reflectionEnabled = agentNode.getReflectionEnabled();
+            this.reflectionEnabled = agentNode.isReflectionEnabled();
             this.reflectionMaxRound = agentNode.getReflectionMaxRound();
             this.reflectionMinRound = agentNode.getReflectionMinRound();
             this.reflectionPrompt = agentNode.getReflectionPrompt();

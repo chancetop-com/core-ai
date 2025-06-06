@@ -8,7 +8,6 @@ import core.framework.log.ActionLogContext;
 import core.framework.web.Request;
 import core.framework.web.sse.Channel;
 import core.framework.web.sse.ChannelListener;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
@@ -22,7 +21,7 @@ public class McpServerSseListener implements ChannelListener<JsonRpcResponse> {
     McpServerChannelService channelService;
 
     @Override
-    public void onConnect(Request request, Channel<JsonRpcResponse> channel, @Nullable String s) {
+    public void onConnect(Request request, Channel<JsonRpcResponse> channel, @javax.annotation.Nullable String s) {
         if (request.body().isEmpty()) return;
         var json = new String(request.body().orElseThrow());
         ActionLogContext.put("mcp-server-sse-connect", json);

@@ -224,7 +224,7 @@ public class AgentGroup extends Node<AgentGroup> {
         }
 
         public static String agentsInfo(String name, String description, List<Node<?>> agents) {
-            return JSON.toJSON(AgentsInfo.of(name, description, agents.stream().map(agent -> {
+            return JSON.toJSON(of(name, description, agents.stream().map(agent -> {
                 var agentInfo = AgentInfo.of(agent.getName(), agent.getDescription());
                 if (agent instanceof Agent) {
                     agentInfo.functions = ((Agent) agent).getToolCalls().stream().map(ToolCall::toString).toList();

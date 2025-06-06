@@ -19,7 +19,7 @@ public enum PersistenceProviderType {
     }
 
     public static PersistenceProviderType fromName(String name) {
-        for (var type : PersistenceProviderType.values()) {
+        for (var type : values()) {
             if (type.getName().equalsIgnoreCase(name)) {
                 return type;
             }

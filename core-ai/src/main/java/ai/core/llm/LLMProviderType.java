@@ -21,7 +21,7 @@ public enum LLMProviderType {
     }
 
     public static LLMProviderType fromName(String name) {
-        for (var type : LLMProviderType.values()) {
+        for (var type : values()) {
             if (type.getName().equalsIgnoreCase(name)) {
                 return type;
             }

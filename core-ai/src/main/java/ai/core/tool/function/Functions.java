@@ -17,15 +17,15 @@ public class Functions extends ArrayList<Function> {
     @Serial
     private static final long serialVersionUID = -2523451400454678077L;
 
-    public static Functions from(Object object) {
+    public static List<Function> from(Object object) {
         return from(object.getClass(), object, getAllMethods(object.getClass(), method -> method.getAnnotation(CoreAiMethod.class) != null).stream().map(Method::getName).toArray(String[]::new));
     }
 
-    public static Functions from(Object object, String... methodNames) {
+    public static List<Function> from(Object object, String... methodNames) {
         return from(object.getClass(), object, methodNames);
     }
 
-    private static Functions from(Class<?> clazz, Object object, String... methodNames) {
+    private static List<Function> from(Class<?> clazz, Object object, String... methodNames) {
         var methodList = getAllMethods(clazz, method -> {
             if (object == null && !Modifier.isStatic(method.getModifiers())) {
                 return false;

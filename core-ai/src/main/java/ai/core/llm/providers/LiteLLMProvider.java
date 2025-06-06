@@ -73,25 +73,21 @@ public class LiteLLMProvider extends LLMProvider {
         var client = HTTPClient.builder().trustAll().build();
         var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
-        try {
-            var body = JsonUtil.toJson(request).getBytes(StandardCharsets.UTF_8);
-            req.body(body, ContentType.APPLICATION_JSON);
-            if (!Strings.isBlank(token)) {
-                req.headers.put("Authorization", "Bearer " + token);
-            }
-            var rsp = client.execute(req);
-            if (rsp.statusCode != 200) {
-                throw new RuntimeException(rsp.text());
-            }
-            var rst = JSON.fromJSON(CompletionResponse.class, rsp.text());
-            rst.choices.forEach(v -> {
-                if (v.message.content == null) {
-                    v.message.content = "";
-                }
-            });
-            return rst;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create completion: " + e.getMessage(), e);
+        var body = JsonUtil.toJson(request).getBytes(StandardCharsets.UTF_8);
+        req.body(body, ContentType.APPLICATION_JSON);
+        if (!Strings.isBlank(token)) {
+            req.headers.put("Authorization", "Bearer " + token);
         }
+        var rsp = client.execute(req);
+        if (rsp.statusCode != 200) {
+            throw new RuntimeException(rsp.text());
+        }
+        var rst = JSON.fromJSON(CompletionResponse.class, rsp.text());
+        rst.choices.forEach(v -> {
+            if (v.message.content == null) {
+                v.message.content = "";
+            }
+        });
+        return rst;
     }
 }

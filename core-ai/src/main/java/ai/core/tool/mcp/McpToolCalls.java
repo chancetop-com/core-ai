@@ -16,7 +16,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     @Serial
     private static final long serialVersionUID = 2202468890851081427L;
 
-    public static McpToolCalls from(McpClientService mcpClientService) {
+    public static List<McpToolCall> from(McpClientService mcpClientService) {
         var tools = mcpClientService.listTools();
         var mcpTollCalls = new McpToolCalls();
         for (var tool : tools) {

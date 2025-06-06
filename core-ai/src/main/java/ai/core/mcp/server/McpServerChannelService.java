@@ -23,7 +23,7 @@ public class McpServerChannelService {
 
     public void close(Channel<JsonRpcResponse> channel) {
         executor.submit("close-finished-channel", () -> {
-            channelMap.values().removeIf(c -> c == channel);
+            channelMap.values().removeIf(c -> c.equals(channel));
             channel.close();
         }, Duration.ofSeconds(5));
     }

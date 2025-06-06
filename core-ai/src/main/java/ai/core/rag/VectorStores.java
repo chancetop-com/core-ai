@@ -1,13 +1,13 @@
 package ai.core.rag;
 
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 
 /**
  * @author stephen
  */
 public class VectorStores {
-    Map<VectorStoreType, VectorStore> vectorStores = new HashMap<>();
+    Map<VectorStoreType, VectorStore> vectorStores = new EnumMap<>(VectorStoreType.class);
     VectorStoreType defaultVectorStoreType;
 
     public VectorStore getDefaultVectorStore() {

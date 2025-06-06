@@ -163,7 +163,7 @@ public class Agent extends Node<Agent> {
         }
 
         // add group context if needed
-        if (getUseGroupContext() && getParentNode() != null) {
+        if (isUseGroupContext() && getParentNode() != null) {
             addMessages(getParentNode().getMessages());
         }
 
@@ -243,7 +243,7 @@ public class Agent extends Node<Agent> {
 
     private Message buildSystemMessageWithLongTernMemory(Map<String, Object> variables) {
         var prompt = systemPrompt;
-        if (getParentNode() != null && getUseGroupContext()) {
+        if (getParentNode() != null && isUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
         }
         Map<String, Object> var = Maps.newConcurrentHashMap();
@@ -301,7 +301,7 @@ public class Agent extends Node<Agent> {
         response.choices.getFirst().message.content = text.substring(text.lastIndexOf("</think>") + 8);
     }
 
-    public Boolean getUseGroupContext() {
+    public Boolean isUseGroupContext() {
         return this.useGroupContext;
     }
 

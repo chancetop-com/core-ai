@@ -18,7 +18,7 @@ public enum VectorStoreType {
     }
 
     public static VectorStoreType fromName(String name) {
-        for (var type : VectorStoreType.values()) {
+        for (var type : values()) {
             if (type.getName().equalsIgnoreCase(name)) {
                 return type;
             }

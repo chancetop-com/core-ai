@@ -41,7 +41,7 @@ public class ToolCallParameter {
         return type;
     }
 
-    public Boolean getRequired() {
+    public Boolean isRequired() {
         return required;
     }
 

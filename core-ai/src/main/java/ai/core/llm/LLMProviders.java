@@ -1,6 +1,6 @@
 package ai.core.llm;
 
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,7 +17,7 @@ public class LLMProviders {
         };
     }
 
-    Map<LLMProviderType, LLMProvider> providers = new HashMap<>();
+    Map<LLMProviderType, LLMProvider> providers = new EnumMap<>(LLMProviderType.class);
     LLMProviderType defaultProviderType;
 
     public void addProvider(LLMProviderType type, LLMProvider provider) {
