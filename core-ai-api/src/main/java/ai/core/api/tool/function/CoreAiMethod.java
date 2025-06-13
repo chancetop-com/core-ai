@@ -15,5 +15,5 @@ import java.lang.annotation.Target;
 public @interface CoreAiMethod {
     String name() default "";
     String description();
-    boolean neeAuth() default false;
+    boolean needAuth() default false;
 }

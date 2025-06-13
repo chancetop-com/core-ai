@@ -52,6 +52,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
                 .description(operation.description)
                 .object(dynamicApiCaller)
                 .method(method)
+                .needAuth(operation.needAuth)
                 .dynamicArguments(true)
                 .parameters(params).build();
     }

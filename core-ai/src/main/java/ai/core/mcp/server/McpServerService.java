@@ -150,6 +150,7 @@ public class McpServerService {
     private Tool toMcpTool(ToolCall toolCall) {
         var tool = new Tool();
         tool.name = toolCall.getName();
+        tool.needAuth = toolCall.isNeedAuth();
         tool.description = toolCall.getDescription();
         tool.inputSchema = toolCall.toJsonSchema();
         return tool;

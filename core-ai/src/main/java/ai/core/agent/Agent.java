@@ -11,6 +11,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
 import ai.core.memory.memories.LongTernMemory;
+import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -56,6 +57,7 @@ public class Agent extends Node<Agent> {
     Boolean useGroupContext;
     Integer maxToolCallCount;
     Integer currentToolCallCount;
+    Boolean authenticated = false;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -77,6 +79,11 @@ public class Agent extends Node<Agent> {
             prompt = handleToShortQuery(prompt, null);
         }
 
+        // set authenticated flag if the agent is authenticated
+        if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
+            authenticated = true;
+        }
+
         // update chain node status
         updateNodeStatus(NodeStatus.RUNNING);
 
@@ -88,7 +95,8 @@ public class Agent extends Node<Agent> {
             reflection(variables);
         }
 
-        updateNodeStatus(NodeStatus.COMPLETED);
+        // nothing wrong, update node status to completed, otherwise it had been set by the subsequent chat or reflection
+        if (getNodeStatus() == NodeStatus.RUNNING) updateNodeStatus(NodeStatus.COMPLETED);
         return getOutput();
     }
 
@@ -263,6 +271,10 @@ public class Agent extends Node<Agent> {
         }
         var function = optional.get();
         try {
+            if (function.isNeedAuth() && !authenticated) {
+                this.updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
+                return "This tool call requires user authentication, please ask user to confirm it.";
+            }
             logger.info("function call {}: {}", toolCall.function.name, toolCall.function.arguments);
             return function.call(toolCall.function.arguments);
         } catch (Exception e) {

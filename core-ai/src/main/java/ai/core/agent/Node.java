@@ -90,6 +90,10 @@ public abstract class Node<T extends Node<T>> {
         return terminations.isEmpty() || terminations.stream().noneMatch(v -> v.terminate(this));
     }
 
+    void setNodeStatus(NodeStatus nodeStatus) {
+        this.nodeStatus = nodeStatus;
+    }
+
     void formatContent(CompletionResponse rst, Formatter formatter) {
         var message = rst.choices.getFirst().message;
         message.content = formatter.formatter(message.content);
