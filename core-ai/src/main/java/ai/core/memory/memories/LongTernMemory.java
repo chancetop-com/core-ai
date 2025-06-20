@@ -5,6 +5,9 @@ import core.framework.util.Lists;
 
 import java.util.List;
 
+/**
+ * @author stephen
+ */
 public class LongTernMemory implements Memory {
     public static final String TEMPLATE = "\n\nLong Term Memory:\n";
     private final List<String> memories = Lists.newArrayList();

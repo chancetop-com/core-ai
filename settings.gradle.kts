@@ -1,5 +1,4 @@
 include("core-ai")
+include("core-ai-api")
 include("example-service")
 include("example-service-interface")
-include("language-server-library")
-include("core-ai-api")

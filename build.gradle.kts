@@ -51,16 +51,12 @@ subprojects {
     }
 
     if (project.name.startsWith("core-ai") || project.name.endsWith("library") || project.name.endsWith("api")) {
+        the<JavaPluginExtension>().withSourcesJar()
         apply(plugin = "maven-publish")
-        val sourceJar by tasks.registering(Jar::class) {
-            archiveClassifier.set("sources")
-            from(sourceSets.main.get().allSource)
-        }
         publishing {
             publications {
                 create<MavenPublication>("maven") {
                     from(components["java"])
-                    artifact(sourceJar.get())
                 }
             }
 
@@ -94,15 +90,6 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
     apply(plugin = "lib")
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
-    }
-}
-
-project(":language-server-library") {
-    version = "1.1.0"
-    dependencies {
-        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("org.eclipse.lsp4j:org.eclipse.lsp4j:${Versions.ECLIPSE_LSP4J_VERSION}")
     }
 }
 
