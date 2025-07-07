@@ -130,7 +130,6 @@ project(":example-service") {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
         implementation(project(":example-service-interface"))
-        implementation(project(":language-server-library"))
         implementation("com.microsoft.azure.cognitiveservices:azure-cognitiveservices-imagesearch:${Versions.AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION}")
     }
 }

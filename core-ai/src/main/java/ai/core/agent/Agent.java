@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
@@ -12,17 +13,13 @@ import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
 import ai.core.memory.memories.LongTernMemory;
 import ai.core.prompt.Prompts;
-import ai.core.prompt.SystemVariables;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.reflection.ReflectionConfig;
-import ai.core.termination.terminations.MaxRoundTermination;
-import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
-import core.framework.util.Lists;
 import core.framework.util.Maps;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
@@ -30,18 +27,16 @@ import core.framework.web.exception.ConflictException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * @author stephen
  */
 public class Agent extends Node<Agent> {
-    public static Builder builder() {
-        return new Builder();
+    public static AgentBuilder builder() {
+        return new AgentBuilder();
     }
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
 
@@ -284,7 +279,11 @@ public class Agent extends Node<Agent> {
 
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null) throw new RuntimeException("vectorStore cannot be null if useRag flag is enabled");
-        var rsp = llmProvider.embeddings(new EmbeddingRequest(List.of(query)));
+        var ragQuery = query;
+        if (ragConfig.llmProvider() != null) {
+            ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, null);
+        }
+        var rsp = llmProvider.embeddings(new EmbeddingRequest(List.of(ragQuery)));
         addTokenCost(rsp.usage);
         var embedding = rsp.embeddings.getFirst().embedding;
         var context = ragConfig.vectorStore().similaritySearchText(SimilaritySearchRequest.builder()
@@ -341,119 +340,5 @@ public class Agent extends Node<Agent> {
         this.model = model;
     }
 
-    public static class Builder extends NodeBuilder<Builder, Agent> {
-        private String systemPrompt;
-        private String promptTemplate;
-        private LLMProvider llmProvider;
-        private List<ToolCall> toolCalls = Lists.newArrayList();
-        private RagConfig ragConfig;
-        private Double temperature;
-        private String model;
-        private ReflectionConfig reflectionConfig;
-        private Boolean useGroupContext = false;
-        private Boolean enableReflection = false;
-        private Integer maxToolCallCount;
 
-        public Builder promptTemplate(String promptTemplate) {
-            this.promptTemplate = promptTemplate;
-            return this;
-        }
-
-        public Builder maxToolCallCount(Integer maxToolCallCount) {
-            this.maxToolCallCount = maxToolCallCount;
-            return this;
-        }
-
-        public Builder systemPrompt(String systemPrompt) {
-            this.systemPrompt = systemPrompt;
-            return this;
-        }
-
-        public Builder temperature(Double temperature) {
-            this.temperature = temperature;
-            return this;
-        }
-
-        public Builder model(String model) {
-            this.model = model;
-            return this;
-        }
-
-        public Builder llmProvider(LLMProvider llmProvider) {
-            this.llmProvider = llmProvider;
-            return this;
-        }
-
-        public Builder toolCalls(List<? extends ToolCall> toolCalls) {
-            this.toolCalls = new ArrayList<>(toolCalls);
-            return this;
-        }
-
-        public Builder ragConfig(RagConfig ragConfig) {
-            this.ragConfig = ragConfig;
-            return this;
-        }
-
-        public Builder reflectionConfig(ReflectionConfig config) {
-            this.reflectionConfig = config;
-            return this;
-        }
-
-        public Builder useGroupContext(Boolean useGroupContext) {
-            this.useGroupContext = useGroupContext;
-            return this;
-        }
-
-        public Builder enableReflection(Boolean enableReflection) {
-            this.enableReflection = enableReflection;
-            return this;
-        }
-
-        public Agent build() {
-            var agent = new Agent();
-            this.nodeType = NodeType.AGENT;
-            // default name and description
-            if (name == null) {
-                name = "assistant-agent";
-            }
-            if (description == null) {
-                description = "assistant agent that help with user";
-            }
-            build(agent);
-            agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
-            agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
-            agent.maxToolCallCount = this.maxToolCallCount == null ? 3 : this.maxToolCallCount;
-            agent.temperature = this.temperature;
-            agent.model = this.model;
-            agent.llmProvider = this.llmProvider;
-            agent.toolCalls = this.toolCalls;
-            agent.ragConfig = this.ragConfig;
-            agent.reflectionConfig = this.reflectionConfig;
-            agent.useGroupContext = this.useGroupContext;
-            agent.setPersistence(new AgentPersistence());
-            if (this.enableReflection && this.reflectionConfig == null) {
-                agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
-            }
-            if (agent.reflectionConfig != null) {
-                agent.setMaxRound(agent.reflectionConfig.maxRound());
-                agent.addTermination(new MaxRoundTermination());
-                agent.addTermination(new StopMessageTermination());
-            }
-            if (agent.ragConfig == null) {
-                agent.ragConfig = new RagConfig();
-            }
-            if (agent.longTernMemory == null) {
-                agent.longTernMemory = new LongTernMemory();
-            }
-
-            var systemVariables = agent.getSystemVariables();
-            systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
-            return agent;
-        }
-
-        @Override
-        protected Builder self() {
-            return this;
-        }
-    }
 }

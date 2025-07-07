@@ -1,5 +1,6 @@
 package ai.core.rag;
 
+import ai.core.llm.LLMProvider;
 import core.framework.util.Strings;
 
 /**
@@ -17,6 +18,7 @@ public class RagConfig {
     Integer topK = 5;
     Double threshold = 0d;
     VectorStore vectorStore;
+    LLMProvider llmProvider;
 
     public boolean useRag() {
         return useRag;
@@ -34,11 +36,16 @@ public class RagConfig {
         return vectorStore;
     }
 
+    public LLMProvider llmProvider() {
+        return llmProvider;
+    }
+
     public static class Builder {
         private boolean useRag = false;
         private Integer topK = 5;
         private Double threshold = 0d;
         private VectorStore vectorStore;
+        private LLMProvider llmProvider;
 
         public Builder useRag(Boolean useRag) {
             this.useRag = useRag;
@@ -60,12 +67,21 @@ public class RagConfig {
             return this;
         }
 
+        public Builder llmProvider(LLMProvider llmProvider) {
+            if (llmProvider == null) {
+                throw new IllegalArgumentException("LLMProvider cannot be null");
+            }
+            this.llmProvider = llmProvider;
+            return this;
+        }
+
         public RagConfig build() {
             var conf = new RagConfig();
             conf.useRag = this.useRag;
             conf.topK = this.topK;
             conf.threshold = this.threshold;
             conf.vectorStore = this.vectorStore;
+            conf.llmProvider = this.llmProvider;
             return conf;
         }
     }
