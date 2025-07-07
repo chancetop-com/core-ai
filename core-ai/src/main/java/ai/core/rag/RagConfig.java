@@ -20,6 +20,7 @@ public class RagConfig {
     VectorStore vectorStore;
     LLMProvider llmProvider;
 
+
     public boolean useRag() {
         return useRag;
     }

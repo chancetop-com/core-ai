@@ -9,6 +9,7 @@ import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
 import ai.core.memory.memories.LongTernMemory;
@@ -278,18 +279,19 @@ public class Agent extends Node<Agent> {
     }
 
     private void rag(String query, Map<String, Object> variables) {
-        if (ragConfig.vectorStore() == null) throw new RuntimeException("vectorStore cannot be null if useRag flag is enabled");
+        if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null) throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
         var ragQuery = query;
         if (ragConfig.llmProvider() != null) {
             ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, null);
         }
-        var rsp = llmProvider.embeddings(new EmbeddingRequest(List.of(ragQuery)));
+        var rsp = ragConfig.llmProvider().embeddings(new EmbeddingRequest(List.of(ragQuery)));
         addTokenCost(rsp.usage);
         var embedding = rsp.embeddings.getFirst().embedding;
-        var context = ragConfig.vectorStore().similaritySearchText(SimilaritySearchRequest.builder()
+        var docs = ragConfig.vectorStore().similaritySearch(SimilaritySearchRequest.builder()
                 .embedding(embedding)
                 .threshold(ragConfig.threshold())
                 .topK(ragConfig.topK()).build());
+        var context = ragConfig.llmProvider().rerankings(RerankingRequest.of(ragQuery, docs.stream().map(v -> v.content).toList())).rerankedDocuments.getFirst();
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
     }
 

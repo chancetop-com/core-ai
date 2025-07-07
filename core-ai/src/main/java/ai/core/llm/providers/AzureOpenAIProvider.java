@@ -2,6 +2,8 @@ package ai.core.llm.providers;
 
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.domain.RerankingRequest;
+import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.providers.inner.AzureOpenAIModelsUtil;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
@@ -44,6 +46,11 @@ public class AzureOpenAIProvider extends LLMProvider {
         var embeddingsOptions = new EmbeddingsOptions(request.query());
         var embeddings = client.getEmbeddings(config.getEmbeddingModel(), embeddingsOptions);
         return AzureOpenAIModelsUtil.toEmbeddingResponse(request, embeddings);
+    }
+
+    @Override
+    public RerankingResponse rerankings(RerankingRequest request) {
+        return null;
     }
 
     @Override

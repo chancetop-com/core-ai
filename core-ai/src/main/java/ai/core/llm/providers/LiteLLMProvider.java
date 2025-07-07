@@ -8,6 +8,8 @@ import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.RerankingRequest;
+import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
@@ -51,6 +53,11 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     public EmbeddingResponse embeddings(EmbeddingRequest dto) {
+        return null;
+    }
+
+    @Override
+    public RerankingResponse rerankings(RerankingRequest request) {
         return null;
     }
 

@@ -2,6 +2,8 @@ package ai.core.llm.providers;
 
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.domain.RerankingRequest;
+import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.providers.inner.AzureInferenceModelsUtil;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
@@ -62,6 +64,11 @@ public class AzureInferenceProvider extends LLMProvider {
     public EmbeddingResponse embeddings(EmbeddingRequest request) {
         var rsp = embeddingsClient.embed(request.query(), 1536, EmbeddingEncodingFormat.FLOAT, EmbeddingInputType.TEXT, config.getEmbeddingModel(), null);
         return AzureInferenceModelsUtil.toEmbeddingResponse(request, rsp);
+    }
+
+    @Override
+    public RerankingResponse rerankings(RerankingRequest request) {
+        return null;
     }
 
     @Override
