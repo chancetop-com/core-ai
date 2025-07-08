@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.formatter.formatters.DefaultJsonFormatter;
 import ai.core.llm.LLMProvider;
 import core.framework.api.json.Property;
+import core.framework.json.JSON;
 
 import java.util.List;
 
@@ -11,7 +12,13 @@ import java.util.List;
  * @author stephen
  */
 public class DefaultLongTermMemoryExtractionAgent {
-    public static Agent of(LLMProvider llmProvider) {
+    private final LLMProvider llmProvider;
+
+    public DefaultLongTermMemoryExtractionAgent(LLMProvider llmProvider) {
+        this.llmProvider = llmProvider;
+    }
+
+    Agent of(LLMProvider llmProvider) {
         return Agent.builder()
                 .name("long-term-memory-extraction-agent")
                 .description("A default agent for extracting long-term memory from conversation history using LLMs.")
@@ -37,6 +44,13 @@ public class DefaultLongTermMemoryExtractionAgent {
                         """)
                 .formatter(new DefaultJsonFormatter(true))
                 .llmProvider(llmProvider).build();
+    }
+
+    public List<String> extractMemories(String conversationText) {
+        var agent = of(llmProvider);
+        var response = agent.run(conversationText, null);
+        var dto = JSON.fromJSON(LongTernMemoryDto.class, response);
+        return dto.memories;
     }
 
     public static class LongTernMemoryDto {

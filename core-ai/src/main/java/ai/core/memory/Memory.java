@@ -1,18 +1,23 @@
 package ai.core.memory;
 
+import ai.core.document.Document;
+import ai.core.llm.domain.Message;
+
 import java.util.List;
 
 /**
  * @author stephen
  */
-public interface Memory {
-    void add(String memory);
+public abstract class Memory {
+    public static final String PROMPT_MEMORY_TEMPLATE = "\n\n### Memory\n";
 
-    void clear();
+    public abstract void extractAndSave(List<Message> conversation);
 
-    List<String> list();
+    public abstract List<Document> retrieve(String query);
 
-    default boolean isEmpty() {
-        return list().isEmpty();
-    }
+    public abstract void add(String text);
+
+    public abstract void clear();
+
+    public abstract List<Document> list();
 }

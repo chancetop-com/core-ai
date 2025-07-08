@@ -1,7 +1,7 @@
 package ai.core.agent;
 
 import ai.core.llm.LLMProvider;
-import ai.core.memory.memories.LongTernMemory;
+import ai.core.memory.memories.NaiveMemory;
 import ai.core.prompt.SystemVariables;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
@@ -119,7 +119,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agent.ragConfig = new RagConfig();
         }
         if (agent.longTernMemory == null) {
-            agent.longTernMemory = new LongTernMemory();
+            agent.longTernMemory = new NaiveMemory();
         }
 
         var systemVariables = agent.getSystemVariables();
