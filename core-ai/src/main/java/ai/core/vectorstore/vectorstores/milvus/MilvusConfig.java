@@ -1,4 +1,4 @@
-package ai.core.rag.vectorstore.milvus;
+package ai.core.vectorstore.vectorstores.milvus;
 
 /**
  * @author stephen

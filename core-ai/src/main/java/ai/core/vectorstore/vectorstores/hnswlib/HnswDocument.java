@@ -1,4 +1,4 @@
-package ai.core.rag.vectorstore.hnswlib;
+package ai.core.vectorstore.vectorstores.hnswlib;
 
 import com.github.jelmerk.hnswlib.core.Item;
 

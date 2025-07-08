@@ -3,7 +3,7 @@ package ai.core.flow.nodes;
 import ai.core.flow.FlowEdge;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
-import ai.core.rag.VectorStoreType;
+import ai.core.vectorstore.VectorStoreType;
 import core.framework.json.JSON;
 
 import java.util.List;

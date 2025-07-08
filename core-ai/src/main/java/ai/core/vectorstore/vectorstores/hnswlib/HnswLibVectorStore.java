@@ -1,10 +1,10 @@
-package ai.core.rag.vectorstore.hnswlib;
+package ai.core.vectorstore.vectorstores.hnswlib;
 
 import ai.core.document.Document;
 import ai.core.document.Embedding;
 import ai.core.rag.DistanceMetricType;
 import ai.core.rag.SimilaritySearchRequest;
-import ai.core.rag.VectorStore;
+import ai.core.vectorstore.VectorStore;
 import com.github.jelmerk.hnswlib.core.DistanceFunction;
 import com.github.jelmerk.hnswlib.core.DistanceFunctions;
 import com.github.jelmerk.hnswlib.core.Index;

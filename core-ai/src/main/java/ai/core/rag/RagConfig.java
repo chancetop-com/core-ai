@@ -1,6 +1,7 @@
 package ai.core.rag;
 
 import ai.core.llm.LLMProvider;
+import ai.core.vectorstore.VectorStore;
 import core.framework.util.Strings;
 
 /**

@@ -1,6 +1,7 @@
-package ai.core.rag;
+package ai.core.vectorstore;
 
 import ai.core.document.Document;
+import ai.core.rag.SimilaritySearchRequest;
 
 import java.util.List;
 import java.util.Optional;

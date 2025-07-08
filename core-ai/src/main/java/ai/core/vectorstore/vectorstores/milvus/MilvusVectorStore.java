@@ -1,9 +1,9 @@
-package ai.core.rag.vectorstore.milvus;
+package ai.core.vectorstore.vectorstores.milvus;
 
 import ai.core.document.Document;
 import ai.core.document.Embedding;
 import ai.core.rag.SimilaritySearchRequest;
-import ai.core.rag.VectorStore;
+import ai.core.vectorstore.VectorStore;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import io.milvus.v2.client.ConnectConfig;

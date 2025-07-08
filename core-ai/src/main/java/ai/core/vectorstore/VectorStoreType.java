@@ -1,4 +1,4 @@
-package ai.core.rag;
+package ai.core.vectorstore;
 
 /**
  * @author stephen

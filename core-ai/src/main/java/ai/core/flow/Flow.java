@@ -8,7 +8,7 @@ import ai.core.flow.nodes.LLMFlowNode;
 import ai.core.flow.nodes.RagFlowNode;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.Persistence;
-import ai.core.rag.VectorStores;
+import ai.core.vectorstore.VectorStores;
 import ai.core.task.Task;
 import ai.core.task.TaskArtifact;
 import ai.core.task.TaskMessage;

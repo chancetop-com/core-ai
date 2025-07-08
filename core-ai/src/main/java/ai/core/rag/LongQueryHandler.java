@@ -9,6 +9,7 @@ import ai.core.document.textsplitters.RecursiveCharacterTextSplitter;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.Usage;
+import ai.core.vectorstore.VectorStore;
 import core.framework.util.Strings;
 
 import java.util.List;

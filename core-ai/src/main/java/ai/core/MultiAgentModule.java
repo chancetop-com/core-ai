@@ -12,12 +12,12 @@ import ai.core.persistence.PersistenceProviders;
 import ai.core.persistence.providers.FilePersistenceProvider;
 import ai.core.persistence.providers.RedisPersistenceProvider;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
-import ai.core.rag.VectorStoreType;
-import ai.core.rag.VectorStores;
-import ai.core.rag.vectorstore.hnswlib.HnswConfig;
-import ai.core.rag.vectorstore.hnswlib.HnswLibVectorStore;
-import ai.core.rag.vectorstore.milvus.MilvusConfig;
-import ai.core.rag.vectorstore.milvus.MilvusVectorStore;
+import ai.core.vectorstore.VectorStoreType;
+import ai.core.vectorstore.VectorStores;
+import ai.core.vectorstore.vectorstores.hnswlib.HnswConfig;
+import ai.core.vectorstore.vectorstores.hnswlib.HnswLibVectorStore;
+import ai.core.vectorstore.vectorstores.milvus.MilvusConfig;
+import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
 import core.framework.module.Module;
 
 /**

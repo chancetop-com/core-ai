@@ -3,8 +3,8 @@ package ai.core.flow.nodes;
 import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeType;
 import ai.core.rag.RagConfig;
-import ai.core.rag.VectorStore;
-import ai.core.rag.VectorStores;
+import ai.core.vectorstore.VectorStore;
+import ai.core.vectorstore.VectorStores;
 import core.framework.api.json.Property;
 
 /**
