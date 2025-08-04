@@ -14,6 +14,7 @@ import core.framework.internal.web.sse.ServerSentEventHandler;
 import core.framework.util.Strings;
 import core.framework.web.sse.ChannelListener;
 import io.undertow.server.HttpServerExchange;
+import io.undertow.util.HeaderMap;
 import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import org.slf4j.Logger;
@@ -50,6 +51,12 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
     }
 
     @Override
+    public boolean check(HttpString method, String path, HeaderMap headers) {
+        return "text/event-stream".equals(headers.getFirst(Headers.ACCEPT))
+            && supports.containsKey(key(method.toString(), path));
+    }
+
+    @Override
     public void handleRequest(HttpServerExchange exchange) {
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/event-stream");
         exchange.setPersistent(false);
@@ -69,21 +76,6 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
         } catch (IOException e) {
             logger.warn("failed to establish sse connection, error={}", e.getMessage(), e);
             IoUtils.safeClose(exchange.getConnection());
-        }
-    }
-
-    public <T> void add(HTTPMethod method, String path, Class<T> eventClass, ChannelListener<T> listener, MCPServerSentEventContextImpl<T> context) {
-        var previous = supports.put(key(method.name(), path), new MCPChannelSupport<>(listener, eventClass, context));
-        if (previous != null) throw new Error(Strings.format("found duplicate sse listener, method={}, path={}", method, path));
-    }
-
-    @Override
-    public void shutdown() {
-        logger.info("close sse connections");
-        for (MCPChannelSupport<?> support : supports.values()) {
-            for (var channel : support.context.all()) {
-                ((MCPChannelImpl<?>) channel).shutdown();
-            }
         }
     }
 
@@ -145,10 +137,6 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
         }
     }
 
-    private String key(String method, String path) {
-        return method + ":" + path;
-    }
-
     void limitRate(RateControl rateControl, MCPChannelSupport<Object> support, String clientIP) {
         if (support.limitRate != null) {
             String group = support.limitRate.value();
@@ -162,5 +150,22 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
             + "data: " + errorResponse + "\n\n";
     }
 
+    public <T> void add(HTTPMethod method, String path, Class<T> eventClass, ChannelListener<T> listener, MCPServerSentEventContextImpl<T> context) {
+        var previous = supports.put(key(method.name(), path), new MCPChannelSupport<>(listener, eventClass, context));
+        if (previous != null) throw new Error(Strings.format("found duplicate sse listener, method={}, path={}", method, path));
+    }
 
+    @Override
+    public void shutdown() {
+        logger.info("close sse connections");
+        for (MCPChannelSupport<?> support : supports.values()) {
+            for (var channel : support.context.all()) {
+                ((MCPChannelImpl<?>) channel).shutdown();
+            }
+        }
+    }
+
+    private String key(String method, String path) {
+        return method + ":" + path;
+    }
 }
