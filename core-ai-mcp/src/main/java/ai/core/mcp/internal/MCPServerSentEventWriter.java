@@ -1,25 +1,33 @@
 package ai.core.mcp.internal;
 
-import core.framework.internal.json.JSONWriter;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.introspect.VisibilityChecker;
+import core.framework.internal.json.JSONAnnotationIntrospector;
+
+import java.io.UncheckedIOException;
+
+import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
+import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.PUBLIC_ONLY;
 
 /**
  * @author miller
  */
 class MCPServerSentEventWriter<T> {
-    private final JSONWriter<T> writer;
-    //TODO validation
-    //private final Validator<T> validator;
-
-    MCPServerSentEventWriter(Class<T> eventClass) {
-        writer = new JSONWriter<>(eventClass);
-        //validator = Validator.of(eventClass);
-    }
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+            .setVisibility(new VisibilityChecker.Std(NONE, NONE, NONE, NONE, PUBLIC_ONLY))
+            .setAnnotationIntrospector(new JSONAnnotationIntrospector());
 
     String toMessage(String id, T event) {
         //validator.validate(event, false);
-        String data = writer.toJSONString(event);
-
-        return message(id, data);
+        try {
+            String data = OBJECT_MAPPER.writeValueAsString(event);
+            return message(id, data);
+        } catch (JsonProcessingException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     String message(String id, String data) {

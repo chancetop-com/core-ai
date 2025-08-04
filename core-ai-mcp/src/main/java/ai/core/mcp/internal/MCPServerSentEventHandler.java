@@ -52,14 +52,17 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
 
     @Override
     public boolean check(HttpString method, String path, HeaderMap headers) {
-        return "text/event-stream".equals(headers.getFirst(Headers.ACCEPT))
+        return headers.getFirst(Headers.ACCEPT).contains("text/event-stream")
             && supports.containsKey(key(method.toString(), path));
     }
 
     @Override
     public void handleRequest(HttpServerExchange exchange) {
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/event-stream");
-        exchange.setPersistent(false);
+        exchange.getResponseHeaders().put(Headers.CONNECTION, "keep-alive");
+        exchange.getResponseHeaders().put(Headers.TRANSFER_ENCODING, "chunked");
+        exchange.getResponseHeaders().put(Headers.CACHE_CONTROL, "no-cache");
+        exchange.setPersistent(true);
         StreamSinkChannel sink = exchange.getResponseChannel();
         try {
             if (sink.flush()) {
@@ -117,6 +120,7 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
             exchange.addExchangeCompleteListener(new MCPServerSentEventCloseHandler<>(logManager, channel, support));
 
             channel.sendBytes(Strings.bytes("retry: 5000\n\n"));    // set browser retry to 5s
+            channel.sendBytes(Strings.bytes(":\n\n"));
 
             request.session = ReadOnlySession.of(sessionManager.load(request, actionLog));
             String lastEventId = exchange.getRequestHeaders().getLast(LAST_EVENT_ID);

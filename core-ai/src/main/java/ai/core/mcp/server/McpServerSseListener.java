@@ -29,6 +29,5 @@ public class McpServerSseListener implements ChannelListener<JsonRpcResponse> {
         var requestId = UUID.randomUUID().toString();
         channelService.connect(requestId, channel);
         mcpServerService.handle(requestId, req);
-        channelService.close(channel);
     }
 }

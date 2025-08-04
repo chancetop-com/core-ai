@@ -6,7 +6,7 @@ import core.framework.api.json.Property;
  * @author stephen
  */
 public class JsonRpcResponse {
-    public static JsonRpcResponse of(String jsonrpc, String id) {
+    public static JsonRpcResponse of(String jsonrpc, Object id) {
         var rsp = new JsonRpcResponse();
         rsp.jsonrpc = jsonrpc;
         rsp.id = id;
@@ -17,10 +17,10 @@ public class JsonRpcResponse {
     public String jsonrpc;
 
     @Property(name = "id")
-    public String id;
+    public Object id;
 
     @Property(name = "result")
-    public String result;
+    public Object result;
 
     @Property(name = "error")
     public JsonRpcError error;

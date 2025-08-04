@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
  * @author stephen
  */
 public abstract class Node<T extends Node<T>> {
-    private static final String NAME_REGEX_PATTERN = "^[^\\\\s<|\\\\\\\\/>]+$";
+    private static final String NAME_REGEX_PATTERN = "^[^\\s<|\\\\/>]+$";
     private String id;
     private String name;
     private String description;

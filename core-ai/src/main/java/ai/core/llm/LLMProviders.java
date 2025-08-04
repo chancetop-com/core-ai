@@ -51,6 +51,7 @@ public class LLMProviders {
     }
 
     public LLMProvider getDefaultProvider() {
+        if (defaultProviderType == null) return getProvider();
         return providers.get(defaultProviderType);
     }
 

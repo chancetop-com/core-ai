@@ -1,5 +1,6 @@
 package ai.core.example;
 
+import ai.core.McpServerModule;
 import ai.core.MultiAgentModule;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
@@ -12,6 +13,7 @@ public class ExampleApp extends App {
     protected void initialize() {
         load(new SystemModule("sys.properties"));
         load(new MultiAgentModule());
+        load(new McpServerModule());
         load(new ExampleModule());
     }
 }

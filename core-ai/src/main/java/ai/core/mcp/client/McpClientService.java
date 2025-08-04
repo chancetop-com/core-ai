@@ -37,8 +37,8 @@ public class McpClientService {
             var iterator = response.iterator();
             if (iterator.hasNext()) {
                 var event = iterator.next();
-                var rsp = JSON.fromJSON(JsonRpcResponse.class, event.data());
-                return JSON.fromJSON(ListToolsResult.class, rsp.result).tools;
+                var rsp = JsonUtil.fromJson(JsonRpcResponse.class, event.data());
+                return ((ListToolsResult) rsp.result).tools;
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -62,7 +62,7 @@ public class McpClientService {
                 if (rsp.result == null) {
                     return rsp.error.message;
                 }
-                return JSON.fromJSON(CallToolResult.class, rsp.result).content.getFirst().content;
+                return ((CallToolResult) rsp.result).content.getFirst().text;
             }
         } catch (Exception e) {
             throw new RuntimeException(e);

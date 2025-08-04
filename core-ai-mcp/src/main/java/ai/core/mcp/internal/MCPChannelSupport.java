@@ -19,7 +19,7 @@ class MCPChannelSupport<T> {
     MCPChannelSupport(ChannelListener<T> listener, Class<T> eventClass, MCPServerSentEventContextImpl<T> context) {
         this.listener = listener;
         this.context = context;
-        builder = new MCPServerSentEventWriter<>(eventClass);
+        builder = new MCPServerSentEventWriter<>();
         limitRate = limitRate(listener);
     }
 

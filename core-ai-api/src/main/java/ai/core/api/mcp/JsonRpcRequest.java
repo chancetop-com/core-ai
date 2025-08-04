@@ -6,7 +6,7 @@ import core.framework.api.json.Property;
  * @author stephen
  */
 public class JsonRpcRequest {
-    public static JsonRpcRequest of(String jsonrpc, MethodEnum method, String id, Object params) {
+    public static JsonRpcRequest of(String jsonrpc, MethodEnum method, Object id, Object params) {
         var request = new JsonRpcRequest();
         request.jsonrpc = jsonrpc;
         request.method = method;
@@ -22,7 +22,7 @@ public class JsonRpcRequest {
     public MethodEnum method;
 
     @Property(name = "id")
-    public String id;
+    public Object id;
 
     @Property(name = "params")
     public Object params;

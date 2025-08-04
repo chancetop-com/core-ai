@@ -2,7 +2,7 @@
  * @author stephen
  */
 object Versions {
-    const val CORE_FRAMEWORK_VERSION = "9.1.8"
+    const val CORE_FRAMEWORK_VERSION = "9.2.2"
     const val JACKSON_VERSION = "2.17.2"
     const val AZURE_OPENAI_JAVA_VERSION = "1.0.0-beta.12"
     const val AZURE_INFERENCE_JAVA_VERSION = "1.0.0-beta.5"

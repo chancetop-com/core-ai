@@ -103,6 +103,7 @@ project(":core-ai") {
         } else {
             implementation("com.chancetop:core-ai-api:1.1.11")
         }
+        implementation(project(":core-ai-mcp"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
@@ -139,7 +140,8 @@ project("core-ai-mcp") {
 
     dependencies {
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("io.undertow:${Versions.UNDERTOW_CORE_VERSION}")
+        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
+        implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
 }

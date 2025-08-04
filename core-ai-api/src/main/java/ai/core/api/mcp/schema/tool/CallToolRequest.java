@@ -6,7 +6,7 @@ import core.framework.api.json.Property;
  * @author stephen
  */
 public class CallToolRequest {
-    public static CallToolRequest of(String name, String arguments) {
+    public static CallToolRequest of(String name, Object arguments) {
         var request = new CallToolRequest();
         request.name = name;
         request.arguments = arguments;
@@ -17,5 +17,5 @@ public class CallToolRequest {
     public String name;
 
     @Property(name = "arguments")
-    public String arguments;
+    public Object arguments;
 }

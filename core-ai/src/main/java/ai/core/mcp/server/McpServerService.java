@@ -5,7 +5,6 @@ import ai.core.api.mcp.ErrorCodes;
 import ai.core.api.mcp.JsonRpcError;
 import ai.core.api.mcp.JsonRpcRequest;
 import ai.core.api.mcp.JsonRpcResponse;
-import ai.core.api.mcp.kafka.McpToolCallEvent;
 import ai.core.api.mcp.schema.Implementation;
 import ai.core.api.mcp.schema.InitializeResult;
 import ai.core.api.mcp.schema.PromptCapabilities;
@@ -19,10 +18,8 @@ import ai.core.api.mcp.schema.tool.ListToolsResult;
 import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.tool.ToolCall;
 import ai.core.utils.JsonUtil;
-import core.framework.async.Executor;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.kafka.MessagePublisher;
 import core.framework.log.ActionLogContext;
 import core.framework.web.exception.NotFoundException;
 
@@ -37,10 +34,6 @@ import java.util.stream.Collectors;
 public class McpServerService {
     @Inject
     McpServerChannelService mcpServerChannelService;
-    @Inject
-    Executor executor;
-    @Inject
-    MessagePublisher<McpToolCallEvent> messagePublisher;
 
     private McpServerToolLoader toolLoader;
     private String name = "chancetop-mcp-server";
@@ -123,7 +116,7 @@ public class McpServerService {
         rst.capabilities.prompts = new PromptCapabilities();
         rst.capabilities.resources = new ResourceCapabilities();
         rst.capabilities.tools = new ToolCapabilities();
-        rsp.result = JSON.toJSON(rst);
+        rsp.result = JsonUtil.toMap(rst);
     }
 
     private Implementation serverInfo() {
@@ -144,7 +137,7 @@ public class McpServerService {
     private void handleToolsList(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new ListToolsResult();
         rst.tools = toolCalls.stream().map(this::toMcpTool).toList();
-        rsp.result = JSON.toJSON(rst);
+        rsp.result = JsonUtil.toMap(rst);
     }
 
     private Tool toMcpTool(ToolCall toolCall) {
@@ -165,9 +158,9 @@ public class McpServerService {
         var rst = new CallToolResult();
         var content = new Content();
         content.type = Content.ContentType.TEXT;
-        content.content = tool.call(req.arguments);
+        content.text = tool.call(JsonUtil.toJson(req.arguments));
         rst.content = List.of(content);
-        rsp.result = JSON.toJSON(rst);
+        rsp.result = JsonUtil.toMap(rst);
     }
 
     @SuppressWarnings("PMD.UnusedFormalParameter")
@@ -179,7 +172,7 @@ public class McpServerService {
     private void handleResourcesList(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new ListToolsResult();
         rst.tools = List.of();
-        rsp.result = JSON.toJSON(rst);
+        rsp.result = JsonUtil.toMap(rst);
     }
 
     @SuppressWarnings("PMD.UnusedFormalParameter")
@@ -196,7 +189,7 @@ public class McpServerService {
     private void handleRootsList(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new ListToolsResult();
         rst.tools = List.of();
-        rsp.result = JSON.toJSON(rst);
+        rsp.result = JsonUtil.toMap(rst);
     }
 
     @SuppressWarnings("PMD.UnusedFormalParameter")
@@ -223,7 +216,7 @@ public class McpServerService {
     private void handlePromptList(JsonRpcRequest request, JsonRpcResponse rsp) {
         var rst = new ListToolsResult();
         rst.tools = List.of();
-        rsp.result = JSON.toJSON(rst);
+        rsp.result = JsonUtil.toMap(rst);
     }
 
     @SuppressWarnings("PMD.UnusedFormalParameter")

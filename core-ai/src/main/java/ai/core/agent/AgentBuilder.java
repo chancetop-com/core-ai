@@ -90,7 +90,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.nodeType = NodeType.AGENT;
         // default name and description
         if (name == null) {
-            name = "assistant-agent";
+            name = "assistant";
         }
         if (description == null) {
             description = "assistant agent that help with user";

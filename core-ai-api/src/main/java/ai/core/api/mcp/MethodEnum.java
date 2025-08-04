@@ -12,6 +12,9 @@ public enum MethodEnum {
     @Property(name = "notifications/initialized")
     METHOD_NOTIFICATION_INITIALIZED,
 
+    @Property(name = "notifications/cancelled")
+    METHOD_NOTIFICATION_CANCELLED,
+
     @Property(name = "ping")
     METHOD_PING,
 

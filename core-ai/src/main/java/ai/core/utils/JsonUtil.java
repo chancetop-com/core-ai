@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.introspect.VisibilityChecker;
 import core.framework.internal.json.JSONAnnotationIntrospector;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -19,7 +20,8 @@ public class JsonUtil {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
             .setVisibility(new VisibilityChecker.Std(NONE, NONE, NONE, NONE, PUBLIC_ONLY))
-            .setAnnotationIntrospector(new JSONAnnotationIntrospector());
+            .setAnnotationIntrospector(new JSONAnnotationIntrospector())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public static String toJson(Object instance) {
         if (instance == null) {
@@ -53,5 +55,11 @@ public class JsonUtil {
         } else {
             return result;
         }
+    }
+
+    @SuppressWarnings("rawtypes")
+    public static Map toMap(Object instance) {
+        if (instance == null) throw new Error("instance must not be null");
+        return OBJECT_MAPPER.convertValue(instance, Map.class);
     }
 }

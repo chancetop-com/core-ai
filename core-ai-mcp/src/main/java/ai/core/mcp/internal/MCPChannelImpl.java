@@ -90,6 +90,10 @@ class MCPChannelImpl<T> implements java.nio.channels.Channel, Channel<T>, Channe
             queue.add(event);
             sink.getIoThread().execute(() -> writeListener.handleEvent(sink));
 
+            if (!sink.isWriteResumed()) {
+                sink.getIoThread().execute(sink::resumeWrites);
+            }
+
             lastSentTime = System.nanoTime();
             eventCount++;
             eventSize += event.length;
