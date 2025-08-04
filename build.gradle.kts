@@ -133,3 +133,13 @@ project(":example-service") {
         implementation("com.microsoft.azure.cognitiveservices:azure-cognitiveservices-imagesearch:${Versions.AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION}")
     }
 }
+
+project("core-ai-mcp") {
+    apply(plugin = "lib")
+
+    dependencies {
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("io.undertow:${Versions.UNDERTOW_CORE_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+    }
+}

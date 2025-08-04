@@ -12,4 +12,5 @@ object Versions {
     const val ECLIPSE_LSP4J_VERSION="0.23.1"
     const val HNSWLIB_JAVA_VERSION = "1.2.0"
     const val JTOKKIT_VERSION = "1.1.0"
+    const val UNDERTOW_CORE_VERSION = "2.3.18.Final"
 }
