@@ -190,8 +190,12 @@ public class Agent extends Node<Agent> {
         var req = CompletionRequest.of(getMessages(), toReqTools(this.toolCalls), temperature, model, this.getName());
 
         // completion with llm provider
-        var rst = llmProvider.completion(req);
-
+        CompletionResponse rst;
+        if (isStreaming()) {
+            rst = llmProvider.completionStream(req, getStreamingCallback());
+        } else {
+            rst = llmProvider.completion(req);
+        }
         addTokenCost(rst.usage);
         setRawOutput(rst.choices.getFirst().message.content);
 
@@ -344,3 +348,4 @@ public class Agent extends Node<Agent> {
 
 
 }
+

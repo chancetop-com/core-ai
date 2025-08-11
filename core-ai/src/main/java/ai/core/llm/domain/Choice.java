@@ -17,9 +17,10 @@ public class Choice {
     @NotNull
     @Property(name = "finish_reason")
     public FinishReason finishReason;
-    @NotNull
     @Property(name = "message")
     public Message message;
+    @Property(name = "delta")
+    public Message delta;
     @Property(name = "index")
     public Integer index;
 }

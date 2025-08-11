@@ -3,6 +3,7 @@ package ai.core.agent;
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.SystemVariables;
@@ -29,6 +30,8 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     LongQueryHandler longQueryHandler;
     Node<?> parent;
     Integer maxRound;
+    Boolean streaming = false;
+    StreamingCallback streamingCallback;
     String id;
 
     // This method needs to be overridden in the subclass Builders
@@ -94,6 +97,16 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         return self();
     }
 
+    public B streaming(Boolean streaming) {
+        this.streaming = streaming;
+        return self();
+    }
+
+    public B streamingCallback(StreamingCallback streamingCallback) {
+        this.streamingCallback = streamingCallback;
+        return self();
+    }
+
     public B id(String id) {
         this.id = id;
         return self();
@@ -116,6 +129,8 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         node.setLongQueryHandler(this.longQueryHandler);
         node.setParentNode(this.parent);
         node.updateNodeStatus(NodeStatus.INITED);
+        node.setStreaming(this.streaming);
+        node.setStreamingCallback(this.streamingCallback);
         var systemVariables = node.getSystemVariables();
         systemVariables.put(SystemVariables.NODE_NAME, this.name);
         systemVariables.put(SystemVariables.NODE_DESCRIPTION, this.description);
@@ -129,6 +144,9 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         }
         if (this.nodeType == null) {
             throw new IllegalArgumentException("nodeType is required");
+        }
+        if (streaming && this.streamingCallback == null) {
+            throw new IllegalArgumentException("streamingCallback is required when streaming is enabled");
         }
     }
 }

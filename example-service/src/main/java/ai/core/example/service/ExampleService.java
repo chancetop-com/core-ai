@@ -6,6 +6,7 @@ import ai.core.agent.handoff.HandoffType;
 import ai.core.agent.NodeStatus;
 import ai.core.agent.UserInputAgent;
 import ai.core.agent.listener.listeners.DefaultAgentRunningEventListener;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultSummaryAgent;
 import ai.core.example.api.example.MCPToolCallRequest;
 import ai.core.example.api.example.OrderIssueResponse;
@@ -25,6 +26,7 @@ import ai.core.flow.nodes.WebhookTriggerFlowNode;
 import ai.core.flow.nodes.builtinnodes.BuiltinModeratorAgentFlowNode;
 import ai.core.flow.nodes.builtinnodes.BuiltinPythonAgentFlowNode;
 import ai.core.flow.nodes.builtinnodes.BuiltinPythonToolFlowNode;
+import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientService;
 import ai.core.mcp.client.McpClientServerConfig;
@@ -143,7 +145,29 @@ public class ExampleService {
     }
 
     public String chat(String query) {
-        var agent = ThinkingClaudeAgent.of(llmProviders.getProvider());
+        var agent = Agent.builder()
+                .name("test-agent")
+                .description("test agent")
+                .systemPrompt("you are a helpful AI assistant, you can answer any question.")
+                .streaming(true)
+                .streamingCallback(new StreamingCallback() {
+                    @Override
+                    public void onChunk(String chunk) {
+                        logger.info(chunk);
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        logger.info("streaming complete");
+                    }
+
+                    @Override
+                    public void onError(Throwable error) {
+                        logger.error("streaming error", error);
+                    }
+                })
+                .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
+                .llmProvider(llmProviders.getProvider(LLMProviderType.LITELLM)).build();
         return agent.run(query, null);
     }
 
@@ -223,7 +247,7 @@ public class ExampleService {
                               + "If query do not contain a city in the gave list, return 'I am weather toolkit, I don't known other things, so which city's weather you want to check?'.")
                 .promptTemplate("topic: ")
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
-                .llmProvider(llmProviders.getProvider()).build();
+                .llmProvider(llmProviders.getProvider(LLMProviderType.LITELLM)).build();
         return agent.run(prompt, null);
     }
 }

@@ -23,6 +23,8 @@ public class FunctionCall {
     public String type;
     @Property(name = "function")
     public Function function;
+    @Property(name = "index")
+    public Integer index;
 
     public static class Function {
         @Property(name = "name")

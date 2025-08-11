@@ -44,7 +44,7 @@ public class ExampleWebServiceImpl implements ExampleWebService {
     }
 
     @Override
-    public ChatResponse thinking(ChatRequest request) {
+    public ChatResponse chat(ChatRequest request) {
         return toRsp(exampleService.chat(request.query));
     }
 

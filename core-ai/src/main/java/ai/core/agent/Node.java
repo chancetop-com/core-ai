@@ -3,6 +3,7 @@ package ai.core.agent;
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.document.Tokenizer;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Message;
@@ -52,6 +53,8 @@ public abstract class Node<T extends Node<T>> {
     private Node<?> parent;
     private Node<?> next;
     private Task task;
+    private Boolean streaming;
+    private StreamingCallback streamingCallback;
     private final List<Termination> terminations;
     private final Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
     private final List<Message> messages;
@@ -105,6 +108,14 @@ public abstract class Node<T extends Node<T>> {
 
     public Optional<MessageUpdatedEventListener<T>> getMessageUpdatedEventListener() {
         return Optional.ofNullable(messageUpdatedEventListener);
+    }
+
+    public boolean isStreaming() {
+        return streaming != null && streaming;
+    }
+
+    public StreamingCallback getStreamingCallback() {
+        return streamingCallback;
     }
 
     public String getId() {
@@ -304,6 +315,14 @@ public abstract class Node<T extends Node<T>> {
 
     void setNodeType(NodeType type) {
         this.nodeType = type;
+    }
+
+    void setStreaming(Boolean streaming) {
+        this.streaming = streaming;
+    }
+
+    void setStreamingCallback(StreamingCallback streamingCallback) {
+        this.streamingCallback = streamingCallback;
     }
 
     void setRound(Integer round) {

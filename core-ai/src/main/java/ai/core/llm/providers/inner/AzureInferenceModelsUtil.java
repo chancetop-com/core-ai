@@ -35,6 +35,9 @@ import com.azure.ai.inference.models.CompletionsUsage;
 import com.azure.ai.inference.models.CompletionsFinishReason;
 import com.azure.ai.inference.models.ChatResponseMessage;
 import com.azure.ai.inference.models.ChatRole;
+import com.azure.ai.inference.models.StreamingChatChoiceUpdate;
+import com.azure.ai.inference.models.StreamingChatResponseMessageUpdate;
+import com.azure.ai.inference.models.StreamingChatResponseToolCallUpdate;
 import com.azure.core.util.BinaryData;
 
 import java.util.List;
@@ -67,6 +70,10 @@ public class AzureInferenceModelsUtil {
         return choices.stream().map(v -> Choice.of(toFinishReason(v.getFinishReason()), toMessage(v.getMessage(), name))).toList();
     }
 
+    public static List<Choice> toChoiceStream(List<StreamingChatChoiceUpdate> choices, String name) {
+        return choices.stream().map(v -> Choice.of(toFinishReason(v.getFinishReason()), toMessage(v.getDelta(), name))).toList();
+    }
+
     public static Usage toUsage(CompletionsUsage usage) {
         return new Usage(usage.getPromptTokens(), usage.getCompletionTokens(), usage.getTotalTokens());
     }
@@ -96,6 +103,24 @@ public class AzureInferenceModelsUtil {
                 null,
                 null,
                 message.getToolCalls() == null || message.getToolCalls().isEmpty() ? null : message.getToolCalls().stream().map(AzureInferenceModelsUtil::toFunctionCall).toList());
+    }
+
+    private static Message toMessage(StreamingChatResponseMessageUpdate message, String name) {
+        return Message.of(
+                toAgentRole(message.getRole()),
+                message.getContent(),
+                name,
+                null,
+                null,
+                message.getToolCalls() == null || message.getToolCalls().isEmpty() ? null : message.getToolCalls().stream().map(AzureInferenceModelsUtil::toFunctionCall).toList());
+    }
+
+    private static FunctionCall toFunctionCall(StreamingChatResponseToolCallUpdate v) {
+        return FunctionCall.of(
+                v.getId(),
+                "function",
+                v.getFunction().getName(),
+                v.getFunction().getArguments());
     }
 
     private static FunctionCall toFunctionCall(ChatCompletionsToolCall v) {

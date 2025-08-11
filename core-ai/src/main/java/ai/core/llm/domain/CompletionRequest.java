@@ -28,6 +28,8 @@ public class CompletionRequest {
     public List<Tool> tools;
     @Property(name = "tool_choice")
     public String toolChoice;
+    @Property(name = "stream")
+    public Boolean stream;
 
     private String name;
 
