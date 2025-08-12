@@ -115,7 +115,7 @@ public class AzureInferenceModelsUtil {
                 message.getToolCalls() == null || message.getToolCalls().isEmpty() ? null : message.getToolCalls().stream().map(AzureInferenceModelsUtil::toFunctionCall).toList());
     }
 
-    private static FunctionCall toFunctionCall(StreamingChatResponseToolCallUpdate v) {
+    public static FunctionCall toFunctionCall(StreamingChatResponseToolCallUpdate v) {
         return FunctionCall.of(
                 v.getId(),
                 "function",
@@ -131,7 +131,7 @@ public class AzureInferenceModelsUtil {
                 v.getFunction().getArguments());
     }
 
-    private static RoleType toAgentRole(ChatRole role) {
+    public static RoleType toAgentRole(ChatRole role) {
         return RoleType.valueOf(role.getValue().toUpperCase(Locale.ROOT));
     }
 

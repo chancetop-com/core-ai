@@ -102,6 +102,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.temperature = this.temperature;
         agent.model = this.model;
         agent.llmProvider = this.llmProvider;
+        if (agent.llmProvider == null) {
+            throw new Error("llmProvider is required for agent, please set it with llmProvider() method");
+        }
         agent.toolCalls = this.toolCalls;
         agent.ragConfig = this.ragConfig;
         agent.reflectionConfig = this.reflectionConfig;

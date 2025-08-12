@@ -11,7 +11,7 @@ public class LLMProviders {
 
     public static String getProviderDefaultChatModel(LLMProviderType type) {
         return switch (type) {
-            case AZURE_INFERENCE -> "o1-mini";
+            case AZURE_INFERENCE -> "gpt-5-mini";
             case DEEPSEEK -> "deepseek-chat";
             default -> "gpt-4o";
         };

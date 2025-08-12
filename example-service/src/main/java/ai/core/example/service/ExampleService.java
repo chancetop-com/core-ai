@@ -167,7 +167,7 @@ public class ExampleService {
                     }
                 })
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
-                .llmProvider(llmProviders.getProvider(LLMProviderType.LITELLM)).build();
+                .llmProvider(llmProviders.getProvider(LLMProviderType.AZURE_INFERENCE)).build();
         return agent.run(query, null);
     }
 
@@ -247,7 +247,7 @@ public class ExampleService {
                               + "If query do not contain a city in the gave list, return 'I am weather toolkit, I don't known other things, so which city's weather you want to check?'.")
                 .promptTemplate("topic: ")
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
-                .llmProvider(llmProviders.getProvider(LLMProviderType.LITELLM)).build();
+                .llmProvider(llmProviders.getProvider()).build();
         return agent.run(prompt, null);
     }
 }
