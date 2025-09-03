@@ -16,6 +16,14 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     @Serial
     private static final long serialVersionUID = 2202468890851081427L;
 
+    public static List<McpToolCall> from(McpClientService mcpClientService, List<String> includes) {
+        var mcpTools = from(mcpClientService);
+        if (includes == null || includes.isEmpty()) {
+            return mcpTools;
+        }
+        return mcpTools.stream().filter(tool -> includes.stream().anyMatch(n -> n.contains(tool.getName()))).toList();
+    }
+
     public static List<McpToolCall> from(McpClientService mcpClientService) {
         var tools = mcpClientService.listTools();
         var mcpTollCalls = new McpToolCalls();
