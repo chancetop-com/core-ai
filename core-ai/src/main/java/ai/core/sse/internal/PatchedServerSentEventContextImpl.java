@@ -1,4 +1,4 @@
-package ai.core.mcp.internal;
+package ai.core.sse.internal;
 
 import core.framework.util.Strings;
 import core.framework.web.sse.Channel;
@@ -14,9 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * @author miller
  */
-public class MCPServerSentEventContextImpl<T> implements ServerSentEventContext<T> {
+public class PatchedServerSentEventContextImpl<T> implements ServerSentEventContext<T> {
     final Map<String, Channel<T>> channels = new ConcurrentHashMap<>();
-    private final Logger logger = LoggerFactory.getLogger(MCPServerSentEventContextImpl.class);
+    private final Logger logger = LoggerFactory.getLogger(PatchedServerSentEventContextImpl.class);
     private final Map<String, Map<String, Channel<T>>> groups = new ConcurrentHashMap<>();
 
     @Override
@@ -32,24 +32,24 @@ public class MCPServerSentEventContextImpl<T> implements ServerSentEventContext<
         return new ArrayList<>(channels.values());
     }
 
-    void join(MCPChannelImpl<T> channel, String group) {
+    void join(PatchedChannelImpl<T> channel, String group) {
         logger.debug("join group, channel={}, group={}", channel.id, group);
         channel.groups.add(group);
         groups.computeIfAbsent(group, key -> new ConcurrentHashMap<>()).put(channel.id, channel);
     }
 
-    void leave(MCPChannelImpl<T> channel, String group) {
+    void leave(PatchedChannelImpl<T> channel, String group) {
         logger.debug("leave group, channel={}, group={}", channel.id, group);
         channel.groups.remove(group);
         Map<String, Channel<T>> channels = groups.get(group);
         if (channels != null) channels.remove(channel.id);
     }
 
-    void add(MCPChannelImpl<T> channel) {
+    void add(PatchedChannelImpl<T> channel) {
         channels.put(channel.id, channel);
     }
 
-    void remove(MCPChannelImpl<?> channel) {
+    void remove(PatchedChannelImpl<?> channel) {
         channels.remove(channel.id);
         for (String group : channel.groups) {
             Map<String, Channel<T>> groupChannels = groups.get(group);
@@ -69,7 +69,7 @@ public class MCPServerSentEventContextImpl<T> implements ServerSentEventContext<
         logger.info("keepalive sse connections");
         long now = System.nanoTime();
         for (Channel<T> channel : channels.values()) {
-            MCPChannelImpl<?> impl = (MCPChannelImpl<?>) channel;
+            PatchedChannelImpl<?> impl = (PatchedChannelImpl<?>) channel;
             if (now - impl.lastSentTime >= 15_000_000_000L) {
                 impl.sendBytes(Strings.bytes(":\n"));
             }

@@ -1,8 +1,8 @@
-package ai.core.mcp;
+package ai.core.sse;
 
-import ai.core.mcp.internal.MCPServerSentEventContextImpl;
-import ai.core.mcp.internal.MCPServerSentEventHandler;
-import ai.core.mcp.internal.MCPServerSentEventMetrics;
+import ai.core.sse.internal.PatchedServerSentEventContextImpl;
+import ai.core.sse.internal.PatchedServerSentEventHandler;
+import ai.core.sse.internal.PatchedServerSentEventMetrics;
 import core.framework.http.HTTPMethod;
 import core.framework.internal.inject.InjectValidator;
 import core.framework.internal.module.Config;
@@ -20,12 +20,12 @@ import java.time.Duration;
 /**
  * @author miller
  */
-public class MCPServerSentEventConfig extends Config {
-    private final Logger logger = LoggerFactory.getLogger(MCPServerSentEventConfig.class);
+public class PatchedServerSentEventConfig extends Config {
+    private final Logger logger = LoggerFactory.getLogger(PatchedServerSentEventConfig.class);
     
     ModuleContext context;
-    private MCPServerSentEventMetrics metrics;
-    private MCPServerSentEventHandler mcpServerSentEventHandler;
+    private PatchedServerSentEventMetrics metrics;
+    private PatchedServerSentEventHandler patchedServerSentEventHandler;
 
     @Override
     protected void initialize(ModuleContext context, @Nullable String name) {
@@ -43,18 +43,18 @@ public class MCPServerSentEventConfig extends Config {
 
         logger.info("sse, method={}, path={}, eventClass={}, listener={}", method, path, eventClass.getCanonicalName(), listener.getClass().getCanonicalName());
 
-        if (mcpServerSentEventHandler == null) {
-            mcpServerSentEventHandler = new MCPServerSentEventHandler(context.logManager, context.httpServer.siteManager.sessionManager, context.httpServer.handlerContext);
-            context.httpServer.sseHandler = mcpServerSentEventHandler;
-            metrics = new MCPServerSentEventMetrics();
+        if (patchedServerSentEventHandler == null) {
+            patchedServerSentEventHandler = new PatchedServerSentEventHandler(context.logManager, context.httpServer.siteManager.sessionManager, context.httpServer.handlerContext);
+            context.httpServer.sseHandler = patchedServerSentEventHandler;
+            metrics = new PatchedServerSentEventMetrics();
             context.collector.metrics.add(metrics);
         }
 
         //TODO context.beanClassValidator.validate(eventClass);
         context.apiController.beanClasses.add(eventClass);
 
-        var sseContext = new MCPServerSentEventContextImpl<T>();
-        mcpServerSentEventHandler.add(method, path, eventClass, listener, sseContext);
+        var sseContext = new PatchedServerSentEventContextImpl<T>();
+        patchedServerSentEventHandler.add(method, path, eventClass, listener, sseContext);
         context.beanFactory.bind(Types.generic(ServerSentEventContext.class, eventClass), null, sseContext);
         metrics.contexts.add(sseContext);
         context.backgroundTask().scheduleWithFixedDelay(sseContext::keepAlive, Duration.ofSeconds(15));

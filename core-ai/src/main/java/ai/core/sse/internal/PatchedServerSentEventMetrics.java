@@ -1,4 +1,4 @@
-package ai.core.mcp.internal;
+package ai.core.sse.internal;
 
 import core.framework.internal.stat.Metrics;
 import core.framework.internal.stat.Stats;
@@ -9,13 +9,13 @@ import java.util.List;
 /**
  * @author miller
  */
-public class MCPServerSentEventMetrics implements Metrics {
-    public final List<MCPServerSentEventContextImpl<?>> contexts = new ArrayList<>();
+public class PatchedServerSentEventMetrics implements Metrics {
+    public final List<PatchedServerSentEventContextImpl<?>> contexts = new ArrayList<>();
 
     @Override
     public void collect(Stats stats) {
         int count = 0;
-        for (MCPServerSentEventContextImpl<?> context : contexts) {
+        for (PatchedServerSentEventContextImpl<?> context : contexts) {
             count += context.channels.size();
         }
         stats.put("sse_active_channels", count);

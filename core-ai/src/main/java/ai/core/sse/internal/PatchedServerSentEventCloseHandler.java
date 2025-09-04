@@ -1,4 +1,4 @@
-package ai.core.mcp.internal;
+package ai.core.sse.internal;
 
 import core.framework.internal.async.VirtualThread;
 import core.framework.internal.log.ActionLog;
@@ -11,12 +11,12 @@ import java.util.List;
 /**
  * @author miller
  */
-class MCPServerSentEventCloseHandler<T> implements ExchangeCompletionListener {
-    final MCPChannelSupport<T> support;
+class PatchedServerSentEventCloseHandler<T> implements ExchangeCompletionListener {
+    final PatchedChannelSupport<T> support;
     private final LogManager logManager;
-    private final MCPChannelImpl<T> channel;
+    private final PatchedChannelImpl<T> channel;
 
-    MCPServerSentEventCloseHandler(LogManager logManager, MCPChannelImpl<T> channel, MCPChannelSupport<T> support) {
+    PatchedServerSentEventCloseHandler(LogManager logManager, PatchedChannelImpl<T> channel, PatchedChannelSupport<T> support) {
         this.logManager = logManager;
         this.channel = channel;
         this.support = support;

@@ -1,4 +1,4 @@
-package ai.core.mcp.internal;
+package ai.core.sse.internal;
 
 import core.framework.internal.log.filter.BytesLogParam;
 import core.framework.log.ActionLogContext;
@@ -28,8 +28,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * @author miller
  */
-class MCPChannelImpl<T> implements java.nio.channels.Channel, Channel<T>, Channel.Context {
-    private static final Logger LOGGER = LoggerFactory.getLogger(MCPChannelImpl.class);
+class PatchedChannelImpl<T> implements java.nio.channels.Channel, Channel<T>, Channel.Context {
+    private static final Logger LOGGER = LoggerFactory.getLogger(PatchedChannelImpl.class);
 
     final String id = UUID.randomUUID().toString();
     final Set<String> groups = Sets.newConcurrentHashSet();
@@ -39,8 +39,8 @@ class MCPChannelImpl<T> implements java.nio.channels.Channel, Channel<T>, Channe
     final WriteListener writeListener = new WriteListener();
     final Deque<byte[]> queue = new ConcurrentLinkedDeque<>();
 
-    private final MCPServerSentEventContextImpl<T> serverSentEventContext;
-    private final MCPServerSentEventWriter<T> builder;
+    private final PatchedServerSentEventContextImpl<T> serverSentEventContext;
+    private final PatchedServerSentEventWriter<T> builder;
 
     private final ReentrantLock lock = new ReentrantLock();
     private final HttpServerExchange exchange;
@@ -53,7 +53,7 @@ class MCPChannelImpl<T> implements java.nio.channels.Channel, Channel<T>, Channe
     String traceId;
     private volatile boolean closed = false;
 
-    MCPChannelImpl(HttpServerExchange exchange, StreamSinkChannel sink, MCPServerSentEventContextImpl<T> serverSentEventContext, MCPServerSentEventWriter<T> builder, String refId) {
+    PatchedChannelImpl(HttpServerExchange exchange, StreamSinkChannel sink, PatchedServerSentEventContextImpl<T> serverSentEventContext, PatchedServerSentEventWriter<T> builder, String refId) {
         this.exchange = exchange;
         this.sink = sink;
         this.serverSentEventContext = serverSentEventContext;

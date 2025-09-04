@@ -31,6 +31,7 @@ import com.azure.ai.inference.models.StreamingChatCompletionsUpdate;
 import com.azure.core.credential.AccessToken;
 import com.azure.core.credential.AzureKeyCredential;
 import com.azure.core.credential.TokenCredential;
+import com.azure.core.credential.TokenRequestContext;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.HttpClientOptions;
 import reactor.core.publisher.Mono;
@@ -59,7 +60,7 @@ public class AzureInferenceProvider extends LLMProvider {
         options.setReadTimeout(Duration.ofSeconds(120));
         options.setConnectionIdleTimeout(Duration.ofMinutes(5));
         if (!azureKeyCredential) {
-            TokenCredential tokenCredential = _ -> Mono.just(new AccessToken(apiKey, OffsetDateTime.MAX));
+            TokenCredential tokenCredential = (TokenRequestContext context) -> Mono.just(new AccessToken(apiKey, OffsetDateTime.MAX));
             this.chatClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildClient();
             this.chatAsyncClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildAsyncClient();
             this.embeddingsClient = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildClient();

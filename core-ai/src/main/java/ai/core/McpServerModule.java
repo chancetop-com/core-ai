@@ -1,7 +1,8 @@
 package ai.core;
 
 import ai.core.api.mcp.JsonRpcResponse;
-import ai.core.mcp.MCPServerSentEventConfig;
+import ai.core.mcp.server.McpSseController;
+import ai.core.sse.PatchedServerSentEventConfig;
 import ai.core.mcp.server.McpServerChannelService;
 import ai.core.mcp.server.McpServerService;
 import ai.core.mcp.server.McpServerSseListener;
@@ -16,8 +17,8 @@ public class McpServerModule extends Module {
     protected void initialize() {
         bind(McpServerChannelService.class);
         bind(McpServerService.class);
-        var sseConfig = config(MCPServerSentEventConfig.class, "mcpServerSse");
-//        http().route(HTTPMethod.GET, "/mcp", new McpSseController());
+        var sseConfig = config(PatchedServerSentEventConfig.class, "mcpServerSse");
+        http().route(HTTPMethod.GET, "/mcp", new McpSseController());
         sseConfig.listen(HTTPMethod.POST, "/mcp", JsonRpcResponse.class, bind(McpServerSseListener.class));
     }
 }

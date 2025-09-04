@@ -1,4 +1,4 @@
-package ai.core.mcp.internal;
+package ai.core.sse.internal;
 
 import core.framework.http.HTTPMethod;
 import core.framework.internal.async.VirtualThread;
@@ -32,18 +32,18 @@ import java.util.Map;
 /**
  * @author miller
  */
-public class MCPServerSentEventHandler extends ServerSentEventHandler {
+public class PatchedServerSentEventHandler extends ServerSentEventHandler {
     static final long MAX_PROCESS_TIME_IN_NANO = Duration.ofSeconds(300).toNanos();
     static final HttpString HEADER_TRACE_ID = new HttpString("x-trace-id");
     private static final HttpString LAST_EVENT_ID = new HttpString("Last-Event-ID");
 
-    private final Logger logger = LoggerFactory.getLogger(MCPServerSentEventHandler.class);
+    private final Logger logger = LoggerFactory.getLogger(PatchedServerSentEventHandler.class);
     private final LogManager logManager;
     private final HTTPHandlerContext handlerContext;
     private final SessionManager sessionManager;
-    private final Map<String, MCPChannelSupport<?>> supports = new HashMap<>();
+    private final Map<String, PatchedChannelSupport<?>> supports = new HashMap<>();
 
-    public MCPServerSentEventHandler(LogManager logManager, SessionManager sessionManager, HTTPHandlerContext handlerContext) {
+    public PatchedServerSentEventHandler(LogManager logManager, SessionManager sessionManager, HTTPHandlerContext handlerContext) {
         super(logManager, sessionManager, handlerContext);
         this.logManager = logManager;
         this.handlerContext = handlerContext;
@@ -87,7 +87,7 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
         long httpDelay = System.nanoTime() - exchange.getRequestStartTime();
         ActionLog actionLog = logManager.begin("=== sse connect begin ===", null);
         var request = new RequestImpl(exchange, handlerContext.requestBeanReader);
-        MCPChannelImpl<Object> channel = null;
+        PatchedChannelImpl<Object> channel = null;
         try {
             logger.debug("httpDelay={}", httpDelay);
             actionLog.stats.put("http_delay", (double) httpDelay);
@@ -98,14 +98,14 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
             actionLog.warningContext.maxProcessTimeInNano(MAX_PROCESS_TIME_IN_NANO);
             String path = request.path();
             @SuppressWarnings("unchecked")
-            MCPChannelSupport<Object> support = (MCPChannelSupport<Object>) supports.get(key(request.method().name(), path));   // ServerSentEventHandler.check() ensures path exists
+            PatchedChannelSupport<Object> support = (PatchedChannelSupport<Object>) supports.get(key(request.method().name(), path));   // ServerSentEventHandler.check() ensures path exists
             actionLog.action("sse:" + path + ":connect");
 
             if (handlerContext.rateControl != null) {
                 limitRate(handlerContext.rateControl, support, request.clientIP());
             }
 
-            channel = new MCPChannelImpl<>(exchange, sink, support.context, support.builder, actionLog.id);
+            channel = new PatchedChannelImpl<>(exchange, sink, support.context, support.builder, actionLog.id);
             actionLog.context("channel", channel.id);
 
             channel.clientIP = request.clientIP();
@@ -117,7 +117,7 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
 
             sink.getWriteSetter().set(channel.writeListener);
             support.context.add(channel);
-            exchange.addExchangeCompleteListener(new MCPServerSentEventCloseHandler<>(logManager, channel, support));
+            exchange.addExchangeCompleteListener(new PatchedServerSentEventCloseHandler<>(logManager, channel, support));
 
             channel.sendBytes(Strings.bytes("retry: 5000\n\n"));    // set browser retry to 5s
             channel.sendBytes(Strings.bytes(":\n\n"));
@@ -141,7 +141,7 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
         }
     }
 
-    void limitRate(RateControl rateControl, MCPChannelSupport<Object> support, String clientIP) {
+    void limitRate(RateControl rateControl, PatchedChannelSupport<Object> support, String clientIP) {
         if (support.limitRate != null) {
             String group = support.limitRate.value();
             rateControl.validateRate(group, clientIP);
@@ -154,17 +154,17 @@ public class MCPServerSentEventHandler extends ServerSentEventHandler {
             + "data: " + errorResponse + "\n\n";
     }
 
-    public <T> void add(HTTPMethod method, String path, Class<T> eventClass, ChannelListener<T> listener, MCPServerSentEventContextImpl<T> context) {
-        var previous = supports.put(key(method.name(), path), new MCPChannelSupport<>(listener, eventClass, context));
+    public <T> void add(HTTPMethod method, String path, Class<T> eventClass, ChannelListener<T> listener, PatchedServerSentEventContextImpl<T> context) {
+        var previous = supports.put(key(method.name(), path), new PatchedChannelSupport<>(listener, eventClass, context));
         if (previous != null) throw new Error(Strings.format("found duplicate sse listener, method={}, path={}", method, path));
     }
 
     @Override
     public void shutdown() {
         logger.info("close sse connections");
-        for (MCPChannelSupport<?> support : supports.values()) {
+        for (PatchedChannelSupport<?> support : supports.values()) {
             for (var channel : support.context.all()) {
-                ((MCPChannelImpl<?>) channel).shutdown();
+                ((PatchedChannelImpl<?>) channel).shutdown();
             }
         }
     }

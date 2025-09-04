@@ -1,4 +1,4 @@
-package ai.core.mcp.internal;
+package ai.core.sse.internal;
 
 import core.framework.web.Request;
 import core.framework.web.rate.LimitRate;
@@ -10,16 +10,16 @@ import java.lang.reflect.Method;
 /**
  * @author miller
  */
-class MCPChannelSupport<T> {
+class PatchedChannelSupport<T> {
     final ChannelListener<T> listener;
-    final MCPServerSentEventContextImpl<T> context;
-    final MCPServerSentEventWriter<T> builder;
+    final PatchedServerSentEventContextImpl<T> context;
+    final PatchedServerSentEventWriter<T> builder;
     final LimitRate limitRate;
 
-    MCPChannelSupport(ChannelListener<T> listener, Class<T> eventClass, MCPServerSentEventContextImpl<T> context) {
+    PatchedChannelSupport(ChannelListener<T> listener, Class<T> eventClass, PatchedServerSentEventContextImpl<T> context) {
         this.listener = listener;
         this.context = context;
-        builder = new MCPServerSentEventWriter<>();
+        builder = new PatchedServerSentEventWriter<>();
         limitRate = limitRate(listener);
     }
 

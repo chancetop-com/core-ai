@@ -103,7 +103,6 @@ project(":core-ai") {
         } else {
             implementation("com.chancetop:core-ai-api:1.1.11")
         }
-        implementation(project(":core-ai-mcp"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
@@ -114,6 +113,9 @@ project(":core-ai") {
         implementation("com.github.jelmerk:hnswlib-core:${Versions.HNSWLIB_JAVA_VERSION}")
         implementation("com.github.jelmerk:hnswlib-utils:${Versions.HNSWLIB_JAVA_VERSION}")
         implementation("com.knuddels:jtokkit:${Versions.JTOKKIT_VERSION}")
+        // tricky part: self-defined sse module
+        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
+        implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
     }
 }
 
@@ -132,16 +134,5 @@ project(":example-service") {
         implementation(project(":core-ai-api"))
         implementation(project(":example-service-interface"))
         implementation("com.microsoft.azure.cognitiveservices:azure-cognitiveservices-imagesearch:${Versions.AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION}")
-    }
-}
-
-project("core-ai-mcp") {
-    apply(plugin = "lib")
-
-    dependencies {
-        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
-        implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
-        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
 }
