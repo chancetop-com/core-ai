@@ -89,7 +89,7 @@ public abstract class ToolCall {
                 v -> v.isRequired() != null
                         && v.isRequired()
                         && v.getName() != null).map(ToolCallParameter::getName).toList();
-        schema.properties = parameters.stream().filter(v -> v.getName() != null).collect(Collectors.toMap(ToolCallParameter::getName, this::toSchemaProperty));
+        schema.properties = parameters.stream().filter(v -> v.getName() != null).collect(Collectors.toMap(ToolCallParameter::getName, this::toSchemaProperty, (v1, v2) -> v1));
         return schema;
     }
 
