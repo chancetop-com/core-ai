@@ -9,4 +9,7 @@ import java.util.List;
  */
 public interface ApiLoader {
     List<ApiDefinition> load();
+    default List<String> defaultNamespaces() {
+        return null;
+    }
 }

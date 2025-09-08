@@ -9,4 +9,7 @@ import java.util.List;
  */
 public interface McpServerToolLoader {
     List<ToolCall> load();
+    default List<String> defaultNamespaces() {
+        return null;
+    }
 }

@@ -41,6 +41,11 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
                 .toList();
     }
 
+    @Override
+    public List<String> defaultNamespaces() {
+        return apiLoader.defaultNamespaces();
+    }
+
     private ToolCall toToolCall(ApiDefinition.Operation operation, ApiDefinition.Service service, ApiDefinition api) {
         var method = Arrays.stream(DynamicApiCaller.class.getMethods()).filter(v -> v.getName().equals("callApi")).findFirst().orElseThrow();
         var params = operation.pathParams.stream().map(v -> toParamFromPathParam(v, api)).collect(Collectors.toList());
@@ -48,6 +53,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
             params.addAll(toParamFromRequestType(operation.requestType, api));
         }
         return Function.builder()
+                .namespace(api.app)
                 .name(OperationContext.toFunctionCallName(operation, service, api))
                 .description(operation.description)
                 .object(dynamicApiCaller)

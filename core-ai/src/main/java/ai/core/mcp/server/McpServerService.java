@@ -14,6 +14,7 @@ import ai.core.api.mcp.schema.ToolCapabilities;
 import ai.core.api.mcp.schema.tool.CallToolRequest;
 import ai.core.api.mcp.schema.tool.CallToolResult;
 import ai.core.api.mcp.schema.tool.Content;
+import ai.core.api.mcp.schema.tool.ListToolRequest;
 import ai.core.api.mcp.schema.tool.ListToolsResult;
 import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.tool.ToolCall;
@@ -135,8 +136,18 @@ public class McpServerService {
 
     @SuppressWarnings("PMD.UnusedFormalParameter")
     private void handleToolsList(JsonRpcRequest request, JsonRpcResponse rsp) {
+        var namespaces = this.toolLoader.defaultNamespaces();
+        if (request.params instanceof Map) {
+            var req = JsonUtil.fromJson(ListToolRequest.class, (Map<?, ?>) request.params);
+            namespaces = req.namespaces;
+        }
         var rst = new ListToolsResult();
-        rst.tools = toolCalls.stream().map(this::toMcpTool).toList();
+        if (namespaces != null) {
+            List<String> finalNamespaces = namespaces;
+            rst.tools = toolCalls.stream().filter(v -> finalNamespaces.contains(v.getNamespace())).map(this::toMcpTool).toList();
+        } else {
+            rst.tools = toolCalls.stream().map(this::toMcpTool).toList();
+        }
         rsp.result = JsonUtil.toMap(rst);
     }
 

@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public abstract class ToolCall {
+    String namespace;
     String name;
     String description;
     List<ToolCallParameter> parameters;
@@ -24,6 +25,10 @@ public abstract class ToolCall {
 
     public String getName() {
         return name;
+    }
+
+    public String getNamespace() {
+        return namespace;
     }
 
     public String getDescription() {
@@ -115,6 +120,7 @@ public abstract class ToolCall {
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {
+        String namespace;
         String name;
         String description;
         List<ToolCallParameter> parameters;
@@ -125,6 +131,11 @@ public abstract class ToolCall {
 
         public B name(String name) {
             this.name = name;
+            return self();
+        }
+
+        public B namespace(String namespace) {
+            this.namespace = namespace;
             return self();
         }
 
@@ -153,6 +164,7 @@ public abstract class ToolCall {
             if (parameters == null) {
                 parameters = List.of();
             }
+            toolCall.namespace = namespace;
             toolCall.name = name;
             toolCall.description = description;
             toolCall.parameters = parameters;
