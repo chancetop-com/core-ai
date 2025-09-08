@@ -17,15 +17,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     private static final long serialVersionUID = 2202468890851081427L;
 
     public static List<McpToolCall> from(McpClientService mcpClientService, List<String> includes) {
-        var mcpTools = from(mcpClientService);
-        if (includes == null || includes.isEmpty()) {
-            return mcpTools;
-        }
-        return mcpTools.stream().filter(tool -> includes.stream().anyMatch(n -> n.contains(tool.getName()))).toList();
-    }
-
-    public static List<McpToolCall> from(McpClientService mcpClientService) {
-        var tools = mcpClientService.listTools();
+        var tools = mcpClientService.listTools(includes);
         var mcpTollCalls = new McpToolCalls();
         for (var tool : tools) {
             mcpTollCalls.add(McpToolCall.builder()
@@ -36,6 +28,10 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
                     .mcpClientService(mcpClientService).build());
         }
         return mcpTollCalls;
+    }
+
+    public static List<McpToolCall> from(McpClientService mcpClientService) {
+        return from(mcpClientService, null);
     }
 
     private static List<ToolCallParameter> buildParameters(JsonSchema inputSchema) {

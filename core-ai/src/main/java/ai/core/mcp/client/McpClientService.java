@@ -6,6 +6,7 @@ import ai.core.api.mcp.JsonRpcResponse;
 import ai.core.api.mcp.MethodEnum;
 import ai.core.api.mcp.schema.tool.CallToolRequest;
 import ai.core.api.mcp.schema.tool.CallToolResult;
+import ai.core.api.mcp.schema.tool.ListToolRequest;
 import ai.core.api.mcp.schema.tool.ListToolsResult;
 import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.utils.JsonUtil;
@@ -29,9 +30,13 @@ public class McpClientService {
         this.config = config;
     }
 
-    public List<Tool> listTools() {
+    public List<Tool> listTools(List<String> namespaces) {
         var request = new HTTPRequest(HTTPMethod.POST, config.url());
-        var req = JsonRpcRequest.of(Constants.JSONRPC_VERSION, MethodEnum.METHOD_TOOLS_LIST, UUID.randomUUID().toString(), "");
+        Object params = null;
+        if (namespaces != null && !namespaces.isEmpty()) {
+            params = ListToolRequest.of(namespaces);
+        }
+        var req = JsonRpcRequest.of(Constants.JSONRPC_VERSION, MethodEnum.METHOD_TOOLS_LIST, UUID.randomUUID().toString(), params);
         request.body = JSON.toJSON(req).getBytes();
         try (var response = client.sse(request)) {
             var iterator = response.iterator();
@@ -45,6 +50,10 @@ public class McpClientService {
             throw new RuntimeException(e);
         }
         return List.of();
+    }
+
+    public List<Tool> listTools() {
+        return listTools(null);
     }
 
     public String callTool(String name, String text) {
