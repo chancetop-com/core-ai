@@ -61,14 +61,14 @@ public class AzureInferenceProvider extends LLMProvider {
         options.setConnectionIdleTimeout(Duration.ofMinutes(5));
         if (!azureKeyCredential) {
             TokenCredential tokenCredential = (TokenRequestContext context) -> Mono.just(new AccessToken(apiKey, OffsetDateTime.MAX));
-            this.chatClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildClient();
-            this.chatAsyncClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildAsyncClient();
-            this.embeddingsClient = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildClient();
+            this.chatClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildClient();
+            this.chatAsyncClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildAsyncClient();
+            this.embeddingsClient = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(tokenCredential).endpoint(endpoint).buildClient();
         } else {
             var keyCredential = new AzureKeyCredential(apiKey);
-            this.chatClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(keyCredential).endpoint(endpoint).buildClient();
-            this.chatAsyncClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(keyCredential).endpoint(endpoint).buildAsyncClient();
-            this.embeddingsClient = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_05_01_PREVIEW).credential(keyCredential).endpoint(endpoint).buildClient();
+            this.chatClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(keyCredential).endpoint(endpoint).buildClient();
+            this.chatAsyncClient = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(keyCredential).endpoint(endpoint).buildAsyncClient();
+            this.embeddingsClient = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(keyCredential).endpoint(endpoint).buildClient();
         }
     }
 

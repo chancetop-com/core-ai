@@ -5,6 +5,7 @@ import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.AzureInferenceProvider;
+import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.persistence.PersistenceProviderType;
 import ai.core.persistence.PersistenceProviders;
@@ -65,7 +66,7 @@ public class MultiAgentModule extends Module {
 
     private void configAzureOpenAI(LLMProviders providers, LLMProviderConfig config) {
         property("azure.api.key").ifPresent(key -> property("azure.api.base").ifPresent(base -> {
-            var provider = new AzureInferenceProvider(config, key, base, true);
+            var provider = new AzureOpenAIProvider(config, key, base);
             bind(provider);
             providers.addProvider(LLMProviderType.AZURE, provider);
         }));

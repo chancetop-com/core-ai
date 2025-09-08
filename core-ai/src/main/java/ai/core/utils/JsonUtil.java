@@ -57,6 +57,22 @@ public class JsonUtil {
         }
     }
 
+    public static <T> T fromJson(Class<T> instanceClass, Object obj) {
+        if (obj == null) {
+            throw new Error("object must not be null");
+        }
+        try {
+            T result = OBJECT_MAPPER.convertValue(obj, instanceClass);
+            if (result == null) {
+                throw new Error("invalid json value, value=" + obj);
+            }
+            return result;
+        } catch (IllegalArgumentException e) {
+            throw new Error("failed to convert object to " + instanceClass.getName() + ", value=" + obj, e);
+        }
+    }
+
+
     @SuppressWarnings("rawtypes")
     public static Map toMap(Object instance) {
         if (instance == null) throw new Error("instance must not be null");

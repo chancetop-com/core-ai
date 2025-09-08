@@ -55,6 +55,9 @@ public class LiteLLMProvider extends LLMProvider {
         if (dto.model.startsWith("o1") || dto.model.startsWith("o3")) {
             dto.temperature = null;
         }
+        if (dto.model.startsWith("gpt-5")) {
+            dto.temperature = 1.0;
+        }
         dto.messages.forEach(message -> {
             if (message.role == RoleType.SYSTEM && dto.model.startsWith("o1")) {
                 message.role = RoleType.USER;

@@ -38,7 +38,8 @@ public class McpClientService {
             if (iterator.hasNext()) {
                 var event = iterator.next();
                 var rsp = JsonUtil.fromJson(JsonRpcResponse.class, event.data());
-                return ((ListToolsResult) rsp.result).tools;
+                var rst = JsonUtil.fromJson(ListToolsResult.class, rsp.result);
+                return rst.tools;
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
