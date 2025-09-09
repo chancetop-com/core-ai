@@ -346,6 +346,13 @@ public class Agent extends Node<Agent> {
         this.model = model;
     }
 
-
+    public Message getLastToolCallMessage() {
+        for (var msg: getMessages().reversed()) {
+            if (msg.role == RoleType.TOOL) {
+                return msg;
+            }
+        }
+        return null;
+    }
 }
 
