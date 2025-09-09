@@ -61,7 +61,6 @@ public class DynamicApiCaller {
                 throw new IllegalArgumentException("Missing path parameter: " + pathParam.name);
             }
             url = url.replace(":" + pathParam.name, (String) argsMap.get(pathParam.name));
-            argsMap.remove(pathParam.name);
         }
         var req = new HTTPRequest(HTTPMethod.valueOf(operation.method), url);
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());

@@ -169,7 +169,13 @@ public class McpServerService {
         var rst = new CallToolResult();
         var content = new Content();
         content.type = Content.ContentType.TEXT;
-        content.text = tool.call(JsonUtil.toJson(req.arguments));
+        String jsonArgs;
+        if (req.arguments instanceof String) {
+            jsonArgs = (String) req.arguments;
+        } else {
+            jsonArgs = JsonUtil.toJson(req.arguments);
+        }
+        content.text = tool.call(jsonArgs);
         rst.content = List.of(content);
         rsp.result = JsonUtil.toMap(rst);
     }
