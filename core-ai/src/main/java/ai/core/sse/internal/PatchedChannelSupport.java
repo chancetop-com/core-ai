@@ -15,9 +15,11 @@ class PatchedChannelSupport<T> {
     final PatchedServerSentEventContextImpl<T> context;
     final PatchedServerSentEventWriter<T> builder;
     final LimitRate limitRate;
+    final Class<T> eventClass;
 
     PatchedChannelSupport(ChannelListener<T> listener, Class<T> eventClass, PatchedServerSentEventContextImpl<T> context) {
         this.listener = listener;
+        this.eventClass = eventClass;
         this.context = context;
         builder = new PatchedServerSentEventWriter<>();
         limitRate = limitRate(listener);

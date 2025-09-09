@@ -2,6 +2,7 @@ package ai.core.mcp.server.apiserver;
 
 import ai.core.mcp.server.apiserver.domain.ApiDefinition;
 import ai.core.mcp.server.apiserver.domain.ApiDefinitionType;
+import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
@@ -52,7 +53,8 @@ public class DynamicApiCaller {
     @SuppressWarnings("unchecked")
     private String call(String name, ApiDefinition.Operation operation, String args) {
         ActionLogContext.triggerTrace(true);
-        var argsMap = (Map<String, Object>) JSON.fromJSON(Map.class, args);
+        var argsMap = (Map<String, Object>) JsonUtil.fromJsonSafe(Map.class, args);
+        ActionLogContext.put("mcp-call-api-args-map", argsMap);
         var apiDefinition = apiDefinitionMap.get(name);
         var url = apiDefinition.baseUrl + operation.path;
         var client = HTTPClient.builder().trustAll().build();

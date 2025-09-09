@@ -28,13 +28,13 @@ class ToolCallTest {
         var mockMcpClientService = Mockito.mock(McpClientService.class);
         var rpcRsp = JSON.fromJSON(JsonRpcResponse.class, mcpListToolResult);
         var tools = JsonUtil.fromJson(ListToolsResult.class, (Map<?, ?>) rpcRsp.result).tools;
-        Mockito.when(mockMcpClientService.listTools()).thenReturn(tools);
+        Mockito.when(mockMcpClientService.listTools(null)).thenReturn(tools);
 
-        var toolCalls = McpToolCalls.from(mockMcpClientService);
+        var toolCalls = McpToolCalls.from(mockMcpClientService, null);
         var toolCall = toolCalls.getFirst();
         var jsonSchema = toolCall.toJsonSchema();
         var expect = """
-                {"type":"object","properties":{"name":{"type":"string","description":"name"},"description":{"type":"string","description":"description"},"id":{"type":"string","description":"id"},"sections":{"type":"array","description":"sections","items":{"type":"object","properties":{"name":{"type":"string","description":"name"},"item_ids":{"type":"array","description":"item_ids","items":{"type":"string"}},"id":{"type":"string","description":"id"},"sort_order":{"type":"integer","description":"sort_order"}},"required":["name","item_ids","sort_order"]}},"operator":{"type":"string","description":"operator"}},"required":["name","id","sections","operator"]}""";
+                {"type":"object","properties":{"name":{"type":"string","description":"name"},"description":{"type":"string","description":"description"},"id":{"type":"string","description":"id"},"operator":{"type":"string","description":"operator"},"sections":{"type":"array","description":"sections","items":{"type":"object","properties":{"item_ids":{"type":"array","description":"item_ids","items":{"type":"string"}},"name":{"type":"string","description":"name"},"id":{"type":"string","description":"id"},"sort_order":{"type":"integer","description":"sort_order"}},"required":["name","item_ids","sort_order"]}}},"required":["name","id","sections","operator"]}""";
         var json = JsonUtil.toJson(jsonSchema);
         assert json.equals(expect);
     }
@@ -52,13 +52,13 @@ class ToolCallTest {
         var mockMcpClientService = Mockito.mock(McpClientService.class);
         var rpcRsp = JSON.fromJSON(JsonRpcResponse.class, mcpListToolResult);
         var tools = JsonUtil.fromJson(ListToolsResult.class, (Map<?, ?>) rpcRsp.result).tools;
-        Mockito.when(mockMcpClientService.listTools()).thenReturn(tools);
+        Mockito.when(mockMcpClientService.listTools(null)).thenReturn(tools);
 
-        var toolCalls = McpToolCalls.from(mockMcpClientService);
+        var toolCalls = McpToolCalls.from(mockMcpClientService, null);
         var toolCall = toolCalls.getFirst();
         var jsonSchema = toolCall.toJsonSchema();
         var expect = """
-                {"type":"object","properties":{"exclude_category_id":{"type":"string","description":"exclude_category_id"},"is_asc":{"type":"boolean","description":"is_asc"},"category_id":{"type":"string","description":"category_id"},"no_category":{"type":"boolean","description":"no_category"},"limit":{"type":"integer","description":"limit"},"fuzzy_name":{"type":"string","description":"fuzzy_name"},"exclude_product_ids":{"type":"array","description":"exclude_product_ids","items":{"type":"string"}},"skip":{"type":"integer","description":"skip"},"merchant_id":{"type":"string","description":"merchant_id"},"sort_by":{"type":"string","description":"SearchMerchantProductOperationRequest$SortRule","enum":["NAME","CATEGORY","PRICE"]},"status":{"type":"string","description":"SearchMerchantProductOperationRequest","enum":["ACTIVE","INACTIVE"]}},"required":["is_asc","no_category","limit","skip","merchant_id","sort_by"]}""";
+                {"type":"object","properties":{"is_asc":{"type":"boolean","description":"is_asc"},"exclude_category_id":{"type":"string","description":"exclude_category_id"},"category_id":{"type":"string","description":"category_id"},"limit":{"type":"integer","description":"limit"},"no_category":{"type":"boolean","description":"no_category"},"skip":{"type":"integer","description":"skip"},"exclude_product_ids":{"type":"array","description":"exclude_product_ids","items":{"type":"string"}},"fuzzy_name":{"type":"string","description":"fuzzy_name"},"sort_by":{"type":"string","description":"SearchMerchantProductOperationRequest$SortRule","enum":["NAME","CATEGORY","PRICE"]},"merchant_id":{"type":"string","description":"merchant_id"},"status":{"type":"string","description":"SearchMerchantProductOperationRequest","enum":["ACTIVE","INACTIVE"]}},"required":["is_asc","no_category","limit","skip","merchant_id","sort_by"]}""";
         var json = JsonUtil.toJson(jsonSchema);
         assert json.equals(expect);
     }

@@ -72,7 +72,8 @@ public class McpClientService {
                 if (rsp.result == null) {
                     return rsp.error.message;
                 }
-                return ((CallToolResult) rsp.result).content.getFirst().text;
+                var rst = JsonUtil.fromJson(CallToolResult.class, rsp.result);
+                return rst.content.getFirst().text;
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
