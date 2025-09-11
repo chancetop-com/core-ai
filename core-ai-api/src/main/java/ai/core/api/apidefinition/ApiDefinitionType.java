@@ -1,6 +1,7 @@
-package ai.core.mcp.server.apiserver.domain;
+package ai.core.api.apidefinition;
 
 import core.framework.api.json.Property;
+import core.framework.api.validate.NotNull;
 
 import java.util.List;
 
@@ -36,6 +37,7 @@ public class ApiDefinitionType {
         @Property(name = "typeParams")
         public List<String> typeParams;
 
+        @NotNull
         @Property(name = "constraints")
         public Constraints constraints = new Constraints();
     }

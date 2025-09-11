@@ -2,8 +2,8 @@ package ai.core.mcp.server.apiserver;
 
 import ai.core.utils.JsonSchemaUtil;
 import ai.core.mcp.server.McpServerToolLoader;
-import ai.core.mcp.server.apiserver.domain.ApiDefinition;
-import ai.core.mcp.server.apiserver.domain.ApiDefinitionType;
+import ai.core.api.apidefinition.ApiDefinition;
+import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
@@ -22,6 +22,18 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class ApiMcpToolLoader implements McpServerToolLoader {
+
+    public static String functionCallName(String app, String serviceName, String operationName) {
+        var name = app.replaceAll("-", "_") + "_" + serviceName + "_" + operationName;
+        if (name.length() >= 64) {
+            name = serviceName + "_" + operationName;
+        }
+        if (name.length() >= 64) {
+            name = operationName;
+        }
+        return name;
+    }
+
     private final ApiLoader apiLoader;
     private DynamicApiCaller dynamicApiCaller;
 
@@ -183,14 +195,7 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
 
     public record OperationContext(ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {
         public static String toFunctionCallName(ApiDefinition.Operation operation, ApiDefinition.Service service, ApiDefinition api) {
-            var name = api.app.replaceAll("-", "_") + "_" + service.name + "_" + operation.name;
-            if (name.length() >= 64) {
-                name = service.name + "_" + operation.name;
-            }
-            if (name.length() >= 64) {
-                name = operation.name;
-            }
-            return name;
+            return functionCallName(api.app, service.name, operation.name);
         }
     }
 }

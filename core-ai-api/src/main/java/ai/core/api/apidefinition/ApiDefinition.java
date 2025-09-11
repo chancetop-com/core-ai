@@ -1,6 +1,7 @@
-package ai.core.mcp.server.apiserver.domain;
+package ai.core.api.apidefinition;
 
 import core.framework.api.json.Property;
+import core.framework.api.validate.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +55,7 @@ public class ApiDefinition {
         @Property(name = "path")
         public String path;
 
+        @NotNull
         @Property(name = "pathParams")
         public List<PathParam> pathParams = new ArrayList<>();
 

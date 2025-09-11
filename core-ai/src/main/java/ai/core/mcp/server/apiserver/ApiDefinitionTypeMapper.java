@@ -1,6 +1,6 @@
 package ai.core.mcp.server.apiserver;
 
-import ai.core.mcp.server.apiserver.domain.ApiDefinitionType;
+import ai.core.api.apidefinition.ApiDefinitionType;
 
 import java.util.AbstractMap;
 import java.util.HashMap;

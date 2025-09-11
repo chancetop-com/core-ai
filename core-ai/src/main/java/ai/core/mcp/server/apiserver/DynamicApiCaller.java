@@ -1,17 +1,19 @@
 package ai.core.mcp.server.apiserver;
 
-import ai.core.mcp.server.apiserver.domain.ApiDefinition;
-import ai.core.mcp.server.apiserver.domain.ApiDefinitionType;
+import ai.core.api.apidefinition.ApiDefinition;
+import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
+import core.framework.http.HTTPResponse;
 import core.framework.json.JSON;
 import core.framework.log.ActionLogContext;
 import core.framework.util.Strings;
 
 import java.util.AbstractMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -24,9 +26,15 @@ public class DynamicApiCaller {
     private final Map<String, ApiDefinition.Operation> operationMap;
     private final Map<String, Map<String, ApiDefinitionType>> typeMap;
     private final Map<String, ApiDefinition> apiDefinitionMap;
+    private final DynamicApiCallerRequestInterceptor interceptor;
 
     public DynamicApiCaller(List<ApiDefinition> apiDefinitions) {
+        this(apiDefinitions, null);
+    }
+
+    public DynamicApiCaller(List<ApiDefinition> apiDefinitions, DynamicApiCallerRequestInterceptor interceptor) {
         ActionLogContext.triggerTrace(true);
+        this.interceptor = interceptor;
         this.operationMap = apiDefinitions.stream()
                 .flatMap(api -> api.services.stream()
                         .flatMap(service -> service.operations.stream()
@@ -41,6 +49,10 @@ public class DynamicApiCaller {
     }
 
     public String callApi(String name, String args) {
+        return callApiWithRsp(name, args).text();
+    }
+
+    public HTTPResponse callApiWithRsp(String name, String args) {
         ActionLogContext.put("mcp-call-api", name);
         ActionLogContext.put("mcp-call-api-args", args);
         var operation = operationMap.get(name);
@@ -51,7 +63,7 @@ public class DynamicApiCaller {
     }
 
     @SuppressWarnings("unchecked")
-    private String call(String name, ApiDefinition.Operation operation, String args) {
+    private HTTPResponse call(String name, ApiDefinition.Operation operation, String args) {
         ActionLogContext.triggerTrace(true);
         var argsMap = (Map<String, Object>) JsonUtil.fromJsonSafe(Map.class, args);
         ActionLogContext.put("mcp-call-api-args-map", argsMap);
@@ -81,11 +93,12 @@ public class DynamicApiCaller {
         }
         try {
             ActionLogContext.put("mcp-call-api-req", JSON.toJSON(req));
-            var rsp = client.execute(req);
+            var finalReq = interceptor.invoke(req);
+            var rsp = client.execute(finalReq);
             ActionLogContext.put("mcp-call-api-rsp", JSON.toJSON(rsp));
-            return rsp.text();
+            return rsp;
         } catch (Exception e) {
-            return Strings.format("Call api[{}, {}] failed: {}", url, JSON.toJSON(req), e.getMessage());
+            return new HTTPResponse(500, new HashMap<>(), Strings.format("Call api[{}, {}] failed: {}", url, JSON.toJSON(req), e.getMessage()).getBytes());
         }
     }
 

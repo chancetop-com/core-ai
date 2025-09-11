@@ -25,6 +25,7 @@ import com.azure.ai.openai.OpenAIServiceVersion;
 import com.azure.ai.openai.models.ChatChoice;
 import com.azure.ai.openai.models.ChatCompletions;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolCall;
+import com.azure.ai.openai.models.ChatCompletionsToolCall;
 import com.azure.ai.openai.models.EmbeddingsOptions;
 import com.azure.core.credential.AzureKeyCredential;
 import com.azure.core.credential.KeyCredential;
@@ -160,37 +161,45 @@ public class AzureOpenAIProvider extends LLMProvider {
 
             var existingToolCall = toolCalls.get(i);
             if (existingToolCall == null) {
-                existingToolCall = new FunctionCall();
-                existingToolCall.id = deltaToolCall.getId();
-                existingToolCall.type = deltaToolCall.getType();
-                existingToolCall.function = new FunctionCall.Function();
-                if (deltaToolCall instanceof ChatCompletionsFunctionToolCall fCall && fCall.getFunction() != null) {
-                    existingToolCall.function.name = fCall.getFunction().getName();
-                    existingToolCall.function.arguments = fCall.getFunction().getArguments() != null ? fCall.getFunction().getArguments() : "";
-                } else {
-                    existingToolCall.function.name = "";
-                    existingToolCall.function.arguments = "";
-                }
-                toolCalls.set(i, existingToolCall);
+                addNewToolCall(i, deltaToolCall, toolCalls);
             } else {
-                if (existingToolCall.function.arguments == null) {
-                    existingToolCall.function.arguments = "";
-                }
-                if (deltaToolCall instanceof ChatCompletionsFunctionToolCall fCall && fCall.getFunction() != null) {
-                    if (fCall.getFunction().getArguments() != null) {
-                        existingToolCall.function.arguments += fCall.getFunction().getArguments();
-                    }
-                    if (fCall.getFunction().getName() != null) {
-                        existingToolCall.function.name = fCall.getFunction().getName();
-                    }
-                }
-                if (deltaToolCall.getId() != null && !deltaToolCall.getId().isEmpty()) {
-                    existingToolCall.id = deltaToolCall.getId();
-                }
-                if (deltaToolCall.getType() != null) {
-                    existingToolCall.type = deltaToolCall.getType();
-                }
+                mergeDeltaToolCall(existingToolCall, deltaToolCall);
             }
+        }
+    }
+
+    private void addNewToolCall(int i, ChatCompletionsToolCall deltaToolCall, List<FunctionCall> toolCalls) {
+        var existingToolCall = new FunctionCall();
+        existingToolCall.id = deltaToolCall.getId();
+        existingToolCall.type = deltaToolCall.getType();
+        existingToolCall.function = new FunctionCall.Function();
+        if (deltaToolCall instanceof ChatCompletionsFunctionToolCall fCall && fCall.getFunction() != null) {
+            existingToolCall.function.name = fCall.getFunction().getName();
+            existingToolCall.function.arguments = fCall.getFunction().getArguments() != null ? fCall.getFunction().getArguments() : "";
+        } else {
+            existingToolCall.function.name = "";
+            existingToolCall.function.arguments = "";
+        }
+        toolCalls.set(i, existingToolCall);
+    }
+
+    private void mergeDeltaToolCall(FunctionCall existingToolCall, ChatCompletionsToolCall deltaToolCall) {
+        if (existingToolCall.function.arguments == null) {
+            existingToolCall.function.arguments = "";
+        }
+        if (deltaToolCall instanceof ChatCompletionsFunctionToolCall fCall && fCall.getFunction() != null) {
+            if (fCall.getFunction().getArguments() != null) {
+                existingToolCall.function.arguments += fCall.getFunction().getArguments();
+            }
+            if (fCall.getFunction().getName() != null) {
+                existingToolCall.function.name = fCall.getFunction().getName();
+            }
+        }
+        if (deltaToolCall.getId() != null && !deltaToolCall.getId().isEmpty()) {
+            existingToolCall.id = deltaToolCall.getId();
+        }
+        if (deltaToolCall.getType() != null) {
+            existingToolCall.type = deltaToolCall.getType();
         }
     }
 

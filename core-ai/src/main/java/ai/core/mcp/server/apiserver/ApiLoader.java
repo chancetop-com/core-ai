@@ -1,6 +1,6 @@
 package ai.core.mcp.server.apiserver;
 
-import ai.core.mcp.server.apiserver.domain.ApiDefinition;
+import ai.core.api.apidefinition.ApiDefinition;
 
 import java.util.List;
 
