@@ -9,6 +9,7 @@ import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.function.Function;
 import core.framework.util.Lists;
+import core.framework.util.Strings;
 import core.framework.web.exception.ConflictException;
 
 import java.util.Arrays;
@@ -80,15 +81,15 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
         var requestType = typeMap.get(type);
         List<ToolCallParameter> params = Lists.newArrayList();
         buildTypeParams(requestType, params, api);
-        checkDuplicateName(params);
+        checkDuplicateName(params, type, api);
         return params;
     }
 
-    private void checkDuplicateName(List<ToolCallParameter> params) {
+    private void checkDuplicateName(List<ToolCallParameter> params, String type, ApiDefinition api) {
         var names = new HashSet<String>();
         for (var param : params) {
             if (!names.add(param.getName())) {
-                throw new ConflictException("DUPLICATE_PARAMETER_NAME_EXCEPTION", "Not supported, duplicate parameter name: " + param.getName());
+                throw new ConflictException("DUPLICATE_PARAMETER_NAME_EXCEPTION", Strings.format("Not supported, duplicate parameter name: {}, api: {}, type: {}", param.getName(), api.app, type));
             }
         }
     }

@@ -93,8 +93,10 @@ public class DynamicApiCaller {
         }
         try {
             ActionLogContext.put("mcp-call-api-req", JSON.toJSON(req));
-            var finalReq = interceptor.invoke(req);
-            var rsp = client.execute(finalReq);
+            if (interceptor != null) {
+                req = interceptor.invoke(req);
+            }
+            var rsp = client.execute(req);
             ActionLogContext.put("mcp-call-api-rsp", JSON.toJSON(rsp));
             return rsp;
         } catch (Exception e) {
