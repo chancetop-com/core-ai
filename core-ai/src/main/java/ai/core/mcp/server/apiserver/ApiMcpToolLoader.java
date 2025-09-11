@@ -12,6 +12,7 @@ import core.framework.util.Lists;
 import core.framework.util.Strings;
 import core.framework.web.exception.ConflictException;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -111,7 +112,16 @@ public class ApiMcpToolLoader implements McpServerToolLoader {
                 if ("enum".equalsIgnoreCase(subType.type)) {
                     params.add(toParamEnum(field, requestType, subType));
                 } else {
-                    buildTypeParams(typeMap.get(field.type), params, api);
+                    var param = new ToolCallParameter();
+                    param.setName(field.name);
+                    param.setDescription(field.description == null ? field.name : field.description);
+                    param.setRequired(field.constraints.notNull);
+                    param.setClassType(Map.class);
+                    param.setItemType(Object.class);
+                    var subParams = new ArrayList<ToolCallParameter>();
+                    buildTypeParams(typeMap.get(field.type), subParams, api);
+                    param.setItems(subParams);
+                    params.add(param);
                 }
             } else {
                 params.add(toParam(field));
