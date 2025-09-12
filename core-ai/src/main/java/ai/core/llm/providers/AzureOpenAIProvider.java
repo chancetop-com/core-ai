@@ -50,20 +50,19 @@ public class AzureOpenAIProvider extends LLMProvider {
     public AzureOpenAIProvider(LLMProviderConfig config, String apiKey, String endpoint) {
         super(config);
         var options = new HttpClientOptions();
-        options.setConnectTimeout(Duration.ofMillis(1000));
-        options.setReadTimeout(Duration.ofSeconds(120));
-        options.setResponseTimeout(Duration.ofSeconds(120));
+        options.setConnectTimeout(config.getConnectTimeout());
+        options.setReadTimeout(config.getTimeout());
+        options.setResponseTimeout(config.getTimeout());
         options.setConnectionIdleTimeout(Duration.ofMinutes(5));
+        OpenAIClientBuilder builder;
         if (endpoint == null) {
-            var builder = new OpenAIClientBuilder().httpClient(HttpClient.createDefault(options)).credential(new KeyCredential(apiKey)).serviceVersion(OpenAIServiceVersion.V2025_01_01_PREVIEW);
             // openai api key without endpoint
-            this.chatClient = builder.buildClient();
-            this.chatAsyncClient = builder.buildAsyncClient();
+            builder = new OpenAIClientBuilder().httpClient(HttpClient.createDefault(options)).credential(new KeyCredential(apiKey)).serviceVersion(OpenAIServiceVersion.V2025_01_01_PREVIEW);
         } else {
-            var builder = new OpenAIClientBuilder().httpClient(HttpClient.createDefault(options)).credential(new AzureKeyCredential(apiKey)).endpoint(endpoint).serviceVersion(OpenAIServiceVersion.V2025_01_01_PREVIEW);
-            this.chatClient = builder.buildClient();
-            this.chatAsyncClient = builder.buildAsyncClient();
+            builder = new OpenAIClientBuilder().httpClient(HttpClient.createDefault(options)).credential(new AzureKeyCredential(apiKey)).endpoint(endpoint).serviceVersion(OpenAIServiceVersion.V2025_01_01_PREVIEW);
         }
+        this.chatClient = builder.buildClient();
+        this.chatAsyncClient = builder.buildAsyncClient();
     }
 
     @Override

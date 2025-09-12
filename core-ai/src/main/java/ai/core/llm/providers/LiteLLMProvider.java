@@ -265,7 +265,7 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     public CompletionResponse chatCompletion(CompletionRequest request) {
-        var client = HTTPClient.builder().trustAll().build();
+        var client = HTTPClient.builder().connectTimeout(this.config.getConnectTimeout()).timeout(this.config.getTimeout()).trustAll().build();
         var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
         var body = JsonUtil.toJson(request).getBytes(StandardCharsets.UTF_8);

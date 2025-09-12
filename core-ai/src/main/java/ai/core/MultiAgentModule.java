@@ -20,6 +20,8 @@ import ai.core.vectorstore.vectorstores.milvus.MilvusConfig;
 import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
 import core.framework.module.Module;
 
+import java.time.Duration;
+
 /**
  * @author stephen
  */
@@ -102,6 +104,8 @@ public class MultiAgentModule extends Module {
         property("llm.temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
         property("llm.model").ifPresent(config::setModel);
         property("llm.embeddings.model").ifPresent(config::setEmbeddingModel);
+        property("llm.timeout.seconds").ifPresent(v -> config.setTimeout(Duration.ofSeconds(Long.parseLong(v))));
+        property("llm.connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Duration.ofSeconds(Long.parseLong(v))));
         return config;
     }
 
