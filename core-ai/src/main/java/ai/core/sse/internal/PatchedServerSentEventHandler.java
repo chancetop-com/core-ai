@@ -52,6 +52,7 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
 
     @Override
     public boolean check(HttpString method, String path, HeaderMap headers) {
+        if (headers == null || headers.getFirst(Headers.ACCEPT) == null) return false; // aks gw health check use / and do not have accept headers, just return false
         return headers.getFirst(Headers.ACCEPT).contains("text/event-stream")
             && supports.containsKey(key(method.toString(), path));
     }
