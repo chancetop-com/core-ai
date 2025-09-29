@@ -54,6 +54,10 @@ public class AzureInferenceProvider extends LLMProvider {
     private final EmbeddingsClient embeddingsClient;
 
     public AzureInferenceProvider(LLMProviderConfig config, String apiKey, String endpoint, boolean azureKeyCredential) {
+        this(config, apiKey, endpoint, azureKeyCredential, ModelServiceVersion.getLatest());
+    }
+
+    public AzureInferenceProvider(LLMProviderConfig config, String apiKey, String endpoint, boolean azureKeyCredential, ModelServiceVersion apiVersion) {
         super(config);
         var options = new HttpClientOptions();
         options.setConnectTimeout(config.getConnectTimeout());
@@ -64,12 +68,12 @@ public class AzureInferenceProvider extends LLMProvider {
         EmbeddingsClientBuilder embeddingsBuilder;
         if (!azureKeyCredential) {
             TokenCredential tokenCredential = (TokenRequestContext context) -> Mono.just(new AccessToken(apiKey, OffsetDateTime.MAX));
-            chatBuilder = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(tokenCredential).endpoint(endpoint);
-            embeddingsBuilder = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(tokenCredential).endpoint(endpoint);
+            chatBuilder = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(apiVersion).credential(tokenCredential).endpoint(endpoint);
+            embeddingsBuilder = new EmbeddingsClientBuilder().serviceVersion(apiVersion).credential(tokenCredential).endpoint(endpoint);
         } else {
             var keyCredential = new AzureKeyCredential(apiKey);
-            chatBuilder = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(keyCredential).endpoint(endpoint);
-            embeddingsBuilder = new EmbeddingsClientBuilder().serviceVersion(ModelServiceVersion.V2024_08_01_PREVIEW).credential(keyCredential).endpoint(endpoint);
+            chatBuilder = new ChatCompletionsClientBuilder().httpClient(HttpClient.createDefault(options)).serviceVersion(apiVersion).credential(keyCredential).endpoint(endpoint);
+            embeddingsBuilder = new EmbeddingsClientBuilder().serviceVersion(apiVersion).credential(keyCredential).endpoint(endpoint);
         }
         this.chatClient = chatBuilder.buildClient();
         this.chatAsyncClient = chatBuilder.buildAsyncClient();

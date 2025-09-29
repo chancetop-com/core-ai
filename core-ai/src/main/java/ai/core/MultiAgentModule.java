@@ -18,9 +18,12 @@ import ai.core.vectorstore.vectorstores.hnswlib.HnswConfig;
 import ai.core.vectorstore.vectorstores.hnswlib.HnswLibVectorStore;
 import ai.core.vectorstore.vectorstores.milvus.MilvusConfig;
 import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
+import com.azure.ai.inference.ModelServiceVersion;
+import com.azure.ai.openai.OpenAIServiceVersion;
 import core.framework.module.Module;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author stephen
@@ -68,17 +71,19 @@ public class MultiAgentModule extends Module {
 
     private void configAzureOpenAI(LLMProviders providers, LLMProviderConfig config) {
         property("azure.api.key").ifPresent(key -> property("azure.api.base").ifPresent(base -> {
-            var provider = new AzureOpenAIProvider(config, key, base);
-            bind(provider);
-            providers.addProvider(LLMProviderType.AZURE, provider);
+            AtomicReference<AzureOpenAIProvider> provider = new AtomicReference<>();
+            property("azure.api.version").ifPresentOrElse(version -> provider.set(new AzureOpenAIProvider(config, key, base, OpenAIServiceVersion.valueOf(version))), () -> provider.set(new AzureOpenAIProvider(config, key, base)));
+            bind(provider.get());
+            providers.addProvider(LLMProviderType.AZURE, provider.get());
         }));
     }
 
     private void configAzureInference(LLMProviders providers, LLMProviderConfig config) {
         property("azure.ai.api.key").ifPresent(key -> property("azure.ai.api.base").ifPresent(base -> {
-            var provider = new AzureInferenceProvider(config, key, base, true);
-            bind(provider);
-            providers.addProvider(LLMProviderType.AZURE_INFERENCE, provider);
+            AtomicReference<AzureInferenceProvider> provider = new AtomicReference<>();
+            property("azure.ai.api.version").ifPresentOrElse(version -> provider.set(new AzureInferenceProvider(config, key, base, true, ModelServiceVersion.valueOf(version))), () -> provider.set(new AzureInferenceProvider(config, key, base, true)));
+            bind(provider.get());
+            providers.addProvider(LLMProviderType.AZURE_INFERENCE, provider.get());
         }));
     }
 
