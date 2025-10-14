@@ -21,6 +21,10 @@ public class FlowTracer extends Tracer {
     private static final AttributeKey<String> NODE_ID = AttributeKey.stringKey("flow.node.id");
     private static final AttributeKey<String> NODE_NAME = AttributeKey.stringKey("flow.node.name");
 
+    // Context attributes for session and user tracking
+    private static final AttributeKey<String> SESSION_ID = AttributeKey.stringKey("session.id");
+    private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
+
     public FlowTracer(OpenTelemetry openTelemetry, boolean enabled) {
         super(openTelemetry, enabled);
     }
@@ -42,6 +46,12 @@ public class FlowTracer extends Tracer {
 
         if (context.getNodeName() != null) {
             spanBuilder.setAttribute(NODE_NAME, context.getNodeName());
+        }
+        if (context.getSessionId() != null) {
+            spanBuilder.setAttribute(SESSION_ID, context.getSessionId());
+        }
+        if (context.getUserId() != null) {
+            spanBuilder.setAttribute(USER_ID, context.getUserId());
         }
 
         var span = spanBuilder.startSpan();

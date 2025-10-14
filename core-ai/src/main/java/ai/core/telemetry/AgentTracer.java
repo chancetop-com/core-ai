@@ -31,6 +31,10 @@ public class AgentTracer extends Tracer {
     private static final AttributeKey<Boolean> AGENT_HAS_TOOLS = AttributeKey.booleanKey("agent.has_tools");
     private static final AttributeKey<Boolean> AGENT_HAS_RAG = AttributeKey.booleanKey("agent.has_rag");
 
+    // Context attributes for session and user tracking
+    private static final AttributeKey<String> SESSION_ID = AttributeKey.stringKey("session.id");
+    private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
+
     // Tool call attributes
     private static final AttributeKey<String> TOOL_NAME = AttributeKey.stringKey("tool.name");
 
@@ -59,6 +63,12 @@ public class AgentTracer extends Tracer {
 
         if (context.getType() != null) {
             spanBuilder.setAttribute(GEN_AI_AGENT_DESCRIPTION, context.getType());
+        }
+        if (context.getSessionId() != null) {
+            spanBuilder.setAttribute(SESSION_ID, context.getSessionId());
+        }
+        if (context.getUserId() != null) {
+            spanBuilder.setAttribute(USER_ID, context.getUserId());
         }
 
         var span = spanBuilder.startSpan();

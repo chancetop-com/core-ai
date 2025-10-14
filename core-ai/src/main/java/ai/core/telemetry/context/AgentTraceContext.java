@@ -17,6 +17,8 @@ public final class AgentTraceContext {
     private final String input;
     private final boolean hasTools;
     private final boolean hasRag;
+    private final String sessionId;
+    private final String userId;
     private String output;
     private String status;
     private int messageCount;
@@ -28,6 +30,8 @@ public final class AgentTraceContext {
         this.input = builder.input;
         this.hasTools = builder.hasTools;
         this.hasRag = builder.hasRag;
+        this.sessionId = builder.sessionId;
+        this.userId = builder.userId;
         this.output = builder.output;
         this.status = builder.status;
         this.messageCount = builder.messageCount;
@@ -81,6 +85,14 @@ public final class AgentTraceContext {
         this.messageCount = messageCount;
     }
 
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
     public static class Builder {
         private String name;
         private String id;
@@ -88,6 +100,8 @@ public final class AgentTraceContext {
         private String input;
         private boolean hasTools;
         private boolean hasRag;
+        private String sessionId;
+        private String userId;
         private String output;
         private String status;
         private int messageCount;
@@ -134,6 +148,16 @@ public final class AgentTraceContext {
 
         public Builder messageCount(int messageCount) {
             this.messageCount = messageCount;
+            return this;
+        }
+
+        public Builder sessionId(String sessionId) {
+            this.sessionId = sessionId;
+            return this;
+        }
+
+        public Builder userId(String userId) {
+            this.userId = userId;
             return this;
         }
 

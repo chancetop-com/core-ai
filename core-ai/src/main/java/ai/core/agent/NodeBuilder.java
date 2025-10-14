@@ -36,6 +36,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     StreamingCallback streamingCallback;
     String id;
     Tracer tracer;
+    ExecutionContext executionContext;
 
     // This method needs to be overridden in the subclass Builders
     protected abstract B self();
@@ -120,6 +121,11 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         return self();
     }
 
+    public B executionContext(ExecutionContext executionContext) {
+        this.executionContext = executionContext;
+        return self();
+    }
+
     public void build(T node) {
         validation();
         if (maxRound == null) maxRound = 0;
@@ -149,6 +155,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         node.setStreaming(this.streaming);
         node.setStreamingCallback(this.streamingCallback);
         node.setTracer(this.tracer);
+        node.setExecutionContext(this.executionContext);
         var systemVariables = node.getSystemVariables();
         systemVariables.put(SystemVariables.NODE_NAME, this.name);
         systemVariables.put(SystemVariables.NODE_DESCRIPTION, this.description);

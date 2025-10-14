@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -35,6 +36,6 @@ class FlowTest {
     @Test
     void test() {
         var flow = setup();
-        Assertions.assertThrows(RuntimeException.class, () -> flow.run(flow.getNodeByName("Switch").getId(), "switch 2", null));
+        Assertions.assertThrows(RuntimeException.class, () -> flow.run(flow.getNodeByName("Switch").getId(), "switch 2", (Map<String, Object>) null));
     }
 }

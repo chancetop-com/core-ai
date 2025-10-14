@@ -57,6 +57,7 @@ public abstract class Node<T extends Node<T>> {
     private Boolean streaming;
     private StreamingCallback streamingCallback;
     private Tracer tracer;
+    private ExecutionContext executionContext;
     private final List<Termination> terminations;
     private final Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
     private final List<Message> messages;
@@ -258,6 +259,11 @@ public abstract class Node<T extends Node<T>> {
         }
     }
 
+    public final String run(String query, ExecutionContext context) {
+        this.executionContext = context;
+        return run(query, context != null ? context.getCustomVariables() : null);
+    }
+
     public final void run(Task task, Map<String, Object> variables) {
         if (task == null) throw new IllegalArgumentException("Task cannot be null");
         if (this.task == null) this.task = task;
@@ -275,6 +281,11 @@ public abstract class Node<T extends Node<T>> {
         } else {
             task.setStatus(TaskStatus.COMPLETED);
         }
+    }
+
+    public final void run(Task task, ExecutionContext context) {
+        this.executionContext = context;
+        run(task, context != null ? context.getCustomVariables() : null);
     }
 
     private void setupNodeSystemVariables(String query) {
@@ -325,6 +336,14 @@ public abstract class Node<T extends Node<T>> {
     @SuppressWarnings("unchecked")
     <R extends Tracer> R getTracer() {
         return (R) tracer;
+    }
+
+    void setExecutionContext(ExecutionContext executionContext) {
+        this.executionContext = executionContext;
+    }
+
+    public ExecutionContext getExecutionContext() {
+        return executionContext != null ? executionContext : ExecutionContext.empty();
     }
 
     void setRound(Integer round) {

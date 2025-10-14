@@ -28,6 +28,10 @@ public class GroupTracer extends Tracer {
     private static final AttributeKey<Long> GROUP_MAX_ROUND = AttributeKey.longKey("group.max_round");
     private static final AttributeKey<String> GROUP_CURRENT_AGENT = AttributeKey.stringKey("group.current_agent");
 
+    // Context attributes for session and user tracking
+    private static final AttributeKey<String> SESSION_ID = AttributeKey.stringKey("session.id");
+    private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
+
     public GroupTracer(OpenTelemetry openTelemetry, boolean enabled) {
         super(openTelemetry, enabled);
     }
@@ -52,6 +56,12 @@ public class GroupTracer extends Tracer {
 
         if (context.getCurrentAgentName() != null) {
             spanBuilder.setAttribute(GROUP_CURRENT_AGENT, context.getCurrentAgentName());
+        }
+        if (context.getSessionId() != null) {
+            spanBuilder.setAttribute(SESSION_ID, context.getSessionId());
+        }
+        if (context.getUserId() != null) {
+            spanBuilder.setAttribute(USER_ID, context.getUserId());
         }
 
         var span = spanBuilder.startSpan();

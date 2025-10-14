@@ -17,6 +17,8 @@ public final class GroupTraceContext {
     private final int agentCount;
     private final int currentRound;
     private final int maxRound;
+    private final String sessionId;
+    private final String userId;
     private String currentAgentName;
     private String output;
     private String status;
@@ -28,6 +30,8 @@ public final class GroupTraceContext {
         this.agentCount = builder.agentCount;
         this.currentRound = builder.currentRound;
         this.maxRound = builder.maxRound;
+        this.sessionId = builder.sessionId;
+        this.userId = builder.userId;
         this.currentAgentName = builder.currentAgentName;
         this.output = builder.output;
         this.status = builder.status;
@@ -81,6 +85,14 @@ public final class GroupTraceContext {
         this.status = status;
     }
 
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
     public static class Builder {
         private String groupName;
         private String groupId;
@@ -88,6 +100,8 @@ public final class GroupTraceContext {
         private int agentCount;
         private int currentRound;
         private int maxRound;
+        private String sessionId;
+        private String userId;
         private String currentAgentName;
         private String output;
         private String status;
@@ -134,6 +148,16 @@ public final class GroupTraceContext {
 
         public Builder status(String status) {
             this.status = status;
+            return this;
+        }
+
+        public Builder sessionId(String sessionId) {
+            this.sessionId = sessionId;
+            return this;
+        }
+
+        public Builder userId(String userId) {
+            this.userId = userId;
             return this;
         }
 

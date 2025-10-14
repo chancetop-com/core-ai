@@ -13,6 +13,7 @@ import ai.core.vectorstore.VectorStore;
 import core.framework.util.Strings;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -51,7 +52,7 @@ public class LongQueryHandler {
     private LongQueryHandlerResult longQuerySummary(String query) {
         var agent = DefaultSummaryAgent.of(llmProvider);
         var rst = "The output is too long for LLM, please re-planning the agent if the output summary is not enough, re-planning for example: adjust query, adjust tool parameters or use another tool, the output summary: \n"
-                + agent.run(truncateQuery(query), null);
+                + agent.run(truncateQuery(query), (Map<String, Object>) null);
         return new LongQueryHandlerResult(rst, agent.getCurrentTokenUsage());
     }
 

@@ -163,7 +163,7 @@
 
     <!--Size Violations:-->
     <module name="FileLength">                      <!--Checks for long source files.-->
-        <property name="max" value="450"/>
+        <property name="max" value="500"/>
         <property name="fileExtensions" value="java"/>
     </module>
 

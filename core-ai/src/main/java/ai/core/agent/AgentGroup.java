@@ -47,6 +47,7 @@ public class AgentGroup extends Node<AgentGroup> {
         try {
             var activeTracer = getActiveTracer();
             if (activeTracer != null) {
+                var execContext = getExecutionContext();
                 var context = GroupTraceContext.builder()
                     .groupName(getName())
                     .groupId(getId())
@@ -54,6 +55,8 @@ public class AgentGroup extends Node<AgentGroup> {
                     .agentCount(agents != null ? agents.size() : 0)
                     .currentRound(getRound() != null ? getRound() : 0)
                     .maxRound(getMaxRound() != null ? getMaxRound() : 0)
+                    .sessionId(execContext.getSessionId())
+                    .userId(execContext.getUserId())
                     .build();
 
                 return activeTracer.traceGroupExecution(context, () -> {

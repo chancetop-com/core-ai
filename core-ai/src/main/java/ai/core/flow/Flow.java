@@ -1,5 +1,6 @@
 package ai.core.flow;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.agent.NodeStatus;
 import ai.core.flow.listener.FlowNodeChangedEventListener;
 import ai.core.flow.listener.FlowNodeOutputUpdatedEventListener;
@@ -48,6 +49,7 @@ public class Flow {
     private LLMProviders llmProviders;
     private VectorStores vectorStores;
     private FlowTracer tracer;
+    private ExecutionContext executionContext;
 
     public Flow() {
         this.id = UUID.randomUUID().toString();
@@ -64,11 +66,14 @@ public class Flow {
             var activeTracer = getActiveTracer();
             if (activeTracer != null) {
                 var node = getNodeById(nodeId);
+                var execContext = getExecutionContext();
                 var context = ai.core.telemetry.context.FlowTraceContext.builder()
                     .flowId(this.id)
                     .flowName(this.name)
                     .nodeId(nodeId)
                     .nodeName(node != null ? node.getName() : null)
+                    .sessionId(execContext.getSessionId())
+                    .userId(execContext.getUserId())
                     .build();
 
                 return activeTracer.traceFlowExecution(context, () -> execute(nodeId, input, variables));
@@ -105,6 +110,20 @@ public class Flow {
         } catch (Exception e) {
             task.setStatus(TaskStatus.FAILED);
         }
+    }
+
+    public String run(String nodeId, String input, ExecutionContext context) {
+        this.executionContext = context;
+        return run(nodeId, input, context != null ? context.getCustomVariables() : null);
+    }
+
+    public void run(String nodeId, Task task, ExecutionContext context) {
+        this.executionContext = context;
+        run(nodeId, task, context != null ? context.getCustomVariables() : null);
+    }
+
+    public ExecutionContext getExecutionContext() {
+        return executionContext != null ? executionContext : ExecutionContext.empty();
     }
 
     /**

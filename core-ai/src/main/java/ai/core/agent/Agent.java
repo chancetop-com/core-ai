@@ -61,12 +61,15 @@ public class Agent extends Node<Agent> {
     String execute(String query, Map<String, Object> variables) {
         var activeTracer = getActiveTracer();
         if (activeTracer != null) {
+            var execContext = getExecutionContext();
             var context = AgentTraceContext.builder()
                 .name(getName())
                 .id(getId())
                 .input(query)
                 .withTools(toolCalls != null && !toolCalls.isEmpty())
                 .withRag(ragConfig != null && ragConfig.useRag())
+                .sessionId(execContext.getSessionId())
+                .userId(execContext.getUserId())
                 .build();
 
             return activeTracer.traceAgentExecution(context, () -> {
@@ -329,7 +332,7 @@ public class Agent extends Node<Agent> {
         if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null) throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
         var ragQuery = query;
         if (ragConfig.llmProvider() != null) {
-            ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, null);
+            ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, (Map<String, Object>) null);
         }
         var rsp = ragConfig.llmProvider().embeddings(new EmbeddingRequest(List.of(ragQuery)));
         addTokenCost(rsp.usage);

@@ -56,7 +56,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
     @Override
     public FlowNodeResult execute(String input, Map<String, Object> variables) {
         if (agent == null) throw new IllegalArgumentException("Agent is not setup successfully");
-        return new FlowNodeResult(agent.run(input, null));
+        return new FlowNodeResult(agent.run(input, (Map<String, Object>) null));
     }
 
     @Override

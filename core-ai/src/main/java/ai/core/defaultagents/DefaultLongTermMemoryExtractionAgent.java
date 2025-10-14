@@ -7,6 +7,7 @@ import core.framework.api.json.Property;
 import core.framework.json.JSON;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -48,7 +49,7 @@ public class DefaultLongTermMemoryExtractionAgent {
 
     public List<String> extractMemories(String conversationText) {
         var agent = of(llmProvider);
-        var response = agent.run(conversationText, null);
+        var response = agent.run(conversationText, (Map<String, Object>) null);
         var dto = JSON.fromJSON(LongTernMemoryDto.class, response);
         return dto.memories;
     }

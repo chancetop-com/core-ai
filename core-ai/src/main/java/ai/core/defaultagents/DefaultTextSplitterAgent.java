@@ -7,6 +7,7 @@ import core.framework.util.Strings;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -49,7 +50,7 @@ public class DefaultTextSplitterAgent {
     }
 
     public List<TextChunk> split(String text) {
-        var rsp = agent.run(text, null);
+        var rsp = agent.run(text, (Map<String, Object>) null);
         return Arrays.stream(rsp.split(SPECIAL_SYMBOL_SPLITTER_DELIMITER)).map(v -> {
             var splits = v.split(SPECIAL_SYMBOL_SPLITTER_SUMMARY);
             if (splits.length < 2) {

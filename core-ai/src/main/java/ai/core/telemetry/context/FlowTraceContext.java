@@ -15,12 +15,16 @@ public final class FlowTraceContext {
     private final String flowName;
     private final String nodeId;
     private final String nodeName;
+    private final String sessionId;
+    private final String userId;
 
     private FlowTraceContext(Builder builder) {
         this.flowId = builder.flowId;
         this.flowName = builder.flowName;
         this.nodeId = builder.nodeId;
         this.nodeName = builder.nodeName;
+        this.sessionId = builder.sessionId;
+        this.userId = builder.userId;
     }
 
     public String getFlowId() {
@@ -39,11 +43,21 @@ public final class FlowTraceContext {
         return nodeName;
     }
 
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
     public static class Builder {
         private String flowId;
         private String flowName;
         private String nodeId;
         private String nodeName;
+        private String sessionId;
+        private String userId;
 
         public Builder flowId(String flowId) {
             this.flowId = flowId;
@@ -62,6 +76,16 @@ public final class FlowTraceContext {
 
         public Builder nodeName(String nodeName) {
             this.nodeName = nodeName;
+            return this;
+        }
+
+        public Builder sessionId(String sessionId) {
+            this.sessionId = sessionId;
+            return this;
+        }
+
+        public Builder userId(String userId) {
+            this.userId = userId;
             return this;
         }
 
