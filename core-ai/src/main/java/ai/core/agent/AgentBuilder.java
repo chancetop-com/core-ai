@@ -3,6 +3,8 @@ package ai.core.agent;
 import ai.core.llm.LLMProvider;
 import ai.core.memory.memories.NaiveMemory;
 import ai.core.prompt.SystemVariables;
+import ai.core.prompt.langfuse.LangfusePromptProvider;
+import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.termination.terminations.MaxRoundTermination;
@@ -29,6 +31,12 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Boolean useGroupContext = false;
     private Boolean enableReflection = false;
     private Integer maxToolCallCount;
+
+    // Langfuse prompt integration (simplified - just names needed)
+    private String langfuseSystemPromptName;
+    private String langfusePromptTemplateName;
+    private Integer langfusePromptVersion;
+    private String langfusePromptLabel;
 
     public AgentBuilder promptTemplate(String promptTemplate) {
         this.promptTemplate = promptTemplate;
@@ -85,6 +93,44 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    /**
+     * Set the name of the system prompt to fetch from Langfuse
+     * Requires Langfuse configuration in properties (langfuse.prompt.base.url)
+     */
+    public AgentBuilder langfuseSystemPrompt(String promptName) {
+        this.langfuseSystemPromptName = promptName;
+        return this;
+    }
+
+    /**
+     * Set the name of the prompt template to fetch from Langfuse
+     * Requires Langfuse configuration in properties (langfuse.prompt.base.url)
+     */
+    public AgentBuilder langfusePromptTemplate(String promptName) {
+        this.langfusePromptTemplateName = promptName;
+        return this;
+    }
+
+    /**
+     * Set the version of the Langfuse prompt to fetch (optional)
+     * If not set, the latest production version will be used
+     * Applies to both system prompt and prompt template
+     */
+    public AgentBuilder langfusePromptVersion(Integer version) {
+        this.langfusePromptVersion = version;
+        return this;
+    }
+
+    /**
+     * Set the label of the Langfuse prompt to fetch (optional)
+     * Examples: "production", "staging", "development"
+     * Applies to both system prompt and prompt template
+     */
+    public AgentBuilder langfusePromptLabel(String label) {
+        this.langfusePromptLabel = label;
+        return this;
+    }
+
     public Agent build() {
         var agent = new Agent();
         this.nodeType = NodeType.AGENT;
@@ -96,6 +142,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             description = "assistant agent that help with user";
         }
         build(agent);
+
+        // Fetch prompts from Langfuse if configured
+        fetchLangfusePromptsIfConfigured();
+
         agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
         agent.maxToolCallCount = this.maxToolCallCount == null ? 3 : this.maxToolCallCount;
@@ -128,6 +178,47 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         var systemVariables = agent.getSystemVariables();
         systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
         return agent;
+    }
+
+    /**
+     * Fetch prompts from Langfuse if prompt names are configured
+     * Uses the globally registered provider from LangfusePromptProviderRegistry
+     */
+    private void fetchLangfusePromptsIfConfigured() {
+        // Check if any Langfuse prompts are requested
+        if (langfuseSystemPromptName == null && langfusePromptTemplateName == null) {
+            return;
+        }
+
+        // Get provider from registry
+        var provider = LangfusePromptProviderRegistry.getProvider();
+        if (provider == null) {
+            throw new IllegalStateException(
+                "Langfuse prompts are configured but Langfuse provider is not initialized. "
+                + "Please configure langfuse.prompt.base.url in your properties file."
+            );
+        }
+
+        try {
+            if (langfuseSystemPromptName != null) {
+                var prompt = langfusePromptVersion != null
+                    ? provider.getPrompt(langfuseSystemPromptName, langfusePromptVersion)
+                    : langfusePromptLabel != null
+                        ? provider.getPromptByLabel(langfuseSystemPromptName, langfusePromptLabel)
+                        : provider.getPrompt(langfuseSystemPromptName);
+                this.systemPrompt = prompt.getPromptContent();
+            }
+            if (langfusePromptTemplateName != null) {
+                var prompt = langfusePromptVersion != null
+                    ? provider.getPrompt(langfusePromptTemplateName, langfusePromptVersion)
+                    : langfusePromptLabel != null
+                        ? provider.getPromptByLabel(langfusePromptTemplateName, langfusePromptLabel)
+                        : provider.getPrompt(langfusePromptTemplateName);
+                this.promptTemplate = prompt.getPromptContent();
+            }
+        } catch (LangfusePromptProvider.LangfusePromptException e) {
+            throw new RuntimeException("Failed to fetch prompts from Langfuse", e);
+        }
     }
 
     @Override

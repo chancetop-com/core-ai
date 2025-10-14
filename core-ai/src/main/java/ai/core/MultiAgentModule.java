@@ -13,6 +13,9 @@ import ai.core.persistence.PersistenceProviders;
 import ai.core.persistence.providers.FilePersistenceProvider;
 import ai.core.persistence.providers.RedisPersistenceProvider;
 import ai.core.persistence.providers.TemporaryPersistenceProvider;
+import ai.core.prompt.langfuse.LangfusePromptConfig;
+import ai.core.prompt.langfuse.LangfusePromptProvider;
+import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.FlowTracer;
 import ai.core.telemetry.GroupTracer;
@@ -48,6 +51,7 @@ public class MultiAgentModule extends Module {
         configPersistenceProvider();
         configVectorStore();
         configTelemetry();
+        configLangfusePrompts();
         configLLMProvider();
     }
 
@@ -235,6 +239,46 @@ public class MultiAgentModule extends Module {
             logger.info("OpenTelemetry tracing disabled - trace.otlp.endpoint not configured");
             tracer = null;
             TracerRegistry.clear();
+        }
+    }
+
+    private void configLangfusePrompts() {
+        property("langfuse.prompt.base.url").ifPresent(baseUrl -> {
+            logger.info("Initializing Langfuse prompt management with base URL: {}", baseUrl);
+
+            var configBuilder = LangfusePromptConfig.builder()
+                .baseUrl(baseUrl);
+
+            // Add credentials if configured
+            var publicKey = property("langfuse.prompt.public.key");
+            var secretKey = property("langfuse.prompt.secret.key");
+            if (publicKey.isPresent() && secretKey.isPresent()) {
+                configBuilder.credentials(publicKey.get(), secretKey.get());
+                logger.info("Langfuse prompt credentials configured");
+            }
+
+            // Optional timeout configuration
+            property("langfuse.prompt.timeout.seconds").ifPresent(timeout ->
+                configBuilder.timeoutSeconds(Integer.parseInt(timeout))
+            );
+
+            var config = configBuilder.build();
+            var promptProvider = new LangfusePromptProvider(config, true);
+
+            // Bind for dependency injection
+            bind(promptProvider);
+            bind(config);
+
+            // Register globally for auto-injection in builders
+            LangfusePromptProviderRegistry.setProvider(promptProvider);
+
+            logger.info("Langfuse prompt management enabled and registered globally");
+        });
+
+        // If langfuse.prompt.base.url is not set, prompt management is disabled
+        if (property("langfuse.prompt.base.url").isEmpty()) {
+            logger.info("Langfuse prompt management disabled - langfuse.prompt.base.url not configured");
+            LangfusePromptProviderRegistry.clear();
         }
     }
 
