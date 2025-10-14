@@ -8,6 +8,8 @@ import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.SystemVariables;
 import ai.core.rag.LongQueryHandler;
+import ai.core.telemetry.Tracer;
+import ai.core.telemetry.TracerRegistry;
 import ai.core.termination.Termination;
 
 import java.util.List;
@@ -33,6 +35,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     Boolean streaming = false;
     StreamingCallback streamingCallback;
     String id;
+    Tracer tracer;
 
     // This method needs to be overridden in the subclass Builders
     protected abstract B self();
@@ -112,9 +115,23 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         return self();
     }
 
+    public B tracer(Tracer tracer) {
+        this.tracer = tracer;
+        return self();
+    }
+
     public void build(T node) {
         validation();
         if (maxRound == null) maxRound = 0;
+
+        // Auto-inject tracer from global registry if not explicitly set
+        if (this.tracer == null && TracerRegistry.isTracingEnabled()) {
+            this.tracer = switch (nodeType) {
+                case GROUP -> TracerRegistry.getGroupTracer();
+                default -> TracerRegistry.getAgentTracer();
+            };
+        }
+
         node.setId(this.id == null ? UUID.randomUUID().toString() : this.id);
         node.setName(this.name);
         node.setDescription(this.description);
@@ -131,6 +148,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         node.updateNodeStatus(NodeStatus.INITED);
         node.setStreaming(this.streaming);
         node.setStreamingCallback(this.streamingCallback);
+        node.setTracer(this.tracer);
         var systemVariables = node.getSystemVariables();
         systemVariables.put(SystemVariables.NODE_NAME, this.name);
         systemVariables.put(SystemVariables.NODE_DESCRIPTION, this.description);

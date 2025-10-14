@@ -70,15 +70,13 @@ public class AzureOpenAIProvider extends LLMProvider {
     }
 
     @Override
-    public CompletionResponse completion(CompletionRequest request) {
-        request.model = getModel(request);
+    protected CompletionResponse doCompletion(CompletionRequest request) {
         var chatCompletion = chatClient.getChatCompletions(request.model, AzureOpenAIModelsUtil.toAzureRequest(request));
         return CompletionResponse.of(AzureOpenAIModelsUtil.toChoice(chatCompletion.getChoices(), request.getName()), AzureOpenAIModelsUtil.toUsage(chatCompletion.getUsage()));
     }
 
     @Override
-    public CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback) {
-        request.model = getModel(request);
+    protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
         var stream = chatAsyncClient.getChatCompletionsStream(request.model, AzureOpenAIModelsUtil.toAzureRequest(request));
         var choices = new ArrayList<Choice>();
         var usage = new AtomicReference<>(new Usage(0, 0, 0));
@@ -231,6 +229,6 @@ public class AzureOpenAIProvider extends LLMProvider {
 
     @Override
     public String name() {
-        return "azure, openai";
+        return "azure";
     }
 }

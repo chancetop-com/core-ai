@@ -48,3 +48,4 @@ coverage/
 .stylelintcache
 dist/
 **/bin/
+.claude

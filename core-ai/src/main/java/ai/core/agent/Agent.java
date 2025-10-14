@@ -18,6 +18,8 @@ import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.reflection.ReflectionConfig;
+import ai.core.telemetry.AgentTracer;
+import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
@@ -57,6 +59,37 @@ public class Agent extends Node<Agent> {
 
     @Override
     String execute(String query, Map<String, Object> variables) {
+        var activeTracer = getActiveTracer();
+        if (activeTracer != null) {
+            var context = AgentTraceContext.builder()
+                .name(getName())
+                .id(getId())
+                .input(query)
+                .withTools(toolCalls != null && !toolCalls.isEmpty())
+                .withRag(ragConfig != null && ragConfig.useRag())
+                .build();
+
+            return activeTracer.traceAgentExecution(context, () -> {
+                var result = doExecute(query, variables);
+                // Update context with execution results for tracing
+                context.setOutput(getOutput());
+                context.setStatus(getNodeStatus().name());
+                context.setMessageCount(getMessages().size());
+                return result;
+            });
+        }
+        return doExecute(query, variables);
+    }
+
+    /**
+     * Get the agent's tracer if available
+     * LLM tracing is handled automatically by LLMProvider.completion()
+     */
+    private AgentTracer getActiveTracer() {
+        return getTracer();
+    }
+
+    private String doExecute(String query, Map<String, Object> variables) {
         setupAgentSystemVariables();
         setInput(query);
 
@@ -276,6 +309,16 @@ public class Agent extends Node<Agent> {
                 return "This tool call requires user authentication, please ask user to confirm it.";
             }
             logger.info("function call {}: {}", toolCall.function.name, toolCall.function.arguments);
+
+            // Trace tool call
+            var activeTracer = getActiveTracer();
+            if (activeTracer != null) {
+                return activeTracer.traceToolCall(
+                    toolCall.function.name,
+                    toolCall.function.arguments,
+                    () -> function.call(toolCall.function.arguments)
+                );
+            }
             return function.call(toolCall.function.arguments);
         } catch (Exception e) {
             throw new BadRequestException(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(toolCall), e.getMessage()), "TOOL_CALL_FAILED", e);

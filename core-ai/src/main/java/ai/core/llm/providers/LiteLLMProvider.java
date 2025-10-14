@@ -40,17 +40,16 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     @Override
-    public CompletionResponse completion(CompletionRequest dto) {
+    protected CompletionResponse doCompletion(CompletionRequest dto) {
         return chatCompletion(preprocess(dto));
     }
 
     @Override
-    public CompletionResponse completionStream(CompletionRequest dto, StreamingCallback callback) {
+    protected CompletionResponse doCompletionStream(CompletionRequest dto, StreamingCallback callback) {
         return chatCompletionStream(preprocess(dto), callback);
     }
 
     public CompletionRequest preprocess(CompletionRequest dto) {
-        dto.model = getModel(dto);
         dto.temperature = dto.temperature != null ? dto.temperature : config.getTemperature();
         if (dto.model.startsWith("o1") || dto.model.startsWith("o3")) {
             dto.temperature = null;

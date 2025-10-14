@@ -116,6 +116,10 @@ project(":core-ai") {
         // tricky part: self-defined sse module
         implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
         implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
+        // OpenTelemetry for tracing
+        implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")
+        implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
+        implementation("io.opentelemetry:opentelemetry-exporter-otlp:${Versions.OPENTELEMETRY_VERSION}")
     }
 }
 

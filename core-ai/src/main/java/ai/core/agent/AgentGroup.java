@@ -11,6 +11,8 @@ import ai.core.defaultagents.DefaultModeratorAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.RoleType;
 import ai.core.prompt.SystemVariables;
+import ai.core.telemetry.GroupTracer;
+import ai.core.telemetry.context.GroupTraceContext;
 import ai.core.termination.Termination;
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.tool.ToolCall;
@@ -43,10 +45,38 @@ public class AgentGroup extends Node<AgentGroup> {
     @Override
     String execute(String query, Map<String, Object> variables) {
         try {
-            return executeWithException(query, variables);
+            var activeTracer = getActiveTracer();
+            if (activeTracer != null) {
+                var context = GroupTraceContext.builder()
+                    .groupName(getName())
+                    .groupId(getId())
+                    .input(query)
+                    .agentCount(agents != null ? agents.size() : 0)
+                    .currentRound(getRound() != null ? getRound() : 0)
+                    .maxRound(getMaxRound() != null ? getMaxRound() : 0)
+                    .build();
+
+                return activeTracer.traceGroupExecution(context, () -> {
+                    var result = doExecute(query, variables);
+                    // Update context with execution results for tracing
+                    context.setOutput(getOutput());
+                    context.setStatus(getNodeStatus().name());
+                    context.setCurrentAgentName(currentAgent != null ? currentAgent.getName() : null);
+                    return result;
+                });
+            }
+            return doExecute(query, variables);
         } catch (Exception e) {
             throw new RuntimeException(Strings.format("Failed at {}<{}>: {}", this.currentAgent, currentAgent.getId(), e.getMessage()), e);
         }
+    }
+
+    /**
+     * Get the group's tracer if available
+     * LLM tracing is handled automatically by LLMProvider.completion()
+     */
+    private GroupTracer getActiveTracer() {
+        return getTracer();
     }
 
     @Override
@@ -57,7 +87,7 @@ public class AgentGroup extends Node<AgentGroup> {
         }
     }
 
-    String executeWithException(String rawQuery, Map<String, Object> variables) {
+    String doExecute(String rawQuery, Map<String, Object> variables) {
         setupAgentGroupSystemVariables();
         currentQuery = rawQuery;
         startRunning();

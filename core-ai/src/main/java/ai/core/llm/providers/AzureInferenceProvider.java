@@ -81,15 +81,13 @@ public class AzureInferenceProvider extends LLMProvider {
     }
 
     @Override
-    public CompletionResponse completion(CompletionRequest request) {
-        request.model = getModel(request);
+    protected CompletionResponse doCompletion(CompletionRequest request) {
         var chatCompletion = chatClient.complete(AzureInferenceModelsUtil.toAzureRequest(request));
         return CompletionResponse.of(AzureInferenceModelsUtil.toChoice(chatCompletion.getChoices(), request.getName()), AzureInferenceModelsUtil.toUsage(chatCompletion.getUsage()));
     }
 
     @Override
-    public CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback) {
-        request.model = getModel(request);
+    protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
         var stream = chatAsyncClient.completeStream(AzureInferenceModelsUtil.toAzureRequest(request));
         var choices = new ArrayList<Choice>();
         var usage = new AtomicReference<>(new Usage(0, 0, 0));

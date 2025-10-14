@@ -8,6 +8,8 @@ import ai.core.flow.nodes.LLMFlowNode;
 import ai.core.flow.nodes.RagFlowNode;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.Persistence;
+import ai.core.telemetry.FlowTracer;
+import ai.core.telemetry.TracerRegistry;
 import ai.core.vectorstore.VectorStores;
 import ai.core.task.Task;
 import ai.core.task.TaskArtifact;
@@ -45,6 +47,7 @@ public class Flow {
     private FlowStatus status;
     private LLMProviders llmProviders;
     private VectorStores vectorStores;
+    private FlowTracer tracer;
 
     public Flow() {
         this.id = UUID.randomUUID().toString();
@@ -58,6 +61,18 @@ public class Flow {
 
     public String run(String nodeId, String input, Map<String, Object> variables) {
         try {
+            var activeTracer = getActiveTracer();
+            if (activeTracer != null) {
+                var node = getNodeById(nodeId);
+                var context = ai.core.telemetry.context.FlowTraceContext.builder()
+                    .flowId(this.id)
+                    .flowName(this.name)
+                    .nodeId(nodeId)
+                    .nodeName(node != null ? node.getName() : null)
+                    .build();
+
+                return activeTracer.traceFlowExecution(context, () -> execute(nodeId, input, variables));
+            }
             return execute(nodeId, input, variables);
         } catch (Exception e) {
             var currentNode = getNodeById(currentNodeId);
@@ -90,6 +105,14 @@ public class Flow {
         } catch (Exception e) {
             task.setStatus(TaskStatus.FAILED);
         }
+    }
+
+    /**
+     * Get the flow's tracer if available
+     * LLM tracing is handled automatically by LLMProvider.completion()
+     */
+    private FlowTracer getActiveTracer() {
+        return tracer;
     }
 
     private String execute(String nodeId, String input, Map<String, Object> variables) {
@@ -236,6 +259,10 @@ public class Flow {
         this.vectorStores = vectorStores;
     }
 
+    public void setTracer(FlowTracer tracer) {
+        this.tracer = tracer;
+    }
+
     public void setPersistence(Persistence<Flow> persistence) {
         this.persistence = persistence;
     }
@@ -296,6 +323,7 @@ public class Flow {
         private FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
         private LLMProviders llmProviders;
         private VectorStores vectorStores;
+        private FlowTracer tracer;
 
         public Builder id(String id) {
             this.id = id;
@@ -342,7 +370,17 @@ public class Flow {
             return this;
         }
 
+        public Builder tracer(FlowTracer tracer) {
+            this.tracer = tracer;
+            return this;
+        }
+
         public Flow build() {
+            // Auto-inject tracer from global registry if not explicitly set
+            if (tracer == null && TracerRegistry.isTracingEnabled()) {
+                tracer = TracerRegistry.getFlowTracer();
+            }
+
             Flow flow = new Flow(id);
             flow.setName(name);
             flow.setDescription(description);
@@ -350,6 +388,7 @@ public class Flow {
             flow.setEdges(edges);
             flow.setLlmProviders(llmProviders);
             flow.setVectorStores(vectorStores);
+            flow.setTracer(tracer);
             flow.setFlowNodeStatusChangedEventListener(flowNodeChangedEventListener);
             flow.setFlowOutputUpdatedEventListener(flowNodeOutputUpdatedEventListener);
             return flow;

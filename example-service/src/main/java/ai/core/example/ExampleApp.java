@@ -12,6 +12,7 @@ public class ExampleApp extends App {
     @Override
     protected void initialize() {
         load(new SystemModule("sys.properties"));
+        loadProperties("agent.properties");
         load(new MultiAgentModule());
         load(new McpServerModule());
         load(new ExampleModule());

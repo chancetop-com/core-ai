@@ -150,22 +150,7 @@ public class ExampleService {
                 .description("test agent")
                 .systemPrompt("you are a helpful AI assistant, you can answer any question.")
                 .streaming(true)
-                .streamingCallback(new StreamingCallback() {
-                    @Override
-                    public void onChunk(String chunk) {
-                        logger.info(chunk);
-                    }
-
-                    @Override
-                    public void onComplete() {
-                        logger.info("streaming complete");
-                    }
-
-                    @Override
-                    public void onError(Throwable error) {
-                        logger.error("streaming error", error);
-                    }
-                })
+                .streamingCallback(new LoggingStreamingCallback())
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
                 .llmProvider(llmProviders.getProvider(LLMProviderType.AZURE_INFERENCE)).build();
         return agent.run(query, null);
@@ -249,5 +234,22 @@ public class ExampleService {
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
                 .llmProvider(llmProviders.getProvider()).build();
         return agent.run(prompt, null);
+    }
+
+    private final class LoggingStreamingCallback implements StreamingCallback {
+        @Override
+        public void onChunk(String chunk) {
+            logger.info(chunk);
+        }
+
+        @Override
+        public void onComplete() {
+            logger.info("streaming complete");
+        }
+
+        @Override
+        public void onError(Throwable error) {
+            logger.error("streaming error", error);
+        }
     }
 }

@@ -13,4 +13,5 @@ object Versions {
     const val HNSWLIB_JAVA_VERSION = "1.2.0"
     const val JTOKKIT_VERSION = "1.1.0"
     const val UNDERTOW_CORE_VERSION = "2.3.18.Final"
+    const val OPENTELEMETRY_VERSION = "1.44.1"
 }

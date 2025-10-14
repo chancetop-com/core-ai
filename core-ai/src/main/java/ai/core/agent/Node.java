@@ -18,6 +18,7 @@ import ai.core.task.TaskArtifact;
 import ai.core.task.TaskMessage;
 import ai.core.task.TaskRoleType;
 import ai.core.task.TaskStatus;
+import ai.core.telemetry.Tracer;
 import ai.core.termination.Termination;
 import core.framework.util.Lists;
 import core.framework.util.Maps;
@@ -55,6 +56,7 @@ public abstract class Node<T extends Node<T>> {
     private Task task;
     private Boolean streaming;
     private StreamingCallback streamingCallback;
+    private Tracer tracer;
     private final List<Termination> terminations;
     private final Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
     private final List<Message> messages;
@@ -264,12 +266,7 @@ public abstract class Node<T extends Node<T>> {
         if (task.getStatus() == TaskStatus.INPUT_REQUIRED && lastMessage.getRole() != TaskRoleType.USER) {
             throw new IllegalArgumentException("Task is waiting for user input, please submit the query first");
         }
-        // task is completed, failed, canceled or unknown
-//        if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.FAILED || task.getStatus() == TaskStatus.CANCELED || task.getStatus() == TaskStatus.UNKNOWN) {
-//            throw new IllegalArgumentException("Task is already completed, failed, canceled or unknown");
-//        }
         task.setStatus(TaskStatus.WORKING);
-//        try {
         var rst = run(lastMessage.getTextPart().getText(), variables);
         task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
         task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
@@ -278,10 +275,6 @@ public abstract class Node<T extends Node<T>> {
         } else {
             task.setStatus(TaskStatus.COMPLETED);
         }
-//        } catch (Exception e) {
-//            task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, e.getMessage())));
-//            task.setStatus(TaskStatus.FAILED);
-//        }
     }
 
     private void setupNodeSystemVariables(String query) {
@@ -323,6 +316,15 @@ public abstract class Node<T extends Node<T>> {
 
     void setStreamingCallback(StreamingCallback streamingCallback) {
         this.streamingCallback = streamingCallback;
+    }
+
+    void setTracer(Tracer tracer) {
+        this.tracer = tracer;
+    }
+
+    @SuppressWarnings("unchecked")
+    <R extends Tracer> R getTracer() {
+        return (R) tracer;
     }
 
     void setRound(Integer round) {
