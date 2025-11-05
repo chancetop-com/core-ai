@@ -75,6 +75,7 @@ public class Function extends ToolCall {
         parameter.setName(functionParam.name());
         parameter.setDescription(functionParam.description());
         parameter.setClassType(methodParameter.getType());
+        parameter.setItemType(methodParameter.getType());
         parameter.setRequired(functionParam.required());
         parameter.setEnums(List.of(functionParam.enums()));
         return parameter;
