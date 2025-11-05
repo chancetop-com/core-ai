@@ -4,6 +4,7 @@ import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import core.framework.web.exception.BadRequestException;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -31,5 +32,19 @@ public class WeatherService {
             enums = {"beijing", "shanghai", "xiamen"}) String city) {
         if (!airQualities.containsKey(city)) throw new BadRequestException("CITY NOT SUPPORTED");
         return airQualities.get(city);
+    }
+
+    @CoreAiMethod(name = "getCityName", description = "get city information including name and country.")
+    public String getCityName(@CoreAiParameter(
+            name = "city",
+            description = "the city code/geo that you want to get the information",
+            required = true) List<City> city) {
+        return "beijing";
+    }
+
+    public static class City {
+        public String code;
+        public Double longitude;
+        public Double latitude;
     }
 }

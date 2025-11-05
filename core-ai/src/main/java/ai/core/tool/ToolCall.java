@@ -101,7 +101,7 @@ public abstract class ToolCall {
         property.format = p.getFormat();
         if (property.type == JsonSchema.PropertyType.ARRAY) {
             if (p.getItems() != null && !p.getItems().isEmpty()) {
-                property.items = toJsonSchema(p.getItems(), toType(p.getItemType()), p);
+                property.items = toJsonSchema(p.getItems(), JsonSchema.PropertyType.OBJECT, p);
             } else {
                 property.items = new JsonSchema();
                 property.items.type = toType(p.getItemType());

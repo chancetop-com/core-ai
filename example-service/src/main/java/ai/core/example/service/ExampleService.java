@@ -152,8 +152,8 @@ public class ExampleService {
                 .systemPrompt("you are a helpful AI assistant, you can answer any question.")
                 .streaming(true)
                 .streamingCallback(new LoggingStreamingCallback())
-                .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
-                .llmProvider(llmProviders.getProvider(LLMProviderType.AZURE_INFERENCE)).build();
+                .toolCalls(Functions.from(weatherService, "get", "getAirQuality", "getCityName"))
+                .llmProvider(llmProviders.getProvider()).build();
         return agent.run(query, ExecutionContext.empty());
     }
 

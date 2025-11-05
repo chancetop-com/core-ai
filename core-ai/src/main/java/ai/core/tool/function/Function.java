@@ -12,6 +12,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -75,10 +77,63 @@ public class Function extends ToolCall {
         parameter.setName(functionParam.name());
         parameter.setDescription(functionParam.description());
         parameter.setClassType(methodParameter.getType());
-        parameter.setItemType(methodParameter.getType());
+
+        // Extract generic type for collections/arrays (e.g., List<TodoEntity> -> TodoEntity.class)
+        var parameterizedType = methodParameter.getParameterizedType();
+        if (parameterizedType instanceof ParameterizedType) {
+            var actualTypeArguments = ((ParameterizedType) parameterizedType).getActualTypeArguments();
+            if (actualTypeArguments.length > 0 && actualTypeArguments[0] instanceof Class<?> itemClass) {
+                parameter.setItemType(itemClass);
+
+                // If itemType is a custom object (not primitive or common types), recursively build its fields
+                if (isCustomObjectType(itemClass)) {
+                    parameter.setItems(buildObjectFields(itemClass));
+                }
+            }
+        }
+
         parameter.setRequired(functionParam.required());
         parameter.setEnums(List.of(functionParam.enums()));
         return parameter;
+    }
+
+    private boolean isCustomObjectType(Class<?> clazz) {
+        return !clazz.isPrimitive()
+                && !clazz.getName().startsWith("java.lang")
+                && !clazz.getName().startsWith("java.util")
+                && !clazz.getName().startsWith("java.time")
+                && !clazz.isEnum();
+    }
+
+    private List<ToolCallParameter> buildObjectFields(Class<?> clazz) {
+        var fields = new ArrayList<ToolCallParameter>();
+        for (var field : clazz.getDeclaredFields()) {
+            // Skip static and synthetic fields
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || field.isSynthetic()) {
+                continue;
+            }
+
+            var fieldParam = new ToolCallParameter();
+            fieldParam.setName(field.getName());
+            fieldParam.setClassType(field.getType());
+
+            // Handle nested collections
+            var fieldGenericType = field.getGenericType();
+            if (fieldGenericType instanceof ParameterizedType) {
+                var fieldTypeArgs = ((ParameterizedType) fieldGenericType).getActualTypeArguments();
+                if (fieldTypeArgs.length > 0 && fieldTypeArgs[0] instanceof Class<?> fieldItemClass) {
+                    fieldParam.setItemType(fieldItemClass);
+
+                    // Recursively handle nested objects
+                    if (isCustomObjectType(fieldItemClass)) {
+                        fieldParam.setItems(buildObjectFields(fieldItemClass));
+                    }
+                }
+            }
+
+            fields.add(fieldParam);
+        }
+        return fields;
     }
 
     // keep if dev cannot add annotation in the method
