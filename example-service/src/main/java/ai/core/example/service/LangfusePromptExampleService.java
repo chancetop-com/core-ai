@@ -1,6 +1,7 @@
 package ai.core.example.service;
 
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProvider;
 import ai.core.prompt.langfuse.LangfusePromptConfig;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -109,14 +110,9 @@ public class LangfusePromptExampleService {
             .name("movie-critic-agent")
             .description("An agent that critiques movies")
             .llmProvider(llmProvider)
-
-            // Set Langfuse prompt provider
-            .langfusePromptProvider(promptProvider)
-
+            .langfuseSystemPrompt("movie-critic-system")
             // Specify which prompts to fetch from Langfuse
-            .langfuseSystemPromptName("movie-critic-system")  // System prompt name in Langfuse
-            .langfusePromptTemplateName("movie-critic-template")  // Prompt template name in Langfuse
-
+            .langfusePromptTemplate("movie-critic-template")  // Prompt template name in Langfuse
             // Optional: specify version or label
             .langfusePromptVersion(3)  // Use specific version
             // OR use label instead:
@@ -136,7 +132,7 @@ public class LangfusePromptExampleService {
         Agent agent = createAgentWithLangfusePromptsExample();
 
         // Execute agent with user query
-        String response = agent.run(userQuery, null);
+        String response = agent.run(userQuery, ExecutionContext.empty());
         LOGGER.info("Agent response: {}", response);
 
         return response;

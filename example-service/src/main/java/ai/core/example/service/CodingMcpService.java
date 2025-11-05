@@ -1,6 +1,7 @@
 package ai.core.example.service;
 
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
 import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.llm.LLMProviders;
@@ -41,7 +42,7 @@ public class CodingMcpService implements McpServerToolLoader {
                         """ + coreNgWiki)
                 .llmProvider(llmProviders.getDefaultProvider())
                 .build();
-        return agent.run(query, null);
+        return agent.run(query, ExecutionContext.empty());
     }
 
     @Override
