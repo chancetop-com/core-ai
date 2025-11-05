@@ -2,6 +2,7 @@ package ai.core.example.service;
 
 import ai.core.agent.Agent;
 import ai.core.agent.AgentGroup;
+import ai.core.agent.ExecutionContext;
 import ai.core.agent.handoff.HandoffType;
 import ai.core.agent.NodeStatus;
 import ai.core.agent.UserInputAgent;
@@ -118,12 +119,12 @@ public class ExampleService {
                 .edges(edges)
                 .flowOutputUpdatedEventListener((node, q, rst) -> logger.info("Workflow[{}], input: {}, result: {}", node.getName(), q, rst.text()))
                 .build();
-        return flow.run(nodeTrigger.getId(), query, null);
+        return flow.run(nodeTrigger.getId(), query, ExecutionContext.empty());
     }
 
     public OrderIssueResponse groupStart(String query) {
         var group = OrderIssueGroup.create(llmProviders.getProvider(), persistenceProvider, userInfoService);
-        group.run(query, null);
+        group.run(query, ExecutionContext.empty());
         var rsp = new OrderIssueResponse();
         rsp.content = group.getOutput();
         rsp.conversation = List.of(group.getConversation().split("\n"));
@@ -137,7 +138,7 @@ public class ExampleService {
     public OrderIssueResponse groupFinish(String id, String query) {
         var group = OrderIssueGroup.create(llmProviders.getProvider(), persistenceProvider, userInfoService);
         group.load(id);
-        group.run(query, null);
+        group.run(query, ExecutionContext.empty());
         var rsp = new OrderIssueResponse();
         rsp.content = group.getOutput();
         rsp.conversation = List.of(group.getConversation().split("\n"));
@@ -153,19 +154,19 @@ public class ExampleService {
                 .streamingCallback(new LoggingStreamingCallback())
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
                 .llmProvider(llmProviders.getProvider(LLMProviderType.AZURE_INFERENCE)).build();
-        return agent.run(query, null);
+        return agent.run(query, ExecutionContext.empty());
     }
 
     public String userInputStart() {
         var agent = UserInputAgent.builder().persistenceProvider(persistenceProvider).build();
-        agent.run("test need user input", null);
+        agent.run("test need user input", ExecutionContext.empty());
         return agent.save(UUID.randomUUID().toString());
     }
 
     public String userInputFinish(String id, String query) {
         var agent = UserInputAgent.builder().persistenceProvider(persistenceProvider).build();
         agent.load(id);
-        return agent.run(query, null);
+        return agent.run(query, ExecutionContext.empty());
     }
 
     public String mcpToolCallTest(MCPToolCallRequest request) {
@@ -177,18 +178,18 @@ public class ExampleService {
                 .promptTemplate("")
                 .toolCalls(McpToolCalls.from(mcpClientService))
                 .llmProvider(llmProviders.getProvider()).build();
-        return agent.run(request.query, null);
+        return agent.run(request.query, ExecutionContext.empty());
     }
 
 
     public String optimize(String prompt) {
         var agent = PromptOptimizeAgent.of(llmProviders.getProvider());
-        return agent.run(prompt, null);
+        return agent.run(prompt, ExecutionContext.empty());
     }
 
     public String summaryOptimize(String prompt) {
         var agent = PromptOptimizeAgent.of(llmProviders.getProvider());
-        agent.run(prompt, null);
+        agent.run(prompt, ExecutionContext.empty());
         var summaryAgent = DefaultSummaryAgent.of(llmProviders.getProvider());
         var summaryChain = AgentGroup.builder()
                 .name("summary-chain")
@@ -197,7 +198,7 @@ public class ExampleService {
                 .handoffType(HandoffType.DIRECT)
                 .maxRound(1)
                 .llmProvider(llmProviders.getProvider()).build();
-        return summaryChain.run(prompt, null);
+        return summaryChain.run(prompt, ExecutionContext.empty());
     }
 
     public String debate(String topic) {
@@ -221,7 +222,7 @@ public class ExampleService {
                 .handoffType(HandoffType.DIRECT)
                 .maxRound(3)
                 .llmProvider(llmProviders.getProvider()).build();
-        return debateChain.run(topic, null);
+        return debateChain.run(topic, ExecutionContext.empty());
     }
 
     public String function(String prompt) {
@@ -233,7 +234,7 @@ public class ExampleService {
                 .promptTemplate("topic: ")
                 .toolCalls(Functions.from(weatherService, "get", "getAirQuality"))
                 .llmProvider(llmProviders.getProvider()).build();
-        return agent.run(prompt, null);
+        return agent.run(prompt, ExecutionContext.empty());
     }
 
     private final class LoggingStreamingCallback implements StreamingCallback {
