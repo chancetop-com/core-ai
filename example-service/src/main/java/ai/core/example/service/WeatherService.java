@@ -42,9 +42,15 @@ public class WeatherService {
         return "beijing";
     }
 
+    public enum Status {
+        ACTIVE,
+        INACTIVE
+    }
+
     public static class City {
         public String code;
         public Double longitude;
         public Double latitude;
+        public Status status;
     }
 }

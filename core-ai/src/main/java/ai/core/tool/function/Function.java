@@ -13,7 +13,6 @@ import org.jetbrains.annotations.NotNull;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -79,22 +78,23 @@ public class Function extends ToolCall {
         parameter.setClassType(methodParameter.getType());
 
         // Extract generic type for collections/arrays (e.g., List<TodoEntity> -> TodoEntity.class)
-        var parameterizedType = methodParameter.getParameterizedType();
-        if (parameterizedType instanceof ParameterizedType) {
-            var actualTypeArguments = ((ParameterizedType) parameterizedType).getActualTypeArguments();
-            if (actualTypeArguments.length > 0 && actualTypeArguments[0] instanceof Class<?> itemClass) {
-                parameter.setItemType(itemClass);
-
-                // If itemType is a custom object (not primitive or common types), recursively build its fields
-                if (isCustomObjectType(itemClass)) {
-                    parameter.setItems(buildObjectFields(itemClass));
-                }
-            }
-        }
+        extractGenericItemType(methodParameter.getParameterizedType(), parameter);
 
         parameter.setRequired(functionParam.required());
         parameter.setEnums(List.of(functionParam.enums()));
         return parameter;
+    }
+
+    private void extractGenericItemType(java.lang.reflect.Type parameterizedType, ToolCallParameter parameter) {
+        if (!(parameterizedType instanceof ParameterizedType)) return;
+
+        var actualTypeArguments = ((ParameterizedType) parameterizedType).getActualTypeArguments();
+        if (actualTypeArguments.length == 0 || !(actualTypeArguments[0] instanceof Class<?> itemClass)) return;
+
+        parameter.setItemType(itemClass);
+        if (isCustomObjectType(itemClass)) {
+            parameter.setItems(buildObjectFields(itemClass));
+        }
     }
 
     private boolean isCustomObjectType(Class<?> clazz) {
@@ -108,32 +108,44 @@ public class Function extends ToolCall {
     private List<ToolCallParameter> buildObjectFields(Class<?> clazz) {
         var fields = new ArrayList<ToolCallParameter>();
         for (var field : clazz.getDeclaredFields()) {
-            // Skip static and synthetic fields
-            if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || field.isSynthetic()) {
-                continue;
-            }
+            if (shouldSkipField(field)) continue;
 
-            var fieldParam = new ToolCallParameter();
-            fieldParam.setName(field.getName());
-            fieldParam.setClassType(field.getType());
-
-            // Handle nested collections
-            var fieldGenericType = field.getGenericType();
-            if (fieldGenericType instanceof ParameterizedType) {
-                var fieldTypeArgs = ((ParameterizedType) fieldGenericType).getActualTypeArguments();
-                if (fieldTypeArgs.length > 0 && fieldTypeArgs[0] instanceof Class<?> fieldItemClass) {
-                    fieldParam.setItemType(fieldItemClass);
-
-                    // Recursively handle nested objects
-                    if (isCustomObjectType(fieldItemClass)) {
-                        fieldParam.setItems(buildObjectFields(fieldItemClass));
-                    }
-                }
-            }
-
+            var fieldParam = buildFieldParameter(field);
             fields.add(fieldParam);
         }
         return fields;
+    }
+
+    private boolean shouldSkipField(java.lang.reflect.Field field) {
+        return java.lang.reflect.Modifier.isStatic(field.getModifiers()) || field.isSynthetic();
+    }
+
+    private ToolCallParameter buildFieldParameter(java.lang.reflect.Field field) {
+        var fieldParam = new ToolCallParameter();
+        fieldParam.setName(field.getName());
+
+        if (field.getType().isEnum()) {
+            setEnumFieldParameter(fieldParam, field.getType());
+        } else {
+            setRegularFieldParameter(fieldParam, field);
+        }
+
+        return fieldParam;
+    }
+
+    private void setEnumFieldParameter(ToolCallParameter fieldParam, Class<?> enumType) {
+        fieldParam.setClassType(String.class);
+        var enumConstants = enumType.getEnumConstants();
+        var enumValues = new ArrayList<String>();
+        for (Object enumConstant : enumConstants) {
+            enumValues.add(enumConstant.toString());
+        }
+        fieldParam.setEnums(enumValues);
+    }
+
+    private void setRegularFieldParameter(ToolCallParameter fieldParam, java.lang.reflect.Field field) {
+        fieldParam.setClassType(field.getType());
+        extractGenericItemType(field.getGenericType(), fieldParam);
     }
 
     // keep if dev cannot add annotation in the method
