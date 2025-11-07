@@ -217,7 +217,7 @@ public class Agent extends Node<Agent> {
             throw new ConflictException("Tool calls size must match query size, toolCalls: " + toolCalls.size() + ", query: " + toolResult.size(), "TOOL_CALLS_SIZE_MISMATCH");
         }
         for (int i = 0; i < toolCalls.size(); i++) {
-            var reqMsg = Message.of(RoleType.TOOL, toolResult.get(i), buildRequestName(true), toolCalls.get(i).id, null, null);
+            var reqMsg = Message.of(RoleType.TOOL, toolResult.get(i), toolCalls.get(i).function.name, toolCalls.get(i).id, null, null);
             addMessage(reqMsg);
         }
     }
