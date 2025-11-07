@@ -21,7 +21,7 @@ public class VisionAgent extends Node<VisionAgent> {
     String execute(String query, Map<String, Object> variables) {
         setInput(query);
 
-        var rsp = llmProvider.captionImage(new CaptionImageRequest(prompt, query, null));
+        var rsp = llmProvider.captionImage(CaptionImageRequest.of(prompt, query, null));
         addTokenCost(rsp.usage());
         var output = rsp.caption();
 
