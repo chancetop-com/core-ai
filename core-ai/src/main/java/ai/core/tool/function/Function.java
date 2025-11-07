@@ -5,7 +5,7 @@ import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.function.converter.ResponseConverter;
 import ai.core.tool.ToolCall;
-import core.framework.json.JSON;
+import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -25,6 +25,7 @@ public class Function extends ToolCall {
     public static Builder builder() {
         return new Builder();
     }
+
     Object object;
     Method method;
     Boolean dynamicArguments;
@@ -40,16 +41,17 @@ public class Function extends ToolCall {
                 var rst = method.invoke(object, List.of(this.getName(), text).toArray());
                 return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
             }
-            var argsMap = JSON.fromJSON(Map.class, text);
+
+            var argsMap = JsonUtil.fromJson(Map.class, text);
             var args = new Object[this.getParameters().size()];
             for (int i = 0; i < this.getParameters().size(); i++) {
                 var name = this.getParameters().get(i).getName();
                 var value = argsMap.get(name);
                 if (value == null) {
-                    args[i] = null;
                     logger.warn("{} value is null", name);
+                    return Strings.format("function<{}> failed:params {} is null", getName(), name);
                 } else {
-                    args[i] = JSON.fromJSON(method.getParameters()[i].getParameterizedType(), JSON.toJSON(value));
+                    args[i] = JsonUtil.fromJson(method.getParameters()[i].getParameterizedType(), JsonUtil.toJson(value));
                 }
 
             }
