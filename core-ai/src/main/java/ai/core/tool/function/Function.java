@@ -3,12 +3,13 @@ package ai.core.tool.function;
 import ai.core.tool.ToolCallParameter;
 import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
-import ai.core.tool.function.converter.ParameterTypeConverters;
 import ai.core.tool.function.converter.ResponseConverter;
 import ai.core.tool.ToolCall;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -21,7 +22,7 @@ import java.util.Map;
  * @author stephen
  */
 public class Function extends ToolCall {
-
+    private final Logger logger = LoggerFactory.getLogger(Function.class);
     public static Builder builder() {
         return new Builder();
     }
@@ -33,6 +34,7 @@ public class Function extends ToolCall {
 
     @Override
     public String call(String text) {
+        logger.info("func text is {}",text);
         try {
             if (dynamicArguments != null && dynamicArguments) {
                 // args convert by method itself
@@ -42,8 +44,15 @@ public class Function extends ToolCall {
             var argsMap = JSON.fromJSON(Map.class, text);
             var args = new Object[this.getParameters().size()];
             for (int i = 0; i < this.getParameters().size(); i++) {
-                var value = argsMap.get(this.getParameters().get(i).getName());
-                args[i] = ParameterTypeConverters.convert(value, this.getParameters().get(i).getClassType());
+                var name = this.getParameters().get(i).getName();
+                var value = argsMap.get(name);
+                if (value==null){
+                    args[i] = null;
+                    logger.warn("{} value is null",name);
+                }else {
+                    args[i] = JSON.fromJSON(method.getParameters()[i].getParameterizedType(),JSON.toJSON(value));
+                }
+
             }
             var rst = method.invoke(object, args);
             return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
