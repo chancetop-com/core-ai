@@ -148,7 +148,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
         agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
-        agent.maxToolCallCount = this.maxToolCallCount == null ? 3 : this.maxToolCallCount;
+        agent.maxToolCallCount = this.maxToolCallCount == null ? 20 : this.maxToolCallCount;
         agent.temperature = this.temperature;
         agent.model = this.model;
         agent.llmProvider = this.llmProvider;
