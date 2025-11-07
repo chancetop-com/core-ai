@@ -22,19 +22,18 @@ import java.util.Map;
  * @author stephen
  */
 public class Function extends ToolCall {
-    private final Logger logger = LoggerFactory.getLogger(Function.class);
     public static Builder builder() {
         return new Builder();
     }
-
     Object object;
     Method method;
     Boolean dynamicArguments;
     ResponseConverter responseConverter;
+    Logger logger = LoggerFactory.getLogger(Function.class);
 
     @Override
     public String call(String text) {
-        logger.info("func text is {}",text);
+        logger.info("func text is {}", text);
         try {
             if (dynamicArguments != null && dynamicArguments) {
                 // args convert by method itself
@@ -46,11 +45,11 @@ public class Function extends ToolCall {
             for (int i = 0; i < this.getParameters().size(); i++) {
                 var name = this.getParameters().get(i).getName();
                 var value = argsMap.get(name);
-                if (value==null){
+                if (value == null) {
                     args[i] = null;
-                    logger.warn("{} value is null",name);
-                }else {
-                    args[i] = JSON.fromJSON(method.getParameters()[i].getParameterizedType(),JSON.toJSON(value));
+                    logger.warn("{} value is null", name);
+                } else {
+                    args[i] = JSON.fromJSON(method.getParameters()[i].getParameterizedType(), JSON.toJSON(value));
                 }
 
             }
