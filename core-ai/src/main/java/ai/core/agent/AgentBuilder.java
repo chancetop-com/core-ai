@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.memory.memories.NaiveMemory;
 import ai.core.prompt.SystemVariables;
@@ -14,6 +15,7 @@ import core.framework.util.Lists;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -37,6 +39,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private String langfusePromptTemplateName;
     private Integer langfusePromptVersion;
     private String langfusePromptLabel;
+    private List<AbstractLifecycle> agentLifecycles;
 
     public AgentBuilder promptTemplate(String promptTemplate) {
         this.promptTemplate = promptTemplate;
@@ -131,7 +134,14 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder agentLifecycle(List<AbstractLifecycle> agentLifecycles) {
+        this.agentLifecycles = agentLifecycles;
+        return this;
+    }
+
     public Agent build() {
+        Optional.ofNullable(agentLifecycles)
+                .ifPresent(c -> c.forEach(ac -> ac.beforeAgentBuild(this)));
         var agent = new Agent();
         this.nodeType = NodeType.AGENT;
         // default name and description
@@ -144,8 +154,21 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         build(agent);
 
         // Fetch prompts from Langfuse if configured
+        //todo put langfuse into lifecycle?
         fetchLangfusePromptsIfConfigured();
+        Optional.ofNullable(agentLifecycles)
+                .ifPresent(c -> c.forEach(ac -> ac.afterAgentBuild(this)));
+        // Copy value from builder to agent instance
+        copyValue(agent);
 
+
+        var systemVariables = agent.getSystemVariables();
+        systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
+        return agent;
+    }
+
+
+    private void copyValue(Agent agent) {
         agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
         agent.maxToolCallCount = this.maxToolCallCount == null ? 20 : this.maxToolCallCount;
@@ -160,6 +183,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.reflectionConfig = this.reflectionConfig;
         agent.useGroupContext = this.useGroupContext;
         agent.setPersistence(new AgentPersistence());
+        agent.agentLifecycles = this.agentLifecycles;
         if (this.enableReflection && this.reflectionConfig == null) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
         }
@@ -174,10 +198,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.longTernMemory == null) {
             agent.longTernMemory = new NaiveMemory();
         }
-
-        var systemVariables = agent.getSystemVariables();
-        systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
-        return agent;
     }
 
     /**
@@ -194,24 +214,24 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         var provider = LangfusePromptProviderRegistry.getProvider();
         if (provider == null) {
             throw new IllegalStateException(
-                "Langfuse prompts are configured but Langfuse provider is not initialized. "
-                + "Please configure langfuse.prompt.base.url in your properties file."
+                    "Langfuse prompts are configured but Langfuse provider is not initialized. "
+                            + "Please configure langfuse.prompt.base.url in your properties file."
             );
         }
 
         try {
             if (langfuseSystemPromptName != null) {
                 var prompt = langfusePromptVersion != null
-                    ? provider.getPrompt(langfuseSystemPromptName, langfusePromptVersion)
-                    : langfusePromptLabel != null
+                        ? provider.getPrompt(langfuseSystemPromptName, langfusePromptVersion)
+                        : langfusePromptLabel != null
                         ? provider.getPromptByLabel(langfuseSystemPromptName, langfusePromptLabel)
                         : provider.getPrompt(langfuseSystemPromptName);
                 this.systemPrompt = prompt.getPromptContent();
             }
             if (langfusePromptTemplateName != null) {
                 var prompt = langfusePromptVersion != null
-                    ? provider.getPrompt(langfusePromptTemplateName, langfusePromptVersion)
-                    : langfusePromptLabel != null
+                        ? provider.getPrompt(langfusePromptTemplateName, langfusePromptVersion)
+                        : langfusePromptLabel != null
                         ? provider.getPromptByLabel(langfusePromptTemplateName, langfusePromptLabel)
                         : provider.getPrompt(langfusePromptTemplateName);
                 this.promptTemplate = prompt.getPromptContent();
@@ -224,5 +244,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     @Override
     protected AgentBuilder self() {
         return this;
+    }
+
+    public String getSystemPrompt() {
+        return systemPrompt;
+    }
+
+    public List<ToolCall> getToolCalls() {
+        return toolCalls;
     }
 }

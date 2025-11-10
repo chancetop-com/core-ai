@@ -1,5 +1,7 @@
 package ai.core.agent;
 
+import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
@@ -33,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * @author stephen
@@ -41,6 +44,7 @@ public class Agent extends Node<Agent> {
     public static AgentBuilder builder() {
         return new AgentBuilder();
     }
+
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
 
     String systemPrompt;
@@ -56,6 +60,7 @@ public class Agent extends Node<Agent> {
     Integer maxToolCallCount;
     Integer currentToolCallCount;
     Boolean authenticated = false;
+    List<AbstractLifecycle> agentLifecycles;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -63,14 +68,14 @@ public class Agent extends Node<Agent> {
         if (activeTracer != null) {
             var execContext = getExecutionContext();
             var context = AgentTraceContext.builder()
-                .name(getName())
-                .id(getId())
-                .input(query)
-                .withTools(toolCalls != null && !toolCalls.isEmpty())
-                .withRag(ragConfig != null && ragConfig.useRag())
-                .sessionId(execContext.getSessionId())
-                .userId(execContext.getUserId())
-                .build();
+                    .name(getName())
+                    .id(getId())
+                    .input(query)
+                    .withTools(toolCalls != null && !toolCalls.isEmpty())
+                    .withRag(ragConfig != null && ragConfig.useRag())
+                    .sessionId(execContext.getSessionId())
+                    .userId(execContext.getUserId())
+                    .build();
 
             return activeTracer.traceAgentExecution(context, () -> {
                 var result = doExecute(query, variables);
@@ -224,11 +229,30 @@ public class Agent extends Node<Agent> {
 
     private CompletionResponse completionWithFormat() {
         var req = CompletionRequest.of(getMessages(), toReqTools(this.toolCalls), temperature, model, this.getName());
+        if (Objects.nonNull(agentLifecycles)) {
+            agentLifecycles.forEach(alc -> alc.beforeModel(req));
+            var rst = completionWithFormatCore(req, findImplStreamCallbackFromLifecycle());
+            agentLifecycles.forEach(alc -> alc.afterModel(rst));
+            return rst;
+        } else {
+            return completionWithFormatCore(req, getStreamingCallback());
+        }
+    }
+
+    private StreamingCallback findImplStreamCallbackFromLifecycle() {
+        return agentLifecycles.stream()
+                .filter(alc -> alc instanceof StreamingCallback)
+                .map(alc -> alc.afterModelStream(getStreamingCallback()))
+                .findFirst()
+                .orElse(getStreamingCallback());
+    }
+
+    private CompletionResponse completionWithFormatCore(CompletionRequest req, StreamingCallback cb) {
 
         // completion with llm provider
         CompletionResponse rst;
         if (isStreaming()) {
-            rst = llmProvider.completionStream(req, getStreamingCallback());
+            rst = llmProvider.completionStream(req, cb);
         } else {
             rst = llmProvider.completion(req);
         }
@@ -317,9 +341,9 @@ public class Agent extends Node<Agent> {
             var activeTracer = getActiveTracer();
             if (activeTracer != null) {
                 return activeTracer.traceToolCall(
-                    toolCall.function.name,
-                    toolCall.function.arguments,
-                    () -> function.call(toolCall.function.arguments)
+                        toolCall.function.name,
+                        toolCall.function.arguments,
+                        () -> function.call(toolCall.function.arguments)
                 );
             }
             return function.call(toolCall.function.arguments);
@@ -329,7 +353,8 @@ public class Agent extends Node<Agent> {
     }
 
     private void rag(String query, Map<String, Object> variables) {
-        if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null) throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
+        if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
+            throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
         var ragQuery = query;
         if (ragConfig.llmProvider() != null) {
             ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, (Map<String, Object>) null);
@@ -393,12 +418,16 @@ public class Agent extends Node<Agent> {
     }
 
     public Message getLastToolCallMessage() {
-        for (var msg: getMessages().reversed()) {
+        for (var msg : getMessages().reversed()) {
             if (msg.role == RoleType.TOOL) {
                 return msg;
             }
         }
         return null;
+    }
+
+    public String getSystemPrompt() {
+        return systemPrompt;
     }
 }
 
