@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.formatter.Formatter;
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.agent.streaming.StreamingCallback;
@@ -29,6 +30,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
@@ -64,6 +68,7 @@ public abstract class Node<T extends Node<T>> {
     private final Usage currentTokenUsage = new Usage();
     private final Map<String, Object> systemVariables = Maps.newHashMap();
     private final Pattern compiledPattern = Pattern.compile(NAME_REGEX_PATTERN);
+    List<AbstractLifecycle> agentLifecycles = Lists.newArrayList();
 
     public Node() {
         this.nodeStatus = NodeStatus.INITED;
@@ -248,23 +253,48 @@ public abstract class Node<T extends Node<T>> {
         return id;
     }
 
-    // The variables are used by the whole node, for example, the variables can be used by the agent, chain or group and their children if exists
-    public final String run(String query, Map<String, Object> variables) {
+
+    private String aroundExecute(BiFunction<String, Map<String, Object>, String> exec, String query) {
         try {
-            setupNodeSystemVariables(query);
-            return execute(query, variables);
+            AtomicReference<String> queryRef = new AtomicReference<>(query);
+            agentLifecycles.forEach(alc -> alc.beforeAgentRun(queryRef, getExecutionContext()));
+            // execute raw method
+            var rs = exec.apply(queryRef.get(), getExecutionContext().getCustomVariables());
+
+            AtomicReference<String> resultRef = new AtomicReference<>(rs);
+            agentLifecycles.forEach(alc -> alc.afterAgentRun(resultRef, getExecutionContext()));
+            return resultRef.get();
+        } catch (Exception e) {
+            agentLifecycles.forEach(alc -> alc.afterAgentFailed(query, getExecutionContext(), e));
+            throw e;
+        }
+
+    }
+
+
+    public final String run(String query, ExecutionContext context) {
+        this.executionContext = context;
+        return run(query);
+    }
+
+
+    public final String run(String query, Map<String, Object> variables) {
+        // Compatible with legacy method calls
+        return run(query,ExecutionContext.builder().customVariables(variables).build());
+    }
+    public final String run(String query) {
+        try {
+            return aroundExecute((q, v) -> {
+                setupNodeSystemVariables(q);
+                return execute(q, v);
+            }, query);
         } catch (Exception e) {
             updateNodeStatus(NodeStatus.FAILED);
             throw new RuntimeException(Strings.format("Run node {}<{}> failed: {}, raw request/response: {}, {}", this.name, this.id, e.getMessage(), getInput(), getRawOutput()), e);
         }
     }
 
-    public final String run(String query, ExecutionContext context) {
-        this.executionContext = context;
-        return run(query, context != null ? context.getCustomVariables() : null);
-    }
-
-    public final void run(Task task, Map<String, Object> variables) {
+    public final void run(Task task) {
         if (task == null) throw new IllegalArgumentException("Task cannot be null");
         if (this.task == null) this.task = task;
         var lastMessage = task.getLastMessage();
@@ -273,7 +303,7 @@ public abstract class Node<T extends Node<T>> {
             throw new IllegalArgumentException("Task is waiting for user input, please submit the query first");
         }
         task.setStatus(TaskStatus.WORKING);
-        var rst = run(lastMessage.getTextPart().getText(), variables);
+        var rst = run(lastMessage.getTextPart().getText());
         task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
         task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
         if (nodeStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
@@ -285,7 +315,7 @@ public abstract class Node<T extends Node<T>> {
 
     public final void run(Task task, ExecutionContext context) {
         this.executionContext = context;
-        run(task, context != null ? context.getCustomVariables() : null);
+        run(task);
     }
 
     private void setupNodeSystemVariables(String query) {

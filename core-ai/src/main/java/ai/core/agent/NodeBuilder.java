@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.formatter.Formatter;
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.agent.streaming.StreamingCallback;
@@ -11,6 +12,7 @@ import ai.core.rag.LongQueryHandler;
 import ai.core.telemetry.Tracer;
 import ai.core.telemetry.TracerRegistry;
 import ai.core.termination.Termination;
+import core.framework.util.Lists;
 
 import java.util.List;
 import java.util.Map;
@@ -37,7 +39,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     String id;
     Tracer tracer;
     ExecutionContext executionContext;
-
+    List<AbstractLifecycle> agentLifecycles = Lists.newArrayList();
     // This method needs to be overridden in the subclass Builders
     protected abstract B self();
 
