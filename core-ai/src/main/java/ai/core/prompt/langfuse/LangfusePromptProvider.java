@@ -104,7 +104,7 @@ public class LangfusePromptProvider {
 
         // Build query parameters
         Map<String, String> queryParams = new HashMap<>();
-        queryParams.put("name", name);
+//        queryParams.put("name", name);
         if (version != null) {
             queryParams.put("version", String.valueOf(version));
         }
@@ -112,7 +112,7 @@ public class LangfusePromptProvider {
             queryParams.put("label", label);
         }
 
-        String url = buildUrl(config.getPromptEndpoint(), queryParams);
+        String url = buildUrl(config.getPromptEndpoint()+"/"+name, queryParams);
 
         try {
             LOGGER.debug("Fetching prompt from Langfuse: {}", url);
