@@ -56,6 +56,7 @@ public class Agent extends Node<Agent> {
     Integer maxToolCallCount;
     Integer currentToolCallCount;
     Boolean authenticated = false;
+    ai.core.reflection.ReflectionHistory reflectionHistory;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -158,18 +159,116 @@ public class Agent extends Node<Agent> {
         // never start if we do not have termination or something
         validation();
         setRound(1);
+
+        // Create ReflectionHistory to track all rounds
+        reflectionHistory = new ai.core.reflection.ReflectionHistory(
+            getId(), getName(), getInput(),
+            reflectionConfig.evaluationCriteria()
+        );
+
         while (notTerminated()) {
-            logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
+            logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}",
+                getRound(), getMaxRound(), getName(), getInput(), getOutput());
+
+            java.time.Instant roundStart = java.time.Instant.now();
 
             // Step 1: Evaluation in independent LLM context
-            String evaluationResult = evaluateInIndependentContext(variables);
+            String evaluationText = evaluateInIndependentContext(variables);
 
-            // Step 2: Agent regenerates based on evaluation feedback
-            String improvementPrompt = buildImprovementPrompt(evaluationResult);
+            // Step 2: Parse evaluation to structured object
+            ai.core.reflection.ReflectionEvaluation evaluation = parseEvaluation(evaluationText);
+
+            // Step 3: Check structured termination conditions (not relying on "TERMINATE" string)
+            if (shouldTerminateReflection(evaluation)) {
+                logger.info("Reflection terminating: score={}, pass={}, shouldContinue={}",
+                    evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
+
+                // Record final round before terminating
+                java.time.Duration roundDuration = java.time.Duration.between(roundStart, java.time.Instant.now());
+                ai.core.reflection.ReflectionHistory.ReflectionRound round =
+                    new ai.core.reflection.ReflectionHistory.ReflectionRound(
+                        getRound(), getInput(), getOutput(), evaluation,
+                        roundDuration, getCurrentTokenUsage().getTotalTokens()
+                    );
+                reflectionHistory.addRound(round);
+                reflectionHistory.complete(ai.core.reflection.ReflectionHistory.ReflectionStatus.COMPLETED_SUCCESS);
+                break;
+            }
+
+            // Step 4: Agent regenerates based on feedback
+            String improvementPrompt = buildImprovementPrompt(evaluationText);
             chat(improvementPrompt, variables);
+
+            // Step 5: Record this round to history
+            java.time.Duration roundDuration = java.time.Duration.between(roundStart, java.time.Instant.now());
+            ai.core.reflection.ReflectionHistory.ReflectionRound round =
+                new ai.core.reflection.ReflectionHistory.ReflectionRound(
+                    getRound(), getInput(), getOutput(), evaluation,
+                    roundDuration, getCurrentTokenUsage().getTotalTokens()
+                );
+            reflectionHistory.addRound(round);
 
             setRound(getRound() + 1);
         }
+
+        // Complete history if not already completed
+        if (reflectionHistory.getStatus() == ai.core.reflection.ReflectionHistory.ReflectionStatus.IN_PROGRESS) {
+            reflectionHistory.complete(ai.core.reflection.ReflectionHistory.ReflectionStatus.COMPLETED_MAX_ROUNDS);
+        }
+    }
+
+    /**
+     * Check if reflection should terminate based on structured evaluation.
+     * This is more reliable than checking for "TERMINATE" string.
+     */
+    private boolean shouldTerminateReflection(ai.core.reflection.ReflectionEvaluation evaluation) {
+        if (evaluation == null) return false;
+
+        // Condition 1: Evaluator explicitly says not to continue
+        if (!evaluation.isShouldContinue()) {
+            logger.debug("Terminating: evaluator set shouldContinue=false");
+            return true;
+        }
+
+        // Condition 2: High score + pass standard
+        if (evaluation.getScore() >= 8 && evaluation.isPass()) {
+            logger.debug("Terminating: score >= 8 and pass=true");
+            return true;
+        }
+
+        // Condition 3: Perfect score
+        if (evaluation.getScore() >= 9) {
+            logger.debug("Terminating: score >= 9");
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Parse evaluation text to structured ReflectionEvaluation object.
+     * Attempts to extract JSON, falls back to default on failure.
+     */
+    private ai.core.reflection.ReflectionEvaluation parseEvaluation(String evaluationText) {
+        try {
+            // Extract JSON portion
+            int jsonStart = evaluationText.indexOf("{");
+            int jsonEnd = evaluationText.lastIndexOf("}") + 1;
+            if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                String json = evaluationText.substring(jsonStart, jsonEnd);
+                return JSON.fromJSON(ai.core.reflection.ReflectionEvaluation.class, json);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to parse evaluation JSON, using fallback: {}", e.getMessage());
+        }
+
+        // Fallback: create default evaluation
+        return ai.core.reflection.ReflectionEvaluation.builder()
+            .score(5)
+            .pass(false)
+            .shouldContinue(true)
+            .confidence(0.5)
+            .build();
     }
 
     /**
@@ -474,6 +573,10 @@ public class Agent extends Node<Agent> {
             }
         }
         return null;
+    }
+
+    public ai.core.reflection.ReflectionHistory getReflectionHistory() {
+        return this.reflectionHistory;
     }
 }
 

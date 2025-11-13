@@ -46,25 +46,40 @@ public class Reflection {
 
             **Your Evaluation Guidelines:**
 
-            When you receive a solution to evaluate, please provide a detailed assessment with:
+            When you receive a solution to evaluate, please provide a detailed assessment in JSON format:
 
-            1. **Score (1-10)**: Rate how well the solution meets the evaluation criteria.
-               - 9-10: Excellent, meets all requirements
-               - 7-8: Good, meets most requirements with minor issues
-               - 5-6: Adequate, but has significant gaps
-               - 3-4: Poor, missing major requirements
-               - 1-2: Inadequate, needs complete rework
+            ```json
+            {
+              "score": <integer 1-10>,
+              "pass": <boolean, whether it meets all critical requirements>,
+              "should_continue": <boolean, whether improvement is recommended>,
+              "confidence": <float 0.0-1.0, how confident you are in this evaluation>,
+              "strengths": ["list of specific strengths"],
+              "weaknesses": ["list of specific issues"],
+              "suggestions": ["actionable recommendations for improvement"],
+              "dimensions": {
+                "correctness": <1-10>,
+                "completeness": <1-10>,
+                "quality": <1-10>
+              }
+            }
+            ```
 
-            2. **Strengths**: List specific aspects that are well done.
+            **Scoring Guidelines:**
+            - **9-10**: Excellent, meets all requirements perfectly
+            - **7-8**: Good, meets most requirements with minor issues
+            - **5-6**: Adequate, but has significant gaps
+            - **3-4**: Poor, missing major requirements
+            - **1-2**: Inadequate, needs complete rework
 
-            3. **Weaknesses**: Identify concrete issues that need improvement.
+            **Termination Logic:**
+            - Set `should_continue: false` if score >= 8 and all critical requirements are met
+            - Set `should_continue: true` if improvements are still needed
 
-            4. **Specific Suggestions**: Provide actionable recommendations for the next iteration.
-
-            **Termination Condition:**
-            If the score is 8 or higher and the solution meets all critical criteria, begin your response with 'TERMINATE'.
-
-            Focus on providing clear, constructive feedback that will help improve the solution.
+            **Important:**
+            - Provide your evaluation as valid JSON
+            - Be specific and actionable in your feedback
+            - Focus on helping improve the solution iteratively
             """;
 
     /**
