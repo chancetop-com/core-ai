@@ -27,39 +27,44 @@ public class Reflection {
      * Reflection template with evaluation criteria support.
      * Uses structured evaluation with business standards.
      *
-     * This template is used in an independent LLM context (evaluator).
+     * This template is used as the SYSTEM prompt in an independent LLM context (evaluator).
+     * The solution to evaluate will be provided as a USER message separately.
      * The evaluation feedback will be passed to the agent for regeneration.
      *
-     * This template expects to be used with String formatting to inject:
-     * 1. The original task/query
-     * 2. The evaluation criteria (business standards)
-     * 3. The current solution to evaluate
+     * This template expects Mustache variables:
+     * - {{task}}: The original task/query
+     * - {{evaluationCriteria}}: Business standards and requirements
      */
     public static final String DEFAULT_REFLECTION_WITH_CRITERIA_TEMPLATE = """
-            You are an expert evaluator. Please review the solution based on the provided criteria.
+            You are an expert evaluator. Your role is to assess solutions based on the provided criteria and give constructive feedback.
 
-            Original Task:
+            **Original Task:**
             {{task}}
 
-            Evaluation Criteria (Business Standards):
+            **Evaluation Criteria (Business Standards):**
             {{evaluationCriteria}}
 
-            Current Solution:
-            {{solution}}
+            **Your Evaluation Guidelines:**
 
-            Please provide a detailed evaluation with the following:
+            When you receive a solution to evaluate, please provide a detailed assessment with:
 
             1. **Score (1-10)**: Rate how well the solution meets the evaluation criteria.
+               - 9-10: Excellent, meets all requirements
+               - 7-8: Good, meets most requirements with minor issues
+               - 5-6: Adequate, but has significant gaps
+               - 3-4: Poor, missing major requirements
+               - 1-2: Inadequate, needs complete rework
 
-            2. **Strengths**: List the aspects of the solution that are well done.
+            2. **Strengths**: List specific aspects that are well done.
 
-            3. **Weaknesses**: Identify what needs improvement.
+            3. **Weaknesses**: Identify concrete issues that need improvement.
 
-            4. **Specific Suggestions**: Provide concrete, actionable recommendations for improvement.
+            4. **Specific Suggestions**: Provide actionable recommendations for the next iteration.
 
-            If the score is 8 or higher and the solution meets all criteria, begin your response with 'TERMINATE'.
+            **Termination Condition:**
+            If the score is 8 or higher and the solution meets all critical criteria, begin your response with 'TERMINATE'.
 
-            Focus on providing clear, actionable feedback that will help improve the solution in the next iteration.
+            Focus on providing clear, constructive feedback that will help improve the solution.
             """;
 
     /**

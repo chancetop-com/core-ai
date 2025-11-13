@@ -177,21 +177,16 @@ public class Agent extends Node<Agent> {
      * Returns the evaluation result as feedback.
      */
     private String evaluateInIndependentContext(Map<String, Object> variables) {
-        // Prepare evaluation prompt
-        String evaluationPrompt = reflectionConfig.prompt();
-        if (reflectionConfig.evaluationCriteria() != null && !reflectionConfig.evaluationCriteria().isEmpty()) {
-            Map<String, Object> evalContext = new HashMap<>(variables);
-            evalContext.put("task", getInput());
-            evalContext.put("evaluationCriteria", reflectionConfig.evaluationCriteria());
-            evalContext.put("solution", getOutput());
+        // Build evaluator system prompt
+        String evaluatorSystemPrompt = buildEvaluatorSystemPrompt(variables);
 
-            evaluationPrompt = new MustachePromptTemplate().execute(evaluationPrompt, evalContext,
-                Hash.md5Hex(evaluationPrompt));
-        }
+        // Build evaluation user message (the solution to evaluate)
+        String evaluationUserMessage = buildEvaluationUserMessage();
 
         // Create independent message list for evaluation (not using Agent's history)
         List<Message> evaluationMessages = List.of(
-            Message.of(RoleType.USER, evaluationPrompt, null, null, null, null)
+            Message.of(RoleType.SYSTEM, evaluatorSystemPrompt, this.getName() + "-evaluator"),
+            Message.of(RoleType.USER, evaluationUserMessage, null, null, null, null)
         );
 
         // Call LLM in independent context
@@ -201,6 +196,35 @@ public class Agent extends Node<Agent> {
         addTokenCost(evalResponse.usage);
 
         return evalResponse.choices.getFirst().message.content;
+    }
+
+    /**
+     * Build evaluator system prompt with task context and evaluation criteria.
+     */
+    private String buildEvaluatorSystemPrompt(Map<String, Object> variables) {
+        String evaluationPrompt = reflectionConfig.prompt();
+
+        if (reflectionConfig.evaluationCriteria() != null && !reflectionConfig.evaluationCriteria().isEmpty()) {
+            Map<String, Object> evalContext = new HashMap<>(variables);
+            evalContext.put("task", getInput());
+            evalContext.put("evaluationCriteria", reflectionConfig.evaluationCriteria());
+
+            evaluationPrompt = new MustachePromptTemplate().execute(evaluationPrompt, evalContext,
+                Hash.md5Hex(evaluationPrompt));
+        }
+
+        return evaluationPrompt;
+    }
+
+    /**
+     * Build evaluation user message containing the solution to evaluate.
+     */
+    private String buildEvaluationUserMessage() {
+        return String.format("""
+            Please evaluate the following solution:
+
+            %s
+            """, getOutput());
     }
 
     /**
