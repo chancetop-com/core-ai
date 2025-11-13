@@ -30,6 +30,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
     private Integer reflectionMaxRound;
     private Integer reflectionMinRound;
     private String reflectionPrompt;
+    private String reflectionEvaluationCriteria;  // Optional business standards for reflection
     private String formatter;
 
     private LLMProvider llmProvider;
@@ -86,7 +87,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
                 .promptTemplate(promptTemplate)
                 .llmProvider(llmProvider)
                 .useGroupContext(useGroupContext)
-                .reflectionConfig(new ReflectionConfig(reflectionEnabled, reflectionMaxRound, reflectionMinRound, reflectionPrompt))
+                .reflectionConfig(new ReflectionConfig(reflectionEnabled, reflectionMaxRound, reflectionMinRound, reflectionPrompt, reflectionEvaluationCriteria))
                 .ragConfig(ragConfig)
                 .toolCalls(toolCalls);
         if (formatter != null) {
@@ -127,6 +128,10 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
         this.reflectionPrompt = reflectionPrompt;
     }
 
+    public void setReflectionEvaluationCriteria(String reflectionEvaluationCriteria) {
+        this.reflectionEvaluationCriteria = reflectionEvaluationCriteria;
+    }
+
     public void setFormatter(String formatter) {
         this.formatter = formatter;
     }
@@ -161,6 +166,10 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
 
     public String getReflectionPrompt() {
         return reflectionPrompt;
+    }
+
+    public String getReflectionEvaluationCriteria() {
+        return reflectionEvaluationCriteria;
     }
 
     public String getFormatter() {

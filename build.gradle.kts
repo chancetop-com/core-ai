@@ -138,5 +138,7 @@ project(":example-service") {
         implementation(project(":core-ai-api"))
         implementation(project(":example-service-interface"))
         implementation("com.microsoft.azure.cognitiveservices:azure-cognitiveservices-imagesearch:${Versions.AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION}")
+        // OpenTelemetry for examples that use tracing directly
+        implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")
     }
 }

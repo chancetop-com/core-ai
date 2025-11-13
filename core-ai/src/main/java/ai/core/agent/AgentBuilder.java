@@ -94,6 +94,21 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     /**
+     * Set evaluation criteria (business standards) for reflection.
+     * This will automatically enable reflection with the criteria-based template.
+     *
+     * @param evaluationCriteria business standards/criteria for evaluating the agent's output
+     * @return this builder
+     */
+    public AgentBuilder reflectionEvaluationCriteria(String evaluationCriteria) {
+        if (evaluationCriteria != null && !evaluationCriteria.isEmpty()) {
+            this.reflectionConfig = ReflectionConfig.withEvaluationCriteria(evaluationCriteria);
+            this.enableReflection = true;
+        }
+        return this;
+    }
+
+    /**
      * Set the name of the system prompt to fetch from Langfuse
      * Requires Langfuse configuration in properties (langfuse.prompt.base.url)
      */

@@ -160,9 +160,60 @@ public class Agent extends Node<Agent> {
         setRound(1);
         while (notTerminated()) {
             logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
-            chat(reflectionConfig.prompt(), variables);
+
+            // Step 1: Evaluation in independent LLM context
+            String evaluationResult = evaluateInIndependentContext(variables);
+
+            // Step 2: Agent regenerates based on evaluation feedback
+            String improvementPrompt = buildImprovementPrompt(evaluationResult);
+            chat(improvementPrompt, variables);
+
             setRound(getRound() + 1);
         }
+    }
+
+    /**
+     * Evaluate current solution in an independent LLM context (not using Agent's message history).
+     * Returns the evaluation result as feedback.
+     */
+    private String evaluateInIndependentContext(Map<String, Object> variables) {
+        // Prepare evaluation prompt
+        String evaluationPrompt = reflectionConfig.prompt();
+        if (reflectionConfig.evaluationCriteria() != null && !reflectionConfig.evaluationCriteria().isEmpty()) {
+            Map<String, Object> evalContext = new HashMap<>(variables);
+            evalContext.put("task", getInput());
+            evalContext.put("evaluationCriteria", reflectionConfig.evaluationCriteria());
+            evalContext.put("solution", getOutput());
+
+            evaluationPrompt = new MustachePromptTemplate().execute(evaluationPrompt, evalContext,
+                Hash.md5Hex(evaluationPrompt));
+        }
+
+        // Create independent message list for evaluation (not using Agent's history)
+        List<Message> evaluationMessages = List.of(
+            Message.of(RoleType.USER, evaluationPrompt, null, null, null, null)
+        );
+
+        // Call LLM in independent context
+        var evalRequest = CompletionRequest.of(evaluationMessages, null, temperature, model, this.getName() + "-evaluator");
+        CompletionResponse evalResponse = llmProvider.completion(evalRequest);
+
+        addTokenCost(evalResponse.usage);
+
+        return evalResponse.choices.getFirst().message.content;
+    }
+
+    /**
+     * Build improvement prompt based on evaluation feedback.
+     */
+    private String buildImprovementPrompt(String evaluationFeedback) {
+        return String.format("""
+            Based on the evaluation feedback below, please provide an improved solution:
+
+            %s
+
+            Provide the complete improved solution that addresses the weaknesses and suggestions mentioned above.
+            """, evaluationFeedback);
     }
 
     private CompletionResponse chatByUser(String query, Map<String, Object> variables) {
