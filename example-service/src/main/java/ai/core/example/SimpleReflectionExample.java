@@ -44,10 +44,10 @@ public class SimpleReflectionExample {
         LLMProvider llmProvider = new AzureOpenAIProvider(config, apiKey, endpoint);
 
         // 示例1: 使用评估标准的代码质量检查
-        runCodeQualityExample(llmProvider);
+//        runCodeQualityExample(llmProvider);
 
         // 示例2: 不使用评估标准的简单反思
-        runSimpleReflectionExample(llmProvider);
+//        runSimpleReflectionExample(llmProvider);
 
         // 示例3: 使用评估标准的写作优化
         runWritingExample(llmProvider);

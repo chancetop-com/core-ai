@@ -173,10 +173,16 @@ public class Agent extends Node<Agent> {
             java.time.Instant roundStart = java.time.Instant.now();
 
             // Step 1: Evaluation in independent LLM context
+            String solutionToEvaluate = getOutput();  // Save current solution before evaluation
             String evaluationText = evaluateInIndependentContext(variables);
 
             // Step 2: Parse evaluation to structured object
             ai.core.reflection.ReflectionEvaluation evaluation = parseEvaluation(evaluationText);
+
+            // Log parsed evaluation details
+            logger.info("Round {} evaluation parsed: score={}, pass={}, shouldContinue={}, weaknesses={}, suggestions={}",
+                getRound(), evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue(),
+                evaluation.getWeaknesses().size(), evaluation.getSuggestions().size());
 
             // Step 3: Check structured termination conditions (not relying on "TERMINATE" string)
             if (shouldTerminateReflection(evaluation)) {
@@ -187,7 +193,10 @@ public class Agent extends Node<Agent> {
                 java.time.Duration roundDuration = java.time.Duration.between(roundStart, java.time.Instant.now());
                 ai.core.reflection.ReflectionHistory.ReflectionRound round =
                     new ai.core.reflection.ReflectionHistory.ReflectionRound(
-                        getRound(), getInput(), getOutput(), evaluation,
+                        getRound(),
+                        solutionToEvaluate,  // Evaluator's input: solution to evaluate
+                        evaluationText,      // Evaluator's output: full evaluation text
+                        evaluation,
                         roundDuration, getCurrentTokenUsage().getTotalTokens()
                     );
                 reflectionHistory.addRound(round);
@@ -203,7 +212,10 @@ public class Agent extends Node<Agent> {
             java.time.Duration roundDuration = java.time.Duration.between(roundStart, java.time.Instant.now());
             ai.core.reflection.ReflectionHistory.ReflectionRound round =
                 new ai.core.reflection.ReflectionHistory.ReflectionRound(
-                    getRound(), getInput(), getOutput(), evaluation,
+                    getRound(),
+                    solutionToEvaluate,  // Evaluator's input: solution to evaluate
+                    evaluationText,      // Evaluator's output: full evaluation text
+                    evaluation,
                     roundDuration, getCurrentTokenUsage().getTotalTokens()
                 );
             reflectionHistory.addRound(round);
@@ -246,29 +258,25 @@ public class Agent extends Node<Agent> {
     }
 
     /**
-     * Parse evaluation text to structured ReflectionEvaluation object.
-     * Attempts to extract JSON, falls back to default on failure.
+     * Parse evaluation JSON to structured ReflectionEvaluation object.
+     * LLM returns JSON directly via response_format, so we can directly deserialize.
      */
-    private ai.core.reflection.ReflectionEvaluation parseEvaluation(String evaluationText) {
+    private ai.core.reflection.ReflectionEvaluation parseEvaluation(String evaluationJson) {
         try {
-            // Extract JSON portion
-            int jsonStart = evaluationText.indexOf("{");
-            int jsonEnd = evaluationText.lastIndexOf("}") + 1;
-            if (jsonStart >= 0 && jsonEnd > jsonStart) {
-                String json = evaluationText.substring(jsonStart, jsonEnd);
-                return JSON.fromJSON(ai.core.reflection.ReflectionEvaluation.class, json);
-            }
+            // LLM returns JSON directly, deserialize it
+            return JSON.fromJSON(ai.core.reflection.ReflectionEvaluation.class, evaluationJson);
         } catch (Exception e) {
-            logger.warn("Failed to parse evaluation JSON, using fallback: {}", e.getMessage());
-        }
+            logger.warn("Failed to parse evaluation JSON, using fallback. Error: {}, JSON: {}",
+                e.getMessage(), evaluationJson);
 
-        // Fallback: create default evaluation
-        return ai.core.reflection.ReflectionEvaluation.builder()
-            .score(5)
-            .pass(false)
-            .shouldContinue(true)
-            .confidence(0.5)
-            .build();
+            // Fallback: create default evaluation
+            return ai.core.reflection.ReflectionEvaluation.builder()
+                .score(5)
+                .pass(false)
+                .shouldContinue(true)
+                .confidence(0.5)
+                .build();
+        }
     }
 
     /**
@@ -288,8 +296,10 @@ public class Agent extends Node<Agent> {
             Message.of(RoleType.USER, evaluationUserMessage, null, null, null, null)
         );
 
-        // Call LLM in independent context
+        // Call LLM in independent context with JSON response format
         var evalRequest = CompletionRequest.of(evaluationMessages, null, temperature, model, this.getName() + "-evaluator");
+        evalRequest.responseFormat = ai.core.llm.domain.ResponseFormat.json();  // Request JSON format
+
         CompletionResponse evalResponse = llmProvider.completion(evalRequest);
 
         addTokenCost(evalResponse.usage);

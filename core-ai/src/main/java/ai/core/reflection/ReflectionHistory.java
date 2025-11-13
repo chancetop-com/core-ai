@@ -33,22 +33,23 @@ public class ReflectionHistory {
 
     /**
      * 单轮reflection记录
+     * Records one reflection round with evaluator's input/output
      */
     public static class ReflectionRound {
         private final int roundNumber;
-        private final String input;
-        private final String output;
-        private final ReflectionEvaluation evaluation;
+        private final String evaluationInput;   // 评估器的输入（待评估的方案）
+        private final String evaluationOutput;  // 评估器的输出（完整评估文本）
+        private final ReflectionEvaluation evaluation;  // 解析后的结构化评估
         private final Instant timestamp;
         private final Duration duration;
         private final int tokensUsed;
         private double improvementRate;  // 相对上轮的改进率
 
-        public ReflectionRound(int roundNumber, String input, String output,
+        public ReflectionRound(int roundNumber, String evaluationInput, String evaluationOutput,
                                ReflectionEvaluation evaluation, Duration duration, int tokensUsed) {
             this.roundNumber = roundNumber;
-            this.input = input;
-            this.output = output;
+            this.evaluationInput = evaluationInput;
+            this.evaluationOutput = evaluationOutput;
             this.evaluation = evaluation;
             this.timestamp = Instant.now();
             this.duration = duration;
@@ -58,13 +59,19 @@ public class ReflectionHistory {
 
         // Getters
         public int getRoundNumber() { return roundNumber; }
-        public String getInput() { return input; }
-        public String getOutput() { return output; }
+        public String getEvaluationInput() { return evaluationInput; }
+        public String getEvaluationOutput() { return evaluationOutput; }
         public ReflectionEvaluation getEvaluation() { return evaluation; }
         public Instant getTimestamp() { return timestamp; }
         public Duration getDuration() { return duration; }
         public int getTokensUsed() { return tokensUsed; }
         public double getImprovementRate() { return improvementRate; }
+
+        // Backward compatibility (deprecated)
+        @Deprecated
+        public String getInput() { return evaluationInput; }
+        @Deprecated
+        public String getOutput() { return evaluationOutput; }
 
         public void setImprovementRate(double rate) {
             this.improvementRate = rate;
