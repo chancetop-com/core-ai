@@ -48,7 +48,7 @@ public record McpClientServerConfig(
         return new Builder(url);
     }
     
-    public static class Builder {
+    public static final class Builder {
         private final String url;
         private String endpoint;
         private String name;

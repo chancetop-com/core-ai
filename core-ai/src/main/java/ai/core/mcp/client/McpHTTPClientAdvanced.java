@@ -25,18 +25,10 @@ import java.util.Map;
  * and makes direct HTTP calls to preserve custom headers including Accept.
  * <p>
  * This is a workaround for HTTPClient.sse() overwriting the Accept header.
- * 
+ *
  * @author stephen
  */
-public class McpHTTPClientAdvanced implements HTTPClient {
-    private final HTTPClient delegate;
-    private final OkHttpClient okHttpClient;
-    
-    private McpHTTPClientAdvanced(HTTPClient delegate) {
-        this.delegate = delegate;
-        this.okHttpClient = extractOkHttpClient(delegate);
-    }
-    
+public final class McpHTTPClientAdvanced implements HTTPClient {
     /**
      * Create a new MCP-compliant HTTP client with default settings.
      */
@@ -46,6 +38,14 @@ public class McpHTTPClientAdvanced implements HTTPClient {
             .timeout(Duration.ofSeconds(10))
             .build();
         return new McpHTTPClientAdvanced(client);
+    }
+
+    private final HTTPClient delegate;
+    private final OkHttpClient okHttpClient;
+
+    private McpHTTPClientAdvanced(HTTPClient delegate) {
+        this.delegate = delegate;
+        this.okHttpClient = extractOkHttpClient(delegate);
     }
 
     /**
@@ -59,8 +59,8 @@ public class McpHTTPClientAdvanced implements HTTPClient {
             clientField.setAccessible(true);
             return (OkHttpClient) clientField.get(client);
         } catch (NoSuchFieldException | IllegalAccessException e) {
-            throw new RuntimeException("Failed to extract OkHttpClient from HTTPClient. " +
-                "This may be due to framework version incompatibility.", e);
+            throw new RuntimeException("Failed to extract OkHttpClient from HTTPClient. "
+                + "This may be due to framework version incompatibility.", e);
         }
     }
     
