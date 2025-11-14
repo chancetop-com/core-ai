@@ -112,7 +112,7 @@ public class LangfusePromptProvider {
             queryParams.put("label", label);
         }
 
-        String url = buildUrl(config.getPromptEndpoint()+"/"+name, queryParams);
+        String url = buildUrl(config.getPromptEndpoint() + "/" + name, queryParams);
 
         try {
             LOGGER.debug("Fetching prompt from Langfuse: {}", url);
@@ -122,7 +122,7 @@ public class LangfusePromptProvider {
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
                 .GET();
-            if(!url.startsWith("https"))
+            if (!url.startsWith("https"))
                 requestBuilder.version(HttpClient.Version.HTTP_1_1);
 
             // Add headers

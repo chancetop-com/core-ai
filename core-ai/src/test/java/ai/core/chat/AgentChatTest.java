@@ -12,6 +12,8 @@ import core.framework.json.JSON;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -21,7 +23,8 @@ import java.util.List;
  * description:
  */
 @Disabled
-public class AgentChatTest {
+class AgentChatTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentChatTest.class);
 
     public static final String WT_SYSTEM_PROMPT = """
             ## `write_todos`
@@ -132,7 +135,7 @@ public class AgentChatTest {
                 .streamingCallback(new StreamingCallback() {
                     @Override
                     public void onChunk(String chunk) {
-                        System.out.print(chunk);
+                        LOGGER.info("{}", chunk);
                     }
                     @Override
                     public void onComplete() {
@@ -142,7 +145,7 @@ public class AgentChatTest {
                     }
                 })
                 .build();
-        agent.run("你好呀", ExecutionContext.builder().build());
+        agent.run("Hello", ExecutionContext.builder().build());
 
 
     }
@@ -152,8 +155,8 @@ public class AgentChatTest {
         var agent = Agent.builder()
                 .llmProvider(provider)
                 .build();
-        String out = agent.run("你好呀", ExecutionContext.builder().build());
-        System.out.println(out);
+        String out = agent.run("Hello", ExecutionContext.builder().build());
+        LOGGER.info("Agent response: {}", out);
     }
 
     @Test
@@ -166,7 +169,7 @@ public class AgentChatTest {
                 .streamingCallback(new StreamingCallback() {
                     @Override
                     public void onChunk(String chunk) {
-                        System.out.print(chunk);
+                        LOGGER.info("{}", chunk);
                     }
                     @Override
                     public void onComplete() {
@@ -176,7 +179,7 @@ public class AgentChatTest {
                     }
                 })
                 .build();
-        agent.run("做一个西红柿炒鸡蛋，你可以用待办事项来管理任务", ExecutionContext.builder().build());
+        agent.run("", ExecutionContext.builder().build());
     }
 
     @Test
@@ -186,8 +189,8 @@ public class AgentChatTest {
                 .llmProvider(provider)
                 .toolCalls(Functions.from(this, "writeTodos"))
                 .build();
-        var result = agent.run("做一个西红柿炒鸡蛋，你可以用待办事项来管理任务", ExecutionContext.builder().build());
-        System.out.println(result);
+        var result = agent.run("Make Scrambled eggs with tomato, do it step by step.", ExecutionContext.builder().build());
+        LOGGER.info("Agent result: {}", result);
     }
 
     public enum Status {

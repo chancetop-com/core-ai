@@ -66,7 +66,7 @@ public class McpClientService {
     private void addCustomHeaders(HTTPRequest request) {
         // First, apply custom headers from config (if any)
         if (config.headers() != null && !config.headers().isEmpty()) {
-            config.headers().forEach((key, value) -> request.headers.put(key, value));
+            config.headers().forEach(request.headers::put);
         }
         
         // Then, apply MCP required headers (these will override config headers if conflicting)
