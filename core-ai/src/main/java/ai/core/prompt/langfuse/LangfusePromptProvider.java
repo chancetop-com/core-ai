@@ -122,6 +122,8 @@ public class LangfusePromptProvider {
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
                 .GET();
+            if(!url.startsWith("https"))
+                requestBuilder.version(HttpClient.Version.HTTP_1_1);
 
             // Add headers
             config.getHeaders().forEach(requestBuilder::header);
