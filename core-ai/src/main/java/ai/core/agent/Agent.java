@@ -18,6 +18,7 @@ import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.reflection.ReflectionConfig;
+import ai.core.reflection.ReflectionExecutor;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
@@ -55,7 +56,7 @@ public class Agent extends Node<Agent> {
     NaiveMemory longTernMemory;
     Boolean useGroupContext;
     Integer maxToolCallCount;
-    Integer currentToolCallCount;
+//    Integer currentToolCallCount;
     Boolean authenticated = false;
 
     @Override
@@ -136,7 +137,8 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private void chatCore(String query, Map<String, Object> variables) {
+    // Public method accessible to ReflectionExecutor for regenerating solutions
+    public void chatCore(String query, Map<String, Object> variables) {
         buildUserQueryToMessage(query, variables);
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
@@ -151,6 +153,19 @@ public class Agent extends Node<Agent> {
         } while (lastIsToolMsg() && currentIteCount < maxToolCallCount);
         // set out
         setOutput(agentOut.toString());
+    }
+
+    // Public accessors for reflection executor
+    public Double getTemperature() {
+        return temperature;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public LLMProvider getLLMProvider() {
+        return llmProvider;
     }
 
     public List<Message> turn(List<Message> messages, List<Tool> tools, String model) {
@@ -201,15 +216,13 @@ public class Agent extends Node<Agent> {
                 }).toList();
     }
 
+    /**
+     * Execute reflection process using ReflectionExecutor.
+     * Delegates all reflection logic to the dedicated executor.
+     */
     private void reflection(Map<String, Object> variables) {
-        // never start if we do not have termination or something
-        validation();
-        setRound(1);
-        while (notTerminated()) {
-            logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
-            chatCore(reflectionConfig.prompt(), variables);
-            setRound(getRound() + 1);
-        }
+        ReflectionExecutor executor = new ReflectionExecutor(this, reflectionConfig, variables);
+        executor.execute();
     }
 
 
@@ -313,14 +326,6 @@ public class Agent extends Node<Agent> {
         var context = ragConfig.llmProvider().rerankings(RerankingRequest.of(ragQuery, docs.stream().map(v -> v.content).toList())).rerankedDocuments.getFirst();
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
     }
-
-    private void validation() {
-        if (getTerminations().isEmpty()) {
-            throw new RuntimeException(Strings.format("Reflection agent must have termination: {}<{}>", getName(), getId()));
-        }
-    }
-
-
 
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
