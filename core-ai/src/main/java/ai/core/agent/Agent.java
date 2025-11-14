@@ -1,10 +1,10 @@
 package ai.core.agent;
 
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
@@ -26,10 +26,10 @@ import core.framework.json.JSON;
 import core.framework.util.Maps;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
-import core.framework.web.exception.ConflictException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +41,7 @@ public class Agent extends Node<Agent> {
     public static AgentBuilder builder() {
         return new AgentBuilder();
     }
+
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
 
     String systemPrompt;
@@ -63,14 +64,14 @@ public class Agent extends Node<Agent> {
         if (activeTracer != null) {
             var execContext = getExecutionContext();
             var context = AgentTraceContext.builder()
-                .name(getName())
-                .id(getId())
-                .input(query)
-                .withTools(toolCalls != null && !toolCalls.isEmpty())
-                .withRag(ragConfig != null && ragConfig.useRag())
-                .sessionId(execContext.getSessionId())
-                .userId(execContext.getUserId())
-                .build();
+                    .name(getName())
+                    .id(getId())
+                    .input(query)
+                    .withTools(toolCalls != null && !toolCalls.isEmpty())
+                    .withRag(ragConfig != null && ragConfig.useRag())
+                    .sessionId(execContext.getSessionId())
+                    .userId(execContext.getUserId())
+                    .build();
 
             return activeTracer.traceAgentExecution(context, () -> {
                 var result = doExecute(query, variables);
@@ -120,7 +121,7 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-        chat(prompt, variables);
+        chatCore(prompt, variables);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
@@ -135,23 +136,69 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private void chat(String query, Map<String, Object> variables) {
-        // call LLM completion
-        var rst = chatByUser(query, variables);
+    private void chatCore(String query, Map<String, Object> variables) {
+        buildUserQueryToMessage(query, variables);
+        var currentIteCount = 0;
+        var agentOut = new StringBuilder();
+        do {
+            // turn = call model + call func
+            var turnMsgList = turn(getMessages(), toReqTools(toolCalls), model);
+            // add msg into global
+            turnMsgList.forEach(this::addMessage);
+            // include agent loop msg ,but not tool msg
+            agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(m -> m.content).reduce((s1, s2) -> s1 + s2));
+            currentIteCount++;
+        } while (lastIsToolMsg() && currentIteCount < maxToolCallCount);
+        // set out
+        setOutput(agentOut.toString());
+    }
 
-        // we always use the first choice
-        var choice = getChoice(rst);
-        setMessageAgentInfo(choice.message);
-
-        // add rsp to message list and call message event listener if it has
-        addMessage(choice.message);
-        setOutput(choice.message.content);
-
-        // function call loop
+    public List<Message> turn(List<Message> messages, List<Tool> tools, String model) {
+        var resultMsg = new ArrayList<Message>();
+        var choice = handLLM(messages, tools, model);
+        resultMsg.add(choice.message);
         if (choice.finishReason == FinishReason.TOOL_CALLS) {
-            currentToolCallCount = 0;
-            chatByToolCall(choice);
+            var funcMsg = handleFunc(choice.message);
+            resultMsg.addAll(funcMsg);
         }
+        return resultMsg;
+    }
+
+    private boolean lastIsToolMsg() {
+        return RoleType.TOOL == getMessages().getLast().role;
+    }
+
+    private Choice handLLM(List<Message> messages, List<Tool> tools, String model) {
+        var req = CompletionRequest.of(messages, tools, llmProvider.config.getTemperature(), model, this.getName());
+        var resp = llmProvider.completionStream(req, elseDefaultCallback());
+        return resp.choices.getFirst();
+    }
+
+    private StreamingCallback elseDefaultCallback() {
+        if (getStreamingCallback() == null) {
+            return new StreamingCallback() {
+                @Override
+                public void onChunk(String chunk) { }
+                @Override
+                public void onComplete() { }
+                @Override
+                public void onError(Throwable error) { }
+            };
+        } else {
+            return getStreamingCallback();
+        }
+    }
+
+    public List<Message> handleFunc(Message funcMsg) {
+        return funcMsg.toolCalls.stream()
+                .map(tool -> {
+                    var callResult = functionCall(tool);
+                    return Map.entry(tool, callResult);
+                }).map(entry -> {
+                    var tool = entry.getKey();
+                    var callResult = entry.getValue();
+                    return Message.of(RoleType.TOOL, callResult, tool.function.name, tool.id, null, null);
+                }).toList();
     }
 
     private void reflection(Map<String, Object> variables) {
@@ -160,40 +207,11 @@ public class Agent extends Node<Agent> {
         setRound(1);
         while (notTerminated()) {
             logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
-            chat(reflectionConfig.prompt(), variables);
+            chatCore(reflectionConfig.prompt(), variables);
             setRound(getRound() + 1);
         }
     }
 
-    private CompletionResponse chatByUser(String query, Map<String, Object> variables) {
-        buildUserQueryToMessage(query, variables);
-        return completionWithFormat();
-    }
-
-    private void chatByToolCall(Choice toolChoice) {
-        currentToolCallCount += 1;
-        var callRst = toolChoice.message.toolCalls.stream().map(this::functionCall).toList();
-        // send the tool call result to the LLM
-        var rst = chatByToolCall(callRst, toolChoice.message.toolCalls);
-
-        // we always use the first choice
-        var choice = getChoice(rst);
-        setMessageAgentInfo(choice.message);
-
-        // add rsp to message list and call message event listener if it has
-        addMessage(choice.message);
-        setOutput(choice.message.content);
-
-        // function call loop
-        if (choice.finishReason == FinishReason.TOOL_CALLS && currentToolCallCount < maxToolCallCount) {
-            chatByToolCall(choice);
-        }
-    }
-
-    private CompletionResponse chatByToolCall(List<String> toolResult, List<FunctionCall> toolCalls) {
-        buildToolResultToMessage(toolResult, toolCalls);
-        return completionWithFormat();
-    }
 
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
@@ -210,46 +228,6 @@ public class Agent extends Node<Agent> {
         var reqMsg = Message.of(RoleType.USER, query, buildRequestName(false), null, null, null);
         removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
-    }
-
-    private void buildToolResultToMessage(List<String> toolResult, List<FunctionCall> toolCalls) {
-        if (toolResult.size() != toolCalls.size()) {
-            throw new ConflictException("Tool calls size must match query size, toolCalls: " + toolCalls.size() + ", query: " + toolResult.size(), "TOOL_CALLS_SIZE_MISMATCH");
-        }
-        for (int i = 0; i < toolCalls.size(); i++) {
-            var reqMsg = Message.of(RoleType.TOOL, toolResult.get(i), toolCalls.get(i).function.name, toolCalls.get(i).id, null, null);
-            addMessage(reqMsg);
-        }
-    }
-
-    private CompletionResponse completionWithFormat() {
-        var req = CompletionRequest.of(getMessages(), toReqTools(this.toolCalls), temperature, model, this.getName());
-
-        // completion with llm provider
-        CompletionResponse rst;
-        if (isStreaming()) {
-            rst = llmProvider.completionStream(req, getStreamingCallback());
-        } else {
-            rst = llmProvider.completion(req);
-        }
-        addTokenCost(rst.usage);
-        setRawOutput(rst.choices.getFirst().message.content);
-
-        // remove think content
-        if (withThinkContent(rst)) {
-            removeThinkContent(rst);
-        }
-        // format the LLM response
-        if (getAgentFormatter() != null) {
-            formatContent(rst, getAgentFormatter());
-        }
-
-        // cleanup messages if exceed the limit
-        if (rst.usage.getTotalTokens() > llmProvider.maxTokens()) {
-            throw new RuntimeException("Exceed the max tokens limit");
-        }
-
-        return rst;
     }
 
     private List<Tool> toReqTools(List<ToolCall> toolCalls) {
@@ -270,20 +248,10 @@ public class Agent extends Node<Agent> {
         return isToolCall ? "tool" : "user";
     }
 
-    private void setMessageAgentInfo(Message msg) {
-        msg.setAgentName(getName());
-        if (getParentNode() != null) {
-            msg.setGroupName(getParentNode().getName());
-        }
-    }
-
     @Override
     void setChildrenParentNode() {
     }
 
-    private Choice getChoice(CompletionResponse rst) {
-        return rst.choices.getFirst();
-    }
 
     private Message buildSystemMessageWithLongTernMemory(String query, Map<String, Object> variables) {
         var prompt = systemPrompt;
@@ -317,9 +285,9 @@ public class Agent extends Node<Agent> {
             var activeTracer = getActiveTracer();
             if (activeTracer != null) {
                 return activeTracer.traceToolCall(
-                    toolCall.function.name,
-                    toolCall.function.arguments,
-                    () -> function.call(toolCall.function.arguments)
+                        toolCall.function.name,
+                        toolCall.function.arguments,
+                        () -> function.call(toolCall.function.arguments)
                 );
             }
             return function.call(toolCall.function.arguments);
@@ -329,7 +297,8 @@ public class Agent extends Node<Agent> {
     }
 
     private void rag(String query, Map<String, Object> variables) {
-        if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null) throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
+        if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
+            throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
         var ragQuery = query;
         if (ragConfig.llmProvider() != null) {
             ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, (Map<String, Object>) null);
@@ -351,18 +320,7 @@ public class Agent extends Node<Agent> {
         }
     }
 
-    private boolean withThinkContent(CompletionResponse response) {
-        return !response.choices.isEmpty()
-                && response.choices.getFirst().message != null
-                && response.choices.getFirst().message.content != null
-                && response.choices.getFirst().message.content.contains("<think>");
-    }
 
-    private void removeThinkContent(CompletionResponse response) {
-        var text = response.choices.getFirst().message.content;
-        logger.info("think: {}", text.substring(0, text.indexOf("</think>") + 8));
-        response.choices.getFirst().message.content = text.substring(text.lastIndexOf("</think>") + 8);
-    }
 
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
@@ -393,7 +351,7 @@ public class Agent extends Node<Agent> {
     }
 
     public Message getLastToolCallMessage() {
-        for (var msg: getMessages().reversed()) {
+        for (var msg : getMessages().reversed()) {
             if (msg.role == RoleType.TOOL) {
                 return msg;
             }
