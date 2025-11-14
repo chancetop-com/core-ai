@@ -145,7 +145,7 @@ class AgentChatTest {
                     }
                 })
                 .build();
-        agent.run("你好呀", ExecutionContext.builder().build());
+        agent.run("Hello", ExecutionContext.builder().build());
 
 
     }
@@ -155,7 +155,7 @@ class AgentChatTest {
         var agent = Agent.builder()
                 .llmProvider(provider)
                 .build();
-        String out = agent.run("你好呀", ExecutionContext.builder().build());
+        String out = agent.run("Hello", ExecutionContext.builder().build());
         LOGGER.info("Agent response: {}", out);
     }
 
@@ -179,7 +179,7 @@ class AgentChatTest {
                     }
                 })
                 .build();
-        agent.run("做一个西红柿炒鸡蛋，你可以用待办事项来管理任务", ExecutionContext.builder().build());
+        agent.run("", ExecutionContext.builder().build());
     }
 
     @Test
@@ -189,7 +189,7 @@ class AgentChatTest {
                 .llmProvider(provider)
                 .toolCalls(Functions.from(this, "writeTodos"))
                 .build();
-        var result = agent.run("做一个西红柿炒鸡蛋，你可以用待办事项来管理任务", ExecutionContext.builder().build());
+        var result = agent.run("Make Scrambled eggs with tomato, do it step by step.", ExecutionContext.builder().build());
         LOGGER.info("Agent result: {}", result);
     }
 
