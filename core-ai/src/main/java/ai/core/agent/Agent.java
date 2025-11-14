@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
@@ -30,6 +31,7 @@ import core.framework.web.exception.ConflictException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +43,7 @@ public class Agent extends Node<Agent> {
     public static AgentBuilder builder() {
         return new AgentBuilder();
     }
+
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
 
     String systemPrompt;
@@ -63,14 +66,14 @@ public class Agent extends Node<Agent> {
         if (activeTracer != null) {
             var execContext = getExecutionContext();
             var context = AgentTraceContext.builder()
-                .name(getName())
-                .id(getId())
-                .input(query)
-                .withTools(toolCalls != null && !toolCalls.isEmpty())
-                .withRag(ragConfig != null && ragConfig.useRag())
-                .sessionId(execContext.getSessionId())
-                .userId(execContext.getUserId())
-                .build();
+                    .name(getName())
+                    .id(getId())
+                    .input(query)
+                    .withTools(toolCalls != null && !toolCalls.isEmpty())
+                    .withRag(ragConfig != null && ragConfig.useRag())
+                    .sessionId(execContext.getSessionId())
+                    .userId(execContext.getUserId())
+                    .build();
 
             return activeTracer.traceAgentExecution(context, () -> {
                 var result = doExecute(query, variables);
@@ -120,7 +123,7 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-        chat(prompt, variables);
+        chatCore(prompt, variables);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
@@ -152,6 +155,79 @@ public class Agent extends Node<Agent> {
             currentToolCallCount = 0;
             chatByToolCall(choice);
         }
+    }
+
+    private void chatCore(String query, Map<String, Object> variables) {
+        buildUserQueryToMessage(query, variables);
+        var currentIteCount = 0;
+        var agentOut = new StringBuilder();
+        do {
+            // turn = call model + call func
+            var turnMsgList = turn(getMessages(), toReqTools(toolCalls), model);
+            // add msg into global
+            turnMsgList.forEach(this::addMessage);
+            // include agent loop msg ,but not tool msg
+            agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(m -> m.content).reduce((s1, s2) -> s1 + s2));
+            currentIteCount++;
+        } while (lastIsToolMsg() && currentIteCount < maxToolCallCount);
+        // set out
+        setOutput(agentOut.toString());
+    }
+
+    public List<Message> turn(List<Message> messages, List<Tool> tools, String model) {
+        var resultMsg = new ArrayList<Message>();
+        var choice = handLLM(messages, tools, model);
+        resultMsg.add(choice.message);
+        if (choice.finishReason==FinishReason.TOOL_CALLS){
+            var funcMsg = handleFunc(choice.message);
+            resultMsg.addAll(funcMsg);
+        }
+        return resultMsg;
+    }
+
+    private boolean lastIsToolMsg() {
+        return RoleType.TOOL == getMessages().getLast().role;
+    }
+
+    private Choice handLLM(List<Message> messages, List<Tool> tools, String model) {
+        var req = CompletionRequest.of(messages, tools, llmProvider.config.getTemperature(), model, this.getName());
+        var resp = llmProvider.completionStream(req, elseDefaultCallback());
+        return resp.choices.getFirst();
+    }
+
+    private StreamingCallback elseDefaultCallback(){
+        if (getStreamingCallback()==null){
+            return  new StreamingCallback() {
+                @Override
+                public void onChunk(String chunk) {
+
+                }
+
+                @Override
+                public void onComplete() {
+
+                }
+
+                @Override
+                public void onError(Throwable error) {
+
+                }
+            };
+        }else {
+            return getStreamingCallback();
+        }
+    }
+
+    public List<Message> handleFunc(Message funcMsg) {
+        return funcMsg.toolCalls.stream()
+                .map(tool -> {
+                    var callResult = functionCall(tool);
+                    return Map.entry(tool, callResult);
+                }).map(entry -> {
+                    var tool = entry.getKey();
+                    var callResult = entry.getValue();
+                    return Message.of(RoleType.TOOL, callResult, tool.function.name, tool.id, null, null);
+                }).toList();
     }
 
     private void reflection(Map<String, Object> variables) {
@@ -317,9 +393,9 @@ public class Agent extends Node<Agent> {
             var activeTracer = getActiveTracer();
             if (activeTracer != null) {
                 return activeTracer.traceToolCall(
-                    toolCall.function.name,
-                    toolCall.function.arguments,
-                    () -> function.call(toolCall.function.arguments)
+                        toolCall.function.name,
+                        toolCall.function.arguments,
+                        () -> function.call(toolCall.function.arguments)
                 );
             }
             return function.call(toolCall.function.arguments);
@@ -329,7 +405,8 @@ public class Agent extends Node<Agent> {
     }
 
     private void rag(String query, Map<String, Object> variables) {
-        if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null) throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
+        if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
+            throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
         var ragQuery = query;
         if (ragConfig.llmProvider() != null) {
             ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, (Map<String, Object>) null);
@@ -393,7 +470,7 @@ public class Agent extends Node<Agent> {
     }
 
     public Message getLastToolCallMessage() {
-        for (var msg: getMessages().reversed()) {
+        for (var msg : getMessages().reversed()) {
             if (msg.role == RoleType.TOOL) {
                 return msg;
             }
