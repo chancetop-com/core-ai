@@ -86,7 +86,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
                 .promptTemplate(promptTemplate)
                 .llmProvider(llmProvider)
                 .useGroupContext(useGroupContext)
-                .reflectionConfig(new ReflectionConfig(reflectionEnabled, reflectionMaxRound, reflectionMinRound, reflectionPrompt))
+                .reflectionConfig(new ReflectionConfig(reflectionEnabled, reflectionMaxRound, reflectionMinRound, reflectionPrompt, null))
                 .ragConfig(ragConfig)
                 .toolCalls(toolCalls);
         if (formatter != null) {
