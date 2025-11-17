@@ -59,7 +59,7 @@ public class Agent extends Node<Agent> {
     NaiveMemory longTernMemory;
     Boolean useGroupContext;
     Integer maxToolCallCount;
-//    Integer currentToolCallCount;
+    //    Integer currentToolCallCount;
     Boolean authenticated = false;
 
     @Override
@@ -187,7 +187,7 @@ public class Agent extends Node<Agent> {
     }
 
     private Choice handLLM(List<Message> messages, List<Tool> tools, String model) {
-        var req = CompletionRequest.of(messages, tools, llmProvider.config==null?0:llmProvider.config.getTemperature(), model, this.getName());
+        var req = CompletionRequest.of(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), model, this.getName());
         return aroundLLM(r -> llmProvider.completionStream(r, elseDefaultCallback()), req);
     }
 
@@ -223,7 +223,7 @@ public class Agent extends Node<Agent> {
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream()
                 .map(tool -> {
-                    var callResult = aroundTool(tool,getExecutionContext());
+                    var callResult = aroundTool(tool, getExecutionContext());
                     return Map.entry(tool, callResult);
                 }).map(entry -> {
                     var tool = entry.getKey();
@@ -353,12 +353,6 @@ public class Agent extends Node<Agent> {
                 .topK(ragConfig.topK()).build());
         var context = ragConfig.llmProvider().rerankings(RerankingRequest.of(ragQuery, docs.stream().map(v -> v.content).toList())).rerankedDocuments.getFirst();
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
-    }
-
-    private void validation() {
-        if (getTerminations().isEmpty()) {
-            throw new RuntimeException(Strings.format("Reflection agent must have termination: {}<{}>", getName(), getId()));
-        }
     }
 
 
