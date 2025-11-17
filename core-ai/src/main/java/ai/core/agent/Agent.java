@@ -335,7 +335,7 @@ public class Agent extends Node<Agent> {
         return this.reflectionConfig;
     }
 
-    public List<? extends ToolCall> getToolCalls() {
+    public List<ToolCall> getToolCalls() {
         return this.toolCalls;
     }
 
@@ -362,6 +362,18 @@ public class Agent extends Node<Agent> {
             }
         }
         return null;
+    }
+
+    public String getSystemPrompt() {
+        return systemPrompt;
+    }
+
+    public void setSystemPrompt(String systemPrompt) {
+        this.systemPrompt = systemPrompt;
+    }
+
+    public void setToolCalls(List<ToolCall> toolCalls) {
+        this.toolCalls = toolCalls;
     }
 }
 
