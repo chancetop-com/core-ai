@@ -32,7 +32,6 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
@@ -280,8 +279,9 @@ public abstract class Node<T extends Node<T>> {
 
     public final String run(String query, Map<String, Object> variables) {
         // Compatible with legacy method calls
-        return run(query,ExecutionContext.builder().customVariables(variables).build());
+        return run(query, ExecutionContext.builder().customVariables(variables).build());
     }
+
     public final String run(String query) {
         try {
             return aroundExecute((q, v) -> {
