@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.memory.memories.NaiveMemory;
 import ai.core.prompt.SystemVariables;
@@ -37,6 +38,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private String langfusePromptTemplateName;
     private Integer langfusePromptVersion;
     private String langfusePromptLabel;
+
 
     public AgentBuilder promptTemplate(String promptTemplate) {
         this.promptTemplate = promptTemplate;
@@ -143,7 +145,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder agentLifecycle(List<AbstractLifecycle> agentLifecycles) {
+        this.agentLifecycles = agentLifecycles;
+        return this;
+    }
+
     public Agent build() {
+        beforeAgentBuildLifecycle();
         var agent = new Agent();
         this.nodeType = NodeType.AGENT;
         // default name and description
@@ -157,6 +165,22 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
         // Fetch prompts from Langfuse if configured
         fetchLangfusePromptsIfConfigured();
+        copyValue(agent);
+        var systemVariables = agent.getSystemVariables();
+        systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
+        afterAgentBuildLifecycle(agent);
+        return agent;
+    }
+
+    private void beforeAgentBuildLifecycle() {
+        agentLifecycles.forEach(alc -> alc.beforeAgentBuild(this));
+    }
+
+    private void afterAgentBuildLifecycle(Agent agent) {
+        agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
+    }
+
+    private void copyValue(Agent agent) {
 
         agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
@@ -172,6 +196,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.reflectionConfig = this.reflectionConfig;
         agent.useGroupContext = this.useGroupContext;
         agent.setPersistence(new AgentPersistence());
+        agent.agentLifecycles = agentLifecycles;
         if (this.enableReflection && this.reflectionConfig == null) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
         }
@@ -186,10 +211,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.longTernMemory == null) {
             agent.longTernMemory = new NaiveMemory();
         }
-
-        var systemVariables = agent.getSystemVariables();
-        systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
-        return agent;
     }
 
     /**
@@ -205,27 +226,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         // Get provider from registry
         var provider = LangfusePromptProviderRegistry.getProvider();
         if (provider == null) {
-            throw new IllegalStateException(
-                "Langfuse prompts are configured but Langfuse provider is not initialized. "
-                + "Please configure langfuse.prompt.base.url in your properties file."
-            );
+            throw new IllegalStateException("Langfuse prompts are configured but Langfuse provider is not initialized. " + "Please configure langfuse.prompt.base.url in your properties file.");
         }
 
         try {
             if (langfuseSystemPromptName != null) {
-                var prompt = langfusePromptVersion != null
-                    ? provider.getPrompt(langfuseSystemPromptName, langfusePromptVersion)
-                    : langfusePromptLabel != null
-                        ? provider.getPromptByLabel(langfuseSystemPromptName, langfusePromptLabel)
-                        : provider.getPrompt(langfuseSystemPromptName);
+                var prompt = langfusePromptVersion != null ? provider.getPrompt(langfuseSystemPromptName, langfusePromptVersion) : langfusePromptLabel != null ? provider.getPromptByLabel(langfuseSystemPromptName, langfusePromptLabel) : provider.getPrompt(langfuseSystemPromptName);
                 this.systemPrompt = prompt.getPromptContent();
             }
             if (langfusePromptTemplateName != null) {
-                var prompt = langfusePromptVersion != null
-                    ? provider.getPrompt(langfusePromptTemplateName, langfusePromptVersion)
-                    : langfusePromptLabel != null
-                        ? provider.getPromptByLabel(langfusePromptTemplateName, langfusePromptLabel)
-                        : provider.getPrompt(langfusePromptTemplateName);
+                var prompt = langfusePromptVersion != null ? provider.getPrompt(langfusePromptTemplateName, langfusePromptVersion) : langfusePromptLabel != null ? provider.getPromptByLabel(langfusePromptTemplateName, langfusePromptLabel) : provider.getPrompt(langfusePromptTemplateName);
                 this.promptTemplate = prompt.getPromptContent();
             }
         } catch (LangfusePromptProvider.LangfusePromptException e) {
