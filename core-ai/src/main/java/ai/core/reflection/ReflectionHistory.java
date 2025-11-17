@@ -80,7 +80,7 @@ public final class ReflectionHistory {
     }
 
     /**
-     * 完成reflection过程
+     * complete reflection
      *
      * @param finalStatus the final status of reflection
      */
