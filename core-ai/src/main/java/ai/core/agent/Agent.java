@@ -5,7 +5,6 @@ import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
@@ -19,6 +18,7 @@ import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.reflection.ReflectionConfig;
+import ai.core.reflection.ReflectionExecutor;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
@@ -34,8 +34,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 
 /**
  * @author stephen
@@ -58,7 +56,7 @@ public class Agent extends Node<Agent> {
     NaiveMemory longTernMemory;
     Boolean useGroupContext;
     Integer maxToolCallCount;
-    Integer currentToolCallCount;
+//    Integer currentToolCallCount;
     Boolean authenticated = false;
 
     @Override
@@ -139,7 +137,8 @@ public class Agent extends Node<Agent> {
     private void setupAgentSystemVariables() {
     }
 
-    private void chatCore(String query, Map<String, Object> variables) {
+    // Public method accessible to ReflectionExecutor for regenerating solutions
+    public void chatCore(String query, Map<String, Object> variables) {
         buildUserQueryToMessage(query, variables);
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
@@ -154,6 +153,19 @@ public class Agent extends Node<Agent> {
         } while (lastIsToolMsg() && currentIteCount < maxToolCallCount);
         // set out
         setOutput(agentOut.toString());
+    }
+
+    // Public accessors for reflection executor
+    public Double getTemperature() {
+        return temperature;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public LLMProvider getLLMProvider() {
+        return llmProvider;
     }
 
     public List<Message> turn(List<Message> messages, List<Tool> tools, String model) {
@@ -172,16 +184,8 @@ public class Agent extends Node<Agent> {
     }
 
     private Choice handLLM(List<Message> messages, List<Tool> tools, String model) {
-        var req = CompletionRequest.of(messages, tools, llmProvider.config==null?0:llmProvider.config.getTemperature(), model, this.getName());
-        return aroundLLM(r -> llmProvider.completionStream(r, elseDefaultCallback()), req);
-    }
-
-    private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
-        agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
-
-        var resp = func.apply(request);
-
-        agentLifecycles.forEach(alc -> alc.afterModel(resp, getExecutionContext()));
+        var req = CompletionRequest.of(messages, tools, llmProvider.config.getTemperature(), model, this.getName());
+        var resp = llmProvider.completionStream(req, elseDefaultCallback());
         return resp.choices.getFirst();
     }
 
@@ -189,16 +193,11 @@ public class Agent extends Node<Agent> {
         if (getStreamingCallback() == null) {
             return new StreamingCallback() {
                 @Override
-                public void onChunk(String chunk) {
-                }
-
+                public void onChunk(String chunk) { }
                 @Override
-                public void onComplete() {
-                }
-
+                public void onComplete() { }
                 @Override
-                public void onError(Throwable error) {
-                }
+                public void onError(Throwable error) { }
             };
         } else {
             return getStreamingCallback();
@@ -208,7 +207,7 @@ public class Agent extends Node<Agent> {
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream()
                 .map(tool -> {
-                    var callResult = aroundTool(tool,getExecutionContext());
+                    var callResult = functionCall(tool);
                     return Map.entry(tool, callResult);
                 }).map(entry -> {
                     var tool = entry.getKey();
@@ -217,15 +216,13 @@ public class Agent extends Node<Agent> {
                 }).toList();
     }
 
+    /**
+     * Execute reflection process using ReflectionExecutor.
+     * Delegates all reflection logic to the dedicated executor.
+     */
     private void reflection(Map<String, Object> variables) {
-        // never start if we do not have termination or something
-        validation();
-        setRound(1);
-        while (notTerminated()) {
-            logger.info("reflection round: {}/{}, agent: {}, input: {}, output: {}", getRound(), getMaxRound(), getName(), getInput(), getOutput());
-            chatCore(reflectionConfig.prompt(), variables);
-            setRound(getRound() + 1);
-        }
+        ReflectionExecutor executor = new ReflectionExecutor(this, reflectionConfig, variables);
+        executor.execute();
     }
 
 
@@ -312,24 +309,12 @@ public class Agent extends Node<Agent> {
         }
     }
 
-    private String aroundTool(FunctionCall functionCall, ExecutionContext executionContext) {
-        // before
-        agentLifecycles.forEach(alc -> alc.beforeTool(functionCall, executionContext));
-        // raw call
-        var funcResult = functionCall(functionCall);
-        // after
-        AtomicReference<String> resultRef = new AtomicReference<>(funcResult);
-        agentLifecycles.forEach(alc -> alc.afterTool(resultRef, executionContext));
-        return resultRef.get();
-    }
-
-
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
             throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
         var ragQuery = query;
         if (ragConfig.llmProvider() != null) {
-            ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query);
+            ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, (Map<String, Object>) null);
         }
         var rsp = ragConfig.llmProvider().embeddings(new EmbeddingRequest(List.of(ragQuery)));
         addTokenCost(rsp.usage);
@@ -342,13 +327,6 @@ public class Agent extends Node<Agent> {
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
     }
 
-    private void validation() {
-        if (getTerminations().isEmpty()) {
-            throw new RuntimeException(Strings.format("Reflection agent must have termination: {}<{}>", getName(), getId()));
-        }
-    }
-
-
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
     }
@@ -357,7 +335,7 @@ public class Agent extends Node<Agent> {
         return this.reflectionConfig;
     }
 
-    public List<ToolCall> getToolCalls() {
+    public List<? extends ToolCall> getToolCalls() {
         return this.toolCalls;
     }
 
@@ -384,18 +362,6 @@ public class Agent extends Node<Agent> {
             }
         }
         return null;
-    }
-
-    public String getSystemPrompt() {
-        return systemPrompt;
-    }
-
-    public void setSystemPrompt(String systemPrompt) {
-        this.systemPrompt = systemPrompt;
-    }
-
-    public void setToolCalls(List<ToolCall> toolCalls) {
-        this.toolCalls = toolCalls;
     }
 }
 
