@@ -97,7 +97,7 @@ public abstract class Node<T extends Node<T>> {
         getStatusChangedEventListener(nodeStatus).ifPresent(listener -> listener.eventHandler((T) this));
     }
 
-    boolean notTerminated() {
+    public boolean notTerminated() {
         return terminations.isEmpty() || terminations.stream().noneMatch(v -> v.terminate(this));
     }
 
@@ -376,7 +376,7 @@ public abstract class Node<T extends Node<T>> {
         return executionContext != null ? executionContext : ExecutionContext.empty();
     }
 
-    void setRound(Integer round) {
+    public void setRound(Integer round) {
         this.round = round;
     }
 
@@ -444,7 +444,7 @@ public abstract class Node<T extends Node<T>> {
         return this.systemVariables;
     }
 
-    void addTokenCost(Usage cost) {
+    public void addTokenCost(Usage cost) {
         this.currentTokenUsage.setCompletionTokens(this.currentTokenUsage.getCompletionTokens() + cost.getCompletionTokens());
         this.currentTokenUsage.setPromptTokens(this.currentTokenUsage.getPromptTokens() + cost.getPromptTokens());
         this.currentTokenUsage.setTotalTokens(this.currentTokenUsage.getTotalTokens() + cost.getTotalTokens());
