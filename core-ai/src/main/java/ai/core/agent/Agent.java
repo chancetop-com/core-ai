@@ -5,6 +5,7 @@ import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
@@ -34,6 +35,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * @author stephen
@@ -184,8 +187,16 @@ public class Agent extends Node<Agent> {
     }
 
     private Choice handLLM(List<Message> messages, List<Tool> tools, String model) {
-        var req = CompletionRequest.of(messages, tools, llmProvider.config.getTemperature(), model, this.getName());
-        var resp = llmProvider.completionStream(req, elseDefaultCallback());
+        var req = CompletionRequest.of(messages, tools, llmProvider.config==null?0:llmProvider.config.getTemperature(), model, this.getName());
+        return aroundLLM(r -> llmProvider.completionStream(r, elseDefaultCallback()), req);
+    }
+
+    private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
+        agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
+
+        var resp = func.apply(request);
+
+        agentLifecycles.forEach(alc -> alc.afterModel(resp, getExecutionContext()));
         return resp.choices.getFirst();
     }
 
@@ -193,11 +204,16 @@ public class Agent extends Node<Agent> {
         if (getStreamingCallback() == null) {
             return new StreamingCallback() {
                 @Override
-                public void onChunk(String chunk) { }
+                public void onChunk(String chunk) {
+                }
+
                 @Override
-                public void onComplete() { }
+                public void onComplete() {
+                }
+
                 @Override
-                public void onError(Throwable error) { }
+                public void onError(Throwable error) {
+                }
             };
         } else {
             return getStreamingCallback();
@@ -207,7 +223,7 @@ public class Agent extends Node<Agent> {
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream()
                 .map(tool -> {
-                    var callResult = functionCall(tool);
+                    var callResult = aroundTool(tool,getExecutionContext());
                     return Map.entry(tool, callResult);
                 }).map(entry -> {
                     var tool = entry.getKey();
@@ -309,12 +325,24 @@ public class Agent extends Node<Agent> {
         }
     }
 
+    private String aroundTool(FunctionCall functionCall, ExecutionContext executionContext) {
+        // before
+        agentLifecycles.forEach(alc -> alc.beforeTool(functionCall, executionContext));
+        // raw call
+        var funcResult = functionCall(functionCall);
+        // after
+        AtomicReference<String> resultRef = new AtomicReference<>(funcResult);
+        agentLifecycles.forEach(alc -> alc.afterTool(resultRef, executionContext));
+        return resultRef.get();
+    }
+
+
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
             throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
         var ragQuery = query;
         if (ragConfig.llmProvider() != null) {
-            ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query, (Map<String, Object>) null);
+            ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query);
         }
         var rsp = ragConfig.llmProvider().embeddings(new EmbeddingRequest(List.of(ragQuery)));
         addTokenCost(rsp.usage);
@@ -326,6 +354,13 @@ public class Agent extends Node<Agent> {
         var context = ragConfig.llmProvider().rerankings(RerankingRequest.of(ragQuery, docs.stream().map(v -> v.content).toList())).rerankedDocuments.getFirst();
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
     }
+
+    private void validation() {
+        if (getTerminations().isEmpty()) {
+            throw new RuntimeException(Strings.format("Reflection agent must have termination: {}<{}>", getName(), getId()));
+        }
+    }
+
 
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
