@@ -8,7 +8,6 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FunctionCall;
 
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 
 /**
  * author: lim chen
