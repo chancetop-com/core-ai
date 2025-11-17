@@ -18,6 +18,7 @@ import com.azure.ai.openai.models.ChatChoice;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolCall;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolDefinition;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolDefinitionFunction;
+import com.azure.ai.openai.models.ChatCompletionsJsonResponseFormat;
 import com.azure.ai.openai.models.ChatCompletionsJsonSchemaResponseFormat;
 import com.azure.ai.openai.models.ChatCompletionsJsonSchemaResponseFormatJsonSchema;
 import com.azure.ai.openai.models.ChatCompletionsOptions;
@@ -77,6 +78,22 @@ public class AzureOpenAIModelsUtil {
         if (request.tools != null && !request.tools.isEmpty()) {
             options.setTools(request.tools.stream().map(AzureOpenAIModelsUtil::fromToolCall).toList());
         }
+
+        // Handle response format (JSON or JSON Schema)
+        if (request.responseFormat != null) {
+            if ("json_schema".equals(request.responseFormat.type) && MapUtils.isNotEmpty(request.responseFormat.jsonSchema)) {
+                // Use JSON Schema format
+                var jsonSchema = new ChatCompletionsJsonSchemaResponseFormat(
+                        BinaryData.fromObject(request.responseFormat.jsonSchema)
+                                .toObject(ChatCompletionsJsonSchemaResponseFormatJsonSchema.class)
+                );
+                options.setResponseFormat(jsonSchema);
+            } else if ("json_object".equals(request.responseFormat.type)) {
+                // Use simple JSON object format
+                options.setResponseFormat(new ChatCompletionsJsonResponseFormat());
+            }
+        }
+
         return options;
     }
 
