@@ -30,6 +30,8 @@ public class CompletionRequest {
     public String toolChoice;
     @Property(name = "stream")
     public Boolean stream;
+    @Property(name = "response_format")
+    public ResponseFormat responseFormat;
 
     private String name;
 
