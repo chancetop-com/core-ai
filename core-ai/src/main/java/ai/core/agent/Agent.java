@@ -112,9 +112,7 @@ public class Agent extends Node<Agent> {
         // compile and execute template
         prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
 
-        if (currentTokenUsageOutOfMax(prompt, llmProvider.maxTokens())) {
-            prompt = handleToShortQuery(prompt, null);
-        }
+        // todo context exceed
 
         // set authenticated flag if the agent is authenticated
         if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
