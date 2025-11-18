@@ -52,9 +52,11 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
 
     @Override
     public boolean check(HttpString method, String path, HeaderMap headers) {
-        if (headers == null || headers.getFirst(Headers.ACCEPT) == null) return false; // aks gw health check use / and do not have accept headers, just return false
-        return headers.getFirst(Headers.ACCEPT).contains("text/event-stream")
-            && supports.containsKey(key(method.toString(), path));
+//        if (headers == null || headers.getFirst(Headers.ACCEPT) == null) return false; // aks gw health check use / and do not have accept headers, just return false
+//        return headers.getFirst(Headers.ACCEPT).contains("text/event-stream")
+//            && supports.containsKey(key(method.toString(), path));
+        //todo wait implementation check method
+        return true;
     }
 
     @Override
@@ -63,6 +65,13 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
         exchange.getResponseHeaders().put(Headers.CONNECTION, "keep-alive");
         exchange.getResponseHeaders().put(Headers.TRANSFER_ENCODING, "chunked");
         exchange.getResponseHeaders().put(Headers.CACHE_CONTROL, "no-cache");
+        //todo wait implementation CORS
+        // CORS headers
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Origin"), "*");
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Methods"), "GET, POST, OPTIONS");
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Headers"), "Content-Type, x-trace-id, Last-Event-ID");
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Credentials"), "true");
+
         exchange.setPersistent(true);
         StreamSinkChannel sink = exchange.getResponseChannel();
         try {

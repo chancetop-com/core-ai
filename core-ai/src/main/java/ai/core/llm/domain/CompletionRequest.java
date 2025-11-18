@@ -18,6 +18,7 @@ public class CompletionRequest {
         return request;
     }
 
+
     @Property(name = "model")
     public String model;
     @Property(name = "messages")
