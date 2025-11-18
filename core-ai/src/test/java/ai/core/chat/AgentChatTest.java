@@ -3,143 +3,52 @@ package ai.core.chat;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.streaming.StreamingCallback;
-import ai.core.api.tool.function.CoreAiMethod;
-import ai.core.api.tool.function.CoreAiParameter;
-import ai.core.llm.LLMProviderConfig;
-import ai.core.llm.providers.AzureInferenceProvider;
-import ai.core.tool.function.Functions;
-import core.framework.json.JSON;
+import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.providers.AzureOpenAIProvider;
+import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * author: lim chen
  * date: 2025/11/11
  * description:
  */
+
 @Disabled
 class AgentChatTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentChatTest.class);
+    LLMProvider llmProvider;
 
-    public static final String WT_SYSTEM_PROMPT = """
-            ## `write_todos`
-            
-            You have access to the `write_todos` tool to help you manage and plan complex objectives.
-            Use this tool for complex objectives to ensure that you are tracking each necessary step and giving the user visibility into your progress.
-            This tool is very helpful for planning complex objectives, and for breaking down these larger complex objectives into smaller steps.
-            
-            It is critical that you mark todos as completed as soon as you are done with a step. Do not batch up multiple steps before marking them as completed.
-            For simple objectives that only require a few steps, it is better to just complete the objective directly and NOT use this tool.
-            Writing todos takes time and tokens, use it when it is helpful for managing complex many-step problems! But not for simple few-step requests.
-            
-            ## Important To-Do List Usage Notes to Remember
-            - The `write_todos` tool should never be called multiple times in parallel.
-            - Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.
-            """;
-    public static final String WT_TOOL_DESC = """
-            Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
-            
-            Only use this tool if you think it will be helpful in staying organized. If the user's request is trivial and takes less than 3 steps, it is better to NOT use this tool and just do the task directly.
-            
-            ## When to Use This Tool
-            Use this tool in these scenarios:
-            
-            1. Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
-            2. Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
-            3. User explicitly requests todo list - When the user directly asks you to use the todo list
-            4. User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
-            5. The plan may need future revisions or updates based on results from the first few steps
-            
-            ## How to Use This Tool
-            1. When you start working on a task - Mark it as in_progress BEFORE beginning work.
-            2. After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation.
-            3. You can also update future tasks, such as deleting them if they are no longer necessary, or adding new tasks that are necessary. Don't change previously completed tasks.
-            4. You can make several updates to the todo list at once. For example, when you complete a task, you can mark the next task you need to start as in_progress.
-            
-            ## When NOT to Use This Tool
-            It is important to skip using this tool when:
-            1. There is only a single, straightforward task
-            2. The task is trivial and tracking it provides no benefit
-            3. The task can be completed in less than 3 trivial steps
-            4. The task is purely conversational or informational
-            
-            ## Task States and Management
-            
-            1. **Task States**: Use these states to track progress:
-               - pending: Task not yet started
-               - in_progress: Currently working on (you can have multiple tasks in_progress at a time if they are not related to each other and can be run in parallel)
-               - completed: Task finished successfully
-            
-            2. **Task Management**:
-               - Update task status in real-time as you work
-               - Mark tasks complete IMMEDIATELY after finishing (don't batch completions)
-               - Complete current tasks before starting new ones
-               - Remove tasks that are no longer relevant from the list entirely
-               - IMPORTANT: When you write this todo list, you should mark your first task (or tasks) as in_progress immediately!.
-               - IMPORTANT: Unless all tasks are completed, you should always have at least one task in_progress to show the user that you are working on something.
-            
-            3. **Task Completion Requirements**:
-               - ONLY mark a task as completed when you have FULLY accomplished it
-               - If you encounter errors, blockers, or cannot finish, keep the task as in_progress
-               - When blocked, create a new task describing what needs to be resolved
-               - Never mark a task as completed if:
-                 - There are unresolved issues or errors
-                 - Work is partial or incomplete
-                 - You encountered blockers that prevent completion
-                 - You couldn't find necessary resources or dependencies
-                 - Quality standards haven't been met
-            
-            4. **Task Breakdown**:
-               - Create specific, actionable items
-               - Break complex tasks into smaller, manageable steps
-               - Use clear, descriptive task names
-            
-            Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully
-            Remember: If you only need to make a few tool calls to complete a task, and it is clear what you need to do, it is better to just do the task directly and NOT call this tool at all.
-            """;
-
-    LLMProviderConfig config;
-    AzureInferenceProvider provider;
-
-    @CoreAiMethod(name = "write_todos", description = WT_TOOL_DESC)
-    public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos) {
-        String todosJson = JSON.toJSON(todos);
-        return """
-                  Todos have been modified successfully.
-                  <system-reminder>
-                  Your todo list has changed. DO NOT mention this explicitly to the user.
-                  Here are the latest contents of your todo list:
-
-                  %s
-
-                  Continue on with the tasks at hand if applicable.
-                  </system-reminder>
-                """.formatted(todosJson);
-    }
 
     @BeforeEach
-    void before() {
-        config = new LLMProviderConfig("deepseek-chat", 0.0, "");
-        provider = new AzureInferenceProvider(config, System.getenv("DEEPSEEK_API_KEY"), "https://api.deepseek.com/v1", false);
+    void setUp() {
+        llmProvider = Mockito.mock(AzureOpenAIProvider.class);
     }
 
     @Test
     void testStreamChat() {
         var agent = Agent.builder()
-                .llmProvider(provider)
+                .llmProvider(llmProvider)
                 .streamingCallback(new StreamingCallback() {
                     @Override
                     public void onChunk(String chunk) {
                         LOGGER.info("{}", chunk);
                     }
+
                     @Override
                     public void onComplete() {
                     }
+
                     @Override
                     public void onError(Throwable error) {
                     }
@@ -152,54 +61,16 @@ class AgentChatTest {
 
     @Test
     void testChat() {
+        String cc = """
+                {"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"hello, i am deepseek","name":"assistant","tool_call_id":null,"function_call":null,"tool_calls":null},"delta":null,"index":null}],"usage":{"prompt_tokens":6,"completion_tokens":80,"total_tokens":-1}}
+                """;
+        var crs = JsonUtil.fromJson(CompletionResponse.class, cc);
         var agent = Agent.builder()
-                .llmProvider(provider)
+                .llmProvider(llmProvider)
                 .build();
+        when(llmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class))).thenReturn(crs);
         String out = agent.run("Hello", ExecutionContext.builder().build());
-        LOGGER.info("Agent response: {}", out);
-    }
-
-    @Test
-    void testToolCall() {
-        var agent = Agent.builder()
-                .systemPrompt(WT_SYSTEM_PROMPT)
-                .llmProvider(provider)
-                .toolCalls(Functions.from(this, "writeTodos"))
-                .streaming(true)
-                .streamingCallback(new StreamingCallback() {
-                    @Override
-                    public void onChunk(String chunk) {
-                        LOGGER.info("{}", chunk);
-                    }
-                    @Override
-                    public void onComplete() {
-                    }
-                    @Override
-                    public void onError(Throwable error) {
-                    }
-                })
-                .build();
-        agent.run("", ExecutionContext.builder().build());
-    }
-
-    @Test
-    void testToolCallNoStream() {
-        var agent = Agent.builder()
-                .systemPrompt(WT_SYSTEM_PROMPT)
-                .llmProvider(provider)
-                .toolCalls(Functions.from(this, "writeTodos"))
-                .build();
-        var result = agent.run("Make Scrambled eggs with tomato, do it step by step.", ExecutionContext.builder().build());
-        LOGGER.info("Agent result: {}", result);
-    }
-
-    public enum Status {
-        PENDING, IN_PROGRESS, COMPLETED
-    }
-
-    public static class Todo {
-        public String content;
-        public Status status;
+        assert out != null;
 
     }
 }
