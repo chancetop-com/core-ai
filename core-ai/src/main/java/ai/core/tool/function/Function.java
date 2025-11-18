@@ -49,7 +49,9 @@ public class Function extends ToolCall {
                 var value = argsMap.get(name);
                 if (value == null) {
                     logger.warn("{} value is null", name);
-                    return Strings.format("function<{}> failed:params {} is null", getName(), name);
+                    //todo  wait fix args request=false
+//                    return Strings.format("function<{}> failed:params {} is null", getName(), name);
+                    args[i] = null;
                 } else {
                     args[i] = JsonUtil.fromJson(method.getParameters()[i].getParameterizedType(), JsonUtil.toJson(value));
                 }
