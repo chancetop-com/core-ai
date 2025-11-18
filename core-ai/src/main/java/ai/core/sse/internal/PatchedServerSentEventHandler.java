@@ -65,7 +65,7 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
         exchange.getResponseHeaders().put(Headers.CONNECTION, "keep-alive");
         exchange.getResponseHeaders().put(Headers.TRANSFER_ENCODING, "chunked");
         exchange.getResponseHeaders().put(Headers.CACHE_CONTROL, "no-cache");
-
+        //todo wait implementation CORS
         // CORS headers
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Origin"), "*");
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Methods"), "GET, POST, OPTIONS");
