@@ -13,7 +13,7 @@ import java.util.List;
  * date: 2025/11/10
  * description:
  */
-public class WriteTodosTool extends AbstractLifecycle {
+public class AgentTodosLifecycle extends AbstractLifecycle {
     public static final String WT_SYSTEM_PROMPT = """
             ## `write_todos`
             
@@ -93,6 +93,7 @@ public class WriteTodosTool extends AbstractLifecycle {
 
     @CoreAiMethod(name = "write_todos", description = WT_TOOL_DESC)
     public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos) {
+        //todo persistence
         String todosJson = JSON.toJSON(todos);
         return """
                   Todos have been modified successfully.

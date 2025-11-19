@@ -58,6 +58,7 @@ public class Agent extends Node<Agent> {
     ReflectionConfig reflectionConfig;
     NaiveMemory longTernMemory;
     Boolean useGroupContext;
+    //todo rename max turn
     Integer maxToolCallCount;
     //    Integer currentToolCallCount;
     Boolean authenticated = false;
@@ -141,6 +142,7 @@ public class Agent extends Node<Agent> {
     }
 
     // Public method accessible to ReflectionExecutor for regenerating solutions
+    // todo rename  chatTurns
     public void chatCore(String query, Map<String, Object> variables) {
         buildUserQueryToMessage(query, variables);
         var currentIteCount = 0;
