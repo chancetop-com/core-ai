@@ -78,7 +78,7 @@ public abstract class ToolCall {
     public JsonSchema toJsonSchema() {
         return toJsonSchema(parameters, JsonSchema.PropertyType.OBJECT, null);
     }
-
+// todo @ Stephen util
     private JsonSchema toJsonSchema(List<ToolCallParameter> parameters, JsonSchema.PropertyType propertyType, ToolCallParameter parent) {
         var schema = new JsonSchema();
         schema.type = propertyType;
