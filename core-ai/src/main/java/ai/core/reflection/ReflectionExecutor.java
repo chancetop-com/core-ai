@@ -1,10 +1,7 @@
 package ai.core.reflection;
 
 import ai.core.agent.Agent;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.domain.Message;
-import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.*;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
@@ -139,6 +136,7 @@ public final class ReflectionExecutor {
             recordRound(currentRound, solutionToEvaluate, evaluationText, evaluation, roundStart);
 
             // Notify listener based on termination reason
+//            todo Xander consider use Before Agent method to do
             if (evaluation.isPass() && evaluation.getScore() >= 8) {
                 notifyScoreAchieved(evaluation.getScore(), currentRound);
             } else if (!evaluation.isShouldContinue()) {
@@ -150,6 +148,7 @@ public final class ReflectionExecutor {
 
         // Step 4: Agent regenerates solution based on feedback
         String improvementPrompt = buildImprovementPrompt(evaluationText, evaluation);
+//        todo: @Xander new build reflection agent or reset the reflection loop in Node class
         agent.chatCore(improvementPrompt, variables);
 
         // Step 5: Record this round to history
@@ -183,7 +182,8 @@ public final class ReflectionExecutor {
                 agent.getModel(),
                 agent.getName() + "-evaluator"
         );
-        evalRequest.responseFormat = ai.core.llm.domain.ResponseFormat.json();
+//        todo @Xander add json model
+        evalRequest.responseFormat = ResponseFormat.json();
 
         CompletionResponse evalResponse = agent.getLLMProvider().completion(evalRequest);
 
@@ -272,6 +272,7 @@ public final class ReflectionExecutor {
     /**
      * Check if reflection should terminate based on evaluation.
      */
+//    todo @Xander move to termination folder & reset tool call times
     private boolean shouldTerminateReflection(ReflectionEvaluation evaluation) {
         // Terminate if pass criteria met and score is good
         if (evaluation.isPass() && evaluation.getScore() >= 8) {
@@ -284,11 +285,7 @@ public final class ReflectionExecutor {
         }
 
         // Terminate if minimum rounds completed and score is acceptable
-        if (agent.getRound() >= config.minRound() && evaluation.getScore() >= 7) {
-            return true;
-        }
-
-        return false;
+        return agent.getRound() >= config.minRound() && evaluation.getScore() >= 7;
     }
 
     /**
@@ -333,11 +330,7 @@ public final class ReflectionExecutor {
         }
 
         // Check if there are termination conditions
-        if (!agent.notTerminated()) {
-            return false;
-        }
-
-        return true;
+        return agent.notTerminated();
     }
 
     /**
@@ -383,6 +376,7 @@ public final class ReflectionExecutor {
      */
     private void validateConfiguration() {
         if (agent.getTerminations().isEmpty()) {
+//            todo: @Xander fix exception message and add error code for kibana
             throw new RuntimeException(Strings.format(
                     "Reflection agent must have termination: {}<{}>",
                     agent.getName(), agent.getId()

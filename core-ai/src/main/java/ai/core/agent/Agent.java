@@ -123,11 +123,13 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
+//        todo
         chatCore(prompt, variables);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
             reflection(variables);
+
         }
 
         // nothing wrong, update node status to completed, otherwise it had been set by the subsequent chat or reflection

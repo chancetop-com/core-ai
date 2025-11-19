@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *
  * @author xander
  */
+@org.junit.jupiter.api.Disabled("Requires valid LiteLLM configuration")
 class LiteLLMProviderTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(LiteLLMProviderTest.class);
     @Test
