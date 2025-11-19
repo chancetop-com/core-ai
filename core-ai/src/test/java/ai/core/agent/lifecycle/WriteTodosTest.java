@@ -33,7 +33,7 @@ class WriteTodosTest {
 
     @Test
     void testTodoFunctionCall() {
-        var wtl = spy(new WriteTodosTool());
+        var wtl = spy(new AgentTodosLifecycle());
         var agent = Agent.builder()
                 .llmProvider(llmProvider)
                 .agentLifecycle(List.of(wtl))
