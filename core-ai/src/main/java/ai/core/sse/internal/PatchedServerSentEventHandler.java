@@ -52,25 +52,54 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
 
     @Override
     public boolean check(HttpString method, String path, HeaderMap headers) {
-//        if (headers == null || headers.getFirst(Headers.ACCEPT) == null) return false; // aks gw health check use / and do not have accept headers, just return false
-//        return headers.getFirst(Headers.ACCEPT).contains("text/event-stream")
-//            && supports.containsKey(key(method.toString(), path));
+        // Allow OPTIONS requests for CORS preflight (Safari)
+        if ("OPTIONS".equals(method.toString())) {
+            // Check if any method is registered for this path
+            for (String registeredKey : supports.keySet()) {
+                if (registeredKey.endsWith(":" + path)) {
+                    logger.debug("sse OPTIONS preflight allowed for path={}", path);
+                    return true;
+                }
+            }
+            logger.debug("sse OPTIONS preflight rejected, no route registered for path={}", path);
+            return false;
+        }
+
+        String routeKey = key(method.toString(), path);
+        // Check if the path is registered for SSE
+        if (!supports.containsKey(routeKey)) {
+            logger.debug("sse route not found, method={}, path={}, registered routes={}", method, path, supports.keySet());
+            return false;
+        }
+        logger.debug("sse route found, method={}, path={}", method, path);
         //todo wait implementation check method
+        // Verify Accept header for SSE (allow missing header for some clients)
+//        if (headers != null && headers.getFirst(Headers.ACCEPT) != null) {
+//            return headers.getFirst(Headers.ACCEPT).contains("text/event-stream");
+//        }
+        // If no Accept header, still allow if route exists (some clients don't send it)
         return true;
     }
 
     @Override
     public void handleRequest(HttpServerExchange exchange) {
-        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/event-stream");
-        exchange.getResponseHeaders().put(Headers.CONNECTION, "keep-alive");
-        exchange.getResponseHeaders().put(Headers.TRANSFER_ENCODING, "chunked");
-        exchange.getResponseHeaders().put(Headers.CACHE_CONTROL, "no-cache");
-        //todo wait implementation CORS
         // CORS headers
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Origin"), "*");
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Methods"), "GET, POST, OPTIONS");
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Headers"), "Content-Type, x-trace-id, Last-Event-ID");
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Credentials"), "true");
+
+        // Handle OPTIONS preflight request (Safari CORS)
+        if (exchange.getRequestMethod().toString().equals("OPTIONS")) {
+            exchange.setStatusCode(200);
+            exchange.endExchange();
+            return;
+        }
+
+        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/event-stream");
+        exchange.getResponseHeaders().put(Headers.CONNECTION, "keep-alive");
+        exchange.getResponseHeaders().put(Headers.TRANSFER_ENCODING, "chunked");
+        exchange.getResponseHeaders().put(Headers.CACHE_CONTROL, "no-cache");
 
         exchange.setPersistent(true);
         StreamSinkChannel sink = exchange.getResponseChannel();
@@ -104,11 +133,15 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
 
             handlerContext.requestParser.parse(request, exchange, actionLog);
             if (handlerContext.accessControl != null) handlerContext.accessControl.validate(request.clientIP());  // check ip before checking routing, return 403 asap
-
             actionLog.warningContext.maxProcessTimeInNano(MAX_PROCESS_TIME_IN_NANO);
             String path = request.path();
             @SuppressWarnings("unchecked")
             PatchedChannelSupport<Object> support = (PatchedChannelSupport<Object>) supports.get(key(request.method().name(), path));   // ServerSentEventHandler.check() ensures path exists
+            if (support == null) {
+                logger.warn("sse listener not found, method={}, path={}", request.method(), path);
+                return; // Return early - check() should have prevented this
+            }
+
             actionLog.action("sse:" + path + ":connect");
 
             if (handlerContext.rateControl != null) {
@@ -124,17 +157,11 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
                 actionLog.context.put("trace_id", List.of(traceId));
                 channel.traceId = traceId;
             }
-
             sink.getWriteSetter().set(channel.writeListener);
             support.context.add(channel);
             exchange.addExchangeCompleteListener(new PatchedServerSentEventCloseHandler<>(logManager, channel, support));
 
-            channel.sendBytes(Strings.bytes("retry: 5000\n\n"));    // set browser retry to 5s
-            channel.sendBytes(Strings.bytes(":\n\n"));
-
-            request.session = ReadOnlySession.of(sessionManager.load(request, actionLog));
-            String lastEventId = exchange.getRequestHeaders().getLast(LAST_EVENT_ID);
-            if (lastEventId != null) actionLog.context("last_event_id", lastEventId);
+            String lastEventId = initializeChannelSession(request, channel, actionLog, exchange);
             support.listener.onConnect(request, channel, lastEventId);
             if (!channel.groups.isEmpty()) actionLog.context("group", channel.groups.toArray()); // may join group onConnect
         } catch (Throwable e) {
@@ -149,6 +176,16 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
             logManager.end("=== sse connect end ===");
             VirtualThread.COUNT.decrease();
         }
+    }
+
+    private String initializeChannelSession(RequestImpl request, PatchedChannelImpl<Object> channel,
+                                            ActionLog actionLog, HttpServerExchange exchange) {
+        channel.sendBytes(Strings.bytes("retry: 5000\n\n"));    // set browser retry to 5s
+        channel.sendBytes(Strings.bytes(":\n\n"));
+        request.session = ReadOnlySession.of(sessionManager.load(request, actionLog));
+        String lastEventId = exchange.getRequestHeaders().getLast(LAST_EVENT_ID);
+        if (lastEventId != null) actionLog.context("last_event_id", lastEventId);
+        return lastEventId;
     }
 
     void limitRate(RateControl rateControl, PatchedChannelSupport<Object> support, String clientIP) {
