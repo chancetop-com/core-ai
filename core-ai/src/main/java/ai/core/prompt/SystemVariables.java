@@ -19,4 +19,5 @@ public class SystemVariables {
     public static final String AGENT_GROUP_AGENTS = "system.agent.group.agents";
     public static final String TERMINATE_WORD = "system.default.terminate.word";
     public static final String SYSTEM_ENVIRONMENT = "system.environment";
+    public static final String AGENT_WRITE_TODOS_SYSTEM_PROMPT = "system.agent.write.todos.system.prompt";
 }

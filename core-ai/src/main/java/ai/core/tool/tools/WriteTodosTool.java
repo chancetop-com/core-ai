@@ -1,8 +1,8 @@
-package ai.core.agent.lifecycle;
+package ai.core.tool.tools;
 
-import ai.core.agent.Agent;
 import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
+import ai.core.tool.ToolCall;
 import ai.core.tool.function.Functions;
 import core.framework.json.JSON;
 
@@ -10,26 +10,12 @@ import java.util.List;
 
 /**
  * author: lim chen
- * date: 2025/11/10
+ * date: 2025/11/20
  * description:
  */
-public class AgentTodosLifecycle extends AbstractLifecycle {
-    public static final String WT_SYSTEM_PROMPT = """
-            ## `write_todos`
-            
-            You have access to the `write_todos` tool to help you manage and plan complex objectives.
-            Use this tool for complex objectives to ensure that you are tracking each necessary step and giving the user visibility into your progress.
-            This tool is very helpful for planning complex objectives, and for breaking down these larger complex objectives into smaller steps.
-            
-            It is critical that you mark todos as completed as soon as you are done with a step. Do not batch up multiple steps before marking them as completed.
-            For simple objectives that only require a few steps, it is better to just complete the objective directly and NOT use this tool.
-            Writing todos takes time and tokens, use it when it is helpful for managing complex many-step problems! But not for simple few-step requests.
-            
-            ## Important To-Do List Usage Notes to Remember
-            - The `write_todos` tool should never be called multiple times in parallel.
-            - Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.
-            """;
-    public static final String WT_TOOL_DESC = """
+public class WriteTodosTool {
+
+    private static final String WT_TOOL_DESC = """
             Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
             
             Only use this tool if you think it will be helpful in staying organized. If the user's request is trivial and takes less than 3 steps, it is better to NOT use this tool and just do the task directly.
@@ -91,6 +77,11 @@ public class AgentTodosLifecycle extends AbstractLifecycle {
             Remember: If you only need to make a few tool calls to complete a task, and it is clear what you need to do, it is better to just do the task directly and NOT call this tool at all.
             """;
 
+    public static ToolCall self() {
+        var todos = new WriteTodosTool();
+        return Functions.from(todos, "writeTodos").getFirst();
+    }
+
     @CoreAiMethod(name = "write_todos", description = WT_TOOL_DESC)
     public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos) {
         //todo persistence
@@ -106,15 +97,6 @@ public class AgentTodosLifecycle extends AbstractLifecycle {
                   Continue on with the tasks at hand if applicable.
                   </system-reminder>
                 """.formatted(todosJson);
-    }
-
-    @Override
-    public void afterAgentBuild(Agent agent) {
-        String currentSystemPrompt = agent.getSystemPrompt() == null ? WT_SYSTEM_PROMPT : agent.getSystemPrompt() + "\n\n" + WT_SYSTEM_PROMPT;
-        agent.setSystemPrompt(currentSystemPrompt);
-        var currentTools = agent.getToolCalls();
-        currentTools.add(Functions.from(this, "writeTodos").getFirst());
-        agent.setToolCalls(currentTools);
     }
 
     public enum Status {
