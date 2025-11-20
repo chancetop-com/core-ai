@@ -31,7 +31,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private ReflectionConfig reflectionConfig;
     private Boolean useGroupContext = false;
     private Boolean enableReflection = false;
-    private Integer maxToolCallCount;
+    private Integer maxTurnNumber;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -46,7 +46,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     public AgentBuilder maxToolCallCount(Integer maxToolCallCount) {
-        this.maxToolCallCount = maxToolCallCount;
+        this.maxTurnNumber = maxToolCallCount;
         return this;
     }
 
@@ -184,7 +184,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
         agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
-        agent.maxToolCallCount = this.maxToolCallCount == null ? 20 : this.maxToolCallCount;
+        agent.maxTurnNumber = this.maxTurnNumber == null ? 20 : this.maxTurnNumber;
         agent.temperature = this.temperature;
         agent.model = this.model;
         agent.llmProvider = this.llmProvider;
