@@ -31,6 +31,17 @@ public class MustachePromptTemplate implements PromptTemplate {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        return output.toString(StandardCharsets.UTF_8);
+        return decodeHtmlEntities(output.toString(StandardCharsets.UTF_8));
+    }
+
+
+    private String decodeHtmlEntities(String text) {
+        return text.replace("&#96;", "`")
+                .replace("&#10;", "\n")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'");
     }
 }
