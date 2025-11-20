@@ -15,10 +15,21 @@ import java.util.concurrent.atomic.AtomicReference;
  * description: AbstractLifecycle, control subclass action
  */
 public abstract class AbstractLifecycle {
+    /**
+     * at build stage
+     * beforeAgentBuild  Do something
+     *
+     * @param agentBuilder agentBuilder
+     */
     public void beforeAgentBuild(AgentBuilder agentBuilder) {
 
     }
-
+    /**
+     * at build stage
+     * afterAgentBuild Do something
+     *
+     * @param agent agentBuilder
+     */
     public void afterAgentBuild(Agent agent) {
 
     }
@@ -30,15 +41,34 @@ public abstract class AbstractLifecycle {
     public void afterModel(CompletionResponse completionResponse, ExecutionContext executionContext) {
 
     }
-
+    /**
+     * at runtime stage
+     * beforeAgentRun Do something
+     *
+     * @param query            user query
+     * @param executionContext agen runtime context
+     */
     public void beforeAgentRun(AtomicReference<String> query, ExecutionContext executionContext) {
 
     }
-
+    /**
+     * at runtime stage
+     * afterAgentRun Do something
+     *
+     * @param result           agent run result(str)
+     * @param executionContext agen runtime context
+     */
     public void afterAgentRun(AtomicReference<String> result, ExecutionContext executionContext) {
 
     }
-
+    /**
+     * at runtime stage
+     * afterAgentFailed Do something
+     *
+     * @param query            user query
+     * @param executionContext agen runtime context
+     * @param exception        ex
+     */
     public void afterAgentFailed(String query, ExecutionContext executionContext, Exception exception) {
 
     }

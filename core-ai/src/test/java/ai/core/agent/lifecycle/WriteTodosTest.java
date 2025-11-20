@@ -4,12 +4,12 @@ import ai.core.agent.Agent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.providers.AzureOpenAIProvider;
+import ai.core.tool.function.Functions;
+import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-
-import java.util.List;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyList;
@@ -33,10 +33,11 @@ class WriteTodosTest {
 
     @Test
     void testTodoFunctionCall() {
-        var wtl = spy(new AgentTodosLifecycle());
+        var wtl = spy(new WriteTodosTool());
         var agent = Agent.builder()
+                .systemPrompt("You are a helpful assistant,{{system.agent.write.todos.system.prompt}}")
                 .llmProvider(llmProvider)
-                .agentLifecycle(List.of(wtl))
+                .toolCalls(Functions.from(wtl, "writeTodos"))
                 .maxToolCallCount(1)
                 .build();
         String cc = """
