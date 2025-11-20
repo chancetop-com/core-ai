@@ -1,7 +1,11 @@
 package ai.core.reflection;
 
 import ai.core.agent.Agent;
-import ai.core.llm.domain.*;
+import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.ResponseFormat;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
