@@ -261,7 +261,7 @@ public abstract class Node<T extends Node<T>> {
             var rs = exec.apply(queryRef.get(), getExecutionContext().getCustomVariables());
 
             AtomicReference<String> resultRef = new AtomicReference<>(rs);
-            agentLifecycles.forEach(alc -> alc.afterAgentRun(resultRef, getExecutionContext()));
+            agentLifecycles.forEach(alc -> alc.afterAgentRun(queryRef.get(), resultRef, getExecutionContext()));
             return resultRef.get();
         } catch (Exception e) {
             agentLifecycles.forEach(alc -> alc.afterAgentFailed(query, getExecutionContext(), e));

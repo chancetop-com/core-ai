@@ -27,8 +27,8 @@ public class FakerLifecycle {
     public static class FakerLifecycleInner extends AbstractLifecycle {
 
         @Override
-        public void afterTool(AtomicReference<String> result, ExecutionContext executionContext) {
-            result.set(result.get() + "_mock_tool_result");
+        public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, AtomicReference<String> funcResult) {
+            funcResult.set(funcResult.get() + "_mock_tool_result");
         }
 
         @Override
@@ -38,7 +38,7 @@ public class FakerLifecycle {
 
 
         @Override
-        public void afterAgentRun(AtomicReference<String> result, ExecutionContext executionContext) {
+        public void afterAgentRun(String query, AtomicReference<String> result, ExecutionContext executionContext) {
             result.set(result.get() + "mock_test_result");
         }
 
@@ -48,7 +48,7 @@ public class FakerLifecycle {
         }
 
         @Override
-        public void afterModel(CompletionResponse completionResponse, ExecutionContext executionContext) {
+        public void afterModel(CompletionRequest completionRequest, CompletionResponse completionResponse, ExecutionContext executionContext) {
             completionResponse.usage = new Usage(1, 1, 1);
         }
 

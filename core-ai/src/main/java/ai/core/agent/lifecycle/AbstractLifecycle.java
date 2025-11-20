@@ -38,7 +38,7 @@ public abstract class AbstractLifecycle {
 
     }
 
-    public void afterModel(CompletionResponse completionResponse, ExecutionContext executionContext) {
+    public void afterModel(CompletionRequest completionRequest, CompletionResponse completionResponse, ExecutionContext executionContext) {
 
     }
     /**
@@ -55,10 +55,11 @@ public abstract class AbstractLifecycle {
      * at runtime stage
      * afterAgentRun Do something
      *
+     * @param query            user query
      * @param result           agent run result(str)
      * @param executionContext agen runtime context
      */
-    public void afterAgentRun(AtomicReference<String> result, ExecutionContext executionContext) {
+    public void afterAgentRun(String query, AtomicReference<String> result, ExecutionContext executionContext) {
 
     }
     /**
@@ -78,7 +79,7 @@ public abstract class AbstractLifecycle {
 
     }
 
-    public void afterTool(AtomicReference<String> result, ExecutionContext executionContext) {
+    public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, AtomicReference<String> funcResult) {
 
     }
 }
