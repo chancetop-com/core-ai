@@ -195,7 +195,7 @@ public class Agent extends Node<Agent> {
 
         var resp = func.apply(request);
 
-        agentLifecycles.forEach(alc -> alc.afterModel(resp, getExecutionContext()));
+        agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
         return resp.choices.getFirst();
     }
 
@@ -331,7 +331,7 @@ public class Agent extends Node<Agent> {
         var funcResult = functionCall(functionCall);
         // after
         AtomicReference<String> resultRef = new AtomicReference<>(funcResult);
-        agentLifecycles.forEach(alc -> alc.afterTool(resultRef, executionContext));
+        agentLifecycles.forEach(alc -> alc.afterTool(functionCall, executionContext, resultRef));
         return resultRef.get();
     }
 
