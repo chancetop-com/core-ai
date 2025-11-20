@@ -7,6 +7,7 @@ import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
+import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.rag.LongQueryHandler;
 import ai.core.telemetry.Tracer;
@@ -40,6 +41,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     Tracer tracer;
     ExecutionContext executionContext;
     List<AbstractLifecycle> agentLifecycles = Lists.newArrayList();
+
     // This method needs to be overridden in the subclass Builders
     protected abstract B self();
 
@@ -163,6 +165,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         systemVariables.put(SystemVariables.NODE_DESCRIPTION, this.description);
         systemVariables.put(SystemVariables.NODE_MAX_ROUND, this.maxRound);
         systemVariables.put(SystemVariables.TERMINATE_WORD, Termination.DEFAULT_TERMINATION_WORD);
+        systemVariables.put(SystemVariables.AGENT_WRITE_TODOS_SYSTEM_PROMPT, Prompts.WRITE_TODOS_SYSTEM_PROMPT);
     }
 
     private void validation() {

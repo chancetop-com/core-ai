@@ -53,7 +53,7 @@ class AgentLifecycleTest {
         var agentSpy = spy(agent);
         var agentOut = agentSpy.run("hello");
         verify(llmProvider).completionStream(requestCaptor.capture(), any(StreamingCallback.class));
-        verify(agentSpy).chatCore(queryCaptor.capture(), any());
+        verify(agentSpy).chatTurns(queryCaptor.capture(), any());
         // check before build
         assertEquals(1000, agentSpy.getMaxRound());
         // check after build
