@@ -130,13 +130,3 @@ project(":core-ai-api") {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }
 }
-
-
-project(":example-service") {
-    dependencies {
-        implementation(project(":core-ai"))
-        implementation(project(":core-ai-api"))
-        implementation(project(":example-service-interface"))
-        implementation("com.microsoft.azure.cognitiveservices:azure-cognitiveservices-imagesearch:${Versions.AZURE_COGNITIVESERVICES_WEBSEARCH_VERSION}")
-    }
-}

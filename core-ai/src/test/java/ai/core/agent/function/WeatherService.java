@@ -1,13 +1,14 @@
-package ai.core.example.service;
+package ai.core.agent.function;
 
 import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import core.framework.web.exception.BadRequestException;
 
-import java.util.List;
 import java.util.Map;
 
 /**
+ * Test service for weather-related function calls
+ *
  * @author stephen
  */
 public class WeatherService {
@@ -15,13 +16,13 @@ public class WeatherService {
     public Map<String, String> airQualities = Map.of("shanghai", "Good", "beijing", "Bad", "xiamen", "Great");
 
     @CoreAiMethod(name = "getTemperature", description = "get temperature of city: beijing, shanghai, xiamen.")
-    public Double get(@CoreAiParameter(
+    public String getTemperature(@CoreAiParameter(
             name = "city",
             description = "the city that you want to get the temperature",
             required = true,
             enums = {"beijing", "shanghai", "xiamen"}) String city) {
         if (!weathers.containsKey(city)) throw new BadRequestException("CITY NOT SUPPORTED");
-        return weathers.get(city);
+        return String.valueOf(weathers.get(city));
     }
 
     @CoreAiMethod(name = "getAirQuality", description = "get air quality of city: beijing, shanghai, xiamen.")
@@ -32,25 +33,5 @@ public class WeatherService {
             enums = {"beijing", "shanghai", "xiamen"}) String city) {
         if (!airQualities.containsKey(city)) throw new BadRequestException("CITY NOT SUPPORTED");
         return airQualities.get(city);
-    }
-
-    @CoreAiMethod(name = "getCityName", description = "get city information including name and country.")
-    public String getCityName(@CoreAiParameter(
-            name = "city",
-            description = "the city code/geo that you want to get the information",
-            required = true) List<City> city) {
-        return "beijing";
-    }
-
-    public enum Status {
-        ACTIVE,
-        INACTIVE
-    }
-
-    public static class City {
-        public String code;
-        public Double longitude;
-        public Double latitude;
-        public Status status;
     }
 }
