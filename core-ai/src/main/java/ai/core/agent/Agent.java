@@ -58,8 +58,7 @@ public class Agent extends Node<Agent> {
     ReflectionConfig reflectionConfig;
     NaiveMemory longTernMemory;
     Boolean useGroupContext;
-    //todo rename max turn
-    Integer maxToolCallCount;
+    Integer maxTurnNumber;
     //    Integer currentToolCallCount;
     Boolean authenticated = false;
 
@@ -124,8 +123,7 @@ public class Agent extends Node<Agent> {
         updateNodeStatus(NodeStatus.RUNNING);
 
         // chat with LLM the first time
-//        todo
-        chatCore(prompt, variables);
+        chatTurns(prompt, variables);
 
         // reflection if enabled
         if (reflectionConfig != null && reflectionConfig.enabled()) {
@@ -142,8 +140,7 @@ public class Agent extends Node<Agent> {
     }
 
     // Public method accessible to ReflectionExecutor for regenerating solutions
-    // todo rename  chatTurns
-    public void chatCore(String query, Map<String, Object> variables) {
+    public void chatTurns(String query, Map<String, Object> variables) {
         buildUserQueryToMessage(query, variables);
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
@@ -155,7 +152,7 @@ public class Agent extends Node<Agent> {
             // include agent loop msg ,but not tool msg
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(m -> m.content).reduce((s1, s2) -> s1 + s2));
             currentIteCount++;
-        } while (lastIsToolMsg() && currentIteCount < maxToolCallCount);
+        } while (lastIsToolMsg() && currentIteCount < maxTurnNumber);
         // set out
         setOutput(agentOut.toString());
     }

@@ -153,7 +153,7 @@ public final class ReflectionExecutor {
         // Step 4: Agent regenerates solution based on feedback
         String improvementPrompt = buildImprovementPrompt(evaluationText, evaluation);
 //        todo: @Xander new build reflection agent or reset the reflection loop in Node class
-        agent.chatCore(improvementPrompt, variables);
+        agent.chatTurns(improvementPrompt, variables);
 
         // Step 5: Record this round to history
         recordRound(currentRound, solutionToEvaluate, evaluationText, evaluation, roundStart);
