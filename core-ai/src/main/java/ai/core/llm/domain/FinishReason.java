@@ -9,5 +9,7 @@ public enum FinishReason {
     @Property(name = "stop")
     STOP,
     @Property(name = "tool_calls")
-    TOOL_CALLS
+    TOOL_CALLS,
+    @Property(name = "length")
+    LENGTH
 }
