@@ -34,23 +34,23 @@ public class WebClientTool {
      * @return the response body as string, or error message if request fails
      */
     public String call(String url, String method, String contentType, String body) {
+        // Validate parameters
+        if (Strings.isBlank(url)) {
+            return "Error: URL parameter is required";
+        }
+        if (Strings.isBlank(method)) {
+            return "Error: HTTP method parameter is required";
+        }
+
+        // Parse and validate HTTP method
+        HTTPMethod httpMethod;
         try {
-            // Validate parameters
-            if (Strings.isBlank(url)) {
-                return "Error: URL parameter is required";
-            }
-            if (Strings.isBlank(method)) {
-                return "Error: HTTP method parameter is required";
-            }
+            httpMethod = HTTPMethod.valueOf(method.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return "Error: Invalid HTTP method '" + method + "'. Supported methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS";
+        }
 
-            // Parse and validate HTTP method
-            HTTPMethod httpMethod;
-            try {
-                httpMethod = HTTPMethod.valueOf(method.toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException e) {
-                return "Error: Invalid HTTP method '" + method + "'. Supported methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS";
-            }
-
+        try {
             LOGGER.info("Executing HTTP {} request to: {}", httpMethod, url);
 
             // Create request
@@ -75,7 +75,7 @@ public class WebClientTool {
             String responseText = response.text();
 
             LOGGER.info("HTTP request completed with status code: {}, response length: {} bytes",
-                statusCode, responseText != null ? responseText.length() : 0);
+                statusCode, responseText.length());
 
             // Check status code
             if (statusCode >= 400) {
@@ -84,7 +84,7 @@ public class WebClientTool {
                 return error;
             }
 
-            return responseText != null ? responseText : "";
+            return responseText;
 
         } catch (Exception e) {
             String error = "HTTP request failed: " + e.getClass().getSimpleName() + " - " + e.getMessage();
