@@ -8,6 +8,7 @@ import ai.core.prompt.langfuse.LangfusePromptProvider;
 import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
+import ai.core.reflection.ReflectionListener;
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
@@ -29,6 +30,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Double temperature;
     private String model;
     private ReflectionConfig reflectionConfig;
+    private ReflectionListener reflectionListener;
     private Boolean useGroupContext = false;
     private Boolean enableReflection = false;
     private Integer maxTurnNumber;
@@ -82,6 +84,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder reflectionConfig(ReflectionConfig config) {
         this.reflectionConfig = config;
+        return this;
+    }
+
+    public AgentBuilder reflectionListener(ReflectionListener listener) {
+        this.reflectionListener = listener;
         return this;
     }
 
@@ -194,6 +201,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.toolCalls = this.toolCalls;
         agent.ragConfig = this.ragConfig;
         agent.reflectionConfig = this.reflectionConfig;
+        agent.reflectionListener = this.reflectionListener;
         agent.useGroupContext = this.useGroupContext;
         agent.setPersistence(new AgentPersistence());
         agent.agentLifecycles = agentLifecycles;
