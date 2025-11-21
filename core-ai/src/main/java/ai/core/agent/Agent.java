@@ -161,8 +161,13 @@ public class Agent extends Node<Agent> {
 
             if (reflectionListener != null) reflectionListener.onBeforeRound(this, currentRound, solutionToEvaluate);
 
-            // Evaluate using independent evaluator (no circular dependency)
-            String evaluationJson = ReflectionEvaluator.evaluate(this, reflectionConfig, variables);
+            // Evaluate using independent evaluator
+            var evalRequest = new ReflectionEvaluator.EvaluationRequest(
+                    getInput(), getOutput(), getName(), getLLMProvider(),
+                    getTemperature(), getModel(), reflectionConfig, variables);
+            ReflectionEvaluator.EvaluationResult evalResult = ReflectionEvaluator.evaluate(evalRequest);
+            addTokenCost(evalResult.usage());
+            String evaluationJson = evalResult.evaluationJson();
             ReflectionEvaluation evaluation = JSON.fromJSON(ReflectionEvaluation.class, evaluationJson);
 
             // Validate evaluation score
