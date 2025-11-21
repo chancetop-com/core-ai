@@ -1,6 +1,7 @@
 package ai.core.tool.function;
 
 import ai.core.tool.ToolCallParameter;
+import ai.core.tool.ToolCallParameterUtil;
 import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.function.converter.ResponseConverter;
@@ -13,7 +14,6 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -98,66 +98,7 @@ public class Function extends ToolCall {
     }
 
     private void extractGenericItemType(java.lang.reflect.Type parameterizedType, ToolCallParameter parameter) {
-        if (!(parameterizedType instanceof ParameterizedType)) return;
-
-        var actualTypeArguments = ((ParameterizedType) parameterizedType).getActualTypeArguments();
-        if (actualTypeArguments.length == 0 || !(actualTypeArguments[0] instanceof Class<?> itemClass)) return;
-
-        parameter.setItemType(itemClass);
-        if (isCustomObjectType(itemClass)) {
-            parameter.setItems(buildObjectFields(itemClass));
-        }
-    }
-
-    private boolean isCustomObjectType(Class<?> clazz) {
-        return !clazz.isPrimitive()
-                && !clazz.getName().startsWith("java.lang")
-                && !clazz.getName().startsWith("java.util")
-                && !clazz.getName().startsWith("java.time")
-                && !clazz.isEnum();
-    }
-
-    private List<ToolCallParameter> buildObjectFields(Class<?> clazz) {
-        var fields = new ArrayList<ToolCallParameter>();
-        for (var field : clazz.getDeclaredFields()) {
-            if (shouldSkipField(field)) continue;
-
-            var fieldParam = buildFieldParameter(field);
-            fields.add(fieldParam);
-        }
-        return fields;
-    }
-
-    private boolean shouldSkipField(java.lang.reflect.Field field) {
-        return java.lang.reflect.Modifier.isStatic(field.getModifiers()) || field.isSynthetic();
-    }
-
-    private ToolCallParameter buildFieldParameter(java.lang.reflect.Field field) {
-        var fieldParam = new ToolCallParameter();
-        fieldParam.setName(field.getName());
-
-        if (field.getType().isEnum()) {
-            setEnumFieldParameter(fieldParam, field.getType());
-        } else {
-            setRegularFieldParameter(fieldParam, field);
-        }
-
-        return fieldParam;
-    }
-
-    private void setEnumFieldParameter(ToolCallParameter fieldParam, Class<?> enumType) {
-        fieldParam.setClassType(String.class);
-        var enumConstants = enumType.getEnumConstants();
-        var enumValues = new ArrayList<String>();
-        for (Object enumConstant : enumConstants) {
-            enumValues.add(enumConstant.toString());
-        }
-        fieldParam.setEnums(enumValues);
-    }
-
-    private void setRegularFieldParameter(ToolCallParameter fieldParam, java.lang.reflect.Field field) {
-        fieldParam.setClassType(field.getType());
-        extractGenericItemType(field.getGenericType(), fieldParam);
+        ToolCallParameterUtil.extractGenericItemType(parameterizedType, parameter);
     }
 
     // keep if dev cannot add annotation in the method
