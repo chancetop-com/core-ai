@@ -32,10 +32,10 @@ public class ShellUtil {
 
     public static String getPreferredShell(SystemType os) {
         var winPreferredShells = List.of("pwsh.exe", "powershell.exe", "cmd.exe");
-        var linPreferredShells = List.of("bash", "zsh", "sh");
+        var unixPreferredShells = List.of("bash", "zsh", "sh");
         return switch (os) {
             case WIN -> getFirstExistsShell(os, winPreferredShells);
-            case LIN -> getFirstExistsShell(os, linPreferredShells);
+            case LIN, MAC -> getFirstExistsShell(os, unixPreferredShells);
             default -> throw new RuntimeException("Unsupported OS: " + os);
         };
     }
