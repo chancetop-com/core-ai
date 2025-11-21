@@ -14,4 +14,5 @@ object Versions {
     const val JTOKKIT_VERSION = "1.1.0"
     const val UNDERTOW_CORE_VERSION = "2.3.18.Final"
     const val OPENTELEMETRY_VERSION = "1.44.1"
+    const val OPENAI_JAVA_CLIENT_VERSION = "4.8.0"
 }
