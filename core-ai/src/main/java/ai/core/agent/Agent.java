@@ -19,7 +19,11 @@ import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
 import ai.core.rag.SimilaritySearchRequest;
 import ai.core.reflection.ReflectionConfig;
-import ai.core.reflection.ReflectionExecutor;
+import ai.core.reflection.ReflectionEvaluation;
+import ai.core.reflection.ReflectionEvaluator;
+import ai.core.reflection.ReflectionHistory;
+import ai.core.reflection.ReflectionListener;
+import ai.core.reflection.ReflectionStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
@@ -31,6 +35,8 @@ import core.framework.web.exception.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -56,10 +62,10 @@ public class Agent extends Node<Agent> {
     Double temperature;
     String model;
     ReflectionConfig reflectionConfig;
+    ReflectionListener reflectionListener;
     NaiveMemory longTernMemory;
     Boolean useGroupContext;
     Integer maxTurnNumber;
-    //    Integer currentToolCallCount;
     Boolean authenticated = false;
 
     @Override
@@ -98,48 +104,138 @@ public class Agent extends Node<Agent> {
     }
 
     private String doExecute(String query, Map<String, Object> variables) {
-        setupAgentSystemVariables();
-        setInput(query);
+        return doExecute(query, variables, true);
+    }
 
+    private String doExecute(String query, Map<String, Object> variables, boolean enableReflection) {
+        // Initialize execution (only once - saves original query)
+        boolean isFirstExecution = getInput() == null;
+        if (isFirstExecution) {
+            setInput(query);
+            if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
+                authenticated = true;
+            }
+            updateNodeStatus(NodeStatus.RUNNING);
+        }
+
+        // Execute full agent flow: RAG + template + chat
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
-        // add context if rag is enabled
+
+        // RAG: Always use original input for semantic search, not improvement prompt
         if (ragConfig.useRag()) {
-            rag(query, context);
+            rag(getInput(), context);  // Use original query for RAG
             prompt += RagConfig.AGENT_RAG_CONTEXT_TEMPLATE;
         }
 
-        // compile and execute template
+        // Compile and execute template
         prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
 
-        // todo context exceed
-
-        // set authenticated flag if the agent is authenticated
-        if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
-            authenticated = true;
-        }
-
-        // update chain node status
-        updateNodeStatus(NodeStatus.RUNNING);
-
-        // chat with LLM the first time
+        // Chat with LLM
         chatTurns(prompt, variables);
 
-        // reflection if enabled
-        if (reflectionConfig != null && reflectionConfig.enabled()) {
-            reflection(variables);
-
+        // Reflection loop if enabled (only in first execution)
+        if (reflectionConfig != null && reflectionConfig.enabled() && enableReflection) {
+            reflectionLoop(variables);
         }
 
-        // nothing wrong, update node status to completed, otherwise it had been set by the subsequent chat or reflection
-        if (getNodeStatus() == NodeStatus.RUNNING) updateNodeStatus(NodeStatus.COMPLETED);
+        // Update status to completed only for first execution
+        if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
+            updateNodeStatus(NodeStatus.COMPLETED);
+        }
         return getOutput();
     }
 
-    private void setupAgentSystemVariables() {
+    // Execute reflection loop to iteratively improve the solution
+    private void reflectionLoop(Map<String, Object> variables) {
+        ReflectionHistory history = new ReflectionHistory(getId(), getName(), getInput(), reflectionConfig.evaluationCriteria());
+        int currentRound = 1;
+        setRound(currentRound);  // Initialize round counter
+        if (reflectionListener != null) reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
+
+        while (currentRound <= reflectionConfig.maxRound()) {
+            setRound(currentRound);  // Update round counter
+            Instant roundStart = Instant.now();
+            String solutionToEvaluate = getOutput();
+            logger.info("Reflection round: {}/{}, agent: {}", currentRound, reflectionConfig.maxRound(), getName());
+
+            if (reflectionListener != null) reflectionListener.onBeforeRound(this, currentRound, solutionToEvaluate);
+
+            // Evaluate using independent evaluator (no circular dependency)
+            String evaluationJson = ReflectionEvaluator.evaluate(this, reflectionConfig, variables);
+            ReflectionEvaluation evaluation = JSON.fromJSON(ReflectionEvaluation.class, evaluationJson);
+
+            // Validate evaluation score
+            if (!isValidEvaluation(evaluation)) {
+                logger.error("Invalid evaluation score: {}, terminating reflection", evaluation.getScore());
+                history.complete(ReflectionStatus.FAILED);
+                if (reflectionListener != null) reflectionListener.onError(this, currentRound,
+                    new IllegalStateException("Invalid evaluation score: " + evaluation.getScore()));
+                return;
+            }
+
+            logger.info("Round {} evaluation: score={}, pass={}, continue={}",
+                currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
+
+            // Record round
+            history.addRound(new ReflectionHistory.ReflectionRound(currentRound, solutionToEvaluate, evaluationJson,
+                evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
+
+            // Check termination
+            if (shouldTerminateReflection(evaluation, currentRound)) {
+                logger.info("Reflection terminating: score={}, pass={}", evaluation.getScore(), evaluation.isPass());
+                notifyTerminationReason(evaluation, currentRound);
+                break;
+            }
+
+            // Regenerate solution (use doExecute with reflection disabled)
+            doExecute(ReflectionEvaluator.buildImprovementPrompt(evaluationJson, evaluation), variables, false);
+            if (reflectionListener != null) reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
+            currentRound++;
+        }
+
+        if (currentRound > reflectionConfig.maxRound() && reflectionListener != null) {
+            int finalScore = history.getRounds().isEmpty() ? 0 : history.getRounds().getLast().getEvaluation().getScore();
+            reflectionListener.onMaxRoundsReached(this, finalScore);
+        }
+
+        history.complete(determineCompletionStatus(history));
+        if (reflectionListener != null) reflectionListener.onReflectionComplete(this, history);
     }
 
-    // Public method accessible to ReflectionExecutor for regenerating solutions
+    private boolean isValidEvaluation(ReflectionEvaluation evaluation) {
+        return evaluation.getScore() >= 1 && evaluation.getScore() <= 10;
+    }
+
+    private boolean shouldTerminateReflection(ReflectionEvaluation eval, int round) {
+        if (eval.isPass() && eval.getScore() >= 8) return true;
+        if (!eval.isShouldContinue()) return true;
+        return round >= reflectionConfig.minRound() && eval.getScore() >= 8;
+    }
+
+    private void notifyTerminationReason(ReflectionEvaluation evaluation, int currentRound) {
+        if (reflectionListener == null) return;
+
+        if (evaluation.isPass() && evaluation.getScore() >= 8) {
+            reflectionListener.onScoreAchieved(this, evaluation.getScore(), currentRound);
+        } else if (!evaluation.isShouldContinue()) {
+            reflectionListener.onNoImprovement(this, evaluation.getScore(), currentRound);
+        }
+    }
+
+    private ReflectionStatus determineCompletionStatus(ReflectionHistory history) {
+        int completedRounds = history.getRounds().size();
+        if (completedRounds >= reflectionConfig.maxRound()) return ReflectionStatus.COMPLETED_MAX_ROUNDS;
+
+        if (!history.getRounds().isEmpty()) {
+            ReflectionEvaluation lastEval = history.getRounds().getLast().getEvaluation();
+            if (lastEval.isPass() && lastEval.getScore() >= 8) return ReflectionStatus.COMPLETED_SUCCESS;
+            if (!lastEval.isShouldContinue()) return ReflectionStatus.COMPLETED_NO_IMPROVEMENT;
+        }
+        return ReflectionStatus.COMPLETED_SUCCESS;
+    }
+
+    // Public method for chat execution (used by executeAgentFlow)
     public void chatTurns(String query, Map<String, Object> variables) {
         buildUserQueryToMessage(query, variables);
         var currentIteCount = 0;
@@ -230,16 +326,6 @@ public class Agent extends Node<Agent> {
                     return Message.of(RoleType.TOOL, callResult, tool.function.name, tool.id, null, null);
                 }).toList();
     }
-
-    /**
-     * Execute reflection process using ReflectionExecutor.
-     * Delegates all reflection logic to the dedicated executor.
-     */
-    private void reflection(Map<String, Object> variables) {
-        ReflectionExecutor executor = new ReflectionExecutor(this, reflectionConfig, variables);
-        executor.execute();
-    }
-
 
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {

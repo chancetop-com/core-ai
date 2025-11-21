@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Key Modules
 
 - **core-ai**: The main framework library with agent abstractions and AI capabilities
-- **core-ai-api**: API definitions and interfaces (Java 17 compatible)
+- **core-ai-api**: API definitionsand interfaces (Java 17 compatible)
 - **example-service**: Reference implementation showing framework usage
 - **example-service-interface**: Service interface definitions
 
