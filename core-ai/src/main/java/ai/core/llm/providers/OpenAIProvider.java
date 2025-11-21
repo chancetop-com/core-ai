@@ -3,7 +3,6 @@ package ai.core.llm.providers;
 import ai.core.llm.LLMProviderConfig;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
-import com.openai.models.ChatModel;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseInputImage;
 import com.openai.models.responses.ResponseInputItem;
@@ -28,12 +27,12 @@ public class OpenAIProvider {
                 .build();
     }
 
-    public <T> T responsesApi(List<String> msg, Class<T> responseFormat, String userId, ChatModel chatModel) {
+    public <T> T responsesApi(List<String> msg, Class<T> responseFormat, String userId, String modelName) {
         StructuredResponseCreateParams<T> createParams = ResponseCreateParams.builder()
                 .instructions(msg.getFirst())
                 .input(msg.getLast())
                 .text(responseFormat)
-                .model(chatModel)
+                .model(modelName)
                 .user(userId)
                 .build();
 
@@ -45,7 +44,7 @@ public class OpenAIProvider {
 
     }
 
-    public <T> T responseApiWithImageUrl(String inputText, String imgPath, Class<T> responseFormat, String userId, ChatModel chatModel) {
+    public <T> T responseApiWithImageUrl(String inputText, String imgPath, Class<T> responseFormat, String userId, String modelName) {
         ResponseInputImage logoInputImage = ResponseInputImage.builder()
                 .detail(ResponseInputImage.Detail.AUTO)
                 .imageUrl(imgPath)
@@ -58,7 +57,7 @@ public class OpenAIProvider {
 
         StructuredResponseCreateParams<T> createParams = ResponseCreateParams.builder()
                 .text(responseFormat)
-                .model(chatModel)
+                .model(modelName)
                 .inputOfResponse(List.of(userInput))
                 .user(userId)
                 .build();
