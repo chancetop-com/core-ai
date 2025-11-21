@@ -7,6 +7,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * @author stephen
@@ -18,6 +19,10 @@ class ToolCallParametersTest {
         var parameters = ToolCallParameters.of(String.class);
         assertNotNull(parameters);
         assertEquals(1, parameters.size());
+
+        var param = parameters.get(0);
+        assertEquals("string", param.getName());
+        assertEquals(String.class, param.getClassType());
     }
 
     @Test
@@ -87,6 +92,88 @@ class ToolCallParametersTest {
 
         assertNotNull(parameters);
         assertTrue(parameters.isEmpty());
+    }
+
+    @Test
+    void testBasicTypesWithNames() {
+        var parameters = ToolCallParameters.of(String.class, Integer.class, Boolean.class);
+
+        assertNotNull(parameters);
+        assertEquals(3, parameters.size());
+
+        var stringParam = parameters.get(0);
+        assertEquals("string", stringParam.getName());
+        assertEquals(String.class, stringParam.getClassType());
+
+        var integerParam = parameters.get(1);
+        assertEquals("integer", integerParam.getName());
+        assertEquals(Integer.class, integerParam.getClassType());
+
+        var booleanParam = parameters.get(2);
+        assertEquals("boolean", booleanParam.getName());
+        assertEquals(Boolean.class, booleanParam.getClassType());
+    }
+
+    @Test
+    void testOfWithTypeNameDescription() {
+        var parameters = ToolCallParameters.of(
+            String.class, "username", "The user's username",
+            Integer.class, "age", "The user's age",
+            Boolean.class, "active", "Whether the user is active"
+        );
+
+        assertNotNull(parameters);
+        assertEquals(3, parameters.size());
+
+        var usernameParam = parameters.get(0);
+        assertEquals("username", usernameParam.getName());
+        assertEquals("The user's username", usernameParam.getDescription());
+        assertEquals(String.class, usernameParam.getClassType());
+
+        var ageParam = parameters.get(1);
+        assertEquals("age", ageParam.getName());
+        assertEquals("The user's age", ageParam.getDescription());
+        assertEquals(Integer.class, ageParam.getClassType());
+
+        var activeParam = parameters.get(2);
+        assertEquals("active", activeParam.getName());
+        assertEquals("Whether the user is active", activeParam.getDescription());
+        assertEquals(Boolean.class, activeParam.getClassType());
+    }
+
+    @Test
+    void testOfWithTypeNameDescriptionInvalidArguments() {
+        // Test with wrong number of arguments
+        try {
+            ToolCallParameters.of(String.class, "name");
+            fail("Should throw IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("triplets"));
+        }
+
+        // Test with wrong type at first position
+        try {
+            ToolCallParameters.of("Not a class", "name", "description");
+            fail("Should throw IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("must be a Class"));
+        }
+
+        // Test with wrong type at second position
+        try {
+            ToolCallParameters.of(String.class, 123, "description");
+            fail("Should throw IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("must be a String (name)"));
+        }
+
+        // Test with wrong type at third position
+        try {
+            ToolCallParameters.of(String.class, "name", 456);
+            fail("Should throw IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("must be a String (description)"));
+        }
     }
 
 

@@ -1,6 +1,7 @@
 package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallParameters;
 import ai.core.utils.InputStreamUtil;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
@@ -133,6 +134,7 @@ public class PythonScriptTool extends ToolCall {
         }
 
         public PythonScriptTool build() {
+            this.parameters(ToolCallParameters.of(String.class, "code", "python code"));
             var tool = new PythonScriptTool();
             build(tool);
             return tool;

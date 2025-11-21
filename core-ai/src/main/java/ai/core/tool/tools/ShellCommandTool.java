@@ -1,6 +1,7 @@
 package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallParameters;
 import ai.core.utils.InputStreamUtil;
 import ai.core.utils.ShellUtil;
 import core.framework.json.JSON;
@@ -133,6 +134,7 @@ public class ShellCommandTool extends ToolCall {
         }
 
         public ShellCommandTool build() {
+            this.parameters(ToolCallParameters.of(String.class, "workspace_dir", "dir of command to exec", String.class, "command", "command string"));
             var tool = new ShellCommandTool();
             build(tool);
             return tool;
