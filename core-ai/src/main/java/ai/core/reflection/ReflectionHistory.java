@@ -80,7 +80,7 @@ public final class ReflectionHistory {
     }
 
     /**
-     * complete reflection
+     * Marks the reflection process as complete with the given status.
      *
      * @param finalStatus the final status of reflection
      */
