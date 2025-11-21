@@ -120,6 +120,7 @@ project(":core-ai") {
         implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-exporter-otlp:${Versions.OPENTELEMETRY_VERSION}")
+        implementation("com.openai:openai-java:${Versions.OPENAI_JAVA_CLIENT_VERSION}")
     }
 }
 
