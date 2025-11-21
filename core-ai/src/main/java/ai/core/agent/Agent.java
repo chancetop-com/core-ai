@@ -104,10 +104,10 @@ public class Agent extends Node<Agent> {
     }
 
     private String doExecute(String query, Map<String, Object> variables) {
-        return doExecute(query, variables, true);
+        return doExecute(query, variables, false);
     }
 
-    private String doExecute(String query, Map<String, Object> variables, boolean enableReflection) {
+    private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
         // Initialize execution (only once - saves original query)
         boolean isFirstExecution = getInput() == null;
         if (isFirstExecution) {
@@ -134,8 +134,8 @@ public class Agent extends Node<Agent> {
         // Chat with LLM
         chatTurns(prompt, variables);
 
-        // Reflection loop if enabled (only in first execution)
-        if (reflectionConfig != null && reflectionConfig.enabled() && enableReflection) {
+        // Reflection loop if enabled and not skipped
+        if (reflectionConfig != null && reflectionConfig.enabled() && !skipReflection) {
             reflectionLoop(variables);
         }
 
@@ -188,8 +188,8 @@ public class Agent extends Node<Agent> {
                 break;
             }
 
-            // Regenerate solution (use doExecute with reflection disabled)
-            doExecute(ReflectionEvaluator.buildImprovementPrompt(evaluationJson, evaluation), variables, false);
+            // Regenerate solution and skip reflection loop (to avoid infinite recursion)
+            doExecute(ReflectionEvaluator.buildImprovementPrompt(evaluationJson, evaluation), variables, true);
             if (reflectionListener != null) reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
             currentRound++;
         }
