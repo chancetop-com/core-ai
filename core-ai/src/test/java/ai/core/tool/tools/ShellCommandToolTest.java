@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,7 +57,7 @@ class ShellCommandToolTest {
     void testListDirectoryCommand() {
         // First call: LLM decides to call shell_command tool to execute ls
         String workspaceDir = tempDir.toAbsolutePath().toString();
-        String lsCommand = System.getProperty("os.name").toLowerCase().contains("win") ? "dir" : "ls";
+        String lsCommand = System.getProperty("os.name").toLowerCase(Locale.getDefault()).contains("win") ? "dir" : "ls";
 
         FunctionCall toolCall = FunctionCall.of(
             "call_shell_001",
@@ -119,7 +120,7 @@ class ShellCommandToolTest {
     void testListDirectoryWithSpecificPath() {
         // First call: LLM decides to execute ls in the temp directory
         String workspaceDir = tempDir.toAbsolutePath().toString();
-        String detailedListCommand = System.getProperty("os.name").toLowerCase().contains("win") ? "dir" : "ls -la";
+        String detailedListCommand = System.getProperty("os.name").toLowerCase(Locale.getDefault()).contains("win") ? "dir" : "ls -la";
 
         FunctionCall toolCall = FunctionCall.of(
             "call_shell_002",
@@ -179,7 +180,7 @@ class ShellCommandToolTest {
     void testDirectToolExecution() {
         // Test tool execution directly without agent
         String workspaceDir = tempDir.toAbsolutePath().toString();
-        String command = System.getProperty("os.name").toLowerCase().contains("win") ? "dir" : "ls";
+        String command = System.getProperty("os.name").toLowerCase(Locale.getDefault()).contains("win") ? "dir" : "ls";
 
         String jsonArgs = String.format("{\"workspace_dir\":\"%s\",\"command\":\"%s\"}",
             workspaceDir.replace("\\", "\\\\"), command);
@@ -198,7 +199,7 @@ class ShellCommandToolTest {
     void testInvalidWorkspaceDirectory() {
         // Test with non-existent directory
         String nonExistentDir = tempDir.resolve("non_existent_directory").toAbsolutePath().toString();
-        String command = System.getProperty("os.name").toLowerCase().contains("win") ? "dir" : "ls";
+        String command = System.getProperty("os.name").toLowerCase(Locale.getDefault()).contains("win") ? "dir" : "ls";
 
         String jsonArgs = String.format("{\"workspace_dir\":\"%s\",\"command\":\"%s\"}",
             nonExistentDir.replace("\\", "\\\\"), command);
@@ -220,7 +221,7 @@ class ShellCommandToolTest {
         String workspaceDir = tempDir.toAbsolutePath().toString();
         // Test that commands with complex arguments work correctly
         // Use dir/ls to list all files which should include our file with spaces
-        String command = System.getProperty("os.name").toLowerCase().contains("win")
+        String command = System.getProperty("os.name").toLowerCase(Locale.getDefault()).contains("win")
             ? "dir"
             : "ls -la";
 
@@ -241,7 +242,7 @@ class ShellCommandToolTest {
     void testEmptyOutputCommand() {
         // Test command that produces no output (create a file in Windows, touch in Unix)
         String workspaceDir = tempDir.toAbsolutePath().toString();
-        String command = System.getProperty("os.name").toLowerCase().contains("win")
+        String command = System.getProperty("os.name").toLowerCase(Locale.getDefault()).contains("win")
             ? "New-Item -ItemType File -Path \"test_empty.txt\" -Force | Out-Null"
             : "touch test_empty.txt";
 
