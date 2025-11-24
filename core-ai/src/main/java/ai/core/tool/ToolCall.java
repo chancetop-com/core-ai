@@ -8,8 +8,6 @@ import ai.core.utils.JsonSchemaUtil;
 import ai.core.utils.JsonUtil;
 
 import java.util.List;
-import java.util.Locale;
-import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -76,47 +74,7 @@ public abstract class ToolCall {
     }
 
     public JsonSchema toJsonSchema() {
-        return toJsonSchema(parameters, JsonSchema.PropertyType.OBJECT, null);
-    }
-// todo @ Stephen util
-    private JsonSchema toJsonSchema(List<ToolCallParameter> parameters, JsonSchema.PropertyType propertyType, ToolCallParameter parent) {
-        var schema = new JsonSchema();
-        schema.type = propertyType;
-        if (parent != null) {
-            schema.enums = parent.getItemEnums();
-        }
-        schema.required = parameters.stream().filter(
-                v -> v.isRequired() != null
-                        && v.isRequired()
-                        && v.getName() != null).map(ToolCallParameter::getName).toList();
-        schema.properties = parameters.stream().filter(v -> v.getName() != null).collect(Collectors.toMap(ToolCallParameter::getName, this::toSchemaProperty, (v1, v2) -> v1));
-        return schema;
-    }
-
-    private JsonSchema toSchemaProperty(ToolCallParameter p) {
-        var property = new JsonSchema();
-        property.description = p.getDescription();
-        property.type = JsonSchemaUtil.buildJsonSchemaType(p.getClassType());
-        property.enums = p.getEnums();
-        property.format = p.getFormat();
-        if (property.type == JsonSchema.PropertyType.ARRAY) {
-            if (p.getItems() != null && !p.getItems().isEmpty()) {
-                property.items = toJsonSchema(p.getItems(), JsonSchema.PropertyType.OBJECT, p);
-            } else {
-                property.items = new JsonSchema();
-                property.items.type = toType(p.getItemType());
-                property.enums = p.getItemEnums();
-            }
-        }
-        return property;
-    }
-
-    private JsonSchema.PropertyType toType(Class<?> c) {
-        var n = c.getSimpleName().substring(c.getSimpleName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
-        if ("object".equalsIgnoreCase(n)) {
-            return JsonSchema.PropertyType.OBJECT;
-        }
-        return JsonSchemaUtil.buildJsonSchemaType(c);
+        return JsonSchemaUtil.toJsonSchema(parameters);
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {

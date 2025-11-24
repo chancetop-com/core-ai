@@ -1,8 +1,9 @@
 package ai.core.llm.domain;
 
+import ai.core.utils.JsonSchemaUtil;
+import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
-
-import java.util.Map;
+import core.framework.api.validate.NotNull;
 
 /**
  * Response format specification for LLM completions.
@@ -16,42 +17,19 @@ public final class ResponseFormat {
      *
      * @return ResponseFormat configured for JSON output
      */
-    public static ResponseFormat json() {
+    public static ResponseFormat of(Class<?> cls) {
         var format = new ResponseFormat();
-        format.type = "json_object";
+        format.jsonSchema = JsonUtil.toJson(JsonSchemaUtil.toJsonSchema(cls));
         return format;
     }
 
-    /**
-     * Create a JSON schema response format specification.
-     *
-     * @param jsonSchema the JSON schema defining the expected structure
-     * @return ResponseFormat configured for JSON schema output
-     */
-    public static ResponseFormat jsonSchema(Map<String, Object> jsonSchema) {
-        var format = new ResponseFormat();
-        format.type = "json_schema";
-        format.jsonSchema = jsonSchema;
-        return format;
-    }
-
-    /**
-     * Create a text response format specification (default).
-     *
-     * @return ResponseFormat configured for text output
-     */
-    public static ResponseFormat text() {
-        var format = new ResponseFormat();
-        format.type = "text";
-        return format;
-    }
-
+    @NotNull
     @Property(name = "type")
-    public String type;
+    public String type = "json_schema";
 
     @Property(name = "json_schema")
-    public Map<String, Object> jsonSchema;
+    public String jsonSchema;
 
-    private ResponseFormat() {
-    }
+    @Property(name = "strict")
+    public Boolean strict;
 }
