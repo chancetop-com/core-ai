@@ -50,7 +50,7 @@ class RefTest {
             int count = callCount.incrementAndGet();
 
             // Check if this is an evaluation request (JSON response format)
-            if (request.responseFormat != null && "json_object".equals(request.responseFormat.type)) {
+            if (request.responseFormat != null) {
                 return createEvaluationResponse(count);
             } else {
                 return createAgentResponse(count);
@@ -63,7 +63,7 @@ class RefTest {
             int count = callCount.incrementAndGet();
 
             // Check if this is an evaluation request (JSON response format)
-            if (request.responseFormat != null && "json_object".equals(request.responseFormat.type)) {
+            if (request.responseFormat != null) {
                 return createEvaluationResponse(count);
             } else {
                 return createAgentResponse(count);
@@ -291,7 +291,7 @@ class RefTest {
         LLMProvider lowScoreMock = mock(LLMProvider.class);
         when(lowScoreMock.completion(any(CompletionRequest.class))).thenAnswer(invocation -> {
             CompletionRequest request = invocation.getArgument(0);
-            if (request.responseFormat != null && "json_object".equals(request.responseFormat.type)) {
+            if (request.responseFormat != null) {
                 // Always return score 5 to continue reflection
                 String json = """
                     {
@@ -316,7 +316,7 @@ class RefTest {
 
         when(lowScoreMock.completionStream(any(CompletionRequest.class), any())).thenAnswer(invocation -> {
             CompletionRequest request = invocation.getArgument(0);
-            if (request.responseFormat != null && "json_object".equals(request.responseFormat.type)) {
+            if (request.responseFormat != null) {
                 // Always return score 5 to continue reflection
                 String json = """
                     {

@@ -56,7 +56,7 @@ public final class ReflectionEvaluator {
                 request.model(),
                 request.agentName() + "-evaluator"
         );
-        evalRequest.responseFormat = ResponseFormat.json();
+        evalRequest.responseFormat = ResponseFormat.of(ReflectionEvaluation.class);
 
         // Direct LLM call without going through Agent execution
         CompletionResponse evalResponse = request.llmProvider().completion(evalRequest);

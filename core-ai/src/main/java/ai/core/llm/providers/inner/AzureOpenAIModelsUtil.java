@@ -18,7 +18,6 @@ import com.azure.ai.openai.models.ChatChoice;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolCall;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolDefinition;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolDefinitionFunction;
-import com.azure.ai.openai.models.ChatCompletionsJsonResponseFormat;
 import com.azure.ai.openai.models.ChatCompletionsJsonSchemaResponseFormat;
 import com.azure.ai.openai.models.ChatCompletionsJsonSchemaResponseFormatJsonSchema;
 import com.azure.ai.openai.models.ChatCompletionsOptions;
@@ -39,7 +38,6 @@ import com.azure.ai.openai.models.CompletionsUsage;
 import com.azure.ai.openai.models.Embeddings;
 import com.azure.ai.openai.models.EmbeddingsUsage;
 import com.azure.core.util.BinaryData;
-import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
@@ -61,27 +59,11 @@ public class AzureOpenAIModelsUtil {
         );
         // Handle response format (JSON or JSON Schema)
         if (request.responseFormat() != null) {
-            if ("json_schema".equals(request.responseFormat().type) && MapUtils.isNotEmpty(request.responseFormat().jsonSchema)) {
-                // Use JSON Schema format
-                var jsonSchema = new ChatCompletionsJsonSchemaResponseFormat(
-                        BinaryData.fromObject(request.responseFormat().jsonSchema)
-                                .toObject(ChatCompletionsJsonSchemaResponseFormatJsonSchema.class)
-                );
-                options.setResponseFormat(jsonSchema);
-            } else if ("json_object".equals(request.responseFormat().type)) {
-                // Use simple JSON object format
-                options.setResponseFormat(new ChatCompletionsJsonResponseFormat());
-            }
+            var jsonSchema = new ChatCompletionsJsonSchemaResponseFormat(
+                    BinaryData.fromString(request.responseFormat().jsonSchema)
+                            .toObject(ChatCompletionsJsonSchemaResponseFormatJsonSchema.class));
+            options.setResponseFormat(jsonSchema);
         }
-//        if (request.responseFormat()!=null) {
-//
-//            var jsonSchemaFormat = request.jsonSchema();
-//            var jsonSchema = new ChatCompletionsJsonSchemaResponseFormat(
-//                    BinaryData.fromObject(jsonSchemaFormat)
-//                            .toObject(ChatCompletionsJsonSchemaResponseFormatJsonSchema.class)
-//            );
-//            options.setResponseFormat(jsonSchema);
-//        }
         options.setModel(request.model());
         return options;
     }
@@ -96,17 +78,10 @@ public class AzureOpenAIModelsUtil {
 
         // Handle response format (JSON or JSON Schema)
         if (request.responseFormat != null) {
-            if ("json_schema".equals(request.responseFormat.type) && MapUtils.isNotEmpty(request.responseFormat.jsonSchema)) {
-                // Use JSON Schema format
-                var jsonSchema = new ChatCompletionsJsonSchemaResponseFormat(
-                        BinaryData.fromObject(request.responseFormat.jsonSchema)
-                                .toObject(ChatCompletionsJsonSchemaResponseFormatJsonSchema.class)
-                );
-                options.setResponseFormat(jsonSchema);
-            } else if ("json_object".equals(request.responseFormat.type)) {
-                // Use simple JSON object format
-                options.setResponseFormat(new ChatCompletionsJsonResponseFormat());
-            }
+            var jsonSchema = new ChatCompletionsJsonSchemaResponseFormat(
+                    BinaryData.fromString(request.responseFormat.jsonSchema)
+                            .toObject(ChatCompletionsJsonSchemaResponseFormatJsonSchema.class));
+            options.setResponseFormat(jsonSchema);
         }
 
         return options;

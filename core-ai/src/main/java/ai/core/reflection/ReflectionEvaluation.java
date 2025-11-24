@@ -19,10 +19,10 @@ public final class ReflectionEvaluation {
     }
 
     @Property(name = "score")
-    public int score;  // score between 1-10
+    public Integer score;  // score between 1-10
 
     @Property(name = "pass")
-    public boolean pass;
+    public Boolean pass;
 
     @Property(name = "strengths")
     public List<String> strengths;
@@ -37,13 +37,13 @@ public final class ReflectionEvaluation {
     public Map<String, Integer> dimensionScores;
 
     @Property(name = "confidence")
-    public double confidence;
+    public Double confidence;
 
     @Property(name = "improved_solution")
     public String improvedSolution;
 
     @Property(name = "should_continue")
-    public boolean shouldContinue;
+    public Boolean shouldContinue;
 
     // Getters for backward compatibility and convenience
     public int getScore() {
