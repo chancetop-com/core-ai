@@ -430,8 +430,10 @@ public class Agent extends Node<Agent> {
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
             throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
+
+        // Step 1: Query rewriting for better retrieval (optional based on configuration)
         var ragQuery = query;
-        if (ragConfig.llmProvider() != null) {
+        if (ragConfig.enableQueryRewriting()) {
             ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query);
         }
         var rsp = ragConfig.llmProvider().embeddings(new EmbeddingRequest(List.of(ragQuery)));
