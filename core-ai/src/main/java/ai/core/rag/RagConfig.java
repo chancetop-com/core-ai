@@ -20,6 +20,7 @@ public class RagConfig {
     Double threshold = 0d;
     VectorStore vectorStore;
     LLMProvider llmProvider;
+    boolean enableQueryRewriting = true;  // Default enabled for backward compatibility
 
 
     public boolean useRag() {
@@ -42,12 +43,17 @@ public class RagConfig {
         return llmProvider;
     }
 
+    public boolean enableQueryRewriting() {
+        return enableQueryRewriting;
+    }
+
     public static class Builder {
         private boolean useRag = false;
         private Integer topK = 5;
         private Double threshold = 0d;
         private VectorStore vectorStore;
         private LLMProvider llmProvider;
+        private boolean enableQueryRewriting = true;  // Default enabled
 
         public Builder useRag(Boolean useRag) {
             this.useRag = useRag;
@@ -77,6 +83,11 @@ public class RagConfig {
             return this;
         }
 
+        public Builder enableQueryRewriting(boolean enable) {
+            this.enableQueryRewriting = enable;
+            return this;
+        }
+
         public RagConfig build() {
             var conf = new RagConfig();
             conf.useRag = this.useRag;
@@ -84,6 +95,7 @@ public class RagConfig {
             conf.threshold = this.threshold;
             conf.vectorStore = this.vectorStore;
             conf.llmProvider = this.llmProvider;
+            conf.enableQueryRewriting = this.enableQueryRewriting;
             return conf;
         }
     }
