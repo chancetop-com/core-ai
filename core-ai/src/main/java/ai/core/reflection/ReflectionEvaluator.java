@@ -1,11 +1,12 @@
 package ai.core.reflection;
 
-import ai.core.agent.Agent;
+import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Usage;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import core.framework.crypto.Hash;
 
@@ -15,8 +16,8 @@ import java.util.Map;
 
 /**
  * Independent utility class for evaluating agent solutions in reflection process.
- * This class does NOT create circular dependencies - it only reads agent state
- * and calls LLM provider directly without calling back into Agent execution methods.
+ * This class does NOT create circular dependencies - it receives only necessary parameters
+ * and calls LLM provider directly without depending on Agent object.
  *
  * @author xander
  */
@@ -24,28 +25,26 @@ public final class ReflectionEvaluator {
 
     /**
      * Evaluate agent output in independent LLM context.
-     * This is a pure function that only reads agent state and makes an LLM call.
+     * This is a pure function that takes only necessary parameters.
      *
-     * @param agent the agent whose output will be evaluated (read-only access)
-     * @param config reflection configuration
-     * @param variables template variables for prompt rendering
-     * @return evaluation result as JSON string
+     * @param request the evaluation request containing all necessary parameters
+     * @return evaluation result containing JSON and token usage
      */
-    public static String evaluate(Agent agent, ReflectionConfig config, Map<String, Object> variables) {
+    public static EvaluationResult evaluate(EvaluationRequest request) {
         // Build evaluator system prompt with task context and criteria
         String evaluatorSystemPrompt = buildEvaluatorPrompt(
-                agent.getInput(),
-                config.prompt(),
-                config.evaluationCriteria(),
-                variables
+                request.originalInput(),
+                request.config().prompt(),
+                request.config().evaluationCriteria(),
+                request.variables()
         );
 
         // Build evaluation user message (the solution to evaluate)
-        String evaluationUserMessage = buildEvaluationUserMessage(agent.getOutput());
+        String evaluationUserMessage = buildEvaluationUserMessage(request.currentOutput());
 
-        // Create independent message list for evaluation (not using Agent's message history)
+        // Create independent message list for evaluation
         List<Message> evaluationMessages = List.of(
-                Message.of(RoleType.SYSTEM, evaluatorSystemPrompt, agent.getName() + "-evaluator"),
+                Message.of(RoleType.SYSTEM, evaluatorSystemPrompt, request.agentName() + "-evaluator"),
                 Message.of(RoleType.USER, evaluationUserMessage, null, null, null, null)
         );
 
@@ -53,19 +52,20 @@ public final class ReflectionEvaluator {
         CompletionRequest evalRequest = CompletionRequest.of(
                 evaluationMessages,
                 null,  // No tools
-                agent.getTemperature(),
-                agent.getModel(),
-                agent.getName() + "-evaluator"
+                request.temperature(),
+                request.model(),
+                request.agentName() + "-evaluator"
         );
         evalRequest.responseFormat = ResponseFormat.json();
 
         // Direct LLM call without going through Agent execution
-        CompletionResponse evalResponse = agent.getLLMProvider().completion(evalRequest);
+        CompletionResponse evalResponse = request.llmProvider().completion(evalRequest);
 
-        // Track token usage in agent
-        agent.addTokenCost(evalResponse.usage);
-
-        return evalResponse.choices.getFirst().message.content;
+        // Return both evaluation JSON and token usage for caller to handle
+        return new EvaluationResult(
+                evalResponse.choices.getFirst().message.content,
+                evalResponse.usage
+        );
     }
 
     /**
@@ -136,4 +136,23 @@ public final class ReflectionEvaluator {
     private ReflectionEvaluator() {
         // Utility class, no instantiation
     }
+
+    /**
+     * Parameters for evaluation request.
+     */
+    public record EvaluationRequest(
+            String originalInput,
+            String currentOutput,
+            String agentName,
+            LLMProvider llmProvider,
+            Double temperature,
+            String model,
+            ReflectionConfig config,
+            Map<String, Object> variables
+    ) { }
+
+    /**
+     * Result of evaluation containing both the evaluation JSON and token usage.
+     */
+    public record EvaluationResult(String evaluationJson, Usage usage) { }
 }
