@@ -42,10 +42,7 @@ class ShellCommandToolTest {
         mockLLMProvider = new MockLLMProvider();
 
         // Create shell command tool
-        shellCommandTool = ShellCommandTool.builder()
-            .name("shell_command")
-            .description("Execute shell commands to interact with the file system")
-            .build();
+        shellCommandTool = ShellCommandTool.builder().build();
 
         // Create some test files in temp directory for ls command to list
         Files.createFile(tempDir.resolve("test1.txt"));
@@ -62,7 +59,7 @@ class ShellCommandToolTest {
         FunctionCall toolCall = FunctionCall.of(
             "call_shell_001",
             "function",
-            "shell_command",
+            "run_bash_command",
             String.format("{\"workspace_dir\":\"%s\",\"command\":\"%s\"}",
                 workspaceDir.replace("\\", "\\\\"), lsCommand)
         );
@@ -125,7 +122,7 @@ class ShellCommandToolTest {
         FunctionCall toolCall = FunctionCall.of(
             "call_shell_002",
             "function",
-            "shell_command",
+            "run_bash_command",
             String.format("{\"workspace_dir\":\"%s\",\"command\":\"%s\"}",
                 workspaceDir.replace("\\", "\\\\"), detailedListCommand)
         );
