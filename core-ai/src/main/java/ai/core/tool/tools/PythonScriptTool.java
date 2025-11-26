@@ -134,7 +134,9 @@ public class PythonScriptTool extends ToolCall {
         }
 
         public PythonScriptTool build() {
-            this.parameters(ToolCallParameters.of(String.class, "code", "python code"));
+            this.parameters(ToolCallParameters.of(
+                    ToolCallParameters.ParamSpec.of(String.class, "code", "python code").required()
+            ));
             var tool = new PythonScriptTool();
             build(tool);
             return tool;

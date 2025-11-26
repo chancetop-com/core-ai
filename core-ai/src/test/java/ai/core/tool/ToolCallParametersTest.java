@@ -7,7 +7,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * @author stephen
@@ -88,7 +87,7 @@ class ToolCallParametersTest {
 
     @Test
     void testOfEmptyClasses() {
-        var parameters = ToolCallParameters.of();
+        var parameters = ToolCallParameters.of(new Class<?>[0]);
 
         assertNotNull(parameters);
         assertTrue(parameters.isEmpty());
@@ -114,12 +113,13 @@ class ToolCallParametersTest {
         assertEquals(Boolean.class, booleanParam.getClassType());
     }
 
+
     @Test
-    void testOfWithTypeNameDescription() {
+    void testParamSpecWithRequired() {
         var parameters = ToolCallParameters.of(
-            String.class, "username", "The user's username",
-            Integer.class, "age", "The user's age",
-            Boolean.class, "active", "Whether the user is active"
+            ToolCallParameters.ParamSpec.of(String.class, "username", "User name").required(),
+            ToolCallParameters.ParamSpec.of(Integer.class, "age", "User age").optional(),
+            ToolCallParameters.ParamSpec.of(String.class, "bio", "User bio")  // default optional
         );
 
         assertNotNull(parameters);
@@ -127,53 +127,21 @@ class ToolCallParametersTest {
 
         var usernameParam = parameters.get(0);
         assertEquals("username", usernameParam.getName());
-        assertEquals("The user's username", usernameParam.getDescription());
+        assertEquals("User name", usernameParam.getDescription());
         assertEquals(String.class, usernameParam.getClassType());
+        assertEquals(true, usernameParam.isRequired());
 
         var ageParam = parameters.get(1);
         assertEquals("age", ageParam.getName());
-        assertEquals("The user's age", ageParam.getDescription());
+        assertEquals("User age", ageParam.getDescription());
         assertEquals(Integer.class, ageParam.getClassType());
+        assertEquals(false, ageParam.isRequired());
 
-        var activeParam = parameters.get(2);
-        assertEquals("active", activeParam.getName());
-        assertEquals("Whether the user is active", activeParam.getDescription());
-        assertEquals(Boolean.class, activeParam.getClassType());
-    }
-
-    @Test
-    void testOfWithTypeNameDescriptionInvalidArguments() {
-        // Test with wrong number of arguments
-        try {
-            ToolCallParameters.of(String.class, "name");
-            fail("Should throw IllegalArgumentException");
-        } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage().contains("triplets"));
-        }
-
-        // Test with wrong type at first position
-        try {
-            ToolCallParameters.of("Not a class", "name", "description");
-            fail("Should throw IllegalArgumentException");
-        } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage().contains("must be a Class"));
-        }
-
-        // Test with wrong type at second position
-        try {
-            ToolCallParameters.of(String.class, 123, "description");
-            fail("Should throw IllegalArgumentException");
-        } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage().contains("must be a String (name)"));
-        }
-
-        // Test with wrong type at third position
-        try {
-            ToolCallParameters.of(String.class, "name", 456);
-            fail("Should throw IllegalArgumentException");
-        } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage().contains("must be a String (description)"));
-        }
+        var bioParam = parameters.get(2);
+        assertEquals("bio", bioParam.getName());
+        assertEquals("User bio", bioParam.getDescription());
+        assertEquals(String.class, bioParam.getClassType());
+        assertEquals(false, bioParam.isRequired());  // default is false
     }
 
 

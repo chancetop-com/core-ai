@@ -167,9 +167,9 @@ public class ReadFileTool extends ToolCall {
             this.name("read_file");
             this.description(READ_FILE_TOOL_DESC);
             this.parameters(ToolCallParameters.of(
-                    String.class, "file_path", "Absolute path of the file to read",
-                    Integer.class, "offset", "The line number to start reading from. Only provide if the file is too large to read at once",
-                    Integer.class, "limit", "The number of lines to read. Only provide if the file is too large to read at once."
+                    ToolCallParameters.ParamSpec.of(String.class, "file_path", "Absolute path of the file to read").required(),
+                    ToolCallParameters.ParamSpec.of(Integer.class, "offset", "The line number to start reading from. Only provide if the file is too large to read at once"),
+                    ToolCallParameters.ParamSpec.of(Integer.class, "limit", "The number of lines to read. Only provide if the file is too large to read at once.")
             ));
             var tool = new ReadFileTool();
             build(tool);

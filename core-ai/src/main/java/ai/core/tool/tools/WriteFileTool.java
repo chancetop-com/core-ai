@@ -122,8 +122,8 @@ public class WriteFileTool extends ToolCall {
             this.name("write_file");
             this.description(WRITE_FILE_TOOL_DESC);
             this.parameters(ToolCallParameters.of(
-                    String.class, "file_path", "Absolute path to the file to write (must be absolute, not relative)",
-                    String.class, "content", "The content to write to the file"
+                    ToolCallParameters.ParamSpec.of(String.class, "file_path", "Absolute path to the file to write (must be absolute, not relative)").required(),
+                    ToolCallParameters.ParamSpec.of(String.class, "content", "The content to write to the file").required()
             ));
             var tool = new WriteFileTool();
             build(tool);
