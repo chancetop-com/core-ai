@@ -2,7 +2,9 @@ package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
-import ai.core.memory.memories.NaiveMemory;
+import ai.core.memory.memories.LongTermMemory;
+import ai.core.memory.memories.MediumTermMemory;
+import ai.core.memory.memories.ShortTermMemory;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
 import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
@@ -216,8 +218,20 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-        if (agent.longTermMemory == null) {
-            agent.longTermMemory = new NaiveMemory();
+        
+        // Initialize 3-layer memory
+        if (agent.shortTermMemory == null) {
+            agent.shortTermMemory = new ShortTermMemory(agent.getLLMProvider());
+        }
+        
+        // Medium and Long term memory require VectorStore and LLMProvider
+        if (agent.ragConfig.vectorStore() != null && agent.llmProvider != null) {
+            if (agent.mediumTermMemory == null) {
+                agent.mediumTermMemory = new MediumTermMemory(agent.ragConfig.vectorStore(), agent.llmProvider);
+            }
+            if (agent.longTermMemory == null) {
+                agent.longTermMemory = new LongTermMemory(agent.ragConfig.vectorStore(), agent.llmProvider);
+            }
         }
     }
 

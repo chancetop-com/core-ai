@@ -13,7 +13,10 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
+import ai.core.memory.memories.LongTermMemory;
+import ai.core.memory.memories.MediumTermMemory;
 import ai.core.memory.memories.NaiveMemory;
+import ai.core.memory.memories.ShortTermMemory;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -63,7 +66,9 @@ public class Agent extends Node<Agent> {
     String model;
     ReflectionConfig reflectionConfig;
     ReflectionListener reflectionListener;
-    NaiveMemory longTermMemory;
+    ShortTermMemory shortTermMemory;
+    MediumTermMemory mediumTermMemory;
+    LongTermMemory longTermMemory;
     Boolean useGroupContext;
     Integer maxTurnNumber;
     Boolean authenticated = false;
@@ -134,6 +139,9 @@ public class Agent extends Node<Agent> {
         // Chat with LLM
         chatTurns(prompt, variables);
 
+        // Save memory after chat turns
+        saveMemory();
+
         // Reflection loop if enabled and not skipped
         if (reflectionConfig != null && reflectionConfig.enabled() && !skipReflection) {
             reflectionLoop(variables);
@@ -144,6 +152,12 @@ public class Agent extends Node<Agent> {
             updateNodeStatus(NodeStatus.COMPLETED);
         }
         return getOutput();
+    }
+
+    private void saveMemory() {
+        if (shortTermMemory != null) shortTermMemory.extractAndSave(getMessages());
+        if (mediumTermMemory != null) mediumTermMemory.extractAndSave(getMessages());
+        if (longTermMemory != null) longTermMemory.extractAndSave(getMessages());
     }
 
     // Execute reflection loop to iteratively improve the solution
@@ -334,7 +348,7 @@ public class Agent extends Node<Agent> {
 
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
-            addMessage(buildSystemMessageWithlongTermMemory(query, variables));
+            addMessage(buildSystemMessageWithMemory(query, variables));
             // add task context if existed
             addTaskHistoriesToMessages();
         }
@@ -372,7 +386,7 @@ public class Agent extends Node<Agent> {
     }
 
 
-    private Message buildSystemMessageWithlongTermMemory(String query, Map<String, Object> variables) {
+    private Message buildSystemMessageWithMemory(String query, Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && isUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
@@ -381,9 +395,22 @@ public class Agent extends Node<Agent> {
         if (variables != null) var.putAll(variables);
         var.putAll(getSystemVariables());
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
-        if (!getlongTermMemory().retrieve(query).isEmpty()) {
-            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + getlongTermMemory().toString();
+        
+        StringBuilder memoryContext = new StringBuilder();
+        if (shortTermMemory != null && !shortTermMemory.retrieve(query).isEmpty()) {
+            memoryContext.append("\nShort Term Memory:\n").append(shortTermMemory.retrieve(query));
         }
+        if (mediumTermMemory != null && !mediumTermMemory.retrieve(query).isEmpty()) {
+            memoryContext.append("\nMedium Term Memory:\n").append(mediumTermMemory.retrieve(query));
+        }
+        if (longTermMemory != null && !longTermMemory.retrieve(query).isEmpty()) {
+            memoryContext.append("\nLong Term Memory:\n").append(longTermMemory.retrieve(query));
+        }
+        
+        if (memoryContext.length() > 0) {
+            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + memoryContext.toString();
+        }
+        
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
 
@@ -460,16 +487,28 @@ public class Agent extends Node<Agent> {
         return this.toolCalls;
     }
 
-    public NaiveMemory getlongTermMemory() {
+    public ShortTermMemory getShortTermMemory() {
+        return this.shortTermMemory;
+    }
+
+    public void setShortTermMemory(ShortTermMemory shortTermMemory) {
+        this.shortTermMemory = shortTermMemory;
+    }
+
+    public MediumTermMemory getMediumTermMemory() {
+        return this.mediumTermMemory;
+    }
+
+    public void setMediumTermMemory(MediumTermMemory mediumTermMemory) {
+        this.mediumTermMemory = mediumTermMemory;
+    }
+
+    public LongTermMemory getLongTermMemory() {
         return this.longTermMemory;
     }
 
-    public void addlongTermMemory(String memory) {
-        this.longTermMemory.add(memory);
-    }
-
-    public void clearlongTermMemory() {
-        this.longTermMemory.clear();
+    public void setLongTermMemory(LongTermMemory longTermMemory) {
+        this.longTermMemory = longTermMemory;
     }
 
     public void setModel(String model) {
@@ -496,5 +535,6 @@ public class Agent extends Node<Agent> {
     public void setToolCalls(List<ToolCall> toolCalls) {
         this.toolCalls = toolCalls;
     }
+
 }
 
