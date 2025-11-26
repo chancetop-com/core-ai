@@ -144,6 +144,47 @@ class ToolCallParametersTest {
         assertEquals(false, bioParam.isRequired());  // default is false
     }
 
+    @Test
+    void testParamSpecWithEnums() {
+        var parameters = ToolCallParameters.of(
+            ToolCallParameters.ParamSpec.of(String.class, "status", "User status")
+                .required()
+                .enums(List.of("active", "inactive", "pending")),
+            ToolCallParameters.ParamSpec.of(String.class, "role", "User role")
+                .enums(List.of("admin", "user", "guest")),
+            ToolCallParameters.ParamSpec.of(String.class, "name", "User name")  // no enums
+        );
+
+        assertNotNull(parameters);
+        assertEquals(3, parameters.size());
+
+        var statusParam = parameters.get(0);
+        assertEquals("status", statusParam.getName());
+        assertEquals("User status", statusParam.getDescription());
+        assertEquals(String.class, statusParam.getClassType());
+        assertEquals(true, statusParam.isRequired());
+        assertNotNull(statusParam.getEnums());
+        assertEquals(3, statusParam.getEnums().size());
+        assertTrue(statusParam.getEnums().contains("active"));
+        assertTrue(statusParam.getEnums().contains("inactive"));
+        assertTrue(statusParam.getEnums().contains("pending"));
+
+        var roleParam = parameters.get(1);
+        assertEquals("role", roleParam.getName());
+        assertEquals("User role", roleParam.getDescription());
+        assertNotNull(roleParam.getEnums());
+        assertEquals(3, roleParam.getEnums().size());
+        assertTrue(roleParam.getEnums().contains("admin"));
+        assertTrue(roleParam.getEnums().contains("user"));
+        assertTrue(roleParam.getEnums().contains("guest"));
+
+        var nameParam = parameters.get(2);
+        assertEquals("name", nameParam.getName());
+        assertEquals("User name", nameParam.getDescription());
+        // enums should be null when not set
+        assertTrue(nameParam.getEnums() == null || nameParam.getEnums().isEmpty());
+    }
+
 
     enum Status {
         ACTIVE, INACTIVE

@@ -54,6 +54,8 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
             parameter.setClassType(spec.getType());
             // If required is not explicitly set, default to false (optional)
             parameter.setRequired(spec.isRequired() != null && spec.isRequired());
+            // Set enums if provided
+            parameter.setEnums(spec.getEnums());
             parameters.add(parameter);
         }
         return parameters;
@@ -79,6 +81,7 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
         private final String name;
         private final String description;
         private Boolean required;
+        private List<String> enums;
 
         private ParamSpec(Class<?> type, String name, String description) {
             this.type = type;
@@ -112,6 +115,16 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
             return required(false);
         }
 
+        /**
+         * Set allowed enum values for this parameter
+         * @param enums List of allowed string values
+         * @return this ParamSpec for chaining
+         */
+        public ParamSpec enums(List<String> enums) {
+            this.enums = enums;
+            return this;
+        }
+
         Class<?> getType() {
             return this.type;
         }
@@ -126,6 +139,10 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
 
         Boolean isRequired() {
             return this.required;
+        }
+
+        List<String> getEnums() {
+            return this.enums;
         }
     }
 }
