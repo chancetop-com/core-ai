@@ -4,6 +4,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.utils.InputStreamUtil;
 import ai.core.utils.ShellUtil;
+import ai.core.utils.SystemUtil;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
@@ -114,7 +115,7 @@ public class ShellCommandTool extends ToolCall {
             }
 
             // Build command list properly to handle arguments with spaces
-            var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(ShellUtil.getSystemType()).trim();
+            var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(SystemUtil.detectPlatform()).trim();
             var prefixParts = shellPrefix.split(" ");
             var commands = new ArrayList<>(Arrays.asList(prefixParts));
             commands.add(command);  // Add command as a single argument

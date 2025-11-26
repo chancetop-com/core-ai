@@ -6,7 +6,6 @@ import core.framework.http.HTTPHeaders;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
-import core.framework.inject.Inject;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,9 +19,7 @@ import java.util.Locale;
 public class WebClientTool {
     private static final Logger LOGGER = LoggerFactory.getLogger(WebClientTool.class);
     private static final String BROWSER_DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0";
-
-    @Inject
-    HTTPClient client;
+    private final HTTPClient client = HTTPClient.builder().build();
 
     /**
      * Execute HTTP request
