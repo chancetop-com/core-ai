@@ -63,7 +63,7 @@ public class Agent extends Node<Agent> {
     String model;
     ReflectionConfig reflectionConfig;
     ReflectionListener reflectionListener;
-    NaiveMemory longTernMemory;
+    NaiveMemory longTermMemory;
     Boolean useGroupContext;
     Integer maxTurnNumber;
     Boolean authenticated = false;
@@ -334,7 +334,7 @@ public class Agent extends Node<Agent> {
 
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
-            addMessage(buildSystemMessageWithLongTernMemory(query, variables));
+            addMessage(buildSystemMessageWithlongTermMemory(query, variables));
             // add task context if existed
             addTaskHistoriesToMessages();
         }
@@ -372,7 +372,7 @@ public class Agent extends Node<Agent> {
     }
 
 
-    private Message buildSystemMessageWithLongTernMemory(String query, Map<String, Object> variables) {
+    private Message buildSystemMessageWithlongTermMemory(String query, Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && isUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
@@ -381,8 +381,8 @@ public class Agent extends Node<Agent> {
         if (variables != null) var.putAll(variables);
         var.putAll(getSystemVariables());
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
-        if (!getLongTernMemory().retrieve(query).isEmpty()) {
-            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + getLongTernMemory().toString();
+        if (!getlongTermMemory().retrieve(query).isEmpty()) {
+            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + getlongTermMemory().toString();
         }
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
@@ -460,16 +460,16 @@ public class Agent extends Node<Agent> {
         return this.toolCalls;
     }
 
-    public NaiveMemory getLongTernMemory() {
-        return this.longTernMemory;
+    public NaiveMemory getlongTermMemory() {
+        return this.longTermMemory;
     }
 
-    public void addLongTernMemory(String memory) {
-        this.longTernMemory.add(memory);
+    public void addlongTermMemory(String memory) {
+        this.longTermMemory.add(memory);
     }
 
-    public void clearLongTernMemory() {
-        this.longTernMemory.clear();
+    public void clearlongTermMemory() {
+        this.longTermMemory.clear();
     }
 
     public void setModel(String model) {

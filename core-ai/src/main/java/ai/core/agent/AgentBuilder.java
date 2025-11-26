@@ -216,8 +216,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-        if (agent.longTernMemory == null) {
-            agent.longTernMemory = new NaiveMemory();
+        if (agent.longTermMemory == null) {
+            agent.longTermMemory = new NaiveMemory();
         }
     }
 
