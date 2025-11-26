@@ -39,16 +39,10 @@ class ToolCallParametersIntegrationTest {
         mockLLMProvider = new MockLLMProvider();
 
         // Create Python script tool with ToolCallParameters.of(String.class)
-        pythonScriptTool = PythonScriptTool.builder()
-            .name("python_script")
-            .description("Execute Python scripts")
-            .build();
+        pythonScriptTool = PythonScriptTool.builder().build();
 
         // Create Shell command tool with ToolCallParameters.of(String.class)
-        shellCommandTool = ShellCommandTool.builder()
-            .name("shell_command")
-            .description("Execute shell commands")
-            .build();
+        shellCommandTool = ShellCommandTool.builder().build();
     }
 
     /**
@@ -72,7 +66,7 @@ class ToolCallParametersIntegrationTest {
         var toolCall = FunctionCall.of(
             "call_python_001",
             "function",
-            "python_script",
+            "run_python_script",
             "{\"code\":\"print('Hello from LLM')\"}"
         );
 
@@ -133,7 +127,7 @@ class ToolCallParametersIntegrationTest {
         var toolCall = FunctionCall.of(
             "call_shell_001",
             "function",
-            "shell_command",
+            "run_bash_command",
             "{\"workspace_dir\":\"" + tempDir.replace("\\", "\\\\") + "\",\"command\":\"echo 'Test from LLM'\"}"
         );
 
@@ -202,10 +196,7 @@ class ToolCallParametersIntegrationTest {
     void testPythonScriptToolParameterConfiguration() {
         logger.info("Testing PythonScriptTool parameter configuration");
 
-        var tool = PythonScriptTool.builder()
-            .name("python_script")
-            .description("Execute Python scripts")
-            .build();
+        var tool = PythonScriptTool.builder().build();
 
         var params = tool.getParameters();
         assertNotNull(params);
@@ -224,10 +215,7 @@ class ToolCallParametersIntegrationTest {
     void testShellCommandToolParameterConfiguration() {
         logger.info("Testing ShellCommandTool parameter configuration");
 
-        var tool = ShellCommandTool.builder()
-            .name("shell_command")
-            .description("Execute shell commands")
-            .build();
+        var tool = ShellCommandTool.builder().build();
 
         var params = tool.getParameters();
         assertNotNull(params);
