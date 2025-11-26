@@ -134,7 +134,10 @@ public class ShellCommandTool extends ToolCall {
         }
 
         public ShellCommandTool build() {
-            this.parameters(ToolCallParameters.of(String.class, "workspace_dir", "dir of command to exec", String.class, "command", "command string"));
+            this.parameters(ToolCallParameters.of(
+                    ToolCallParameters.ParamSpec.of(String.class, "workspace_dir", "dir of command to exec"),
+                    ToolCallParameters.ParamSpec.of(String.class, "command", "command string").required()
+            ));
             var tool = new ShellCommandTool();
             build(tool);
             return tool;
