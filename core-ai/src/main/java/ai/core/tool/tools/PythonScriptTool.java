@@ -23,6 +23,21 @@ import java.util.concurrent.TimeUnit;
 public class PythonScriptTool extends ToolCall {
     private static final long DEFAULT_TIMEOUT_SECONDS = 60;
     private static final Logger LOGGER = LoggerFactory.getLogger(PythonScriptTool.class);
+    private static final String PYTHON_SCRIPT_TOOL_DESC = """
+            Executes a Python script and returns its output.
+            
+            
+            Usage:
+            
+            - Provide the Python code to execute in the 'code' parameter.
+            
+            - The script will be executed with a timeout of 60 seconds.
+            
+            - The output of the script (stdout and stderr) will be returned as a string.
+            
+            - If the script times out or exits with a non-zero code, an error message will be returned.
+            """;
+
     public static Builder builder() {
         return new Builder();
     }
@@ -134,6 +149,8 @@ public class PythonScriptTool extends ToolCall {
         }
 
         public PythonScriptTool build() {
+            this.name("run_python_script");
+            this.description(PYTHON_SCRIPT_TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "code", "python code").required()
             ));
