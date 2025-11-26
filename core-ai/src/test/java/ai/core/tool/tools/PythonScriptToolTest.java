@@ -66,7 +66,7 @@ class PythonScriptToolTest {
         FunctionCall toolCall = FunctionCall.of(
             "call_python_001",
             "function",
-            "python_script",
+            "run_python_script",
             String.format("{\"code\":\"%s\"}", pythonCode)
         );
 
