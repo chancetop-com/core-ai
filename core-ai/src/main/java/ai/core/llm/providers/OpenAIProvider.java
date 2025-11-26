@@ -18,6 +18,7 @@ import java.util.List;
 //todo  Refactoring
 public class OpenAIProvider {
     private final OpenAIClient client;
+    private final LLMProviderConfig config;
 
     public OpenAIProvider(LLMProviderConfig config, String apiKey, String baseUrl) {
         this.client = OpenAIOkHttpClient.builder()
@@ -25,6 +26,7 @@ public class OpenAIProvider {
                 .baseUrl(baseUrl)
                 .timeout(config.getTimeout())
                 .build();
+        this.config = config;
     }
 
     public <T> T responsesApi(List<String> msg, Class<T> responseFormat, String userId, String modelName) {
@@ -33,6 +35,7 @@ public class OpenAIProvider {
                 .input(msg.getLast())
                 .text(responseFormat)
                 .model(modelName)
+                .temperature(config.getTemperature())
                 .user(userId)
                 .build();
 
@@ -58,6 +61,7 @@ public class OpenAIProvider {
         StructuredResponseCreateParams<T> createParams = ResponseCreateParams.builder()
                 .text(responseFormat)
                 .model(modelName)
+                .temperature(config.getTemperature())
                 .inputOfResponse(List.of(userInput))
                 .user(userId)
                 .build();
