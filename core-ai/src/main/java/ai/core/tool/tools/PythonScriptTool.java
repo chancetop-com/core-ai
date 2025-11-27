@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
 import ai.core.utils.InputStreamUtil;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
@@ -21,8 +22,25 @@ import java.util.concurrent.TimeUnit;
  * @author stephen
  */
 public class PythonScriptTool extends ToolCall {
+    public static final String TOOL_NAME = "run_python_script";
+
     private static final long DEFAULT_TIMEOUT_SECONDS = 60;
     private static final Logger LOGGER = LoggerFactory.getLogger(PythonScriptTool.class);
+    private static final String TOOL_DESC = """
+            Executes a Python script and returns its output.
+            
+            
+            Usage:
+            
+            - Provide the Python code to execute in the 'code' parameter.
+            
+            - The script will be executed with a timeout of 60 seconds.
+            
+            - The output of the script (stdout and stderr) will be returned as a string.
+            
+            - If the script times out or exits with a non-zero code, an error message will be returned.
+            """;
+
     public static Builder builder() {
         return new Builder();
     }
@@ -110,20 +128,26 @@ public class PythonScriptTool extends ToolCall {
     }
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             var argsMap = JSON.fromJSON(Map.class, text);
             var code = (String) argsMap.get("code");
 
             if (Strings.isBlank(code)) {
-                return "Error: code parameter is required";
+                return ToolCallResult.failed("Error: code parameter is required")
+                    .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            return exec(code, DEFAULT_TIMEOUT_SECONDS);
+            var result = exec(code, DEFAULT_TIMEOUT_SECONDS);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("codeLength", code.length());
         } catch (Exception e) {
             var error = "Failed to parse Python script arguments: " + e.getMessage();
             LOGGER.error(error, e);
-            return error;
+            return ToolCallResult.failed(error)
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -134,7 +158,11 @@ public class PythonScriptTool extends ToolCall {
         }
 
         public PythonScriptTool build() {
-            this.parameters(ToolCallParameters.of(String.class, "code", "python code"));
+            this.name(TOOL_NAME);
+            this.description(TOOL_DESC);
+            this.parameters(ToolCallParameters.of(
+                    ToolCallParameters.ParamSpec.of(String.class, "code", "python code").required()
+            ));
             var tool = new PythonScriptTool();
             build(tool);
             return tool;

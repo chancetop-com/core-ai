@@ -7,7 +7,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * @author stephen
@@ -88,7 +87,7 @@ class ToolCallParametersTest {
 
     @Test
     void testOfEmptyClasses() {
-        var parameters = ToolCallParameters.of();
+        var parameters = ToolCallParameters.of(new Class<?>[0]);
 
         assertNotNull(parameters);
         assertTrue(parameters.isEmpty());
@@ -114,12 +113,13 @@ class ToolCallParametersTest {
         assertEquals(Boolean.class, booleanParam.getClassType());
     }
 
+
     @Test
-    void testOfWithTypeNameDescription() {
+    void testParamSpecWithRequired() {
         var parameters = ToolCallParameters.of(
-            String.class, "username", "The user's username",
-            Integer.class, "age", "The user's age",
-            Boolean.class, "active", "Whether the user is active"
+            ToolCallParameters.ParamSpec.of(String.class, "username", "User name").required(),
+            ToolCallParameters.ParamSpec.of(Integer.class, "age", "User age").optional(),
+            ToolCallParameters.ParamSpec.of(String.class, "bio", "User bio")  // default optional
         );
 
         assertNotNull(parameters);
@@ -127,53 +127,62 @@ class ToolCallParametersTest {
 
         var usernameParam = parameters.get(0);
         assertEquals("username", usernameParam.getName());
-        assertEquals("The user's username", usernameParam.getDescription());
+        assertEquals("User name", usernameParam.getDescription());
         assertEquals(String.class, usernameParam.getClassType());
+        assertEquals(true, usernameParam.isRequired());
 
         var ageParam = parameters.get(1);
         assertEquals("age", ageParam.getName());
-        assertEquals("The user's age", ageParam.getDescription());
+        assertEquals("User age", ageParam.getDescription());
         assertEquals(Integer.class, ageParam.getClassType());
+        assertEquals(false, ageParam.isRequired());
 
-        var activeParam = parameters.get(2);
-        assertEquals("active", activeParam.getName());
-        assertEquals("Whether the user is active", activeParam.getDescription());
-        assertEquals(Boolean.class, activeParam.getClassType());
+        var bioParam = parameters.get(2);
+        assertEquals("bio", bioParam.getName());
+        assertEquals("User bio", bioParam.getDescription());
+        assertEquals(String.class, bioParam.getClassType());
+        assertEquals(false, bioParam.isRequired());  // default is false
     }
 
     @Test
-    void testOfWithTypeNameDescriptionInvalidArguments() {
-        // Test with wrong number of arguments
-        try {
-            ToolCallParameters.of(String.class, "name");
-            fail("Should throw IllegalArgumentException");
-        } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage().contains("triplets"));
-        }
+    void testParamSpecWithEnums() {
+        var parameters = ToolCallParameters.of(
+            ToolCallParameters.ParamSpec.of(String.class, "status", "User status")
+                .required()
+                .enums(List.of("active", "inactive", "pending")),
+            ToolCallParameters.ParamSpec.of(String.class, "role", "User role")
+                .enums(List.of("admin", "user", "guest")),
+            ToolCallParameters.ParamSpec.of(String.class, "name", "User name")  // no enums
+        );
 
-        // Test with wrong type at first position
-        try {
-            ToolCallParameters.of("Not a class", "name", "description");
-            fail("Should throw IllegalArgumentException");
-        } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage().contains("must be a Class"));
-        }
+        assertNotNull(parameters);
+        assertEquals(3, parameters.size());
 
-        // Test with wrong type at second position
-        try {
-            ToolCallParameters.of(String.class, 123, "description");
-            fail("Should throw IllegalArgumentException");
-        } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage().contains("must be a String (name)"));
-        }
+        var statusParam = parameters.get(0);
+        assertEquals("status", statusParam.getName());
+        assertEquals("User status", statusParam.getDescription());
+        assertEquals(String.class, statusParam.getClassType());
+        assertEquals(true, statusParam.isRequired());
+        assertNotNull(statusParam.getEnums());
+        assertEquals(3, statusParam.getEnums().size());
+        assertTrue(statusParam.getEnums().contains("active"));
+        assertTrue(statusParam.getEnums().contains("inactive"));
+        assertTrue(statusParam.getEnums().contains("pending"));
 
-        // Test with wrong type at third position
-        try {
-            ToolCallParameters.of(String.class, "name", 456);
-            fail("Should throw IllegalArgumentException");
-        } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage().contains("must be a String (description)"));
-        }
+        var roleParam = parameters.get(1);
+        assertEquals("role", roleParam.getName());
+        assertEquals("User role", roleParam.getDescription());
+        assertNotNull(roleParam.getEnums());
+        assertEquals(3, roleParam.getEnums().size());
+        assertTrue(roleParam.getEnums().contains("admin"));
+        assertTrue(roleParam.getEnums().contains("user"));
+        assertTrue(roleParam.getEnums().contains("guest"));
+
+        var nameParam = parameters.get(2);
+        assertEquals("name", nameParam.getName());
+        assertEquals("User name", nameParam.getDescription());
+        // enums should be null when not set
+        assertTrue(nameParam.getEnums() == null || nameParam.getEnums().isEmpty());
     }
 
 
