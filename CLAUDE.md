@@ -103,6 +103,14 @@ export CORE_AI_USE_LOCAL_PROJECTS=true
 - NaiveMemory: Simple key-value memory for context retention
 - Integrated into agents for long-term context
 
+**Vendor Management (`ai.core.vender`)**
+- Manages third-party tool downloads and lifecycle (e.g., ripgrep)
+- Automatic download, installation, and verification
+- Platform detection (Windows, Linux, macOS with x86/x64/ARM64)
+- Configurable storage directory via `sys.vendor.home` property
+- Default location: `~/.core-ai/vendors/`
+- Thread-safe singleton pattern with lazy initialization
+
 ### Key Patterns
 
 **Builder Pattern**: Most core classes use builders (Agent.builder(), Flow.builder())
@@ -129,6 +137,7 @@ core-ai/src/main/java/ai/core/
 ├── memory/          # Memory implementations
 ├── rag/             # RAG configuration and utilities
 ├── mcp/             # Model Context Protocol (client/server)
+├── vender/          # Vendor management for third-party tools (ripgrep, etc.)
 ├── task/            # Task management abstractions
 ├── document/        # Document processing and text splitting
 ├── prompt/          # Prompt templating (Mustache engine)

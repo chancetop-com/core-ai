@@ -12,6 +12,17 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
     @Serial
     private static final long serialVersionUID = -8523451400454678078L;
 
+    /**
+     * Convenient static method to create ParamSpec (for static import)
+     * @param type Parameter type class
+     * @param name Parameter name
+     * @param description Parameter description
+     * @return ParamSpec instance
+     */
+    public static ParamSpec param(Class<?> type, String name, String description) {
+        return ParamSpec.of(type, name, description);
+    }
+
     public static List<ToolCallParameter> of(Class<?>... classes) {
         var parameters = new ArrayList<ToolCallParameter>();
         for (var clazz : classes) {
@@ -30,40 +41,108 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
     }
 
     /**
-     * Create parameters with type, name, and description triplets
-     * @param args Variable arguments in pattern: Class type, String name, String description, ...
+     * Create parameters from parameter specifications
+     * @param specs Variable arguments of ParamSpec
      * @return List of ToolCallParameter
-     * @throws IllegalArgumentException if arguments length is not multiple of 3 or wrong types
      */
-    public static List<ToolCallParameter> of(Object... args) {
-        if (args.length % 3 != 0) {
-            throw new IllegalArgumentException("Arguments must be in triplets of (Class, String name, String description). Got " + args.length + " arguments.");
-        }
-
+    public static List<ToolCallParameter> of(ParamSpec... specs) {
         var parameters = new ArrayList<ToolCallParameter>();
-        for (int i = 0; i < args.length; i += 3) {
-            if (!(args[i] instanceof Class<?> clazz)) {
-                throw new IllegalArgumentException("Argument at index " + i + " must be a Class, but got " + args[i].getClass().getName());
-            }
-            var parameter = getToolCallParameter(args, clazz, i);
-
+        for (var spec : specs) {
+            var parameter = new ToolCallParameter();
+            parameter.setName(spec.getName());
+            parameter.setDescription(spec.getDescription());
+            parameter.setClassType(spec.getType());
+            // If required is not explicitly set, default to false (optional)
+            parameter.setRequired(spec.isRequired() != null && spec.isRequired());
+            // Set enums if provided
+            parameter.setEnums(spec.getEnums());
             parameters.add(parameter);
         }
         return parameters;
     }
 
-    private static ToolCallParameter getToolCallParameter(Object[] args, Class<?> clazz, int i) {
-        if (!(args[i + 1] instanceof String name)) {
-            throw new IllegalArgumentException("Argument at index " + (i + 1) + " must be a String (name), but got " + args[i + 1].getClass().getName());
-        }
-        if (!(args[i + 2] instanceof String description)) {
-            throw new IllegalArgumentException("Argument at index " + (i + 2) + " must be a String (description), but got " + args[i + 2].getClass().getName());
+
+    /**
+     * Parameter specification for building tool parameters
+     */
+    public static final class ParamSpec {
+        /**
+         * Create a parameter specification
+         * @param type Parameter type class
+         * @param name Parameter name
+         * @param description Parameter description
+         * @return ParamSpec instance
+         */
+        public static ParamSpec of(Class<?> type, String name, String description) {
+            return new ParamSpec(type, name, description);
         }
 
-        var parameter = new ToolCallParameter();
-        parameter.setName(name);
-        parameter.setDescription(description);
-        parameter.setClassType(clazz);
-        return parameter;
+        private final Class<?> type;
+        private final String name;
+        private final String description;
+        private Boolean required;
+        private List<String> enums;
+
+        private ParamSpec(Class<?> type, String name, String description) {
+            this.type = type;
+            this.name = name;
+            this.description = description;
+        }
+
+        /**
+         * Set whether this parameter is required
+         * @param required true if required, false if optional
+         * @return this ParamSpec for chaining
+         */
+        public ParamSpec required(boolean required) {
+            this.required = required;
+            return this;
+        }
+
+        /**
+         * Mark this parameter as required
+         * @return this ParamSpec for chaining
+         */
+        public ParamSpec required() {
+            return required(true);
+        }
+
+        /**
+         * Mark this parameter as optional
+         * @return this ParamSpec for chaining
+         */
+        public ParamSpec optional() {
+            return required(false);
+        }
+
+        /**
+         * Set allowed enum values for this parameter
+         * @param enums List of allowed string values
+         * @return this ParamSpec for chaining
+         */
+        public ParamSpec enums(List<String> enums) {
+            this.enums = enums;
+            return this;
+        }
+
+        Class<?> getType() {
+            return this.type;
+        }
+
+        String getName() {
+            return this.name;
+        }
+
+        String getDescription() {
+            return this.description;
+        }
+
+        Boolean isRequired() {
+            return this.required;
+        }
+
+        List<String> getEnums() {
+            return this.enums;
+        }
     }
 }

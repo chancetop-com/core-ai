@@ -103,10 +103,10 @@ public class AgentTracer extends Tracer {
     }
 
     /**
-     * Trace tool/function call
+     * Trace tool/function call with ToolCallResult
      */
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
-    public String traceToolCall(String toolName, String arguments, Supplier<String> operation) {
+    public <T> T traceToolCall(String toolName, String arguments, Supplier<T> operation) {
         if (!enabled) {
             return operation.get();
         }
@@ -124,11 +124,11 @@ public class AgentTracer extends Tracer {
         }
 
         try (var scope = span.makeCurrent()) {
-            String result = operation.get();
+            T result = operation.get();
 
             // Add output as attribute for Langfuse (tool result)
-            if (result != null && !result.isEmpty()) {
-                span.setAttribute(OUTPUT_VALUE, truncate(result, 1000));
+            if (result != null) {
+                span.setAttribute(OUTPUT_VALUE, truncate(result.toString(), 1000));
             }
 
             return result;

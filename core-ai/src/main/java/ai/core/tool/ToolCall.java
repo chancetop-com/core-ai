@@ -1,5 +1,6 @@
 package ai.core.tool;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.api.jsonschema.JsonSchema;
 import ai.core.llm.domain.Function;
 import ai.core.llm.domain.Tool;
@@ -19,7 +20,23 @@ public abstract class ToolCall {
     List<ToolCallParameter> parameters;
     Boolean needAuth;
 
-    public abstract String call(String text);
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
+        return execute(arguments);
+    }
+
+    public abstract ToolCallResult execute(String arguments);
+
+    public ToolCallResult poll(String taskId) {
+        throw new UnsupportedOperationException("Tool '" + name + "' does not support polling");
+    }
+
+    public ToolCallResult submitInput(String taskId, String input) {
+        throw new UnsupportedOperationException("Tool '" + name + "' does not support user input");
+    }
+
+    public ToolCallResult cancel(String taskId) {
+        throw new UnsupportedOperationException("Tool '" + name + "' does not support cancellation");
+    }
 
     public String getName() {
         return name;
@@ -84,7 +101,6 @@ public abstract class ToolCall {
         List<ToolCallParameter> parameters;
         Boolean needAuth;
 
-        // This method needs to be overridden in the subclass Builders
         protected abstract B self();
 
         public B name(String name) {

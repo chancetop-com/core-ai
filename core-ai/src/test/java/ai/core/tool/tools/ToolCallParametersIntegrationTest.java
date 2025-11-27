@@ -39,16 +39,10 @@ class ToolCallParametersIntegrationTest {
         mockLLMProvider = new MockLLMProvider();
 
         // Create Python script tool with ToolCallParameters.of(String.class)
-        pythonScriptTool = PythonScriptTool.builder()
-            .name("python_script")
-            .description("Execute Python scripts")
-            .build();
+        pythonScriptTool = PythonScriptTool.builder().build();
 
         // Create Shell command tool with ToolCallParameters.of(String.class)
-        shellCommandTool = ShellCommandTool.builder()
-            .name("shell_command")
-            .description("Execute shell commands")
-            .build();
+        shellCommandTool = ShellCommandTool.builder().build();
     }
 
     /**
@@ -72,7 +66,7 @@ class ToolCallParametersIntegrationTest {
         var toolCall = FunctionCall.of(
             "call_python_001",
             "function",
-            "python_script",
+            "run_python_script",
             "{\"code\":\"print('Hello from LLM')\"}"
         );
 
@@ -133,7 +127,7 @@ class ToolCallParametersIntegrationTest {
         var toolCall = FunctionCall.of(
             "call_shell_001",
             "function",
-            "shell_command",
+            "run_bash_command",
             "{\"workspace_dir\":\"" + tempDir.replace("\\", "\\\\") + "\",\"command\":\"echo 'Test from LLM'\"}"
         );
 
@@ -202,10 +196,7 @@ class ToolCallParametersIntegrationTest {
     void testPythonScriptToolParameterConfiguration() {
         logger.info("Testing PythonScriptTool parameter configuration");
 
-        var tool = PythonScriptTool.builder()
-            .name("python_script")
-            .description("Execute Python scripts")
-            .build();
+        var tool = PythonScriptTool.builder().build();
 
         var params = tool.getParameters();
         assertNotNull(params);
@@ -224,10 +215,7 @@ class ToolCallParametersIntegrationTest {
     void testShellCommandToolParameterConfiguration() {
         logger.info("Testing ShellCommandTool parameter configuration");
 
-        var tool = ShellCommandTool.builder()
-            .name("shell_command")
-            .description("Execute shell commands")
-            .build();
+        var tool = ShellCommandTool.builder().build();
 
         var params = tool.getParameters();
         assertNotNull(params);
@@ -255,7 +243,7 @@ class ToolCallParametersIntegrationTest {
 
         // Test Python script tool with direct JSON string (simulating LLM output)
         var pythonJsonArgs = "{\"code\":\"print(2 + 3)\"}";
-        var pythonResult = pythonScriptTool.call(pythonJsonArgs);
+        var pythonResult = pythonScriptTool.execute(pythonJsonArgs).getResult();
 
         assertNotNull(pythonResult);
         assertTrue(pythonResult.contains("5"), "Python script should output 5");
@@ -264,7 +252,7 @@ class ToolCallParametersIntegrationTest {
         // Test Shell command tool with direct JSON string (simulating LLM output)
         var tempDir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
         var shellJsonArgs = "{\"workspace_dir\":\"" + tempDir.replace("\\", "\\\\") + "\",\"command\":\"echo test\"}";
-        var shellResult = shellCommandTool.call(shellJsonArgs);
+        var shellResult = shellCommandTool.execute(shellJsonArgs).getResult();
 
         assertNotNull(shellResult);
         assertFalse(shellResult.startsWith("Error:"), "Shell command should not return error");
@@ -277,11 +265,11 @@ class ToolCallParametersIntegrationTest {
 
         // Test with invalid JSON (missing quotes around keys)
         var invalidJson = "{invalid: \"value\"}";
-        var pythonResult = pythonScriptTool.call(invalidJson);
+        var pythonResult = pythonScriptTool.execute(invalidJson).getResult();
         assertTrue(pythonResult.contains("Failed to parse") || pythonResult.contains("parameter is required"),
             "Should return parse error or parameter required error");
 
-        var shellResult = shellCommandTool.call(invalidJson);
+        var shellResult = shellCommandTool.execute(invalidJson).getResult();
         assertTrue(shellResult.contains("Failed to parse") || shellResult.contains("parameter is required"),
             "Should return parse error or parameter required error");
 
@@ -294,13 +282,13 @@ class ToolCallParametersIntegrationTest {
 
         // Test Python tool with missing 'code' parameter
         var pythonEmptyJson = "{}";
-        var pythonResult = pythonScriptTool.call(pythonEmptyJson);
+        var pythonResult = pythonScriptTool.execute(pythonEmptyJson).getResult();
         assertTrue(pythonResult.contains("code parameter is required"), "Should return parameter required error");
 
         // Test Shell tool with missing 'command' parameter
         var tempDir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
         var shellMissingCmd = "{\"workspace_dir\":\"" + tempDir.replace("\\", "\\\\") + "\"}";
-        var shellResult = shellCommandTool.call(shellMissingCmd);
+        var shellResult = shellCommandTool.execute(shellMissingCmd).getResult();
         assertTrue(shellResult.contains("command parameter is required"), "Should return parameter required error");
 
         logger.info("Missing parameters handling verified successfully");

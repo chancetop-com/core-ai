@@ -188,7 +188,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     private void copyValue(Agent agent) {
-
         agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
         agent.maxTurnNumber = this.maxTurnNumber == null ? 20 : this.maxTurnNumber;
@@ -216,8 +215,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-        if (agent.longTernMemory == null) {
-            agent.longTernMemory = new NaiveMemory();
+        if (agent.longTermMemory == null) {
+            agent.longTermMemory = new NaiveMemory();
         }
     }
 

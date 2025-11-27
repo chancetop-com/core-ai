@@ -50,11 +50,11 @@ public class DefaultLongTermMemoryExtractionAgent {
     public List<String> extractMemories(String conversationText) {
         var agent = of(llmProvider);
         var response = agent.run(conversationText, (Map<String, Object>) null);
-        var dto = JSON.fromJSON(LongTernMemoryDto.class, response);
+        var dto = JSON.fromJSON(LongTermMemoryDto.class, response);
         return dto.memories;
     }
 
-    public static class LongTernMemoryDto {
+    public static class LongTermMemoryDto {
         @Property(name = "memories")
         public List<String> memories;
     }

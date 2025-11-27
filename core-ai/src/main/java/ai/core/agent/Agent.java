@@ -8,7 +8,6 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
-import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
@@ -27,11 +26,10 @@ import ai.core.reflection.ReflectionStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolExecutor;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
 import core.framework.util.Maps;
-import core.framework.util.Strings;
-import core.framework.web.exception.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +39,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 /**
@@ -63,10 +60,11 @@ public class Agent extends Node<Agent> {
     String model;
     ReflectionConfig reflectionConfig;
     ReflectionListener reflectionListener;
-    NaiveMemory longTernMemory;
+    NaiveMemory longTermMemory;
     Boolean useGroupContext;
     Integer maxTurnNumber;
     Boolean authenticated = false;
+    ToolExecutor toolExecutor;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -323,7 +321,7 @@ public class Agent extends Node<Agent> {
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream()
                 .map(tool -> {
-                    var callResult = aroundTool(tool, getExecutionContext());
+                    var callResult = getToolExecutor().execute(tool, getExecutionContext());
                     return Map.entry(tool, callResult);
                 }).map(entry -> {
                     var tool = entry.getKey();
@@ -332,9 +330,17 @@ public class Agent extends Node<Agent> {
                 }).toList();
     }
 
+    private ToolExecutor getToolExecutor() {
+        if (toolExecutor == null) {
+            toolExecutor = new ToolExecutor(toolCalls, agentLifecycles, getActiveTracer(), this::updateNodeStatus);
+        }
+        toolExecutor.setAuthenticated(authenticated);
+        return toolExecutor;
+    }
+
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
-            addMessage(buildSystemMessageWithLongTernMemory(query, variables));
+            addMessage(buildSystemMessageWithLongTermMemory(query, variables));
             // add task context if existed
             addTaskHistoriesToMessages();
         }
@@ -372,7 +378,7 @@ public class Agent extends Node<Agent> {
     }
 
 
-    private Message buildSystemMessageWithLongTernMemory(String query, Map<String, Object> variables) {
+    private Message buildSystemMessageWithLongTermMemory(String query, Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && isUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
@@ -381,51 +387,11 @@ public class Agent extends Node<Agent> {
         if (variables != null) var.putAll(variables);
         var.putAll(getSystemVariables());
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
-        if (!getLongTernMemory().retrieve(query).isEmpty()) {
-            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + getLongTernMemory().toString();
+        if (!getLongTermMemory().retrieve(query).isEmpty()) {
+            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + getLongTermMemory().toString();
         }
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
-
-    private String functionCall(FunctionCall toolCall) {
-        var optional = toolCalls.stream().filter(v -> v.getName().equalsIgnoreCase(toolCall.function.name)).findFirst();
-        if (optional.isEmpty()) {
-            throw new BadRequestException("tool call failed<optional empty>: " + JSON.toJSON(toolCall), "TOOL_CALL_FAILED");
-        }
-        var function = optional.get();
-        try {
-            if (function.isNeedAuth() && !authenticated) {
-                this.updateNodeStatus(NodeStatus.WAITING_FOR_USER_INPUT);
-                return "This tool call requires user authentication, please ask user to confirm it.";
-            }
-            logger.info("function call {}: {}", toolCall.function.name, toolCall.function.arguments);
-
-            // Trace tool call
-            var activeTracer = getActiveTracer();
-            if (activeTracer != null) {
-                return activeTracer.traceToolCall(
-                        toolCall.function.name,
-                        toolCall.function.arguments,
-                        () -> function.call(toolCall.function.arguments)
-                );
-            }
-            return function.call(toolCall.function.arguments);
-        } catch (Exception e) {
-            throw new BadRequestException(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(toolCall), e.getMessage()), "TOOL_CALL_FAILED", e);
-        }
-    }
-
-    private String aroundTool(FunctionCall functionCall, ExecutionContext executionContext) {
-        // before
-        agentLifecycles.forEach(alc -> alc.beforeTool(functionCall, executionContext));
-        // raw call
-        var funcResult = functionCall(functionCall);
-        // after
-        AtomicReference<String> resultRef = new AtomicReference<>(funcResult);
-        agentLifecycles.forEach(alc -> alc.afterTool(functionCall, executionContext, resultRef));
-        return resultRef.get();
-    }
-
 
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
@@ -452,37 +418,16 @@ public class Agent extends Node<Agent> {
         return this.useGroupContext;
     }
 
-    public ReflectionConfig getReflectionConfig() {
-        return this.reflectionConfig;
-    }
-
     public List<ToolCall> getToolCalls() {
         return this.toolCalls;
     }
 
-    public NaiveMemory getLongTernMemory() {
-        return this.longTernMemory;
-    }
-
-    public void addLongTernMemory(String memory) {
-        this.longTernMemory.add(memory);
-    }
-
-    public void clearLongTernMemory() {
-        this.longTernMemory.clear();
+    public NaiveMemory getLongTermMemory() {
+        return this.longTermMemory;
     }
 
     public void setModel(String model) {
         this.model = model;
-    }
-
-    public Message getLastToolCallMessage() {
-        for (var msg : getMessages().reversed()) {
-            if (msg.role == RoleType.TOOL) {
-                return msg;
-            }
-        }
-        return null;
     }
 
     public String getSystemPrompt() {
@@ -492,9 +437,4 @@ public class Agent extends Node<Agent> {
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
     }
-
-    public void setToolCalls(List<ToolCall> toolCalls) {
-        this.toolCalls = toolCalls;
-    }
 }
-
