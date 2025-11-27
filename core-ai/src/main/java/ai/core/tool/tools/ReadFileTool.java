@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
@@ -17,11 +18,13 @@ import java.util.Map;
  * @author stephen
  */
 public class ReadFileTool extends ToolCall {
+    public static final String TOOL_NAME = "read_file";
+
     private static final Logger LOGGER = LoggerFactory.getLogger(ReadFileTool.class);
     private static final int DEFAULT_LINE_LIMIT = 2000;
     private static final int MAX_LINE_LENGTH = 2000;
 
-    private static final String READ_FILE_TOOL_DESC = """
+    private static final String TOOL_DESC = """
             Reads a file from the local filesystem. You can access any file directly by
             using this tool.
 
@@ -72,18 +75,23 @@ public class ReadFileTool extends ToolCall {
     }
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             var argsMap = JSON.fromJSON(Map.class, text);
             var filePath = (String) argsMap.get("file_path");
             var offset = argsMap.get("offset") != null ? ((Number) argsMap.get("offset")).intValue() : null;
             var limit = argsMap.get("limit") != null ? ((Number) argsMap.get("limit")).intValue() : null;
 
-            return readFile(filePath, offset, limit);
+            var result = readFile(filePath, offset, limit);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("filePath", filePath);
         } catch (Exception e) {
             var error = "Failed to parse read file arguments: " + e.getMessage();
             LOGGER.error(error, e);
-            return error;
+            return ToolCallResult.failed(error)
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -164,8 +172,8 @@ public class ReadFileTool extends ToolCall {
         }
 
         public ReadFileTool build() {
-            this.name("read_file");
-            this.description(READ_FILE_TOOL_DESC);
+            this.name(TOOL_NAME);
+            this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "file_path", "Absolute path of the file to read").required(),
                     ToolCallParameters.ParamSpec.of(Integer.class, "offset", "The line number to start reading from. Only provide if the file is too large to read at once"),

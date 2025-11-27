@@ -2,10 +2,11 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
+import ai.core.utils.JsonUtil;
 import ai.core.vender.VendorManagement;
 import ai.core.vender.vendors.RipgrepVendor;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -17,10 +18,9 @@ import java.util.List;
  * @author stephen
  */
 public class GrepFileTool extends ToolCall {
+    public static final String TOOL_NAME = "grep_file";
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    private static final String GREP_FILE_TOOL_DESC = """
+    private static final String TOOL_DESC = """
             A powerful search tool built on ripgrep
 
               Usage:
@@ -39,10 +39,11 @@ public class GrepFileTool extends ToolCall {
     }
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             // Parse input parameters
-            var params = OBJECT_MAPPER.readTree(text);
+            var params = JsonUtil.OBJECT_MAPPER.readTree(text);
 
             // Get ripgrep executable path
             var rgPath = VendorManagement.getInstance().getExecutablePath(RipgrepVendor.class);
@@ -63,17 +64,23 @@ public class GrepFileTool extends ToolCall {
 
             // Exit code 0 = matches found, 1 = no matches, 2+ = error
             if (exitCode > 1) {
-                return "Error executing ripgrep (exit code " + exitCode + "): " + output;
+                return ToolCallResult.failed("Error executing ripgrep (exit code " + exitCode + "): " + output)
+                    .withDuration(System.currentTimeMillis() - startTime);
             }
 
             if (output.isEmpty()) {
-                return "No matches found";
+                return ToolCallResult.completed("No matches found")
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("pattern", params.path("pattern").asText());
             }
 
-            return output.trim();
+            return ToolCallResult.completed(output.trim())
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("pattern", params.path("pattern").asText());
 
         } catch (Exception e) {
-            return "Error executing grep: " + e.getMessage();
+            return ToolCallResult.failed("Error executing grep: " + e.getMessage())
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -177,8 +184,8 @@ public class GrepFileTool extends ToolCall {
         }
 
         public GrepFileTool build() {
-            this.name("grep_file");
-            this.description(GREP_FILE_TOOL_DESC);
+            this.name(TOOL_NAME);
+            this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "pattern", "The regular expression pattern to search for in file contents").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "path", "File or directory to search in (rg PATH). Defaults to current working directory."),

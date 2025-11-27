@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPHeaders;
@@ -22,10 +23,12 @@ import java.util.Map;
  * @author stephen
  */
 public class WebFetchTool extends ToolCall {
+    public static final String TOOL_NAME = "web_fetch";
+
     private static final Logger LOGGER = LoggerFactory.getLogger(WebFetchTool.class);
     private static final String BROWSER_DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0";
 
-    private static final String WEB_FETCH_TOOL_DESC = """
+    private static final String TOOL_DESC = """
             - Fetches content from a specified URL and processes it using HTTP requests
             - Takes a URL and HTTP method as input
             - Supports GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS methods
@@ -41,7 +44,8 @@ public class WebFetchTool extends ToolCall {
     private final HTTPClient client = HTTPClient.builder().build();
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             var argsMap = JSON.fromJSON(Map.class, text);
             var url = (String) argsMap.get("url");
@@ -49,11 +53,16 @@ public class WebFetchTool extends ToolCall {
             var contentType = (String) argsMap.get("content_type");
             var body = (String) argsMap.get("body");
 
-            return executeRequest(url, method, contentType, body);
+            var result = executeRequest(url, method, contentType, body);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("url", url)
+                .withStats("method", method);
         } catch (Exception e) {
             var error = "Failed to parse web fetch arguments: " + e.getMessage();
             LOGGER.error(error, e);
-            return error;
+            return ToolCallResult.failed(error)
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -158,8 +167,8 @@ public class WebFetchTool extends ToolCall {
         }
 
         public WebFetchTool build() {
-            this.name("web_fetch");
-            this.description(WEB_FETCH_TOOL_DESC);
+            this.name(TOOL_NAME);
+            this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "url", "The URL to fetch content from").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "method", "The HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)").required().enums(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")),

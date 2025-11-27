@@ -2,6 +2,7 @@ package ai.core.tool.mcp;
 
 import ai.core.mcp.client.McpClientService;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 
 /**
  * @author stephen
@@ -15,8 +16,16 @@ public class McpToolCall extends ToolCall {
     McpClientService mcpClientService;
 
     @Override
-    public String call(String text) {
-        return mcpClientService.callTool(this.getName(), text);
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
+        try {
+            var result = mcpClientService.callTool(this.getName(), text);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime);
+        } catch (Exception e) {
+            return ToolCallResult.failed("MCP call failed: " + e.getMessage())
+                .withDuration(System.currentTimeMillis() - startTime);
+        }
     }
 
     public static class Builder extends ToolCall.Builder<Builder, ToolCall> {

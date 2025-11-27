@@ -175,7 +175,7 @@ public class McpServerService {
         } else {
             jsonArgs = JsonUtil.toJson(req.arguments);
         }
-        content.text = tool.call(jsonArgs);
+        content.text = tool.execute(jsonArgs).toResultForLLM();
         rst.content = List.of(content);
         rsp.result = JsonUtil.toMap(rst);
     }

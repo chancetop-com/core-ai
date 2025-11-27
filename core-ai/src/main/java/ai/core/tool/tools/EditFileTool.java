@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
@@ -18,9 +19,10 @@ import java.util.Map;
  * @author stephen
  */
 public class EditFileTool extends ToolCall {
-    private static final Logger LOGGER = LoggerFactory.getLogger(EditFileTool.class);
+    public static final String TOOL_NAME = "edit_file";
 
-    private static final String EDIT_FILE_TOOL_DESC = """
+    private static final Logger LOGGER = LoggerFactory.getLogger(EditFileTool.class);
+    private static final String TOOL_DESC = """
             Performs exact string replacements in files.
 
 
@@ -54,7 +56,8 @@ public class EditFileTool extends ToolCall {
     }
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             var argsMap = JSON.fromJSON(Map.class, text);
             var filePath = (String) argsMap.get("file_path");
@@ -62,11 +65,16 @@ public class EditFileTool extends ToolCall {
             var newString = (String) argsMap.get("new_string");
             var replaceAll = argsMap.get("replace_all") != null && (Boolean) argsMap.get("replace_all");
 
-            return editFile(filePath, oldString, newString, replaceAll);
+            var result = editFile(filePath, oldString, newString, replaceAll);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("filePath", filePath)
+                .withStats("replaceAll", replaceAll);
         } catch (Exception e) {
             var error = "Failed to parse edit file arguments: " + e.getMessage();
             LOGGER.error(error, e);
-            return error;
+            return ToolCallResult.failed(error)
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -185,8 +193,8 @@ public class EditFileTool extends ToolCall {
         }
 
         public EditFileTool build() {
-            this.name("edit_file");
-            this.description(EDIT_FILE_TOOL_DESC);
+            this.name(TOOL_NAME);
+            this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "file_path", "Absolute path to the file to modify").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "old_string", "The text to replace").required(),

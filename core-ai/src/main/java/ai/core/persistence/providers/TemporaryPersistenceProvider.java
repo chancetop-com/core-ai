@@ -5,10 +5,10 @@ import core.framework.async.Executor;
 import core.framework.inject.Inject;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author stephen
@@ -17,12 +17,21 @@ public class TemporaryPersistenceProvider implements PersistenceProvider {
     @Inject
     Executor executor;
 
-    private final Map<String, String> persistence = new HashMap<>();
+    private final Map<String, String> persistence = new ConcurrentHashMap<>();
+    private final int ttl; // default 15 minutes
+
+    public TemporaryPersistenceProvider() {
+        this(15 * 60);
+    }
+
+    public TemporaryPersistenceProvider(int ttl) {
+        this.ttl = ttl;
+    }
 
     @Override
     public void save(String id, String context) {
         persistence.put(id, context);
-        executor.submit("clear-persistence", () -> delete(List.of(id)), Duration.ofMinutes(15));
+        executor.submit("clear-persistence", () -> delete(List.of(id)), Duration.ofSeconds(ttl));
     }
 
     @Override

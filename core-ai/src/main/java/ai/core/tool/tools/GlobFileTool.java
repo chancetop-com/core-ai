@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
@@ -26,10 +27,12 @@ import java.util.Map;
  * @author stephen
  */
 public class GlobFileTool extends ToolCall {
+    public static final String TOOL_NAME = "glob_file";
+
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobFileTool.class);
     private static final int MAX_RESULTS = 1000;
 
-    private static final String GLOB_FILE_TOOL_DESC = """
+    private static final String TOOL_DESC = """
             - Fast file pattern matching tool that works with any codebase size
 
             - Supports glob patterns like "**/*.js" or "src/**/*.ts"
@@ -51,21 +54,27 @@ public class GlobFileTool extends ToolCall {
     }
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             var argsMap = JSON.fromJSON(Map.class, text);
             var pattern = (String) argsMap.get("pattern");
             var path = (String) argsMap.get("path");
 
             if (Strings.isBlank(pattern)) {
-                return "Error: pattern parameter is required";
+                return ToolCallResult.failed("Error: pattern parameter is required")
+                    .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            return globFiles(pattern, path);
+            var result = globFiles(pattern, path);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("pattern", pattern);
         } catch (Exception e) {
             var error = "Failed to parse glob file arguments: " + e.getMessage();
             LOGGER.error(error, e);
-            return error;
+            return ToolCallResult.failed(error)
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -167,8 +176,8 @@ public class GlobFileTool extends ToolCall {
         }
 
         public GlobFileTool build() {
-            this.name("glob_file");
-            this.description(GLOB_FILE_TOOL_DESC);
+            this.name(TOOL_NAME);
+            this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "pattern", "The glob pattern to match files against").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "path", "The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter \"undefined\" or \"null\" - simply omit it for the default behavior. Must be a valid directory path if provided.")

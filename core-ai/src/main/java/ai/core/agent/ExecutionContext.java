@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.tool.ToolCallAsyncTaskManager;
 import core.framework.util.Maps;
 
 import java.util.Map;
@@ -25,12 +26,14 @@ public final class ExecutionContext {
     private final String sessionId;
     private final String userId;
     private final Map<String, Object> customVariables;
+    private final ToolCallAsyncTaskManager asyncTaskManager;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
         this.userId = builder.userId;
         this.customVariables = Maps.newHashMap();
         this.customVariables.putAll(builder.customVariables);
+        this.asyncTaskManager = builder.asyncTaskManager;
     }
 
     public String getSessionId() {
@@ -43,6 +46,10 @@ public final class ExecutionContext {
 
     public Map<String, Object> getCustomVariables() {
         return customVariables;
+    }
+
+    public ToolCallAsyncTaskManager getAsyncTaskManager() {
+        return asyncTaskManager;
     }
 
     /**
@@ -74,7 +81,8 @@ public final class ExecutionContext {
         var builder = builder()
             .sessionId(this.sessionId)
             .userId(this.userId)
-            .customVariables(this.customVariables);
+            .customVariables(this.customVariables)
+            .asyncTaskManager(this.asyncTaskManager);
 
         if (additionalVariables != null) {
             builder.customVariables.putAll(additionalVariables);
@@ -90,17 +98,31 @@ public final class ExecutionContext {
         var builder = builder()
             .sessionId(this.sessionId)
             .userId(this.userId)
-            .customVariables(this.customVariables);
+            .customVariables(this.customVariables)
+            .asyncTaskManager(this.asyncTaskManager);
 
         builder.customVariables.put(key, value);
 
         return builder.build();
     }
 
+    /**
+     * Create a new ExecutionContext with an async task manager
+     */
+    public ExecutionContext withAsyncTaskManager(ToolCallAsyncTaskManager asyncTaskManager) {
+        return builder()
+            .sessionId(this.sessionId)
+            .userId(this.userId)
+            .customVariables(this.customVariables)
+            .asyncTaskManager(asyncTaskManager)
+            .build();
+    }
+
     public static class Builder {
         private String sessionId;
         private String userId;
         private final Map<String, Object> customVariables = Maps.newHashMap();
+        private ToolCallAsyncTaskManager asyncTaskManager;
 
         public Builder sessionId(String sessionId) {
             this.sessionId = sessionId;
@@ -121,6 +143,11 @@ public final class ExecutionContext {
 
         public Builder customVariable(String key, Object value) {
             this.customVariables.put(key, value);
+            return this;
+        }
+
+        public Builder asyncTaskManager(ToolCallAsyncTaskManager asyncTaskManager) {
+            this.asyncTaskManager = asyncTaskManager;
             return this;
         }
 

@@ -43,7 +43,7 @@ class GrepFileToolTest {
         args.put("pattern", "test pattern");
         args.put("path", tempDir.toString());
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Basic pattern search result: {}", result);
         assertNotNull(result);
@@ -61,7 +61,7 @@ class GrepFileToolTest {
         args.put("path", tempDir.toString());
         args.put("-i", true);
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Case insensitive search result: {}", result);
         assertNotNull(result);
@@ -79,7 +79,7 @@ class GrepFileToolTest {
         args.put("path", tempDir.toString());
         args.put("glob", "*.java");
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob filter result: {}", result);
         assertNotNull(result);
@@ -97,7 +97,7 @@ class GrepFileToolTest {
         args.put("path", tempDir.toString());
         args.put("output_mode", "content");
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Content mode result: {}", result);
         assertNotNull(result);
@@ -114,7 +114,7 @@ class GrepFileToolTest {
         args.put("path", tempDir.toString());
         args.put("output_mode", "count");
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Count mode result: {}", result);
         assertNotNull(result);
@@ -132,7 +132,7 @@ class GrepFileToolTest {
         args.put("output_mode", "content");
         args.put("-A", 2);
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Context after result: {}", result);
         assertNotNull(result);
@@ -151,7 +151,7 @@ class GrepFileToolTest {
         args.put("output_mode", "content");
         args.put("-B", 2);
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Context before result: {}", result);
         assertNotNull(result);
@@ -169,7 +169,7 @@ class GrepFileToolTest {
         args.put("output_mode", "content");
         args.put("-C", 1);
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Context around result: {}", result);
         assertNotNull(result);
@@ -188,7 +188,7 @@ class GrepFileToolTest {
         args.put("output_mode", "content");
         args.put("-n", true);
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Line numbers result: {}", result);
         assertNotNull(result);
@@ -205,7 +205,7 @@ class GrepFileToolTest {
         args.put("path", tempDir.toString());
         args.put("multiline", true);
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Multiline mode result: {}", result);
         assertNotNull(result);
@@ -221,7 +221,7 @@ class GrepFileToolTest {
         args.put("path", tempDir.toString());
         args.put("output_mode", "content");
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Regex pattern result: {}", result);
         assertNotNull(result);
@@ -238,7 +238,7 @@ class GrepFileToolTest {
         args.put("pattern", "nonexistent");
         args.put("path", tempDir.toString());
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("No matches result: {}", result);
         assertNotNull(result);
@@ -257,7 +257,7 @@ class GrepFileToolTest {
         args.put("path", tempDir.toString());
         args.put("type", "java");
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Type filter result: {}", result);
         assertNotNull(result);
@@ -276,7 +276,7 @@ class GrepFileToolTest {
         args.put("pattern", "test content");
         args.put("path", tempDir.toString());  // Still use path to avoid searching entire codebase
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Search result: {}", result);
         assertNotNull(result);
@@ -289,7 +289,7 @@ class GrepFileToolTest {
         args.put("pattern", "[invalid(regex");
         args.put("path", tempDir.toString());
 
-        String result = grepFileTool.call(JSON.toJSON(args));
+        String result = grepFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Invalid pattern result: {}", result);
         assertNotNull(result);

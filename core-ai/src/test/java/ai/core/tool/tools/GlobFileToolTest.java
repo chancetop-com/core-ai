@@ -45,7 +45,7 @@ class GlobFileToolTest {
         args.put("pattern", "*.java");
         args.put("path", tempDir.toString());
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob *.java result: {}", result);
         assertNotNull(result);
@@ -67,7 +67,7 @@ class GlobFileToolTest {
         args.put("pattern", "**/*.js");
         args.put("path", tempDir.toString());
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob **/*.js result: {}", result);
         assertNotNull(result);
@@ -90,7 +90,7 @@ class GlobFileToolTest {
         args.put("pattern", "src/component/*.tsx");
         args.put("path", tempDir.toString());
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob src/component/*.tsx result: {}", result);
         assertNotNull(result);
@@ -110,7 +110,7 @@ class GlobFileToolTest {
         args.put("pattern", "*.java");
         args.put("path", tempDir.toString());
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob no matches result: {}", result);
         assertNotNull(result);
@@ -122,7 +122,7 @@ class GlobFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("pattern", "*.java");
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob without path result: {}", result);
         assertNotNull(result);
@@ -136,7 +136,7 @@ class GlobFileToolTest {
         args.put("pattern", "*.java");
         args.put("path", "/path/to/nonexistent/directory");
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob non-existent directory result: {}", result);
         assertNotNull(result);
@@ -152,7 +152,7 @@ class GlobFileToolTest {
         args.put("pattern", "*.txt");
         args.put("path", file.toString());
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob path is file result: {}", result);
         assertNotNull(result);
@@ -165,7 +165,7 @@ class GlobFileToolTest {
         args.put("pattern", null);
         args.put("path", tempDir.toString());
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob null pattern result: {}", result);
         assertNotNull(result);
@@ -184,7 +184,7 @@ class GlobFileToolTest {
         args.put("pattern", "*.{tsx,ts}");
         args.put("path", tempDir.toString());
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob multiple extensions result: {}", result);
         assertNotNull(result);
@@ -202,7 +202,7 @@ class GlobFileToolTest {
         args.put("pattern", "*.json");
         args.put("path", tempDir.toString());
 
-        String result = globFileTool.call(JSON.toJSON(args));
+        String result = globFileTool.execute(JSON.toJSON(args)).getResult();
 
         LOGGER.info("Glob *.json result: {}", result);
         assertNotNull(result);

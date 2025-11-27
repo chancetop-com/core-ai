@@ -101,7 +101,7 @@ class RagToolTest {
         String jsonArgs = "{\"topK\":5,\"threshold\":0.3}";
         logger.info("Testing RAG tool with missing query: {}", jsonArgs);
 
-        String result = ragTool.call(jsonArgs);
+        String result = ragTool.execute(jsonArgs).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -114,7 +114,7 @@ class RagToolTest {
         String jsonArgs = "{\"query\":\"\",\"topK\":5,\"threshold\":0.3}";
         logger.info("Testing RAG tool with empty query: {}", jsonArgs);
 
-        String result = ragTool.call(jsonArgs);
+        String result = ragTool.execute(jsonArgs).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -311,7 +311,7 @@ class RagToolTest {
         String invalidJson = "not a json string";
         logger.info("Testing RAG tool with invalid JSON: {}", invalidJson);
 
-        String result = ragTool.call(invalidJson);
+        String result = ragTool.execute(invalidJson).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
