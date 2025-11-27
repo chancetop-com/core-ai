@@ -61,7 +61,6 @@ public class OpenAIProvider {
         StructuredResponseCreateParams<T> createParams = ResponseCreateParams.builder()
                 .text(responseFormat)
                 .model(modelName)
-                .temperature(config.getTemperature())
                 .inputOfResponse(List.of(userInput))
                 .user(userId)
                 .build();
