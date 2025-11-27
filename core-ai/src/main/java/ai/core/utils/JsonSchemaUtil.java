@@ -104,12 +104,12 @@ public class JsonSchemaUtil {
     }
 
     public static JsonSchema toJsonSchema(List<ToolCallParameter> parameters) {
-        return buildSchema(parameters, JsonSchema.PropertyType.OBJECT, null);
+        return buildSchema(parameters, null);
     }
 
-    private static JsonSchema buildSchema(List<ToolCallParameter> parameters, JsonSchema.PropertyType propertyType, ToolCallParameter parent) {
+    private static JsonSchema buildSchema(List<ToolCallParameter> parameters, ToolCallParameter parent) {
         var schema = new JsonSchema();
-        schema.type = propertyType;
+        schema.type = JsonSchema.PropertyType.OBJECT;
         if (parent != null) {
             schema.enums = parent.getItemEnums();
         }
@@ -131,7 +131,7 @@ public class JsonSchemaUtil {
         property.format = p.getFormat();
         if (property.type == JsonSchema.PropertyType.ARRAY) {
             if (p.getItems() != null && !p.getItems().isEmpty()) {
-                property.items = buildSchema(p.getItems(), JsonSchema.PropertyType.OBJECT, p);
+                property.items = buildSchema(p.getItems(), p);
             } else {
                 property.items = new JsonSchema();
                 property.items.type = toPropertyType(p.getItemType());
