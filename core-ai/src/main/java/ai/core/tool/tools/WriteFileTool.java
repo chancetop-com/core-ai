@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
@@ -18,9 +19,10 @@ import java.util.Map;
  * @author stephen
  */
 public class WriteFileTool extends ToolCall {
+    public static final String TOOL_NAME = "write_file";
     private static final Logger LOGGER = LoggerFactory.getLogger(WriteFileTool.class);
 
-    private static final String WRITE_FILE_TOOL_DESC = """
+    private static final String TOOL_DESC = """
             Writes a file to the local filesystem.
 
 
@@ -47,17 +49,23 @@ public class WriteFileTool extends ToolCall {
     }
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             var argsMap = JSON.fromJSON(Map.class, text);
             var filePath = (String) argsMap.get("file_path");
             var content = (String) argsMap.get("content");
 
-            return writeFile(filePath, content);
+            var result = writeFile(filePath, content);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("filePath", filePath)
+                .withStats("contentLength", content != null ? content.length() : 0);
         } catch (Exception e) {
             var error = "Failed to parse write file arguments: " + e.getMessage();
             LOGGER.error(error, e);
-            return error;
+            return ToolCallResult.failed(error)
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -119,8 +127,8 @@ public class WriteFileTool extends ToolCall {
         }
 
         public WriteFileTool build() {
-            this.name("write_file");
-            this.description(WRITE_FILE_TOOL_DESC);
+            this.name(TOOL_NAME);
+            this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "file_path", "Absolute path to the file to write (must be absolute, not relative)").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "content", "The content to write to the file").required()

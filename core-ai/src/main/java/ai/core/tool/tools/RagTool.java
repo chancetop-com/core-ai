@@ -10,6 +10,7 @@ import ai.core.rag.SimilaritySearchRequest;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
+import ai.core.tool.ToolCallResult;
 import ai.core.vectorstore.VectorStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,7 +63,8 @@ public class RagTool extends ToolCall {
     }
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             // Parse input parameters
             ObjectMapper mapper = new ObjectMapper();
@@ -70,7 +72,8 @@ public class RagTool extends ToolCall {
 
             String query = params.has("query") ? params.get("query").asText() : "";
             if (query.isEmpty()) {
-                return "Error: 'query' parameter is required";
+                return ToolCallResult.failed("Error: 'query' parameter is required")
+                    .withDuration(System.currentTimeMillis() - startTime);
             }
 
             // Get optional parameters with defaults
@@ -78,10 +81,15 @@ public class RagTool extends ToolCall {
             double threshold = params.has("threshold") ? params.get("threshold").asDouble() : defaultThreshold;
 
             // Execute RAG pipeline
-            return executeRag(query, topK, threshold);
+            var result = executeRag(query, topK, threshold);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("query", query)
+                .withStats("topK", topK);
 
         } catch (Exception e) {
-            return "Error executing RAG query: " + e.getMessage();
+            return ToolCallResult.failed("Error executing RAG query: " + e.getMessage())
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 

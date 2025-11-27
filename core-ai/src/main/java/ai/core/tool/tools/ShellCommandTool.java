@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
+import ai.core.tool.ToolCallResult;
 import ai.core.utils.InputStreamUtil;
 import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
@@ -21,9 +22,11 @@ import java.util.concurrent.TimeUnit;
  * @author stephen
  */
 public class ShellCommandTool extends ToolCall {
+    public static final String TOOL_NAME = "run_bash_command";
+
     private static final long DEFAULT_TIMEOUT_SECONDS = 30;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
-    private static final String SHELL_COMMAND_TOOL_DESC = """
+    private static final String TOOL_DESC = """
             Executes a given bash command in a persistent shell session with optional
             timeout, ensuring proper handling and security measures.
             
@@ -285,14 +288,16 @@ public class ShellCommandTool extends ToolCall {
     }
 
     @Override
-    public String call(String text) {
+    public ToolCallResult execute(String text) {
+        long startTime = System.currentTimeMillis();
         try {
             var argsMap = JSON.fromJSON(Map.class, text);
             var workspaceDir = (String) argsMap.get("workspace_dir");
             var command = (String) argsMap.get("command");
 
             if (Strings.isBlank(command)) {
-                return "Error: command parameter is required";
+                return ToolCallResult.failed("Error: command parameter is required")
+                    .withDuration(System.currentTimeMillis() - startTime);
             }
 
             // Build command list properly to handle arguments with spaces
@@ -301,11 +306,15 @@ public class ShellCommandTool extends ToolCall {
             var commands = new ArrayList<>(Arrays.asList(prefixParts));
             commands.add(command);  // Add command as a single argument
 
-            return exec(commands, workspaceDir, DEFAULT_TIMEOUT_SECONDS);
+            var result = exec(commands, workspaceDir, DEFAULT_TIMEOUT_SECONDS);
+            return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("command", command.length() > 50 ? command.substring(0, 50) + "..." : command);
         } catch (Exception e) {
             var error = "Failed to parse shell command arguments: " + e.getMessage();
             LOGGER.error(error, e);
-            return error;
+            return ToolCallResult.failed(error)
+                .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -316,8 +325,8 @@ public class ShellCommandTool extends ToolCall {
         }
 
         public ShellCommandTool build() {
-            this.name("run_bash_command");
-            this.description(SHELL_COMMAND_TOOL_DESC);
+            this.name(TOOL_NAME);
+            this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "workspace_dir", "dir of command to exec"),
                     ToolCallParameters.ParamSpec.of(String.class, "command", "command string").required()

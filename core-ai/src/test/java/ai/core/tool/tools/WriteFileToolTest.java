@@ -52,7 +52,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", content);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Write new file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -73,7 +73,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", newContent);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Overwrite file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -92,7 +92,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", content);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Write empty file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -112,7 +112,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", content);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Write multiline result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -128,7 +128,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", null);
         args.put("content", "Some content");
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Null path result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -141,7 +141,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", "");
         args.put("content", "Some content");
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Empty path result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -156,7 +156,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", null);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Null content result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -172,7 +172,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", nestedFile.toString());
         args.put("content", content);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Write nested file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -195,7 +195,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", content);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Write special chars result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -214,7 +214,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", content);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Write unicode result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -238,7 +238,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", content);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Write large file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -259,7 +259,7 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", content);
-        String result = writeFileTool.call(JSON.toJSON(args));
+        String result = writeFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Character count result: {}", result);
         assertNotNull(result, "Result should not be null");

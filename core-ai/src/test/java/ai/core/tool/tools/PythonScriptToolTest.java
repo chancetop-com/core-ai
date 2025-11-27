@@ -128,7 +128,7 @@ class PythonScriptToolTest {
         String jsonArgs = String.format("{\"code\":\"%s\"}", pythonCode);
 
         logger.info("Testing direct tool call with args: {}", jsonArgs);
-        String result = pythonScriptTool.call(jsonArgs);
+        String result = pythonScriptTool.execute(jsonArgs).getResult();
         logger.info("Direct execution result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -145,7 +145,7 @@ class PythonScriptToolTest {
         String jsonArgs = String.format("{\"code\":\"%s\"}", pythonCode);
 
         logger.info("Testing multi-line Python script: {}", jsonArgs);
-        String result = pythonScriptTool.call(jsonArgs);
+        String result = pythonScriptTool.execute(jsonArgs).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -162,7 +162,7 @@ class PythonScriptToolTest {
         String jsonArgs = String.format("{\"code\":\"%s\"}", pythonCode);
 
         logger.info("Testing Python script with error: {}", jsonArgs);
-        String result = pythonScriptTool.call(jsonArgs);
+        String result = pythonScriptTool.execute(jsonArgs).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -176,7 +176,7 @@ class PythonScriptToolTest {
         String jsonArgs = "{}";
 
         logger.info("Testing with missing code parameter: {}", jsonArgs);
-        String result = pythonScriptTool.call(jsonArgs);
+        String result = pythonScriptTool.execute(jsonArgs).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -193,7 +193,7 @@ class PythonScriptToolTest {
         String jsonArgs = String.format("{\"code\":\"%s\"}", pythonCode);
 
         logger.info("Testing Python script with imports: {}", jsonArgs);
-        String result = pythonScriptTool.call(jsonArgs);
+        String result = pythonScriptTool.execute(jsonArgs).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -210,7 +210,7 @@ class PythonScriptToolTest {
         String jsonArgs = String.format("{\"code\":\"%s\"}", pythonCode);
 
         logger.info("Testing empty Python script: {}", jsonArgs);
-        String result = pythonScriptTool.call(jsonArgs);
+        String result = pythonScriptTool.execute(jsonArgs).getResult();
         logger.info("Result length: {}", result.length());
 
         assertNotNull(result, "Result should not be null");

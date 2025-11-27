@@ -51,7 +51,7 @@ class ReadFileToolTest {
 
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Read result:\n{}", result);
         assertNotNull(result, "Result should not be null");
@@ -70,7 +70,7 @@ class ReadFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("offset", 3);
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Read with offset result:\n{}", result);
         assertNotNull(result, "Result should not be null");
@@ -89,7 +89,7 @@ class ReadFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("limit", 2);
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Read with limit result:\n{}", result);
         assertNotNull(result, "Result should not be null");
@@ -108,7 +108,7 @@ class ReadFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("offset", 2);
         args.put("limit", 2);
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Read with offset and limit result:\n{}", result);
         assertNotNull(result, "Result should not be null");
@@ -122,7 +122,7 @@ class ReadFileToolTest {
     void testReadNonExistentFile() {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", "/path/to/nonexistent/file.txt");
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Non-existent file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -138,7 +138,7 @@ class ReadFileToolTest {
 
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testDir.toString());
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Directory read result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -154,7 +154,7 @@ class ReadFileToolTest {
 
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Empty file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -166,7 +166,7 @@ class ReadFileToolTest {
     void testReadFileWithNullPath() {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", null);
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Null path result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -178,7 +178,7 @@ class ReadFileToolTest {
     void testReadFileWithEmptyPath() {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", "");
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Empty path result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -195,7 +195,7 @@ class ReadFileToolTest {
 
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Long line result length: {}", result.length());
         assertNotNull(result, "Result should not be null");
@@ -212,7 +212,7 @@ class ReadFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("offset", 10);
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Offset beyond file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -228,7 +228,7 @@ class ReadFileToolTest {
 
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
-        String result = readFileTool.call(JSON.toJSON(args));
+        String result = readFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Format result:\n{}", result);
         assertNotNull(result, "Result should not be null");

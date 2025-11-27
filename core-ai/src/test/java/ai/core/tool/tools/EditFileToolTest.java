@@ -54,7 +54,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "Hello World");
         args.put("new_string", "Hi Universe");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Simple edit result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -75,7 +75,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "Line 2\nLine 3");
         args.put("new_string", "Updated Line 2\nUpdated Line 3");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Multiline edit result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -97,7 +97,7 @@ class EditFileToolTest {
         args.put("old_string", "foo");
         args.put("new_string", "qux");
         args.put("replace_all", true);
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Replace all result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -119,7 +119,7 @@ class EditFileToolTest {
         args.put("old_string", "foo");
         args.put("new_string", "qux");
         args.put("replace_all", false);
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Multiple occurrences result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -140,7 +140,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "Goodbye");
         args.put("new_string", "Hi");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Non-existent string result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -154,7 +154,7 @@ class EditFileToolTest {
         args.put("file_path", "/path/to/nonexistent/file.txt");
         args.put("old_string", "old");
         args.put("new_string", "new");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Non-existent file result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -168,7 +168,7 @@ class EditFileToolTest {
         args.put("file_path", null);
         args.put("old_string", "old");
         args.put("new_string", "new");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Null file path result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -185,7 +185,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", null);
         args.put("new_string", "new");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Null old_string result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -202,7 +202,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "Hello");
         args.put("new_string", null);
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Null new_string result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -219,7 +219,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "Hello");
         args.put("new_string", "Hello");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Same strings result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -237,7 +237,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "    public void test()");
         args.put("new_string", "    public void testMethod()");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Whitespace edit result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -257,7 +257,7 @@ class EditFileToolTest {
         args.put("file_path", testDir.toString());
         args.put("old_string", "old");
         args.put("new_string", "new");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Edit directory result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -275,7 +275,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "\"Hello\\nWorld\"");
         args.put("new_string", "\"Hi\\nUniverse\"");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Special characters edit result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -296,7 +296,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", "你好世界");
         args.put("new_string", "Hello World");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Unicode edit result: {}", result);
         assertNotNull(result, "Result should not be null");
@@ -318,7 +318,7 @@ class EditFileToolTest {
         args.put("file_path", testFile.toString());
         args.put("old_string", largeBlock);
         args.put("new_string", "Updated Block");
-        String result = editFileTool.call(JSON.toJSON(args));
+        String result = editFileTool.execute(JSON.toJSON(args)).getResult();
 
         logger.info("Large string edit result: {}", result);
         assertNotNull(result, "Result should not be null");
