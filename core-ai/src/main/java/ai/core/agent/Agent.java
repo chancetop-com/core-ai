@@ -334,7 +334,7 @@ public class Agent extends Node<Agent> {
 
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
-            addMessage(buildSystemMessageWithlongTermMemory(query, variables));
+            addMessage(buildSystemMessageWithLongTermMemory(query, variables));
             // add task context if existed
             addTaskHistoriesToMessages();
         }
@@ -372,7 +372,7 @@ public class Agent extends Node<Agent> {
     }
 
 
-    private Message buildSystemMessageWithlongTermMemory(String query, Map<String, Object> variables) {
+    private Message buildSystemMessageWithLongTermMemory(String query, Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && isUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
@@ -381,8 +381,8 @@ public class Agent extends Node<Agent> {
         if (variables != null) var.putAll(variables);
         var.putAll(getSystemVariables());
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
-        if (!getlongTermMemory().retrieve(query).isEmpty()) {
-            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + getlongTermMemory().toString();
+        if (!getLongTermMemory().retrieve(query).isEmpty()) {
+            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + getLongTermMemory().toString();
         }
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
@@ -460,15 +460,15 @@ public class Agent extends Node<Agent> {
         return this.toolCalls;
     }
 
-    public NaiveMemory getlongTermMemory() {
+    public NaiveMemory getLongTermMemory() {
         return this.longTermMemory;
     }
 
-    public void addlongTermMemory(String memory) {
+    public void addLongTermMemory(String memory) {
         this.longTermMemory.add(memory);
     }
 
-    public void clearlongTermMemory() {
+    public void clearLongTermMemory() {
         this.longTermMemory.clear();
     }
 
