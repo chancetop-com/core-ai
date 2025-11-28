@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
@@ -299,23 +300,7 @@ public class Agent extends Node<Agent> {
     }
 
     private StreamingCallback elseDefaultCallback() {
-        if (getStreamingCallback() == null) {
-            return new StreamingCallback() {
-                @Override
-                public void onChunk(String chunk) {
-                }
-
-                @Override
-                public void onComplete() {
-                }
-
-                @Override
-                public void onError(Throwable error) {
-                }
-            };
-        } else {
-            return getStreamingCallback();
-        }
+        return getStreamingCallback() == null ? new DefaultStreamingCallback() : getStreamingCallback();
     }
 
     public List<Message> handleFunc(Message funcMsg) {
