@@ -31,6 +31,7 @@ import ai.core.tool.ToolExecutor;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
 import core.framework.util.Maps;
+import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +42,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -250,11 +252,15 @@ public class Agent extends Node<Agent> {
             // add msg into global
             turnMsgList.forEach(this::addMessage);
             // include agent loop msg ,but not tool msg
-            agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(m -> m.content).reduce((s1, s2) -> s1 + s2));
+            // fix Optional[]
+            agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(m -> m.content).collect(Collectors.joining("")));
             currentIteCount++;
         } while (lastIsToolMsg() && currentIteCount < maxTurnNumber);
         // set out
         setOutput(agentOut.toString());
+        if (currentIteCount >= maxTurnNumber) {
+            logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
+        }
     }
 
     // Public accessors for reflection executor
@@ -275,6 +281,9 @@ public class Agent extends Node<Agent> {
         var choice = handLLM(messages, tools, model);
         resultMsg.add(choice.message);
         if (choice.finishReason == FinishReason.TOOL_CALLS) {
+            if (!Strings.isBlank(choice.message.content)) {
+                logger.info(choice.message.content);
+            }
             var funcMsg = handleFunc(choice.message);
             resultMsg.addAll(funcMsg);
         }
