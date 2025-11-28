@@ -8,6 +8,8 @@ import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
+import ai.core.mcp.client.McpClientManager;
+import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.persistence.PersistenceProviderType;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.persistence.providers.FilePersistenceProvider;
@@ -30,6 +32,7 @@ import ai.core.vectorstore.vectorstores.milvus.MilvusConfig;
 import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
 import com.azure.ai.inference.ModelServiceVersion;
 import com.azure.ai.openai.OpenAIServiceVersion;
+import core.framework.json.JSON;
 import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +40,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -53,6 +57,7 @@ public class MultiAgentModule extends Module {
         configTelemetry();
         configLangfusePrompts();
         configLLMProvider();
+        configMcpClient();
     }
 
     private void configPersistenceProvider() {
@@ -285,6 +290,33 @@ public class MultiAgentModule extends Module {
     private void injectTracerIfAvailable(LLMProvider provider) {
         if (tracer != null) {
             provider.setTracer(tracer);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void configMcpClient() {
+        property("mcp.servers.json").ifPresent(json -> {
+            try {
+                var mcpServersConfig = (Map<String, Object>) JSON.fromJSON(Map.class, json);
+                var manager = McpClientManager.fromConfig(mcpServersConfig);
+                manager.warmup();
+                bind(manager);
+                McpClientManagerRegistry.setManager(manager);
+
+                // Register shutdown hook to close MCP connections
+                onShutdown(manager::close);
+
+                logger.info("McpClientManager initialized with {} servers: {}",
+                        manager.getServerNames().size(),
+                        manager.getServerNames());
+            } catch (Exception e) {
+                logger.error("Failed to parse mcp.servers.json", e);
+            }
+        });
+
+        if (property("mcp.servers.json").isEmpty()) {
+            logger.info("MCP client disabled - mcp.servers.json not configured");
+            McpClientManagerRegistry.clear();
         }
     }
 }

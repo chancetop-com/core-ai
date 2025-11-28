@@ -2,6 +2,7 @@ package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
+import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.memory.memories.NaiveMemory;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -12,6 +13,7 @@ import ai.core.reflection.ReflectionListener;
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
+import ai.core.tool.mcp.McpToolCalls;
 import core.framework.util.Lists;
 
 import java.util.ArrayList;
@@ -47,8 +49,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
-    public AgentBuilder maxToolCallCount(Integer maxToolCallCount) {
-        this.maxTurnNumber = maxToolCallCount;
+    public AgentBuilder maxTurn(Integer maxTurnNumber) {
+        this.maxTurnNumber = maxTurnNumber;
         return this;
     }
 
@@ -74,6 +76,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder toolCalls(List<? extends ToolCall> toolCalls) {
         this.toolCalls = new ArrayList<>(toolCalls);
+        return this;
+    }
+
+    public AgentBuilder mcpServers(List<String> serverNames, List<String> includes) {
+        var manager = McpClientManagerRegistry.getManager();
+        if (manager == null) {
+            throw new IllegalStateException("MCP servers requested but McpClientManager is not configured. "
+                    + "Please configure mcp.servers in your properties file.");
+        }
+        this.toolCalls.addAll(McpToolCalls.from(manager, serverNames, includes));
         return this;
     }
 

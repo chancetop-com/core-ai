@@ -31,6 +31,8 @@ import com.azure.core.credential.AzureKeyCredential;
 import com.azure.core.credential.KeyCredential;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.HttpClientOptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -44,6 +46,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author stephen
  */
 public class AzureOpenAIProvider extends LLMProvider {
+    private final Logger logger = LoggerFactory.getLogger(AzureOpenAIProvider.class);
     private final OpenAIClient chatClient;
     private final OpenAIAsyncClient chatAsyncClient;
 
@@ -96,6 +99,7 @@ public class AzureOpenAIProvider extends LLMProvider {
                         callback.onError(error);
                     } catch (Exception e) {
                         // Ignore exceptions from callback to prevent blocking
+                        logger.warn("Error in streaming callback onError: {}", e.getMessage());
                     }
                 },
                 () -> {

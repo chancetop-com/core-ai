@@ -112,7 +112,7 @@ class AgentLifecycleTest {
         when(llmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class))).thenReturn(crs);
         var agent = Agent.builder()
                 .llmProvider(llmProvider)
-                .maxToolCallCount(1)
+                .maxTurn(1)
                 .toolCalls(Functions.from(flc, "queryPerson"))
                 .agentLifecycle(List.of(flcInner))
                 .build();
