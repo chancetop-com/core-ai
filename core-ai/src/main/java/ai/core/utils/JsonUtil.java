@@ -115,4 +115,10 @@ public class JsonUtil {
         if (instance == null) throw new Error("instance must not be null");
         return OBJECT_MAPPER.convertValue(instance, Map.class);
     }
+
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> toMap(String json) {
+        if (json == null) throw new Error("json must not be null");
+        return fromJson(Map.class, json);
+    }
 }
