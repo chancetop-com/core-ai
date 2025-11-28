@@ -14,7 +14,6 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
-import ai.core.llm.domain.RoleType;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
@@ -41,31 +40,12 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     protected CompletionResponse doCompletion(CompletionRequest dto) {
-        return chatCompletion(preprocess(dto));
+        return chatCompletion(dto);
     }
 
     @Override
     protected CompletionResponse doCompletionStream(CompletionRequest dto, StreamingCallback callback) {
-        return chatCompletionStream(preprocess(dto), callback);
-    }
-
-    public CompletionRequest preprocess(CompletionRequest dto) {
-        dto.temperature = dto.temperature != null ? dto.temperature : config.getTemperature();
-        if (dto.model.startsWith("o1") || dto.model.startsWith("o3")) {
-            dto.temperature = null;
-        }
-        if (dto.model.startsWith("gpt-5")) {
-            dto.temperature = 1.0;
-        }
-        dto.messages.forEach(message -> {
-            if (message.role == RoleType.SYSTEM && dto.model.startsWith("o1")) {
-                message.role = RoleType.USER;
-            }
-            if (message.role == RoleType.ASSISTANT && message.name == null) {
-                message.name = "assistant";
-            }
-        });
-        return dto;
+        return chatCompletionStream(dto, callback);
     }
 
     @Override
