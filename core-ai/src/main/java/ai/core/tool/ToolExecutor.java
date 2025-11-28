@@ -72,7 +72,7 @@ public class ToolExecutor {
                 return ToolCallResult.failed("This tool call requires user authentication, please ask user to confirm it.");
             }
 
-            LOGGER.info("tool call {}: {}", functionCall.function.name, functionCall.function.arguments);
+            LOGGER.info("tool {}: {}", functionCall.function.name, functionCall.function.arguments);
             long startTime = System.currentTimeMillis();
 
             // Execute tool with optional tracing
