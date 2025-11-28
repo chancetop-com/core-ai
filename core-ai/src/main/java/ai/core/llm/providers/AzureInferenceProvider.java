@@ -96,12 +96,18 @@ public class AzureInferenceProvider extends LLMProvider {
         var finishReason = new AtomicReference<String>();
         var role = new AtomicReference<RoleType>();
         var toolCalls = new ArrayList<FunctionCall>();
+        var errorRef = new AtomicReference<Throwable>();
 
         stream.subscribe(
                 completion -> handleDelta(completion, contentBuilder, finishReason, toolCalls, callback),
                 error -> {
-                    callback.onError(error);
-                    latch.countDown();
+                    errorRef.set(error);
+                    latch.countDown();  // Must countDown BEFORE callback to avoid blocking
+                    try {
+                        callback.onError(error);
+                    } catch (Exception e) {
+                        // Ignore exceptions from callback to prevent blocking
+                    }
                 },
                 () -> {
                     callback.onComplete();
@@ -129,7 +135,12 @@ public class AzureInferenceProvider extends LLMProvider {
             latch.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            callback.onError(e);
+            throw new RuntimeException("Streaming interrupted", e);
+        }
+
+        // Re-throw error from stream on main thread
+        if (errorRef.get() != null) {
+            throw new RuntimeException("Streaming failed", errorRef.get());
         }
 
         return CompletionResponse.of(choices, usage.get());
