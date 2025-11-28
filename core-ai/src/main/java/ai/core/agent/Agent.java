@@ -249,6 +249,7 @@ public class Agent extends Node<Agent> {
         do {
             // turn = call model + call func
             var turnMsgList = turn(getMessages(), toReqTools(toolCalls), model);
+            logger.info("Agent turn {}: received {} messages", currentIteCount + 1, turnMsgList.size());
             // add msg into global
             turnMsgList.forEach(this::addMessage);
             // include agent loop msg ,but not tool msg
