@@ -3,122 +3,159 @@ package ai.core.memory.memories;
 import ai.core.document.Document;
 import ai.core.document.Tokenizer;
 import ai.core.llm.LLMProvider;
-import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
-import ai.core.llm.domain.RoleType;
 import ai.core.memory.Memory;
+import ai.core.memory.MemoryType;
+import ai.core.memory.compression.CompressionStrategy;
+import ai.core.memory.compression.LLMCompressionStrategy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Set;
 
-public class ShortTermMemory extends Memory {
-    private final LinkedList<String> memoryBuffer = new LinkedList<>();
+/**
+ * Short-term memory implementation with automatic compression.
+ * Maintains recent conversation context within a token limit,
+ * automatically compressing older content into a summary when limit is exceeded.
+ *
+ * @author Xander
+ */
+public class ShortTermMemory implements Memory {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemory.class);
+    private static final int DEFAULT_TOKEN_LIMIT = 5000;
+    private static final double COMPRESSION_THRESHOLD = 0.8;
+
+    private final Deque<String> recentMessages = new LinkedList<>();
+    private final Set<Integer> seenContentHashes = new HashSet<>();
     private final int tokenLimit;
-    private final LLMProvider llmProvider;
-    private String summaryBuffer = "";
-    private static final String SUMMARIZATION_PROMPT = "Summarize the following conversation lines concisely, retaining key information to maintain context for future turns:\n";
+    private final CompressionStrategy compressionStrategy;
+
+    private String compressedSummary = "";
+
+    public ShortTermMemory(int tokenLimit, CompressionStrategy compressionStrategy) {
+        this.tokenLimit = tokenLimit;
+        this.compressionStrategy = compressionStrategy;
+    }
 
     public ShortTermMemory(int tokenLimit, LLMProvider llmProvider) {
-        this.tokenLimit = tokenLimit;
-        this.llmProvider = llmProvider;
+        this(tokenLimit, new LLMCompressionStrategy(llmProvider));
     }
 
     public ShortTermMemory(LLMProvider llmProvider) {
-        this(5000, llmProvider); // Default 2000 tokens
+        this(DEFAULT_TOKEN_LIMIT, llmProvider);
     }
 
     @Override
-    public void extractAndSave(List<Message> conversation) {
-        // STM is updated dynamically via add(), but we can sync here if needed.
-        // For now, we assume add() is called during the turn.
-        // If we need to bulk load:
-        for (Message msg : conversation) {
-            if (!memoryBuffer.contains(msg.content)) { // Simple dedup check
-                add(msg.content);
+    public String getType() {
+        return MemoryType.SHORT_TERM.getDisplayName();
+    }
+
+    @Override
+    public void save(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+        for (Message message : messages) {
+            if (message.content == null || message.content.isEmpty()) {
+                continue;
+            }
+            int contentHash = message.content.hashCode();
+            if (!seenContentHashes.contains(contentHash)) {
+                seenContentHashes.add(contentHash);
+                addMessage(message.content);
             }
         }
     }
 
     @Override
     public List<Document> retrieve(String query) {
-        // Return Summary + Buffer
-        List<Document> context = new LinkedList<>();
-        if (summaryBuffer != null && !summaryBuffer.isEmpty()) {
-            context.add(new Document("Previous Context Summary: " + summaryBuffer, null, null));
+        List<Document> result = new ArrayList<>();
+        if (compressedSummary != null && !compressedSummary.isEmpty()) {
+            result.add(new Document("[Previous Context Summary]\n" + compressedSummary, null, null));
         }
-        context.addAll(memoryBuffer.stream()
-                .map(content -> new Document(content, null, null))
-                .toList());
-        return context;
-    }
-
-    @Override
-    public void add(String text) {
-        memoryBuffer.add(text);
-        prune();
-    }
-
-    private void prune() {
-        int currentTokens = calculateTokens();
-        if (currentTokens <= tokenLimit) return;
-
-        // Buffer to hold messages to be summarized
-        StringBuilder toSummarize = new StringBuilder();
-        
-        // Remove from head until we are under limit (leaving some buffer for the new summary)
-        // Heuristic: Try to free up at least 20% of space
-        int targetTokens = (int) (tokenLimit * 0.8);
-        
-        while (currentTokens > targetTokens && !memoryBuffer.isEmpty()) {
-            String msg = memoryBuffer.pollFirst();
-            toSummarize.append(msg).append("\n");
-            currentTokens = calculateTokens();
+        for (String content : recentMessages) {
+            result.add(new Document(content, null, null));
         }
-
-        if (toSummarize.length() > 0) {
-            updateSummary(toSummarize.toString());
-        }
-    }
-
-    private int calculateTokens() {
-        int tokens = Tokenizer.tokenCount(summaryBuffer);
-        for (String msg : memoryBuffer) {
-            tokens += Tokenizer.tokenCount(msg);
-        }
-        return tokens;
-    }
-
-    private void updateSummary(String newContent) {
-        String prompt;
-        if (summaryBuffer.isEmpty()) {
-            prompt = SUMMARIZATION_PROMPT + newContent;
-        } else {
-            prompt = "Update the following summary with the new conversation lines.\n" +
-                    "Current Summary:\n" + summaryBuffer + "\n" +
-                    "New Lines:\n" + newContent + "\n" +
-                    "New Summary:";
-        }
-
-        var request = CompletionRequest.of(List.of(Message.of(RoleType.USER, prompt)),null,null,null,null);
-        // Use a separate call to avoid recursion or complex state
-        try {
-            var response = llmProvider.completion(request);
-            this.summaryBuffer = response.choices.getFirst().message.content;
-        } catch (Exception e) {
-            // Fallback: just append if LLM fails (to avoid losing info), or log error
-            this.summaryBuffer += "\n" + newContent;
-        }
+        return result;
     }
 
     @Override
     public void clear() {
-        memoryBuffer.clear();
-        summaryBuffer = "";
+        recentMessages.clear();
+        seenContentHashes.clear();
+        compressedSummary = "";
     }
 
     @Override
-    public List<Document> list() {
-        return retrieve(null);
+    public boolean isEmpty() {
+        return recentMessages.isEmpty() && (compressedSummary == null || compressedSummary.isEmpty());
+    }
+
+    private void addMessage(String content) {
+        recentMessages.addLast(content);
+        compressIfNeeded();
+    }
+
+    private void compressIfNeeded() {
+        int currentTokens = calculateTotalTokens();
+        if (currentTokens <= tokenLimit) {
+            return;
+        }
+
+        int targetTokens = (int) (tokenLimit * COMPRESSION_THRESHOLD);
+        StringBuilder contentToCompress = new StringBuilder();
+
+        while (currentTokens > targetTokens && !recentMessages.isEmpty()) {
+            String oldestMessage = recentMessages.pollFirst();
+            contentToCompress.append(oldestMessage).append('\n');
+            currentTokens = calculateTotalTokens();
+        }
+
+        if (!contentToCompress.isEmpty()) {
+            updateCompressedSummary(contentToCompress.toString());
+        }
+    }
+
+    private void updateCompressedSummary(String newContent) {
+        try {
+            compressedSummary = compressionStrategy.compressIncremental(compressedSummary, newContent);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to compress memory content, discarding overflow", e);
+        }
+    }
+
+    private int calculateTotalTokens() {
+        int tokens = Tokenizer.tokenCount(compressedSummary);
+        for (String message : recentMessages) {
+            tokens += Tokenizer.tokenCount(message);
+        }
+        return tokens;
+    }
+
+    // Accessor methods for monitoring and testing
+
+    public int getCurrentTokenCount() {
+        return calculateTotalTokens();
+    }
+
+    public int getTokenLimit() {
+        return tokenLimit;
+    }
+
+    public int getRecentMessageCount() {
+        return recentMessages.size();
+    }
+
+    public String getCompressedSummary() {
+        return compressedSummary;
+    }
+
+    public boolean hasCompressedSummary() {
+        return compressedSummary != null && !compressedSummary.isEmpty();
     }
 }

@@ -173,15 +173,21 @@ public class TemplatedAgentExample {
 
 ## Memory Systems
 
+The framework provides a three-layer memory architecture:
+- **ShortTermMemory**: Token-limited session memory with automatic compression
+- **MediumTermMemory**: Vector store based conversation summaries
+- **LongTermMemory**: Semantic facts and episodic memories stored in vector store
+
 ### 1. Short-term Memory (Session Memory)
 
 ```java
-import ai.core.memory.NaiveMemory;
+import ai.core.memory.memories.ShortTermMemory;
 
 public class MemoryAgentExample {
 
     public void demonstrateShortTermMemory() {
-        // Agents maintain session history by default
+        // Agents maintain session history by default with ShortTermMemory
+        // ShortTermMemory automatically compresses context when token limit is exceeded
         Agent agent = Agent.builder()
             .name("memory-agent")
             .llmProvider(llmProvider)
@@ -205,36 +211,27 @@ public class MemoryAgentExample {
 }
 ```
 
-### 2. Long-term Memory
+### 2. Long-term Memory with Vector Store
 
 ```java
-import ai.core.memory.Memory;
-import ai.core.memory.NaiveMemory;
+import ai.core.memory.MemoryManager;
+import ai.core.memory.memories.LongTermMemory;
+import ai.core.memory.memories.ShortTermMemory;
+import ai.core.rag.RagConfig;
+import ai.core.vectorstore.VectorStore;
 
 public class LongTermMemoryExample {
 
-    public Agent createAgentWithLongTermMemory() {
-        // Create long-term memory system
-        Memory longTermMemory = new NaiveMemory();
-
-        // Preload memory
-        longTermMemory.save("user_preferences", Map.of(
-            "name", "John",
-            "role", "Software Engineer",
-            "project", "AI Platform",
-            "tech_stack", List.of("Java", "Python", "Docker")
-        ));
-
-        longTermMemory.save("project_context", Map.of(
-            "deadline", "2024-06-30",
-            "priority", "high",
-            "team_size", 5
-        ));
+    public Agent createAgentWithLongTermMemory(VectorStore vectorStore, LLMProvider llmProvider) {
+        // Long-term memory requires a vector store for semantic search
+        // The MemoryManager is automatically initialized when RagConfig has a vectorStore
 
         return Agent.builder()
             .name("memory-enhanced-agent")
             .llmProvider(llmProvider)
-            .memory(longTermMemory)
+            .ragConfig(RagConfig.builder()
+                .vectorStore(vectorStore)
+                .build())
             .systemPrompt("""
                 You are a project assistant. Use your memory to provide personalized help.
 
@@ -244,6 +241,23 @@ public class LongTermMemoryExample {
                 - Previous conversation history
                 """)
             .build();
+    }
+
+    public void demonstrateLongTermMemory() {
+        // When the agent executes, memories are automatically:
+        // 1. Saved to ShortTermMemory (with compression when needed)
+        // 2. Saved to MediumTermMemory (conversation summaries)
+        // 3. Saved to LongTermMemory (semantic facts and episodes)
+
+        Agent agent = createAgentWithLongTermMemory(vectorStore, llmProvider);
+
+        // Conversations are automatically stored in memory layers
+        agent.execute("My name is John and I'm working on the AI Platform project");
+        agent.execute("The deadline is June 30th and the team has 5 members");
+
+        // Later queries can retrieve relevant context from long-term memory
+        AgentOutput output = agent.execute("What do you know about my project?");
+        // The agent retrieves relevant memories via similarity search
     }
 }
 ```

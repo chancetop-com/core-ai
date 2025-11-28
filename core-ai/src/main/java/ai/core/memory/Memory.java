@@ -6,18 +6,45 @@ import ai.core.llm.domain.Message;
 import java.util.List;
 
 /**
- * @author stephen
+ * Memory interface for agent memory systems.
+ * Implementations handle different memory persistence strategies (short-term, medium-term, long-term).
+ *
+ * @author Xander
  */
-public abstract class Memory {
-    public static final String PROMPT_MEMORY_TEMPLATE = "\n\n### Memory\n";
+public interface Memory {
 
-    public abstract void extractAndSave(List<Message> conversation);
+    /**
+     * Memory type identifier for context formatting.
+     */
+    String getType();
 
-    public abstract List<Document> retrieve(String query);
+    /**
+     * Save conversation messages to memory.
+     * Implementation decides how to extract and persist relevant information.
+     *
+     * @param messages conversation messages to save
+     */
+    void save(List<Message> messages);
 
-    public abstract void add(String text);
+    /**
+     * Retrieve relevant memory context for a given query.
+     *
+     * @param query the query to search for relevant memories
+     * @return list of relevant documents from memory
+     */
+    List<Document> retrieve(String query);
 
-    public abstract void clear();
+    /**
+     * Clear all stored memories.
+     */
+    void clear();
 
-    public abstract List<Document> list();
+    /**
+     * Check if memory contains any data.
+     *
+     * @return true if memory has stored content
+     */
+    default boolean isEmpty() {
+        return retrieve("").isEmpty();
+    }
 }

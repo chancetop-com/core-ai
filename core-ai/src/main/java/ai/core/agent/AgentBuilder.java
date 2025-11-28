@@ -2,6 +2,7 @@ package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
+import ai.core.memory.MemoryManager;
 import ai.core.memory.memories.LongTermMemory;
 import ai.core.memory.memories.MediumTermMemory;
 import ai.core.memory.memories.ShortTermMemory;
@@ -218,21 +219,27 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-        
-        // Initialize 3-layer memory
-        if (agent.shortTermMemory == null) {
-            agent.shortTermMemory = new ShortTermMemory(agent.getLLMProvider());
+
+        // Initialize MemoryManager with appropriate memory layers
+        initializeMemoryManager(agent);
+    }
+
+    private void initializeMemoryManager(Agent agent) {
+        if (agent.memoryManager != null) {
+            return;
         }
-        
-        // Medium and Long term memory require VectorStore and LLMProvider
+        MemoryManager memoryManager = new MemoryManager();
+
+        // Short-term memory always available (uses LLM for compression)
+        memoryManager.addMemory(new ShortTermMemory(agent.getLLMProvider()));
+
+        // Medium and long-term memory require VectorStore
         if (agent.ragConfig.vectorStore() != null && agent.llmProvider != null) {
-            if (agent.mediumTermMemory == null) {
-                agent.mediumTermMemory = new MediumTermMemory(agent.ragConfig.vectorStore(), agent.llmProvider);
-            }
-            if (agent.longTermMemory == null) {
-                agent.longTermMemory = new LongTermMemory(agent.ragConfig.vectorStore(), agent.llmProvider);
-            }
+            memoryManager.addMemory(new MediumTermMemory(agent.ragConfig.vectorStore(), agent.llmProvider));
+            memoryManager.addMemory(new LongTermMemory(agent.ragConfig.vectorStore(), agent.llmProvider));
         }
+
+        agent.memoryManager = memoryManager;
     }
 
     /**

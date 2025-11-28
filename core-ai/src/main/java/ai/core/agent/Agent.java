@@ -13,10 +13,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
-import ai.core.memory.memories.LongTermMemory;
-import ai.core.memory.memories.MediumTermMemory;
-import ai.core.memory.memories.NaiveMemory;
-import ai.core.memory.memories.ShortTermMemory;
+import ai.core.memory.MemoryManager;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -66,9 +63,7 @@ public class Agent extends Node<Agent> {
     String model;
     ReflectionConfig reflectionConfig;
     ReflectionListener reflectionListener;
-    ShortTermMemory shortTermMemory;
-    MediumTermMemory mediumTermMemory;
-    LongTermMemory longTermMemory;
+    MemoryManager memoryManager;
     Boolean useGroupContext;
     Integer maxTurnNumber;
     Boolean authenticated = false;
@@ -155,9 +150,9 @@ public class Agent extends Node<Agent> {
     }
 
     private void saveMemory() {
-        if (shortTermMemory != null) shortTermMemory.extractAndSave(getMessages());
-        if (mediumTermMemory != null) mediumTermMemory.extractAndSave(getMessages());
-        if (longTermMemory != null) longTermMemory.extractAndSave(getMessages());
+        if (memoryManager != null) {
+            memoryManager.saveAll(getMessages());
+        }
     }
 
     // Execute reflection loop to iteratively improve the solution
@@ -225,13 +220,11 @@ public class Agent extends Node<Agent> {
     private boolean isValidEvaluation(ReflectionEvaluation evaluation) {
         return evaluation.getScore() >= 1 && evaluation.getScore() <= 10;
     }
-
     private boolean shouldTerminateReflection(ReflectionEvaluation eval, int round) {
         if (eval.isPass() && eval.getScore() >= 8) return true;
         if (!eval.isShouldContinue()) return true;
         return round >= reflectionConfig.minRound() && eval.getScore() >= 8;
     }
-
     private void notifyTerminationReason(ReflectionEvaluation evaluation, int currentRound) {
         if (reflectionListener == null) return;
 
@@ -241,7 +234,6 @@ public class Agent extends Node<Agent> {
             reflectionListener.onNoImprovement(this, evaluation.getScore(), currentRound);
         }
     }
-
     private ReflectionStatus determineCompletionStatus(ReflectionHistory history) {
         int completedRounds = history.getRounds().size();
         if (completedRounds >= reflectionConfig.maxRound()) return ReflectionStatus.COMPLETED_MAX_ROUNDS;
@@ -254,7 +246,6 @@ public class Agent extends Node<Agent> {
         return ReflectionStatus.COMPLETED_SUCCESS;
     }
 
-    // Public method for chat execution (used by executeAgentFlow)
     public void chatTurns(String query, Map<String, Object> variables) {
         buildUserQueryToMessage(query, variables);
         var currentIteCount = 0;
@@ -272,7 +263,6 @@ public class Agent extends Node<Agent> {
         setOutput(agentOut.toString());
     }
 
-    // Public accessors for reflection executor
     public Double getTemperature() {
         return temperature;
     }
@@ -295,45 +285,33 @@ public class Agent extends Node<Agent> {
         }
         return resultMsg;
     }
-
     private boolean lastIsToolMsg() {
         return RoleType.TOOL == getMessages().getLast().role;
     }
-
     private Choice handLLM(List<Message> messages, List<Tool> tools, String model) {
         var req = CompletionRequest.of(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), model, this.getName());
         return aroundLLM(r -> llmProvider.completionStream(r, elseDefaultCallback()), req);
     }
-
     private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
-
         var resp = func.apply(request);
-
         agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
         return resp.choices.getFirst();
     }
-
     private StreamingCallback elseDefaultCallback() {
         if (getStreamingCallback() == null) {
             return new StreamingCallback() {
                 @Override
-                public void onChunk(String chunk) {
-                }
-
+                public void onChunk(String chunk) { }
                 @Override
-                public void onComplete() {
-                }
-
+                public void onComplete() { }
                 @Override
-                public void onError(Throwable error) {
-                }
+                public void onError(Throwable error) { }
             };
         } else {
             return getStreamingCallback();
         }
     }
-
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream()
                 .map(tool -> {
@@ -345,7 +323,6 @@ public class Agent extends Node<Agent> {
                     return Message.of(RoleType.TOOL, callResult, tool.function.name, tool.id, null, null);
                 }).toList();
     }
-
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessageWithMemory(query, variables));
@@ -362,11 +339,9 @@ public class Agent extends Node<Agent> {
         removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
     }
-
     private List<Tool> toReqTools(List<ToolCall> toolCalls) {
         return toolCalls.stream().map(ToolCall::toTool).toList();
     }
-
     private void removeLastAssistantToolCallMessageIfNotToolResult(Message reqMsg) {
         var lastMessage = getMessages().getLast();
         if (lastMessage.role == RoleType.ASSISTANT
@@ -395,22 +370,13 @@ public class Agent extends Node<Agent> {
         if (variables != null) var.putAll(variables);
         var.putAll(getSystemVariables());
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
-        
-        StringBuilder memoryContext = new StringBuilder();
-        if (shortTermMemory != null && !shortTermMemory.retrieve(query).isEmpty()) {
-            memoryContext.append("\nShort Term Memory:\n").append(shortTermMemory.retrieve(query));
+
+        if (memoryManager != null && memoryManager.hasMemory()) {
+            String memoryContext = memoryManager.retrieveAsContext(query);
+            if (!memoryContext.isEmpty()) {
+                prompt += MemoryManager.PROMPT_MEMORY_TEMPLATE + memoryContext;
+            }
         }
-        if (mediumTermMemory != null && !mediumTermMemory.retrieve(query).isEmpty()) {
-            memoryContext.append("\nMedium Term Memory:\n").append(mediumTermMemory.retrieve(query));
-        }
-        if (longTermMemory != null && !longTermMemory.retrieve(query).isEmpty()) {
-            memoryContext.append("\nLong Term Memory:\n").append(longTermMemory.retrieve(query));
-        }
-        
-        if (memoryContext.length() > 0) {
-            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + memoryContext.toString();
-        }
-        
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
 
@@ -474,67 +440,37 @@ public class Agent extends Node<Agent> {
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
     }
 
-
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
     }
-
     public ReflectionConfig getReflectionConfig() {
         return this.reflectionConfig;
     }
-
     public List<ToolCall> getToolCalls() {
         return this.toolCalls;
     }
-
-    public ShortTermMemory getShortTermMemory() {
-        return this.shortTermMemory;
+    public MemoryManager getMemoryManager() {
+        return this.memoryManager;
     }
-
-    public void setShortTermMemory(ShortTermMemory shortTermMemory) {
-        this.shortTermMemory = shortTermMemory;
+    public void setMemoryManager(MemoryManager memoryManager) {
+        this.memoryManager = memoryManager;
     }
-
-    public MediumTermMemory getMediumTermMemory() {
-        return this.mediumTermMemory;
-    }
-
-    public void setMediumTermMemory(MediumTermMemory mediumTermMemory) {
-        this.mediumTermMemory = mediumTermMemory;
-    }
-
-    public LongTermMemory getLongTermMemory() {
-        return this.longTermMemory;
-    }
-
-    public void setLongTermMemory(LongTermMemory longTermMemory) {
-        this.longTermMemory = longTermMemory;
-    }
-
     public void setModel(String model) {
         this.model = model;
     }
-
     public Message getLastToolCallMessage() {
         for (var msg : getMessages().reversed()) {
-            if (msg.role == RoleType.TOOL) {
-                return msg;
-            }
+            if (msg.role == RoleType.TOOL) return msg;
         }
         return null;
     }
-
     public String getSystemPrompt() {
         return systemPrompt;
     }
-
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
     }
-
     public void setToolCalls(List<ToolCall> toolCalls) {
         this.toolCalls = toolCalls;
     }
-
 }
-

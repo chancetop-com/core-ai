@@ -1,87 +1,72 @@
 package ai.core.memory.memories;
 
-import ai.core.document.Document;
 import ai.core.llm.LLMProvider;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.Message;
-import ai.core.llm.domain.RoleType;
-import ai.core.memory.Memory;
+import ai.core.memory.MemoryType;
+import ai.core.memory.compression.CompressionStrategy;
+import ai.core.memory.compression.LLMCompressionStrategy;
 import ai.core.vectorstore.VectorStore;
-import ai.core.rag.SimilaritySearchRequest;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class MediumTermMemory extends Memory {
-    private final VectorStore vectorStore;
-    private final LLMProvider llmProvider;
-    private static final String SUMMARY_PROMPT = "Please summarize the following conversation into a concise paragraph, focusing on the key topics and decisions made:\n";
+/**
+ * Medium-term memory implementation using vector store for persistence.
+ * Stores both full conversation logs and summaries for semantic retrieval.
+ * Suitable for session-level context that spans multiple interactions.
+ *
+ * @author Xander
+ */
+public class MediumTermMemory extends VectorStoreMemory {
+    private static final int DEFAULT_TOP_K = 5;
+    private static final double DEFAULT_THRESHOLD = 0.7;
+    private static final String SUMMARY_PREFIX = "[Session Summary] ";
+    private static final String CONVERSATION_PREFIX = "[Conversation Log] ";
+
+    private final CompressionStrategy compressionStrategy;
 
     public MediumTermMemory(VectorStore vectorStore, LLMProvider llmProvider) {
-        this.vectorStore = vectorStore;
-        this.llmProvider = llmProvider;
+        this(vectorStore, llmProvider, DEFAULT_TOP_K, DEFAULT_THRESHOLD);
+    }
+
+    public MediumTermMemory(VectorStore vectorStore, LLMProvider llmProvider, int topK, double threshold) {
+        super(vectorStore, llmProvider, topK, threshold);
+        this.compressionStrategy = new LLMCompressionStrategy(llmProvider);
+    }
+
+    public MediumTermMemory(VectorStore vectorStore, LLMProvider llmProvider,
+                            int topK, double threshold, CompressionStrategy compressionStrategy) {
+        super(vectorStore, llmProvider, topK, threshold);
+        this.compressionStrategy = compressionStrategy;
     }
 
     @Override
-    public void extractAndSave(List<Message> conversation) {
-        if (conversation == null || conversation.isEmpty()) return;
-
-        // 1. Convert conversation to text
-        String conversationText = conversation.stream()
-                .map(msg -> msg.role + ": " + msg.content)
-                .collect(Collectors.joining("\n"));
-
-        // 2. Summarize using LLM (keep this for quick semantic search)
-        String summary = summarize(conversationText);
-
-        // 3. Embed and save BOTH summary and full text
-        // We save the full text as the content, and maybe the summary as metadata or just another doc
-        // For now, let's save the full text, as the user wants "Full conversation records"
-        // And we can also save the summary as a separate document for better semantic retrieval
-        
-        add(conversationText); // Save full log
-        add("Summary: " + summary); // Save summary
-    }
-
-    private String summarize(String text) {
-        var request = CompletionRequest.of(List.of(Message.of(RoleType.USER, SUMMARY_PROMPT + text)),null,null,null,null);
-        var response = llmProvider.completion(request);
-        return response.choices.getFirst().message.content;
+    public String getType() {
+        return MemoryType.MEDIUM_TERM.getDisplayName();
     }
 
     @Override
-    public List<Document> retrieve(String query) {
-        // Embed query
-        var embeddingResponse = llmProvider.embeddings(new EmbeddingRequest(List.of(query)));
-        var embedding = embeddingResponse.embeddings.getFirst().embedding;
+    public void save(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
 
-        // Search vector store
-        // If the VectorStore supports keyword search, it would be ideal here.
-        // Assuming similaritySearch handles the retrieval.
-        return vectorStore.similaritySearch(SimilaritySearchRequest.builder()
-                .embedding(embedding)
-                .topK(5) // Retrieve top 5 relevant summaries/logs
-                .threshold(0.7)
-                .build());
+        String conversationText = formatConversation(messages);
+        String summary = compressionStrategy.compress(conversationText);
+
+        // Store full conversation log for detailed retrieval
+        storeWithEmbedding(CONVERSATION_PREFIX + conversationText);
+
+        // Store summary for quick semantic matching
+        if (summary != null && !summary.isBlank()) {
+            storeWithEmbedding(SUMMARY_PREFIX + summary);
+        }
     }
 
-    @Override
-    public void add(String text) {
-        var embeddingResponse = llmProvider.embeddings(new EmbeddingRequest(List.of(text)));
-        var embedding = embeddingResponse.embeddings.getFirst().embedding;
-        vectorStore.add(List.of(new Document(text, embedding, null)));
-    }
-
-    @Override
-    public void clear() {
-        // VectorStore might not support clear easily, or we might not want to clear it often
-        // For now, no-op or throw unsupported
-    }
-
-    @Override
-    public List<Document> list() {
-        // VectorStore might not support listing all
-        return List.of();
+    private String formatConversation(List<Message> messages) {
+        return messages.stream()
+            .filter(msg -> msg.content != null && !msg.content.isEmpty())
+            .map(msg -> msg.role + ": " + msg.content)
+            .collect(Collectors.joining("\n"));
     }
 }

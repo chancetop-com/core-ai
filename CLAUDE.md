@@ -100,8 +100,10 @@ export CORE_AI_USE_LOCAL_PROJECTS=true
 - Used for RAG similarity search and document retrieval
 
 **Memory (`ai.core.memory`)**
-- NaiveMemory: Simple key-value memory for context retention
-- Integrated into agents for long-term context
+- Three-layer architecture: ShortTermMemory (session with compression), MediumTermMemory (summaries), LongTermMemory (facts/episodes)
+- MemoryManager coordinates multiple memory layers
+- Vector store integration for semantic retrieval
+- Automatic context compression when token limits exceeded
 
 ### Key Patterns
 

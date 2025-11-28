@@ -235,15 +235,21 @@ public class AdvancedTemplateExample {
 
 ## 记忆系统
 
+框架提供三层记忆架构：
+- **ShortTermMemory（短期记忆）**: 带有自动压缩的会话记忆，受 token 限制
+- **MediumTermMemory（中期记忆）**: 基于向量存储的会话摘要
+- **LongTermMemory（长期记忆）**: 存储在向量存储中的语义事实和情节记忆
+
 ### 1. 短期记忆（会话记忆）
 
 ```java
-import ai.core.memory.NaiveMemory;
+import ai.core.memory.memories.ShortTermMemory;
 
 public class MemoryAgentExample {
 
     public void demonstrateShortTermMemory() {
-        // 代理默认维护会话历史
+        // 代理默认使用 ShortTermMemory 维护会话历史
+        // 当超出 token 限制时，ShortTermMemory 会自动压缩上下文
         Agent agent = Agent.builder()
             .name("memory-agent")
             .llmProvider(llmProvider)
@@ -267,36 +273,27 @@ public class MemoryAgentExample {
 }
 ```
 
-### 2. 长期记忆
+### 2. 长期记忆（向量存储）
 
 ```java
-import ai.core.memory.Memory;
-import ai.core.memory.NaiveMemory;
+import ai.core.memory.MemoryManager;
+import ai.core.memory.memories.LongTermMemory;
+import ai.core.memory.memories.ShortTermMemory;
+import ai.core.rag.RagConfig;
+import ai.core.vectorstore.VectorStore;
 
 public class LongTermMemoryExample {
 
-    public Agent createAgentWithLongTermMemory() {
-        // 创建长期记忆系统
-        Memory longTermMemory = new NaiveMemory();
-
-        // 预加载记忆
-        longTermMemory.save("user_preferences", Map.of(
-            "name", "张三",
-            "role", "开发工程师",
-            "project", "AI平台",
-            "tech_stack", List.of("Java", "Python", "Docker")
-        ));
-
-        longTermMemory.save("project_context", Map.of(
-            "deadline", "2024-06-30",
-            "priority", "high",
-            "team_size", 5
-        ));
+    public Agent createAgentWithLongTermMemory(VectorStore vectorStore, LLMProvider llmProvider) {
+        // 长期记忆需要向量存储进行语义搜索
+        // 当 RagConfig 配置了 vectorStore 时，MemoryManager 会自动初始化
 
         return Agent.builder()
             .name("memory-enhanced-agent")
             .llmProvider(llmProvider)
-            .memory(longTermMemory)
+            .ragConfig(RagConfig.builder()
+                .vectorStore(vectorStore)
+                .build())
             .systemPrompt("""
                 你是一个项目助手。使用你的记忆来提供个性化帮助。
 
@@ -308,23 +305,21 @@ public class LongTermMemoryExample {
             .build();
     }
 
-    public void useMemoryDuringConversation() {
-        Agent agent = createAgentWithLongTermMemory();
+    public void demonstrateLongTermMemory() {
+        // 当代理执行时，记忆会自动：
+        // 1. 保存到 ShortTermMemory（必要时压缩）
+        // 2. 保存到 MediumTermMemory（会话摘要）
+        // 3. 保存到 LongTermMemory（语义事实和情节）
 
-        // 代理可以访问长期记忆
-        AgentOutput output = agent.execute(
-            "基于我的技术栈，推荐一个适合的架构方案"
-        );
+        Agent agent = createAgentWithLongTermMemory(vectorStore, llmProvider);
 
-        // 代理会参考记忆中的 tech_stack 信息
-        System.out.println(output.getOutput());
+        // 对话自动存储到各记忆层
+        agent.execute("我叫张三，正在开发 AI 平台项目");
+        agent.execute("截止日期是6月30日，团队有5个成员");
 
-        // 更新记忆
-        Memory memory = agent.getMemory();
-        memory.save("architecture_decision", Map.of(
-            "pattern", "microservices",
-            "chosen_date", LocalDate.now().toString()
-        ));
+        // 后续查询可以从长期记忆中检索相关上下文
+        AgentOutput output = agent.execute("你对我的项目了解多少？");
+        // 代理通过相似度搜索检索相关记忆
     }
 }
 ```
