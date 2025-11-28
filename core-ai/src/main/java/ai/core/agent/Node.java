@@ -6,7 +6,6 @@ import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.document.Tokenizer;
-import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
@@ -43,7 +42,6 @@ public abstract class Node<T extends Node<T>> {
     private String name;
     private String description;
     private NodeType nodeType;
-    private Formatter formatter;
     private MessageUpdatedEventListener<T> messageUpdatedEventListener;
     private NodeStatus nodeStatus;
     private Persistence<T> persistence;
@@ -104,11 +102,6 @@ public abstract class Node<T extends Node<T>> {
         this.nodeStatus = nodeStatus;
     }
 
-    void formatContent(CompletionResponse rst, Formatter formatter) {
-        var message = rst.choices.getFirst().message;
-        message.content = formatter.formatter(message.content);
-    }
-
     public Optional<ChainNodeStatusChangedEventListener<T>> getStatusChangedEventListener(NodeStatus status) {
         return Optional.ofNullable(statusChangedEventListeners.get(status));
     }
@@ -153,10 +146,6 @@ public abstract class Node<T extends Node<T>> {
         return this.nodeType;
     }
 
-    public List<Termination> getTerminations() {
-        return this.terminations;
-    }
-
     public Integer getRound() {
         return this.round;
     }
@@ -179,10 +168,6 @@ public abstract class Node<T extends Node<T>> {
 
     public List<Message> getMessages() {
         return this.messages;
-    }
-
-    public Formatter getAgentFormatter() {
-        return this.formatter;
     }
 
     public LongQueryHandler getLongQueryHandler() {
@@ -270,7 +255,6 @@ public abstract class Node<T extends Node<T>> {
 
     }
 
-
     public final String run(String query, ExecutionContext context) {
         this.executionContext = context;
         return run(query);
@@ -290,7 +274,14 @@ public abstract class Node<T extends Node<T>> {
             }, query);
         } catch (Exception e) {
             updateNodeStatus(NodeStatus.FAILED);
-            throw new RuntimeException(Strings.format("Run node {}<{}> failed: {}, raw request/response: {}, {}", this.name, this.id, e.getMessage(), getInput(), getRawOutput()), e);
+            throw new RuntimeException(
+                    Strings.format("Run node {}<{}> failed: {}, raw request/response: {}, {}",
+                            this.name,
+                            this.id,
+                            e.getMessage(),
+                            getInput(),
+                            getFailedMessage()),
+                    e);
         }
     }
 
@@ -316,6 +307,14 @@ public abstract class Node<T extends Node<T>> {
     public final void run(Task task, ExecutionContext context) {
         this.executionContext = context;
         run(task);
+    }
+
+    private String getFailedMessage() {
+        var content = getRawOutput() == null ? getOutput() : getRawOutput();
+        if (Strings.isBlank(content) && getMessages().getLast().functionCall != null && getMessages().getLast().functionCall.function != null) {
+            content = getMessages().getLast().functionCall.function.name;
+        }
+        return content;
     }
 
     private void setupNodeSystemVariables(String query) {
@@ -389,7 +388,6 @@ public abstract class Node<T extends Node<T>> {
     }
 
     void setFormatter(Formatter formatter) {
-        this.formatter = formatter;
     }
 
     void setPersistence(Persistence<T> persistence) {
@@ -432,7 +430,6 @@ public abstract class Node<T extends Node<T>> {
         return switch (role) {
             case USER -> RoleType.USER;
             case AGENT -> RoleType.ASSISTANT;
-            default -> throw new IllegalArgumentException("Unsupported role: " + role);
         };
     }
 
@@ -482,10 +479,6 @@ public abstract class Node<T extends Node<T>> {
     void addTerminations(List<Termination> terminations) {
         if (terminations == null || terminations.isEmpty()) return;
         this.terminations.addAll(terminations);
-    }
-
-    public void addResponseChoiceMessages(List<Message> messages) {
-        messages.forEach(this::addAssistantOrToolMessage);
     }
 
     @SuppressWarnings("unchecked")
