@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 /**
  * @author cyril
  */
-public class LLMResponseSchemaTest {
+class LLMResponseSchemaTest {
     @Test
     void test() {
 

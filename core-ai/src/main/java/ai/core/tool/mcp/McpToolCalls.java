@@ -1,9 +1,11 @@
 package ai.core.tool.mcp;
 
 import ai.core.api.jsonschema.JsonSchema;
+import ai.core.api.mcp.schema.tool.Tool;
+import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientService;
-import ai.core.utils.JsonSchemaUtil;
 import ai.core.tool.ToolCallParameter;
+import ai.core.utils.JsonSchemaUtil;
 
 import java.io.Serial;
 import java.util.ArrayList;
@@ -16,22 +18,32 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     @Serial
     private static final long serialVersionUID = 2202468890851081427L;
 
-    public static List<McpToolCall> from(McpClientService mcpClientService, List<String> includes) {
-        var tools = mcpClientService.listTools(includes);
-        var mcpTollCalls = new McpToolCalls();
-        for (var tool : tools) {
-            mcpTollCalls.add(McpToolCall.builder()
-                    .name(tool.name)
-                    .description(tool.description)
-                    .needAuth(tool.needAuth)
-                    .parameters(buildParameters(tool.inputSchema))
-                    .mcpClientService(mcpClientService).build());
+    public static List<McpToolCall> from(McpClientManager mcpClientManager, List<String> serverNames, List<String> includes) {
+        var mcpToolCalls = new McpToolCalls();
+        for (var serverName : serverNames) {
+            if (mcpClientManager.hasServer(serverName)) {
+                addToolsFromClient(mcpToolCalls, mcpClientManager.getClient(serverName), serverName, includes);
+            }
         }
-        return mcpTollCalls;
+        return mcpToolCalls;
     }
 
-    public static List<McpToolCall> from(McpClientService mcpClientService) {
-        return from(mcpClientService, null);
+    private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientService client, String serverName, List<String> includes) {
+        for (var tool : client.listTools()) {
+            if (includes != null && !includes.contains(tool.name)) continue;
+            mcpToolCalls.add(buildToolCall(tool, client, serverName));
+        }
+    }
+
+    private static McpToolCall buildToolCall(Tool tool, McpClientService client, String serverName) {
+        return McpToolCall.builder()
+                .name(serverName + "." + tool.name)
+                .namespace(serverName)
+                .description("[" + serverName + "] " + tool.description)
+                .needAuth(tool.needAuth)
+                .parameters(buildParameters(tool.inputSchema))
+                .mcpClientService(client)
+                .build();
     }
 
     private static List<ToolCallParameter> buildParameters(JsonSchema inputSchema) {

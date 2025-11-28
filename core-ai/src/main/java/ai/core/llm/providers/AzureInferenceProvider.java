@@ -34,6 +34,8 @@ import com.azure.core.credential.TokenCredential;
 import com.azure.core.credential.TokenRequestContext;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.HttpClientOptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -49,6 +51,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author stephen
  */
 public class AzureInferenceProvider extends LLMProvider {
+    private final Logger logger = LoggerFactory.getLogger(AzureInferenceProvider.class);
     private final ChatCompletionsAsyncClient chatAsyncClient;
     private final ChatCompletionsClient chatClient;
     private final EmbeddingsClient embeddingsClient;
@@ -107,6 +110,7 @@ public class AzureInferenceProvider extends LLMProvider {
                         callback.onError(error);
                     } catch (Exception e) {
                         // Ignore exceptions from callback to prevent blocking
+                        logger.warn("Exception in streaming callback onError", e);
                     }
                 },
                 () -> {
