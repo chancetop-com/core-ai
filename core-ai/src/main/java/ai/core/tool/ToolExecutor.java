@@ -58,10 +58,7 @@ public class ToolExecutor {
             .findFirst();
 
         if (optional.isEmpty()) {
-            throw new BadRequestException(
-                "tool call failed<optional empty>: " + JSON.toJSON(functionCall),
-                "TOOL_CALL_FAILED"
-            );
+            return ToolCallResult.failed("tool not found: " + functionCall.function.name);
         }
 
         var tool = optional.get();
