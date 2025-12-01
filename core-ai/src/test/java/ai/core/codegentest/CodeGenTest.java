@@ -115,6 +115,7 @@ class CodeGenTest extends IntegrationTest {
                         MCP interactive sessions and standalone scripts may behave differently due to session state (login status), timing, etc.
                         Ensure the final script handles these differences and runs correctly on its own.
                         Add detailed logging in script to trace execution flow and aid debugging.
+                        For better debugging, write code to output the error messages and page snapshots when failures occur.
 
                         **Debugging workflow:**
                         1. Run the script with `shell_command`: `python <script_path>`
@@ -151,7 +152,7 @@ class CodeGenTest extends IntegrationTest {
                 ))
                 .mcpServers(List.of("playwright"), null)
                 .llmProvider(llmProviders.getProvider())
-                .maxTurn(50)
+                .maxTurn(60)
                 .model("gpt-5-mini")
                 .build();
         logger.info("setup agent: {}", agent);
