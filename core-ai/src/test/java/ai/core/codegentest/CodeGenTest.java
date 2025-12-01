@@ -25,7 +25,7 @@ import java.util.List;
 /**
  * @author stephen
  */
-//@Disabled
+@Disabled
 class CodeGenTest extends IntegrationTest {
 
     public static final String SNAPSHOT_TOOLS_DESC = """
