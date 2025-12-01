@@ -91,7 +91,7 @@ public class AzureOpenAIProvider extends LLMProvider {
         var errorRef = new AtomicReference<Throwable>();
 
         stream.subscribe(
-                completion -> handleDelta(completion, contentBuilder, finishReason, toolCalls, callback),
+                completion -> handleDelta(completion, contentBuilder, finishReason, toolCalls, usage, callback),
                 error -> {
                     errorRef.set(error);
                     latch.countDown();  // Must countDown BEFORE callback to avoid blocking
@@ -139,7 +139,12 @@ public class AzureOpenAIProvider extends LLMProvider {
         return CompletionResponse.of(choices, usage.get());
     }
 
-    private void handleDelta(ChatCompletions completion, StringBuilder contentBuilder, AtomicReference<String> finishReason, List<FunctionCall> toolCalls, StreamingCallback callback) {
+    private void handleDelta(ChatCompletions completion, StringBuilder contentBuilder, AtomicReference<String> finishReason, List<FunctionCall> toolCalls, AtomicReference<Usage> usage, StreamingCallback callback) {
+        // Capture usage if available (typically in the final chunk)
+        if (completion.getUsage() != null) {
+            usage.set(AzureOpenAIModelsUtil.toUsage(completion.getUsage()));
+        }
+
         if (completion.getChoices() == null || completion.getChoices().isEmpty()) {
             return; // No choices in this chunk, skip processing
         }
