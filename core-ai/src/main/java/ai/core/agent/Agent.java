@@ -304,6 +304,7 @@ public class Agent extends Node<Agent> {
         agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
 
         var resp = func.apply(request);
+        addTokenCost(resp.usage);
 
         agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
         return resp.choices.getFirst();
