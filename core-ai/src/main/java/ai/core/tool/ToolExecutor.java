@@ -95,11 +95,7 @@ public class ToolExecutor {
 
             return result;
         } catch (Exception e) {
-            throw new BadRequestException(
-                Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(functionCall), e.getMessage()),
-                "TOOL_CALL_FAILED",
-                e
-            );
+            return ToolCallResult.failed(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(functionCall), e.getMessage()));
         }
     }
 
