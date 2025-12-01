@@ -25,11 +25,8 @@ import java.util.List;
 /**
  * @author stephen
  */
-@Disabled
+//@Disabled
 class CodeGenTest extends IntegrationTest {
-    private final Logger logger = LoggerFactory.getLogger(CodeGenTest.class);
-    @Inject
-    LLMProviders llmProviders;
 
     public static final String SNAPSHOT_TOOLS_DESC = """
             - `browser_snapshot`: Capture an accessibility snapshot (semantic tree) of the current page.
@@ -48,31 +45,54 @@ class CodeGenTest extends IntegrationTest {
             Describe the element clearly in the `element` parameter for user understanding and logging.
             """;
 
+    private final Logger logger = LoggerFactory.getLogger(CodeGenTest.class);
+    @Inject
+    LLMProviders llmProviders;
+
     @Test
     void test() {
         var agent = Agent.builder()
                 .name("CodeGenTestAgent")
                 .description("An agent to test code generation capabilities")
                 .systemPrompt(Strings.format("""
-                        You are a web automation code generation agent. Your task is to convert natural-language test cases into working Playwright Python automation scripts.
+                        You are a web automation code generation agent named Naixt Code. Your task is to convert natural-language test cases into working Playwright Python automation scripts.
 
                         # Workflow
 
-                        1. **Explore**: Use the Playwright MCP tools to navigate the target website interactively. Understand the page structure, element selectors, and user flow.
-                        2. **Plan**: Use `write_todos` to break down the test case into discrete steps.
-                        3. **Write**: Generate Playwright Python code that replicates the explored flow.
-                        4. **Test & Debug**: Run the script, identify failures, and iterate until it passes.
+                        ## Phase 1: MCP Execution (MANDATORY)
+                        1. **Plan first**: Use `write_todos` to break down the test case steps into a checklist
+                        2. **Execute each step**: Use Playwright MCP tools to complete each todo item
+                           - Navigate through every step of the test case
+                           - Handle all interactions (clicks, inputs, selections, etc.)
+                           - Mark each todo as completed when done
+                        3. **Verify success**: You MUST achieve the test case's expected result using MCP tools
+                        4. **Record details**: Note the exact selectors, element refs, and flow you used
 
-                        Continue testing and improving until the script satisfies the test case expectations. Only stop to ask the user when critical information is missing (e.g., login credentials).
+                        ⚠️ **GATE: DO NOT proceed to Phase 2 until you have successfully completed ALL todos in Phase 1 and verified the expected result.**
+
+                        ## Phase 2: Code Generation And Debugging
+                        Only after MCP execution succeeds:
+                        1. Use `write_todos` to create a NEW todo list that MUST include these steps:
+                           - Write Playwright Python script
+                           - Execute script
+                           - Debug and fix any errors (repeat until success)
+                           - Verify test case expected result is achieved
+                        2. Write Playwright Python code that replicates the exact steps you performed
+                        3. Execute the script
+                        4. If execution fails or expected result is not achieved:
+                           - Analyze the error message
+                           - Fix the script
+                           - Re-run until it passes
+                        5. Only mark Phase 2 as complete when the script runs successfully and meets the expected result
 
                         # Task Management
 
-                        Use the `write_todos` tool to plan your coding tasks step by step.
+                        Use the `write_todos` tool to plan your tasks step by step.
                         {{system.agent.write.todos.system.prompt}}
 
                         # Playwright MCP Tools
 
-                        Use these tools for interactive exploration and validation:
+                        Use these tools for interactive execution:
                         {}
 
                         {}
@@ -82,18 +102,36 @@ class CodeGenTest extends IntegrationTest {
                         - **Obscured elements**: Buttons may be hidden by toasts, modals, or cookie banners. Maximize the window, dismiss dialogs, or scroll to reveal elements.
                         - **Blank pages**: Network issues can cause incomplete loads. Refresh or wait for network idle.
                         - **Slow operations**: Actions like checkout may take time. Use explicit waits for expected elements or states.
+                        - **Cookie Banner Handling**: Many sites display cookie consent banners that can block interactions. Look for and click "Accept" or "Reject" buttons to dismiss them.
 
                         # Output Requirements
 
                         Your final deliverable is a **reusable Playwright Python script** saved to the workspace. The script should:
                         - Be self-contained and runnable independently
                         - Include appropriate waits and error handling
-                        - Follow the test case steps accurately
 
                         # Debugging
-                        
-                        Take care of the different between interactive MCP operations and script execution, they might behave differently due to session states(login or not), timing, etc.
-                        Use MCP tools for exploration, but ensure the final script runs correctly on its own.
+
+                        MCP interactive sessions and standalone scripts may behave differently due to session state (login status), timing, etc.
+                        Ensure the final script handles these differences and runs correctly on its own.
+                        Add detailed logging in script to trace execution flow and aid debugging.
+
+                        **Debugging workflow:**
+                        1. Run the script with `shell_command`: `python <script_path>`
+                        2. If it fails, read the error output carefully
+                        3. Use `edit_file` to fix the issue
+                        4. Re-run until the script completes successfully
+                        5. Verify the output contains the expected result
+
+                        # Completion Criteria
+
+                        You are ONLY done when:
+                        - The Python script file exists in the workspace
+                        - The script has been executed (not just syntax checked)
+                        - The script ran successfully without errors
+                        - The expected result was achieved (e.g., order number was printed)
+
+                        DO NOT end the task if any of these criteria are not met!
 
                         # Environment
 
@@ -113,18 +151,22 @@ class CodeGenTest extends IntegrationTest {
                 ))
                 .mcpServers(List.of("playwright"), null)
                 .llmProvider(llmProviders.getProvider())
-                .maxTurn(30)
+                .maxTurn(50)
                 .model("gpt-5-mini")
                 .build();
         logger.info("setup agent: {}", agent);
+        // todo: thinking how to rewrite testcase query for better agent understanding and performance
+        // 1. use rag when we have more testcases to help rewrite agent for better understanding of the domain
+        // 2.
         var testcase = """
                 testcase: success order
                 testcase steps:
-                    1. navigate to https://mrkeke.connexup-uat.online/, select PICKUP store Flushing use this location for order
+                    1. navigate to https://mrkeke.connexup-uat.online/
                     2. login with phone number 8888888888 and verify number 123456 if not login
-                    3. add coke to cart
-                    4. checkout and place order with account's default credit card
-                    5. get order number
+                    3. open PICKUP stores selection and select Flushing for order
+                    4. add coke to cart
+                    5. checkout and place order with account's default credit card
+                    6. get order number
                 testcase expect: success get order number
                 """;
         agent.run(Strings.format("""
@@ -132,5 +174,9 @@ class CodeGenTest extends IntegrationTest {
                 {}
                 write code under the workspace, and run & test & debug to make sure it works and satisfy the testcase expect.
                 """, testcase), ExecutionContext.builder().customVariable("workspace", "D:\\automate-test-code-gen").build());
+        logger.info(Strings.format("agent token cost: total={}, input={}, output={}",
+                agent.getCurrentTokenUsage().getTotalTokens(),
+                agent.getCurrentTokenUsage().getPromptTokens(),
+                agent.getCurrentTokenUsage().getCompletionTokens()));
     }
 }
