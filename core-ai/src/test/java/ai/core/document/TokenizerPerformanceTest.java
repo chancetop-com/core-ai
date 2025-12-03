@@ -1,6 +1,5 @@
-package ai.core.document.textsplitters;
+package ai.core.document;
 
-import ai.core.document.Tokenizer;
 import com.knuddels.jtokkit.api.EncodingType;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
