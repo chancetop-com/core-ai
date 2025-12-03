@@ -7,7 +7,6 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.telemetry.AgentTracer;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
-import core.framework.web.exception.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
