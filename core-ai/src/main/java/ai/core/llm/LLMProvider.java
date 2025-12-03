@@ -96,7 +96,23 @@ public abstract class LLMProvider {
     public abstract RerankingResponse rerankings(RerankingRequest request);
 
     public abstract CaptionImageResponse captionImage(CaptionImageRequest request);
-    public abstract int maxTokens();
+
+    public int maxTokens() {
+        return ModelContextRegistry.getInstance().getMaxInputTokens(config.getModel());
+    }
+
+    public int maxTokens(String modelName) {
+        return ModelContextRegistry.getInstance().getMaxInputTokens(modelName);
+    }
+
+    public int maxOutputTokens() {
+        return ModelContextRegistry.getInstance().getMaxOutputTokens(config.getModel());
+    }
+
+    public int maxOutputTokens(String modelName) {
+        return ModelContextRegistry.getInstance().getMaxOutputTokens(modelName);
+    }
+
     public abstract String name();
 
 
