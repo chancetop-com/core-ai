@@ -6,6 +6,8 @@ import ai.core.llm.domain.Message;
 import java.util.List;
 
 /**
+ * Base class for memory implementations.
+ *
  * @author stephen
  */
 public abstract class Memory {

@@ -11,6 +11,8 @@ import ai.core.vectorstore.VectorStore;
 import java.util.List;
 
 /**
+ * Simple memory implementation using vector store for long-term memory.
+ *
  * @author stephen
  */
 public class NaiveMemory extends Memory {
@@ -19,12 +21,12 @@ public class NaiveMemory extends Memory {
 
     @Override
     public void add(String text) {
-
+        // Not implemented
     }
 
     @Override
     public void clear() {
-
+        // Not implemented
     }
 
     @Override
@@ -35,10 +37,12 @@ public class NaiveMemory extends Memory {
     @Override
     public void extractAndSave(List<Message> conversation) {
         var context = conversation.stream()
-                .map(v -> v.content)
-                .reduce("", (a, b) -> a + "\n" + b);
+            .map(v -> v.content)
+            .reduce("", (a, b) -> a + "\n" + b);
         var memories = new DefaultLongTermMemoryExtractionAgent(llmProvider).extractMemories(context);
-        var docs = memories.stream().map(v -> new Document(v, llmProvider.embeddings(new EmbeddingRequest(List.of(v))).embeddings.getFirst().embedding, null)).toList();
+        var docs = memories.stream()
+            .map(v -> new Document(v, llmProvider.embeddings(new EmbeddingRequest(List.of(v))).embeddings.getFirst().embedding, null))
+            .toList();
         vectorStore.add(docs);
     }
 
