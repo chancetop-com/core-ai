@@ -12,19 +12,19 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * @author stephen
  */
-public final class ModelContextRegistry {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ModelContextRegistry.class);
+public final class LLMModelContextRegistry {
+    private static final Logger LOGGER = LoggerFactory.getLogger(LLMModelContextRegistry.class);
     private static final String RESOURCE_PATH = "/model_prices_and_context_window.json";
     private static final int DEFAULT_MAX_INPUT_TOKENS = 128000;
     private static final int DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 
-    private static volatile ModelContextRegistry instance;
+    private static volatile LLMModelContextRegistry instance;
 
-    public static ModelContextRegistry getInstance() {
+    public static LLMModelContextRegistry getInstance() {
         if (instance == null) {
-            synchronized (ModelContextRegistry.class) {
+            synchronized (LLMModelContextRegistry.class) {
                 if (instance == null) {
-                    instance = new ModelContextRegistry();
+                    instance = new LLMModelContextRegistry();
                 }
             }
         }
@@ -33,7 +33,7 @@ public final class ModelContextRegistry {
 
     private final Map<String, ModelInfo> modelInfoMap = new ConcurrentHashMap<>();
 
-    private ModelContextRegistry() {
+    private LLMModelContextRegistry() {
         loadModelInfo();
     }
 

@@ -11,13 +11,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * @author stephen
  */
-class ModelContextRegistryTest {
-    private ModelContextRegistry registry;
+class LLMModelContextRegistryTest {
+    private LLMModelContextRegistry registry;
 
     @BeforeEach
     void setUp() {
         // Ensure the registry is initialized before each test
-        registry = ModelContextRegistry.getInstance();
+        registry = LLMModelContextRegistry.getInstance();
     }
 
     @Test

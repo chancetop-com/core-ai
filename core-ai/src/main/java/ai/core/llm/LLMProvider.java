@@ -98,19 +98,19 @@ public abstract class LLMProvider {
     public abstract CaptionImageResponse captionImage(CaptionImageRequest request);
 
     public int maxTokens() {
-        return ModelContextRegistry.getInstance().getMaxInputTokens(config.getModel());
+        return LLMModelContextRegistry.getInstance().getMaxInputTokens(config.getModel());
     }
 
     public int maxTokens(String modelName) {
-        return ModelContextRegistry.getInstance().getMaxInputTokens(modelName);
+        return LLMModelContextRegistry.getInstance().getMaxInputTokens(modelName);
     }
 
     public int maxOutputTokens() {
-        return ModelContextRegistry.getInstance().getMaxOutputTokens(config.getModel());
+        return LLMModelContextRegistry.getInstance().getMaxOutputTokens(config.getModel());
     }
 
     public int maxOutputTokens(String modelName) {
-        return ModelContextRegistry.getInstance().getMaxOutputTokens(modelName);
+        return LLMModelContextRegistry.getInstance().getMaxOutputTokens(modelName);
     }
 
     public abstract String name();
