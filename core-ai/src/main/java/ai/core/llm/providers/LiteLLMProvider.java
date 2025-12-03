@@ -64,11 +64,6 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     @Override
-    public int maxTokens() {
-        return 128 * 1000;
-    }
-
-    @Override
     public String name() {
         return "litellm";
     }
