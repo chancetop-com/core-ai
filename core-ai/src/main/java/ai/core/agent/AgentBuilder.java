@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.memory.memories.NaiveMemory;
@@ -36,6 +37,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Boolean useGroupContext = false;
     private Boolean enableReflection = false;
     private Integer maxTurnNumber;
+    private SlidingWindowConfig slidingWindowConfig;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -51,6 +53,18 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder maxTurn(Integer maxTurnNumber) {
         this.maxTurnNumber = maxTurnNumber;
+        return this;
+    }
+
+    public AgentBuilder slidingWindowTurns(Integer maxTurns) {
+        this.slidingWindowConfig = SlidingWindowConfig.builder()
+                .maxTurns(maxTurns)
+                .build();
+        return this;
+    }
+
+    public AgentBuilder slidingWindowConfig(SlidingWindowConfig config) {
+        this.slidingWindowConfig = config;
         return this;
     }
 
@@ -230,6 +244,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.longTermMemory == null) {
             agent.longTermMemory = new NaiveMemory();
         }
+        agent.slidingWindowConfig = this.slidingWindowConfig != null
+                ? this.slidingWindowConfig
+                : SlidingWindowConfig.builder().autoTokenProtection(true).build();
     }
 
     /**
