@@ -1,5 +1,7 @@
 package ai.core.agent;
 
+import ai.core.agent.slidingwindow.SlidingWindowService;
+import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
@@ -68,6 +70,8 @@ public class Agent extends Node<Agent> {
     Integer maxTurnNumber;
     Boolean authenticated = false;
     ToolExecutor toolExecutor;
+    SlidingWindowConfig slidingWindowConfig;
+    private SlidingWindowService slidingWindow;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -247,6 +251,8 @@ public class Agent extends Node<Agent> {
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
+            // apply sliding window if needed before each LLM call
+            applySlidingWindowIfNeeded();
             // turn = call model + call func
             var turnMsgList = turn(getMessages(), toReqTools(toolCalls), model);
             logger.info("Agent turn {}: received {} messages", currentIteCount + 1, turnMsgList.size());
@@ -261,6 +267,20 @@ public class Agent extends Node<Agent> {
         setOutput(agentOut.toString());
         if (currentIteCount >= maxTurnNumber) {
             logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
+        }
+    }
+
+    private void applySlidingWindowIfNeeded() {
+        if (slidingWindowConfig == null) return;
+        if (slidingWindow == null) {
+            slidingWindow = new SlidingWindowService(slidingWindowConfig, llmProvider, model);
+        }
+        if (slidingWindow.shouldSlide(getMessages())) {
+            var beforeSize = getMessages().size();
+            var slidMessages = slidingWindow.slide(getMessages());
+            clearMessages();
+            addMessages(slidMessages);
+            logger.info("Sliding window applied: {} -> {} messages", beforeSize, getMessages().size());
         }
     }
 
