@@ -303,7 +303,7 @@ public class Agent extends Node<Agent> {
                 var content = msg.content;
                 var summaryMarker = "\n\n[Conversation Memory]";
                 var markerIndex = content.indexOf(summaryMarker);
-                if (markerIndex > 0) {
+                if (markerIndex >= 0) {
                     content = content.substring(0, markerIndex);
                 }
                 messages.set(i, Message.of(RoleType.SYSTEM, content + summaryBlock, msg.name));
