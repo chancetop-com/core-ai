@@ -1,10 +1,10 @@
 package ai.core.agent.slidingwindow;
 
-import ai.core.document.Tokenizer;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.memory.MessageTokenCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -131,7 +131,7 @@ public class SlidingWindowService {
 
         var maxTokens = (int) (getMaxTokens() * config.getTargetThreshold());
         var systemMessage = extractSystemMessage(messages);
-        var systemTokens = systemMessage != null ? Tokenizer.tokenCount(systemMessage.content) : 0;
+        var systemTokens = systemMessage != null ? MessageTokenCounter.count(systemMessage) : 0;
         var availableTokens = maxTokens - systemTokens;
 
         for (var keepTurns = safeCutPoints.size(); keepTurns >= 1; keepTurns--) {
@@ -148,27 +148,11 @@ public class SlidingWindowService {
     }
 
     private int calculateTokensFromIndex(List<Message> messages, int fromIndex) {
-        int tokens = 0;
-        for (int i = fromIndex; i < messages.size(); i++) {
-            var msg = messages.get(i);
-            if (msg.role == RoleType.SYSTEM) {
-                continue;
-            }
-            tokens += Tokenizer.tokenCount(msg.content);
-            if (msg.toolCalls == null) {
-                continue;
-            }
-            for (var call : msg.toolCalls) {
-                if (call.function != null && call.function.arguments != null) {
-                    tokens += Tokenizer.tokenCount(call.function.arguments);
-                }
-            }
-        }
-        return tokens;
+        return MessageTokenCounter.countFrom(messages, fromIndex, true);
     }
 
     private int calculateTotalTokens(List<Message> messages) {
-        return calculateTokensFromIndex(messages, 0);
+        return MessageTokenCounter.countFrom(messages, 0, true);
     }
 
     private Message extractSystemMessage(List<Message> messages) {

@@ -4,7 +4,6 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.mcp.client.McpClientManagerRegistry;
-import ai.core.memory.memories.NaiveMemory;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
 import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
@@ -240,9 +239,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
-        }
-        if (agent.longTermMemory == null) {
-            agent.longTermMemory = new NaiveMemory();
         }
         agent.slidingWindowConfig = this.slidingWindowConfig != null
                 ? this.slidingWindowConfig

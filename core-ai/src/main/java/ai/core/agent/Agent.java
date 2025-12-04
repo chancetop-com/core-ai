@@ -15,7 +15,6 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
-import ai.core.memory.memories.NaiveMemory;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -65,7 +64,6 @@ public class Agent extends Node<Agent> {
     String model;
     ReflectionConfig reflectionConfig;
     ReflectionListener reflectionListener;
-    NaiveMemory longTermMemory;
     Boolean useGroupContext;
     Integer maxTurnNumber;
     Boolean authenticated = false;
@@ -403,9 +401,6 @@ public class Agent extends Node<Agent> {
         if (variables != null) var.putAll(variables);
         var.putAll(getSystemVariables());
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
-        if (!getLongTermMemory().retrieve(query).isEmpty()) {
-            prompt += NaiveMemory.PROMPT_MEMORY_TEMPLATE + getLongTermMemory().toString();
-        }
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
 
@@ -436,10 +431,6 @@ public class Agent extends Node<Agent> {
 
     public List<ToolCall> getToolCalls() {
         return this.toolCalls;
-    }
-
-    public NaiveMemory getLongTermMemory() {
-        return this.longTermMemory;
     }
 
     public void setModel(String model) {
