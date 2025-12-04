@@ -16,5 +16,5 @@ public @interface CoreAiParameter {
     String name();
     String description();
     String[] enums() default {};
-    boolean required() default false;
+    boolean required() default true;
 }

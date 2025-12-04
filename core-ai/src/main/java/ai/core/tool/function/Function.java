@@ -1,5 +1,6 @@
 package ai.core.tool.function;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterUtil;
 import ai.core.tool.ToolCallResult;
@@ -33,38 +34,49 @@ public class Function extends ToolCall {
     ResponseConverter responseConverter;
     Logger logger = LoggerFactory.getLogger(Function.class);
 
+    private String executeSupport(String text) throws InvocationTargetException, IllegalAccessException {
+        if (dynamicArguments != null && dynamicArguments) {
+            // args convert by method itself
+            var rst = method.invoke(object, List.of(this.getName(), text).toArray());
+            return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
+        } else {
+            var argsMap = JsonUtil.fromJson(Map.class, text);
+            var args = new Object[this.getParameters().size()];
+            for (int i = 0; i < this.getParameters().size(); i++) {
+                var name = this.getParameters().get(i).getName();
+                var value = argsMap.get(name);
+                if (value == null && this.getParameters().get(i).isRequired()) {
+                    // require  args
+                    logger.warn(" required {} value is null", name);
+                    // return for llm
+                    return Strings.format("function<{}> failed: require arg: {} is null", getName(), name);
+                } else if (value == null) {
+                    args[i] = null;
+                } else {
+                    args[i] = JsonUtil.fromJson(method.getParameters()[i].getParameterizedType(), JsonUtil.toJson(value));
+                }
+            }
+            var rst = method.invoke(object, args);
+            return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
+        }
+    }
+
     @Override
-    public ToolCallResult execute(String text) {
+    public ToolCallResult execute(String text, ExecutionContext context) {
         logger.info("func text is {}", text);
         long startTime = System.currentTimeMillis();
         try {
-            String result;
-            if (dynamicArguments != null && dynamicArguments) {
-                // args convert by method itself
-                var rst = method.invoke(object, List.of(this.getName(), text).toArray());
-                result = responseConverter != null ? responseConverter.convert(rst) : (String) rst;
-            } else {
-                var argsMap = JsonUtil.fromJson(Map.class, text);
-                var args = new Object[this.getParameters().size()];
-                for (int i = 0; i < this.getParameters().size(); i++) {
-                    var name = this.getParameters().get(i).getName();
-                    var value = argsMap.get(name);
-                    if (value == null) {
-                        logger.warn("{} value is null", name);
-                        args[i] = null;
-                    } else {
-                        args[i] = JsonUtil.fromJson(method.getParameters()[i].getParameterizedType(), JsonUtil.toJson(value));
-                    }
-                }
-                var rst = method.invoke(object, args);
-                result = responseConverter != null ? responseConverter.convert(rst) : (String) rst;
-            }
-            return ToolCallResult.completed(result)
-                .withDuration(System.currentTimeMillis() - startTime);
+            String result = executeSupport(text);
+            return ToolCallResult.completed(result).withDuration(System.currentTimeMillis() - startTime);
         } catch (IllegalAccessException | InvocationTargetException e) {
             return ToolCallResult.failed(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, e.getMessage()))
-                .withDuration(System.currentTimeMillis() - startTime);
+                    .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    @Override
+    public ToolCallResult execute(String text) {
+        return execute(text, null);
     }
 
     public void setMethod(Method method) {
