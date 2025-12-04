@@ -1,6 +1,7 @@
 package ai.core.memory;
 
 import ai.core.document.Tokenizer;
+import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
@@ -28,6 +29,7 @@ public class ShortTermMemory {
     private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemory.class);
     private static final int DEFAULT_MAX_SUMMARY_TOKENS = 1000;
     private static final double DEFAULT_TRIGGER_RATIO = 0.33;
+    private static final double SUMMARY_TOKEN_RATIO = 0.1;  // Use 10% of model context for summary
 
     private static final String SUMMARIZE_PROMPT = """
         Merge the [History Summary] and [New Conversation] into a concise summary.
@@ -53,7 +55,7 @@ public class ShortTermMemory {
         Output compressed summary:
         """;
 
-    private final int maxSummaryTokens;
+    private int maxSummaryTokens;
     private final double triggerRatio;
     private final Executor executor;
 
@@ -82,6 +84,12 @@ public class ShortTermMemory {
     public void setLLMProvider(LLMProvider llmProvider, String model) {
         this.llmProvider = llmProvider;
         this.model = model;
+        // Auto-calculate maxSummaryTokens based on model context from registry
+        if (model != null) {
+            int modelMaxTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(model);
+            this.maxSummaryTokens = (int) (modelMaxTokens * SUMMARY_TOKEN_RATIO);
+            LOGGER.debug("Auto-configured maxSummaryTokens={} (model={}, context={})", maxSummaryTokens, model, modelMaxTokens);
+        }
     }
 
     // ==================== Summary Access ====================
