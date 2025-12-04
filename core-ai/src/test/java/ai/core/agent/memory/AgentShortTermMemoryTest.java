@@ -127,7 +127,16 @@ class AgentShortTermMemoryTest {
         assertFalse(shortTermMemory.getSummary().isEmpty(), "Summary should be created after sliding window");
         LOGGER.info("Final summary: {}", shortTermMemory.getSummary());
 
-        // Create a new agent with the same shortTermMemory to verify summary injection
+        // Verify summary is injected into CURRENT conversation's system message (after sliding)
+        var systemMessage = agent.getMessages().stream()
+            .filter(m -> m.role == RoleType.SYSTEM)
+            .findFirst();
+        assertTrue(systemMessage.isPresent());
+        assertTrue(systemMessage.get().content.contains("[Conversation Memory]"),
+            "System message should contain conversation memory after sliding");
+        LOGGER.info("Current conversation system message: {}", systemMessage.get().content);
+
+        // Also verify it works in a new conversation
         var newAgent = Agent.builder()
             .llmProvider(summarizingProvider)
             .systemPrompt("You are a helpful assistant.")
@@ -136,14 +145,14 @@ class AgentShortTermMemoryTest {
 
         newAgent.run("Hello again");
 
-        var systemMessage = newAgent.getMessages().stream()
+        var newSystemMessage = newAgent.getMessages().stream()
             .filter(m -> m.role == RoleType.SYSTEM)
             .findFirst();
-        assertTrue(systemMessage.isPresent());
-        assertTrue(systemMessage.get().content.contains("[Conversation Memory]"),
-            "System message should contain conversation memory");
+        assertTrue(newSystemMessage.isPresent());
+        assertTrue(newSystemMessage.get().content.contains("[Conversation Memory]"),
+            "New conversation should also have conversation memory");
 
-        LOGGER.info("Full integration test passed - summary injected: {}", systemMessage.get().content);
+        LOGGER.info("Full integration test passed");
     }
 
     @Test
