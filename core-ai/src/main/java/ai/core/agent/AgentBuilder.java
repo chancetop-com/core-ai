@@ -3,6 +3,7 @@ package ai.core.agent;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
+import ai.core.memory.ShortTermMemory;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -37,6 +38,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Boolean enableReflection = false;
     private Integer maxTurnNumber;
     private SlidingWindowConfig slidingWindowConfig;
+    private ShortTermMemory shortTermMemory;
+    private boolean disableShortTermMemory = false;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -64,6 +67,19 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder slidingWindowConfig(SlidingWindowConfig config) {
         this.slidingWindowConfig = config;
+        return this;
+    }
+
+    public AgentBuilder shortTermMemory(ShortTermMemory shortTermMemory) {
+        this.shortTermMemory = shortTermMemory;
+        return this;
+    }
+
+    /**
+     * Disable short-term memory for this agent.
+     */
+    public AgentBuilder disableShortTermMemory() {
+        this.disableShortTermMemory = true;
         return this;
     }
 
@@ -243,6 +259,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.slidingWindowConfig = this.slidingWindowConfig != null
                 ? this.slidingWindowConfig
                 : SlidingWindowConfig.builder().autoTokenProtection(true).build();
+        // Default to enabled ShortTermMemory unless explicitly disabled
+        if (!this.disableShortTermMemory) {
+            agent.shortTermMemory = this.shortTermMemory != null
+                    ? this.shortTermMemory
+                    : new ShortTermMemory();
+            agent.shortTermMemory.setLLMProvider(this.llmProvider, this.model);
+        }
     }
 
     /**

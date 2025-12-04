@@ -1,12 +1,13 @@
 package ai.core.agent;
 
-import ai.core.agent.slidingwindow.SlidingWindowService;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
+import ai.core.agent.slidingwindow.SlidingWindowService;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
+import ai.core.memory.ShortTermMemory;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
@@ -69,6 +70,7 @@ public class Agent extends Node<Agent> {
     Boolean authenticated = false;
     ToolExecutor toolExecutor;
     SlidingWindowConfig slidingWindowConfig;
+    ShortTermMemory shortTermMemory;
     private SlidingWindowService slidingWindow;
 
     @Override
@@ -273,13 +275,30 @@ public class Agent extends Node<Agent> {
         if (slidingWindow == null) {
             slidingWindow = new SlidingWindowService(slidingWindowConfig, llmProvider, model);
         }
+
+        // Try to apply async summary result if ready
+        if (shortTermMemory != null) {
+            shortTermMemory.tryApplyAsyncResult();
+        }
+
         if (slidingWindow.shouldSlide(getMessages())) {
             var beforeSize = getMessages().size();
+            summarizeEvictedMessages();
+
+            // Execute sliding window
             var slidMessages = slidingWindow.slide(getMessages());
             clearMessages();
             addMessages(slidMessages);
             logger.info("Sliding window applied: {} -> {} messages", beforeSize, getMessages().size());
         }
+    }
+
+    private void summarizeEvictedMessages() {
+        if (shortTermMemory == null) return;
+        var evicted = slidingWindow.getEvictedMessages(getMessages());
+        if (evicted.isEmpty()) return;
+        shortTermMemory.summarize(evicted);
+        logger.info("Summarized {} evicted messages", evicted.size());
     }
 
     // Public accessors for reflection executor
@@ -354,7 +373,7 @@ public class Agent extends Node<Agent> {
 
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
-            addMessage(buildSystemMessageWithLongTermMemory(query, variables));
+            addMessage(buildSystemMessage(variables));
             // add task context if existed
             addTaskHistoriesToMessages();
         }
@@ -392,7 +411,7 @@ public class Agent extends Node<Agent> {
     }
 
 
-    private Message buildSystemMessageWithLongTermMemory(String query, Map<String, Object> variables) {
+    private Message buildSystemMessage(Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && isUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
@@ -401,6 +420,12 @@ public class Agent extends Node<Agent> {
         if (variables != null) var.putAll(variables);
         var.putAll(getSystemVariables());
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
+
+        // Inject short-term memory summary
+        if (shortTermMemory != null) {
+            prompt += shortTermMemory.buildSummaryBlock();
+        }
+
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
 

@@ -13,9 +13,6 @@ import java.util.List;
  */
 public final class MessageTokenCounter {
 
-    private MessageTokenCounter() {
-    }
-
     /**
      * Count tokens in a single message.
      */
@@ -66,5 +63,8 @@ public final class MessageTokenCounter {
             total += count(msg);
         }
         return total;
+    }
+
+    private MessageTokenCounter() {
     }
 }
