@@ -276,20 +276,39 @@ public class Agent extends Node<Agent> {
             slidingWindow = new SlidingWindowService(slidingWindowConfig, llmProvider, model);
         }
 
-        // Try to apply async summary result if ready
-        if (shortTermMemory != null) {
-            shortTermMemory.tryApplyAsyncResult();
-        }
-
         if (slidingWindow.shouldSlide(getMessages())) {
             var beforeSize = getMessages().size();
+            // Summarize evicted messages and update system message (before sliding)
             summarizeEvictedMessages();
 
-            // Execute sliding window
+            // Slide - the updated system message will be preserved
             var slidMessages = slidingWindow.slide(getMessages());
             clearMessages();
             addMessages(slidMessages);
             logger.info("Sliding window applied: {} -> {} messages", beforeSize, getMessages().size());
+        }
+    }
+
+    private void updateSystemMessageWithSummary() {
+        if (shortTermMemory == null) return;
+        var summaryBlock = shortTermMemory.buildSummaryBlock();
+        if (summaryBlock.isEmpty()) return;
+
+        var messages = getMessages();
+        //todo any better method to change the system message ? @xander
+        for (int i = 0; i < messages.size(); i++) {
+            var msg = messages.get(i);
+            if (msg.role == RoleType.SYSTEM) {
+                // Remove old summary block if exists, then append new one
+                var content = msg.content;
+                var summaryMarker = "\n\n[Conversation Memory]";
+                var markerIndex = content.indexOf(summaryMarker);
+                if (markerIndex > 0) {
+                    content = content.substring(0, markerIndex);
+                }
+                messages.set(i, Message.of(RoleType.SYSTEM, content + summaryBlock, msg.name));
+                break;
+            }
         }
     }
 
@@ -299,6 +318,7 @@ public class Agent extends Node<Agent> {
         if (evicted.isEmpty()) return;
         shortTermMemory.summarize(evicted);
         logger.info("Summarized {} evicted messages", evicted.size());
+        updateSystemMessageWithSummary();
     }
 
     // Public accessors for reflection executor
@@ -374,11 +394,9 @@ public class Agent extends Node<Agent> {
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
-            // add task context if existed
             addTaskHistoriesToMessages();
         }
 
-        // add group context if needed
         if (isUseGroupContext() && getParentNode() != null) {
             addMessages(getParentNode().getMessages());
         }
