@@ -46,10 +46,7 @@ public class Function extends ToolCall {
                 var name = this.getParameters().get(i).getName();
                 var value = argsMap.get(name);
                 if (value == null && this.getParameters().get(i).isRequired()) {
-                    // require  args
-                    logger.warn(" required {} value is null", name);
-                    // return for llm
-                    return Strings.format("function<{}> failed: require arg: {} is null", getName(), name);
+                    throw new IllegalAccessException(Strings.format("require arg: {} is null", getName(), name));
                 } else if (value == null) {
                     args[i] = null;
                 } else {
