@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -23,33 +22,37 @@ class ShortTermMemoryTest {
 
     @BeforeEach
     void setUp() {
-        var config = ShortTermMemoryConfig.builder()
-            .maxMessages(5)
-            .maxTokens(1000)
-            .enableRollingSummary(true)
-            .build();
-        memory = new ShortTermMemory(config);
+        memory = new ShortTermMemory(5, 1000, true);
     }
 
     @Test
     void testAddMessage() {
         Message msg = Message.of(RoleType.USER, "Hello");
-        memory.addMessage(msg);
+        memory.add(msg);
 
-        assertEquals(1, memory.getMessageCount());
+        assertEquals(1, memory.size());
         assertEquals("Hello", memory.getMessages().getFirst().content);
         LOGGER.info("Add message test passed");
+    }
+
+    @Test
+    void testAddString() {
+        memory.add("Hello world");
+
+        assertEquals(1, memory.size());
+        assertEquals(RoleType.USER, memory.getMessages().getFirst().role);
+        LOGGER.info("Add string test passed");
     }
 
     @Test
     void testSlidingWindowEviction() {
         // Add more messages than maxMessages (5)
         for (int i = 1; i <= 7; i++) {
-            memory.addMessage(Message.of(RoleType.USER, "Message " + i));
+            memory.add(Message.of(RoleType.USER, "Message " + i));
         }
 
         // Should only have 5 messages
-        assertEquals(5, memory.getMessageCount());
+        assertEquals(5, memory.size());
 
         // First messages should be evicted
         var messages = memory.getMessages();
@@ -57,16 +60,15 @@ class ShortTermMemoryTest {
         assertFalse(messages.stream().anyMatch(m -> m.content.equals("Message 2")));
         assertTrue(messages.stream().anyMatch(m -> m.content.equals("Message 7")));
 
-        LOGGER.info("Sliding window eviction test passed, remaining: {}", memory.getMessageCount());
+        LOGGER.info("Sliding window eviction test passed, remaining: {}", memory.size());
     }
 
     @Test
     void testEvictedContentTracking() {
         for (int i = 1; i <= 7; i++) {
-            memory.addMessage(Message.of(RoleType.USER, "Message " + i));
+            memory.add(Message.of(RoleType.USER, "Message " + i));
         }
 
-        // Should have evicted content
         assertTrue(memory.hasEvictedContent());
         String evicted = memory.getEvictedContent();
         assertTrue(evicted.contains("Message 1"));
@@ -90,11 +92,11 @@ class ShortTermMemoryTest {
     @Test
     void testBuildContext() {
         memory.setRollingSummary("User prefers dark mode");
-        memory.addMessage(Message.of(RoleType.USER, "Hello"));
-        memory.addMessage(Message.of(RoleType.ASSISTANT, "Hi there!"));
+        memory.add(Message.of(RoleType.USER, "Hello"));
+        memory.add(Message.of(RoleType.ASSISTANT, "Hi there!"));
 
         String context = memory.buildContext();
-        assertTrue(context.contains("Previous Context Summary"));
+        assertTrue(context.contains("Previous Context"));
         assertTrue(context.contains("User prefers dark mode"));
         assertTrue(context.contains("Recent Conversation"));
         assertTrue(context.contains("User: Hello"));
@@ -105,10 +107,10 @@ class ShortTermMemoryTest {
 
     @Test
     void testGetLatestExchange() {
-        memory.addMessage(Message.of(RoleType.USER, "First question"));
-        memory.addMessage(Message.of(RoleType.ASSISTANT, "First answer"));
-        memory.addMessage(Message.of(RoleType.USER, "Second question"));
-        memory.addMessage(Message.of(RoleType.ASSISTANT, "Second answer"));
+        memory.add(Message.of(RoleType.USER, "First question"));
+        memory.add(Message.of(RoleType.ASSISTANT, "First answer"));
+        memory.add(Message.of(RoleType.USER, "Second question"));
+        memory.add(Message.of(RoleType.ASSISTANT, "Second answer"));
 
         String exchange = memory.getLatestExchange();
         assertTrue(exchange.contains("Second question"));
@@ -121,7 +123,7 @@ class ShortTermMemoryTest {
     @Test
     void testGetRecentMessages() {
         for (int i = 1; i <= 5; i++) {
-            memory.addMessage(Message.of(RoleType.USER, "Message " + i));
+            memory.add(Message.of(RoleType.USER, "Message " + i));
         }
 
         var recent = memory.getRecentMessages(3);
@@ -133,56 +135,38 @@ class ShortTermMemoryTest {
     }
 
     @Test
-    void testWorkingContext() {
-        memory.put("user_preference", "dark mode");
-        memory.put("language", "en");
-        memory.put("count", 42);
+    void testRetrieve() {
+        memory.add(Message.of(RoleType.USER, "Hello"));
+        memory.add(Message.of(RoleType.ASSISTANT, "Hi"));
+        memory.add(Message.of(RoleType.USER, "How are you?"));
 
-        assertEquals("dark mode", memory.get("user_preference"));
-        assertEquals("en", memory.get("language"));
-        assertEquals(42, memory.get("count", Integer.class));
-        assertTrue(memory.has("user_preference"));
-        assertFalse(memory.has("nonexistent"));
+        var results = memory.retrieve("query", 2);
+        assertEquals(2, results.size());
+        // Returns most recent messages
+        assertTrue(results.get(0).contains("Hi"));
+        assertTrue(results.get(1).contains("How are you"));
 
-        memory.remove("language");
-        assertNull(memory.get("language"));
-
-        LOGGER.info("Working context test passed");
+        LOGGER.info("Retrieve test passed");
     }
 
     @Test
     void testClear() {
-        memory.addMessage(Message.of(RoleType.USER, "Test"));
+        memory.add(Message.of(RoleType.USER, "Test"));
         memory.setRollingSummary("Summary");
-        memory.put("key", "value");
 
         memory.clear();
 
-        assertEquals(0, memory.getMessageCount());
+        assertEquals(0, memory.size());
         assertTrue(memory.getRollingSummary().isEmpty());
-        assertTrue(memory.getWorkingContext().isEmpty());
+        assertTrue(memory.isEmpty());
 
         LOGGER.info("Clear test passed");
     }
 
     @Test
-    void testClearMessages() {
-        memory.addMessage(Message.of(RoleType.USER, "Test"));
-        memory.put("key", "value");
-
-        memory.clearMessages();
-
-        assertEquals(0, memory.getMessageCount());
-        // Working context should be preserved
-        assertEquals("value", memory.get("key"));
-
-        LOGGER.info("Clear messages test passed");
-    }
-
-    @Test
     void testSystemMessagesExcludedFromContext() {
-        memory.addMessage(Message.of(RoleType.SYSTEM, "System prompt"));
-        memory.addMessage(Message.of(RoleType.USER, "User message"));
+        memory.add(Message.of(RoleType.SYSTEM, "System prompt"));
+        memory.add(Message.of(RoleType.USER, "User message"));
 
         String context = memory.buildContext();
         assertFalse(context.contains("System prompt"));
@@ -192,21 +176,46 @@ class ShortTermMemoryTest {
     }
 
     @Test
-    void testDefaultConfig() {
+    void testDefaultConstructor() {
         ShortTermMemory defaultMemory = new ShortTermMemory();
-        assertEquals(20, defaultMemory.getConfig().getMaxMessages());
-        assertEquals(4000, defaultMemory.getConfig().getMaxTokens());
-        assertTrue(defaultMemory.getConfig().isEnableRollingSummary());
+        assertEquals(20, defaultMemory.getMaxMessages());
+        assertEquals(4000, defaultMemory.getMaxTokens());
 
-        LOGGER.info("Default config test passed");
+        LOGGER.info("Default constructor test passed");
+    }
+
+    @Test
+    void testModelBasedMaxTokens() {
+        // Using gpt-4o which has 128000 context window, ratio 0.8
+        ShortTermMemory modelMemory = new ShortTermMemory(20, "gpt-4o");
+        assertEquals(102400, modelMemory.getMaxTokens()); // 128000 * 0.8
+
+        LOGGER.info("Model-based max tokens test passed, maxTokens: {}", modelMemory.getMaxTokens());
     }
 
     @Test
     void testIsEmpty() {
         assertTrue(memory.isEmpty());
-        memory.addMessage(Message.of(RoleType.USER, "Test"));
+        memory.add(Message.of(RoleType.USER, "Test"));
         assertFalse(memory.isEmpty());
 
         LOGGER.info("Is empty test passed");
+    }
+
+    @Test
+    void testMemoryStoreInterface() {
+        // Verify it implements MemoryStore correctly
+        MemoryStore store = memory;
+        store.add("Test content");
+        assertEquals(1, store.size());
+        assertFalse(store.isEmpty());
+
+        String context = store.buildContext();
+        assertTrue(context.contains("Test content"));
+
+        store.clear();
+        assertTrue(store.isEmpty());
+
+        LOGGER.info("MemoryStore interface test passed");
     }
 }
