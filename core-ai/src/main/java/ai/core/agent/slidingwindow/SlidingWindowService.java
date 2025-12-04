@@ -49,6 +49,34 @@ public class SlidingWindowService {
         return false;
     }
 
+    /**
+     * Get messages that will be evicted by sliding window.
+     * These messages should be summarized before sliding.
+     *
+     * @param messages current messages
+     * @return messages to be evicted (excluding system message)
+     */
+    public List<Message> getEvictedMessages(List<Message> messages) {
+        var safeCutPoints = findSafeCutPoints(messages);
+        if (safeCutPoints.isEmpty()) {
+            return List.of();
+        }
+
+        var turnsToKeep = calculateTurnsToKeep(messages, safeCutPoints);
+        var cutPointIndex = Math.max(0, safeCutPoints.size() - turnsToKeep);
+        var cutMessageIndex = safeCutPoints.get(cutPointIndex);
+
+        // Return messages from index 0 to cutMessageIndex (excluding system)
+        var evicted = new ArrayList<Message>();
+        for (int i = 0; i < cutMessageIndex; i++) {
+            var msg = messages.get(i);
+            if (msg.role != RoleType.SYSTEM) {
+                evicted.add(msg);
+            }
+        }
+        return evicted;
+    }
+
     public List<Message> slide(List<Message> messages) {
         var result = new ArrayList<Message>();
 
