@@ -44,7 +44,7 @@ public class ToolExecutor {
         var result = doExecute(functionCall, context);
         // after
         lifecycles.forEach(lc -> lc.afterTool(functionCall, context, result));
-        return result.getResult();
+        return result.toResultForLLM();
     }
 
     private ToolCallResult doExecute(FunctionCall functionCall, ExecutionContext context) {
