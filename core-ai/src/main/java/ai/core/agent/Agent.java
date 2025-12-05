@@ -1,19 +1,17 @@
 package ai.core.agent;
 
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
-import ai.core.agent.slidingwindow.SlidingWindowService;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
-import ai.core.memory.ShortTermMemory;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
-import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
+import ai.core.memory.ShortTermMemory;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
@@ -51,9 +49,6 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class Agent extends Node<Agent> {
-    private static final String MEMORY_TOOL_NAME = "recall_memory";
-    private static final String MEMORY_TOOL_CALL_ID = "memory_recall_0";
-
     public static AgentBuilder builder() {
         return new AgentBuilder();
     }
@@ -74,7 +69,7 @@ public class Agent extends Node<Agent> {
     ToolExecutor toolExecutor;
     SlidingWindowConfig slidingWindowConfig;
     ShortTermMemory shortTermMemory;
-    private SlidingWindowService slidingWindow;
+    private AgentMemoryCoordinator memoryCoordinator;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -242,7 +237,7 @@ public class Agent extends Node<Agent> {
         var agentOut = new StringBuilder();
         do {
             // apply sliding window if needed before each LLM call
-            applySlidingWindowIfNeeded();
+            applyMemoryCoordinatorIfNeeded();
             // turn = call model + call func
             var turnMsgList = turn(getMessages(), toReqTools(toolCalls), model);
             logger.info("Agent turn {}: received {} messages", currentIteCount + 1, turnMsgList.size());
@@ -260,83 +255,15 @@ public class Agent extends Node<Agent> {
         }
     }
 
-    private void applySlidingWindowIfNeeded() {
+    private void applyMemoryCoordinatorIfNeeded() {
         if (slidingWindowConfig == null) return;
-        if (slidingWindow == null) {
-            slidingWindow = new SlidingWindowService(slidingWindowConfig, llmProvider, model);
+        if (memoryCoordinator == null) {
+            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, shortTermMemory, llmProvider, model);
         }
-
-        triggerBatchAsyncIfNeeded();
-        if (slidingWindow.shouldSlide(getMessages())) {
-            var beforeSize = getMessages().size();
-            waitForAsyncAndApplySummary();
-            var slidMessages = slidingWindow.slide(getMessages());
+        memoryCoordinator.applySlidingWindowIfNeeded(this::getMessages, msgs -> {
             clearMessages();
-            addMessages(slidMessages);
-            logger.info("Sliding window applied: {} -> {} messages", beforeSize, getMessages().size());
-            updateSystemMessageWithSummary();
-        }
-    }
-
-    private void triggerBatchAsyncIfNeeded() {
-        if (shortTermMemory == null || slidingWindowConfig == null) return;
-        Integer maxTurns = slidingWindowConfig.getMaxTurns();
-        if (maxTurns == null || maxTurns <= 0) return;
-        int batchSize = Math.max(5, (int) (maxTurns * 0.67));
-        int currentTurns = (int) getMessages().stream().filter(m -> m.role == RoleType.USER).count();
-        if (shortTermMemory.shouldTriggerBatchAsync(currentTurns, batchSize)) {
-            var msgs = getMessagesInTurnRange(shortTermMemory.getSummarizedUpTo(), currentTurns);
-            if (!msgs.isEmpty()) shortTermMemory.triggerBatchAsync(msgs, currentTurns);
-        }
-    }
-
-    private void waitForAsyncAndApplySummary() {
-        if (shortTermMemory == null) return;
-        shortTermMemory.tryApplyAsyncResult();
-        shortTermMemory.waitForAsyncCompletion();
-        if (shortTermMemory.getSummary().isEmpty()) {
-            var evicted = slidingWindow.getEvictedMessages(getMessages()).stream()
-                .filter(m -> !(m.role == RoleType.TOOL && MEMORY_TOOL_CALL_ID.equals(m.toolCallId))
-                    && !(m.role == RoleType.ASSISTANT && m.toolCalls != null
-                        && m.toolCalls.stream().anyMatch(tc -> MEMORY_TOOL_CALL_ID.equals(tc.id))))
-                .toList();
-            if (!evicted.isEmpty()) shortTermMemory.summarize(evicted);
-        }
-    }
-
-    private List<Message> getMessagesInTurnRange(int fromTurn, int toTurn) {
-        var result = new ArrayList<Message>();
-        int turnCount = 0;
-        boolean inRange = false;
-        for (var msg : getMessages()) {
-            if (msg.role == RoleType.SYSTEM) continue;
-            if (msg.role == RoleType.USER) {
-                turnCount++;
-                inRange = turnCount > fromTurn && turnCount <= toTurn;
-            }
-            if (inRange) result.add(msg);
-        }
-        return result;
-    }
-
-    private void updateSystemMessageWithSummary() {
-        if (shortTermMemory == null) return;
-        var summary = shortTermMemory.getSummary();
-        if (summary == null || summary.isBlank()) return;
-        var messages = getMessages();
-        for (int i = 0; i < messages.size(); i++) {
-            if (messages.get(i).role == RoleType.TOOL && MEMORY_TOOL_CALL_ID.equals(messages.get(i).toolCallId)) {
-                messages.set(i, Message.of(RoleType.TOOL, summary, MEMORY_TOOL_NAME, MEMORY_TOOL_CALL_ID, null, null));
-                return;
-            }
-        }
-        insertMemoryToolCallPair(messages, 1, summary);
-    }
-
-    private void insertMemoryToolCallPair(List<Message> messages, int idx, String summary) {
-        var toolCall = FunctionCall.of(MEMORY_TOOL_CALL_ID, "function", MEMORY_TOOL_NAME, "{}");
-        messages.add(idx, Message.of(RoleType.ASSISTANT, "", null, null, null, List.of(toolCall)));
-        messages.add(idx + 1, Message.of(RoleType.TOOL, summary, MEMORY_TOOL_NAME, MEMORY_TOOL_CALL_ID, null, null));
+            addMessages(msgs);
+        });
     }
 
     // Public accessors for reflection executor
@@ -419,10 +346,12 @@ public class Agent extends Node<Agent> {
     }
 
     private void injectMemoryAsToolCall() {
-        if (shortTermMemory == null) return;
-        var summary = shortTermMemory.getSummary();
-        if (summary == null || summary.isBlank()) return;
-        insertMemoryToolCallPair(getMessages(), getMessages().size(), summary);
+        if (memoryCoordinator == null && slidingWindowConfig != null) {
+            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, shortTermMemory, llmProvider, model);
+        }
+        if (memoryCoordinator != null) {
+            memoryCoordinator.injectMemoryAsToolCall(getMessages());
+        }
     }
 
     private List<Tool> toReqTools(List<ToolCall> toolCalls) {
