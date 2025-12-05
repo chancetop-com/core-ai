@@ -11,9 +11,13 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -28,8 +32,11 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ShortTermMemory {
     private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemory.class);
     private static final int DEFAULT_MAX_SUMMARY_TOKENS = 1000;
+    private static final int MIN_SUMMARY_TOKENS = 500;
+    private static final int MAX_SUMMARY_TOKENS = 4000;
     private static final double DEFAULT_TRIGGER_RATIO = 0.33;
     private static final double SUMMARY_TOKEN_RATIO = 0.1;  // Use 10% of model context for summary
+    private static final long ASYNC_TIMEOUT_SECONDS = 30;
 
     private static final String SUMMARIZE_PROMPT = """
         Merge the [History Summary] and [New Conversation] into a concise summary.
@@ -64,6 +71,7 @@ public class ShortTermMemory {
     private String summary = "";
     private final AtomicReference<CompletableFuture<String>> pendingSummary = new AtomicReference<>(null);
     private final AtomicBoolean asyncTriggered = new AtomicBoolean(false);
+    private final AtomicInteger summarizedUpTo = new AtomicInteger(0);  // Tracks how many turns have been summarized
 
     public ShortTermMemory() {
         this(DEFAULT_MAX_SUMMARY_TOKENS, DEFAULT_TRIGGER_RATIO, ForkJoinPool.commonPool());
@@ -87,7 +95,8 @@ public class ShortTermMemory {
         // Auto-calculate maxSummaryTokens based on model context from registry
         if (model != null) {
             int modelMaxTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(model);
-            this.maxSummaryTokens = (int) (modelMaxTokens * SUMMARY_TOKEN_RATIO);
+            int calculated = (int) (modelMaxTokens * SUMMARY_TOKEN_RATIO);
+            this.maxSummaryTokens = Math.max(MIN_SUMMARY_TOKENS, Math.min(MAX_SUMMARY_TOKENS, calculated));
             LOGGER.debug("Auto-configured maxSummaryTokens={} (model={}, context={})", maxSummaryTokens, model, modelMaxTokens);
         }
     }
@@ -106,6 +115,7 @@ public class ShortTermMemory {
         this.summary = "";
         this.pendingSummary.set(null);
         this.asyncTriggered.set(false);
+        this.summarizedUpTo.set(0);
     }
 
     public int getSummaryTokens() {
@@ -121,7 +131,7 @@ public class ShortTermMemory {
      * @param maxMessages  max messages threshold
      * @param tokenCount   current token count
      * @param maxTokens    max tokens threshold
-     * @return true if should trigger
+     * @return true if you should trigger
      */
     public boolean shouldTriggerAsync(int messageCount, int maxMessages, int tokenCount, int maxTokens) {
         if (llmProvider == null || asyncTriggered.get()) {
@@ -129,6 +139,22 @@ public class ShortTermMemory {
         }
         return messageCount >= (int) (maxMessages * triggerRatio)
             || tokenCount >= (int) (maxTokens * triggerRatio);
+    }
+
+    /**
+     * Check if batch async summarization should be triggered based on turn count.
+     * Triggers when (currentTurns - summarizedUpTo) >= batchSize and no async in progress.
+     *
+     * @param currentTurns current conversation turn count
+     * @param batchSize    number of turns to accumulate before triggering
+     * @return true if you should trigger batch async
+     */
+    public boolean shouldTriggerBatchAsync(int currentTurns, int batchSize) {
+        if (llmProvider == null || asyncTriggered.get()) {
+            return false;
+        }
+        int unsummarizedTurns = currentTurns - summarizedUpTo.get();
+        return unsummarizedTurns >= batchSize;
     }
 
     // ==================== Async Summarization ====================
@@ -139,6 +165,17 @@ public class ShortTermMemory {
      * @param messagesToSummarize messages to include in summary
      */
     public void triggerAsync(List<Message> messagesToSummarize) {
+        triggerBatchAsync(messagesToSummarize, 0);
+    }
+
+    /**
+     * Trigger batch async summarization with turn tracking.
+     * This method tracks which turns have been summarized to support incremental batch summarization.
+     *
+     * @param messagesToSummarize messages to include in summary
+     * @param currentTurnCount    current turn count for tracking progress
+     */
+    public void triggerBatchAsync(List<Message> messagesToSummarize, int currentTurnCount) {
         if (llmProvider == null || !asyncTriggered.compareAndSet(false, true)) {
             return;
         }
@@ -149,18 +186,61 @@ public class ShortTermMemory {
             return;
         }
 
-        LOGGER.info("Triggering async summarization");
+        LOGGER.info("Triggering batch async summarization for turns up to {}", currentTurnCount);
 
+        final int targetTurn = currentTurnCount;
         CompletableFuture<String> future = CompletableFuture
             .supplyAsync(() -> doSummarize(summary, content), executor)
             .thenApply(this::ensureWithinLimit)
             .whenComplete((result, error) -> {
                 if (error != null) {
                     LOGGER.error("Async summarization failed", error);
+                } else if (result != null && !result.isBlank()) {
+                    summarizedUpTo.set(targetTurn);
                 }
             });
 
         pendingSummary.set(future);
+    }
+
+    /**
+     * Wait for pending async summarization to complete with timeout.
+     * Applies the result if successful.
+     */
+    public void waitForAsyncCompletion() {
+        CompletableFuture<String> pending = pendingSummary.get();
+        if (pending == null) {
+            return;
+        }
+
+        try {
+            String result = pending.get(ASYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (result != null && !result.isBlank()) {
+                summary = result;
+                LOGGER.info("Async summarization completed, summary applied");
+                resetAsyncState();
+                return;
+            }
+        } catch (TimeoutException e) {
+            LOGGER.warn("Async summarization timed out after {}s", ASYNC_TIMEOUT_SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOGGER.warn("Async summarization interrupted");
+        } catch (ExecutionException e) {
+            LOGGER.error("Async summarization execution failed", e.getCause());
+        }
+
+        resetAsyncState();
+    }
+
+    /**
+     * Check if async summarization is currently in progress.
+     *
+     * @return true if async is in progress
+     */
+    public boolean isAsyncInProgress() {
+        CompletableFuture<String> pending = pendingSummary.get();
+        return pending != null && !pending.isDone();
     }
 
     /**
@@ -183,6 +263,15 @@ public class ShortTermMemory {
             }
         }
         return false;
+    }
+
+    /**
+     * Get the turn count that has been summarized.
+     *
+     * @return summarized turn count
+     */
+    public int getSummarizedUpTo() {
+        return summarizedUpTo.get();
     }
 
     // ==================== Sync Summarization ====================

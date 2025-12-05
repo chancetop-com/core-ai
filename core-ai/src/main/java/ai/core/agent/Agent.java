@@ -12,6 +12,7 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
@@ -50,12 +51,14 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class Agent extends Node<Agent> {
+    private static final String MEMORY_TOOL_NAME = "recall_memory";
+    private static final String MEMORY_TOOL_CALL_ID = "memory_recall_0";
+
     public static AgentBuilder builder() {
         return new AgentBuilder();
     }
 
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
-
     String systemPrompt;
     String promptTemplate;
     LLMProvider llmProvider;
@@ -100,10 +103,6 @@ public class Agent extends Node<Agent> {
         return doExecute(query, variables);
     }
 
-    /**
-     * Get the agent's tracer if available
-     * LLM tracing is handled automatically by LLMProvider.completion()
-     */
     private AgentTracer getActiveTracer() {
         return getTracer();
     }
@@ -113,7 +112,6 @@ public class Agent extends Node<Agent> {
     }
 
     private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
-        // Initialize execution (only once - saves original query)
         boolean isFirstExecution = getInput() == null;
         if (isFirstExecution) {
             setInput(query);
@@ -223,26 +221,18 @@ public class Agent extends Node<Agent> {
         return round >= reflectionConfig.minRound() && eval.getScore() >= 8;
     }
 
-    private void notifyTerminationReason(ReflectionEvaluation evaluation, int currentRound) {
+    private void notifyTerminationReason(ReflectionEvaluation eval, int round) {
         if (reflectionListener == null) return;
-
-        if (evaluation.isPass() && evaluation.getScore() >= 8) {
-            reflectionListener.onScoreAchieved(this, evaluation.getScore(), currentRound);
-        } else if (!evaluation.isShouldContinue()) {
-            reflectionListener.onNoImprovement(this, evaluation.getScore(), currentRound);
-        }
+        if (eval.isPass() && eval.getScore() >= 8) reflectionListener.onScoreAchieved(this, eval.getScore(), round);
+        else if (!eval.isShouldContinue()) reflectionListener.onNoImprovement(this, eval.getScore(), round);
     }
 
     private ReflectionStatus determineCompletionStatus(ReflectionHistory history) {
-        int completedRounds = history.getRounds().size();
-        if (completedRounds >= reflectionConfig.maxRound()) return ReflectionStatus.COMPLETED_MAX_ROUNDS;
-
-        if (!history.getRounds().isEmpty()) {
-            ReflectionEvaluation lastEval = history.getRounds().getLast().getEvaluation();
-            if (lastEval.isPass() && lastEval.getScore() >= 8) return ReflectionStatus.COMPLETED_SUCCESS;
-            if (!lastEval.isShouldContinue()) return ReflectionStatus.COMPLETED_NO_IMPROVEMENT;
-        }
-        return ReflectionStatus.COMPLETED_SUCCESS;
+        if (history.getRounds().size() >= reflectionConfig.maxRound()) return ReflectionStatus.COMPLETED_MAX_ROUNDS;
+        if (history.getRounds().isEmpty()) return ReflectionStatus.COMPLETED_SUCCESS;
+        var lastEval = history.getRounds().getLast().getEvaluation();
+        if (lastEval.isPass() && lastEval.getScore() >= 8) return ReflectionStatus.COMPLETED_SUCCESS;
+        return lastEval.isShouldContinue() ? ReflectionStatus.COMPLETED_SUCCESS : ReflectionStatus.COMPLETED_NO_IMPROVEMENT;
     }
 
     // Public method for chat execution (used by executeAgentFlow)
@@ -276,49 +266,77 @@ public class Agent extends Node<Agent> {
             slidingWindow = new SlidingWindowService(slidingWindowConfig, llmProvider, model);
         }
 
+        triggerBatchAsyncIfNeeded();
         if (slidingWindow.shouldSlide(getMessages())) {
             var beforeSize = getMessages().size();
-            // Summarize evicted messages and update system message (before sliding)
-            summarizeEvictedMessages();
-
-            // Slide - the updated system message will be preserved
+            waitForAsyncAndApplySummary();
             var slidMessages = slidingWindow.slide(getMessages());
             clearMessages();
             addMessages(slidMessages);
             logger.info("Sliding window applied: {} -> {} messages", beforeSize, getMessages().size());
+            updateSystemMessageWithSummary();
         }
+    }
+
+    private void triggerBatchAsyncIfNeeded() {
+        if (shortTermMemory == null || slidingWindowConfig == null) return;
+        Integer maxTurns = slidingWindowConfig.getMaxTurns();
+        if (maxTurns == null || maxTurns <= 0) return;
+        int batchSize = Math.max(5, (int) (maxTurns * 0.67));
+        int currentTurns = (int) getMessages().stream().filter(m -> m.role == RoleType.USER).count();
+        if (shortTermMemory.shouldTriggerBatchAsync(currentTurns, batchSize)) {
+            var msgs = getMessagesInTurnRange(shortTermMemory.getSummarizedUpTo(), currentTurns);
+            if (!msgs.isEmpty()) shortTermMemory.triggerBatchAsync(msgs, currentTurns);
+        }
+    }
+
+    private void waitForAsyncAndApplySummary() {
+        if (shortTermMemory == null) return;
+        shortTermMemory.tryApplyAsyncResult();
+        shortTermMemory.waitForAsyncCompletion();
+        if (shortTermMemory.getSummary().isEmpty()) {
+            var evicted = slidingWindow.getEvictedMessages(getMessages()).stream()
+                .filter(m -> !(m.role == RoleType.TOOL && MEMORY_TOOL_CALL_ID.equals(m.toolCallId))
+                    && !(m.role == RoleType.ASSISTANT && m.toolCalls != null
+                        && m.toolCalls.stream().anyMatch(tc -> MEMORY_TOOL_CALL_ID.equals(tc.id))))
+                .toList();
+            if (!evicted.isEmpty()) shortTermMemory.summarize(evicted);
+        }
+    }
+
+    private List<Message> getMessagesInTurnRange(int fromTurn, int toTurn) {
+        var result = new ArrayList<Message>();
+        int turnCount = 0;
+        boolean inRange = false;
+        for (var msg : getMessages()) {
+            if (msg.role == RoleType.SYSTEM) continue;
+            if (msg.role == RoleType.USER) {
+                turnCount++;
+                inRange = turnCount > fromTurn && turnCount <= toTurn;
+            }
+            if (inRange) result.add(msg);
+        }
+        return result;
     }
 
     private void updateSystemMessageWithSummary() {
         if (shortTermMemory == null) return;
-        var summaryBlock = shortTermMemory.buildSummaryBlock();
-        if (summaryBlock.isEmpty()) return;
-
+        var summary = shortTermMemory.getSummary();
+        if (summary == null || summary.isBlank()) return;
         var messages = getMessages();
-        //todo any better method to change the system message ? @xander
         for (int i = 0; i < messages.size(); i++) {
-            var msg = messages.get(i);
-            if (msg.role == RoleType.SYSTEM) {
-                // Remove old summary block if exists, then append new one
-                var content = msg.content;
-                var summaryMarker = "\n\n[Conversation Memory]";
-                var markerIndex = content.indexOf(summaryMarker);
-                if (markerIndex >= 0) {
-                    content = content.substring(0, markerIndex);
-                }
-                messages.set(i, Message.of(RoleType.SYSTEM, content + summaryBlock, msg.name));
-                break;
+            if (messages.get(i).role == RoleType.TOOL && MEMORY_TOOL_CALL_ID.equals(messages.get(i).toolCallId)) {
+                messages.set(i, Message.of(RoleType.TOOL, summary, MEMORY_TOOL_NAME, MEMORY_TOOL_CALL_ID, null, null));
+                return;
             }
         }
+        insertMemoryToolCallPair(messages, 1, summary);
     }
 
-    private void summarizeEvictedMessages() {
-        if (shortTermMemory == null) return;
-        var evicted = slidingWindow.getEvictedMessages(getMessages());
-        if (evicted.isEmpty()) return;
-        shortTermMemory.summarize(evicted);
-        logger.info("Summarized {} evicted messages", evicted.size());
-        updateSystemMessageWithSummary();
+    private void insertMemoryToolCallPair(List<Message> messages, int idx, String summary) {
+        var toolCall = FunctionCall.of(MEMORY_TOOL_CALL_ID, "function", MEMORY_TOOL_NAME, "{}");
+        messages.add(idx, Message.of(RoleType.ASSISTANT, "", null, null, null, List.of(toolCall)));
+        messages.add(idx + 1, Message.of(RoleType.TOOL, summary, MEMORY_TOOL_NAME, MEMORY_TOOL_CALL_ID, null, null));
     }
 
     // Public accessors for reflection executor
@@ -359,10 +377,8 @@ public class Agent extends Node<Agent> {
 
     private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
-
         var resp = func.apply(request);
         addTokenCost(resp.usage);
-
         agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
         return resp.choices.getFirst();
     }
@@ -372,15 +388,10 @@ public class Agent extends Node<Agent> {
     }
 
     public List<Message> handleFunc(Message funcMsg) {
-        return funcMsg.toolCalls.stream()
-                .map(tool -> {
-                    var callResult = getToolExecutor().execute(tool, getExecutionContext());
-                    return Map.entry(tool, callResult);
-                }).map(entry -> {
-                    var tool = entry.getKey();
-                    var callResult = entry.getValue();
-                    return Message.of(RoleType.TOOL, callResult, tool.function.name, tool.id, null, null);
-                }).toList();
+        return funcMsg.toolCalls.stream().map(tool -> {
+            var result = getToolExecutor().execute(tool, getExecutionContext());
+            return Message.of(RoleType.TOOL, result, tool.function.name, tool.id, null, null);
+        }).toList();
     }
 
     private ToolExecutor getToolExecutor() {
@@ -394,6 +405,7 @@ public class Agent extends Node<Agent> {
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
+            injectMemoryAsToolCall();
             addTaskHistoriesToMessages();
         }
 
@@ -406,17 +418,22 @@ public class Agent extends Node<Agent> {
         addMessage(reqMsg);
     }
 
+    private void injectMemoryAsToolCall() {
+        if (shortTermMemory == null) return;
+        var summary = shortTermMemory.getSummary();
+        if (summary == null || summary.isBlank()) return;
+        insertMemoryToolCallPair(getMessages(), getMessages().size(), summary);
+    }
+
     private List<Tool> toReqTools(List<ToolCall> toolCalls) {
         return toolCalls.stream().map(ToolCall::toTool).toList();
     }
 
     private void removeLastAssistantToolCallMessageIfNotToolResult(Message reqMsg) {
-        var lastMessage = getMessages().getLast();
-        if (lastMessage.role == RoleType.ASSISTANT
-                && lastMessage.toolCalls != null
-                && !lastMessage.toolCalls.isEmpty()
-                && reqMsg.role != RoleType.TOOL) {
-            removeMessage(lastMessage);
+        var lastMsg = getMessages().getLast();
+        if (lastMsg.role == RoleType.ASSISTANT && lastMsg.toolCalls != null
+                && !lastMsg.toolCalls.isEmpty() && reqMsg.role != RoleType.TOOL) {
+            removeMessage(lastMsg);
         }
     }
 
@@ -428,7 +445,6 @@ public class Agent extends Node<Agent> {
     void setChildrenParentNode() {
     }
 
-
     private Message buildSystemMessage(Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && isUseGroupContext()) {
@@ -438,20 +454,12 @@ public class Agent extends Node<Agent> {
         if (variables != null) var.putAll(variables);
         var.putAll(getSystemVariables());
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
-
-        // Inject short-term memory summary
-        if (shortTermMemory != null) {
-            prompt += shortTermMemory.buildSummaryBlock();
-        }
-
         return Message.of(RoleType.SYSTEM, prompt, getName());
     }
 
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
             throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
-
-        // Step 1: Query rewriting for better retrieval (optional based on configuration)
         var ragQuery = query;
         if (ragConfig.enableQueryRewriting()) {
             ragQuery = DefaultRagQueryRewriteAgent.of(ragConfig.llmProvider()).run(query);
@@ -466,7 +474,6 @@ public class Agent extends Node<Agent> {
         var context = ragConfig.llmProvider().rerankings(RerankingRequest.of(ragQuery, docs.stream().map(v -> v.content).toList())).rerankedDocuments.getFirst();
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
     }
-
 
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
