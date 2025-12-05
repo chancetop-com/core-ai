@@ -16,9 +16,18 @@ public final class ToolCallResult {
     }
 
     public static ToolCallResult failed(String error) {
+        return failed(error, new RuntimeException(error));
+    }
+
+    public static ToolCallResult failed(String error, Throwable e) {
+        return failed(error, new RuntimeException(e));
+    }
+
+    public static ToolCallResult failed(String error, RuntimeException e) {
         var r = new ToolCallResult();
         r.status = Status.FAILED;
         r.result = error;
+        r.runtimeException = e;
         return r;
     }
 
@@ -29,6 +38,7 @@ public final class ToolCallResult {
     private String toolName;
     private long durationMs;
     private final Map<String, Object> stats;
+    private RuntimeException runtimeException;
 
     private ToolCallResult() {
         this.stats = new HashMap<>();
@@ -88,6 +98,11 @@ public final class ToolCallResult {
         return this;
     }
 
+    public ToolCallResult withResult(String result) {
+        this.result = result;
+        return this;
+    }
+
     public ToolCallResult withStats(String key, Object value) {
         this.stats.put(key, value);
         return this;
@@ -95,6 +110,15 @@ public final class ToolCallResult {
 
     public ToolCallResult withStats(Map<String, Object> stats) {
         this.stats.putAll(stats);
+        return this;
+    }
+
+    public RuntimeException getRuntimeException() {
+        return runtimeException;
+    }
+
+    public ToolCallResult withRuntimeException(RuntimeException runtimeException) {
+        this.runtimeException = runtimeException;
         return this;
     }
 
@@ -126,6 +150,7 @@ public final class ToolCallResult {
         sb.append("Please ask the user to provide the required input.");
         return sb.toString();
     }
+
 
     public enum Status {
         COMPLETED,

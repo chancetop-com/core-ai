@@ -9,6 +9,7 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Usage;
+import ai.core.tool.ToolCallResult;
 
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -27,8 +28,8 @@ public class FakerLifecycle {
     public static class FakerLifecycleInner extends AbstractLifecycle {
 
         @Override
-        public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, AtomicReference<String> funcResult) {
-            funcResult.set(funcResult.get() + "_mock_tool_result");
+        public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
+            toolResult.withResult(toolResult.getResult() + "_mock_tool_result");
         }
 
         @Override
@@ -65,6 +66,20 @@ public class FakerLifecycle {
         @Override
         public void beforeAgentBuild(AgentBuilder agentBuilder) {
             agentBuilder.maxRound(1000);
+        }
+    }
+
+    public static class FakerLifecycleInner2 extends FakerLifecycleInner {
+        @Override
+        public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
+            if (toolResult.isFailed()) {
+                throw toolResult.getRuntimeException();
+            }
+        }
+
+        @Override
+        public void beforeTool(FunctionCall functionCall, ExecutionContext executionContext) {
+
         }
     }
 }

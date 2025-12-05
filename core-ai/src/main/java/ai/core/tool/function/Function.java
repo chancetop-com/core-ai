@@ -66,7 +66,7 @@ public class Function extends ToolCall {
             String result = executeSupport(text);
             return ToolCallResult.completed(result).withDuration(System.currentTimeMillis() - startTime);
         } catch (IllegalAccessException | InvocationTargetException e) {
-            return ToolCallResult.failed(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, e.getMessage()))
+            return ToolCallResult.failed(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, e.getMessage()), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }

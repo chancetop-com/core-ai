@@ -6,6 +6,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FunctionCall;
+import ai.core.tool.ToolCallResult;
 
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -79,7 +80,7 @@ public abstract class AbstractLifecycle {
 
     }
 
-    public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, AtomicReference<String> funcResult) {
+    public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
 
     }
 }
