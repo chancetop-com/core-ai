@@ -1,7 +1,7 @@
 package ai.core.tool.function.converter.response;
 
 import ai.core.tool.function.converter.ResponseConverter;
-import core.framework.json.JSON;
+import ai.core.utils.JsonUtil;
 
 /**
  * @author stephen
@@ -9,6 +9,8 @@ import core.framework.json.JSON;
 public class DefaultJsonResponseConverter implements ResponseConverter {
     @Override
     public String convert(Object o) {
-        return JSON.toJSON(o);
+        if (o == null) return null;
+        if (o instanceof String) return (String) o;
+        return JsonUtil.toJson(o);
     }
 }
