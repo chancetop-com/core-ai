@@ -348,7 +348,7 @@ public class ShortTermMemory {
         var request = CompletionRequest.of(msgs, null, 0.3, model, "memory-summarizer");
         var response = llmProvider.completion(request);
 
-        if (response.choices != null && !response.choices.isEmpty()) {
+        if (response != null && response.choices != null && !response.choices.isEmpty()) {
             var choice = response.choices.getFirst();
             if (choice.message != null && choice.message.content != null) {
                 return choice.message.content.trim();
