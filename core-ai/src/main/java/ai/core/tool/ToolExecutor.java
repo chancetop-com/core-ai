@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -43,18 +42,15 @@ public class ToolExecutor {
 
         // execute tool
         var result = doExecute(functionCall, context);
-        var resultForLLM = result.toResultForLLM();
-
         // after
-        AtomicReference<String> resultRef = new AtomicReference<>(resultForLLM);
-        lifecycles.forEach(lc -> lc.afterTool(functionCall, context, resultRef));
-        return resultRef.get();
+        lifecycles.forEach(lc -> lc.afterTool(functionCall, context, result));
+        return result.getResult();
     }
 
     private ToolCallResult doExecute(FunctionCall functionCall, ExecutionContext context) {
         var optional = toolCalls.stream()
-            .filter(v -> v.getName().equalsIgnoreCase(functionCall.function.name))
-            .findFirst();
+                .filter(v -> v.getName().equalsIgnoreCase(functionCall.function.name))
+                .findFirst();
 
         if (optional.isEmpty()) {
             return ToolCallResult.failed("tool not found: " + functionCall.function.name);
@@ -75,9 +71,9 @@ public class ToolExecutor {
             ToolCallResult result;
             if (tracer != null) {
                 result = tracer.traceToolCall(
-                    functionCall.function.name,
-                    functionCall.function.arguments,
-                    () -> tool.execute(functionCall.function.arguments, context)
+                        functionCall.function.name,
+                        functionCall.function.arguments,
+                        () -> tool.execute(functionCall.function.arguments, context)
                 );
             } else {
                 result = tool.execute(functionCall.function.arguments, context);
@@ -94,7 +90,7 @@ public class ToolExecutor {
 
             return result;
         } catch (Exception e) {
-            return ToolCallResult.failed(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(functionCall), e.getMessage()));
+            return ToolCallResult.failed(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(functionCall), e.getMessage()), e);
         }
     }
 

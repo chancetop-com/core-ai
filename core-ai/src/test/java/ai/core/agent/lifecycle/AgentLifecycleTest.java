@@ -14,6 +14,7 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
@@ -123,6 +124,58 @@ class AgentLifecycleTest {
         assertTrue(nameCaptor.getValue().contains("mock_name"));
         // after tool
         assertEquals("mock_name_mock_tool_result", agentSpy.getMessages().getLast().content);
+    }
+
+    @Test
+    void testToolCallWithException() {
+        String cc = """
+                {
+                  "choices": [
+                    {
+                      "finish_reason": "tool_calls",
+                      "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "name": "assistant",
+                        "tool_call_id": null,
+                        "function_call": null,
+                        "tool_calls": [
+                          {
+                            "id": "call_00_05JqTTzdrNShvtI2twP3uuBa",
+                            "type": "function",
+                            "function": {
+                              "name": "query_person",
+                              "arguments": "{\\"name\\":\\"ttt\\"}"
+                            },
+                            "index": null
+                          }
+                        ]
+                      },
+                      "delta": null,
+                      "index": null
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 652,
+                    "completion_tokens": 223,
+                    "total_tokens": -1
+                  }
+                }
+                """;
+        var flcInner = spy(new FakerLifecycle.FakerLifecycleInner2());
+        var flc = spy(new FakerLifecycle());
+        var crs = JsonUtil.fromJson(CompletionResponse.class, cc);
+        when(llmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class))).thenReturn(crs);
+        when(flc.queryPerson(any())).thenThrow(new RuntimeException("mock_tool_call_exception"));
+        var agent = Agent.builder()
+                .llmProvider(llmProvider)
+                .maxTurn(1)
+                .toolCalls(Functions.from(flc, "queryPerson"))
+                .agentLifecycle(List.of(flcInner))
+                .build();
+        var agentSpy = spy(agent);
+        assertThrows(RuntimeException.class, () -> agentSpy.run("hello"));
+        verify(flcInner).afterTool(any(), any(), any());
 
     }
 
