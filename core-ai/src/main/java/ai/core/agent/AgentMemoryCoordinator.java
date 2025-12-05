@@ -20,7 +20,7 @@ import java.util.function.Supplier;
  *
  * @author xander
  */
-public class AgentMemoryCoordinator {
+class AgentMemoryCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentMemoryCoordinator.class);
     static final String MEMORY_TOOL_NAME = "recall_memory";
     static final String MEMORY_TOOL_CALL_ID = "memory_recall_0";
@@ -31,10 +31,10 @@ public class AgentMemoryCoordinator {
     private final String model;
     private SlidingWindowService slidingWindow;
 
-    public AgentMemoryCoordinator(SlidingWindowConfig slidingWindowConfig,
-                                  ShortTermMemory shortTermMemory,
-                                  LLMProvider llmProvider,
-                                  String model) {
+    AgentMemoryCoordinator(SlidingWindowConfig slidingWindowConfig,
+                           ShortTermMemory shortTermMemory,
+                           LLMProvider llmProvider,
+                           String model) {
         this.slidingWindowConfig = slidingWindowConfig;
         this.shortTermMemory = shortTermMemory;
         this.llmProvider = llmProvider;
