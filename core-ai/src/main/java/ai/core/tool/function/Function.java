@@ -8,6 +8,7 @@ import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.function.converter.ResponseConverter;
 import ai.core.tool.ToolCall;
+import ai.core.tool.function.converter.response.DefaultJsonResponseConverter;
 import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
@@ -31,14 +32,14 @@ public class Function extends ToolCall {
     Object object;
     Method method;
     Boolean dynamicArguments;
-    ResponseConverter responseConverter;
+    ResponseConverter responseConverter = new DefaultJsonResponseConverter();
     Logger logger = LoggerFactory.getLogger(Function.class);
 
     private String executeSupport(String text) throws InvocationTargetException, IllegalAccessException {
         if (dynamicArguments != null && dynamicArguments) {
             // args convert by method itself
             var rst = method.invoke(object, List.of(this.getName(), text).toArray());
-            return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
+            return responseConverter.convert(rst);
         } else {
             var argsMap = JsonUtil.fromJson(Map.class, text);
             var args = new Object[this.getParameters().size()];
@@ -54,7 +55,7 @@ public class Function extends ToolCall {
                 }
             }
             var rst = method.invoke(object, args);
-            return responseConverter != null ? responseConverter.convert(rst) : (String) rst;
+            return responseConverter.convert(rst);
         }
     }
 
