@@ -67,14 +67,12 @@ class ShortTermMemoryIntegrationTest extends IntegrationTest {
         assertFalse(shortTermMemory.getSummary().isEmpty(), "Summary should be created after sliding window");
         LOGGER.info("Summary content: {}", shortTermMemory.getSummary());
 
-        // Verify system message contains the summary
-        var systemMessage = agent.getMessages().stream()
-            .filter(m -> m.role == RoleType.SYSTEM)
+        // Verify memory is injected as TOOL message
+        var memoryToolMessage = agent.getMessages().stream()
+            .filter(m -> m.role == RoleType.TOOL && "memory_recall_0".equals(m.toolCallId))
             .findFirst();
-        assertTrue(systemMessage.isPresent(), "System message should exist");
-        assertTrue(systemMessage.get().content.contains("[Conversation Memory]"),
-            "System message should contain conversation memory");
-        LOGGER.info("System message: {}", systemMessage.get().content);
+        assertTrue(memoryToolMessage.isPresent(), "Memory should be injected as TOOL message");
+        LOGGER.info("Memory tool message: {}", memoryToolMessage.get().content);
 
         // Turn 4: Ask about previous topics to verify memory is working
         LOGGER.info("=== Turn 4: Testing memory recall ===");
@@ -122,13 +120,11 @@ class ShortTermMemoryIntegrationTest extends IntegrationTest {
         var response = agent2.run("What do you know about me?");
         LOGGER.info("Agent 2 response (should know about Alice/cats/sci-fi): {}", response);
 
-        var systemMessage = agent2.getMessages().stream()
-            .filter(m -> m.role == RoleType.SYSTEM)
+        var memoryToolMessage = agent2.getMessages().stream()
+            .filter(m -> m.role == RoleType.TOOL && "memory_recall_0".equals(m.toolCallId))
             .findFirst();
-        assertTrue(systemMessage.isPresent());
-        assertTrue(systemMessage.get().content.contains("[Conversation Memory]"),
-            "Agent 2 should have memory from Agent 1");
-        LOGGER.info("Agent 2 system message: {}", systemMessage.get().content);
+        assertTrue(memoryToolMessage.isPresent(), "Agent 2 should have memory from Agent 1 as TOOL message");
+        LOGGER.info("Agent 2 memory tool message: {}", memoryToolMessage.get().content);
     }
 
     /**
@@ -155,14 +151,11 @@ class ShortTermMemoryIntegrationTest extends IntegrationTest {
         var response = agent.run("What do you remember about me?");
         LOGGER.info("Agent response (should recall pizza/New York): {}", response);
 
-        // Verify system message has memory block
-        var systemMessage = agent.getMessages().stream()
-            .filter(m -> m.role == RoleType.SYSTEM)
+        // Verify memory is injected as TOOL message
+        var memoryToolMessage = agent.getMessages().stream()
+            .filter(m -> m.role == RoleType.TOOL && "memory_recall_0".equals(m.toolCallId))
             .findFirst();
-
-        assertTrue(systemMessage.isPresent());
-        assertTrue(systemMessage.get().content.contains("[Conversation Memory]"),
-            "Memory should be automatically injected");
-        LOGGER.info("System message with auto memory: {}", systemMessage.get().content);
+        assertTrue(memoryToolMessage.isPresent(), "Memory should be automatically injected as TOOL message");
+        LOGGER.info("Memory tool message with auto memory: {}", memoryToolMessage.get().content);
     }
 }
