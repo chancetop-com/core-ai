@@ -1,13 +1,11 @@
 package ai.core;
 
-import ai.core.api.mcp.JsonRpcResponse;
-import ai.core.mcp.server.McpSseController;
-import ai.core.sse.PatchedServerSentEventConfig;
-import ai.core.mcp.server.McpServerChannelService;
 import ai.core.mcp.server.McpServerService;
-import ai.core.mcp.server.McpServerSseListener;
+import ai.core.mcp.server.McpStreamableHttpController;
 import core.framework.http.HTTPMethod;
+import core.framework.module.LambdaController;
 import core.framework.module.Module;
+import core.framework.web.Response;
 
 /**
  * @author stephen
@@ -15,10 +13,16 @@ import core.framework.module.Module;
 public class McpServerModule extends Module {
     @Override
     protected void initialize() {
-        bind(McpServerChannelService.class);
-        bind(McpServerService.class);
-        var sseConfig = config(PatchedServerSentEventConfig.class, "mcpServerSse");
-        http().route(HTTPMethod.GET, "/mcp", new McpSseController());
-        sseConfig.listen(HTTPMethod.POST, "/mcp", JsonRpcResponse.class, bind(McpServerSseListener.class));
+        var holder = new McpServerService("core-ai-mcp-server", "1.0.0");
+        bind(McpServerService.class, holder);
+        onShutdown(holder::close);
+
+        // MCP endpoint with CORS support
+        http().route(HTTPMethod.OPTIONS, "/mcp", (LambdaController) request -> Response.empty()
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                .header("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id")
+                .header("Access-Control-Max-Age", "86400"));
+        http().route(HTTPMethod.POST, "/mcp", bind(McpStreamableHttpController.class));
     }
 }

@@ -13,5 +13,5 @@ object Versions {
     const val UNDERTOW_CORE_VERSION = "2.3.18.Final"
     const val OPENTELEMETRY_VERSION = "1.44.1"
     const val OPENAI_JAVA_CLIENT_VERSION = "4.8.0"
-    const val MCP_SDK_VERSION = "0.15.0"
+    const val MCP_SDK_VERSION = "0.17.0"
 }
