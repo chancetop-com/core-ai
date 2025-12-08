@@ -20,9 +20,12 @@ public class McpServerModule extends Module {
         // MCP endpoint with CORS support
         http().route(HTTPMethod.OPTIONS, "/mcp", (LambdaController) request -> Response.empty()
                 .header("Access-Control-Allow-Origin", "*")
-                .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
                 .header("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id")
                 .header("Access-Control-Max-Age", "86400"));
+        http().route(HTTPMethod.GET, "/mcp", (LambdaController) request -> Response.text("{\"name\":\"" + holder.getServerName() + "\",\"version\":\"" + holder.getServerVersion() + "\"}")
+                .contentType(core.framework.http.ContentType.APPLICATION_JSON)
+                .header("Access-Control-Allow-Origin", "*"));
         http().route(HTTPMethod.POST, "/mcp", bind(McpStreamableHttpController.class));
     }
 }
