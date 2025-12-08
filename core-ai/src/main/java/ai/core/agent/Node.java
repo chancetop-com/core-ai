@@ -442,6 +442,7 @@ public abstract class Node<T extends Node<T>> {
     }
 
     public void addTokenCost(Usage cost) {
+        if (cost == null) return;
         this.currentTokenUsage.setCompletionTokens(this.currentTokenUsage.getCompletionTokens() + cost.getCompletionTokens());
         this.currentTokenUsage.setPromptTokens(this.currentTokenUsage.getPromptTokens() + cost.getPromptTokens());
         this.currentTokenUsage.setTotalTokens(this.currentTokenUsage.getTotalTokens() + cost.getTotalTokens());
