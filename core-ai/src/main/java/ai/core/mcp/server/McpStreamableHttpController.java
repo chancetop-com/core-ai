@@ -40,7 +40,7 @@ public class McpStreamableHttpController implements Controller {
             if (map.containsKey("id")) {
                 var mcpRequest = JsonUtil.fromJson(McpSchema.JSONRPCRequest.class, jsonBody);
                 var response = this.serverHolder.getTransportProvider().handleRequest(mcpRequest);
-                var responseJson = JsonUtil.toJson(response);
+                var responseJson = JsonUtil.toJsonNotOnlyPublic(response);
                 ActionLogContext.put("mcp_response", responseJson);
                 return Response.bytes(responseJson.getBytes()).contentType(APPLICATION_JSON).header("Access-Control-Allow-Origin", "*");
             } else {
