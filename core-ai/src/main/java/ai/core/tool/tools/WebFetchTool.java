@@ -35,6 +35,16 @@ public class WebFetchTool extends ToolCall {
             - Optional content type and request body for POST/PUT/PATCH requests
             - Returns the response body as string, or error message if request fails
             - Use this tool when you need to retrieve content from web URLs
+            
+            Usage notes:
+            
+            - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
+            - HTTP URLs will be automatically upgraded to HTTPS
+            - The prompt should describe what information you want to extract from the page
+            - This tool is read-only and does not modify any files
+            - Results may be summarized if the content is very large
+            - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL
+            - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.
             """;
 
     public static Builder builder() {
