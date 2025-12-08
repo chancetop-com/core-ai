@@ -79,7 +79,7 @@ public class McpServerService implements AutoCloseable {
         var sdkInputSchema = new McpSchema.JsonSchema(
                 "object",
                 (Map<String, Object>) schemaMap.get("properties"),
-                schemaMap.containsKey("required") ? (java.util.List<String>) schemaMap.get("required") : null,
+                schemaMap.containsKey("required") ? (List<String>) schemaMap.get("required") : null,
                 null,  // additionalProperties
                 null,  // defs
                 null   // meta

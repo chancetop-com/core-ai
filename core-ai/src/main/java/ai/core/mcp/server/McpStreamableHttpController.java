@@ -57,7 +57,7 @@ public class McpStreamableHttpController implements Controller {
     }
 
     private String createErrorResponse(String errorMessage) {
-        return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"" +
-            (errorMessage != null ? errorMessage.replace("\"", "\\\"") : "Unknown error") + "\"},\"id\":null}";
+        return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\""
+                + (errorMessage != null ? errorMessage.replace("\"", "\\\"") : "Unknown error") + "\"},\"id\":null}";
     }
 }
