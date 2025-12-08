@@ -84,6 +84,10 @@ public abstract class ToolCall {
         tool.type = ToolType.FUNCTION;
         var func = new Function();
         func.name = name;
+        // todo: better name truncation strategy
+        if (func.name.length() > 64) {
+            func.name = func.name.substring(func.name.length() - 64);
+        }
         func.description = description;
         func.parameters = toJsonSchema();
         tool.function = func;
