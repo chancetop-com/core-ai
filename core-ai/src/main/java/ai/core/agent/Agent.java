@@ -11,7 +11,9 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
+import ai.core.memory.MemoryManager;
 import ai.core.memory.ShortTermMemory;
+import ai.core.memory.model.MemoryContext;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
@@ -71,6 +73,10 @@ public class Agent extends Node<Agent> {
     ShortTermMemory shortTermMemory;
     private AgentMemoryCoordinator memoryCoordinator;
 
+    // Long-term memory
+    MemoryManager memoryManager;
+    String userId;
+
     @Override
     String execute(String query, Map<String, Object> variables) {
         var activeTracer = getActiveTracer();
@@ -116,15 +122,24 @@ public class Agent extends Node<Agent> {
             updateNodeStatus(NodeStatus.RUNNING);
         }
 
-        // Execute full agent flow: RAG + template + chat
-        var prompt = promptTemplate + query;
+        // Execute full agent flow: Long-term memory + RAG + template + chat
+        var promptBuilder = new StringBuilder();
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
+
+        // Long-term memory: Layer 1 auto-retrieval
+        MemoryContext memoryContext = retrieveLongTermMemory(query);
+        if (!memoryContext.isEmpty()) {
+            promptBuilder.append(memoryContext.buildContextString()).append('\n');
+        }
+
+        promptBuilder.append(promptTemplate).append(query);
 
         // RAG: Always use original input for semantic search, not improvement prompt
         if (ragConfig.useRag()) {
             rag(getInput(), context);  // Use original query for RAG
-            prompt += RagConfig.AGENT_RAG_CONTEXT_TEMPLATE;
+            promptBuilder.append(RagConfig.AGENT_RAG_CONTEXT_TEMPLATE);
         }
+        var prompt = promptBuilder.toString();
 
         // Compile and execute template
         prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
@@ -140,8 +155,39 @@ public class Agent extends Node<Agent> {
         // Update status to completed only for first execution
         if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
             updateNodeStatus(NodeStatus.COMPLETED);
+            // Async memory extraction at end of execution
+            extractLongTermMemoryAsync();
         }
         return getOutput();
+    }
+
+    /**
+     * Retrieve relevant long-term memories for the query (Layer 1 auto-retrieval).
+     */
+    private MemoryContext retrieveLongTermMemory(String query) {
+        if (memoryManager == null) {
+            return MemoryContext.empty();
+        }
+        try {
+            return memoryManager.autoRetrieve(query, userId);
+        } catch (Exception e) {
+            logger.warn("Failed to retrieve long-term memory: {}", e.getMessage());
+            return MemoryContext.empty();
+        }
+    }
+
+    /**
+     * Extract and store memories from conversation asynchronously.
+     */
+    private void extractLongTermMemoryAsync() {
+        if (memoryManager == null || !memoryManager.getConfig().isEnableMemoryExtraction()) {
+            return;
+        }
+        try {
+            memoryManager.processConversationAsync(getMessages(), userId);
+        } catch (Exception e) {
+            logger.warn("Failed to extract long-term memory: {}", e.getMessage());
+        }
     }
 
     // Execute reflection loop to iteratively improve the solution

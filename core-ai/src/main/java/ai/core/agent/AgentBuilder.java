@@ -3,7 +3,10 @@ package ai.core.agent;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
+import ai.core.memory.MemoryConfig;
+import ai.core.memory.MemoryManager;
 import ai.core.memory.ShortTermMemory;
+import ai.core.memory.tool.SearchMemoryTool;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -40,6 +43,12 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private SlidingWindowConfig slidingWindowConfig;
     private ShortTermMemory shortTermMemory;
     private boolean disableShortTermMemory = false;
+
+    // Long-term memory
+    private MemoryManager memoryManager;
+    private MemoryConfig memoryConfig;
+    private boolean enableLongTermMemory = false;
+    private String userId;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -80,6 +89,49 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
      */
     public AgentBuilder disableShortTermMemory() {
         this.disableShortTermMemory = true;
+        return this;
+    }
+
+    /**
+     * Set a pre-configured MemoryManager for long-term memory.
+     */
+    public AgentBuilder memoryManager(MemoryManager memoryManager) {
+        this.memoryManager = memoryManager;
+        this.enableLongTermMemory = true;
+        return this;
+    }
+
+    /**
+     * Configure long-term memory with custom settings.
+     */
+    public AgentBuilder memoryConfig(MemoryConfig config) {
+        this.memoryConfig = config;
+        this.enableLongTermMemory = true;
+        return this;
+    }
+
+    /**
+     * Enable long-term memory with default settings.
+     */
+    public AgentBuilder enableLongTermMemory() {
+        this.enableLongTermMemory = true;
+        return this;
+    }
+
+    /**
+     * Enable long-term memory with default settings and user ID.
+     */
+    public AgentBuilder enableLongTermMemory(String userId) {
+        this.enableLongTermMemory = true;
+        this.userId = userId;
+        return this;
+    }
+
+    /**
+     * Set user ID for memory isolation.
+     */
+    public AgentBuilder userId(String userId) {
+        this.userId = userId;
         return this;
     }
 
@@ -265,6 +317,33 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
                     ? this.shortTermMemory
                     : new ShortTermMemory();
             agent.shortTermMemory.setLLMProvider(this.llmProvider, this.model);
+        }
+
+        // Long-term memory setup
+        if (this.enableLongTermMemory) {
+            configureLongTermMemory(agent);
+        }
+    }
+
+    private void configureLongTermMemory(Agent agent) {
+        // Create or use provided MemoryManager
+        if (this.memoryManager != null) {
+            agent.memoryManager = this.memoryManager;
+        } else {
+            var config = this.memoryConfig != null ? this.memoryConfig : MemoryConfig.builder().build();
+            agent.memoryManager = MemoryManager.create(this.llmProvider, this.model, config);
+        }
+        agent.userId = this.userId;
+
+        // Add SearchMemoryTool if not already present
+        boolean hasSearchMemoryTool = this.toolCalls.stream()
+            .anyMatch(t -> SearchMemoryTool.TOOL_NAME.equals(t.getName()));
+        if (!hasSearchMemoryTool) {
+            var searchTool = SearchMemoryTool.builder()
+                .memoryManager(agent.memoryManager)
+                .userId(this.userId)
+                .build();
+            this.toolCalls.add(searchTool);
         }
     }
 
