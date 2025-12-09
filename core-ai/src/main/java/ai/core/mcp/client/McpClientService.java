@@ -75,7 +75,7 @@ public class McpClientService implements AutoCloseable {
     }
 
     private String getRealName(String serverName, String name) {
-        return name.substring(serverName.length() + 1);
+        return name.startsWith(serverName) ? name.substring(serverName.length() + 1) : name;
     }
 
     public McpSyncClient getMcpClient() {
