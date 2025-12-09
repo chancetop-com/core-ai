@@ -38,7 +38,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
 
     private static McpToolCall buildToolCall(Tool tool, McpClientService client, String serverName) {
         return McpToolCall.builder()
-                .name(serverName + "." + tool.name)
+                .name(tool.name)
                 .namespace(serverName)
                 .description("[" + serverName + "] " + tool.description)
                 .needAuth(tool.needAuth)

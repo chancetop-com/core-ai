@@ -26,14 +26,13 @@ import java.util.stream.Collectors;
 public class ApiMcpToolLoader implements McpServerToolLoader {
 
     public static String functionCallName(String app, String serviceName, String operationName) {
-        var name = app.replaceAll("-", "_") + "_" + serviceName + "_" + operationName;
-        if (name.length() >= 64) {
-            name = serviceName + "_" + operationName;
-        }
-        if (name.length() >= 64) {
-            name = operationName;
-        }
-        return name;
+//        if (name.length() >= 64) {
+//            name = serviceName + "_" + operationName;
+//        }
+//        if (name.length() >= 64) {
+//            name = operationName;
+//        }
+        return app.replaceAll("-", "_") + "_" + serviceName + "_" + operationName;
     }
 
     private final ApiLoader apiLoader;
