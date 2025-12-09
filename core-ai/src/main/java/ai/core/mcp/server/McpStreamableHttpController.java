@@ -1,6 +1,7 @@
 package ai.core.mcp.server;
 
 import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.inject.Inject;
@@ -8,9 +9,12 @@ import core.framework.log.ActionLogContext;
 import core.framework.web.Controller;
 import core.framework.web.Request;
 import core.framework.web.Response;
+import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
 
 /**
  * @author stephen
@@ -18,6 +22,7 @@ import org.slf4j.LoggerFactory;
 public class McpStreamableHttpController implements Controller {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpStreamableHttpController.class);
     private static final ContentType APPLICATION_JSON = ContentType.APPLICATION_JSON;
+    private static final McpJsonMapper MCP_JSON_MAPPER = McpJsonMapper.createDefault();
 
     @Inject
     McpServerService serverHolder;
@@ -40,7 +45,7 @@ public class McpStreamableHttpController implements Controller {
             if (map.containsKey("id")) {
                 var mcpRequest = JsonUtil.fromJson(McpSchema.JSONRPCRequest.class, jsonBody);
                 var response = this.serverHolder.getTransportProvider().handleRequest(mcpRequest);
-                var responseJson = JsonUtil.toJsonNotOnlyPublic(response);
+                var responseJson = toMcpJson(response);
                 ActionLogContext.put("mcp_response", responseJson);
                 return Response.bytes(responseJson.getBytes()).contentType(APPLICATION_JSON).header("Access-Control-Allow-Origin", "*");
             } else {
@@ -59,5 +64,13 @@ public class McpStreamableHttpController implements Controller {
     private String createErrorResponse(String errorMessage) {
         return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\""
                 + (errorMessage != null ? errorMessage.replace("\"", "\\\"") : "Unknown error") + "\"},\"id\":null}";
+    }
+
+    private String toMcpJson(Object obj) {
+        try {
+            return MCP_JSON_MAPPER.writeValueAsString(obj);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to serialize MCP response", e);
+        }
     }
 }
