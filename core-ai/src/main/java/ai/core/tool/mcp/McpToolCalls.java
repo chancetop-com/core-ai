@@ -29,8 +29,9 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     }
 
     private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientService client, String serverName, List<String> includes) {
-        for (var tool : client.listTools()) {
-            if (includes != null && !includes.contains(tool.name)) continue;
+        var tools = client.listTools();
+        for (var tool : tools) {
+            if (includes != null && includes.stream().noneMatch(t -> tool.name.contains(t))) continue;
             mcpToolCalls.add(buildToolCall(tool, client, serverName));
         }
     }
