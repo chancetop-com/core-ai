@@ -133,18 +133,17 @@ public class LiteLLMProvider extends LLMProvider {
 
     private void initializeFinalChoiceMessage(CompletionResponse finalResponse) {
         if (finalResponse.choices == null || finalResponse.choices.isEmpty()) {
-            return; // No choices to initialize
+            return;
         }
 
         var finalChoice = finalResponse.choices.getFirst();
-        if (finalChoice.delta == null || finalChoice.delta.content == null) {
-            // If delta is null or content is null, we cannot initialize message
+        if (finalChoice.delta == null) {
             return;
         }
 
         finalChoice.message = new Message();
         finalChoice.message.role = finalChoice.delta.role;
-        finalChoice.message.content = finalChoice.delta.content;
+        finalChoice.message.content = finalChoice.delta.content != null ? finalChoice.delta.content : "";
         finalChoice.message.toolCalls = finalChoice.delta.toolCalls != null ? new ArrayList<>(finalChoice.delta.toolCalls) : new ArrayList<>();
     }
 
