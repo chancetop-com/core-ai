@@ -146,7 +146,9 @@ public class Function extends ToolCall {
             build(function);
             function.object = this.object;
             function.method = this.method;
-            function.responseConverter = this.responseConverter;
+            if (this.responseConverter != null) {
+                function.responseConverter = this.responseConverter;
+            }
             function.dynamicArguments = this.dynamicArguments;
             return function;
         }
