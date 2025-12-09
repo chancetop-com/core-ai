@@ -52,12 +52,9 @@ public class McpServerService implements AutoCloseable {
         }
 
         var tools = toolLoader.load();
-        var namespaces = toolLoader.defaultNamespaces();
+//        var namespaces = toolLoader.defaultNamespaces();
 
         for (var tool : tools) {
-            if (namespaces != null && !namespaces.contains(tool.getNamespace())) {
-                continue;
-            }
             registerTool(tool);
         }
         toolsLoaded = true;
