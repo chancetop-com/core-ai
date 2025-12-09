@@ -90,9 +90,9 @@ public class McpServerService implements AutoCloseable {
 
         var toolSpec = McpStatelessServerFeatures.SyncToolSpecification.builder()
                 .tool(tool)
-                .callHandler((context, arguments) -> {
+                .callHandler((context, req) -> {
                     try {
-                        var jsonArgs = arguments != null ? JsonUtil.toJsonNotOnlyPublic(arguments) : "{}";
+                        var jsonArgs = req != null ? JsonUtil.toJsonNotOnlyPublic(req.arguments()) : "{}";
                         var result = toolCall.execute(jsonArgs);
                         var textContent = new McpSchema.TextContent(result.toResultForLLM());
                         return McpSchema.CallToolResult.builder().content(List.of(textContent)).isError(false).build();
