@@ -79,6 +79,9 @@ public abstract class LLMProvider {
             if (message.role == RoleType.ASSISTANT && message.name == null) {
                 message.name = "assistant";
             }
+            if (message.toolCalls != null && message.toolCalls.isEmpty()) {
+                message.toolCalls = null;
+            }
         });
     }
 
