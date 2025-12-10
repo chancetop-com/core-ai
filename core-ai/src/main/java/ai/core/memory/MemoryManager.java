@@ -1,155 +1,114 @@
 package ai.core.memory;
 
 import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
-import ai.core.memory.decay.MemoryDecayPolicy;
-import ai.core.memory.extractor.MemoryConsolidator;
-import ai.core.memory.extractor.MemoryExtractor;
-import ai.core.memory.model.MemoryContext;
+import ai.core.llm.domain.RoleType;
 import ai.core.memory.model.MemoryEntry;
-import ai.core.memory.model.MemoryFilter;
-import ai.core.memory.model.MemoryType;
-import ai.core.memory.model.RetrievalOptions;
-import ai.core.memory.retriever.MemoryRetriever;
-import ai.core.memory.store.HybridMemoryStore;
-import ai.core.memory.store.InMemoryKVStore;
-import ai.core.memory.store.InMemoryVectorStore;
+import ai.core.memory.store.InMemoryStore;
+import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
- * Central coordinator for long-term memory operations.
- * Manages memory extraction, consolidation, retrieval, and decay.
+ * Simple memory manager for long-term memory operations.
+ * Extracts memories from conversations and stores them for later retrieval.
  *
  * @author xander
  */
 public class MemoryManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(MemoryManager.class);
+    private static final double DEFAULT_TEMPERATURE = 0.3;
 
-    /**
-     * Create a MemoryManager with default in-memory stores.
-     */
-    public static MemoryManager createDefault(LLMProvider llmProvider, String model) {
-        var memoryConfig = MemoryConfig.builder().build();
-        return create(llmProvider, model, memoryConfig);
-    }
+    private static final String EXTRACTION_PROMPT_TEMPLATE = """
+        Analyze the conversation and extract key facts about the user that should be remembered long-term.
 
-    /**
-     * Create a MemoryManager with the given configuration.
-     */
-    public static MemoryManager create(LLMProvider llmProvider, String model, MemoryConfig memoryConfig) {
-        var vectorStore = memoryConfig.getVectorStore() != null
-            ? memoryConfig.getVectorStore()
-            : new InMemoryVectorStore();
-        var kvStore = memoryConfig.getKvStore() != null
-            ? memoryConfig.getKvStore()
-            : new InMemoryKVStore();
+        Conversation:
+        {{CONVERSATION}}
 
-        var hybridStore = new HybridMemoryStore(
-            vectorStore,
-            kvStore,
-            memoryConfig.getGraphStore(),
-            llmProvider,
-            memoryConfig.getEmbeddingModel()
-        );
+        Extract important information such as:
+        - User preferences (likes, dislikes, habits)
+        - Personal facts (name, location, job, interests)
+        - Important events or experiences mentioned
 
-        var memoryExtractor = new MemoryExtractor(llmProvider, model);
-        var memoryConsolidator = new MemoryConsolidator(llmProvider, model, hybridStore);
-        var memoryRetriever = new MemoryRetriever(hybridStore, llmProvider, memoryConfig.getEmbeddingModel());
+        Rules:
+        - IGNORE trivial information, greetings, temporary context
+        - Focus on LONG-TERM relevant information only
+        - Be CONCISE - each memory should be a single sentence
+        - Return empty array if nothing important to remember
 
-        return new MemoryManager(hybridStore, memoryExtractor, memoryConsolidator, memoryRetriever, memoryConfig);
-    }
+        Output JSON only:
+        {"memories": ["memory 1", "memory 2", ...]}
+        """;
 
-    private final LongTermMemory longTermMemory;
-    private final MemoryExtractor extractor;
-    private final MemoryConsolidator consolidator;
-    private final MemoryRetriever retriever;
-    private final MemoryConfig config;
+    private final LongTermMemory store;
+    private final LLMProvider llmProvider;
+    private final String model;
     private final Executor executor;
+    private final boolean enabled;
+    private final double temperature;
 
-    public MemoryManager(LongTermMemory longTermMemory,
-                         MemoryExtractor extractor,
-                         MemoryConsolidator consolidator,
-                         MemoryRetriever retriever,
-                         MemoryConfig config) {
-        this(longTermMemory, extractor, consolidator, retriever, config, ForkJoinPool.commonPool());
-    }
-
-    public MemoryManager(LongTermMemory longTermMemory,
-                         MemoryExtractor extractor,
-                         MemoryConsolidator consolidator,
-                         MemoryRetriever retriever,
-                         MemoryConfig config,
-                         Executor executor) {
-        this.longTermMemory = longTermMemory;
-        this.extractor = extractor;
-        this.consolidator = consolidator;
-        this.retriever = retriever;
-        this.config = config;
-        this.executor = executor;
+    /**
+     * Create a MemoryManager with default in-memory store.
+     */
+    public static MemoryManager create(LLMProvider llmProvider, String model) {
+        return new MemoryManager(new InMemoryStore(llmProvider), llmProvider, model);
     }
 
     /**
-     * Process conversation to extract and store memories (Two-Phase Pipeline).
-     * Phase 1: Extract candidate memories from conversation
-     * Phase 2: Consolidate (ADD/UPDATE/DELETE/NOOP) with existing memories
+     * Create a MemoryManager with custom store.
+     */
+    public static MemoryManager create(LongTermMemory store, LLMProvider llmProvider, String model) {
+        return new MemoryManager(store, llmProvider, model);
+    }
+
+    public MemoryManager(LongTermMemory store, LLMProvider llmProvider, String model) {
+        this(store, llmProvider, model, ForkJoinPool.commonPool(), true, DEFAULT_TEMPERATURE);
+    }
+
+    public MemoryManager(LongTermMemory store, LLMProvider llmProvider, String model, Executor executor, boolean enabled) {
+        this(store, llmProvider, model, executor, enabled, DEFAULT_TEMPERATURE);
+    }
+
+    public MemoryManager(LongTermMemory store, LLMProvider llmProvider, String model,
+                         Executor executor, boolean enabled, double temperature) {
+        this.store = store;
+        this.llmProvider = llmProvider;
+        this.model = model;
+        this.executor = executor;
+        this.enabled = enabled;
+        this.temperature = temperature;
+    }
+
+    /**
+     * Extract and store memories from a conversation.
      *
-     * @param messages conversation messages
-     * @param userId   user identifier
+     * @param messages the conversation messages
+     * @param userId   the user identifier
      */
     public void processConversation(List<Message> messages, String userId) {
-        if (messages == null || messages.isEmpty()) {
+        if (!enabled || messages == null || messages.isEmpty()) {
             return;
         }
 
-        LOGGER.info("Processing conversation for memory extraction, userId={}, messages={}",
-            userId, messages.size());
+        LOGGER.debug("Processing conversation for memory extraction, userId={}", userId);
 
-        // Phase 1: Extract candidate memories
-        List<MemoryEntry> candidates = extractor.extract(messages, userId);
-        if (candidates.isEmpty()) {
+        List<String> memories = extractMemories(messages);
+        if (memories.isEmpty()) {
             LOGGER.debug("No memories extracted from conversation");
             return;
         }
 
-        LOGGER.info("Extracted {} candidate memories", candidates.size());
-
-        // Phase 2: Consolidate with existing memories
-        for (MemoryEntry candidate : candidates) {
-            try {
-                var operation = consolidator.determineOperation(candidate);
-                switch (operation.type()) {
-                    case ADD -> {
-                        longTermMemory.add(candidate);
-                        LOGGER.debug("Added memory: {}", candidate.getContent());
-                    }
-                    case UPDATE -> {
-                        longTermMemory.update(operation.existingId(), candidate);
-                        LOGGER.debug("Updated memory: {} -> {}",
-                            operation.existingId(), candidate.getContent());
-                    }
-                    case DELETE -> {
-                        longTermMemory.delete(operation.existingId());
-                        LOGGER.debug("Deleted memory: {}, reason: {}",
-                            operation.existingId(), operation.reason());
-                    }
-                    case NOOP -> LOGGER.debug("Skipped memory: {}, reason: {}",
-                        candidate.getContent(), operation.reason());
-                    default -> LOGGER.warn("Unknown operation type: {}", operation.type());
-                }
-            } catch (Exception e) {
-                LOGGER.warn("Failed to process memory candidate: {}", candidate.getContent(), e);
-            }
+        for (String content : memories) {
+            store.add(MemoryEntry.of(userId, content));
         }
+
+        LOGGER.info("Extracted and stored {} memories for user {}", memories.size(), userId);
     }
 
     /**
@@ -160,178 +119,138 @@ public class MemoryManager {
     }
 
     /**
-     * Retrieve relevant memories for the query (Hybrid Trigger).
-     * Layer 1: Fast auto-retrieval based on trigger mode
-     * Layer 2: Available via SearchMemoryTool for deep retrieval
+     * Search memories relevant to a query.
      *
-     * @param query   the user query
-     * @param userId  user identifier
-     * @param options retrieval options
-     * @return memory context for prompt injection
+     * @param query  the search query
+     * @param userId the user ID
+     * @param topK   maximum results
+     * @return list of relevant memories
      */
-    public MemoryContext retrieve(String query, String userId, RetrievalOptions options) {
-        RetrievalOptions opts = options;
-        if (opts == null) {
-            opts = RetrievalOptions.defaults();
-        }
-
-        // Check trigger mode
-        if (!shouldRetrieve(query)) {
-            return MemoryContext.empty();
-        }
-
-        // Apply timeout for fast mode
-        if (opts.isFastMode()) {
-            return retrieveWithTimeout(query, userId, opts, opts.getTimeout());
-        }
-
-        return doRetrieve(query, userId, opts);
-    }
-
-    /**
-     * Retrieve memories for Layer 1 auto-retrieval.
-     */
-    public MemoryContext autoRetrieve(String query, String userId) {
-        var options = RetrievalOptions.fast(
-            config.getAutoRetrievalTopK(),
-            config.getAutoRetrievalTimeout()
-        ).withFilter(MemoryFilter.forUser(userId).withMinStrength(config.getMinStrength()));
-
-        return retrieve(query, userId, options);
-    }
-
-    /**
-     * Retrieve memories for Layer 2 tool-based deep retrieval.
-     */
-    public MemoryContext deepRetrieve(String query, String userId, MemoryFilter filter) {
-        var options = RetrievalOptions.deep(config.getToolRetrievalTopK())
-            .withGraphSearch(config.isToolRetrievalEnableGraph(), 2)
-            .withFilter(filter != null ? filter : MemoryFilter.forUser(userId));
-
-        return doRetrieve(query, userId, options);
-    }
-
-    /**
-     * Apply memory decay based on configured policy.
-     */
-    public void applyDecay() {
-        MemoryDecayPolicy policy = config.getDecayPolicy();
-        if (policy == null) {
-            return;
-        }
-
-        LOGGER.info("Applying memory decay...");
-        longTermMemory.applyDecay(policy);
-
-        // Remove memories below threshold
-        int removed = longTermMemory.removeDecayedMemories(config.getMinStrength());
-        if (removed > 0) {
-            LOGGER.info("Removed {} decayed memories", removed);
-        }
-    }
-
-    /**
-     * Consolidate short-term memory to long-term memory at session end.
-     */
-    public void consolidateFromShortTerm(ShortTermMemory shortTermMemory, String userId) {
-        if (shortTermMemory == null) {
-            return;
-        }
-
-        String summary = shortTermMemory.getSummary();
-        if (summary != null && !summary.isBlank()) {
-            // Store session summary as episodic memory
-            var entry = MemoryEntry.builder()
-                .userId(userId)
-                .content("Session summary: " + summary)
-                .type(MemoryType.EPISODIC)
-                .importance(0.5)
-                .build();
-            longTermMemory.add(entry);
-            LOGGER.info("Consolidated session summary to long-term memory");
-        }
+    public List<MemoryEntry> search(String query, String userId, int topK) {
+        return store.search(query, userId, topK);
     }
 
     /**
      * Get all memories for a user.
      */
-    public List<MemoryEntry> getMemories(String userId, MemoryType type, int limit) {
-        return longTermMemory.getByUserId(userId, type, limit);
+    public List<MemoryEntry> getMemories(String userId, int limit) {
+        return store.getByUserId(userId, limit);
     }
 
     /**
      * Add a memory directly.
      */
+    public void addMemory(String userId, String content) {
+        store.add(userId, content);
+    }
+
+    /**
+     * Add a memory entry directly.
+     */
     public void addMemory(MemoryEntry entry) {
-        longTermMemory.add(entry);
+        store.add(entry);
     }
 
     /**
      * Delete a memory by ID.
      */
     public void deleteMemory(String memoryId) {
-        longTermMemory.delete(memoryId);
+        store.delete(memoryId);
     }
 
-    // Internal methods
-    private boolean shouldRetrieve(String query) {
-        if (query == null || query.isBlank()) {
-            return false;
-        }
-
-        return switch (config.getTriggerMode()) {
-            case AUTO, HYBRID -> true;
-            case TOOL_ONLY -> false;
-            case CONDITIONAL -> matchesTriggerCondition(query);
-        };
+    /**
+     * Build context string for prompt injection.
+     */
+    public String buildContext(String userId, int limit) {
+        return store.buildContext(userId, limit);
     }
 
-    private boolean matchesTriggerCondition(String query) {
-        // Short queries may need more context
-        if (query.length() < config.getMinQueryLengthForSkip()) {
-            return true;
+    /**
+     * Get the underlying store.
+     */
+    public LongTermMemory getStore() {
+        return store;
+    }
+
+    /**
+     * Check if memory extraction is enabled.
+     */
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    private List<String> extractMemories(List<Message> messages) {
+        if (llmProvider == null) {
+            return List.of();
         }
 
-        // Check for trigger keywords
-        String lower = query.toLowerCase(Locale.ROOT);
-        for (String keyword : config.getTriggerKeywords()) {
-            if (lower.contains(keyword.toLowerCase(Locale.ROOT))) {
-                return true;
+        String conversation = formatConversation(messages);
+        String prompt = EXTRACTION_PROMPT_TEMPLATE.replace("{{CONVERSATION}}", conversation);
+
+        try {
+            var request = CompletionRequest.of(
+                List.of(Message.of(RoleType.USER, prompt)),
+                null, temperature, model, "memory-extractor"
+            );
+
+            var response = llmProvider.completion(request);
+
+            if (response == null || response.choices == null || response.choices.isEmpty()) {
+                return List.of();
+            }
+
+            String content = response.choices.getFirst().message.content;
+            return parseMemories(content);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to extract memories: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private String formatConversation(List<Message> messages) {
+        var sb = new StringBuilder();
+        for (Message msg : messages) {
+            if (msg.role == RoleType.SYSTEM) continue;
+            String role = switch (msg.role) {
+                case USER -> "User";
+                case ASSISTANT -> "Assistant";
+                default -> "Other";
+            };
+            sb.append(role).append(": ").append(msg.content != null ? msg.content : "").append('\n');
+        }
+        return sb.toString();
+    }
+
+    private List<String> parseMemories(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            return List.of();
+        }
+
+        // Clean up JSON if wrapped in markdown code blocks
+        String cleaned = jsonContent.trim();
+        if (cleaned.startsWith("```")) {
+            int start = cleaned.indexOf('\n') + 1;
+            int end = cleaned.lastIndexOf("```");
+            if (end > start) {
+                cleaned = cleaned.substring(start, end).trim();
             }
         }
 
-        return false;
-    }
-
-    private MemoryContext retrieveWithTimeout(String query, String userId,
-                                               RetrievalOptions options, Duration timeout) {
         try {
-            return CompletableFuture.supplyAsync(() -> doRetrieve(query, userId, options), executor)
-                .get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            LOGGER.warn("Memory retrieval timed out after {}ms", timeout.toMillis());
-            return MemoryContext.empty();
+            var result = JSON.fromJSON(ExtractionResult.class, cleaned);
+            return result.memories();
         } catch (Exception e) {
-            LOGGER.warn("Memory retrieval failed: {}", e.getMessage());
-            return MemoryContext.empty();
+            LOGGER.debug("Failed to parse extraction result: {}", e.getMessage());
+            return List.of();
         }
     }
 
-    private MemoryContext doRetrieve(String query, String userId, RetrievalOptions options) {
-        var filter = options.getFilter();
-        if (filter == null) {
-            filter = MemoryFilter.forUser(userId);
+    /**
+     * DTO for extraction result.
+     */
+    public record ExtractionResult(List<String> memories) {
+        public ExtractionResult {
+            memories = memories != null ? memories : List.of();
         }
-
-        return retriever.retrieve(query, options.getTopK(), filter);
-    }
-
-    // Getters
-    public LongTermMemory getLongTermMemory() {
-        return longTermMemory;
-    }
-
-    public MemoryConfig getConfig() {
-        return config;
     }
 }

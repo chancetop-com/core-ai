@@ -2,20 +2,16 @@ package ai.core.memory;
 
 import ai.core.document.Embedding;
 import ai.core.memory.model.MemoryEntry;
-import ai.core.memory.model.MemoryFilter;
-import ai.core.memory.model.MemoryType;
-import ai.core.memory.decay.MemoryDecayPolicy;
 
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Long-term memory interface for persistent cross-session memory storage.
- * Supports semantic memory (facts, preferences, knowledge) and episodic memory (events, situations).
+ * Simple long-term memory interface for persistent cross-session memory storage.
  *
  * @author xander
  */
-public interface LongTermMemory extends MemoryStore {
+public interface LongTermMemory {
 
     /**
      * Add a memory entry to the store.
@@ -25,11 +21,14 @@ public interface LongTermMemory extends MemoryStore {
     void add(MemoryEntry entry);
 
     /**
-     * Add multiple memory entries in batch.
+     * Add a simple text memory for a user.
      *
-     * @param entries the memory entries to add
+     * @param userId  the user ID
+     * @param content the memory content
      */
-    void addBatch(List<MemoryEntry> entries);
+    default void add(String userId, String content) {
+        add(MemoryEntry.of(userId, content));
+    }
 
     /**
      * Update an existing memory entry.
@@ -40,45 +39,11 @@ public interface LongTermMemory extends MemoryStore {
     void update(String memoryId, MemoryEntry entry);
 
     /**
-     * Update only the access metadata of a memory entry (lastAccessedAt, accessCount).
-     *
-     * @param entry the memory entry with updated metadata
-     */
-    void updateMetadata(MemoryEntry entry);
-
-    /**
      * Delete a memory entry by ID.
      *
      * @param memoryId the ID of the memory to delete
      */
     void delete(String memoryId);
-
-    /**
-     * Delete multiple memory entries by IDs.
-     *
-     * @param memoryIds the IDs of memories to delete
-     */
-    void deleteBatch(List<String> memoryIds);
-
-    /**
-     * Retrieve memories relevant to the query.
-     *
-     * @param query  the query string
-     * @param topK   maximum number of results
-     * @param filter filter criteria
-     * @return list of relevant memory entries
-     */
-    List<MemoryEntry> retrieve(String query, int topK, MemoryFilter filter);
-
-    /**
-     * Find similar memories by embedding vector.
-     *
-     * @param embedding similarity threshold
-     * @param topK      maximum number of results
-     * @param threshold minimum similarity score
-     * @return list of similar memory entries
-     */
-    List<MemoryEntry> findSimilar(Embedding embedding, int topK, double threshold);
 
     /**
      * Get a memory entry by ID.
@@ -92,32 +57,67 @@ public interface LongTermMemory extends MemoryStore {
      * Get all memories for a user.
      *
      * @param userId the user ID
-     * @param type   optional memory type filter
      * @param limit  maximum number of results
      * @return list of memory entries
      */
-    List<MemoryEntry> getByUserId(String userId, MemoryType type, int limit);
+    List<MemoryEntry> getByUserId(String userId, int limit);
 
     /**
-     * Apply decay policy to all memories and return decayed memories.
+     * Search memories by text query for a user.
      *
-     * @param policy the decay policy to apply
+     * @param query  the search query
+     * @param userId the user ID (null for all users)
+     * @param topK   maximum number of results
+     * @return list of relevant memory entries
      */
-    void applyDecay(MemoryDecayPolicy policy);
+    List<MemoryEntry> search(String query, String userId, int topK);
 
     /**
-     * Get memories with strength below the threshold (candidates for removal).
+     * Find similar memories by embedding vector.
      *
-     * @param minStrength minimum strength threshold
-     * @return list of decayed memory entries
+     * @param embedding the query embedding
+     * @param userId    the user ID (null for all users)
+     * @param topK      maximum number of results
+     * @param threshold minimum similarity score (0.0 to 1.0)
+     * @return list of similar memory entries
      */
-    List<MemoryEntry> getDecayedMemories(double minStrength);
+    List<MemoryEntry> findSimilar(Embedding embedding, String userId, int topK, double threshold);
 
     /**
-     * Remove all memories with strength below the threshold.
+     * Get all memories in the store.
      *
-     * @param minStrength minimum strength threshold
-     * @return number of removed memories
+     * @return list of all memory entries
      */
-    int removeDecayedMemories(double minStrength);
+    List<MemoryEntry> getAll();
+
+    /**
+     * Get the total number of memories in the store.
+     *
+     * @return memory count
+     */
+    int size();
+
+    /**
+     * Clear all memories from the store.
+     */
+    void clear();
+
+    /**
+     * Build a context string from all memories for a user.
+     *
+     * @param userId the user ID
+     * @param limit  maximum number of memories to include
+     * @return formatted context string
+     */
+    default String buildContext(String userId, int limit) {
+        var memories = getByUserId(userId, limit);
+        if (memories.isEmpty()) {
+            return "";
+        }
+        var sb = new StringBuilder("[User Memory]\n");
+        for (var memory : memories) {
+            sb.append("- ").append(memory.getContent()).append('\n');
+        }
+        return sb.toString();
+    }
 }

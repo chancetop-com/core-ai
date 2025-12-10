@@ -3,8 +3,8 @@ package ai.core.agent;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
-import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryManager;
+import ai.core.memory.MemoryRetrievalMode;
 import ai.core.memory.ShortTermMemory;
 import ai.core.memory.tool.SearchMemoryTool;
 import ai.core.mcp.client.McpClientManagerRegistry;
@@ -46,9 +46,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     // Long-term memory
     private MemoryManager memoryManager;
-    private MemoryConfig memoryConfig;
     private boolean enableLongTermMemory = false;
     private String userId;
+    private MemoryRetrievalMode memoryRetrievalMode = MemoryRetrievalMode.AUTO;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -102,15 +102,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     /**
-     * Configure long-term memory with custom settings.
-     */
-    public AgentBuilder memoryConfig(MemoryConfig config) {
-        this.memoryConfig = config;
-        this.enableLongTermMemory = true;
-        return this;
-    }
-
-    /**
      * Enable long-term memory with default settings.
      */
     public AgentBuilder enableLongTermMemory() {
@@ -132,6 +123,28 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
      */
     public AgentBuilder userId(String userId) {
         this.userId = userId;
+        return this;
+    }
+
+    /**
+     * Set memory retrieval mode.
+     * AUTO: Automatically inject memories into prompt (default)
+     * TOOL: Agent decides when to search via SearchMemoryTool (like langmem)
+     * DISABLED: No retrieval, only extraction
+     */
+    public AgentBuilder memoryRetrievalMode(MemoryRetrievalMode mode) {
+        this.memoryRetrievalMode = mode;
+        return this;
+    }
+
+    /**
+     * Enable tool-based memory retrieval (langmem style).
+     * Agent will have a search_memory tool to query memories on demand.
+     */
+    public AgentBuilder enableToolBasedMemory(String userId) {
+        this.enableLongTermMemory = true;
+        this.userId = userId;
+        this.memoryRetrievalMode = MemoryRetrievalMode.TOOL;
         return this;
     }
 
@@ -330,15 +343,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (this.memoryManager != null) {
             agent.memoryManager = this.memoryManager;
         } else {
-            var config = this.memoryConfig != null ? this.memoryConfig : MemoryConfig.builder().build();
-            agent.memoryManager = MemoryManager.create(this.llmProvider, this.model, config);
+            agent.memoryManager = MemoryManager.create(this.llmProvider, this.model);
         }
         agent.userId = this.userId;
+        agent.memoryRetrievalMode = this.memoryRetrievalMode;
 
-        // Add SearchMemoryTool if not already present
-        boolean hasSearchMemoryTool = this.toolCalls.stream()
-            .anyMatch(t -> SearchMemoryTool.TOOL_NAME.equals(t.getName()));
-        if (!hasSearchMemoryTool) {
+        // Add SearchMemoryTool for TOOL mode
+        if (this.memoryRetrievalMode == MemoryRetrievalMode.TOOL) {
             var searchTool = SearchMemoryTool.builder()
                 .memoryManager(agent.memoryManager)
                 .userId(this.userId)

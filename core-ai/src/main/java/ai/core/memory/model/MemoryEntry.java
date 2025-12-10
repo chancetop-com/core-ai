@@ -8,55 +8,49 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Base class for memory entries.
+ * Simple memory entry for long-term memory storage.
  *
  * @author xander
  */
 public class MemoryEntry {
-    public static Builder<?> builder() {
-        return new Builder<>();
-    }
+    private String id;
+    private String userId;
+    private String content;
+    private Embedding embedding;
+    private Map<String, Object> metadata;
+    private final Instant createdAt;
+    private Instant lastAccessedAt;
 
-    protected String id;
-    protected String userId;
-    protected String agentId;
-    protected String content;
-    protected MemoryType type;
-    protected Embedding embedding;
-    protected Map<String, Object> metadata;
-
-    // Time and access tracking
-    protected Instant createdAt;
-    protected Instant lastAccessedAt;
-    protected int accessCount;
-
-    // Decay related
-    protected double importance;
-    protected double strength;
-
-    protected MemoryEntry() {
+    public MemoryEntry() {
         this.id = UUID.randomUUID().toString();
         this.createdAt = Instant.now();
         this.lastAccessedAt = Instant.now();
-        this.accessCount = 0;
-        this.importance = 0.5;
-        this.strength = 1.0;
         this.metadata = new HashMap<>();
     }
 
-    protected MemoryEntry(Builder<?> builder) {
-        this.id = builder.id != null ? builder.id : UUID.randomUUID().toString();
-        this.userId = builder.userId;
-        this.agentId = builder.agentId;
-        this.content = builder.content;
-        this.type = builder.type;
-        this.embedding = builder.embedding;
-        this.metadata = builder.metadata != null ? builder.metadata : new HashMap<>();
-        this.createdAt = builder.createdAt != null ? builder.createdAt : Instant.now();
-        this.lastAccessedAt = builder.lastAccessedAt != null ? builder.lastAccessedAt : Instant.now();
-        this.accessCount = builder.accessCount;
-        this.importance = builder.importance;
-        this.strength = builder.strength;
+    public MemoryEntry(String userId, String content) {
+        this();
+        this.userId = userId;
+        this.content = content;
+    }
+
+    public MemoryEntry(String id, String userId, String content, Embedding embedding, Map<String, Object> metadata, Instant createdAt) {
+        this.id = id != null ? id : UUID.randomUUID().toString();
+        this.userId = userId;
+        this.content = content;
+        this.embedding = embedding;
+        this.metadata = metadata != null ? metadata : new HashMap<>();
+        this.createdAt = createdAt != null ? createdAt : Instant.now();
+        this.lastAccessedAt = Instant.now();
+    }
+
+    // Static factory methods
+    public static MemoryEntry of(String userId, String content) {
+        return new MemoryEntry(userId, content);
+    }
+
+    public static MemoryEntry of(String content) {
+        return new MemoryEntry(null, content);
     }
 
     // Getters
@@ -68,16 +62,8 @@ public class MemoryEntry {
         return userId;
     }
 
-    public String getAgentId() {
-        return agentId;
-    }
-
     public String getContent() {
         return content;
-    }
-
-    public MemoryType getType() {
-        return type;
     }
 
     public Embedding getEmbedding() {
@@ -96,19 +82,7 @@ public class MemoryEntry {
         return lastAccessedAt;
     }
 
-    public int getAccessCount() {
-        return accessCount;
-    }
-
-    public double getImportance() {
-        return importance;
-    }
-
-    public double getStrength() {
-        return strength;
-    }
-
-    // Setters for mutable fields
+    // Setters
     public void setId(String id) {
         this.id = id;
     }
@@ -117,28 +91,16 @@ public class MemoryEntry {
         this.userId = userId;
     }
 
-    public void setAgentId(String agentId) {
-        this.agentId = agentId;
+    public void setContent(String content) {
+        this.content = content;
     }
 
     public void setEmbedding(Embedding embedding) {
         this.embedding = embedding;
     }
 
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public void setLastAccessedAt(Instant lastAccessedAt) {
-        this.lastAccessedAt = lastAccessedAt;
-    }
-
-    public void setAccessCount(int accessCount) {
-        this.accessCount = accessCount;
-    }
-
-    public void setStrength(double strength) {
-        this.strength = strength;
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata;
     }
 
     /**
@@ -146,93 +108,14 @@ public class MemoryEntry {
      */
     public void recordAccess() {
         this.lastAccessedAt = Instant.now();
-        this.accessCount++;
     }
 
-    /**
-     * Builder for MemoryEntry.
-     */
-    public static class Builder<T extends Builder<T>> {
-        protected String id;
-        protected String userId;
-        protected String agentId;
-        protected String content;
-        protected MemoryType type;
-        protected Embedding embedding;
-        protected Map<String, Object> metadata;
-        protected Instant createdAt;
-        protected Instant lastAccessedAt;
-        protected int accessCount = 0;
-        protected double importance = 0.5;
-        protected double strength = 1.0;
-
-        @SuppressWarnings("unchecked")
-        protected T self() {
-            return (T) this;
-        }
-
-        public T id(String id) {
-            this.id = id;
-            return self();
-        }
-
-        public T userId(String userId) {
-            this.userId = userId;
-            return self();
-        }
-
-        public T agentId(String agentId) {
-            this.agentId = agentId;
-            return self();
-        }
-
-        public T content(String content) {
-            this.content = content;
-            return self();
-        }
-
-        public T type(MemoryType type) {
-            this.type = type;
-            return self();
-        }
-
-        public T embedding(Embedding embedding) {
-            this.embedding = embedding;
-            return self();
-        }
-
-        public T metadata(Map<String, Object> metadata) {
-            this.metadata = metadata;
-            return self();
-        }
-
-        public T createdAt(Instant createdAt) {
-            this.createdAt = createdAt;
-            return self();
-        }
-
-        public T lastAccessedAt(Instant lastAccessedAt) {
-            this.lastAccessedAt = lastAccessedAt;
-            return self();
-        }
-
-        public T accessCount(int accessCount) {
-            this.accessCount = accessCount;
-            return self();
-        }
-
-        public T importance(double importance) {
-            this.importance = importance;
-            return self();
-        }
-
-        public T strength(double strength) {
-            this.strength = strength;
-            return self();
-        }
-
-        public MemoryEntry build() {
-            return new MemoryEntry(this);
-        }
+    @Override
+    public String toString() {
+        return "MemoryEntry{" +
+            "id='" + id + '\'' +
+            ", userId='" + userId + '\'' +
+            ", content='" + content + '\'' +
+            '}';
     }
 }

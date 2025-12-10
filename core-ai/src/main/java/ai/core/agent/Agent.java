@@ -12,8 +12,8 @@ import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.memory.MemoryManager;
+import ai.core.memory.MemoryRetrievalMode;
 import ai.core.memory.ShortTermMemory;
-import ai.core.memory.model.MemoryContext;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
@@ -76,6 +76,7 @@ public class Agent extends Node<Agent> {
     // Long-term memory
     MemoryManager memoryManager;
     String userId;
+    MemoryRetrievalMode memoryRetrievalMode;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -126,10 +127,10 @@ public class Agent extends Node<Agent> {
         var promptBuilder = new StringBuilder();
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
 
-        // Long-term memory: Layer 1 auto-retrieval
-        MemoryContext memoryContext = retrieveLongTermMemory(query);
-        if (!memoryContext.isEmpty()) {
-            promptBuilder.append(memoryContext.buildContextString()).append('\n');
+        // Long-term memory: auto-retrieval
+        String memoryContext = retrieveLongTermMemory(query);
+        if (memoryContext != null && !memoryContext.isEmpty()) {
+            promptBuilder.append(memoryContext).append('\n');
         }
 
         promptBuilder.append(promptTemplate).append(query);
@@ -161,18 +162,34 @@ public class Agent extends Node<Agent> {
         return getOutput();
     }
 
+    private static final int DEFAULT_MEMORY_LIMIT = 5;
+
     /**
-     * Retrieve relevant long-term memories for the query (Layer 1 auto-retrieval).
+     * Retrieve relevant long-term memories for the query.
+     * Only retrieves in AUTO mode; TOOL mode lets agent decide via SearchMemoryTool.
      */
-    private MemoryContext retrieveLongTermMemory(String query) {
-        if (memoryManager == null) {
-            return MemoryContext.empty();
+    private String retrieveLongTermMemory(String query) {
+        // Skip if not in AUTO mode - TOOL mode uses SearchMemoryTool instead
+        if (memoryManager == null || memoryRetrievalMode != MemoryRetrievalMode.AUTO) {
+            return "";
         }
         try {
-            return memoryManager.autoRetrieve(query, userId);
+            var memories = (query != null && !query.isBlank())
+                ? memoryManager.search(query, userId, DEFAULT_MEMORY_LIMIT)
+                : memoryManager.getMemories(userId, DEFAULT_MEMORY_LIMIT);
+
+            if (memories.isEmpty()) {
+                return "";
+            }
+
+            var sb = new StringBuilder("[User Memory]\n");
+            for (var memory : memories) {
+                sb.append("- ").append(memory.getContent()).append('\n');
+            }
+            return sb.toString();
         } catch (Exception e) {
             logger.warn("Failed to retrieve long-term memory: {}", e.getMessage());
-            return MemoryContext.empty();
+            return "";
         }
     }
 
@@ -180,7 +197,7 @@ public class Agent extends Node<Agent> {
      * Extract and store memories from conversation asynchronously.
      */
     private void extractLongTermMemoryAsync() {
-        if (memoryManager == null || !memoryManager.getConfig().isEnableMemoryExtraction()) {
+        if (memoryManager == null || !memoryManager.isEnabled()) {
             return;
         }
         try {
