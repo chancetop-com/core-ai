@@ -10,6 +10,7 @@ import ai.core.utils.JsonSchemaUtil;
 import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * @author stephen
@@ -31,7 +32,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientService client, String serverName, List<String> includes) {
         var tools = client.listTools();
         for (var tool : tools) {
-            if (includes != null && includes.stream().noneMatch(t -> tool.name.contains(t))) continue;
+            if (includes != null && includes.stream().noneMatch(t -> Pattern.compile(t).matcher(tool.name).matches())) continue;
             mcpToolCalls.add(buildToolCall(tool, client, serverName));
         }
     }
