@@ -11,5 +11,7 @@ public enum FinishReason {
     @Property(name = "tool_calls")
     TOOL_CALLS,
     @Property(name = "length")
-    LENGTH
+    LENGTH,
+    @Property(name = "content_filter")
+    CONTENT_FILTER
 }
