@@ -86,7 +86,11 @@ public abstract class ToolCall {
         func.name = name;
         // todo: better name truncation strategy
         if (func.name.length() > 64) {
-            func.name = func.name.substring(func.name.length() - 64);
+            if (func.name.contains("_")) {
+                func.name = func.name.substring(func.name.indexOf('_') + 1);
+            } else {
+                func.name = func.name.substring(func.name.length() - 64);
+            }
         }
         func.description = description;
         func.parameters = toJsonSchema();
