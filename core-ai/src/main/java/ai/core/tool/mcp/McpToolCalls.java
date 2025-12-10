@@ -40,7 +40,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         return McpToolCall.builder()
                 .name(tool.name)
                 .namespace(serverName)
-                .description("[" + serverName + "] " + tool.description)
+                .description(tool.description)
                 .needAuth(tool.needAuth)
                 .parameters(buildParameters(tool.inputSchema))
                 .mcpClientService(client)

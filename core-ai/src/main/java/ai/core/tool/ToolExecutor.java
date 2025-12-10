@@ -52,6 +52,8 @@ public class ToolExecutor {
                 .filter(v -> v.getName().equalsIgnoreCase(functionCall.function.name))
                 .findFirst();
 
+        if (optional.isEmpty()) optional = toolCalls.stream().filter(v -> v.getName().endsWith(functionCall.function.name)).findFirst();
+
         if (optional.isEmpty()) {
             return ToolCallResult.failed("tool not found: " + functionCall.function.name);
         }
