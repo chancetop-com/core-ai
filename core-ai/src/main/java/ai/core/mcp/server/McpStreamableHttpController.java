@@ -1,7 +1,6 @@
 package ai.core.mcp.server;
 
 import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.inject.Inject;
