@@ -23,6 +23,10 @@ public class SearchMemoryTool extends ToolCall {
     private static final int DEFAULT_TOP_K = 5;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
     private final MemoryManager memoryManager;
     private final String userId;
     private int defaultTopK = DEFAULT_TOP_K;
@@ -33,10 +37,6 @@ public class SearchMemoryTool extends ToolCall {
         }
         this.memoryManager = memoryManager;
         this.userId = userId;
-    }
-
-    public static Builder builder() {
-        return new Builder();
     }
 
     @Override
@@ -73,7 +73,8 @@ public class SearchMemoryTool extends ToolCall {
     }
 
     private String formatMemories(List<MemoryEntry> memories) {
-        var sb = new StringBuilder("Found ").append(memories.size()).append(" relevant memories:\n");
+        var sb = new StringBuilder(256);
+        sb.append("Found ").append(memories.size()).append(" relevant memories:\n");
         for (int i = 0; i < memories.size(); i++) {
             sb.append(i + 1).append(". ").append(memories.get(i).getContent()).append('\n');
         }
@@ -135,8 +136,8 @@ public class SearchMemoryTool extends ToolCall {
                     && (e.getMessage().contains("name is required")
                         || e.getMessage().contains("description is required"))) {
                     name("search_memory");
-                    description("Search user's long-term memory for relevant information. " +
-                        "Use this when you need to recall facts, preferences, or past context about the user.");
+                    description("Search user's long-term memory for relevant information. "
+                        + "Use this when you need to recall facts, preferences, or past context about the user.");
                     super.build(tool);
                 } else {
                     throw e;

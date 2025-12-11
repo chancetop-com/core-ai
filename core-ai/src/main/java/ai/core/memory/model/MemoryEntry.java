@@ -9,40 +9,11 @@ import java.util.UUID;
 
 /**
  * Simple memory entry for long-term memory storage.
+ * Uses public fields for core-ng JSON serialization compatibility.
  *
  * @author xander
  */
 public class MemoryEntry {
-    private String id;
-    private String userId;
-    private String content;
-    private Embedding embedding;
-    private Map<String, Object> metadata;
-    private final Instant createdAt;
-    private Instant lastAccessedAt;
-
-    public MemoryEntry() {
-        this.id = UUID.randomUUID().toString();
-        this.createdAt = Instant.now();
-        this.lastAccessedAt = Instant.now();
-        this.metadata = new HashMap<>();
-    }
-
-    public MemoryEntry(String userId, String content) {
-        this();
-        this.userId = userId;
-        this.content = content;
-    }
-
-    public MemoryEntry(String id, String userId, String content, Embedding embedding, Map<String, Object> metadata, Instant createdAt) {
-        this.id = id != null ? id : UUID.randomUUID().toString();
-        this.userId = userId;
-        this.content = content;
-        this.embedding = embedding;
-        this.metadata = metadata != null ? metadata : new HashMap<>();
-        this.createdAt = createdAt != null ? createdAt : Instant.now();
-        this.lastAccessedAt = Instant.now();
-    }
 
     // Static factory methods
     public static MemoryEntry of(String userId, String content) {
@@ -53,7 +24,43 @@ public class MemoryEntry {
         return new MemoryEntry(null, content);
     }
 
-    // Getters
+    // Public fields for JSON serialization
+    public String id;
+    public String userId;
+    public String content;
+    public Embedding embedding;
+    public Map<String, Object> metadata;
+    public Instant createdAt;
+    public Instant lastAccessedAt;
+
+    /**
+     * Default constructor for JSON deserialization.
+     */
+    public MemoryEntry() {
+        this.metadata = new HashMap<>();
+    }
+
+    public MemoryEntry(String userId, String content) {
+        this.id = UUID.randomUUID().toString();
+        this.userId = userId;
+        this.content = content;
+        this.createdAt = Instant.now();
+        this.lastAccessedAt = Instant.now();
+        this.metadata = new HashMap<>();
+    }
+
+    public MemoryEntry(String id, String userId, String content, Embedding embedding,
+                       Map<String, Object> metadata, Instant createdAt) {
+        this.id = id != null ? id : UUID.randomUUID().toString();
+        this.userId = userId;
+        this.content = content;
+        this.embedding = embedding;
+        this.metadata = metadata != null ? metadata : new HashMap<>();
+        this.createdAt = createdAt != null ? createdAt : Instant.now();
+        this.lastAccessedAt = Instant.now();
+    }
+
+    // Convenience getters (for code readability)
     public String getId() {
         return id;
     }
@@ -82,25 +89,17 @@ public class MemoryEntry {
         return lastAccessedAt;
     }
 
-    // Setters
+    // Convenience setters
     public void setId(String id) {
         this.id = id;
-    }
-
-    public void setUserId(String userId) {
-        this.userId = userId;
-    }
-
-    public void setContent(String content) {
-        this.content = content;
     }
 
     public void setEmbedding(Embedding embedding) {
         this.embedding = embedding;
     }
 
-    public void setMetadata(Map<String, Object> metadata) {
-        this.metadata = metadata;
+    public void setContent(String content) {
+        this.content = content;
     }
 
     /**
@@ -112,10 +111,10 @@ public class MemoryEntry {
 
     @Override
     public String toString() {
-        return "MemoryEntry{" +
-            "id='" + id + '\'' +
-            ", userId='" + userId + '\'' +
-            ", content='" + content + '\'' +
-            '}';
+        return "MemoryEntry{"
+            + "id='" + id + '\''
+            + ", userId='" + userId + '\''
+            + ", content='" + content + '\''
+            + '}';
     }
 }

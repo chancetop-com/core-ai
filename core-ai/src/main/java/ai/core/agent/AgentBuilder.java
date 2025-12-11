@@ -6,6 +6,7 @@ import ai.core.llm.LLMProvider;
 import ai.core.memory.MemoryManager;
 import ai.core.memory.MemoryRetrievalMode;
 import ai.core.memory.ShortTermMemory;
+import ai.core.memory.tool.ManageMemoryTool;
 import ai.core.memory.tool.SearchMemoryTool;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
@@ -28,6 +29,8 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
+    private static final String DEFAULT_USER_ID = "default";
+
     private String systemPrompt;
     private String promptTemplate;
     private LLMProvider llmProvider;
@@ -49,6 +52,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private boolean enableLongTermMemory = false;
     private String userId;
     private MemoryRetrievalMode memoryRetrievalMode = MemoryRetrievalMode.AUTO;
+    private boolean enableMemoryManagement = false;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -145,6 +149,27 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.enableLongTermMemory = true;
         this.userId = userId;
         this.memoryRetrievalMode = MemoryRetrievalMode.TOOL;
+        return this;
+    }
+
+    /**
+     * Enable memory management capabilities.
+     * Agent will have a manage_memory tool to add/update/delete memories.
+     */
+    public AgentBuilder enableMemoryManagement() {
+        this.enableMemoryManagement = true;
+        return this;
+    }
+
+    /**
+     * Enable full memory tools (search + manage).
+     * Agent can both query and manage memories autonomously.
+     */
+    public AgentBuilder enableFullMemoryTools(String userId) {
+        this.enableLongTermMemory = true;
+        this.userId = userId;
+        this.memoryRetrievalMode = MemoryRetrievalMode.TOOL;
+        this.enableMemoryManagement = true;
         return this;
     }
 
@@ -345,16 +370,28 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         } else {
             agent.memoryManager = MemoryManager.create(this.llmProvider, this.model);
         }
-        agent.userId = this.userId;
+
+        // Use default userId if not provided
+        String effectiveUserId = this.userId != null ? this.userId : DEFAULT_USER_ID;
+        agent.userId = effectiveUserId;
         agent.memoryRetrievalMode = this.memoryRetrievalMode;
 
         // Add SearchMemoryTool for TOOL mode
         if (this.memoryRetrievalMode == MemoryRetrievalMode.TOOL) {
             var searchTool = SearchMemoryTool.builder()
                 .memoryManager(agent.memoryManager)
-                .userId(this.userId)
+                .userId(effectiveUserId)
                 .build();
             this.toolCalls.add(searchTool);
+        }
+
+        // Add ManageMemoryTool if enabled
+        if (this.enableMemoryManagement) {
+            var manageTool = ManageMemoryTool.builder()
+                .memoryManager(agent.memoryManager)
+                .userId(effectiveUserId)
+                .build();
+            this.toolCalls.add(manageTool);
         }
     }
 

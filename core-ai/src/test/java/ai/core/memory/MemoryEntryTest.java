@@ -3,8 +3,6 @@ package ai.core.memory;
 import ai.core.memory.model.MemoryEntry;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,9 +18,7 @@ class MemoryEntryTest {
     void testDefaultConstructor() {
         var entry = new MemoryEntry();
 
-        assertNotNull(entry.getId());
-        assertNotNull(entry.getCreatedAt());
-        assertNotNull(entry.getLastAccessedAt());
+        // Default constructor does NOT generate ID (for JSON deserialization)
         assertNotNull(entry.getMetadata());
     }
 
@@ -52,12 +48,13 @@ class MemoryEntryTest {
     }
 
     @Test
-    void testSetters() {
-        var entry = new MemoryEntry();
+    void testFieldAccess() {
+        var entry = new MemoryEntry("user-1", "Original");
 
-        entry.setUserId("new-user");
+        // Test direct field access (public fields for JSON compatibility)
+        entry.userId = "new-user";
         entry.setContent("New content");
-        entry.setMetadata(Map.of("key", "value"));
+        entry.metadata.put("key", "value");
 
         assertEquals("new-user", entry.getUserId());
         assertEquals("New content", entry.getContent());
@@ -77,8 +74,8 @@ class MemoryEntryTest {
 
         entry.recordAccess();
 
-        assertTrue(entry.getLastAccessedAt().isAfter(initialAccess) ||
-            entry.getLastAccessedAt().equals(initialAccess));
+        assertTrue(entry.getLastAccessedAt().isAfter(initialAccess)
+            || entry.getLastAccessedAt().equals(initialAccess));
     }
 
     @Test

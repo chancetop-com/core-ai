@@ -5,70 +5,92 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.memory.LongTermMemory;
 import ai.core.memory.model.MemoryEntry;
+import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * Simple in-memory implementation of LongTermMemory.
- * Supports basic CRUD operations and vector similarity search.
+ * JSON file-based implementation of LongTermMemory.
+ * Persists memories to a JSON file for durability across restarts.
  *
  * @author xander
  */
-public class InMemoryStore implements LongTermMemory {
-    private static final Logger LOGGER = LoggerFactory.getLogger(InMemoryStore.class);
+public class JsonFileStore implements LongTermMemory {
+    private static final Logger LOGGER = LoggerFactory.getLogger(JsonFileStore.class);
     private static final double DEFAULT_SIMILARITY_THRESHOLD = 0.5;
-    private static final int DEFAULT_MAX_SIZE = 10000;
+    private static final String DEFAULT_FILENAME = "memories.json";
 
+    private static Path getDefaultPath() {
+        String home = System.getProperty("user.home");
+        return Path.of(home, ".core-ai", DEFAULT_FILENAME);
+    }
+
+    private final Path storagePath;
     private final Map<String, MemoryEntry> memories = new ConcurrentHashMap<>();
     private final LLMProvider llmProvider;
-    private final int maxSize;
+    private final ReadWriteLock fileLock = new ReentrantReadWriteLock();
+    private final boolean autoSave;
 
-    public InMemoryStore() {
-        this(null, DEFAULT_MAX_SIZE);
+    /**
+     * Create a JsonFileStore with default path (~/.core-ai/memories.json).
+     */
+    public JsonFileStore() {
+        this(getDefaultPath(), null, true);
     }
 
-    public InMemoryStore(LLMProvider llmProvider) {
-        this(llmProvider, DEFAULT_MAX_SIZE);
+    /**
+     * Create a JsonFileStore with custom path.
+     */
+    public JsonFileStore(Path storagePath) {
+        this(storagePath, null, true);
     }
 
-    public InMemoryStore(LLMProvider llmProvider, int maxSize) {
+    /**
+     * Create a JsonFileStore with LLM provider for embeddings.
+     */
+    public JsonFileStore(LLMProvider llmProvider) {
+        this(getDefaultPath(), llmProvider, true);
+    }
+
+    /**
+     * Create a JsonFileStore with full configuration.
+     */
+    public JsonFileStore(Path storagePath, LLMProvider llmProvider, boolean autoSave) {
+        this.storagePath = storagePath;
         this.llmProvider = llmProvider;
-        this.maxSize = maxSize;
+        this.autoSave = autoSave;
+        loadFromFile();
     }
+
     @Override
     public void add(MemoryEntry entry) {
         if (entry == null || entry.getContent() == null) {
             return;
         }
 
-        // Evict oldest entries if at capacity
-        if (memories.size() >= maxSize) {
-            evictOldest();
-        }
-
-        // Generate embedding if llmProvider is available
         if (llmProvider != null && entry.getEmbedding() == null) {
             entry.setEmbedding(generateEmbedding(entry.getContent()));
         }
 
         memories.put(entry.getId(), entry);
         LOGGER.debug("Added memory: {}", entry.getId());
-    }
 
-    private void evictOldest() {
-        memories.values().stream()
-            .min(Comparator.comparing(MemoryEntry::getCreatedAt))
-            .ifPresent(oldest -> {
-                memories.remove(oldest.getId());
-                LOGGER.debug("Evicted oldest memory: {}", oldest.getId());
-            });
+        if (autoSave) {
+            saveToFile();
+        }
     }
 
     @Override
@@ -77,7 +99,6 @@ public class InMemoryStore implements LongTermMemory {
             return;
         }
 
-        // Generate embedding if needed
         if (llmProvider != null && entry.getEmbedding() == null) {
             entry.setEmbedding(generateEmbedding(entry.getContent()));
         }
@@ -85,6 +106,10 @@ public class InMemoryStore implements LongTermMemory {
         entry.setId(memoryId);
         memories.put(memoryId, entry);
         LOGGER.debug("Updated memory: {}", memoryId);
+
+        if (autoSave) {
+            saveToFile();
+        }
     }
 
     @Override
@@ -92,6 +117,10 @@ public class InMemoryStore implements LongTermMemory {
         if (memoryId != null) {
             memories.remove(memoryId);
             LOGGER.debug("Deleted memory: {}", memoryId);
+
+            if (autoSave) {
+                saveToFile();
+            }
         }
     }
 
@@ -115,7 +144,6 @@ public class InMemoryStore implements LongTermMemory {
             return getByUserId(userId, topK);
         }
 
-        // If we have embedding capability, use vector search
         if (llmProvider != null) {
             var queryEmbedding = generateEmbedding(query);
             if (queryEmbedding != null) {
@@ -123,7 +151,6 @@ public class InMemoryStore implements LongTermMemory {
             }
         }
 
-        // Fallback to simple keyword matching
         String lowerQuery = query.toLowerCase(java.util.Locale.ROOT);
         return memories.values().stream()
             .filter(e -> userId == null || userId.equals(e.getUserId()))
@@ -175,6 +202,74 @@ public class InMemoryStore implements LongTermMemory {
     public void clear() {
         memories.clear();
         LOGGER.debug("Cleared all memories");
+
+        if (autoSave) {
+            saveToFile();
+        }
+    }
+
+    /**
+     * Manually save memories to file.
+     */
+    public void save() {
+        saveToFile();
+    }
+
+    /**
+     * Reload memories from file.
+     */
+    public void reload() {
+        loadFromFile();
+    }
+
+    private void loadFromFile() {
+        fileLock.readLock().lock();
+        try {
+            if (!Files.exists(storagePath)) {
+                LOGGER.debug("No existing memory file at {}", storagePath);
+                return;
+            }
+
+            String content = Files.readString(storagePath);
+            if (content.isBlank()) {
+                return;
+            }
+
+            var data = JSON.fromJSON(StorageData.class, content);
+            if (data.memories != null) {
+                memories.clear();
+                for (var entry : data.memories) {
+                    if (entry != null && entry.getId() != null) {
+                        memories.put(entry.getId(), entry);
+                    }
+                }
+                LOGGER.info("Loaded {} memories from {}", memories.size(), storagePath);
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Failed to load memories from file: {}", e.getMessage());
+        } finally {
+            fileLock.readLock().unlock();
+        }
+    }
+
+    private void saveToFile() {
+        fileLock.writeLock().lock();
+        try {
+            Files.createDirectories(storagePath.getParent());
+
+            var data = new StorageData();
+            data.version = "1.0";
+            data.savedAt = Instant.now().toString();
+            data.memories = new ArrayList<>(memories.values());
+
+            String content = JSON.toJSON(data);
+            Files.writeString(storagePath, content);
+            LOGGER.debug("Saved {} memories to {}", memories.size(), storagePath);
+        } catch (IOException e) {
+            LOGGER.error("Failed to save memories to file: {}", e.getMessage());
+        } finally {
+            fileLock.writeLock().unlock();
+        }
     }
 
     private Embedding generateEmbedding(String content) {
@@ -198,7 +293,6 @@ public class InMemoryStore implements LongTermMemory {
             return 0.0;
         }
 
-        // Convert to primitive arrays for better performance
         int size = v1.size();
         double dotProduct = 0.0;
         double norm1 = 0.0;
@@ -220,4 +314,13 @@ public class InMemoryStore implements LongTermMemory {
     }
 
     private record ScoredEntry(MemoryEntry entry, double score) { }
+
+    /**
+     * Storage format for JSON file.
+     */
+    public static class StorageData {
+        public String version;
+        public String savedAt;
+        public List<MemoryEntry> memories;
+    }
 }

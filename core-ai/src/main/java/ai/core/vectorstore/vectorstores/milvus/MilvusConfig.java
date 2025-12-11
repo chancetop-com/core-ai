@@ -16,6 +16,30 @@ public class MilvusConfig {
     String password;
     String collection;
 
+    public String getUri() {
+        return uri;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public String getDatabase() {
+        return database;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public String getCollection() {
+        return collection;
+    }
+
     public static class Builder {
         private String uri;
         private String token;

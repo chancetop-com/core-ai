@@ -46,12 +46,7 @@ public class MemoryManager {
         {"memories": ["memory 1", "memory 2", ...]}
         """;
 
-    private final LongTermMemory store;
-    private final LLMProvider llmProvider;
-    private final String model;
-    private final Executor executor;
-    private final boolean enabled;
-    private final double temperature;
+    // Static factory methods
 
     /**
      * Create a MemoryManager with default in-memory store.
@@ -66,6 +61,65 @@ public class MemoryManager {
     public static MemoryManager create(LongTermMemory store, LLMProvider llmProvider, String model) {
         return new MemoryManager(store, llmProvider, model);
     }
+
+    /**
+     * Create a MemoryManager with JSON file storage for persistence.
+     *
+     * @param storagePath the path to store the JSON file
+     * @param llmProvider the LLM provider for embeddings
+     * @param model       the model name
+     */
+    public static MemoryManager createWithJsonFile(java.nio.file.Path storagePath, LLMProvider llmProvider, String model) {
+        return new MemoryManager(new ai.core.memory.store.JsonFileStore(storagePath, llmProvider, true), llmProvider, model);
+    }
+
+    /**
+     * Create a MemoryManager with JSON file storage at default location (~/.core-ai/memories.json).
+     */
+    public static MemoryManager createWithJsonFile(LLMProvider llmProvider, String model) {
+        return new MemoryManager(new ai.core.memory.store.JsonFileStore(llmProvider), llmProvider, model);
+    }
+
+    /**
+     * Create a MemoryManager with Milvus vector database storage.
+     *
+     * @param milvusConfig the Milvus connection config
+     * @param llmProvider  the LLM provider for embeddings
+     * @param model        the model name
+     */
+    public static MemoryManager createWithMilvus(
+            ai.core.vectorstore.vectorstores.milvus.MilvusConfig milvusConfig,
+            LLMProvider llmProvider,
+            String model) {
+        return new MemoryManager(
+            new ai.core.memory.store.MilvusMemoryStore(milvusConfig, llmProvider),
+            llmProvider,
+            model
+        );
+    }
+
+    /**
+     * Create a MemoryManager with Milvus storage and custom collection name.
+     */
+    public static MemoryManager createWithMilvus(
+            ai.core.vectorstore.vectorstores.milvus.MilvusConfig milvusConfig,
+            LLMProvider llmProvider,
+            String model,
+            String collectionName) {
+        return new MemoryManager(
+            new ai.core.memory.store.MilvusMemoryStore(milvusConfig, llmProvider, collectionName),
+            llmProvider,
+            model
+        );
+    }
+
+    // Instance fields
+    private final LongTermMemory store;
+    private final LLMProvider llmProvider;
+    private final String model;
+    private final Executor executor;
+    private final boolean enabled;
+    private final double temperature;
 
     public MemoryManager(LongTermMemory store, LLMProvider llmProvider, String model) {
         this(store, llmProvider, model, ForkJoinPool.commonPool(), true, DEFAULT_TEMPERATURE);
@@ -152,10 +206,32 @@ public class MemoryManager {
     }
 
     /**
+     * Get a memory by ID.
+     */
+    public MemoryEntry getMemoryById(String memoryId) {
+        return store.getById(memoryId).orElse(null);
+    }
+
+    /**
+     * Update a memory by ID.
+     */
+    public void updateMemory(String memoryId, String newContent) {
+        var existing = store.getById(memoryId);
+        if (existing.isPresent()) {
+            var entry = existing.get();
+            entry.setContent(newContent);
+            entry.setEmbedding(null);  // Clear embedding to regenerate
+            store.update(memoryId, entry);
+            LOGGER.debug("Updated memory: {}", memoryId);
+        }
+    }
+
+    /**
      * Delete a memory by ID.
      */
     public void deleteMemory(String memoryId) {
         store.delete(memoryId);
+        LOGGER.debug("Deleted memory: {}", memoryId);
     }
 
     /**

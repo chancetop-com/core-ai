@@ -51,6 +51,8 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class Agent extends Node<Agent> {
+    private static final int DEFAULT_MEMORY_LIMIT = 5;
+
     public static AgentBuilder builder() {
         return new AgentBuilder();
     }
@@ -161,8 +163,6 @@ public class Agent extends Node<Agent> {
         }
         return getOutput();
     }
-
-    private static final int DEFAULT_MEMORY_LIMIT = 5;
 
     /**
      * Retrieve relevant long-term memories for the query.
