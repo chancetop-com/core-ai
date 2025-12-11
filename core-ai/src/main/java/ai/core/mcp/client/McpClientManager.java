@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serial;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,6 +15,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author stephen
@@ -58,8 +64,12 @@ public class McpClientManager implements AutoCloseable {
     private final Map<String, ConnectionState> states = new ConcurrentHashMap<>();
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
     private final List<ConnectionStateListener> listeners = new CopyOnWriteArrayList<>();
+    private final Map<String, AtomicInteger> reconnectAttempts = new ConcurrentHashMap<>();
+    private final Map<String, ScheduledFuture<?>> reconnectTasks = new ConcurrentHashMap<>();
     private Thread shutdownHook;
     private volatile boolean closed = false;
+    private ScheduledExecutorService heartbeatScheduler;
+    private ScheduledFuture<?> heartbeatTask;
 
     /**
      * Add a server configuration.
@@ -72,6 +82,7 @@ public class McpClientManager implements AutoCloseable {
         configs.put(name, config);
         states.put(name, ConnectionState.NOT_CONNECTED);
         locks.put(name, new Object());
+        reconnectAttempts.put(name, new AtomicInteger(0));
         LOGGER.info("Added MCP server config: {}", name);
     }
 
@@ -79,10 +90,12 @@ public class McpClientManager implements AutoCloseable {
      * Remove a server and close its client if exists.
      */
     public void removeServer(String serverName) {
+        cancelReconnectTask(serverName);
         closeClient(serverName);
         configs.remove(serverName);
         states.remove(serverName);
         locks.remove(serverName);
+        reconnectAttempts.remove(serverName);
         LOGGER.info("Removed MCP server: {}", serverName);
     }
 
@@ -162,6 +175,270 @@ public class McpClientManager implements AutoCloseable {
             }
         });
         LOGGER.info("MCP clients warmup completed");
+    }
+
+    /**
+     * Start heartbeat monitoring for all connected clients.
+     * This should be called after warmup or after clients are connected.
+     */
+    public void startHeartbeat() {
+        if (heartbeatScheduler != null) {
+            LOGGER.warn("Heartbeat scheduler already running");
+            return;
+        }
+
+        // Find the minimum heartbeat interval from all configs
+        Duration minInterval = configs.values().stream()
+            .filter(McpServerConfig::isEnableHeartbeat)
+            .map(McpServerConfig::getHeartbeatInterval)
+            .min(Duration::compareTo)
+            .orElse(Duration.ofSeconds(30));
+
+        heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "mcp-heartbeat");
+            t.setDaemon(true);
+            return t;
+        });
+
+        heartbeatTask = heartbeatScheduler.scheduleAtFixedRate(
+            this::performHeartbeatCheck,
+            minInterval.toMillis(),
+            minInterval.toMillis(),
+            TimeUnit.MILLISECONDS
+        );
+
+        LOGGER.info("Heartbeat monitoring started with interval: {}s", minInterval.toSeconds());
+    }
+
+    /**
+     * Stop heartbeat monitoring.
+     */
+    public void stopHeartbeat() {
+        if (heartbeatTask != null) {
+            heartbeatTask.cancel(false);
+            heartbeatTask = null;
+        }
+        if (heartbeatScheduler != null) {
+            heartbeatScheduler.shutdown();
+            try {
+                if (!heartbeatScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    heartbeatScheduler.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                heartbeatScheduler.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+            heartbeatScheduler = null;
+        }
+        LOGGER.info("Heartbeat monitoring stopped");
+    }
+
+    /**
+     * Perform heartbeat check for all connected clients.
+     */
+    private void performHeartbeatCheck() {
+        for (var entry : clients.entrySet()) {
+            String serverName = entry.getKey();
+            McpClientService client = entry.getValue();
+            McpServerConfig config = configs.get(serverName);
+
+            if (config == null || !config.isEnableHeartbeat()) {
+                continue;
+            }
+
+            ConnectionState currentState = states.get(serverName);
+            if (currentState != ConnectionState.CONNECTED) {
+                continue;
+            }
+
+            try {
+                boolean alive = client.ping(config.getHeartbeatTimeout());
+                if (!alive) {
+                    LOGGER.warn("Heartbeat failed for server: {}, initiating reconnect", serverName);
+                    handleDisconnection(serverName);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Heartbeat check error for server {}: {}", serverName, e.getMessage());
+                handleDisconnection(serverName);
+            }
+        }
+    }
+
+    /**
+     * Handle client disconnection - close client and trigger reconnect if enabled.
+     */
+    private void handleDisconnection(String serverName) {
+        var config = configs.get(serverName);
+        if (config == null) {
+            return;
+        }
+
+        // Close the existing client
+        var client = clients.remove(serverName);
+        if (client != null) {
+            try {
+                client.close();
+            } catch (Exception e) {
+                LOGGER.warn("Error closing disconnected client: {}", serverName, e);
+            }
+        }
+
+        updateState(serverName, ConnectionState.DISCONNECTED);
+
+        // Trigger reconnect if enabled
+        if (config.isAutoReconnect() && !closed) {
+            scheduleReconnect(serverName);
+        }
+    }
+
+    /**
+     * Schedule a reconnection attempt for the specified server.
+     */
+    private void scheduleReconnect(String serverName) {
+        var config = configs.get(serverName);
+        if (config == null || closed) {
+            return;
+        }
+
+        // Cancel any existing reconnect task
+        cancelReconnectTask(serverName);
+
+        var attempts = reconnectAttempts.computeIfAbsent(serverName, k -> new AtomicInteger(0));
+        int currentAttempt = attempts.get();
+
+        if (currentAttempt >= config.getMaxReconnectAttempts()) {
+            LOGGER.error("Max reconnect attempts ({}) reached for server: {}", config.getMaxReconnectAttempts(), serverName);
+            updateState(serverName, ConnectionState.FAILED);
+            return;
+        }
+
+        // Calculate delay with exponential backoff
+        long delayMs = calculateBackoffDelay(config, currentAttempt);
+        updateState(serverName, ConnectionState.RECONNECTING);
+
+        LOGGER.info("Scheduling reconnect for server {} in {}ms (attempt {}/{})",
+            serverName, delayMs, currentAttempt + 1, config.getMaxReconnectAttempts());
+
+        if (heartbeatScheduler == null || heartbeatScheduler.isShutdown()) {
+            heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "mcp-heartbeat");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+
+        ScheduledFuture<?> task = heartbeatScheduler.schedule(() -> {
+            attemptReconnect(serverName);
+        }, delayMs, TimeUnit.MILLISECONDS);
+
+        reconnectTasks.put(serverName, task);
+    }
+
+    /**
+     * Calculate backoff delay using exponential backoff with jitter.
+     */
+    private long calculateBackoffDelay(McpServerConfig config, int attempt) {
+        long baseDelay = config.getReconnectInterval().toMillis();
+        long maxDelay = config.getReconnectBackoffMax().toMillis();
+
+        // Exponential backoff: delay = baseDelay * 2^attempt
+        long delay = baseDelay * (1L << attempt);
+
+        // Cap at max delay
+        delay = Math.min(delay, maxDelay);
+
+        // Add jitter (±10%)
+        double jitter = 0.9 + Math.random() * 0.2;
+        return (long) (delay * jitter);
+    }
+
+    /**
+     * Attempt to reconnect to the specified server.
+     */
+    private void attemptReconnect(String serverName) {
+        if (closed) {
+            return;
+        }
+
+        var config = configs.get(serverName);
+        if (config == null) {
+            return;
+        }
+
+        var attempts = reconnectAttempts.get(serverName);
+        int currentAttempt = attempts.incrementAndGet();
+
+        LOGGER.info("Attempting reconnect for server {} (attempt {}/{})",
+            serverName, currentAttempt, config.getMaxReconnectAttempts());
+
+        try {
+            updateState(serverName, ConnectionState.CONNECTING);
+            var client = new McpClientService(config);
+            clients.put(serverName, client);
+            updateState(serverName, ConnectionState.CONNECTED);
+
+            // Reset reconnect attempts on successful connection
+            attempts.set(0);
+            reconnectTasks.remove(serverName);
+
+            LOGGER.info("Successfully reconnected to server: {}", serverName);
+        } catch (Exception e) {
+            LOGGER.error("Reconnect attempt {} failed for server {}: {}",
+                currentAttempt, serverName, e.getMessage());
+
+            if (currentAttempt < config.getMaxReconnectAttempts()) {
+                // Schedule next attempt
+                scheduleReconnect(serverName);
+            } else {
+                LOGGER.error("All reconnect attempts exhausted for server: {}", serverName);
+                updateState(serverName, ConnectionState.FAILED);
+            }
+        }
+    }
+
+    /**
+     * Cancel any pending reconnect task for the specified server.
+     */
+    private void cancelReconnectTask(String serverName) {
+        var task = reconnectTasks.remove(serverName);
+        if (task != null && !task.isDone()) {
+            task.cancel(false);
+        }
+    }
+
+    /**
+     * Manually trigger a reconnect for the specified server.
+     * Resets the reconnect attempt counter.
+     */
+    public void reconnect(String serverName) {
+        if (!configs.containsKey(serverName)) {
+            throw new IllegalArgumentException("Server not configured: " + serverName);
+        }
+
+        LOGGER.info("Manual reconnect requested for server: {}", serverName);
+
+        // Reset attempt counter
+        var attempts = reconnectAttempts.get(serverName);
+        if (attempts != null) {
+            attempts.set(0);
+        }
+
+        // Close existing client if any
+        handleDisconnection(serverName);
+
+        // Since handleDisconnection will trigger scheduleReconnect if autoReconnect is enabled,
+        // we need to handle the case where it's disabled
+        var config = configs.get(serverName);
+        if (config != null && !config.isAutoReconnect()) {
+            attemptReconnect(serverName);
+        }
+    }
+
+    /**
+     * Check if reconnection is in progress for the specified server.
+     */
+    public boolean isReconnecting(String serverName) {
+        return states.get(serverName) == ConnectionState.RECONNECTING;
     }
 
     /**
@@ -251,9 +528,20 @@ public class McpClientManager implements AutoCloseable {
         }
         closed = true;
         LOGGER.info("Closing McpClientManager with {} clients...", clients.size());
+
+        // Stop heartbeat monitoring
+        stopHeartbeat();
+
+        // Cancel all pending reconnect tasks
+        for (String serverName : List.copyOf(reconnectTasks.keySet())) {
+            cancelReconnectTask(serverName);
+        }
+
+        // Close all clients
         for (String serverName : List.copyOf(clients.keySet())) {
             closeClient(serverName);
         }
+
         listeners.clear();
         removeShutdownHook();
         // Dispose Reactor schedulers used by MCP SDK
@@ -334,6 +622,7 @@ public class McpClientManager implements AutoCloseable {
         CONNECTING,
         CONNECTED,
         DISCONNECTED,
+        RECONNECTING,
         FAILED
     }
 

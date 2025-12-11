@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 /**
  * @author stephen
@@ -32,10 +33,12 @@ public class McpClientService implements AutoCloseable {
 
     private final McpSyncClient client;
     private final McpClientTransport transport;
+    private final McpServerConfig config;
     private final String serverName;
     private Process stdioProcess;
 
     public McpClientService(McpServerConfig config) {
+        this.config = config;
         this.serverName = config.getName();
         this.transport = createTransport(config);
         this.client = createClient(transport, config);
@@ -92,6 +95,51 @@ public class McpClientService implements AutoCloseable {
 
     public String getServerName() {
         return serverName;
+    }
+
+    public McpServerConfig getConfig() {
+        return config;
+    }
+
+    /**
+     * Ping the MCP server to check if connection is alive.
+     * Uses the ping method if supported by the server, otherwise tries listTools.
+     *
+     * @param timeout the timeout duration for the ping operation
+     * @return true if the server responds within timeout, false otherwise
+     */
+    public boolean ping(Duration timeout) {
+        try {
+            // MCP protocol supports ping method for connection health check
+            var pingResult = reactor.core.publisher.Mono
+                .fromCallable(() -> {
+                    try {
+                        client.ping();
+                        return true;
+                    } catch (Exception e) {
+                        // If ping is not supported, try listTools as fallback
+                        LOGGER.debug("Ping not supported, trying listTools as fallback: {}", serverName);
+                        client.listTools();
+                        return true;
+                    }
+                })
+                .timeout(timeout)
+                .onErrorReturn(TimeoutException.class, false)
+                .block();
+            return Boolean.TRUE.equals(pingResult);
+        } catch (Exception e) {
+            LOGGER.warn("Ping failed for server {}: {}", serverName, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Ping the MCP server with default timeout from config.
+     *
+     * @return true if the server responds within timeout, false otherwise
+     */
+    public boolean ping() {
+        return ping(config.getHeartbeatTimeout());
     }
 
     @Override
@@ -171,14 +219,15 @@ public class McpClientService implements AutoCloseable {
 
     private McpSyncClient createClient(McpClientTransport transport, McpServerConfig config) {
         var syncClient = McpClient.sync(transport)
-            .requestTimeout(Duration.ofSeconds(30))
+            .requestTimeout(config.getRequestTimeout())
             .build();
         syncClient.initialize();
         // Extract process reference after initialization for proper cleanup
         if (transport instanceof StdioClientTransport stdioTransport) {
             extractProcessFromTransport(stdioTransport);
         }
-        LOGGER.info("MCP client initialized: name={}, transport={}", config.getName(), config.getTransportType());
+        LOGGER.info("MCP client initialized: name={}, transport={}, requestTimeout={}s",
+            config.getName(), config.getTransportType(), config.getRequestTimeout().toSeconds());
         return syncClient;
     }
 
@@ -243,7 +292,7 @@ public class McpClientService implements AutoCloseable {
 
     private McpClientTransport createStreamableHttpTransport(McpServerConfig config) {
         var builder = HttpClientStreamableHttpTransport.builder(config.getUrl())
-            .connectTimeout(Duration.ofSeconds(10));
+            .connectTimeout(config.getConnectTimeout());
 
         if (config.getEndpoint() != null && !config.getEndpoint().isBlank()) {
             builder.endpoint(config.getEndpoint());
@@ -262,7 +311,7 @@ public class McpClientService implements AutoCloseable {
 
     private McpClientTransport createSseTransport(McpServerConfig config) {
         var builder = HttpClientSseClientTransport.builder(config.getUrl())
-            .connectTimeout(Duration.ofSeconds(10));
+            .connectTimeout(config.getConnectTimeout());
 
         if (config.getEndpoint() != null && !config.getEndpoint().isBlank()) {
             builder.sseEndpoint(config.getEndpoint());

@@ -1,5 +1,6 @@
 package ai.core.mcp.client;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -125,6 +126,21 @@ public class McpServerConfig {
     private String endpoint;
     private Map<String, String> headers;
 
+    // Timeout configuration
+    private Duration connectTimeout = Duration.ofSeconds(10);
+    private Duration requestTimeout = Duration.ofSeconds(60);
+
+    // Reconnect configuration
+    private boolean autoReconnect = true;
+    private int maxReconnectAttempts = 3;
+    private Duration reconnectInterval = Duration.ofSeconds(5);
+    private Duration reconnectBackoffMax = Duration.ofSeconds(60);
+
+    // Heartbeat configuration
+    private boolean enableHeartbeat = true;
+    private Duration heartbeatInterval = Duration.ofSeconds(30);
+    private Duration heartbeatTimeout = Duration.ofSeconds(10);
+
     public String getName() {
         return name;
     }
@@ -155,6 +171,42 @@ public class McpServerConfig {
 
     public Map<String, String> getHeaders() {
         return headers;
+    }
+
+    public Duration getConnectTimeout() {
+        return connectTimeout;
+    }
+
+    public Duration getRequestTimeout() {
+        return requestTimeout;
+    }
+
+    public boolean isAutoReconnect() {
+        return autoReconnect;
+    }
+
+    public int getMaxReconnectAttempts() {
+        return maxReconnectAttempts;
+    }
+
+    public Duration getReconnectInterval() {
+        return reconnectInterval;
+    }
+
+    public Duration getReconnectBackoffMax() {
+        return reconnectBackoffMax;
+    }
+
+    public boolean isEnableHeartbeat() {
+        return enableHeartbeat;
+    }
+
+    public Duration getHeartbeatInterval() {
+        return heartbeatInterval;
+    }
+
+    public Duration getHeartbeatTimeout() {
+        return heartbeatTimeout;
     }
 
     public boolean isStdio() {
@@ -211,6 +263,51 @@ public class McpServerConfig {
             return this;
         }
 
+        public StdioBuilder connectTimeout(Duration timeout) {
+            config.connectTimeout = timeout;
+            return this;
+        }
+
+        public StdioBuilder requestTimeout(Duration timeout) {
+            config.requestTimeout = timeout;
+            return this;
+        }
+
+        public StdioBuilder autoReconnect(boolean autoReconnect) {
+            config.autoReconnect = autoReconnect;
+            return this;
+        }
+
+        public StdioBuilder maxReconnectAttempts(int maxAttempts) {
+            config.maxReconnectAttempts = maxAttempts;
+            return this;
+        }
+
+        public StdioBuilder reconnectInterval(Duration interval) {
+            config.reconnectInterval = interval;
+            return this;
+        }
+
+        public StdioBuilder reconnectBackoffMax(Duration max) {
+            config.reconnectBackoffMax = max;
+            return this;
+        }
+
+        public StdioBuilder enableHeartbeat(boolean enable) {
+            config.enableHeartbeat = enable;
+            return this;
+        }
+
+        public StdioBuilder heartbeatInterval(Duration interval) {
+            config.heartbeatInterval = interval;
+            return this;
+        }
+
+        public StdioBuilder heartbeatTimeout(Duration timeout) {
+            config.heartbeatTimeout = timeout;
+            return this;
+        }
+
         public McpServerConfig build() {
             if (config.command == null || config.command.isBlank()) {
                 throw new IllegalArgumentException("command is required for STDIO transport");
@@ -258,6 +355,51 @@ public class McpServerConfig {
 
         public HttpBuilder bearerToken(String token) {
             return header("Authorization", "Bearer " + token);
+        }
+
+        public HttpBuilder connectTimeout(Duration timeout) {
+            config.connectTimeout = timeout;
+            return this;
+        }
+
+        public HttpBuilder requestTimeout(Duration timeout) {
+            config.requestTimeout = timeout;
+            return this;
+        }
+
+        public HttpBuilder autoReconnect(boolean autoReconnect) {
+            config.autoReconnect = autoReconnect;
+            return this;
+        }
+
+        public HttpBuilder maxReconnectAttempts(int maxAttempts) {
+            config.maxReconnectAttempts = maxAttempts;
+            return this;
+        }
+
+        public HttpBuilder reconnectInterval(Duration interval) {
+            config.reconnectInterval = interval;
+            return this;
+        }
+
+        public HttpBuilder reconnectBackoffMax(Duration max) {
+            config.reconnectBackoffMax = max;
+            return this;
+        }
+
+        public HttpBuilder enableHeartbeat(boolean enable) {
+            config.enableHeartbeat = enable;
+            return this;
+        }
+
+        public HttpBuilder heartbeatInterval(Duration interval) {
+            config.heartbeatInterval = interval;
+            return this;
+        }
+
+        public HttpBuilder heartbeatTimeout(Duration timeout) {
+            config.heartbeatTimeout = timeout;
+            return this;
         }
 
         public McpServerConfig build() {
