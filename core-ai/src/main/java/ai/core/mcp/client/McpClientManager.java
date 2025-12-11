@@ -164,6 +164,7 @@ public class McpClientManager implements AutoCloseable {
     /**
      * Warmup all configured clients (parallel initialization).
      * Useful for pre-connecting at application startup.
+     * If any server has heartbeat enabled, heartbeat monitoring will be started automatically.
      */
     public void warmup() {
         LOGGER.info("Warming up {} MCP clients...", configs.size());
@@ -175,6 +176,13 @@ public class McpClientManager implements AutoCloseable {
             }
         });
         LOGGER.info("MCP clients warmup completed");
+
+        // Auto-start heartbeat if any config has heartbeat enabled
+        boolean anyHeartbeatEnabled = configs.values().stream()
+            .anyMatch(McpServerConfig::isEnableHeartbeat);
+        if (anyHeartbeatEnabled) {
+            startHeartbeat();
+        }
     }
 
     /**
