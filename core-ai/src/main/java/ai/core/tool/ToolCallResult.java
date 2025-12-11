@@ -42,16 +42,16 @@ public final class ToolCallResult {
     private final Map<String, Object> stats;
     private RuntimeException runtimeException;
 
+    private ToolCallResult() {
+        this.stats = new HashMap<>();
+    }
+
     @Override
     public String toString() {
         return Strings.format(
                 "ToolCallResult{status={}, toolName='{}', durationMs={}, result='{}', stats={}, taskId='{}'}",
                 status, toolName, durationMs, result, stats, taskId
         );
-    }
-
-    private ToolCallResult() {
-        this.stats = new HashMap<>();
     }
 
     public boolean isCompleted() {

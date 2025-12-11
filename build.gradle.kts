@@ -96,7 +96,7 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
 
 val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
-    version = "1.1.106"
+    version = "1.1.107"
     dependencies {
         if (useLocalProjects) {
             implementation(project(":core-ai-api"))
