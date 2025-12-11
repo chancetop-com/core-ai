@@ -7,32 +7,6 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Configuration for MCP Server connection.
- * Supports both STDIO (command-based) and HTTP (URL-based) transports.
- * <p>
- * Example JSON configurations:
- * <pre>
- * // STDIO transport (like Claude Desktop)
- * {
- *   "mcpServers": {
- *     "chrome-devtools": {
- *       "command": "npx",
- *       "args": ["-y", "chrome-devtools-mcp@latest"]
- *     }
- *   }
- * }
- *
- * // HTTP transport
- * {
- *   "mcpServers": {
- *     "my-server": {
- *       "url": "https://mcp-server.example.com",
- *       "transport": "streamable-http"
- *     }
- *   }
- * }
- * </pre>
- *
  * @author stephen
  */
 public class McpServerConfig {
@@ -88,6 +62,7 @@ public class McpServerConfig {
             builder.env((Map<String, String>) envMap);
         }
 
+        parseCommonConfig(builder, config);
         return builder.build();
     }
 
@@ -110,7 +85,87 @@ public class McpServerConfig {
             builder.headers((Map<String, String>) headersMap);
         }
 
+        parseCommonConfig(builder, config);
         return builder.build();
+    }
+
+    /**
+     * Parse common configuration options (heartbeat, timeout, reconnect) from config map.
+     * Supports both StdioBuilder and HttpBuilder through the CommonConfigBuilder interface.
+     */
+    private static void parseCommonConfig(CommonConfigBuilder<?> builder, Map<String, Object> config) {
+        // Heartbeat configuration: "heartbeat": 30 means enable heartbeat with 30s interval
+        if (config.containsKey("heartbeat")) {
+            Object heartbeatValue = config.get("heartbeat");
+            if (heartbeatValue instanceof Number num) {
+                builder.enableHeartbeat(true);
+                builder.heartbeatInterval(Duration.ofSeconds(num.longValue()));
+            } else if (heartbeatValue instanceof Boolean bool) {
+                builder.enableHeartbeat(bool);
+            }
+        }
+
+        // Heartbeat timeout: "heartbeatTimeout": 10
+        if (config.containsKey("heartbeatTimeout")) {
+            Object value = config.get("heartbeatTimeout");
+            if (value instanceof Number num) {
+                builder.heartbeatTimeout(Duration.ofSeconds(num.longValue()));
+            }
+        }
+
+        // Connect timeout: "connectTimeout": 10
+        if (config.containsKey("connectTimeout")) {
+            Object value = config.get("connectTimeout");
+            if (value instanceof Number num) {
+                builder.connectTimeout(Duration.ofSeconds(num.longValue()));
+            }
+        }
+
+        // Request timeout: "requestTimeout": 60
+        if (config.containsKey("requestTimeout")) {
+            Object value = config.get("requestTimeout");
+            if (value instanceof Number num) {
+                builder.requestTimeout(Duration.ofSeconds(num.longValue()));
+            }
+        }
+
+        // Auto reconnect: "autoReconnect": true/false
+        if (config.containsKey("autoReconnect")) {
+            Object value = config.get("autoReconnect");
+            if (value instanceof Boolean bool) {
+                builder.autoReconnect(bool);
+            }
+        }
+
+        // Max reconnect attempts: "maxReconnectAttempts": 3
+        if (config.containsKey("maxReconnectAttempts")) {
+            Object value = config.get("maxReconnectAttempts");
+            if (value instanceof Number num) {
+                builder.maxReconnectAttempts(num.intValue());
+            }
+        }
+
+        // Reconnect interval: "reconnectInterval": 5
+        if (config.containsKey("reconnectInterval")) {
+            Object value = config.get("reconnectInterval");
+            if (value instanceof Number num) {
+                builder.reconnectInterval(Duration.ofSeconds(num.longValue()));
+            }
+        }
+    }
+
+    /**
+     * Common interface for configuration builders to support shared config parsing.
+     */
+    private interface CommonConfigBuilder<T> {
+        void enableHeartbeat(boolean enable);
+        void heartbeatInterval(Duration interval);
+        void heartbeatTimeout(Duration timeout);
+        void connectTimeout(Duration timeout);
+        void requestTimeout(Duration timeout);
+        void autoReconnect(boolean autoReconnect);
+        void maxReconnectAttempts(int maxAttempts);
+        void reconnectInterval(Duration interval);
     }
 
     private String name;
@@ -223,7 +278,7 @@ public class McpServerConfig {
         SSE
     }
 
-    public static final class StdioBuilder {
+    public static final class StdioBuilder implements CommonConfigBuilder<StdioBuilder> {
         private final McpServerConfig config = new McpServerConfig();
 
         private StdioBuilder(String command) {
@@ -263,29 +318,24 @@ public class McpServerConfig {
             return this;
         }
 
-        public StdioBuilder connectTimeout(Duration timeout) {
+        public void connectTimeout(Duration timeout) {
             config.connectTimeout = timeout;
-            return this;
         }
 
-        public StdioBuilder requestTimeout(Duration timeout) {
+        public void requestTimeout(Duration timeout) {
             config.requestTimeout = timeout;
-            return this;
         }
 
-        public StdioBuilder autoReconnect(boolean autoReconnect) {
+        public void autoReconnect(boolean autoReconnect) {
             config.autoReconnect = autoReconnect;
-            return this;
         }
 
-        public StdioBuilder maxReconnectAttempts(int maxAttempts) {
+        public void maxReconnectAttempts(int maxAttempts) {
             config.maxReconnectAttempts = maxAttempts;
-            return this;
         }
 
-        public StdioBuilder reconnectInterval(Duration interval) {
+        public void reconnectInterval(Duration interval) {
             config.reconnectInterval = interval;
-            return this;
         }
 
         public StdioBuilder reconnectBackoffMax(Duration max) {
@@ -293,19 +343,16 @@ public class McpServerConfig {
             return this;
         }
 
-        public StdioBuilder enableHeartbeat(boolean enable) {
+        public void enableHeartbeat(boolean enable) {
             config.enableHeartbeat = enable;
-            return this;
         }
 
-        public StdioBuilder heartbeatInterval(Duration interval) {
+        public void heartbeatInterval(Duration interval) {
             config.heartbeatInterval = interval;
-            return this;
         }
 
-        public StdioBuilder heartbeatTimeout(Duration timeout) {
+        public void heartbeatTimeout(Duration timeout) {
             config.heartbeatTimeout = timeout;
-            return this;
         }
 
         public McpServerConfig build() {
@@ -316,7 +363,7 @@ public class McpServerConfig {
         }
     }
 
-    public static final class HttpBuilder {
+    public static final class HttpBuilder implements CommonConfigBuilder<HttpBuilder> {
         private final McpServerConfig config = new McpServerConfig();
 
         private HttpBuilder(String url) {
@@ -357,29 +404,24 @@ public class McpServerConfig {
             return header("Authorization", "Bearer " + token);
         }
 
-        public HttpBuilder connectTimeout(Duration timeout) {
+        public void connectTimeout(Duration timeout) {
             config.connectTimeout = timeout;
-            return this;
         }
 
-        public HttpBuilder requestTimeout(Duration timeout) {
+        public void requestTimeout(Duration timeout) {
             config.requestTimeout = timeout;
-            return this;
         }
 
-        public HttpBuilder autoReconnect(boolean autoReconnect) {
+        public void autoReconnect(boolean autoReconnect) {
             config.autoReconnect = autoReconnect;
-            return this;
         }
 
-        public HttpBuilder maxReconnectAttempts(int maxAttempts) {
+        public void maxReconnectAttempts(int maxAttempts) {
             config.maxReconnectAttempts = maxAttempts;
-            return this;
         }
 
-        public HttpBuilder reconnectInterval(Duration interval) {
+        public void reconnectInterval(Duration interval) {
             config.reconnectInterval = interval;
-            return this;
         }
 
         public HttpBuilder reconnectBackoffMax(Duration max) {
@@ -387,19 +429,16 @@ public class McpServerConfig {
             return this;
         }
 
-        public HttpBuilder enableHeartbeat(boolean enable) {
+        public void enableHeartbeat(boolean enable) {
             config.enableHeartbeat = enable;
-            return this;
         }
 
-        public HttpBuilder heartbeatInterval(Duration interval) {
+        public void heartbeatInterval(Duration interval) {
             config.heartbeatInterval = interval;
-            return this;
         }
 
-        public HttpBuilder heartbeatTimeout(Duration timeout) {
+        public void heartbeatTimeout(Duration timeout) {
             config.heartbeatTimeout = timeout;
-            return this;
         }
 
         public McpServerConfig build() {
