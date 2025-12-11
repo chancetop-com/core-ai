@@ -68,7 +68,7 @@ public class GroupTracer extends Tracer {
 
         // Add input as attribute for Langfuse
         if (context.getInput() != null && !context.getInput().isEmpty()) {
-            span.setAttribute(INPUT_VALUE, truncate(context.getInput(), 1000));
+            span.setAttribute(INPUT_VALUE, context.getInput());
         }
 
         try (var ignored = span.makeCurrent()) {
@@ -76,7 +76,7 @@ public class GroupTracer extends Tracer {
 
             // Record completion details after execution (context may be updated by operation)
             if (context.getOutput() != null) {
-                span.setAttribute(OUTPUT_VALUE, truncate(context.getOutput(), 1000));
+                span.setAttribute(OUTPUT_VALUE, context.getOutput());
             }
             if (context.getStatus() != null) {
                 span.setAttribute(GROUP_STATUS, context.getStatus());

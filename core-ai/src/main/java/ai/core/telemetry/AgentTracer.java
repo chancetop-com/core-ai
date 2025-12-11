@@ -75,7 +75,7 @@ public class AgentTracer extends Tracer {
 
         // Add input as attribute for Langfuse
         if (context.getInput() != null && !context.getInput().isEmpty()) {
-            span.setAttribute(INPUT_VALUE, truncate(context.getInput(), 1000));
+            span.setAttribute(INPUT_VALUE, context.getInput());
         }
 
         try (var scope = span.makeCurrent()) {
@@ -83,7 +83,7 @@ public class AgentTracer extends Tracer {
 
             // Record completion details after execution (context may be updated by operation)
             if (context.getOutput() != null) {
-                span.setAttribute(OUTPUT_VALUE, truncate(context.getOutput(), 1000));
+                span.setAttribute(OUTPUT_VALUE, context.getOutput());
             }
             if (context.getStatus() != null) {
                 span.setAttribute(AGENT_STATUS, context.getStatus());
@@ -120,7 +120,7 @@ public class AgentTracer extends Tracer {
 
         // Add input as attribute for Langfuse (tool arguments)
         if (arguments != null && !arguments.isEmpty()) {
-            span.setAttribute(INPUT_VALUE, truncate(arguments, 1000));
+            span.setAttribute(INPUT_VALUE, arguments);
         }
 
         try (var scope = span.makeCurrent()) {
@@ -128,7 +128,7 @@ public class AgentTracer extends Tracer {
 
             // Add output as attribute for Langfuse (tool result)
             if (result != null) {
-                span.setAttribute(OUTPUT_VALUE, truncate(result.toString(), 1000));
+                span.setAttribute(OUTPUT_VALUE, result.toString());
             }
 
             return result;
@@ -150,7 +150,7 @@ public class AgentTracer extends Tracer {
         var currentSpan = Span.current();
         if (currentSpan.getSpanContext().isValid()) {
             if (output != null && !output.isEmpty()) {
-                currentSpan.setAttribute(OUTPUT_VALUE, truncate(output, 1000));
+                currentSpan.setAttribute(OUTPUT_VALUE, output);
             }
             currentSpan.setAttribute(AGENT_STATUS, status);
             currentSpan.setAttribute(AGENT_MESSAGE_COUNT, (long) messageCount);

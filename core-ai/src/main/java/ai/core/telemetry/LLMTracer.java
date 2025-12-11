@@ -113,7 +113,7 @@ public class LLMTracer extends Tracer {
      */
     private String serializeMessagesToJson(java.util.List<ai.core.llm.domain.Message> messages) {
         try {
-            return truncate(JsonUtil.toJson(messages), 10000);
+            return JsonUtil.toJson(messages);
         } catch (Exception e) {
             // Fallback to string format if JSON serialization fails
             var builder = new StringBuilder();
@@ -122,7 +122,7 @@ public class LLMTracer extends Tracer {
                     builder.append(message.role.name()).append(": ").append(message.content).append('\n');
                 }
             }
-            return truncate(builder.toString(), 4000);
+            return builder.toString();
         }
     }
 
@@ -131,10 +131,10 @@ public class LLMTracer extends Tracer {
      */
     private String serializeMessageToJson(ai.core.llm.domain.Message message) {
         try {
-            return truncate(JsonUtil.toJson(message), 10000);
+            return JsonUtil.toJson(message);
         } catch (Exception e) {
             // Fallback to plain content if JSON serialization fails
-            return message.content != null ? truncate(message.content, 4000) : "";
+            return message.content != null ? message.content : "";
         }
     }
 }
