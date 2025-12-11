@@ -33,6 +33,9 @@ public class LLMTracer extends Tracer {
     private static final AttributeKey<String> GEN_AI_PROMPT = AttributeKey.stringKey("gen_ai.prompt");
     private static final AttributeKey<String> GEN_AI_COMPLETION = AttributeKey.stringKey("gen_ai.completion");
 
+    // Tool definitions attribute (OpenTelemetry GenAI semantic convention)
+    private static final AttributeKey<String> GEN_AI_TOOL_DEFINITIONS = AttributeKey.stringKey("gen_ai.tool.definitions");
+
     public LLMTracer(OpenTelemetry openTelemetry, boolean enabled) {
         super(openTelemetry, enabled);
     }
@@ -57,6 +60,11 @@ public class LLMTracer extends Tracer {
         // Add input as attribute for Langfuse
         if (request.messages != null && !request.messages.isEmpty()) {
             span.setAttribute(GEN_AI_PROMPT, serializeMessagesToJson(request.messages));
+        }
+
+        // Add tool definitions as attribute for Langfuse (OpenTelemetry GenAI semantic convention)
+        if (request.tools != null && !request.tools.isEmpty()) {
+            span.setAttribute(GEN_AI_TOOL_DEFINITIONS, serializeToolsToJson(request.tools));
         }
 
         try (var scope = span.makeCurrent()) {
@@ -135,6 +143,19 @@ public class LLMTracer extends Tracer {
         } catch (Exception e) {
             // Fallback to plain content if JSON serialization fails
             return message.content != null ? message.content : "";
+        }
+    }
+
+    /**
+     * Serialize tool definitions to JSON for OpenTelemetry gen_ai.tool.definitions attribute
+     * Format follows OpenTelemetry GenAI semantic conventions
+     */
+    private String serializeToolsToJson(java.util.List<ai.core.llm.domain.Tool> tools) {
+        try {
+            return JsonUtil.toJson(tools);
+        } catch (Exception e) {
+            // Fallback to empty array if JSON serialization fails
+            return "[]";
         }
     }
 }
