@@ -10,6 +10,7 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 
+import java.util.LinkedHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -29,12 +30,12 @@ public class LLMTracer extends Tracer {
     private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
     private static final AttributeKey<String> GEN_AI_RESPONSE_FINISH_REASON = AttributeKey.stringKey("gen_ai.response.finish_reasons");
 
-    // Attribute keys for input/output (Langfuse expects these as attributes)
-    private static final AttributeKey<String> GEN_AI_PROMPT = AttributeKey.stringKey("gen_ai.prompt");
-    private static final AttributeKey<String> GEN_AI_COMPLETION = AttributeKey.stringKey("gen_ai.completion");
-
-    // Langfuse-specific attribute for model parameters (maps directly to Langfuse data model)
-    // This is used to pass tools to Langfuse Playground
+    // Langfuse-specific attributes (maps directly to Langfuse data model)
+    // langfuse.observation.input: Full request including messages and tools (enables Playground integration)
+    // langfuse.observation.output: Response from LLM
+    // langfuse.observation.model.parameters: Model parameters like temperature
+    private static final AttributeKey<String> LANGFUSE_INPUT = AttributeKey.stringKey("langfuse.observation.input");
+    private static final AttributeKey<String> LANGFUSE_OUTPUT = AttributeKey.stringKey("langfuse.observation.output");
     private static final AttributeKey<String> LANGFUSE_MODEL_PARAMETERS = AttributeKey.stringKey("langfuse.observation.model.parameters");
 
     public LLMTracer(OpenTelemetry openTelemetry, boolean enabled) {
@@ -59,12 +60,10 @@ public class LLMTracer extends Tracer {
             .startSpan();
 
         // Add input as attribute for Langfuse
-        if (request.messages != null && !request.messages.isEmpty()) {
-            span.setAttribute(GEN_AI_PROMPT, serializeMessagesToJson(request.messages));
-        }
+        // Use langfuse.observation.input for full request including tools (enables Playground integration)
+        span.setAttribute(LANGFUSE_INPUT, buildInputJson(request));
 
-        // Add model parameters with tools for Langfuse Playground support
-        // Langfuse maps langfuse.observation.model.parameters to the generation's modelParameters field
+        // Add model parameters for Langfuse (temperature, etc.)
         span.setAttribute(LANGFUSE_MODEL_PARAMETERS, buildModelParametersJson(request));
 
         try (var scope = span.makeCurrent()) {
@@ -73,7 +72,7 @@ public class LLMTracer extends Tracer {
 
             // Add output as attribute for Langfuse
             if (!response.choices.isEmpty() && response.choices.getFirst().message != null) {
-                span.setAttribute(GEN_AI_COMPLETION, serializeMessageToJson(response.choices.getFirst().message));
+                span.setAttribute(LANGFUSE_OUTPUT, serializeMessageToJson(response.choices.getFirst().message));
             }
 
             return response;
@@ -147,9 +146,34 @@ public class LLMTracer extends Tracer {
     }
 
     /**
+     * Build input JSON for Langfuse (OpenAI ChatML format)
+     * This includes messages and tools to enable Playground integration
+     * Langfuse parses this to extract tool definitions for the Playground
+     */
+    private String buildInputJson(CompletionRequest request) {
+        try {
+            var input = new LinkedHashMap<String, Object>();
+
+            if (request.messages != null && !request.messages.isEmpty()) {
+                input.put("messages", request.messages);
+            }
+            if (request.tools != null && !request.tools.isEmpty()) {
+                input.put("tools", request.tools);
+            }
+            if (request.toolChoice != null) {
+                input.put("tool_choice", request.toolChoice);
+            }
+
+            return JsonUtil.toJson(input);
+        } catch (Exception e) {
+            // Fallback to messages only
+            return serializeMessagesToJson(request.messages);
+        }
+    }
+
+    /**
      * Build model parameters JSON for Langfuse
-     * Langfuse expects langfuse.observation.model.parameters as JSON string of Record<string, string>
-     * Including tools in model parameters enables Playground integration
+     * Contains model configuration parameters (temperature, etc.)
      */
     private String buildModelParametersJson(CompletionRequest request) {
         try {
@@ -157,12 +181,6 @@ public class LLMTracer extends Tracer {
 
             if (request.temperature != null) {
                 params.put("temperature", request.temperature);
-            }
-            if (request.toolChoice != null) {
-                params.put("tool_choice", request.toolChoice);
-            }
-            if (request.tools != null && !request.tools.isEmpty()) {
-                params.put("tools", request.tools);
             }
             if (request.responseFormat != null) {
                 params.put("response_format", request.responseFormat);
