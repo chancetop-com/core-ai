@@ -33,8 +33,9 @@ public class LLMTracer extends Tracer {
     private static final AttributeKey<String> GEN_AI_PROMPT = AttributeKey.stringKey("gen_ai.prompt");
     private static final AttributeKey<String> GEN_AI_COMPLETION = AttributeKey.stringKey("gen_ai.completion");
 
-    // Tool definitions attribute (OpenTelemetry GenAI semantic convention)
-    private static final AttributeKey<String> GEN_AI_TOOL_DEFINITIONS = AttributeKey.stringKey("gen_ai.tool.definitions");
+    // Langfuse-specific attribute for model parameters (maps directly to Langfuse data model)
+    // This is used to pass tools to Langfuse Playground
+    private static final AttributeKey<String> LANGFUSE_MODEL_PARAMETERS = AttributeKey.stringKey("langfuse.observation.model.parameters");
 
     public LLMTracer(OpenTelemetry openTelemetry, boolean enabled) {
         super(openTelemetry, enabled);
@@ -62,10 +63,9 @@ public class LLMTracer extends Tracer {
             span.setAttribute(GEN_AI_PROMPT, serializeMessagesToJson(request.messages));
         }
 
-        // Add tool definitions as attribute for Langfuse (OpenTelemetry GenAI semantic convention)
-        if (request.tools != null && !request.tools.isEmpty()) {
-            span.setAttribute(GEN_AI_TOOL_DEFINITIONS, serializeToolsToJson(request.tools));
-        }
+        // Add model parameters with tools for Langfuse Playground support
+        // Langfuse maps langfuse.observation.model.parameters to the generation's modelParameters field
+        span.setAttribute(LANGFUSE_MODEL_PARAMETERS, buildModelParametersJson(request));
 
         try (var scope = span.makeCurrent()) {
             var response = operation.get();
@@ -147,15 +147,30 @@ public class LLMTracer extends Tracer {
     }
 
     /**
-     * Serialize tool definitions to JSON for OpenTelemetry gen_ai.tool.definitions attribute
-     * Format follows OpenTelemetry GenAI semantic conventions
+     * Build model parameters JSON for Langfuse
+     * Langfuse expects langfuse.observation.model.parameters as JSON string of Record<string, string>
+     * Including tools in model parameters enables Playground integration
      */
-    private String serializeToolsToJson(java.util.List<ai.core.llm.domain.Tool> tools) {
+    private String buildModelParametersJson(CompletionRequest request) {
         try {
-            return JsonUtil.toJson(tools);
+            var params = new java.util.LinkedHashMap<String, Object>();
+
+            if (request.temperature != null) {
+                params.put("temperature", request.temperature);
+            }
+            if (request.toolChoice != null) {
+                params.put("tool_choice", request.toolChoice);
+            }
+            if (request.tools != null && !request.tools.isEmpty()) {
+                params.put("tools", request.tools);
+            }
+            if (request.responseFormat != null) {
+                params.put("response_format", request.responseFormat);
+            }
+
+            return JsonUtil.toJson(params);
         } catch (Exception e) {
-            // Fallback to empty array if JSON serialization fails
-            return "[]";
+            return "{}";
         }
     }
 }
