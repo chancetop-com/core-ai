@@ -154,20 +154,6 @@ public class McpServerConfig {
         }
     }
 
-    /**
-     * Common interface for configuration builders to support shared config parsing.
-     */
-    private interface CommonConfigBuilder<T> {
-        void enableHeartbeat(boolean enable);
-        void heartbeatInterval(Duration interval);
-        void heartbeatTimeout(Duration timeout);
-        void connectTimeout(Duration timeout);
-        void requestTimeout(Duration timeout);
-        void autoReconnect(boolean autoReconnect);
-        void maxReconnectAttempts(int maxAttempts);
-        void reconnectInterval(Duration interval);
-    }
-
     private String name;
     private TransportType transportType;
 
@@ -278,6 +264,17 @@ public class McpServerConfig {
         SSE
     }
 
+    private interface CommonConfigBuilder<T> {
+        void enableHeartbeat(boolean enable);
+        void heartbeatInterval(Duration interval);
+        void heartbeatTimeout(Duration timeout);
+        void connectTimeout(Duration timeout);
+        void requestTimeout(Duration timeout);
+        void autoReconnect(boolean autoReconnect);
+        void maxReconnectAttempts(int maxAttempts);
+        void reconnectInterval(Duration interval);
+    }
+
     public static final class StdioBuilder implements CommonConfigBuilder<StdioBuilder> {
         private final McpServerConfig config = new McpServerConfig();
 
@@ -318,22 +315,27 @@ public class McpServerConfig {
             return this;
         }
 
+        @Override
         public void connectTimeout(Duration timeout) {
             config.connectTimeout = timeout;
         }
 
+        @Override
         public void requestTimeout(Duration timeout) {
             config.requestTimeout = timeout;
         }
 
+        @Override
         public void autoReconnect(boolean autoReconnect) {
             config.autoReconnect = autoReconnect;
         }
 
+        @Override
         public void maxReconnectAttempts(int maxAttempts) {
             config.maxReconnectAttempts = maxAttempts;
         }
 
+        @Override
         public void reconnectInterval(Duration interval) {
             config.reconnectInterval = interval;
         }
@@ -343,14 +345,17 @@ public class McpServerConfig {
             return this;
         }
 
+        @Override
         public void enableHeartbeat(boolean enable) {
             config.enableHeartbeat = enable;
         }
 
+        @Override
         public void heartbeatInterval(Duration interval) {
             config.heartbeatInterval = interval;
         }
 
+        @Override
         public void heartbeatTimeout(Duration timeout) {
             config.heartbeatTimeout = timeout;
         }
@@ -404,22 +409,27 @@ public class McpServerConfig {
             return header("Authorization", "Bearer " + token);
         }
 
+        @Override
         public void connectTimeout(Duration timeout) {
             config.connectTimeout = timeout;
         }
 
+        @Override
         public void requestTimeout(Duration timeout) {
             config.requestTimeout = timeout;
         }
 
+        @Override
         public void autoReconnect(boolean autoReconnect) {
             config.autoReconnect = autoReconnect;
         }
 
+        @Override
         public void maxReconnectAttempts(int maxAttempts) {
             config.maxReconnectAttempts = maxAttempts;
         }
 
+        @Override
         public void reconnectInterval(Duration interval) {
             config.reconnectInterval = interval;
         }
@@ -429,14 +439,17 @@ public class McpServerConfig {
             return this;
         }
 
+        @Override
         public void enableHeartbeat(boolean enable) {
             config.enableHeartbeat = enable;
         }
 
+        @Override
         public void heartbeatInterval(Duration interval) {
             config.heartbeatInterval = interval;
         }
 
+        @Override
         public void heartbeatTimeout(Duration timeout) {
             config.heartbeatTimeout = timeout;
         }

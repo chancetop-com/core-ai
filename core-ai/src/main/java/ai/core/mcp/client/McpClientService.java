@@ -112,17 +112,7 @@ public class McpClientService implements AutoCloseable {
         try {
             // MCP protocol supports ping method for connection health check
             var pingResult = reactor.core.publisher.Mono
-                .fromCallable(() -> {
-                    try {
-                        client.ping();
-                        return true;
-                    } catch (Exception e) {
-                        // If ping is not supported, try listTools as fallback
-                        LOGGER.debug("Ping not supported, trying listTools as fallback: {}", serverName);
-                        client.listTools();
-                        return true;
-                    }
-                })
+                .fromCallable(this::doPing)
                 .timeout(timeout)
                 .onErrorReturn(TimeoutException.class, false)
                 .block();
@@ -140,6 +130,18 @@ public class McpClientService implements AutoCloseable {
      */
     public boolean ping() {
         return ping(config.getHeartbeatTimeout());
+    }
+
+    private boolean doPing() {
+        try {
+            client.ping();
+            return true;
+        } catch (Exception e) {
+            // If ping is not supported, try listTools as fallback
+            LOGGER.debug("Ping not supported, trying listTools as fallback: {}", serverName);
+            client.listTools();
+            return true;
+        }
     }
 
     @Override
