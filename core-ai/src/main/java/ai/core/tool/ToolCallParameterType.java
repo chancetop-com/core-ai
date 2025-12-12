@@ -53,7 +53,12 @@ public enum ToolCallParameterType {
 
     public static ToolCallParameterType getByType(Class<?> c) {
         var type = c.getSimpleName().substring(c.getSimpleName().lastIndexOf('.') + 1).toUpperCase(Locale.ROOT);
-        return ToolCallParameterType.valueOf(type);
+        try {
+            return ToolCallParameterType.valueOf(type);
+        } catch (IllegalArgumentException e) {
+            // Unknown type, return null to indicate custom/nested object
+            return null;
+        }
     }
 
     public boolean basicType() {

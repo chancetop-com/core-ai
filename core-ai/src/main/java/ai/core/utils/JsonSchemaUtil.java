@@ -18,11 +18,21 @@ import java.util.stream.Collectors;
 public class JsonSchemaUtil {
     public static JsonSchema.PropertyType buildJsonSchemaType(Class<?> c) {
         var t = ToolCallParameterType.getByType(c);
+        if (t == null) {
+            // Custom/nested object type
+            return JsonSchema.PropertyType.OBJECT;
+        }
         return buildJsonSchemaType(t);
     }
 
     public static JsonSchema.PropertyType buildJsonSchemaType(ToolCallParameterType p) {
+        if (p == null) {
+            return JsonSchema.PropertyType.OBJECT;
+        }
         var supportType = ToolCallParameterType.getByType(p.getType());
+        if (supportType == null) {
+            return JsonSchema.PropertyType.OBJECT;
+        }
         return switch (supportType) {
             case STRING, ZONEDDATETIME, LOCALDATE, LOCALDATETIME, LOCALTIME -> JsonSchema.PropertyType.STRING;
             case DOUBLE, BIGDECIMAL -> JsonSchema.PropertyType.NUMBER;
@@ -130,15 +140,58 @@ public class JsonSchemaUtil {
         property.enums = p.getEnums();
         property.format = p.getFormat();
         if (property.type == JsonSchema.PropertyType.ARRAY) {
-            if (p.getItems() != null && !p.getItems().isEmpty()) {
-                property.items = buildSchema(p.getItems(), p);
-            } else {
-                property.items = new JsonSchema();
-                property.items.type = toPropertyType(p.getItemType());
-                property.enums = p.getItemEnums();
-            }
+            property.items = buildArrayItemSchema(p);
+        } else if (property.type == JsonSchema.PropertyType.OBJECT && isCustomObjectType(p.getClassType())) {
+            var nestedSchema = toJsonSchema(p.getClassType());
+            property.properties = nestedSchema.properties;
+            property.required = nestedSchema.required;
+        }
+        if (p.getClassType() != null && p.getClassType().isEnum()) {
+            property.type = JsonSchema.PropertyType.STRING;
+            property.enums = getEnumValues(p.getClassType());
         }
         return property;
+    }
+
+    private static JsonSchema buildArrayItemSchema(ToolCallParameter p) {
+        if (p.getItems() != null && !p.getItems().isEmpty()) {
+            return buildSchema(p.getItems(), p);
+        }
+        var itemSchema = new JsonSchema();
+        itemSchema.type = toPropertyType(p.getItemType());
+        itemSchema.enums = p.getItemEnums();
+        if (itemSchema.type == JsonSchema.PropertyType.OBJECT && p.getItemType() != null && isCustomObjectType(p.getItemType())) {
+            var nestedSchema = toJsonSchema(p.getItemType());
+            itemSchema.properties = nestedSchema.properties;
+            itemSchema.required = nestedSchema.required;
+        }
+        return itemSchema;
+    }
+
+    private static boolean isCustomObjectType(Class<?> c) {
+        if (c == null) return false;
+        var t = ToolCallParameterType.getByType(c);
+        return t == null && !c.isEnum();
+    }
+
+    private static List<String> getEnumValues(Class<?> enumClass) {
+        var constants = enumClass.getEnumConstants();
+        if (constants == null) return null;
+        var values = new ArrayList<String>();
+        for (var constant : constants) {
+            try {
+                var field = enumClass.getField(((Enum<?>) constant).name());
+                var propertyAnnotation = field.getAnnotation(Property.class);
+                if (propertyAnnotation != null) {
+                    values.add(propertyAnnotation.name());
+                } else {
+                    values.add(((Enum<?>) constant).name());
+                }
+            } catch (NoSuchFieldException e) {
+                values.add(((Enum<?>) constant).name());
+            }
+        }
+        return values;
     }
 
     private static JsonSchema.PropertyType toPropertyType(Class<?> c) {
