@@ -12,14 +12,17 @@ import core.framework.api.validate.NotNull;
  * @author xander
  */
 public final class ResponseFormat {
-    /**
-     * Create a JSON response format specification.
-     *
-     * @return ResponseFormat configured for JSON output
-     */
     public static ResponseFormat of(Class<?> cls) {
+        return of(cls, false);
+    }
+
+    public static ResponseFormat of(Class<?> cls, boolean strict) {
         var format = new ResponseFormat();
-        format.jsonSchema = JsonUtil.toJson(JsonSchemaUtil.toJsonSchema(cls));
+        var schemaDef = new JsonSchemaDefinition();
+        schemaDef.name = cls.getSimpleName();
+        schemaDef.strict = strict;
+        schemaDef.schema = JsonSchemaUtil.toJsonSchema(cls);
+        format.jsonSchema = JsonUtil.toJson(schemaDef);
         return format;
     }
 
@@ -30,6 +33,14 @@ public final class ResponseFormat {
     @Property(name = "json_schema")
     public String jsonSchema;
 
-    @Property(name = "strict")
-    public Boolean strict;
+    public static class JsonSchemaDefinition {
+        @Property(name = "name")
+        public String name;
+
+        @Property(name = "strict")
+        public Boolean strict;
+
+        @Property(name = "schema")
+        public Object schema;
+    }
 }
