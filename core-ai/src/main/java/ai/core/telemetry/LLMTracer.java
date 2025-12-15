@@ -177,7 +177,7 @@ public class LLMTracer extends Tracer {
      */
     private String buildModelParametersJson(CompletionRequest request) {
         try {
-            var params = new java.util.LinkedHashMap<String, Object>();
+            var params = new LinkedHashMap<String, Object>();
 
             if (request.temperature != null) {
                 params.put("temperature", request.temperature);
