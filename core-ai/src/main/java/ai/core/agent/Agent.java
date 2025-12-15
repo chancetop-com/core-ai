@@ -1,6 +1,8 @@
 package ai.core.agent;
 
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
+import ai.core.agent.slashcommand.SlashCommandExecutor;
+import ai.core.agent.slashcommand.SlashCommandParser;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
@@ -116,6 +118,15 @@ public class Agent extends Node<Agent> {
             updateNodeStatus(NodeStatus.RUNNING);
         }
 
+        // Check for slash command - execute tool directly and skip LLM
+        if (SlashCommandParser.isSlashCommand(query)) {
+            var slashResult = executeSlashCommand(query);
+            if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
+                updateNodeStatus(NodeStatus.COMPLETED);
+            }
+            return slashResult;
+        }
+
         // Execute full agent flow: RAG + template + chat
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
@@ -141,6 +152,35 @@ public class Agent extends Node<Agent> {
         if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
             updateNodeStatus(NodeStatus.COMPLETED);
         }
+        return getOutput();
+    }
+
+    private String executeSlashCommand(String query) {
+        logger.info("Executing slash command: {}", query);
+
+        // Ensure system message is present
+        if (getMessages().isEmpty()) {
+            addMessage(buildSystemMessage(null));
+        }
+
+        // Parse the slash command
+        var parsed = SlashCommandParser.parse(query);
+        if (parsed.isNotValid()) {
+            logger.warn("Invalid slash command: {}", query);
+            setOutput("Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments");
+            return getOutput();
+        }
+
+        // Execute the slash command
+        var result = SlashCommandExecutor.execute(parsed, toolCalls, getExecutionContext());
+
+        // Add all 3 messages to the message list
+        result.getMessages().forEach(this::addMessage);
+
+        // Set output to the tool result
+        setOutput(result.getToolResult());
+
+        logger.info("Slash command completed: tool={}, success={}", parsed.getToolName(), result.isSuccess());
         return getOutput();
     }
 
