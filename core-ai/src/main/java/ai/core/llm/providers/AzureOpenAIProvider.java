@@ -18,12 +18,10 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
-import com.azure.ai.openai.OpenAIAsyncClient;
 import com.azure.ai.openai.OpenAIClient;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.ai.openai.OpenAIServiceVersion;
 import com.azure.ai.openai.models.ChatChoice;
-import com.azure.ai.openai.models.ChatCompletions;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolCall;
 import com.azure.ai.openai.models.ChatCompletionsToolCall;
 import com.azure.ai.openai.models.EmbeddingsOptions;
@@ -39,8 +37,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author stephen
@@ -48,7 +44,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public class AzureOpenAIProvider extends LLMProvider {
     private final Logger logger = LoggerFactory.getLogger(AzureOpenAIProvider.class);
     private final OpenAIClient chatClient;
-    private final OpenAIAsyncClient chatAsyncClient;
 
     public AzureOpenAIProvider(LLMProviderConfig config, String apiKey, String endpoint) {
         this(config, apiKey, endpoint, OpenAIServiceVersion.getLatest());
@@ -69,7 +64,6 @@ public class AzureOpenAIProvider extends LLMProvider {
             builder = new OpenAIClientBuilder().httpClient(HttpClient.createDefault(options)).credential(new AzureKeyCredential(apiKey)).endpoint(endpoint).serviceVersion(serviceVersion);
         }
         this.chatClient = builder.buildClient();
-        this.chatAsyncClient = builder.buildAsyncClient();
     }
 
     @Override
@@ -80,95 +74,75 @@ public class AzureOpenAIProvider extends LLMProvider {
 
     @Override
     protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
-        var stream = chatAsyncClient.getChatCompletionsStream(request.model, AzureOpenAIModelsUtil.toAzureRequest(request));
+        // Use sync client to ensure callback executes on the same thread
+        var stream = chatClient.getChatCompletionsStream(request.model, AzureOpenAIModelsUtil.toAzureRequest(request));
         var choices = new ArrayList<Choice>();
-        var usage = new AtomicReference<>(new Usage(0, 0, 0));
-        var latch = new CountDownLatch(1);
+        var usage = new Usage(0, 0, 0);
         var contentBuilder = new StringBuilder();
-        var finishReason = new AtomicReference<String>();
-        var role = new AtomicReference<RoleType>();
+        String finishReason = null;
+        RoleType role = null;
         var toolCalls = new ArrayList<FunctionCall>();
-        var errorRef = new AtomicReference<Throwable>();
-
-        stream.subscribe(
-                completion -> handleDelta(completion, contentBuilder, finishReason, toolCalls, usage, callback),
-                error -> {
-                    errorRef.set(error);
-                    latch.countDown();  // Must countDown BEFORE callback to avoid blocking
-                    try {
-                        callback.onError(error);
-                    } catch (Exception e) {
-                        // Ignore exceptions from callback to prevent blocking
-                        logger.warn("Error in streaming callback onError: {}", e.getMessage());
-                    }
-                },
-                () -> {
-                    callback.onComplete();
-                    // Remove null entries from toolCalls
-                    toolCalls.removeIf(Objects::isNull);
-
-                    // Build complete message
-                    var message = new Message();
-                    message.role = role.get() != null ? role.get() : RoleType.ASSISTANT;
-                    message.content = contentBuilder.toString();
-                    message.toolCalls = toolCalls.isEmpty() ? null : toolCalls;
-                    message.name = request.getName();
-
-                    // Build complete choice
-                    var completeChoice = new Choice();
-                    completeChoice.message = message;
-                    completeChoice.finishReason = finishReason.get() != null ? FinishReason.valueOf(finishReason.get().toUpperCase(Locale.ROOT)) : FinishReason.STOP;
-
-                    choices.add(completeChoice);
-                    latch.countDown();
-                }
-        );
 
         try {
-            latch.await();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Streaming interrupted", e);
+            for (var completion : stream) {
+                // Capture usage if available (typically in the final chunk)
+                if (completion.getUsage() != null) {
+                    usage = AzureOpenAIModelsUtil.toUsage(completion.getUsage());
+                }
+
+                if (completion.getChoices() == null || completion.getChoices().isEmpty()) {
+                    continue;
+                }
+
+                var choice = completion.getChoices().getFirst();
+
+                // Capture finish reason
+                if (choice.getFinishReason() != null) {
+                    finishReason = choice.getFinishReason().toString();
+                }
+
+                if (choice.getDelta() == null) continue;
+
+                // Accumulate content and invoke callback on main thread
+                if (choice.getDelta().getContent() != null) {
+                    var content = choice.getDelta().getContent();
+                    contentBuilder.append(content);
+                    callback.onChunk(content);
+                }
+
+                // Merge tool calls by array index
+                if (choice.getDelta().getToolCalls() != null) {
+                    mergeToolCalls(choice, toolCalls);
+                }
+            }
+
+            // Stream completed successfully
+            callback.onComplete();
+
+            // Remove null entries from toolCalls
+            toolCalls.removeIf(Objects::isNull);
+
+            // Build complete message
+            var message = new Message();
+            message.role = RoleType.ASSISTANT;
+            message.content = contentBuilder.toString();
+            message.toolCalls = toolCalls.isEmpty() ? null : toolCalls;
+            message.name = request.getName();
+
+            // Build complete choice
+            var completeChoice = new Choice();
+            completeChoice.message = message;
+            completeChoice.finishReason = finishReason != null ? FinishReason.valueOf(finishReason.toUpperCase(Locale.ROOT)) : FinishReason.STOP;
+
+            choices.add(completeChoice);
+
+        } catch (Exception e) {
+            logger.error("Error in streaming completion: {}", e.getMessage(), e);
+            callback.onError(e);
+            throw new RuntimeException("Streaming failed", e);
         }
 
-        // Re-throw error from stream on main thread
-        if (errorRef.get() != null) {
-            throw new RuntimeException("Streaming failed", errorRef.get());
-        }
-
-        return CompletionResponse.of(choices, usage.get());
-    }
-
-    private void handleDelta(ChatCompletions completion, StringBuilder contentBuilder, AtomicReference<String> finishReason, List<FunctionCall> toolCalls, AtomicReference<Usage> usage, StreamingCallback callback) {
-        // Capture usage if available (typically in the final chunk)
-        if (completion.getUsage() != null) {
-            usage.set(AzureOpenAIModelsUtil.toUsage(completion.getUsage()));
-        }
-
-        if (completion.getChoices() == null || completion.getChoices().isEmpty()) {
-            return; // No choices in this chunk, skip processing
-        }
-
-        var choice = completion.getChoices().getFirst();
-
-        // Capture finish reason
-        if (choice.getFinishReason() != null) {
-            finishReason.set(choice.getFinishReason().toString());
-        }
-
-        if (choice.getDelta() == null) return;
-
-        // Accumulate content
-        if (choice.getDelta().getContent() != null) {
-            var content = choice.getDelta().getContent();
-            contentBuilder.append(content);
-            callback.onChunk(content);
-        }
-
-        // Merge tool calls by array index
-        if (choice.getDelta().getToolCalls() != null) {
-            mergeToolCalls(choice, toolCalls);
-        }
+        return CompletionResponse.of(choices, usage);
     }
 
     private void mergeToolCalls(ChatChoice choice, List<FunctionCall> toolCalls) {
