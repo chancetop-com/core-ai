@@ -118,13 +118,22 @@ public class Agent extends Node<Agent> {
             updateNodeStatus(NodeStatus.RUNNING);
         }
 
-        // Check for slash command - execute tool directly and skip LLM
+        // Check for slash command - execute tool directly
         if (SlashCommandParser.isSlashCommand(query)) {
             var slashResult = executeSlashCommand(query);
+            // If tool result is not empty, continue to LLM processing
+            if (slashResult != null && !slashResult.isBlank()) {
+                logger.info("Slash command result not empty, continuing with LLM processing");
+                // Messages already added by executeSlashCommand (USER, ASSISTANT+FunctionCall, TOOL)
+                // Continue directly with chat loop to let LLM process the tool result
+                chatTurnsLoop();
+            } else {
+                setOutput(slashResult != null ? slashResult : "");
+            }
             if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
                 updateNodeStatus(NodeStatus.COMPLETED);
             }
-            return slashResult;
+            return getOutput();
         }
 
         // Execute full agent flow: RAG + template + chat
@@ -273,6 +282,11 @@ public class Agent extends Node<Agent> {
     // Public method for chat execution (used by executeAgentFlow)
     public void chatTurns(String query, Map<String, Object> variables) {
         buildUserQueryToMessage(query, variables);
+        chatTurnsLoop();
+    }
+
+    // Core chat loop - executes LLM turns until no more tool calls
+    private void chatTurnsLoop() {
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
