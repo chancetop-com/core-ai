@@ -96,12 +96,12 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
 
 val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
-    version = "1.1.115"
+    version = "1.2.0-SNAPSHOT"
     dependencies {
         if (useLocalProjects) {
             implementation(project(":core-ai-api"))
         } else {
-            implementation("com.chancetop:core-ai-api:1.1.15")
+            implementation("com.chancetop:core-ai-api:1.2.0-SNAPSHOT")
         }
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -128,7 +128,7 @@ project(":core-ai") {
 
 
 project(":core-ai-api") {
-    version = "1.1.15"
+    version = "1.2.0-SNAPSHOT"
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }
