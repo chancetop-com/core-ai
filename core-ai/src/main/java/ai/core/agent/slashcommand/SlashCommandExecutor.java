@@ -61,6 +61,9 @@ public final class SlashCommandExecutor {
         // Build the 3 messages
         var messages = buildMessages(command.getOriginalQuery(), toolName, arguments, toolCallId, result);
 
+        if (!tool.isContinueAfterSlash()) {
+            return ExecutionResult.success(messages, "", result);
+        }
         return ExecutionResult.success(messages, result.toResultForLLM(), result);
     }
 
