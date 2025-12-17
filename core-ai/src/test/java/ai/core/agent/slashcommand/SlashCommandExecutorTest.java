@@ -206,7 +206,7 @@ class SlashCommandExecutorTest {
         return new ErrorToolCall();
     }
 
-    static class MockToolCall extends ToolCall {
+    static final class MockToolCall extends ToolCall {
         private final String toolName;
 
         MockToolCall(String name, String description) {
@@ -233,7 +233,7 @@ class SlashCommandExecutorTest {
         }
     }
 
-    static class ErrorToolCall extends ToolCall {
+    static final class ErrorToolCall extends ToolCall {
         ErrorToolCall() {
             setName("error_tool");
             setDescription("A tool that throws an exception");

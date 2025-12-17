@@ -91,7 +91,6 @@ public class AzureInferenceProvider extends LLMProvider {
         var usage = new Usage(0, 0, 0);
         var contentBuilder = new StringBuilder();
         String finishReason = null;
-        RoleType role = null;
         var toolCalls = new ArrayList<FunctionCall>();
 
         try {
