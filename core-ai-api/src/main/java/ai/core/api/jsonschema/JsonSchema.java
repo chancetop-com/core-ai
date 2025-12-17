@@ -32,8 +32,9 @@ public class JsonSchema {
     @Property(name = "format")
     public String format;
 
+    @NotNull
     @Property(name = "additionalProperties")
-    public Boolean additionalProperties;
+    public Boolean additionalProperties = Boolean.FALSE;
 
     public enum PropertyType {
         @Property(name = "string")
