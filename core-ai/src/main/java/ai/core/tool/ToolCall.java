@@ -19,6 +19,7 @@ public abstract class ToolCall {
     String description;
     List<ToolCallParameter> parameters;
     Boolean needAuth;
+    Boolean continueAfterSlash;
 
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         return execute(arguments);
@@ -74,6 +75,14 @@ public abstract class ToolCall {
         this.needAuth = needAuth;
     }
 
+    public void setContinueAfterSlash(Boolean continueAfterSlash) {
+        this.continueAfterSlash = continueAfterSlash;
+    }
+
+    public Boolean isContinueAfterSlash() {
+        return continueAfterSlash == null || continueAfterSlash;
+    }
+
     @Override
     public String toString() {
         return JsonUtil.toJson(toTool());
@@ -107,6 +116,7 @@ public abstract class ToolCall {
         String description;
         List<ToolCallParameter> parameters;
         Boolean needAuth;
+        Boolean continueAfterSlash;
 
         protected abstract B self();
 
@@ -135,6 +145,11 @@ public abstract class ToolCall {
             return self();
         }
 
+        public B continueAfterSlash(Boolean continueAfterSlash) {
+            this.continueAfterSlash = continueAfterSlash;
+            return self();
+        }
+
         public void build(T toolCall) {
             if (name == null) {
                 throw new RuntimeException("name is required");
@@ -150,6 +165,7 @@ public abstract class ToolCall {
             toolCall.description = description;
             toolCall.parameters = parameters;
             toolCall.needAuth = needAuth != null && needAuth;
+            toolCall.continueAfterSlash = continueAfterSlash != null && continueAfterSlash;
         }
     }
 }
