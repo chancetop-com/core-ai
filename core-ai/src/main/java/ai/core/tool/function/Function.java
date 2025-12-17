@@ -10,6 +10,7 @@ import ai.core.tool.function.converter.ResponseConverter;
 import ai.core.tool.ToolCall;
 import ai.core.tool.function.converter.response.DefaultJsonResponseConverter;
 import ai.core.utils.JsonUtil;
+import core.framework.log.Markers;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -67,6 +68,7 @@ public class Function extends ToolCall {
             String result = executeSupport(text);
             return ToolCallResult.completed(result).withDuration(System.currentTimeMillis() - startTime);
         } catch (IllegalAccessException | InvocationTargetException e) {
+            logger.error(Markers.errorCode("FUNCTION_EXECUTE_FAILED"), "function<{}.{}> execute failed, params: {}", object.toString(), getName(), text, e);
             return ToolCallResult.failed(Strings.format("function<{}.{}> failed: params: {}: {}", object.toString(), getName(), text, e.getMessage()), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
