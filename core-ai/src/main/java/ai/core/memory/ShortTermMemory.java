@@ -63,26 +63,33 @@ public class ShortTermMemory {
         """;
 
     private int maxSummaryTokens;
+    private boolean maxSummaryTokensUserConfigured = false;
     private final double triggerRatio;
     private final Executor executor;
 
     private LLMProvider llmProvider;
     private String model;
-    private String summary = "";
+    private volatile String summary = "";
     private final AtomicReference<CompletableFuture<String>> pendingSummary = new AtomicReference<>(null);
     private final AtomicBoolean asyncTriggered = new AtomicBoolean(false);
     private final AtomicInteger summarizedUpTo = new AtomicInteger(0);  // Tracks how many turns have been summarized
+    private final AtomicInteger pendingTargetTurn = new AtomicInteger(0);  // Target turn for pending async summarization
 
     public ShortTermMemory() {
-        this(DEFAULT_MAX_SUMMARY_TOKENS, DEFAULT_TRIGGER_RATIO, ForkJoinPool.commonPool());
+        this(DEFAULT_MAX_SUMMARY_TOKENS, DEFAULT_TRIGGER_RATIO, ForkJoinPool.commonPool(), false);
     }
 
     public ShortTermMemory(int maxSummaryTokens) {
-        this(maxSummaryTokens, DEFAULT_TRIGGER_RATIO, ForkJoinPool.commonPool());
+        this(maxSummaryTokens, DEFAULT_TRIGGER_RATIO, ForkJoinPool.commonPool(), true);
     }
 
     public ShortTermMemory(int maxSummaryTokens, double triggerRatio, Executor executor) {
+        this(maxSummaryTokens, triggerRatio, executor, true);
+    }
+
+    private ShortTermMemory(int maxSummaryTokens, double triggerRatio, Executor executor, boolean userConfigured) {
         this.maxSummaryTokens = maxSummaryTokens;
+        this.maxSummaryTokensUserConfigured = userConfigured;
         this.triggerRatio = triggerRatio;
         this.executor = executor;
     }
@@ -92,8 +99,8 @@ public class ShortTermMemory {
     public void setLLMProvider(LLMProvider llmProvider, String model) {
         this.llmProvider = llmProvider;
         this.model = model;
-        // Auto-calculate maxSummaryTokens based on model context from registry
-        if (model != null) {
+        // Auto-calculate maxSummaryTokens only if user didn't explicitly configure it
+        if (model != null && !maxSummaryTokensUserConfigured) {
             int modelMaxTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(model);
             int calculated = (int) (modelMaxTokens * SUMMARY_TOKEN_RATIO);
             this.maxSummaryTokens = Math.max(MIN_SUMMARY_TOKENS, Math.min(MAX_SUMMARY_TOKENS, calculated));
@@ -124,15 +131,6 @@ public class ShortTermMemory {
 
     // ==================== Trigger Check ====================
 
-    /**
-     * Check if async summarization should be triggered.
-     *
-     * @param messageCount current message count
-     * @param maxMessages  max messages threshold
-     * @param tokenCount   current token count
-     * @param maxTokens    max tokens threshold
-     * @return true if you should trigger
-     */
     public boolean shouldTriggerAsync(int messageCount, int maxMessages, int tokenCount, int maxTokens) {
         if (llmProvider == null || asyncTriggered.get()) {
             return false;
@@ -141,14 +139,6 @@ public class ShortTermMemory {
             || tokenCount >= (int) (maxTokens * triggerRatio);
     }
 
-    /**
-     * Check if batch async summarization should be triggered based on turn count.
-     * Triggers when (currentTurns - summarizedUpTo) >= batchSize and no async in progress.
-     *
-     * @param currentTurns current conversation turn count
-     * @param batchSize    number of turns to accumulate before triggering
-     * @return true if you should trigger batch async
-     */
     public boolean shouldTriggerBatchAsync(int currentTurns, int batchSize) {
         if (llmProvider == null || asyncTriggered.get()) {
             return false;
@@ -157,24 +147,10 @@ public class ShortTermMemory {
         return unsummarizedTurns >= batchSize;
     }
 
-    // ==================== Async Summarization ====================
-
-    /**
-     * Trigger async summarization for given messages.
-     *
-     * @param messagesToSummarize messages to include in summary
-     */
     public void triggerAsync(List<Message> messagesToSummarize) {
         triggerBatchAsync(messagesToSummarize, 0);
     }
 
-    /**
-     * Trigger batch async summarization with turn tracking.
-     * This method tracks which turns have been summarized to support incremental batch summarization.
-     *
-     * @param messagesToSummarize messages to include in summary
-     * @param currentTurnCount    current turn count for tracking progress
-     */
     public void triggerBatchAsync(List<Message> messagesToSummarize, int currentTurnCount) {
         if (llmProvider == null || !asyncTriggered.compareAndSet(false, true)) {
             return;
@@ -187,26 +163,20 @@ public class ShortTermMemory {
         }
 
         LOGGER.info("Triggering batch async summarization for turns up to {}", currentTurnCount);
+        pendingTargetTurn.set(currentTurnCount);
 
-        final int targetTurn = currentTurnCount;
         CompletableFuture<String> future = CompletableFuture
             .supplyAsync(() -> doSummarize(summary, content), executor)
             .thenApply(this::ensureWithinLimit)
             .whenComplete((result, error) -> {
                 if (error != null) {
                     LOGGER.error("Async summarization failed", error);
-                } else if (result != null && !result.isBlank()) {
-                    summarizedUpTo.set(targetTurn);
                 }
             });
 
         pendingSummary.set(future);
     }
 
-    /**
-     * Wait for pending async summarization to complete with timeout.
-     * Applies the result if successful.
-     */
     public void waitForAsyncCompletion() {
         CompletableFuture<String> pending = pendingSummary.get();
         if (pending == null) {
@@ -217,7 +187,8 @@ public class ShortTermMemory {
             String result = pending.get(ASYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (result != null && !result.isBlank()) {
                 summary = result;
-                LOGGER.info("Async summarization completed, summary applied");
+                summarizedUpTo.set(pendingTargetTurn.get());
+                LOGGER.info("Async summarization completed, summary applied up to turn {}", summarizedUpTo.get());
                 resetAsyncState();
                 return;
             }
@@ -233,21 +204,11 @@ public class ShortTermMemory {
         resetAsyncState();
     }
 
-    /**
-     * Check if async summarization is currently in progress.
-     *
-     * @return true if async is in progress
-     */
     public boolean isAsyncInProgress() {
         CompletableFuture<String> pending = pendingSummary.get();
         return pending != null && !pending.isDone();
     }
 
-    /**
-     * Try to apply async result if ready.
-     *
-     * @return true if async result was applied
-     */
     public boolean tryApplyAsyncResult() {
         CompletableFuture<String> pending = pendingSummary.get();
         if (pending != null && pending.isDone()) {
@@ -255,6 +216,7 @@ public class ShortTermMemory {
                 String result = pending.getNow("");
                 if (!result.isBlank()) {
                     summary = result;
+                    summarizedUpTo.set(pendingTargetTurn.get());
                     resetAsyncState();
                     return true;
                 }
@@ -265,22 +227,10 @@ public class ShortTermMemory {
         return false;
     }
 
-    /**
-     * Get the turn count that has been summarized.
-     *
-     * @return summarized turn count
-     */
     public int getSummarizedUpTo() {
         return summarizedUpTo.get();
     }
 
-    // ==================== Sync Summarization ====================
-
-    /**
-     * Summarize messages synchronously.
-     *
-     * @param messagesToSummarize messages to summarize
-     */
     public void summarize(List<Message> messagesToSummarize) {
         if (llmProvider == null) {
             return;
@@ -296,11 +246,6 @@ public class ShortTermMemory {
         resetAsyncState();
     }
 
-    /**
-     * Compress summary to fit within target tokens.
-     *
-     * @param targetTokens target max tokens
-     */
     public void compressSummary(int targetTokens) {
         if (llmProvider == null || summary.isBlank()) {
             return;
@@ -315,13 +260,6 @@ public class ShortTermMemory {
         summary = doCompress(summary, targetTokens);
     }
 
-    // ==================== Context Building ====================
-
-    /**
-     * Build summary block for injection into system message.
-     *
-     * @return summary block or empty string
-     */
     public String buildSummaryBlock() {
         if (summary.isBlank()) {
             return "";
@@ -329,11 +267,10 @@ public class ShortTermMemory {
         return "\n\n[Conversation Memory]\n" + summary;
     }
 
-    // ==================== Internal ====================
-
     private String doSummarize(String oldSummary, String newContent) {
         String historyPart = (oldSummary == null || oldSummary.isBlank()) ? "(empty)" : oldSummary;
-        String prompt = String.format(SUMMARIZE_PROMPT, 300, historyPart, newContent);
+        int targetWords = (int) (maxSummaryTokens * 0.75);  // Approximate words from tokens
+        String prompt = String.format(SUMMARIZE_PROMPT, targetWords, historyPart, newContent);
         return callLLM(prompt);
     }
 
