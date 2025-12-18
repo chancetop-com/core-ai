@@ -45,14 +45,6 @@ public final class MessageTokenCounter {
         return countFrom(messages, fromIndex, false);
     }
 
-    /**
-     * Count tokens from a specific index, optionally excluding system messages.
-     *
-     * @param messages      the messages to count
-     * @param fromIndex     starting index
-     * @param excludeSystem whether to skip SYSTEM role messages
-     * @return total token count
-     */
     public static int countFrom(List<Message> messages, int fromIndex, boolean excludeSystem) {
         int total = 0;
         for (int i = fromIndex; i < messages.size(); i++) {

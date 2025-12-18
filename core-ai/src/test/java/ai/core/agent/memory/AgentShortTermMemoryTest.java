@@ -1,31 +1,17 @@
 package ai.core.agent.memory;
 
+import ai.core.IntegrationTest;
 import ai.core.agent.Agent;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
-import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
-import ai.core.llm.LLMProviderConfig;
-import ai.core.llm.domain.CaptionImageRequest;
-import ai.core.llm.domain.CaptionImageResponse;
-import ai.core.llm.domain.Choice;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.domain.EmbeddingRequest;
-import ai.core.llm.domain.EmbeddingResponse;
-import ai.core.llm.domain.FinishReason;
-import ai.core.llm.domain.Message;
-import ai.core.llm.domain.RerankingRequest;
-import ai.core.llm.domain.RerankingResponse;
+import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
-import ai.core.llm.domain.Usage;
 import ai.core.memory.ShortTermMemory;
+import core.framework.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -36,23 +22,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * @author xander
  */
-@Disabled
-class AgentShortTermMemoryTest {
+class AgentShortTermMemoryTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentShortTermMemoryTest.class);
-    private MockLLMProvider llmProvider;
 
-    @BeforeEach
-    void setUp() {
-        llmProvider = new MockLLMProvider();
-    }
+    @Inject
+    LLMProviders llmProviders;
+
+    private LLMProvider llmProvider;
 
     @Test
     void testAgentWithDefaultShortTermMemory() {
         // ShortTermMemory is enabled by default
         var agent = Agent.builder()
-            .llmProvider(llmProvider)
-            .systemPrompt("You are a helpful assistant.")
-            .build();
+                .llmProvider(llmProviders.getProvider())
+                .systemPrompt("You are a helpful assistant.")
+                .model("gpt-4.1")
+                .build();
 
         assertNotNull(agent);
         agent.run("Hello");
@@ -69,7 +54,7 @@ class AgentShortTermMemoryTest {
         shortTermMemory.setSummary("User prefers dark mode and concise responses.");
 
         var agent = Agent.builder()
-            .llmProvider(llmProvider)
+            .llmProvider(llmProviders.getProvider())
             .systemPrompt("You are a helpful assistant.")
             .shortTermMemory(shortTermMemory)
             .build();
@@ -91,8 +76,6 @@ class AgentShortTermMemoryTest {
 
     @Test
     void testSlidingWindowTriggersSummarization() {
-        // Use a mock provider that returns summary when summarization is triggered
-        var summarizingProvider = new SummarizingMockLLMProvider();
         var shortTermMemory = new ShortTermMemory();
 
         // Configure sliding window to trigger after 2 turns
@@ -101,7 +84,7 @@ class AgentShortTermMemoryTest {
             .build();
 
         var agent = Agent.builder()
-            .llmProvider(summarizingProvider)
+            .llmProvider(llmProviders.getProvider())
             .systemPrompt("You are a helpful assistant.")
             .shortTermMemory(shortTermMemory)
             .slidingWindowConfig(slidingWindowConfig)
@@ -137,7 +120,7 @@ class AgentShortTermMemoryTest {
 
         // Also verify it works in a new conversation
         var newAgent = Agent.builder()
-            .llmProvider(summarizingProvider)
+            .llmProvider(llmProviders.getProvider())
             .systemPrompt("You are a helpful assistant.")
             .shortTermMemory(shortTermMemory)
             .build();
@@ -158,7 +141,7 @@ class AgentShortTermMemoryTest {
         // Summary is empty by default
 
         var agent = Agent.builder()
-            .llmProvider(llmProvider)
+            .llmProvider(llmProviders.getProvider())
             .systemPrompt("You are a helpful assistant.")
             .shortTermMemory(shortTermMemory)
             .build();
@@ -178,7 +161,7 @@ class AgentShortTermMemoryTest {
     @Test
     void testAgentWithDisabledShortTermMemory() {
         var agent = Agent.builder()
-            .llmProvider(llmProvider)
+            .llmProvider(llmProviders.getProvider())
             .systemPrompt("You are a helpful assistant.")
             .disableShortTermMemory()
             .build();
@@ -190,7 +173,6 @@ class AgentShortTermMemoryTest {
 
     @Test
     void testBatchAsyncSummarization() {
-        var summarizingProvider = new SummarizingMockLLMProvider();
         var shortTermMemory = new ShortTermMemory();
 
         // Configure sliding window with 10 turns (batch async triggers at 2/3 = 6-7 turns)
@@ -199,7 +181,7 @@ class AgentShortTermMemoryTest {
             .build();
 
         var agent = Agent.builder()
-            .llmProvider(summarizingProvider)
+            .llmProvider(llmProviders.getProvider())
             .systemPrompt("You are a helpful assistant.")
             .shortTermMemory(shortTermMemory)
             .slidingWindowConfig(slidingWindowConfig)
@@ -215,126 +197,5 @@ class AgentShortTermMemoryTest {
         // Summary should still be empty - not enough turns for batch async
         assertTrue(shortTermMemory.getSummary().isEmpty(), "Summary should be empty before async threshold");
         LOGGER.info("Batch async summarization test passed - threshold not yet reached");
-    }
-
-    /**
-     * Mock LLM provider for testing.
-     */
-    static class MockLLMProvider extends LLMProvider {
-        private int callCount = 0;
-
-        MockLLMProvider() {
-            super(new LLMProviderConfig("test-model", 0.7, null));
-        }
-
-        @Override
-        protected CompletionResponse doCompletion(CompletionRequest request) {
-            return createMockResponse();
-        }
-
-        @Override
-        protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
-            return createMockResponse();
-        }
-
-        private CompletionResponse createMockResponse() {
-            callCount++;
-            var response = new CompletionResponse();
-            var choice = new Choice();
-            choice.message = Message.of(RoleType.ASSISTANT, "This is a mock response " + callCount);
-            choice.finishReason = FinishReason.STOP;
-            response.choices = List.of(choice);
-            response.usage = new Usage();
-            response.usage.setPromptTokens(10);
-            response.usage.setCompletionTokens(20);
-            response.usage.setTotalTokens(30);
-            return response;
-        }
-
-        @Override
-        public EmbeddingResponse embeddings(EmbeddingRequest request) {
-            return null;
-        }
-
-        @Override
-        public RerankingResponse rerankings(RerankingRequest request) {
-            return null;
-        }
-
-        @Override
-        public CaptionImageResponse captionImage(CaptionImageRequest request) {
-            return null;
-        }
-
-        @Override
-        public String name() {
-            return "mock";
-        }
-    }
-
-    /**
-     * Mock LLM provider that can handle summarization requests.
-     * Detects summarization prompts and returns appropriate summary.
-     */
-    static class SummarizingMockLLMProvider extends LLMProvider {
-        private int callCount = 0;
-
-        SummarizingMockLLMProvider() {
-            super(new LLMProviderConfig("test-model", 0.7, null));
-        }
-
-        @Override
-        protected CompletionResponse doCompletion(CompletionRequest request) {
-            callCount++;
-
-            // Check if this is a summarization request (looks for "[New Conversation]" in prompt)
-            var isSummarizationRequest = request.messages.stream()
-                .anyMatch(m -> m.content != null && m.content.contains("[New Conversation]"));
-
-            var response = new CompletionResponse();
-            var choice = new Choice();
-
-            if (isSummarizationRequest) {
-                // Return a mock summary
-                choice.message = Message.of(RoleType.ASSISTANT,
-                    "User asked about programming languages including Java and Python.");
-            } else {
-                // Return normal response
-                choice.message = Message.of(RoleType.ASSISTANT, "Mock response " + callCount);
-            }
-
-            choice.finishReason = FinishReason.STOP;
-            response.choices = List.of(choice);
-            response.usage = new Usage();
-            response.usage.setPromptTokens(10);
-            response.usage.setCompletionTokens(20);
-            response.usage.setTotalTokens(30);
-            return response;
-        }
-
-        @Override
-        protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
-            return doCompletion(request);
-        }
-
-        @Override
-        public EmbeddingResponse embeddings(EmbeddingRequest request) {
-            return null;
-        }
-
-        @Override
-        public RerankingResponse rerankings(RerankingRequest request) {
-            return null;
-        }
-
-        @Override
-        public CaptionImageResponse captionImage(CaptionImageRequest request) {
-            return null;
-        }
-
-        @Override
-        public String name() {
-            return "summarizing-mock";
-        }
     }
 }
