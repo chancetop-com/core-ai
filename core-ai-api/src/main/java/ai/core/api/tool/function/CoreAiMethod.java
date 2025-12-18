@@ -17,4 +17,5 @@ public @interface CoreAiMethod {
     String description();
     boolean needAuth() default false;
     boolean continueAfterSlash() default true;
+    boolean directReturn() default false;
 }
