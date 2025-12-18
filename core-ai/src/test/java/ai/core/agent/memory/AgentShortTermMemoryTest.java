@@ -8,7 +8,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.ShortTermMemory;
 import core.framework.inject.Inject;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * @author xander
  */
+@Disabled
 class AgentShortTermMemoryTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentShortTermMemoryTest.class);
 

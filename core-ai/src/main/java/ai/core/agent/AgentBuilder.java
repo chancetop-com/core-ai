@@ -40,6 +40,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private SlidingWindowConfig slidingWindowConfig;
     private ShortTermMemory shortTermMemory;
     private boolean disableShortTermMemory = false;
+    private boolean memoryEnabled = true;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -80,6 +81,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
      */
     public AgentBuilder disableShortTermMemory() {
         this.disableShortTermMemory = true;
+        return this;
+    }
+
+    public AgentBuilder enableMemory(boolean enabled) {
+        this.memoryEnabled = enabled;
         return this;
     }
 
@@ -256,15 +262,18 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-        agent.slidingWindowConfig = this.slidingWindowConfig != null
-                ? this.slidingWindowConfig
-                : SlidingWindowConfig.builder().autoTokenProtection(true).build();
-        // Default to enabled ShortTermMemory unless explicitly disabled
-        if (!this.disableShortTermMemory) {
-            agent.shortTermMemory = this.shortTermMemory != null
-                    ? this.shortTermMemory
-                    : new ShortTermMemory();
-            agent.shortTermMemory.setLLMProvider(this.llmProvider, this.model);
+        // Memory configuration: only set if memory is enabled
+        if (this.memoryEnabled) {
+            agent.slidingWindowConfig = this.slidingWindowConfig != null
+                    ? this.slidingWindowConfig
+                    : SlidingWindowConfig.builder().autoTokenProtection(true).build();
+            // Default to enabled ShortTermMemory unless explicitly disabled
+            if (!this.disableShortTermMemory) {
+                agent.shortTermMemory = this.shortTermMemory != null
+                        ? this.shortTermMemory
+                        : new ShortTermMemory();
+                agent.shortTermMemory.setLLMProvider(this.llmProvider, this.model);
+            }
         }
     }
 
