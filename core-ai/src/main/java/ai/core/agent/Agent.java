@@ -1,7 +1,6 @@
 package ai.core.agent;
 
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
-import ai.core.agent.slashcommand.SlashCommandExecutor;
 import ai.core.agent.slashcommand.SlashCommandParser;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
@@ -12,6 +11,7 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.memory.ShortTermMemory;
 import ai.core.llm.domain.RerankingRequest;
@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -118,24 +119,6 @@ public class Agent extends Node<Agent> {
             updateNodeStatus(NodeStatus.RUNNING);
         }
 
-        // Check for slash command - execute tool directly
-        if (SlashCommandParser.isSlashCommand(query)) {
-            var slashResult = executeSlashCommand(query);
-            // If tool result is not empty, continue to LLM processing
-            if (slashResult != null && !slashResult.isBlank()) {
-                logger.info("Slash command result not empty, continuing with LLM processing");
-                // Messages already added by executeSlashCommand (USER, ASSISTANT+FunctionCall, TOOL)
-                // Continue directly with chat loop to let LLM process the tool result
-                chatTurnsLoop();
-            } else {
-                setOutput(slashResult != null ? slashResult : "");
-            }
-            if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
-                updateNodeStatus(NodeStatus.COMPLETED);
-            }
-            return getOutput();
-        }
-
         // Execute full agent flow: RAG + template + chat
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
@@ -164,33 +147,9 @@ public class Agent extends Node<Agent> {
         return getOutput();
     }
 
-    private String executeSlashCommand(String query) {
-        logger.info("Executing slash command: {}", query);
 
-        // Ensure system message is present
-        if (getMessages().isEmpty()) {
-            addMessage(buildSystemMessage(null));
-        }
-
-        // Parse the slash command
-        var parsed = SlashCommandParser.parse(query);
-        if (parsed.isNotValid()) {
-            logger.warn("Invalid slash command: {}", query);
-            setOutput("Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments");
-            return getOutput();
-        }
-
-        // Execute the slash command
-        var result = SlashCommandExecutor.execute(parsed, toolCalls, getExecutionContext());
-
-        // Add all 3 messages to the message list
-        result.getMessages().forEach(this::addMessage);
-
-        // Set output to the tool result
-        setOutput(result.getToolResult());
-
-        logger.info("Slash command completed: tool={}, success={}", parsed.getToolName(), result.isSuccess());
-        return getOutput();
+    private String generateToolCallId() {
+        return "slash_command_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
     // Execute reflection loop to iteratively improve the solution
@@ -198,7 +157,8 @@ public class Agent extends Node<Agent> {
         ReflectionHistory history = new ReflectionHistory(getId(), getName(), getInput(), reflectionConfig.evaluationCriteria());
         int currentRound = 1;
         setRound(currentRound);  // Initialize round counter
-        if (reflectionListener != null) reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
+        if (reflectionListener != null)
+            reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
 
         while (currentRound <= reflectionConfig.maxRound()) {
             setRound(currentRound);  // Update round counter
@@ -222,16 +182,16 @@ public class Agent extends Node<Agent> {
                 logger.error("Invalid evaluation score: {}, terminating reflection", evaluation.getScore());
                 history.complete(ReflectionStatus.FAILED);
                 if (reflectionListener != null) reflectionListener.onError(this, currentRound,
-                    new IllegalStateException("Invalid evaluation score: " + evaluation.getScore()));
+                        new IllegalStateException("Invalid evaluation score: " + evaluation.getScore()));
                 return;
             }
 
             logger.info("Round {} evaluation: score={}, pass={}, continue={}",
-                currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
+                    currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
 
             // Record round
             history.addRound(new ReflectionHistory.ReflectionRound(currentRound, solutionToEvaluate, evaluationJson,
-                evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
+                    evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
 
             // Check termination
             if (shouldTerminateReflection(evaluation, currentRound)) {
@@ -242,7 +202,8 @@ public class Agent extends Node<Agent> {
 
             // Regenerate solution and skip reflection loop (to avoid infinite recursion)
             doExecute(ReflectionEvaluator.buildImprovementPrompt(evaluationJson, evaluation), variables, true);
-            if (reflectionListener != null) reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
+            if (reflectionListener != null)
+                reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
             currentRound++;
         }
 
@@ -282,11 +243,6 @@ public class Agent extends Node<Agent> {
     // Public method for chat execution (used by executeAgentFlow)
     public void chatTurns(String query, Map<String, Object> variables) {
         buildUserQueryToMessage(query, variables);
-        chatTurnsLoop();
-    }
-
-    // Core chat loop - executes LLM turns until no more tool calls
-    private void chatTurnsLoop() {
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
@@ -306,6 +262,17 @@ public class Agent extends Node<Agent> {
         setOutput(agentOut.toString());
         if (currentIteCount >= maxTurnNumber) {
             logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
+        }
+    }
+
+
+    private Choice constructionFakeSlashCommandAssistantMsg(String query) {
+        var command = SlashCommandParser.parse(query);
+        if (command.isNotValid()) {
+            return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments"));
+        } else {
+            var functionCall = FunctionCall.of(generateToolCallId(), "function", command.getToolName(), command.hasArguments() ? command.getArguments() : "{}");
+            return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, null, List.of(functionCall)));
         }
     }
 
@@ -335,7 +302,7 @@ public class Agent extends Node<Agent> {
 
     public List<Message> turn(List<Message> messages, List<Tool> tools, String model) {
         var resultMsg = new ArrayList<Message>();
-        var choice = handLLM(messages, tools, model);
+        var choice = resolvedLLMCall(messages, tools, model);
         resultMsg.add(choice.message);
         if (choice.finishReason == FinishReason.TOOL_CALLS) {
             if (!Strings.isBlank(choice.message.content)) {
@@ -345,6 +312,16 @@ public class Agent extends Node<Agent> {
             resultMsg.addAll(funcMsg);
         }
         return resultMsg;
+    }
+
+    private Choice resolvedLLMCall(List<Message> messages, List<Tool> tools, String model) {
+        String query = messages.getLast().content;
+        if (SlashCommandParser.isSlashCommand(query)) {
+            return constructionFakeSlashCommandAssistantMsg(query);
+        } else {
+            return handLLM(messages, tools, model);
+        }
+
     }
 
     private boolean lastIsToolMsg() {
@@ -370,9 +347,14 @@ public class Agent extends Node<Agent> {
 
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream().map(tool -> {
+            var msg = new ArrayList<Message>();
             var result = getToolExecutor().execute(tool, getExecutionContext());
-            return Message.of(RoleType.TOOL, result, tool.function.name, tool.id, null, null);
-        }).toList();
+            msg.add(Message.of(RoleType.TOOL, result.toResultForLLM(), tool.function.name, tool.id, null, null));
+            if (result.isDirectReturn()) {
+                msg.add(Message.of(RoleType.ASSISTANT, result.getResult()));
+            }
+            return msg;
+        }).flatMap(List::stream).toList();
     }
 
     private ToolExecutor getToolExecutor() {
