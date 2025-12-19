@@ -1,5 +1,6 @@
 package ai.core;
 
+import ai.core.document.Tokenizer;
 import ai.core.image.providers.LiteLLMImageProvider;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
@@ -58,6 +59,13 @@ public class MultiAgentModule extends Module {
         configLangfusePrompts();
         configLLMProvider();
         configMcpClient();
+        warmup();
+    }
+
+    private void warmup() {
+        logger.info("Warming up tokenizer...");
+        Tokenizer.warmup();
+        logger.info("Tokenizer warmup completed");
     }
 
     private void configPersistenceProvider() {

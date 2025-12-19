@@ -14,14 +14,25 @@ import java.util.concurrent.ConcurrentMap;
 public class Tokenizer {
     public static final EncodingType DEFAULT_ENCODING_TYPE = EncodingType.CL100K_BASE;
 
-    // Cache the encoding registry - this is expensive to create
-    private static final EncodingRegistry ENCODING_REGISTRY = Encodings.newDefaultEncodingRegistry();
+    // Lazy-loaded encoding registry - expensive to create, initialized during warmup
+    private static volatile EncodingRegistry encodingRegistry;
 
     // Cache encodings by type to avoid repeated lookups
     private static final ConcurrentMap<EncodingType, Encoding> ENCODING_CACHE = new ConcurrentHashMap<>();
 
+    private static EncodingRegistry getRegistry() {
+        if (encodingRegistry == null) {
+            synchronized (Tokenizer.class) {
+                if (encodingRegistry == null) {
+                    encodingRegistry = Encodings.newLazyEncodingRegistry();
+                }
+            }
+        }
+        return encodingRegistry;
+    }
+
     private static Encoding getEncoding(EncodingType type) {
-        return ENCODING_CACHE.computeIfAbsent(type, ENCODING_REGISTRY::getEncoding);
+        return ENCODING_CACHE.computeIfAbsent(type, getRegistry()::getEncoding);
     }
 
     public static int tokenCount(String text, EncodingType type) {
@@ -48,5 +59,12 @@ public class Tokenizer {
 
     public static String decode(List<Integer> encoded) {
         return decode(encoded, DEFAULT_ENCODING_TYPE);
+    }
+
+    /**
+     * Preload the default encoding to avoid slow first-time tokenization.
+     */
+    public static void warmup() {
+        getEncoding(DEFAULT_ENCODING_TYPE);
     }
 }
