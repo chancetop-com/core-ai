@@ -1,9 +1,6 @@
 package ai.core.prompt.langfuse;
 
 /**
- * Global registry for Langfuse prompt provider
- * Similar to TracerRegistry for telemetry
- *
  * @author stephen
  */
 public final class LangfusePromptProviderRegistry {
