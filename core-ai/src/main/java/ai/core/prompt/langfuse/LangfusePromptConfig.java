@@ -5,8 +5,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Configuration for Langfuse prompt management API
- *
  * @author stephen
  */
 public final class LangfusePromptConfig {
@@ -35,9 +33,6 @@ public final class LangfusePromptConfig {
         }
     }
 
-    /**
-     * Normalize base URL by removing trailing slashes
-     */
     private String normalizeBaseUrl(String url) {
         if (url == null || url.isEmpty()) {
             return url;
@@ -65,9 +60,6 @@ public final class LangfusePromptConfig {
         return timeoutSeconds;
     }
 
-    /**
-     * Get the full endpoint URL for fetching prompts
-     */
     public String getPromptEndpoint() {
         return baseUrl + "/api/public/v2/prompts";
     }
@@ -79,61 +71,37 @@ public final class LangfusePromptConfig {
         private final Map<String, String> headers = new HashMap<>();
         private int timeoutSeconds = 10;
 
-        /**
-         * Set the Langfuse base URL
-         * Default: https://cloud.langfuse.com (EU region)
-         * US region: https://us.cloud.langfuse.com
-         * Self-hosted: your deployment URL
-         */
         public Builder baseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
             return this;
         }
 
-        /**
-         * Set Langfuse public key (pk-lf-...)
-         */
         public Builder publicKey(String publicKey) {
             this.publicKey = publicKey;
             return this;
         }
 
-        /**
-         * Set Langfuse secret key (sk-lf-...)
-         */
         public Builder secretKey(String secretKey) {
             this.secretKey = secretKey;
             return this;
         }
 
-        /**
-         * Set both public and secret keys at once
-         */
         public Builder credentials(String publicKey, String secretKey) {
             this.publicKey = publicKey;
             this.secretKey = secretKey;
             return this;
         }
 
-        /**
-         * Add a custom header
-         */
         public Builder addHeader(String key, String value) {
             this.headers.put(key, value);
             return this;
         }
 
-        /**
-         * Add multiple custom headers
-         */
         public Builder addHeaders(Map<String, String> headers) {
             this.headers.putAll(headers);
             return this;
         }
 
-        /**
-         * Set request timeout in seconds (default: 10)
-         */
         public Builder timeoutSeconds(int timeoutSeconds) {
             this.timeoutSeconds = timeoutSeconds;
             return this;
