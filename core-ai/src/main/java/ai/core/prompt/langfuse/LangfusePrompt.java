@@ -9,8 +9,6 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Response model for Langfuse prompt API
- *
  * @author stephen
  */
 public class LangfusePrompt {
@@ -196,25 +194,14 @@ public class LangfusePrompt {
         this.chatPrompt = chatPrompt;
     }
 
-    /**
-     * Check if this is a text prompt
-     */
     public boolean isTextPrompt() {
         return "text".equalsIgnoreCase(type);
     }
 
-    /**
-     * Check if this is a chat prompt
-     */
     public boolean isChatPrompt() {
         return "chat".equalsIgnoreCase(type);
     }
 
-    /**
-     * Get the prompt content as string
-     * For text prompts, returns the prompt string
-     * For chat prompts, concatenates messages
-     */
     public String getPromptContent() {
         if (isTextPrompt()) {
             return prompt;
@@ -232,9 +219,6 @@ public class LangfusePrompt {
         return prompt;
     }
 
-    /**
-     * Chat message for chat-type prompts
-     */
     public static class ChatMessage {
         @JsonProperty("role")
         private String role;  // "system", "user", "assistant"
