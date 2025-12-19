@@ -1,7 +1,7 @@
 package ai.core.agent;
 
-import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.agent.slashcommand.SlashCommandParser;
+import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
@@ -13,10 +13,10 @@ import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
-import ai.core.memory.ShortTermMemory;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
+import ai.core.memory.ShortTermMemory;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -45,6 +45,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -109,16 +110,11 @@ public class Agent extends Node<Agent> {
         return doExecute(query, variables, false);
     }
 
-    private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
-        boolean isFirstExecution = getInput() == null;
-        if (isFirstExecution) {
-            setInput(query);
-            if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
-                authenticated = true;
-            }
-            updateNodeStatus(NodeStatus.RUNNING);
-        }
+    private void chatCommand(String query, Map<String, Object> variables) {
+        chatTurns(query, variables, this::constructionFakeSlashCommandAssistantMsg);
+    }
 
+    private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
         // Execute full agent flow: RAG + template + chat
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
@@ -133,18 +129,37 @@ public class Agent extends Node<Agent> {
         prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
 
         // Chat with LLM
-        chatTurns(prompt, variables);
+        chatTurns(prompt, variables, this::handLLM);
 
         // Reflection loop if enabled and not skipped
         if (reflectionConfig != null && reflectionConfig.enabled() && !skipReflection) {
             reflectionLoop(variables);
         }
+    }
 
+    private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
+        boolean isFirstExecution = getInput() == null;
+        if (isFirstExecution) {
+            setInput(query);
+            if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
+                authenticated = true;
+            }
+            updateNodeStatus(NodeStatus.RUNNING);
+        }
+        commandOrLoops(query, variables, skipReflection);
         // Update status to completed only for first execution
         if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
             updateNodeStatus(NodeStatus.COMPLETED);
         }
         return getOutput();
+    }
+
+    private void commandOrLoops(String query, Map<String, Object> variables, boolean skipReflection) {
+        if (SlashCommandParser.isSlashCommand(query)) {
+            chatCommand(query, variables);
+        } else {
+            chatLoops(query, variables, skipReflection);
+        }
     }
 
 
@@ -241,7 +256,7 @@ public class Agent extends Node<Agent> {
     }
 
     // Public method for chat execution (used by executeAgentFlow)
-    public void chatTurns(String query, Map<String, Object> variables) {
+    public void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         buildUserQueryToMessage(query, variables);
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
@@ -249,7 +264,7 @@ public class Agent extends Node<Agent> {
             // apply sliding window if needed before each LLM call
             applyMemoryCoordinatorIfNeeded();
             // turn = call model + call func
-            var turnMsgList = turn(getMessages(), toReqTools(toolCalls), model);
+            var turnMsgList = turn(getMessages(), toReqTools(toolCalls), constructionAssistantMsg);
             logger.info("Agent turn {}: received {} messages", currentIteCount + 1, turnMsgList.size());
             // add msg into global
             turnMsgList.forEach(this::addMessage);
@@ -266,7 +281,8 @@ public class Agent extends Node<Agent> {
     }
 
 
-    private Choice constructionFakeSlashCommandAssistantMsg(String query) {
+    private Choice constructionFakeSlashCommandAssistantMsg(List<Message> messages, List<Tool> tools) {
+        String query = messages.getLast().content;
         var command = SlashCommandParser.parse(query);
         if (command.isNotValid()) {
             return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments"));
@@ -300,9 +316,9 @@ public class Agent extends Node<Agent> {
         return llmProvider;
     }
 
-    public List<Message> turn(List<Message> messages, List<Tool> tools, String model) {
+    public List<Message> turn(List<Message> messages, List<Tool> tools, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         var resultMsg = new ArrayList<Message>();
-        var choice = resolvedLLMCall(messages, tools, model);
+        var choice = constructionAssistantMsg.apply(messages, tools);
         resultMsg.add(choice.message);
         if (choice.finishReason == FinishReason.TOOL_CALLS) {
             if (!Strings.isBlank(choice.message.content)) {
@@ -314,21 +330,12 @@ public class Agent extends Node<Agent> {
         return resultMsg;
     }
 
-    private Choice resolvedLLMCall(List<Message> messages, List<Tool> tools, String model) {
-        String query = messages.getLast().content;
-        if (SlashCommandParser.isSlashCommand(query)) {
-            return constructionFakeSlashCommandAssistantMsg(query);
-        } else {
-            return handLLM(messages, tools, model);
-        }
-
-    }
 
     private boolean lastIsToolMsg() {
         return RoleType.TOOL == getMessages().getLast().role;
     }
 
-    private Choice handLLM(List<Message> messages, List<Tool> tools, String model) {
+    private Choice handLLM(List<Message> messages, List<Tool> tools) {
         var req = CompletionRequest.of(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), model, this.getName());
         return aroundLLM(r -> llmProvider.completionStream(r, elseDefaultCallback()), req);
     }
@@ -349,12 +356,28 @@ public class Agent extends Node<Agent> {
         return funcMsg.toolCalls.stream().map(tool -> {
             var msg = new ArrayList<Message>();
             var result = getToolExecutor().execute(tool, getExecutionContext());
-            msg.add(Message.of(RoleType.TOOL, result.toResultForLLM(), tool.function.name, tool.id, null, null));
-            if (result.isDirectReturn()) {
-                msg.add(Message.of(RoleType.ASSISTANT, result.getResult()));
+            if (result.isDirectReturn() || Strings.isBlank(result.toResultForLLM())) {
+                msg.add(Message.of(RoleType.TOOL, specialReminder(tool.function.name, result.toResultForLLM()), tool.function.name, tool.id, null, null));
+                msg.add(Message.of(RoleType.ASSISTANT, result.toResultForLLM()));
+            } else {
+                msg.add(Message.of(RoleType.TOOL, result.toResultForLLM(), tool.function.name, tool.id, null, null));
             }
             return msg;
         }).flatMap(List::stream).toList();
+    }
+
+    private String specialReminder(String toolName, String toolResult) {
+        return """
+                  %s successfully executed.
+                  <system-reminder>
+                  This tool is triggered manually by the user or executed automatically by the system.
+                  please return the tool results directly to the user.
+                  The tool result is :
+                
+                  %s
+                
+                  </system-reminder>
+                """.formatted(toolName, toolResult);
     }
 
     private ToolExecutor getToolExecutor() {

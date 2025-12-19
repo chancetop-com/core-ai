@@ -49,8 +49,9 @@ public class AgentEndToTest extends IntegrationTest {
                 .build();
         var out = agent.run("/slash_command:getTemperaturePro:{\"city\": \"xiamen\"}", ExecutionContext.builder().build());
         LOGGER.info(out);
-
-
+        // The tool will not be called again, and the text will be polished.
+        out = agent.run("What's the weather like in Xiamen?", ExecutionContext.builder().build());
+        LOGGER.info(out);
 
 
     }
