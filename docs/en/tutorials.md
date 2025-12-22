@@ -26,7 +26,22 @@ Learn how to create powerful AI agents with Core-AI's agent framework.
 
 ---
 
-#### 2. [Multi-Agent Systems](tutorial-multi-agent.md)
+#### 2. [Memory Systems](tutorial-memory.md)
+Deep dive into Core-AI's memory architecture for personalized and context-aware agents.
+
+**Topics covered:**
+- Short-term memory and conversation summarization
+- Long-term memory with vector search
+- Memory types (FACT, PREFERENCE, GOAL, EPISODE)
+- Namespace organization for multi-tenant systems
+- Unified memory lifecycle integration
+- Token budget management
+
+**Perfect for:** Building agents that remember users across sessions
+
+---
+
+#### 4. [Multi-Agent Systems](tutorial-multi-agent.md)
 Master the art of orchestrating multiple specialized agents working together.
 
 **Topics covered:**
@@ -40,7 +55,7 @@ Master the art of orchestrating multiple specialized agents working together.
 
 ---
 
-#### 3. [RAG Integration](tutorial-rag.md)
+#### 5. [RAG Integration](tutorial-rag.md)
 Implement retrieval-augmented generation to enhance your agents with external knowledge.
 
 **Topics covered:**
@@ -54,7 +69,7 @@ Implement retrieval-augmented generation to enhance your agents with external kn
 
 ---
 
-#### 4. [Tool Calling](tutorial-tool-calling.md)
+#### 6. [Tool Calling](tutorial-tool-calling.md)
 Extend agent capabilities with custom tools and external integrations.
 
 **Topics covered:**
@@ -68,7 +83,7 @@ Extend agent capabilities with custom tools and external integrations.
 
 ---
 
-#### 5. [Flow Orchestration](tutorial-flow.md)
+#### 7. [Flow Orchestration](tutorial-flow.md)
 Build complex workflows and business processes with visual flow design.
 
 **Topics covered:**
@@ -85,10 +100,10 @@ Build complex workflows and business processes with visual flow design.
 ## 🎓 Learning Path
 
 ### Beginner Path
-1. [Quick Start](quickstart.md) → [Basic Agent](tutorial-basic-agent.md) → [Tool Calling](tutorial-tool-calling.md)
+1. [Quick Start](quickstart.md) → [Basic Agent](tutorial-basic-agent.md) → [Memory Systems](tutorial-memory.md)
 
 ### Intermediate Path
-1. [Multi-Agent Systems](tutorial-multi-agent.md) → [RAG Integration](tutorial-rag.md)
+1. [Tool Calling](tutorial-tool-calling.md) → [Multi-Agent Systems](tutorial-multi-agent.md) → [RAG Integration](tutorial-rag.md)
 
 ### Advanced Path
 1. [Flow Orchestration](tutorial-flow.md) → Production deployment
@@ -135,6 +150,7 @@ Choose a tutorial based on your needs:
 |-------------|------------|
 | Build my first AI agent | [Basic Agent Tutorial](tutorial-basic-agent.md) |
 | Create a chatbot | [Quick Start Guide](quickstart.md) |
+| Remember users across sessions | [Memory Systems](tutorial-memory.md) |
 | Build a multi-expert system | [Multi-Agent Systems](tutorial-multi-agent.md) |
 | Add knowledge retrieval | [RAG Integration](tutorial-rag.md) |
 | Integrate external APIs | [Tool Calling](tutorial-tool-calling.md) |
