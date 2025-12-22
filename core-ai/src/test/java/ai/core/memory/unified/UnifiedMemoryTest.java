@@ -1,5 +1,6 @@
 package ai.core.memory.unified;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.document.Embedding;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
@@ -23,6 +24,7 @@ import ai.core.memory.longterm.MemoryType;
 import ai.core.memory.longterm.Namespace;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import ai.core.memory.recall.MemoryRecallService;
+import ai.core.tool.tools.MemoryRecallTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -32,6 +34,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -52,15 +55,12 @@ class UnifiedMemoryTest {
     private static final int EMBEDDING_DIM = 128;
     private static final String USER_ID = "test-user";
 
-    private DefaultLongTermMemoryStore store;
     private LongTermMemory longTermMemory;
-    private Random random;
 
     @BeforeEach
     void setUp() {
-        random = new Random(42);
         LLMProvider llmProvider = createMockLLMProvider();
-        store = DefaultLongTermMemoryStore.inMemory();
+        DefaultLongTermMemoryStore store = DefaultLongTermMemoryStore.inMemory();
         longTermMemory = LongTermMemory.builder()
             .llmProvider(llmProvider)
             .store(store)
@@ -90,14 +90,6 @@ class UnifiedMemoryTest {
             .type(type)
             .importance(0.8)
             .build();
-    }
-
-    private float[] randomEmbedding() {
-        float[] embedding = new float[EMBEDDING_DIM];
-        for (int i = 0; i < EMBEDDING_DIM; i++) {
-            embedding[i] = random.nextFloat() * 2 - 1;
-        }
-        return embedding;
     }
 
     private LLMProvider createMockLLMProvider() {
@@ -353,6 +345,91 @@ class UnifiedMemoryTest {
     }
 
     @Nested
+    @DisplayName("MemoryRecallTool Tests")
+    class MemoryRecallToolTests {
+
+        @Test
+        @DisplayName("Tool has correct name and description")
+        void testToolMetadata() {
+            var tool = MemoryRecallTool.builder()
+                .longTermMemory(longTermMemory)
+                .maxRecords(5)
+                .build();
+
+            assertEquals("search_memory_tool", tool.getName());
+            assertNotNull(tool.getDescription());
+            assertTrue(tool.getDescription().contains("memories"));
+        }
+
+        @Test
+        @DisplayName("Tool requires query parameter")
+        void testToolRequiresQuery() {
+            var tool = MemoryRecallTool.builder()
+                .longTermMemory(longTermMemory)
+                .maxRecords(5)
+                .build();
+
+            // Execute without query
+            var result = tool.execute("{}");
+
+            assertTrue(result.getResult().contains("Error"));
+        }
+
+        @Test
+        @DisplayName("Tool returns no context message when namespace not set")
+        void testToolNoNamespace() {
+            var tool = MemoryRecallTool.builder()
+                .longTermMemory(longTermMemory)
+                .maxRecords(5)
+                .build();
+
+            var result = tool.execute("{\"query\": \"user preferences\"}");
+
+            assertTrue(result.getResult().contains("No user context"));
+        }
+
+        @Test
+        @DisplayName("Tool returns no memories message when no matches found")
+        void testToolNoMemoriesFound() {
+            longTermMemory.startSessionForUser(USER_ID, "test-session");
+
+            var tool = MemoryRecallTool.builder()
+                .longTermMemory(longTermMemory)
+                .maxRecords(5)
+                .build();
+            tool.setCurrentNamespace(Namespace.forUser(USER_ID));
+
+            var result = tool.execute("{\"query\": \"user preferences\"}");
+
+            assertTrue(result.getResult().contains("No relevant memories"));
+
+            longTermMemory.endSession();
+        }
+
+        @Test
+        @DisplayName("Tool respects maxRecords setting")
+        void testToolMaxRecords() {
+            var tool = MemoryRecallTool.builder()
+                .longTermMemory(longTermMemory)
+                .maxRecords(10)
+                .build();
+
+            assertEquals(10, tool.getMaxRecords());
+        }
+
+        @Test
+        @DisplayName("Builder throws when longTermMemory not set")
+        void testBuilderRequiresLongTermMemory() {
+            var exception = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> MemoryRecallTool.builder().build()
+            );
+
+            assertTrue(exception.getMessage().contains("longTermMemory"));
+        }
+    }
+
+    @Nested
     @DisplayName("UnifiedMemoryLifecycle Tests")
     class UnifiedMemoryLifecycleTests {
 
@@ -362,7 +439,8 @@ class UnifiedMemoryTest {
             UnifiedMemoryLifecycle lifecycle = new UnifiedMemoryLifecycle(longTermMemory);
 
             assertNotNull(lifecycle.getLongTermMemory());
-            assertNotNull(lifecycle.getRecallService());
+            assertNotNull(lifecycle.getMemoryRecallTool());
+            assertEquals(5, lifecycle.getMaxRecallRecords());
         }
 
         @Test
@@ -371,33 +449,38 @@ class UnifiedMemoryTest {
             UnifiedMemoryLifecycle lifecycle = new UnifiedMemoryLifecycle(longTermMemory, 10);
 
             assertNotNull(lifecycle.getLongTermMemory());
-            assertNotNull(lifecycle.getRecallService());
+            assertNotNull(lifecycle.getMemoryRecallTool());
+            assertEquals(10, lifecycle.getMaxRecallRecords());
         }
 
         @Test
-        @DisplayName("beforeModel injects memory into completion request")
-        void testBeforeModelInjectsMemory() {
-            // Pre-populate some memories
-            Namespace ns = Namespace.forUser(USER_ID);
-            store.save(createMemoryRecordWithNamespace(ns, "User prefers brief answers", MemoryType.PREFERENCE),
-                randomEmbedding());
-
+        @DisplayName("beforeModel sets namespace on memory recall tool")
+        void testBeforeModelSetsNamespace() {
             longTermMemory.startSessionForUser(USER_ID, "test-session");
 
             UnifiedMemoryLifecycle lifecycle = new UnifiedMemoryLifecycle(longTermMemory);
+            var recallTool = lifecycle.getMemoryRecallTool();
 
-            List<Message> messages = new ArrayList<>();
-            messages.add(Message.of(RoleType.SYSTEM, "You are a helpful assistant."));
-            messages.add(Message.of(RoleType.USER, "Tell me about preferences"));
+            // Create execution context with userId
+            ExecutionContext context = ExecutionContext.builder()
+                .userId(USER_ID)
+                .sessionId("test-session")
+                .build();
+
+            // Before run sets namespace from context
+            lifecycle.beforeAgentRun(new AtomicReference<>("test query"), context);
 
             CompletionRequest request = new CompletionRequest();
-            request.messages = messages;
+            request.messages = new ArrayList<>();
+            request.messages.add(Message.of(RoleType.USER, "Tell me about preferences"));
 
-            // Trigger beforeModel to inject memories
-            lifecycle.beforeModel(request, null);
+            // beforeModel should set the namespace on the tool
+            lifecycle.beforeModel(request, context);
 
-            // Should have injected memory tool call messages (2 messages added)
-            assertTrue(request.messages.size() > 2);
+            // Verify the tool now has the correct namespace
+            assertNotNull(recallTool.getCurrentNamespace());
+            assertEquals(Namespace.forUser(USER_ID), recallTool.getCurrentNamespace());
+
             longTermMemory.endSession();
         }
     }

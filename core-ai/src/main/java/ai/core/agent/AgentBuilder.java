@@ -321,6 +321,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             : UnifiedMemoryConfig.defaultConfig().getMaxRecallRecords();
         var lifecycle = new UnifiedMemoryLifecycle(this.longTermMemory, maxRecallRecords);
         agent.agentLifecycles.add(lifecycle);
+
+        // Auto-register MemoryRecallTool for LLM-driven memory recall
+        var memoryRecallTool = lifecycle.getMemoryRecallTool();
+        agent.toolCalls.add(memoryRecallTool);
     }
 
     /**
