@@ -22,7 +22,7 @@ public class MemoryRecord {
     }
 
     private String id;
-    private String userId;
+    private Namespace namespace;
     private String content;
     private MemoryType type;
 
@@ -64,12 +64,35 @@ public class MemoryRecord {
         this.id = id;
     }
 
-    public String getUserId() {
-        return userId;
+    public Namespace getNamespace() {
+        return namespace;
     }
 
+    public void setNamespace(Namespace namespace) {
+        this.namespace = namespace;
+    }
+
+    /**
+     * Get user ID from namespace (convenience method).
+     * Returns the last part of namespace path.
+     *
+     * @return user ID or null if namespace is not set
+     * @deprecated Use {@link #getNamespace()} instead for more flexible scoping
+     */
+    @Deprecated
+    public String getUserId() {
+        return namespace != null ? namespace.getLast() : null;
+    }
+
+    /**
+     * Set namespace from user ID (convenience method).
+     *
+     * @param userId user identifier
+     * @deprecated Use {@link #setNamespace(Namespace)} instead for more flexible scoping
+     */
+    @Deprecated
     public void setUserId(String userId) {
-        this.userId = userId;
+        this.namespace = userId != null ? Namespace.forUser(userId) : null;
     }
 
     public String getContent() {
@@ -184,7 +207,7 @@ public class MemoryRecord {
 
     public static class Builder {
         private String id;
-        private String userId;
+        private Namespace namespace;
         private String content;
         private MemoryType type;
         private Double importance;
@@ -199,8 +222,21 @@ public class MemoryRecord {
             return this;
         }
 
+        public Builder namespace(Namespace namespace) {
+            this.namespace = namespace;
+            return this;
+        }
+
+        /**
+         * Set namespace from user ID (convenience method).
+         *
+         * @param userId user identifier
+         * @return this builder
+         * @deprecated Use {@link #namespace(Namespace)} instead
+         */
+        @Deprecated
         public Builder userId(String userId) {
-            this.userId = userId;
+            this.namespace = userId != null ? Namespace.forUser(userId) : null;
             return this;
         }
 
@@ -243,7 +279,7 @@ public class MemoryRecord {
         public MemoryRecord build() {
             MemoryRecord record = new MemoryRecord();
             if (id != null) record.setId(id);
-            if (userId != null) record.setUserId(userId);
+            if (namespace != null) record.setNamespace(namespace);
             if (content != null) record.setContent(content);
             if (type != null) {
                 record.setType(type);

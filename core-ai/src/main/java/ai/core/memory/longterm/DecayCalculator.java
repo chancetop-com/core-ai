@@ -52,14 +52,6 @@ public final class DecayCalculator {
         return Math.log(2) / halfLifeDays;
     }
 
-    /**
-     * Estimate days until decay factor reaches threshold.
-     * days = -ln(threshold) / lambda
-     *
-     * @param lambda    decay rate
-     * @param threshold target decay threshold
-     * @return estimated days
-     */
     public static double daysUntilThreshold(double lambda, double threshold) {
         if (threshold <= 0 || threshold >= 1) {
             throw new IllegalArgumentException("Threshold must be between 0 and 1 (exclusive)");

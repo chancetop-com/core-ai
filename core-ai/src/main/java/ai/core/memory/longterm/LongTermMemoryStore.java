@@ -40,32 +40,64 @@ public interface LongTermMemoryStore {
     void delete(String id);
 
     /**
-     * Delete all memories for a user.
+     * Delete all memories in a namespace.
+     *
+     * @param namespace the namespace to delete
      */
-    void deleteByUserId(String userId);
+    void deleteByNamespace(Namespace namespace);
+
+    /**
+     * Delete all memories for a user.
+     *
+     * @deprecated Use {@link #deleteByNamespace(Namespace)} instead
+     */
+    @Deprecated
+    default void deleteByUserId(String userId) {
+        deleteByNamespace(Namespace.forUser(userId));
+    }
 
     // ==================== Search ====================
 
     /**
-     * Search memories by vector similarity.
+     * Search memories by vector similarity within a namespace.
      *
-     * @param userId         the user ID for isolation
+     * @param namespace      the namespace for scoping
      * @param queryEmbedding the query vector
      * @param topK           number of results to return
      * @return ranked memory records
      */
-    List<MemoryRecord> search(String userId, float[] queryEmbedding, int topK);
+    List<MemoryRecord> search(Namespace namespace, float[] queryEmbedding, int topK);
 
     /**
-     * Search memories with filter.
+     * Search memories by vector similarity.
      *
-     * @param userId         the user ID for isolation
+     * @deprecated Use {@link #search(Namespace, float[], int)} instead
+     */
+    @Deprecated
+    default List<MemoryRecord> search(String userId, float[] queryEmbedding, int topK) {
+        return search(Namespace.forUser(userId), queryEmbedding, topK);
+    }
+
+    /**
+     * Search memories with filter within a namespace.
+     *
+     * @param namespace      the namespace for scoping
      * @param queryEmbedding the query vector
      * @param topK           number of results to return
      * @param filter         additional filter criteria
      * @return ranked memory records
      */
-    List<MemoryRecord> search(String userId, float[] queryEmbedding, int topK, SearchFilter filter);
+    List<MemoryRecord> search(Namespace namespace, float[] queryEmbedding, int topK, SearchFilter filter);
+
+    /**
+     * Search memories with filter.
+     *
+     * @deprecated Use {@link #search(Namespace, float[], int, SearchFilter)} instead
+     */
+    @Deprecated
+    default List<MemoryRecord> search(String userId, float[] queryEmbedding, int topK, SearchFilter filter) {
+        return search(Namespace.forUser(userId), queryEmbedding, topK, filter);
+    }
 
     // ==================== Access Tracking ====================
 
@@ -87,11 +119,21 @@ public interface LongTermMemoryStore {
     /**
      * Get memories below the decay threshold (candidates for cleanup).
      *
-     * @param userId    the user ID
+     * @param namespace the namespace to check
      * @param threshold decay factor threshold
      * @return memories below threshold
      */
-    List<MemoryRecord> getDecayedMemories(String userId, double threshold);
+    List<MemoryRecord> getDecayedMemories(Namespace namespace, double threshold);
+
+    /**
+     * Get memories below the decay threshold.
+     *
+     * @deprecated Use {@link #getDecayedMemories(Namespace, double)} instead
+     */
+    @Deprecated
+    default List<MemoryRecord> getDecayedMemories(String userId, double threshold) {
+        return getDecayedMemories(Namespace.forUser(userId), threshold);
+    }
 
     /**
      * Clean up memories below the decay threshold.
@@ -133,12 +175,39 @@ public interface LongTermMemoryStore {
     // ==================== Statistics ====================
 
     /**
-     * Get total memory count for a user.
+     * Get total memory count in a namespace.
+     *
+     * @param namespace the namespace to count
+     * @return number of memories
      */
-    int count(String userId);
+    int count(Namespace namespace);
+
+    /**
+     * Get total memory count for a user.
+     *
+     * @deprecated Use {@link #count(Namespace)} instead
+     */
+    @Deprecated
+    default int count(String userId) {
+        return count(Namespace.forUser(userId));
+    }
+
+    /**
+     * Get memory count by type in a namespace.
+     *
+     * @param namespace the namespace to count
+     * @param type      the memory type
+     * @return number of memories of that type
+     */
+    int countByType(Namespace namespace, MemoryType type);
 
     /**
      * Get memory count by type for a user.
+     *
+     * @deprecated Use {@link #countByType(Namespace, MemoryType)} instead
      */
-    int countByType(String userId, MemoryType type);
+    @Deprecated
+    default int countByType(String userId, MemoryType type) {
+        return countByType(Namespace.forUser(userId), type);
+    }
 }
