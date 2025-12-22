@@ -15,7 +15,6 @@ public class LongTermMemoryBuilder {
     private MemoryExtractor extractor;
     private LongTermMemoryConfig config;
     private LongTermMemoryStore store;
-    private NamespaceTemplate namespaceTemplate;
 
     /**
      * Set the LLM provider for embeddings and extraction.
@@ -76,7 +75,7 @@ public class LongTermMemoryBuilder {
             extractor = createDefaultExtractor();
         }
 
-        return new LongTermMemory(store, extractor, llmProvider, config, namespaceTemplate);
+        return new LongTermMemory(store, extractor, llmProvider, config);
     }
 
     /**
