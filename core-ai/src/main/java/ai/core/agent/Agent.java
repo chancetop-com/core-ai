@@ -366,17 +366,7 @@ public class Agent extends Node<Agent> {
     }
 
     private String specialReminder(String toolName, String toolResult) {
-        return """
-                  %s successfully executed.
-                  <system-reminder>
-                  This tool is triggered manually by the user or executed automatically by the system.
-                  please return the tool results directly to the user.
-                  The tool result is :
-                
-                  %s
-                
-                  </system-reminder>
-                """.formatted(toolName, toolResult);
+        return Prompts.TOOL_DIRECT_RETURN_REMINDER_PROMPT.formatted(toolName, toolResult);
     }
 
     private ToolExecutor getToolExecutor() {
