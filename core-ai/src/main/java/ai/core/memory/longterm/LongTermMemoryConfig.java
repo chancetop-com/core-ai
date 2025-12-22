@@ -1,5 +1,7 @@
 package ai.core.memory.longterm;
 
+import ai.core.memory.conflict.ConflictStrategy;
+
 import javax.sql.DataSource;
 
 import java.time.Duration;
@@ -44,6 +46,11 @@ public final class LongTermMemoryConfig {
     private boolean extractOnSessionEnd = true;
     private boolean asyncExtraction = true;
     private Duration extractionTimeout = Duration.ofSeconds(30);
+
+    // Conflict resolution configuration
+    private boolean enableConflictResolution = true;
+    private ConflictStrategy conflictStrategy = ConflictStrategy.NEWEST_WITH_MERGE;
+    private double conflictSimilarityThreshold = 0.8;
 
     private LongTermMemoryConfig() {
     }
@@ -118,6 +125,18 @@ public final class LongTermMemoryConfig {
 
     public Duration getExtractionTimeout() {
         return extractionTimeout;
+    }
+
+    public boolean isEnableConflictResolution() {
+        return enableConflictResolution;
+    }
+
+    public ConflictStrategy getConflictStrategy() {
+        return conflictStrategy;
+    }
+
+    public double getConflictSimilarityThreshold() {
+        return conflictSimilarityThreshold;
     }
 
     /**
@@ -291,6 +310,23 @@ public final class LongTermMemoryConfig {
 
         public Builder extractionTimeout(Duration timeout) {
             config.extractionTimeout = timeout;
+            return this;
+        }
+
+        // Conflict resolution
+
+        public Builder enableConflictResolution(boolean enable) {
+            config.enableConflictResolution = enable;
+            return this;
+        }
+
+        public Builder conflictStrategy(ConflictStrategy strategy) {
+            config.conflictStrategy = strategy;
+            return this;
+        }
+
+        public Builder conflictSimilarityThreshold(double threshold) {
+            config.conflictSimilarityThreshold = threshold;
             return this;
         }
 

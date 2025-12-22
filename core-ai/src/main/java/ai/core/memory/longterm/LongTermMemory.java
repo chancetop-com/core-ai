@@ -3,6 +3,7 @@ package ai.core.memory.longterm;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.Message;
+import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 
@@ -58,8 +59,16 @@ public class LongTermMemory {
                           MemoryExtractor extractor,
                           LLMProvider llmProvider,
                           LongTermMemoryConfig config) {
+        this(store, extractor, llmProvider, config, null);
+    }
+
+    public LongTermMemory(LongTermMemoryStore store,
+                          MemoryExtractor extractor,
+                          LLMProvider llmProvider,
+                          LongTermMemoryConfig config,
+                          MemoryConflictResolver conflictResolver) {
         this.store = store;
-        this.coordinator = new LongTermMemoryCoordinator(store, extractor, llmProvider, config);
+        this.coordinator = new LongTermMemoryCoordinator(store, extractor, llmProvider, config, conflictResolver);
         this.llmProvider = llmProvider;
         this.config = config;
     }
