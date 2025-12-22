@@ -50,18 +50,10 @@ public enum MemoryType {
         return description;
     }
 
-    /**
-     * Default importance score for this memory type (0.0 - 1.0).
-     */
     public double getDefaultImportance() {
         return defaultImportance;
     }
 
-    /**
-     * Decay rate (lambda) for exponential decay.
-     * Higher value means faster decay.
-     * decay = e^(-lambda * days)
-     */
     public double getDecayRate() {
         return decayRate;
     }
