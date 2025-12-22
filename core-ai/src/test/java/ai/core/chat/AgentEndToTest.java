@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * description:
  */
 @Disabled
-public class AgentEndToTest extends IntegrationTest {
+class AgentEndToTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentEndToTest.class);
     @Inject
     LLMProviders llmProviders;
@@ -37,7 +37,7 @@ public class AgentEndToTest extends IntegrationTest {
                 .llmProvider(llmProviders.getProvider())
                 .build();
         var out = agent.run("Hello", ExecutionContext.builder().build());
-        System.out.println(out);
+        LOGGER.info(out);
     }
 
     @Test
