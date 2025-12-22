@@ -94,7 +94,7 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
 }
 
 
-val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
+val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: true
 project(":core-ai") {
     version = "1.2.0-SNAPSHOT"
     dependencies {
@@ -131,5 +131,14 @@ project(":core-ai-api") {
     version = "1.2.0-SNAPSHOT"
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
+    }
+}
+project(":core-ai-benchmark") {
+    version = "1.2.0-SNAPSHOT"
+    dependencies {
+        implementation(project(":core-ai"))
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
 }
