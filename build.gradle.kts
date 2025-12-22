@@ -125,6 +125,9 @@ project(":core-ai") {
         implementation("io.modelcontextprotocol.sdk:mcp:${Versions.MCP_SDK_VERSION}")
         // SQLite JDBC for long-term memory storage
         implementation("org.xerial:sqlite-jdbc:${Versions.SQLITE_JDBC_VERSION}")
+        // Test dependencies for PostgreSQL integration tests
+        testImplementation("org.postgresql:postgresql:${Versions.POSTGRESQL_JDBC_VERSION}")
+        testImplementation("com.zaxxer:HikariCP:${Versions.HIKARICP_VERSION}")
     }
 }
 

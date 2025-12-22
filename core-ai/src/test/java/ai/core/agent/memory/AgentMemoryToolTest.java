@@ -12,7 +12,14 @@ import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
-import ai.core.llm.domain.ToolCallInfo;
+import ai.core.llm.domain.FunctionCall;
+import ai.core.llm.domain.Usage;
+import ai.core.llm.LLMProviderConfig;
+import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.domain.CaptionImageRequest;
+import ai.core.llm.domain.CaptionImageResponse;
+import ai.core.llm.domain.RerankingRequest;
+import ai.core.llm.domain.RerankingResponse;
 import ai.core.memory.longterm.DefaultLongTermMemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
@@ -234,7 +241,7 @@ class AgentMemoryToolTest {
 
         // Before agent run, namespace should be null
         assertTrue(memoryTool.getCurrentNamespace() == null
-            || memoryTool.getCurrentNamespace().getUserId() == null);
+            || memoryTool.getCurrentNamespace().isGlobal());
 
         // After agent run with context, namespace should be set
         ExecutionContext context = ExecutionContext.builder()
@@ -247,7 +254,7 @@ class AgentMemoryToolTest {
         // The lifecycle should have set the namespace
         Namespace ns = memoryTool.getCurrentNamespace();
         assertNotNull(ns, "Namespace should be set after agent run");
-        assertEquals(USER_ID, ns.getUserId(), "UserId should match");
+        assertEquals(Namespace.forUser(USER_ID), ns, "Namespace should match user namespace");
         LOGGER.info("Namespace set to: {}", ns.toPath());
     }
 
@@ -271,90 +278,184 @@ class AgentMemoryToolTest {
     }
 
     private LLMProvider createMockLLMProvider() {
-        LLMProvider mock = mock(LLMProvider.class);
-
-        when(mock.completion(any(CompletionRequest.class))).thenAnswer(inv -> {
-            Choice choice = new Choice();
-            choice.message = Message.of(RoleType.ASSISTANT, "Mock response");
-            choice.finishReason = FinishReason.STOP;
-            return CompletionResponse.of(List.of(choice), null);
-        });
-
-        AtomicInteger counter = new AtomicInteger(0);
-        when(mock.embeddings(any(EmbeddingRequest.class))).thenAnswer(inv -> {
-            EmbeddingRequest req = inv.getArgument(0);
-            List<EmbeddingResponse.EmbeddingData> dataList = new ArrayList<>();
-            for (int i = 0; i < req.query().size(); i++) {
-                float[] emb = new float[EMBEDDING_DIM];
-                int seed = counter.incrementAndGet();
-                Random r = new Random(seed);
-                for (int j = 0; j < EMBEDDING_DIM; j++) {
-                    emb[j] = r.nextFloat() * 2 - 1;
-                }
-                dataList.add(EmbeddingResponse.EmbeddingData.of(req.query().get(i), Embedding.of(emb)));
-            }
-            return EmbeddingResponse.of(dataList, null);
-        });
-
-        return mock;
+        return new SimpleMockLLMProvider();
     }
 
     private LLMProvider createToolCallingMockLLM() {
-        LLMProvider mock = mock(LLMProvider.class);
-        AtomicInteger callCount = new AtomicInteger(0);
-
-        when(mock.completion(any(CompletionRequest.class))).thenAnswer(inv -> {
-            int count = callCount.incrementAndGet();
-
-            if (count == 1) {
-                // First call: LLM decides to call search_memory_tool
-                Choice choice = new Choice();
-                choice.message = Message.of(RoleType.ASSISTANT, null);
-                choice.message.toolCalls = List.of(createToolCallInfo());
-                choice.finishReason = FinishReason.TOOL_CALLS;
-                return CompletionResponse.of(List.of(choice), null);
-            } else {
-                // Second call: LLM responds after getting tool result
-                Choice choice = new Choice();
-                choice.message = Message.of(RoleType.ASSISTANT,
-                    "Based on your preferences, you like concise answers.");
-                choice.finishReason = FinishReason.STOP;
-                return CompletionResponse.of(List.of(choice), null);
-            }
-        });
-
-        AtomicInteger embCounter = new AtomicInteger(0);
-        when(mock.embeddings(any(EmbeddingRequest.class))).thenAnswer(inv -> {
-            EmbeddingRequest req = inv.getArgument(0);
-            List<EmbeddingResponse.EmbeddingData> dataList = new ArrayList<>();
-            for (int i = 0; i < req.query().size(); i++) {
-                float[] emb = new float[EMBEDDING_DIM];
-                int seed = embCounter.incrementAndGet();
-                Random r = new Random(seed);
-                for (int j = 0; j < EMBEDDING_DIM; j++) {
-                    emb[j] = r.nextFloat() * 2 - 1;
-                }
-                dataList.add(EmbeddingResponse.EmbeddingData.of(req.query().get(i), Embedding.of(emb)));
-            }
-            return EmbeddingResponse.of(dataList, null);
-        });
-
-        return mock;
-    }
-
-    private ToolCallInfo createToolCallInfo() {
-        ToolCallInfo info = new ToolCallInfo();
-        info.id = UUID.randomUUID().toString();
-        info.type = "function";
-        info.function = new ToolCallInfo.FunctionInfo();
-        info.function.name = MemoryRecallTool.TOOL_NAME;
-        info.function.arguments = "{\"query\": \"user preferences\"}";
-        return info;
+        return new ToolCallingMockLLMProvider();
     }
 
     private MemoryExtractor createMockExtractor() {
         MemoryExtractor mock = mock(MemoryExtractor.class);
         when(mock.extract(any(Namespace.class), any())).thenReturn(List.of());
         return mock;
+    }
+
+    /**
+     * Simple mock LLM provider that returns basic responses.
+     */
+    static class SimpleMockLLMProvider extends LLMProvider {
+        private final AtomicInteger embCounter = new AtomicInteger(0);
+
+        SimpleMockLLMProvider() {
+            super(new LLMProviderConfig("test-model", 0.7, null));
+        }
+
+        @Override
+        protected CompletionResponse doCompletion(CompletionRequest request) {
+            var response = new CompletionResponse();
+            var choice = new Choice();
+            choice.message = Message.of(RoleType.ASSISTANT, "Mock response");
+            choice.finishReason = FinishReason.STOP;
+            response.choices = List.of(choice);
+            response.usage = createUsage();
+            return response;
+        }
+
+        @Override
+        protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
+            return doCompletion(request);
+        }
+
+        @Override
+        public EmbeddingResponse embeddings(EmbeddingRequest request) {
+            List<EmbeddingResponse.EmbeddingData> dataList = new ArrayList<>();
+            for (int i = 0; i < request.query().size(); i++) {
+                float[] emb = new float[EMBEDDING_DIM];
+                int seed = embCounter.incrementAndGet();
+                Random r = new Random(seed);
+                for (int j = 0; j < EMBEDDING_DIM; j++) {
+                    emb[j] = r.nextFloat() * 2 - 1;
+                }
+                dataList.add(EmbeddingResponse.EmbeddingData.of(request.query().get(i), Embedding.of(emb)));
+            }
+            return EmbeddingResponse.of(dataList, null);
+        }
+
+        @Override
+        public RerankingResponse rerankings(RerankingRequest request) {
+            return null;
+        }
+
+        @Override
+        public CaptionImageResponse captionImage(CaptionImageRequest request) {
+            return null;
+        }
+
+        @Override
+        public String name() {
+            return "simple-mock";
+        }
+
+        @Override
+        public int maxTokens(String model) {
+            return 8000;
+        }
+
+        @Override
+        public int maxTokens() {
+            return 8000;
+        }
+
+        private Usage createUsage() {
+            Usage usage = new Usage();
+            usage.setPromptTokens(10);
+            usage.setCompletionTokens(20);
+            usage.setTotalTokens(30);
+            return usage;
+        }
+    }
+
+    /**
+     * Mock LLM provider that simulates tool calling behavior.
+     */
+    static class ToolCallingMockLLMProvider extends LLMProvider {
+        private final AtomicInteger callCount = new AtomicInteger(0);
+        private final AtomicInteger embCounter = new AtomicInteger(0);
+
+        ToolCallingMockLLMProvider() {
+            super(new LLMProviderConfig("test-model", 0.7, null));
+        }
+
+        @Override
+        protected CompletionResponse doCompletion(CompletionRequest request) {
+            int count = callCount.incrementAndGet();
+            var response = new CompletionResponse();
+            var choice = new Choice();
+
+            if (count == 1) {
+                // First call: LLM decides to call search_memory_tool
+                choice.message = Message.of(RoleType.ASSISTANT, null);
+                choice.message.toolCalls = List.of(FunctionCall.of(
+                    UUID.randomUUID().toString(),
+                    "function",
+                    MemoryRecallTool.TOOL_NAME,
+                    "{\"query\": \"user preferences\"}"
+                ));
+                choice.finishReason = FinishReason.TOOL_CALLS;
+            } else {
+                // Second call: LLM responds after getting tool result
+                choice.message = Message.of(RoleType.ASSISTANT,
+                    "Based on your preferences, you like concise answers.");
+                choice.finishReason = FinishReason.STOP;
+            }
+
+            response.choices = List.of(choice);
+            response.usage = createUsage();
+            return response;
+        }
+
+        @Override
+        protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
+            return doCompletion(request);
+        }
+
+        @Override
+        public EmbeddingResponse embeddings(EmbeddingRequest request) {
+            List<EmbeddingResponse.EmbeddingData> dataList = new ArrayList<>();
+            for (int i = 0; i < request.query().size(); i++) {
+                float[] emb = new float[EMBEDDING_DIM];
+                int seed = embCounter.incrementAndGet();
+                Random r = new Random(seed);
+                for (int j = 0; j < EMBEDDING_DIM; j++) {
+                    emb[j] = r.nextFloat() * 2 - 1;
+                }
+                dataList.add(EmbeddingResponse.EmbeddingData.of(request.query().get(i), Embedding.of(emb)));
+            }
+            return EmbeddingResponse.of(dataList, null);
+        }
+
+        @Override
+        public RerankingResponse rerankings(RerankingRequest request) {
+            return null;
+        }
+
+        @Override
+        public CaptionImageResponse captionImage(CaptionImageRequest request) {
+            return null;
+        }
+
+        @Override
+        public String name() {
+            return "tool-calling-mock";
+        }
+
+        @Override
+        public int maxTokens(String model) {
+            return 8000;
+        }
+
+        @Override
+        public int maxTokens() {
+            return 8000;
+        }
+
+        private Usage createUsage() {
+            Usage usage = new Usage();
+            usage.setPromptTokens(10);
+            usage.setCompletionTokens(20);
+            usage.setTotalTokens(30);
+            return usage;
+        }
     }
 }

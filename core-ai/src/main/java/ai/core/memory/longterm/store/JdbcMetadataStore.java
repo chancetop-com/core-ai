@@ -133,9 +133,9 @@ public class JdbcMetadataStore implements MemoryMetadataStore {
         stmt.setInt(6, record.getAccessCount());
         stmt.setDouble(7, record.getDecayFactor());
         stmt.setString(8, record.getSessionId());
-        stmt.setString(9, formatTimestamp(record.getCreatedAt()));
-        stmt.setString(10, formatTimestamp(record.getLastAccessedAt()));
-        stmt.setString(11, serializeMetadata(record.getMetadata()));
+        setTimestampParam(stmt, 9, record.getCreatedAt());
+        setTimestampParam(stmt, 10, record.getLastAccessedAt());
+        setJsonParam(stmt, 11, serializeMetadata(record.getMetadata()));
     }
 
     @Override
@@ -260,7 +260,7 @@ public class JdbcMetadataStore implements MemoryMetadataStore {
             """;
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, formatTimestamp(Instant.now()));
+            setTimestampParam(stmt, 1, Instant.now());
             stmt.setString(2, id);
             stmt.executeUpdate();
         } catch (SQLException e) {
@@ -280,9 +280,9 @@ public class JdbcMetadataStore implements MemoryMetadataStore {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             conn.setAutoCommit(false);
-            String now = formatTimestamp(Instant.now());
+            Instant now = Instant.now();
             for (String id : ids) {
-                stmt.setString(1, now);
+                setTimestampParam(stmt, 1, now);
                 stmt.setString(2, id);
                 stmt.addBatch();
             }
@@ -401,8 +401,8 @@ public class JdbcMetadataStore implements MemoryMetadataStore {
         record.setAccessCount(rs.getInt("access_count"));
         record.setDecayFactor(rs.getDouble("decay_factor"));
         record.setSessionId(rs.getString("session_id"));
-        record.setCreatedAt(parseTimestamp(rs.getString("created_at")));
-        record.setLastAccessedAt(parseTimestamp(rs.getString("last_accessed_at")));
+        record.setCreatedAt(getTimestampFromResultSet(rs, "created_at"));
+        record.setLastAccessedAt(getTimestampFromResultSet(rs, "last_accessed_at"));
 
         String metadataJson = rs.getString("metadata");
         if (metadataJson != null && !metadataJson.isEmpty()) {
@@ -412,8 +412,33 @@ public class JdbcMetadataStore implements MemoryMetadataStore {
         return record;
     }
 
-    private String formatTimestamp(Instant instant) {
-        return instant != null ? instant.toString() : Instant.now().toString();
+    private void setTimestampParam(PreparedStatement stmt, int index, Instant instant) throws SQLException {
+        Instant value = instant != null ? instant : Instant.now();
+        if (storeType == LongTermMemoryConfig.MetadataStoreType.POSTGRESQL) {
+            stmt.setTimestamp(index, Timestamp.from(value));
+        } else {
+            stmt.setString(index, value.toString());
+        }
+    }
+
+    private void setJsonParam(PreparedStatement stmt, int index, String json) throws SQLException {
+        if (storeType == LongTermMemoryConfig.MetadataStoreType.POSTGRESQL) {
+            if (json == null) {
+                stmt.setNull(index, java.sql.Types.OTHER);
+            } else {
+                stmt.setObject(index, json, java.sql.Types.OTHER);
+            }
+        } else {
+            stmt.setString(index, json);
+        }
+    }
+
+    private Instant getTimestampFromResultSet(ResultSet rs, String column) throws SQLException {
+        if (storeType == LongTermMemoryConfig.MetadataStoreType.POSTGRESQL) {
+            Timestamp ts = rs.getTimestamp(column);
+            return ts != null ? ts.toInstant() : Instant.now();
+        }
+        return parseTimestamp(rs.getString(column));
     }
 
     private Instant parseTimestamp(String timestamp) {
