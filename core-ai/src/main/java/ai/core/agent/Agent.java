@@ -106,10 +106,6 @@ public class Agent extends Node<Agent> {
         return getTracer();
     }
 
-    private String doExecute(String query, Map<String, Object> variables) {
-        return doExecute(query, variables, false);
-    }
-
     private void chatCommand(String query, Map<String, Object> variables) {
         chatTurns(query, variables, this::constructionFakeSlashCommandAssistantMsg);
     }
@@ -136,7 +132,9 @@ public class Agent extends Node<Agent> {
             reflectionLoop(variables);
         }
     }
-
+    private String doExecute(String query, Map<String, Object> variables) {
+        return doExecute(query, variables, false);
+    }
     private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
         boolean isFirstExecution = getInput() == null;
         if (isFirstExecution) {
@@ -282,6 +280,7 @@ public class Agent extends Node<Agent> {
 
 
     private Choice constructionFakeSlashCommandAssistantMsg(List<Message> messages, List<Tool> tools) {
+        logger.debug("all tools size is {}", tools.size());
         String query = messages.getLast().content;
         var command = SlashCommandParser.parse(query);
         if (command.isNotValid()) {
