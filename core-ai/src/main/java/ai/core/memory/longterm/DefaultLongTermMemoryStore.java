@@ -1,12 +1,9 @@
 package ai.core.memory.longterm;
 
-import ai.core.llm.domain.Message;
 import ai.core.memory.longterm.store.InMemoryMetadataStore;
-import ai.core.memory.longterm.store.InMemoryRawConversationStore;
 import ai.core.memory.longterm.store.InMemoryVectorStore;
 import ai.core.memory.longterm.store.MemoryMetadataStore;
 import ai.core.memory.longterm.store.MemoryVectorStore;
-import ai.core.memory.longterm.store.RawConversationStore;
 import ai.core.memory.longterm.store.VectorSearchResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +16,7 @@ import java.util.stream.Collectors;
 
 /**
  * Default implementation of LongTermMemoryStore.
- * Coordinates metadata store, vector store, and raw conversation store.
+ * Coordinates metadata store and vector store.
  *
  * @author xander
  */
@@ -31,49 +28,20 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
 
     private final MemoryMetadataStore metadataStore;
     private final MemoryVectorStore vectorStore;
-    private final RawConversationStore rawConversationStore;
     private final LongTermMemoryConfig config;
 
     public DefaultLongTermMemoryStore(LongTermMemoryConfig config) {
         this.config = config;
-        this.metadataStore = createMetadataStore(config);
-        this.vectorStore = createVectorStore(config);
-        this.rawConversationStore = createRawConversationStore(config);
+        this.metadataStore = new InMemoryMetadataStore();
+        this.vectorStore = new InMemoryVectorStore();
     }
 
     public DefaultLongTermMemoryStore(MemoryMetadataStore metadataStore,
                                       MemoryVectorStore vectorStore,
-                                      RawConversationStore rawConversationStore,
                                       LongTermMemoryConfig config) {
         this.metadataStore = metadataStore;
         this.vectorStore = vectorStore;
-        this.rawConversationStore = rawConversationStore;
         this.config = config;
-    }
-
-    // ==================== Factory Methods ====================
-
-    private MemoryMetadataStore createMetadataStore(LongTermMemoryConfig config) {
-        return switch (config.getMetadataStoreType()) {
-            case IN_MEMORY -> new InMemoryMetadataStore();
-            case SQLITE, POSTGRESQL -> throw new UnsupportedOperationException(
-                "SQL metadata store not implemented yet. Use IN_MEMORY for now.");
-        };
-    }
-
-    private MemoryVectorStore createVectorStore(LongTermMemoryConfig config) {
-        return switch (config.getVectorStoreType()) {
-            case IN_MEMORY -> new InMemoryVectorStore();
-            case HNSW_LOCAL, MILVUS -> throw new UnsupportedOperationException(
-                "HNSW/Milvus vector store not implemented yet. Use IN_MEMORY for now.");
-        };
-    }
-
-    private RawConversationStore createRawConversationStore(LongTermMemoryConfig config) {
-        if (!config.isEnableRawStorage()) {
-            return null;
-        }
-        return new InMemoryRawConversationStore();
     }
 
     // ==================== Basic CRUD ====================
@@ -120,10 +88,6 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
         metadataStore.deleteByUserId(path);
         vectorStore.deleteAll(ids);
 
-        if (rawConversationStore != null) {
-            rawConversationStore.deleteByUserId(path);
-        }
-
         LOGGER.info("Deleted {} memories for namespace: {}", ids.size(), path);
     }
 
@@ -137,7 +101,6 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
     @Override
     public List<MemoryRecord> search(Namespace namespace, float[] queryEmbedding, int topK, SearchFilter filter) {
         String path = namespace.toPath();
-        // 1. Get candidate IDs for this namespace (with filter)
         List<MemoryRecord> candidates = metadataStore.findByUserIdWithFilter(path, filter);
         if (candidates.isEmpty()) {
             return List.of();
@@ -145,18 +108,12 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
 
         List<String> candidateIds = candidates.stream().map(MemoryRecord::getId).toList();
 
-        // 2. Vector search within candidates
         int searchK = Math.min(topK * RERANKING_MULTIPLIER, candidateIds.size());
-        List<VectorSearchResult> vectorResults = vectorStore.search(
-            queryEmbedding, searchK, candidateIds);
+        List<VectorSearchResult> vectorResults = vectorStore.search(queryEmbedding, searchK, candidateIds);
 
-        // 3. Build ID to similarity map
         Map<String, Double> similarityMap = vectorResults.stream()
-            .collect(Collectors.toMap(
-                VectorSearchResult::id,
-                VectorSearchResult::similarity));
+            .collect(Collectors.toMap(VectorSearchResult::id, VectorSearchResult::similarity));
 
-        // 4. Calculate effective scores and rank
         List<MemoryRecord> results = candidates.stream()
             .filter(r -> similarityMap.containsKey(r.getId()))
             .sorted(Comparator.comparingDouble(
@@ -165,7 +122,6 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
             .limit(topK)
             .toList();
 
-        // 5. Record access (async could be better)
         if (!results.isEmpty()) {
             List<String> accessedIds = results.stream().map(MemoryRecord::getId).toList();
             metadataStore.recordAccess(accessedIds);
@@ -223,59 +179,6 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
         return ids.size();
     }
 
-    // ==================== Raw Conversation Storage ====================
-
-    @Override
-    public void saveRawConversation(RawConversationRecord record) {
-        if (rawConversationStore == null) {
-            LOGGER.debug("Raw conversation storage is disabled");
-            return;
-        }
-        rawConversationStore.save(record);
-        LOGGER.debug("Saved raw conversation: sessionId={}", record.getSessionId());
-    }
-
-    @Override
-    public Optional<RawConversationRecord> getRawConversation(String id) {
-        if (rawConversationStore == null) {
-            return Optional.empty();
-        }
-        return rawConversationStore.findById(id);
-    }
-
-    @Override
-    public List<Message> getSourceConversation(MemoryRecord memory) {
-        if (rawConversationStore == null || memory.getRawRecordId() == null) {
-            return List.of();
-        }
-
-        Optional<RawConversationRecord> rawOpt = rawConversationStore.findById(memory.getRawRecordId());
-        if (rawOpt.isEmpty()) {
-            return List.of();
-        }
-
-        RawConversationRecord raw = rawOpt.get();
-        Integer start = memory.getStartTurnIndex();
-        Integer end = memory.getEndTurnIndex();
-
-        if (start != null && end != null) {
-            return raw.getMessagesInRange(start, end);
-        }
-
-        return raw.getMessages();
-    }
-
-    @Override
-    public int cleanupExpiredRawConversations() {
-        if (rawConversationStore == null) {
-            return 0;
-        }
-
-        int deleted = rawConversationStore.deleteExpired();
-        LOGGER.info("Cleaned up {} expired raw conversations", deleted);
-        return deleted;
-    }
-
     // ==================== Statistics ====================
 
     @Override
@@ -296,9 +199,5 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
 
     public MemoryVectorStore getVectorStore() {
         return vectorStore;
-    }
-
-    public RawConversationStore getRawConversationStore() {
-        return rawConversationStore;
     }
 }
