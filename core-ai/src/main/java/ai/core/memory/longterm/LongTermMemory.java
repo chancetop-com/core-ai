@@ -7,7 +7,6 @@ import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Long-term memory facade for Agent integration.
@@ -21,15 +20,14 @@ import java.util.Map;
  *   <li>Global: memories shared across all users</li>
  * </ul>
  *
- * <p>Usage example with namespace:
+ * <p>Usage example:
  * <pre>{@code
  * LongTermMemory memory = LongTermMemory.builder()
  *     .llmProvider(llmProvider)
- *     .namespaceTemplate(NamespaceTemplate.of("{org_id}", "{user_id}"))
  *     .build();
  *
- * // Start session with context variables
- * memory.startSession(Map.of("org_id", "acme", "user_id", "john"), "session-123");
+ * // Start session with namespace
+ * memory.startSession(Namespace.of("acme", "john"), "session-123");
  *
  * // Or use simple user-scoped namespace
  * memory.startSessionForUser("user-123", "session-456");
@@ -53,7 +51,6 @@ public class LongTermMemory {
     private final LongTermMemoryCoordinator coordinator;
     private final LLMProvider llmProvider;
     private final LongTermMemoryConfig config;
-    private final NamespaceTemplate namespaceTemplate;
 
     private Namespace currentNamespace;
     private String currentSessionId;
@@ -62,38 +59,16 @@ public class LongTermMemory {
                           MemoryExtractor extractor,
                           LLMProvider llmProvider,
                           LongTermMemoryConfig config) {
-        this(store, extractor, llmProvider, config, NamespaceTemplate.USER_SCOPED);
-    }
-
-    public LongTermMemory(LongTermMemoryStore store,
-                          MemoryExtractor extractor,
-                          LLMProvider llmProvider,
-                          LongTermMemoryConfig config,
-                          NamespaceTemplate namespaceTemplate) {
         this.store = store;
         this.coordinator = new LongTermMemoryCoordinator(store, extractor, llmProvider, config);
         this.llmProvider = llmProvider;
         this.config = config;
-        this.namespaceTemplate = namespaceTemplate != null ? namespaceTemplate : NamespaceTemplate.USER_SCOPED;
     }
 
     // ==================== Session Management ====================
 
     /**
-     * Start a new session with namespace variables.
-     * The namespace is resolved from the template using provided variables.
-     *
-     * @param namespaceVars variables for namespace resolution (e.g., user_id, org_id)
-     * @param sessionId     session identifier
-     */
-    public void startSession(Map<String, String> namespaceVars, String sessionId) {
-        this.currentNamespace = namespaceTemplate.resolve(namespaceVars);
-        this.currentSessionId = sessionId;
-        coordinator.initSession(currentNamespace, sessionId);
-    }
-
-    /**
-     * Start a new session with explicit namespace.
+     * Start a new session with namespace.
      *
      * @param namespace the namespace for this session
      * @param sessionId session identifier
@@ -309,9 +284,5 @@ public class LongTermMemory {
 
     public LongTermMemoryConfig getConfig() {
         return config;
-    }
-
-    public NamespaceTemplate getNamespaceTemplate() {
-        return namespaceTemplate;
     }
 }

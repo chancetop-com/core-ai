@@ -8,55 +8,44 @@ import java.util.List;
  *
  * @author xander
  */
-public class SearchFilter {
+public final class SearchFilter {
+
     public static Builder builder() {
         return new Builder();
     }
 
-    private List<MemoryType> types;
-    private Double minImportance;
-    private Double minDecayFactor;
-    private Instant createdAfter;
-    private Instant createdBefore;
+    private final List<MemoryType> types;
+    private final Double minImportance;
+    private final Double minDecayFactor;
+    private final Instant createdAfter;
+    private final Instant createdBefore;
+
+    private SearchFilter(Builder builder) {
+        this.types = builder.types;
+        this.minImportance = builder.minImportance;
+        this.minDecayFactor = builder.minDecayFactor;
+        this.createdAfter = builder.createdAfter;
+        this.createdBefore = builder.createdBefore;
+    }
 
     public List<MemoryType> getTypes() {
         return types;
-    }
-
-    public void setTypes(List<MemoryType> types) {
-        this.types = types;
     }
 
     public Double getMinImportance() {
         return minImportance;
     }
 
-    public void setMinImportance(Double minImportance) {
-        this.minImportance = minImportance;
-    }
-
     public Double getMinDecayFactor() {
         return minDecayFactor;
-    }
-
-    public void setMinDecayFactor(Double minDecayFactor) {
-        this.minDecayFactor = minDecayFactor;
     }
 
     public Instant getCreatedAfter() {
         return createdAfter;
     }
 
-    public void setCreatedAfter(Instant createdAfter) {
-        this.createdAfter = createdAfter;
-    }
-
     public Instant getCreatedBefore() {
         return createdBefore;
-    }
-
-    public void setCreatedBefore(Instant createdBefore) {
-        this.createdBefore = createdBefore;
     }
 
     /**
@@ -120,13 +109,7 @@ public class SearchFilter {
         }
 
         public SearchFilter build() {
-            SearchFilter filter = new SearchFilter();
-            filter.setTypes(types);
-            filter.setMinImportance(minImportance);
-            filter.setMinDecayFactor(minDecayFactor);
-            filter.setCreatedAfter(createdAfter);
-            filter.setCreatedBefore(createdBefore);
-            return filter;
+            return new SearchFilter(this);
         }
     }
 }
