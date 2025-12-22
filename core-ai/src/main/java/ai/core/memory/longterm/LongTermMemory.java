@@ -51,7 +51,6 @@ public class LongTermMemory {
     private final LongTermMemoryCoordinator coordinator;
     private final LLMProvider llmProvider;
     private final LongTermMemoryConfig config;
-
     private Namespace currentNamespace;
     private String currentSessionId;
 
@@ -66,67 +65,25 @@ public class LongTermMemory {
     }
 
     // ==================== Session Management ====================
-
-    /**
-     * Start a new session with namespace.
-     *
-     * @param namespace the namespace for this session
-     * @param sessionId session identifier
-     */
     public void startSession(Namespace namespace, String sessionId) {
         this.currentNamespace = namespace;
         this.currentSessionId = sessionId;
         coordinator.initSession(namespace, sessionId);
     }
 
-    /**
-     * Start a new session with userId and sessionId.
-     *
-     * @param userId    user identifier
-     * @param sessionId session identifier
-     * @deprecated Use {@link #startSession(Namespace, String)} or {@link #startSessionForUser(String, String)}
-     */
-    @Deprecated
-    public void startSession(String userId, String sessionId) {
-        startSessionForUser(userId, sessionId);
-    }
-
-    /**
-     * Start a user-scoped session (convenience method).
-     *
-     * @param userId    user identifier
-     * @param sessionId session identifier
-     */
     public void startSessionForUser(String userId, String sessionId) {
         startSession(Namespace.forUser(userId), sessionId);
     }
 
-    /**
-     * Process a message during agent execution.
-     * Buffers the message for extraction.
-     *
-     * @param message the message to process
-     */
     public void onMessage(Message message) {
         coordinator.onMessage(message);
     }
 
-    /**
-     * End the current session. Triggers extraction of remaining buffer.
-     */
     public void endSession() {
         coordinator.onSessionEnd();
     }
 
     // ==================== Memory Recall ====================
-
-    /**
-     * Recall relevant memories for a query in current namespace.
-     *
-     * @param query the query to search for
-     * @param topK  maximum number of memories to return
-     * @return list of relevant memories
-     */
     public List<MemoryRecord> recall(String query, int topK) {
         if (currentNamespace == null) {
             return List.of();
@@ -134,14 +91,6 @@ public class LongTermMemory {
         return recall(currentNamespace, query, topK);
     }
 
-    /**
-     * Recall relevant memories from a specific namespace.
-     *
-     * @param namespace the namespace to search
-     * @param query     the query to search for
-     * @param topK      maximum number of memories to return
-     * @return list of relevant memories
-     */
     public List<MemoryRecord> recall(Namespace namespace, String query, int topK) {
         float[] queryEmbedding = generateEmbedding(query);
         if (queryEmbedding == null) {
@@ -150,14 +99,6 @@ public class LongTermMemory {
         return store.search(namespace, queryEmbedding, topK);
     }
 
-    /**
-     * Recall memories with type filter.
-     *
-     * @param query the query to search for
-     * @param topK  maximum number of memories to return
-     * @param types memory types to include
-     * @return list of relevant memories
-     */
     public List<MemoryRecord> recall(String query, int topK, MemoryType... types) {
         if (currentNamespace == null || types == null || types.length == 0) {
             return recall(query, topK);
@@ -174,24 +115,7 @@ public class LongTermMemory {
         return store.search(currentNamespace, queryEmbedding, topK, filter);
     }
 
-    /**
-     * Recall relevant memories for a specific user.
-     *
-     * @deprecated Use {@link #recall(Namespace, String, int)} instead
-     */
-    @Deprecated
-    public List<MemoryRecord> recall(String userId, String query, int topK) {
-        return recall(Namespace.forUser(userId), query, topK);
-    }
-
     // ==================== Context Formatting ====================
-
-    /**
-     * Format recalled memories as context string for prompt injection.
-     *
-     * @param memories list of memories
-     * @return formatted string for prompt context
-     */
     public String formatAsContext(List<MemoryRecord> memories) {
         if (memories == null || memories.isEmpty()) {
             return "";
@@ -206,37 +130,18 @@ public class LongTermMemory {
     }
 
     // ==================== Status Methods ====================
-
-    /**
-     * Check if long-term memory has any records for current namespace.
-     *
-     * @return true if memories exist
-     */
     public boolean hasMemories() {
         return currentNamespace != null && store.count(currentNamespace) > 0;
     }
 
-    /**
-     * Get memory count for current namespace.
-     *
-     * @return number of memories
-     */
     public int getMemoryCount() {
         return currentNamespace != null ? store.count(currentNamespace) : 0;
     }
 
-    /**
-     * Wait for any pending extraction to complete.
-     */
     public void waitForExtraction() {
         coordinator.waitForCompletion();
     }
 
-    /**
-     * Check if extraction is in progress.
-     *
-     * @return true if extraction is running
-     */
     public boolean isExtractionInProgress() {
         return coordinator.isExtractionInProgress();
     }
@@ -262,16 +167,6 @@ public class LongTermMemory {
 
     public Namespace getCurrentNamespace() {
         return currentNamespace;
-    }
-
-    /**
-     * Get current user ID (convenience method).
-     *
-     * @deprecated Use {@link #getCurrentNamespace()} instead
-     */
-    @Deprecated
-    public String getCurrentUserId() {
-        return currentNamespace != null ? currentNamespace.getLast() : null;
     }
 
     public String getCurrentSessionId() {

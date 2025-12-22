@@ -2,8 +2,10 @@ package ai.core.memory.longterm;
 
 import ai.core.memory.longterm.store.InMemoryMetadataStore;
 import ai.core.memory.longterm.store.InMemoryVectorStore;
+import ai.core.memory.longterm.store.JdbcMetadataStore;
 import ai.core.memory.longterm.store.MemoryMetadataStore;
 import ai.core.memory.longterm.store.MemoryVectorStore;
+import ai.core.memory.longterm.store.MilvusMemoryVectorStore;
 import ai.core.memory.longterm.store.VectorSearchResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +27,58 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultLongTermMemoryStore.class);
     private static final int RERANKING_MULTIPLIER = 2;
     private static final double DECAY_UPDATE_THRESHOLD = 0.001;
+
+    public static DefaultLongTermMemoryStore inMemory() {
+        return new DefaultLongTermMemoryStore(LongTermMemoryConfig.builder().build());
+    }
+
+    public static DefaultLongTermMemoryStore withSqlite(javax.sql.DataSource dataSource) {
+        var config = LongTermMemoryConfig.builder().sqlite(dataSource).build();
+        return create(config);
+    }
+
+    public static DefaultLongTermMemoryStore withPostgres(javax.sql.DataSource dataSource) {
+        var config = LongTermMemoryConfig.builder().postgres(dataSource).build();
+        return create(config);
+    }
+
+    public static DefaultLongTermMemoryStore create(LongTermMemoryConfig config) {
+        MemoryMetadataStore metadataStore = createMetadataStore(config);
+        MemoryVectorStore vectorStore = createVectorStore(config);
+        return new DefaultLongTermMemoryStore(metadataStore, vectorStore, config);
+    }
+
+    private static MemoryMetadataStore createMetadataStore(LongTermMemoryConfig config) {
+        return switch (config.getMetadataStoreType()) {
+            case IN_MEMORY -> new InMemoryMetadataStore();
+            case SQLITE, POSTGRESQL -> {
+                var dataSource = config.getDataSource();
+                if (dataSource == null) {
+                    throw new IllegalArgumentException(
+                        "DataSource is required for " + config.getMetadataStoreType()
+                        + " metadata store. Use sqlite(dataSource) or postgres(dataSource) in config builder.");
+                }
+                var store = new JdbcMetadataStore(dataSource, config.getMetadataStoreType());
+                store.initialize();
+                yield store;
+            }
+        };
+    }
+
+    private static MemoryVectorStore createVectorStore(LongTermMemoryConfig config) {
+        return switch (config.getVectorStoreType()) {
+            case IN_MEMORY -> new InMemoryVectorStore();
+            case MILVUS -> {
+                if (config.getMilvusHost() == null) {
+                    throw new IllegalArgumentException(
+                        "Milvus host is required. Use milvus(host) in config builder.");
+                }
+                yield new MilvusMemoryVectorStore(config);
+            }
+            case HNSW_LOCAL -> throw new UnsupportedOperationException(
+                "HNSW_LOCAL vector store not yet implemented for long-term memory");
+        };
+    }
 
     private final MemoryMetadataStore metadataStore;
     private final MemoryVectorStore vectorStore;

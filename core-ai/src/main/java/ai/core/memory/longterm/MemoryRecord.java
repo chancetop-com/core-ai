@@ -51,8 +51,6 @@ public class MemoryRecord {
         this.metadata = new HashMap<>();
     }
 
-    // Getters and Setters
-
     public String getId() {
         return id;
     }
@@ -67,29 +65,6 @@ public class MemoryRecord {
 
     public void setNamespace(Namespace namespace) {
         this.namespace = namespace;
-    }
-
-    /**
-     * Get user ID from namespace (convenience method).
-     * Returns the last part of namespace path.
-     *
-     * @return user ID or null if namespace is not set
-     * @deprecated Use {@link #getNamespace()} instead for more flexible scoping
-     */
-    @Deprecated
-    public String getUserId() {
-        return namespace != null ? namespace.getLast() : null;
-    }
-
-    /**
-     * Set namespace from user ID (convenience method).
-     *
-     * @param userId user identifier
-     * @deprecated Use {@link #setNamespace(Namespace)} instead for more flexible scoping
-     */
-    @Deprecated
-    public void setUserId(String userId) {
-        this.namespace = userId != null ? Namespace.forUser(userId) : null;
     }
 
     public String getContent() {
@@ -194,19 +169,6 @@ public class MemoryRecord {
 
         public Builder namespace(Namespace namespace) {
             this.namespace = namespace;
-            return this;
-        }
-
-        /**
-         * Set namespace from user ID (convenience method).
-         *
-         * @param userId user identifier
-         * @return this builder
-         * @deprecated Use {@link #namespace(Namespace)} instead
-         */
-        @Deprecated
-        public Builder userId(String userId) {
-            this.namespace = userId != null ? Namespace.forUser(userId) : null;
             return this;
         }
 

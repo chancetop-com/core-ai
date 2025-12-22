@@ -48,9 +48,6 @@ public final class SearchFilter {
         return createdBefore;
     }
 
-    /**
-     * Check if a memory record matches this filter.
-     */
     public boolean matches(MemoryRecord record) {
         if (types != null && !types.isEmpty() && !types.contains(record.getType())) {
             return false;

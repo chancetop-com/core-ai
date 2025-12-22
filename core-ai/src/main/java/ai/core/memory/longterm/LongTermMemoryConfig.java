@@ -1,5 +1,7 @@
 package ai.core.memory.longterm;
 
+import javax.sql.DataSource;
+
 import java.time.Duration;
 
 /**
@@ -15,9 +17,7 @@ public final class LongTermMemoryConfig {
 
     // Metadata store configuration
     private MetadataStoreType metadataStoreType = MetadataStoreType.IN_MEMORY;
-    private String jdbcUrl;
-    private String jdbcUsername;
-    private String jdbcPassword;
+    private DataSource dataSource;
 
     // Vector store configuration
     private VectorStoreType vectorStoreType = VectorStoreType.IN_MEMORY;
@@ -48,22 +48,12 @@ public final class LongTermMemoryConfig {
     private LongTermMemoryConfig() {
     }
 
-    // Getters
-
     public MetadataStoreType getMetadataStoreType() {
         return metadataStoreType;
     }
 
-    public String getJdbcUrl() {
-        return jdbcUrl;
-    }
-
-    public String getJdbcUsername() {
-        return jdbcUsername;
-    }
-
-    public String getJdbcPassword() {
-        return jdbcPassword;
+    public DataSource getDataSource() {
+        return dataSource;
     }
 
     public VectorStoreType getVectorStoreType() {
@@ -151,40 +141,95 @@ public final class LongTermMemoryConfig {
     public static class Builder {
         private final LongTermMemoryConfig config = new LongTermMemoryConfig();
 
-        // Metadata store
+        // Metadata store - convenience methods
 
-        public Builder metadataStoreType(MetadataStoreType type) {
-            config.metadataStoreType = type;
+        /**
+         * Configure SQLite as metadata store.
+         */
+        public Builder sqlite(DataSource dataSource) {
+            config.metadataStoreType = MetadataStoreType.SQLITE;
+            config.dataSource = dataSource;
             return this;
         }
 
-        public Builder jdbcUrl(String url) {
-            config.jdbcUrl = url;
+        /**
+         * Configure PostgreSQL as metadata store.
+         */
+        public Builder postgres(DataSource dataSource) {
+            config.metadataStoreType = MetadataStoreType.POSTGRESQL;
+            config.dataSource = dataSource;
             return this;
         }
 
-        public Builder jdbcCredentials(String username, String password) {
-            config.jdbcUsername = username;
-            config.jdbcPassword = password;
+        /**
+         * Configure in-memory metadata store (default).
+         */
+        public Builder inMemoryMetadata() {
+            config.metadataStoreType = MetadataStoreType.IN_MEMORY;
+            config.dataSource = null;
             return this;
         }
 
-        // Vector store
+        // Vector store - convenience methods
 
-        public Builder vectorStoreType(VectorStoreType type) {
-            config.vectorStoreType = type;
-            return this;
-        }
-
+        /**
+         * Configure Milvus as vector store.
+         */
         public Builder milvus(String host, int port, String collection) {
+            config.vectorStoreType = VectorStoreType.MILVUS;
             config.milvusHost = host;
             config.milvusPort = port;
             config.milvusCollection = collection;
             return this;
         }
 
-        public Builder hnswIndexPath(String path) {
-            config.hnswIndexPath = path;
+        /**
+         * Configure Milvus with default port and collection.
+         */
+        public Builder milvus(String host) {
+            return milvus(host, 19530, "long_term_memory");
+        }
+
+        /**
+         * Configure local HNSW as vector store.
+         */
+        public Builder hnswLocal(String indexPath) {
+            config.vectorStoreType = VectorStoreType.HNSW_LOCAL;
+            config.hnswIndexPath = indexPath;
+            return this;
+        }
+
+        /**
+         * Configure in-memory vector store (default).
+         */
+        public Builder inMemoryVector() {
+            config.vectorStoreType = VectorStoreType.IN_MEMORY;
+            return this;
+        }
+
+        // Low-level setters for advanced configuration
+
+        /**
+         * Set metadata store type directly. Prefer using sqlite() or postgres() methods.
+         */
+        public Builder metadataStoreType(MetadataStoreType type) {
+            config.metadataStoreType = type;
+            return this;
+        }
+
+        /**
+         * Set vector store type directly. Prefer using milvus() or hnswLocal() methods.
+         */
+        public Builder vectorStoreType(VectorStoreType type) {
+            config.vectorStoreType = type;
+            return this;
+        }
+
+        /**
+         * Set DataSource directly. Usually set via sqlite() or postgres() methods.
+         */
+        public Builder dataSource(DataSource dataSource) {
+            config.dataSource = dataSource;
             return this;
         }
 

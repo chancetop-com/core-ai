@@ -123,6 +123,8 @@ project(":core-ai") {
         implementation("com.openai:openai-java:${Versions.OPENAI_JAVA_CLIENT_VERSION}")
         // MCP SDK
         implementation("io.modelcontextprotocol.sdk:mcp:${Versions.MCP_SDK_VERSION}")
+        // SQLite JDBC for long-term memory storage
+        implementation("org.xerial:sqlite-jdbc:${Versions.SQLITE_JDBC_VERSION}")
     }
 }
 
