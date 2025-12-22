@@ -112,31 +112,33 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
     }
 
     @Override
-    public void deleteByUserId(String userId) {
-        List<MemoryRecord> records = metadataStore.findByUserId(userId);
+    public void deleteByNamespace(Namespace namespace) {
+        String path = namespace.toPath();
+        List<MemoryRecord> records = metadataStore.findByUserId(path);
         List<String> ids = records.stream().map(MemoryRecord::getId).toList();
 
-        metadataStore.deleteByUserId(userId);
+        metadataStore.deleteByUserId(path);
         vectorStore.deleteAll(ids);
 
         if (rawConversationStore != null) {
-            rawConversationStore.deleteByUserId(userId);
+            rawConversationStore.deleteByUserId(path);
         }
 
-        LOGGER.info("Deleted {} memories for user: {}", ids.size(), userId);
+        LOGGER.info("Deleted {} memories for namespace: {}", ids.size(), path);
     }
 
     // ==================== Search ====================
 
     @Override
-    public List<MemoryRecord> search(String userId, float[] queryEmbedding, int topK) {
-        return search(userId, queryEmbedding, topK, null);
+    public List<MemoryRecord> search(Namespace namespace, float[] queryEmbedding, int topK) {
+        return search(namespace, queryEmbedding, topK, null);
     }
 
     @Override
-    public List<MemoryRecord> search(String userId, float[] queryEmbedding, int topK, SearchFilter filter) {
-        // 1. Get candidate IDs for this user (with filter)
-        List<MemoryRecord> candidates = metadataStore.findByUserIdWithFilter(userId, filter);
+    public List<MemoryRecord> search(Namespace namespace, float[] queryEmbedding, int topK, SearchFilter filter) {
+        String path = namespace.toPath();
+        // 1. Get candidate IDs for this namespace (with filter)
+        List<MemoryRecord> candidates = metadataStore.findByUserIdWithFilter(path, filter);
         if (candidates.isEmpty()) {
             return List.of();
         }
@@ -204,8 +206,8 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
     }
 
     @Override
-    public List<MemoryRecord> getDecayedMemories(String userId, double threshold) {
-        return metadataStore.findDecayed(userId, threshold);
+    public List<MemoryRecord> getDecayedMemories(Namespace namespace, double threshold) {
+        return metadataStore.findDecayed(namespace.toPath(), threshold);
     }
 
     @Override
@@ -277,13 +279,13 @@ public class DefaultLongTermMemoryStore implements LongTermMemoryStore {
     // ==================== Statistics ====================
 
     @Override
-    public int count(String userId) {
-        return metadataStore.count(userId);
+    public int count(Namespace namespace) {
+        return metadataStore.count(namespace.toPath());
     }
 
     @Override
-    public int countByType(String userId, MemoryType type) {
-        return metadataStore.countByType(userId, type);
+    public int countByType(Namespace namespace, MemoryType type) {
+        return metadataStore.countByType(namespace.toPath(), type);
     }
 
     // ==================== Getters for testing ====================

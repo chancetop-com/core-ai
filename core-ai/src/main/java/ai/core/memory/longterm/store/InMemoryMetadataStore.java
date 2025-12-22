@@ -49,7 +49,7 @@ public class InMemoryMetadataStore implements MemoryMetadataStore {
     @Override
     public List<MemoryRecord> findByUserId(String userId) {
         return records.values().stream()
-            .filter(r -> userId.equals(r.getUserId()))
+            .filter(r -> matchesNamespacePath(r, userId))
             .toList();
     }
 
@@ -60,13 +60,13 @@ public class InMemoryMetadataStore implements MemoryMetadataStore {
 
     @Override
     public void deleteByUserId(String userId) {
-        records.entrySet().removeIf(e -> userId.equals(e.getValue().getUserId()));
+        records.entrySet().removeIf(e -> matchesNamespacePath(e.getValue(), userId));
     }
 
     @Override
     public List<MemoryRecord> findByUserIdWithFilter(String userId, SearchFilter filter) {
         return records.values().stream()
-            .filter(r -> userId.equals(r.getUserId()))
+            .filter(r -> matchesNamespacePath(r, userId))
             .filter(r -> filter == null || filter.matches(r))
             .toList();
     }
@@ -74,7 +74,7 @@ public class InMemoryMetadataStore implements MemoryMetadataStore {
     @Override
     public List<MemoryRecord> findDecayed(String userId, double threshold) {
         return records.values().stream()
-            .filter(r -> userId.equals(r.getUserId()))
+            .filter(r -> matchesNamespacePath(r, userId))
             .filter(r -> r.getDecayFactor() < threshold)
             .toList();
     }
@@ -124,16 +124,27 @@ public class InMemoryMetadataStore implements MemoryMetadataStore {
     @Override
     public int count(String userId) {
         return (int) records.values().stream()
-            .filter(r -> userId.equals(r.getUserId()))
+            .filter(r -> matchesNamespacePath(r, userId))
             .count();
     }
 
     @Override
     public int countByType(String userId, MemoryType type) {
         return (int) records.values().stream()
-            .filter(r -> userId.equals(r.getUserId()))
+            .filter(r -> matchesNamespacePath(r, userId))
             .filter(r -> type == r.getType())
             .count();
+    }
+
+    /**
+     * Check if record's namespace path matches the given userId/path.
+     * Compares using namespace.toPath() instead of getUserId() for proper namespace matching.
+     */
+    private boolean matchesNamespacePath(MemoryRecord record, String namespacePath) {
+        if (record.getNamespace() == null) {
+            return false;
+        }
+        return namespacePath.equals(record.getNamespace().toPath());
     }
 
     @Override

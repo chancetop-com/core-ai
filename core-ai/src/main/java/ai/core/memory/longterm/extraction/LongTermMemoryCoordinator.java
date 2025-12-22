@@ -6,8 +6,10 @@ import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.LongTermMemoryStore;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.Namespace;
 import ai.core.memory.longterm.RawConversationRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,14 +36,12 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class LongTermMemoryCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger(LongTermMemoryCoordinator.class);
-    private static final Duration DEFAULT_EXTRACTION_TIMEOUT = Duration.ofSeconds(30);
 
     private final LongTermMemoryStore store;
     private final MemoryExtractor extractor;
     private final LLMProvider llmProvider;
-    private final ExtractionTriggerConfig triggerConfig;
+    private final LongTermMemoryConfig config;
     private final Executor executor;
-    private final Duration extractionTimeout;
 
     // Buffer with lock for thread safety
     private final ReentrantLock bufferLock = new ReentrantLock();
@@ -54,38 +54,37 @@ public class LongTermMemoryCoordinator {
     private volatile CompletableFuture<Void> currentExtraction;
 
     // Session context
-    private volatile String userId;
+    private volatile Namespace namespace;
     private volatile String sessionId;
     private volatile String rawConversationId;
 
     public LongTermMemoryCoordinator(LongTermMemoryStore store,
                                      MemoryExtractor extractor,
-                                     LLMProvider llmProvider) {
-        this(store, extractor, llmProvider,
-            ExtractionTriggerConfig.defaultConfig(),
-            ForkJoinPool.commonPool(),
-            DEFAULT_EXTRACTION_TIMEOUT);
+                                     LLMProvider llmProvider,
+                                     LongTermMemoryConfig config) {
+        this(store, extractor, llmProvider, config, ForkJoinPool.commonPool());
     }
 
     public LongTermMemoryCoordinator(LongTermMemoryStore store,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
-                                     ExtractionTriggerConfig triggerConfig,
-                                     Executor executor,
-                                     Duration extractionTimeout) {
+                                     LongTermMemoryConfig config,
+                                     Executor executor) {
         this.store = store;
         this.extractor = extractor;
         this.llmProvider = llmProvider;
-        this.triggerConfig = triggerConfig;
+        this.config = config;
         this.executor = executor;
-        this.extractionTimeout = extractionTimeout;
     }
 
     /**
-     * Initialize for a new session.
+     * Initialize a session with namespace.
+     *
+     * @param namespace the namespace for this session
+     * @param sessionId session identifier
      */
-    public void initSession(String userId, String sessionId) {
-        this.userId = userId;
+    public void initSession(Namespace namespace, String sessionId) {
+        this.namespace = namespace;
         this.sessionId = sessionId;
         this.rawConversationId = null;
 
@@ -99,6 +98,16 @@ public class LongTermMemoryCoordinator {
         bufferedTokenCount.set(0);
         currentTurnIndex.set(0);
         lastExtractedTurnIndex.set(0);
+    }
+
+    /**
+     * Initialize a session with userId.
+     *
+     * @deprecated Use {@link #initSession(Namespace, String)} instead
+     */
+    @Deprecated
+    public void initSession(String userId, String sessionId) {
+        initSession(Namespace.forUser(userId), sessionId);
     }
 
     /**
@@ -124,7 +133,7 @@ public class LongTermMemoryCoordinator {
      * Called when the session ends. Extracts remaining buffer.
      */
     public void onSessionEnd() {
-        if (!triggerConfig.isExtractOnSessionEnd()) {
+        if (!config.isExtractOnSessionEnd()) {
             return;
         }
 
@@ -169,7 +178,7 @@ public class LongTermMemoryCoordinator {
         LOGGER.info("Triggering batch extraction: {} messages, turns {}-{}",
             toExtract.size(), startTurn, endTurn);
 
-        if (triggerConfig.isAsyncExtraction()) {
+        if (config.isAsyncExtraction()) {
             currentExtraction = CompletableFuture.runAsync(
                 () -> performExtraction(toExtract, startTurn, endTurn), executor);
         } else {
@@ -182,13 +191,14 @@ public class LongTermMemoryCoordinator {
      */
     private void performExtraction(List<Message> messages, int startTurn, int endTurn) {
         try {
-            List<MemoryRecord> records = extractor.extract(userId, messages);
+            List<MemoryRecord> records = extractor.extract(namespace, messages);
             if (records.isEmpty()) {
                 LOGGER.debug("No memories extracted from {} messages", messages.size());
                 return;
             }
 
             for (MemoryRecord record : records) {
+                record.setNamespace(namespace);
                 record.setSessionId(sessionId);
                 record.setRawRecordId(rawConversationId);
                 record.setStartTurnIndex(startTurn);
@@ -253,8 +263,8 @@ public class LongTermMemoryCoordinator {
         int messageCount = getBufferSize();
         int tokenCount = bufferedTokenCount.get();
 
-        return messageCount >= triggerConfig.getMaxBufferTurns()
-            || tokenCount >= triggerConfig.getMaxBufferTokens();
+        return messageCount >= config.getMaxBufferTurns()
+            || tokenCount >= config.getMaxBufferTokens();
     }
 
     /**
@@ -267,9 +277,10 @@ public class LongTermMemoryCoordinator {
         }
 
         try {
-            future.get(extractionTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            Duration timeout = config.getExtractionTimeout();
+            future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            LOGGER.warn("Extraction timed out after {}", extractionTimeout);
+            LOGGER.warn("Extraction timed out after {}", config.getExtractionTimeout());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             LOGGER.warn("Extraction wait interrupted");
@@ -284,7 +295,7 @@ public class LongTermMemoryCoordinator {
     public void saveRawConversation(List<Message> allMessages, int retentionDays) {
         RawConversationRecord raw = RawConversationRecord.builder()
             .sessionId(sessionId)
-            .userId(userId)
+            .userId(namespace != null ? namespace.toPath() : null)
             .messages(allMessages)
             .retentionDays(retentionDays)
             .build();

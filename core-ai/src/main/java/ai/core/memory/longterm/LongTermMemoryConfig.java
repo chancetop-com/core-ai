@@ -43,6 +43,13 @@ public final class LongTermMemoryConfig {
     private int defaultTopK = 10;
     private double minSimilarityThreshold = 0.5;
 
+    // Extraction trigger configuration
+    private int maxBufferTurns = 10;
+    private int maxBufferTokens = 2000;
+    private boolean extractOnSessionEnd = true;
+    private boolean asyncExtraction = true;
+    private Duration extractionTimeout = Duration.ofSeconds(30);
+
     private LongTermMemoryConfig() {
     }
 
@@ -118,6 +125,26 @@ public final class LongTermMemoryConfig {
 
     public double getMinSimilarityThreshold() {
         return minSimilarityThreshold;
+    }
+
+    public int getMaxBufferTurns() {
+        return maxBufferTurns;
+    }
+
+    public int getMaxBufferTokens() {
+        return maxBufferTokens;
+    }
+
+    public boolean isExtractOnSessionEnd() {
+        return extractOnSessionEnd;
+    }
+
+    public boolean isAsyncExtraction() {
+        return asyncExtraction;
+    }
+
+    public Duration getExtractionTimeout() {
+        return extractionTimeout;
     }
 
     /**
@@ -235,6 +262,33 @@ public final class LongTermMemoryConfig {
 
         public Builder minSimilarityThreshold(double threshold) {
             config.minSimilarityThreshold = threshold;
+            return this;
+        }
+
+        // Extraction trigger
+
+        public Builder maxBufferTurns(int turns) {
+            config.maxBufferTurns = turns;
+            return this;
+        }
+
+        public Builder maxBufferTokens(int tokens) {
+            config.maxBufferTokens = tokens;
+            return this;
+        }
+
+        public Builder extractOnSessionEnd(boolean extract) {
+            config.extractOnSessionEnd = extract;
+            return this;
+        }
+
+        public Builder asyncExtraction(boolean async) {
+            config.asyncExtraction = async;
+            return this;
+        }
+
+        public Builder extractionTimeout(Duration timeout) {
+            config.extractionTimeout = timeout;
             return this;
         }
 
