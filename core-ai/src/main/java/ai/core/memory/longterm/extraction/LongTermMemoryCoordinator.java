@@ -10,7 +10,6 @@ import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.LongTermMemoryStore;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.Namespace;
-import ai.core.memory.longterm.RawConversationRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,7 +55,6 @@ public class LongTermMemoryCoordinator {
     // Session context
     private volatile Namespace namespace;
     private volatile String sessionId;
-    private volatile String rawConversationId;
 
     public LongTermMemoryCoordinator(LongTermMemoryStore store,
                                      MemoryExtractor extractor,
@@ -86,7 +84,6 @@ public class LongTermMemoryCoordinator {
     public void initSession(Namespace namespace, String sessionId) {
         this.namespace = namespace;
         this.sessionId = sessionId;
-        this.rawConversationId = null;
 
         bufferLock.lock();
         try {
@@ -98,16 +95,6 @@ public class LongTermMemoryCoordinator {
         bufferedTokenCount.set(0);
         currentTurnIndex.set(0);
         lastExtractedTurnIndex.set(0);
-    }
-
-    /**
-     * Initialize a session with userId.
-     *
-     * @deprecated Use {@link #initSession(Namespace, String)} instead
-     */
-    @Deprecated
-    public void initSession(String userId, String sessionId) {
-        initSession(Namespace.forUser(userId), sessionId);
     }
 
     /**
@@ -200,9 +187,6 @@ public class LongTermMemoryCoordinator {
             for (MemoryRecord record : records) {
                 record.setNamespace(namespace);
                 record.setSessionId(sessionId);
-                record.setRawRecordId(rawConversationId);
-                record.setStartTurnIndex(startTurn);
-                record.setEndTurnIndex(endTurn);
             }
 
             List<float[]> embeddings = generateEmbeddings(records);
@@ -287,25 +271,6 @@ public class LongTermMemoryCoordinator {
         } catch (ExecutionException e) {
             LOGGER.error("Extraction failed", e.getCause());
         }
-    }
-
-    /**
-     * Create and save raw conversation record for this session.
-     */
-    public void saveRawConversation(List<Message> allMessages, int retentionDays) {
-        RawConversationRecord raw = RawConversationRecord.builder()
-            .sessionId(sessionId)
-            .userId(namespace != null ? namespace.toPath() : null)
-            .messages(allMessages)
-            .retentionDays(retentionDays)
-            .build();
-
-        store.saveRawConversation(raw);
-        this.rawConversationId = raw.getId();
-    }
-
-    public void setRawConversationId(String rawConversationId) {
-        this.rawConversationId = rawConversationId;
     }
 
     // Getters for testing/monitoring

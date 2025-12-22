@@ -35,11 +35,8 @@ public class MemoryRecord {
     private Instant createdAt;
     private Instant lastAccessedAt;
 
-    // Source tracking (for linking to raw conversation)
+    // Session tracking
     private String sessionId;
-    private String rawRecordId;
-    private Integer startTurnIndex;
-    private Integer endTurnIndex;
 
     // Extension
     private Map<String, Object> metadata;
@@ -164,30 +161,6 @@ public class MemoryRecord {
         this.sessionId = sessionId;
     }
 
-    public String getRawRecordId() {
-        return rawRecordId;
-    }
-
-    public void setRawRecordId(String rawRecordId) {
-        this.rawRecordId = rawRecordId;
-    }
-
-    public Integer getStartTurnIndex() {
-        return startTurnIndex;
-    }
-
-    public void setStartTurnIndex(Integer startTurnIndex) {
-        this.startTurnIndex = startTurnIndex;
-    }
-
-    public Integer getEndTurnIndex() {
-        return endTurnIndex;
-    }
-
-    public void setEndTurnIndex(Integer endTurnIndex) {
-        this.endTurnIndex = endTurnIndex;
-    }
-
     public Map<String, Object> getMetadata() {
         return new HashMap<>(metadata);
     }
@@ -212,9 +185,6 @@ public class MemoryRecord {
         private MemoryType type;
         private Double importance;
         private String sessionId;
-        private String rawRecordId;
-        private Integer startTurnIndex;
-        private Integer endTurnIndex;
         private final Map<String, Object> metadata = new HashMap<>();
 
         public Builder id(String id) {
@@ -260,17 +230,6 @@ public class MemoryRecord {
             return this;
         }
 
-        public Builder rawRecordId(String rawRecordId) {
-            this.rawRecordId = rawRecordId;
-            return this;
-        }
-
-        public Builder turnRange(int start, int end) {
-            this.startTurnIndex = start;
-            this.endTurnIndex = end;
-            return this;
-        }
-
         public Builder metadata(String key, Object value) {
             this.metadata.put(key, value);
             return this;
@@ -288,9 +247,6 @@ public class MemoryRecord {
                 record.setImportance(importance);
             }
             if (sessionId != null) record.setSessionId(sessionId);
-            if (rawRecordId != null) record.setRawRecordId(rawRecordId);
-            if (startTurnIndex != null) record.setStartTurnIndex(startTurnIndex);
-            if (endTurnIndex != null) record.setEndTurnIndex(endTurnIndex);
             if (!metadata.isEmpty()) record.setMetadata(new HashMap<>(metadata));
             return record;
         }

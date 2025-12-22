@@ -29,11 +29,6 @@ public final class LongTermMemoryConfig {
     // Embedding configuration
     private int embeddingDimension = 1536;
 
-    // Raw conversation storage
-    private boolean enableRawStorage = false;
-    private int rawRetentionDays = 90;
-    private RawStorageGranularity rawGranularity = RawStorageGranularity.SESSION;
-
     // Decay configuration
     private boolean enableDecay = true;
     private Duration decayCheckInterval = Duration.ofHours(24);
@@ -95,18 +90,6 @@ public final class LongTermMemoryConfig {
         return embeddingDimension;
     }
 
-    public boolean isEnableRawStorage() {
-        return enableRawStorage;
-    }
-
-    public int getRawRetentionDays() {
-        return rawRetentionDays;
-    }
-
-    public RawStorageGranularity getRawGranularity() {
-        return rawGranularity;
-    }
-
     public boolean isEnableDecay() {
         return enableDecay;
     }
@@ -165,15 +148,6 @@ public final class LongTermMemoryConfig {
         MILVUS          // Milvus for distributed production
     }
 
-    /**
-     * Granularity for raw conversation storage.
-     */
-    public enum RawStorageGranularity {
-        SESSION,        // Store entire session as one record
-        TURN,           // Store each turn separately
-        EXTRACTION      // Only store turns that produced memories
-    }
-
     public static class Builder {
         private final LongTermMemoryConfig config = new LongTermMemoryConfig();
 
@@ -216,23 +190,6 @@ public final class LongTermMemoryConfig {
 
         public Builder embeddingDimension(int dimension) {
             config.embeddingDimension = dimension;
-            return this;
-        }
-
-        // Raw storage
-
-        public Builder enableRawStorage(boolean enable) {
-            config.enableRawStorage = enable;
-            return this;
-        }
-
-        public Builder rawRetentionDays(int days) {
-            config.rawRetentionDays = days;
-            return this;
-        }
-
-        public Builder rawGranularity(RawStorageGranularity granularity) {
-            config.rawGranularity = granularity;
             return this;
         }
 

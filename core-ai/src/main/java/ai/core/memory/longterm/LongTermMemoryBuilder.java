@@ -54,55 +54,6 @@ public class LongTermMemoryBuilder {
     }
 
     /**
-     * Set namespace template for memory organization.
-     * If not set, defaults to user-scoped namespace (user/{user_id}).
-     *
-     * <p>Examples:
-     * <pre>{@code
-     * .namespaceTemplate(NamespaceTemplate.USER_SCOPED)      // user/{user_id}
-     * .namespaceTemplate(NamespaceTemplate.ORG_USER_SCOPED)  // {org_id}/{user_id}
-     * .namespaceTemplate(NamespaceTemplate.of("app", "{tenant}", "{user}"))
-     * }</pre>
-     */
-    public LongTermMemoryBuilder namespaceTemplate(NamespaceTemplate template) {
-        this.namespaceTemplate = template;
-        return this;
-    }
-
-    /**
-     * Configure batch extraction trigger by turns.
-     */
-    public LongTermMemoryBuilder maxBufferTurns(int turns) {
-        ensureConfigBuilder();
-        this.config = LongTermMemoryConfig.builder()
-            .maxBufferTurns(turns)
-            .build();
-        return this;
-    }
-
-    /**
-     * Configure batch extraction trigger by tokens.
-     */
-    public LongTermMemoryBuilder maxBufferTokens(int tokens) {
-        ensureConfigBuilder();
-        this.config = LongTermMemoryConfig.builder()
-            .maxBufferTokens(tokens)
-            .build();
-        return this;
-    }
-
-    /**
-     * Enable or disable memory decay.
-     */
-    public LongTermMemoryBuilder enableDecay(boolean enable) {
-        ensureConfigBuilder();
-        this.config = LongTermMemoryConfig.builder()
-            .enableDecay(enable)
-            .build();
-        return this;
-    }
-
-    /**
      * Build the LongTermMemory instance.
      *
      * @return configured LongTermMemory
@@ -126,12 +77,6 @@ public class LongTermMemoryBuilder {
         }
 
         return new LongTermMemory(store, extractor, llmProvider, config, namespaceTemplate);
-    }
-
-    private void ensureConfigBuilder() {
-        if (config == null) {
-            config = LongTermMemoryConfig.builder().build();
-        }
     }
 
     /**

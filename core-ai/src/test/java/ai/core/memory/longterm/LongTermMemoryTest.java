@@ -35,6 +35,7 @@ class LongTermMemoryTest {
     private static final String USER_ID = "user-123";
     private static final String SESSION_ID = "session-456";
     private static final int EMBEDDING_DIM = 8;
+    private static final Namespace USER_NAMESPACE = Namespace.forUser(USER_ID);
 
     private LongTermMemoryConfig config;
     private LongTermMemoryStore store;
@@ -65,7 +66,7 @@ class LongTermMemoryTest {
     void testBasicMemoryStorageAndRetrieval() {
         // 1. Manually save a memory
         MemoryRecord record = MemoryRecord.builder()
-            .userId(USER_ID)
+            .namespace(USER_NAMESPACE)
             .content("User is a Java developer who prefers clean code")
             .type(MemoryType.FACT)
             .build();
@@ -74,10 +75,10 @@ class LongTermMemoryTest {
         store.save(record, embedding);
 
         // 2. Verify storage
-        assertEquals(1, store.count(USER_ID));
+        assertEquals(1, store.count(USER_NAMESPACE));
 
         // 3. Search for the memory
-        List<MemoryRecord> results = store.search(USER_ID, embedding, 5);
+        List<MemoryRecord> results = store.search(USER_NAMESPACE, embedding, 5);
         assertFalse(results.isEmpty());
         assertEquals("User is a Java developer who prefers clean code", results.get(0).getContent());
     }
@@ -85,14 +86,17 @@ class LongTermMemoryTest {
     @Test
     void testMemoryIsolationByUserId() {
         // Save memories for different users
+        Namespace namespaceA = Namespace.forUser("user-A");
+        Namespace namespaceB = Namespace.forUser("user-B");
+
         MemoryRecord record1 = MemoryRecord.builder()
-            .userId("user-A")
+            .namespace(namespaceA)
             .content("User A likes Python")
             .type(MemoryType.PREFERENCE)
             .build();
 
         MemoryRecord record2 = MemoryRecord.builder()
-            .userId("user-B")
+            .namespace(namespaceB)
             .content("User B likes Java")
             .type(MemoryType.PREFERENCE)
             .build();
@@ -101,11 +105,11 @@ class LongTermMemoryTest {
         store.save(record2, randomEmbedding());
 
         // Verify isolation
-        assertEquals(1, store.count("user-A"));
-        assertEquals(1, store.count("user-B"));
+        assertEquals(1, store.count(namespaceA));
+        assertEquals(1, store.count(namespaceB));
 
         // Search should only return memories for the specific user
-        List<MemoryRecord> resultsA = store.search("user-A", randomEmbedding(), 10);
+        List<MemoryRecord> resultsA = store.search(namespaceA, randomEmbedding(), 10);
         assertEquals(1, resultsA.size());
         assertTrue(resultsA.get(0).getContent().contains("User A"));
     }
@@ -113,20 +117,20 @@ class LongTermMemoryTest {
     @Test
     void testCoordinatorExtractionOnSessionEnd() {
         // Initialize session
-        coordinator.initSession(USER_ID, SESSION_ID);
+        coordinator.initSession(USER_NAMESPACE, SESSION_ID);
 
         // Simulate conversation (not enough to trigger batch extraction)
         coordinator.onMessage(Message.of(RoleType.USER, "Hello, I'm a senior Java developer"));
         coordinator.onMessage(Message.of(RoleType.ASSISTANT, "Nice to meet you!"));
 
         // Verify no extraction yet (buffer size < maxBufferTurns)
-        assertEquals(0, store.count(USER_ID));
+        assertEquals(0, store.count(USER_NAMESPACE));
 
         // End session - should trigger extraction
         coordinator.onSessionEnd();
 
         // Verify memories were extracted and stored
-        assertTrue(store.count(USER_ID) > 0);
+        assertTrue(store.count(USER_NAMESPACE) > 0);
     }
 
     @Test
@@ -141,7 +145,7 @@ class LongTermMemoryTest {
         LongTermMemoryCoordinator batchCoordinator = new LongTermMemoryCoordinator(
             batchStore, extractor, llmProvider, batchConfig);
 
-        batchCoordinator.initSession(USER_ID, SESSION_ID);
+        batchCoordinator.initSession(USER_NAMESPACE, SESSION_ID);
 
         // First turn
         batchCoordinator.onMessage(Message.of(RoleType.USER, "I prefer using IntelliJ IDEA"));
@@ -152,14 +156,14 @@ class LongTermMemoryTest {
         batchCoordinator.onMessage(Message.of(RoleType.ASSISTANT, "Spring Boot is excellent!"));
 
         // Verify extraction was triggered
-        assertTrue(batchStore.count(USER_ID) > 0);
+        assertTrue(batchStore.count(USER_NAMESPACE) > 0);
     }
 
     @Test
     void testMemoryDecay() {
         // Create a memory with specific decay factor
         MemoryRecord record = MemoryRecord.builder()
-            .userId(USER_ID)
+            .namespace(USER_NAMESPACE)
             .content("Old memory that should decay")
             .type(MemoryType.EPISODE)
             .build();
@@ -170,7 +174,7 @@ class LongTermMemoryTest {
         record.setDecayFactor(0.05);
 
         // Get decayed memories
-        List<MemoryRecord> decayed = store.getDecayedMemories(USER_ID, 0.1);
+        List<MemoryRecord> decayed = store.getDecayedMemories(USER_NAMESPACE, 0.1);
         assertEquals(1, decayed.size());
     }
 
@@ -178,19 +182,19 @@ class LongTermMemoryTest {
     void testSearchWithFilter() {
         // Save different types of memories
         store.save(MemoryRecord.builder()
-            .userId(USER_ID)
+            .namespace(USER_NAMESPACE)
             .content("User's goal is to learn AI")
             .type(MemoryType.GOAL)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .userId(USER_ID)
+            .namespace(USER_NAMESPACE)
             .content("User prefers dark mode")
             .type(MemoryType.PREFERENCE)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .userId(USER_ID)
+            .namespace(USER_NAMESPACE)
             .content("User is 30 years old")
             .type(MemoryType.FACT)
             .build(), randomEmbedding());
@@ -200,7 +204,7 @@ class LongTermMemoryTest {
             .types(MemoryType.GOAL)
             .build();
 
-        List<MemoryRecord> goals = store.search(USER_ID, randomEmbedding(), 10, goalFilter);
+        List<MemoryRecord> goals = store.search(USER_NAMESPACE, randomEmbedding(), 10, goalFilter);
         assertEquals(1, goals.size());
         assertEquals(MemoryType.GOAL, goals.get(0).getType());
     }
@@ -208,7 +212,7 @@ class LongTermMemoryTest {
     @Test
     void testEffectiveScoreCalculation() {
         MemoryRecord record = MemoryRecord.builder()
-            .userId(USER_ID)
+            .namespace(USER_NAMESPACE)
             .content("Test memory")
             .type(MemoryType.FACT)
             .importance(0.8)
@@ -347,7 +351,7 @@ class LongTermMemoryTest {
         void testFormatAsContext() {
             // Manually add a memory for testing
             MemoryRecord record = MemoryRecord.builder()
-                .userId(USER_ID)
+                .namespace(USER_NAMESPACE)
                 .content("User is a Java developer")
                 .type(MemoryType.FACT)
                 .build();
@@ -380,13 +384,13 @@ class LongTermMemoryTest {
 
             // Add memories directly
             memory.getStore().save(MemoryRecord.builder()
-                .userId(USER_ID)
+                .namespace(USER_NAMESPACE)
                 .content("User likes dark mode")
                 .type(MemoryType.PREFERENCE)
                 .build(), randomEmbedding());
 
             memory.getStore().save(MemoryRecord.builder()
-                .userId(USER_ID)
+                .namespace(USER_NAMESPACE)
                 .content("User is 25 years old")
                 .type(MemoryType.FACT)
                 .build(), randomEmbedding());
