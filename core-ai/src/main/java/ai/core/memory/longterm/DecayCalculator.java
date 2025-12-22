@@ -13,13 +13,6 @@ public final class DecayCalculator {
 
     private static final double DEFAULT_DECAY_RATE = 0.02;
 
-    /**
-     * Calculate decay factor for a memory record.
-     * Based on time since last access and memory type's decay rate.
-     *
-     * @param record the memory record
-     * @return decay factor between 0 and 1
-     */
     public static double calculate(MemoryRecord record) {
         if (record == null || record.getLastAccessedAt() == null) {
             return 1.0;

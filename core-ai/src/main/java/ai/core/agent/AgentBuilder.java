@@ -4,6 +4,9 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.memory.ShortTermMemory;
+import ai.core.memory.UnifiedMemoryConfig;
+import ai.core.memory.UnifiedMemoryLifecycle;
+import ai.core.memory.longterm.LongTermMemory;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -41,6 +44,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private ShortTermMemory shortTermMemory;
     private boolean disableShortTermMemory = false;
     private boolean memoryEnabled = true;
+
+    // Long-term memory (unified memory) configuration
+    private LongTermMemory longTermMemory;
+    private UnifiedMemoryConfig unifiedMemoryConfig;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -86,6 +93,32 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder enableMemory(boolean enabled) {
         this.memoryEnabled = enabled;
+        return this;
+    }
+
+    /**
+     * Configure unified memory (long-term memory) for this agent.
+     * When enabled, the agent will automatically recall relevant memories
+     * before LLM calls and optionally extract new memories after sessions.
+     *
+     * @param longTermMemory the long-term memory instance
+     * @return this builder
+     */
+    public AgentBuilder unifiedMemory(LongTermMemory longTermMemory) {
+        this.longTermMemory = longTermMemory;
+        return this;
+    }
+
+    /**
+     * Configure unified memory with custom configuration.
+     *
+     * @param longTermMemory the long-term memory instance
+     * @param config         the unified memory configuration
+     * @return this builder
+     */
+    public AgentBuilder unifiedMemory(LongTermMemory longTermMemory, UnifiedMemoryConfig config) {
+        this.longTermMemory = longTermMemory;
+        this.unifiedMemoryConfig = config;
         return this;
     }
 
@@ -275,6 +308,19 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
                 agent.shortTermMemory.setLLMProvider(this.llmProvider, this.model);
             }
         }
+
+        configureUnifiedMemory(agent);
+    }
+
+    private void configureUnifiedMemory(Agent agent) {
+        if (this.longTermMemory == null) {
+            return;
+        }
+        int maxRecallRecords = this.unifiedMemoryConfig != null
+            ? this.unifiedMemoryConfig.getMaxRecallRecords()
+            : UnifiedMemoryConfig.defaultConfig().getMaxRecallRecords();
+        var lifecycle = new UnifiedMemoryLifecycle(this.longTermMemory, maxRecallRecords);
+        agent.agentLifecycles.add(lifecycle);
     }
 
     /**

@@ -75,12 +75,6 @@ public class LongTermMemoryCoordinator {
         this.executor = executor;
     }
 
-    /**
-     * Initialize a session with namespace.
-     *
-     * @param namespace the namespace for this session
-     * @param sessionId session identifier
-     */
     public void initSession(Namespace namespace, String sessionId) {
         this.namespace = namespace;
         this.sessionId = sessionId;

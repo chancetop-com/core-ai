@@ -8,6 +8,9 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
+import ai.core.memory.longterm.store.InMemoryMetadataStore;
+import ai.core.memory.longterm.store.InMemoryVectorStore;
+import ai.core.memory.longterm.store.JdbcMetadataStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,6 +21,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -37,7 +41,6 @@ class LongTermMemoryTest {
     private static final int EMBEDDING_DIM = 8;
     private static final Namespace USER_NAMESPACE = Namespace.forUser(USER_ID);
 
-    private LongTermMemoryConfig config;
     private LongTermMemoryStore store;
     private MemoryExtractor extractor;
     private LLMProvider llmProvider;
@@ -45,16 +48,16 @@ class LongTermMemoryTest {
 
     @BeforeEach
     void setUp() {
-        config = LongTermMemoryConfig.builder()
-            .metadataStoreType(LongTermMemoryConfig.MetadataStoreType.IN_MEMORY)
-            .vectorStoreType(LongTermMemoryConfig.VectorStoreType.IN_MEMORY)
-            .embeddingDimension(EMBEDDING_DIM)
-            .maxBufferTurns(3)
-            .maxBufferTokens(500)
-            .extractOnSessionEnd(true)
-            .asyncExtraction(false)
-            .enableDecay(true)
-            .build();
+        LongTermMemoryConfig config = LongTermMemoryConfig.builder()
+                .metadataStoreType(LongTermMemoryConfig.MetadataStoreType.IN_MEMORY)
+                .vectorStoreType(LongTermMemoryConfig.VectorStoreType.IN_MEMORY)
+                .embeddingDimension(EMBEDDING_DIM)
+                .maxBufferTurns(3)
+                .maxBufferTokens(500)
+                .extractOnSessionEnd(true)
+                .asyncExtraction(false)
+                .enableDecay(true)
+                .build();
 
         store = new DefaultLongTermMemoryStore(config);
         extractor = createMockExtractor();
@@ -80,7 +83,7 @@ class LongTermMemoryTest {
         // 3. Search for the memory
         List<MemoryRecord> results = store.search(USER_NAMESPACE, embedding, 5);
         assertFalse(results.isEmpty());
-        assertEquals("User is a Java developer who prefers clean code", results.get(0).getContent());
+        assertEquals("User is a Java developer who prefers clean code", results.getFirst().getContent());
     }
 
     @Test
@@ -111,7 +114,7 @@ class LongTermMemoryTest {
         // Search should only return memories for the specific user
         List<MemoryRecord> resultsA = store.search(namespaceA, randomEmbedding(), 10);
         assertEquals(1, resultsA.size());
-        assertTrue(resultsA.get(0).getContent().contains("User A"));
+        assertTrue(resultsA.getFirst().getContent().contains("User A"));
     }
 
     @Test
@@ -206,7 +209,7 @@ class LongTermMemoryTest {
 
         List<MemoryRecord> goals = store.search(USER_NAMESPACE, randomEmbedding(), 10, goalFilter);
         assertEquals(1, goals.size());
-        assertEquals(MemoryType.GOAL, goals.get(0).getType());
+        assertEquals(MemoryType.GOAL, goals.getFirst().getType());
     }
 
     @Test
@@ -399,7 +402,7 @@ class LongTermMemoryTest {
             // Recall only preferences
             List<MemoryRecord> preferences = memory.recall("mode", 10, MemoryType.PREFERENCE);
             assertFalse(preferences.isEmpty());
-            assertEquals(MemoryType.PREFERENCE, preferences.get(0).getType());
+            assertEquals(MemoryType.PREFERENCE, preferences.getFirst().getType());
         }
     }
 
@@ -468,7 +471,7 @@ class LongTermMemoryTest {
             // Search should only return memories from specific namespace
             List<MemoryRecord> results = store.search(orgAUser1, randomEmbedding(), 10);
             assertEquals(1, results.size());
-            assertTrue(results.get(0).getContent().contains("OrgA User1"));
+            assertTrue(results.getFirst().getContent().contains("OrgA User1"));
         }
 
         @Test
@@ -592,7 +595,7 @@ class LongTermMemoryTest {
 
             List<MemoryRecord> results = store.search(USER_NAMESPACE, randomEmbedding(), 10, filter);
             assertEquals(1, results.size());
-            assertEquals(MemoryType.GOAL, results.get(0).getType());
+            assertEquals(MemoryType.GOAL, results.getFirst().getType());
         }
 
         @Test
@@ -627,28 +630,20 @@ class LongTermMemoryTest {
     @DisplayName("Jdbc Metadata Store Tests")
     class JdbcMetadataStoreTests {
 
-        private ai.core.memory.longterm.store.JdbcMetadataStore jdbcStore;
-        private java.io.File dbFile;
+        private JdbcMetadataStore jdbcStore;
 
         @BeforeEach
         void setUpJdbcStore() throws Exception {
             // Use temporary file-based database
-            dbFile = java.io.File.createTempFile("memory_test_", ".db");
+            java.io.File dbFile = java.io.File.createTempFile("memory_test_", ".db");
             dbFile.deleteOnExit();
 
             org.sqlite.SQLiteDataSource dataSource = new org.sqlite.SQLiteDataSource();
             dataSource.setUrl("jdbc:sqlite:" + dbFile.getAbsolutePath());
 
-            jdbcStore = new ai.core.memory.longterm.store.JdbcMetadataStore(
+            jdbcStore = new JdbcMetadataStore(
                 dataSource, LongTermMemoryConfig.MetadataStoreType.SQLITE);
             jdbcStore.initialize();
-        }
-
-        @org.junit.jupiter.api.AfterEach
-        void tearDown() {
-            if (dbFile != null && dbFile.exists()) {
-                dbFile.delete();
-            }
         }
 
         @Test
@@ -710,7 +705,7 @@ class LongTermMemoryTest {
 
             List<MemoryRecord> userARecords = jdbcStore.findByUserId(nsA.toPath());
             assertEquals(1, userARecords.size());
-            assertEquals("User A memory", userARecords.get(0).getContent());
+            assertEquals("User A memory", userARecords.getFirst().getContent());
         }
 
         @Test
@@ -786,7 +781,7 @@ class LongTermMemoryTest {
 
             List<MemoryRecord> decayedRecords = jdbcStore.findDecayed(USER_NAMESPACE.toPath(), 0.1);
             assertEquals(1, decayedRecords.size());
-            assertEquals("Decayed memory", decayedRecords.get(0).getContent());
+            assertEquals("Decayed memory", decayedRecords.getFirst().getContent());
         }
 
         @Test
@@ -846,8 +841,8 @@ class LongTermMemoryTest {
         void testCreateInMemoryStore() {
             DefaultLongTermMemoryStore memStore = DefaultLongTermMemoryStore.inMemory();
             assertNotNull(memStore);
-            assertTrue(memStore.getMetadataStore() instanceof ai.core.memory.longterm.store.InMemoryMetadataStore);
-            assertTrue(memStore.getVectorStore() instanceof ai.core.memory.longterm.store.InMemoryVectorStore);
+            assertInstanceOf(InMemoryMetadataStore.class, memStore.getMetadataStore());
+            assertInstanceOf(InMemoryVectorStore.class, memStore.getVectorStore());
         }
 
         @Test
@@ -862,7 +857,7 @@ class LongTermMemoryTest {
             // Use new convenience method
             DefaultLongTermMemoryStore sqliteStore = DefaultLongTermMemoryStore.withSqlite(dataSource);
             assertNotNull(sqliteStore);
-            assertTrue(sqliteStore.getMetadataStore() instanceof ai.core.memory.longterm.store.JdbcMetadataStore);
+            assertInstanceOf(JdbcMetadataStore.class, sqliteStore.getMetadataStore());
 
             MemoryRecord record = MemoryRecord.builder()
                 .namespace(USER_NAMESPACE)
@@ -873,7 +868,6 @@ class LongTermMemoryTest {
             sqliteStore.save(record, randomEmbedding());
             assertEquals(1, sqliteStore.count(USER_NAMESPACE));
 
-            dbFile.delete();
         }
 
         @Test
@@ -893,9 +887,8 @@ class LongTermMemoryTest {
 
             DefaultLongTermMemoryStore store = DefaultLongTermMemoryStore.create(config);
             assertNotNull(store);
-            assertTrue(store.getMetadataStore() instanceof ai.core.memory.longterm.store.JdbcMetadataStore);
+            assertInstanceOf(JdbcMetadataStore.class, store.getMetadataStore());
 
-            dbFile.delete();
         }
     }
 }
