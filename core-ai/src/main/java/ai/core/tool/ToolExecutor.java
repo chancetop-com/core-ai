@@ -62,7 +62,7 @@ public class ToolExecutor {
         var tool = optional.get();
         try {
             // Check authentication
-            if (tool.isNeedAuth() && !authenticated) {
+            if (Boolean.TRUE.equals(tool.isNeedAuth()) && !authenticated) {
                 statusUpdater.accept(NodeStatus.WAITING_FOR_USER_INPUT);
                 return ToolCallResult.failed("This tool call requires user authentication, please ask user to confirm it.");
             }

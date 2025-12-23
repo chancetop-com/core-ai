@@ -12,6 +12,9 @@ import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryType;
 import ai.core.memory.longterm.Namespace;
+import ai.core.memory.history.ChatHistoryStore;
+import ai.core.memory.history.ChatSession;
+import ai.core.memory.history.JdbcChatHistoryStore;
 import ai.core.tool.tools.MemoryRecallTool;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -50,7 +53,6 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentLongTermMemoryTest.class);
     private static final String USER_ID = "test-user-123";
     private static final String SESSION_ID = "session-456";
-    // PostgreSQL connection settings
     private static final String PG_HOST = "localhost";
     private static final int PG_PORT = 5432;
     private static final String PG_DATABASE = "postgres";
@@ -62,6 +64,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
 
     private LongTermMemory longTermMemory;
     private DefaultLongTermMemoryStore store;
+    private ChatHistoryStore chatHistoryStore;
 
     @BeforeEach
     void setUp() {
@@ -77,22 +80,38 @@ class AgentLongTermMemoryTest extends IntegrationTest {
                 .conflictStrategy(ConflictStrategy.NEWEST_WITH_MERGE)
                 .build())
             .build();
-    }
 
+        // Initialize chat history store
+        var jdbcHistoryStore = new JdbcChatHistoryStore(dataSource, JdbcChatHistoryStore.DatabaseType.POSTGRESQL);
+        jdbcHistoryStore.initialize();
+        chatHistoryStore = jdbcHistoryStore;
+
+        // Clean up any leftover data from previous test runs
+        cleanupTestData();
+    }
+//
 //    @AfterEach
 //    void tearDown() {
 //        // Clean up test data
-//        try {
-//            store.deleteByNamespace(Namespace.forUser(USER_ID));
-//            store.deleteByNamespace(Namespace.forUser("user-alice"));
-//            store.deleteByNamespace(Namespace.forUser("user-bob"));
-//        } catch (Exception e) {
-//            LOGGER.warn("Cleanup error: {}", e.getMessage());
+//        if (store != null && chatHistoryStore != null) {
+//            cleanupTestData();
 //        }
-//        if (dataSource != null) {
+//        if (dataSource != null && !dataSource.isClosed()) {
 //            dataSource.close();
 //        }
 //    }
+
+    private void cleanupTestData() {
+        store.deleteByNamespace(Namespace.forUser(USER_ID));
+        store.deleteByNamespace(Namespace.forUser("multi-turn-user"));
+        store.deleteByNamespace(Namespace.forUser("cross-session-user"));
+        store.deleteByNamespace(Namespace.forUser("history-test-user"));
+        store.deleteByNamespace(Namespace.forUser("stats-test-user"));
+        chatHistoryStore.deleteByUser(USER_ID);
+        chatHistoryStore.deleteByUser("multi-turn-user");
+        chatHistoryStore.deleteByUser("cross-session-user");
+        chatHistoryStore.deleteByUser("history-test-user");
+    }
 
     private HikariDataSource createPostgresDataSource() {
         HikariConfig config = new HikariConfig();
@@ -350,8 +369,8 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         // Turn 1: User shares personal information
         LOGGER.info("=== Turn 1: User shares information ===");
         String response1 = agent.run(
-            "Hi! My name is Xander. I'm a AI engineer and I love building AI applications. " +
-            "I prefer using Java and Python for my projects.",
+            "Hi! My name is Xander. I'm a AI engineer and I love building AI applications. "
+                + "I prefer using Java and Python for my projects.",
             context
         );
         LOGGER.info("Agent response 1: {}", response1);
@@ -406,8 +425,8 @@ class AgentLongTermMemoryTest extends IntegrationTest {
             .build();
 
         String response1 = agent1.run(
-            "Hello! I'm Li Ming from Beijing. I work as a data scientist at a tech company. " +
-            "I prefer working with Python and TensorFlow. My current project is about NLP.",
+            "Hello! I'm Li Ming from Beijing. I work as a data scientist at a tech company. "
+                + "I prefer working with Python and TensorFlow. My current project is about NLP.",
             context1
         );
         LOGGER.info("Session 1 response: {}", response1);
@@ -620,5 +639,216 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         assertEquals(2, prefCount, "Should have 2 preferences");
         assertEquals(1, factCount, "Should have 1 fact");
         assertEquals(1, goalCount, "Should have 1 goal");
+    }
+
+    // ==================== Chat History Tests ====================
+
+    @Test
+    @DisplayName("Agent with ChatHistory - conversation is persisted")
+    void testAgentWithChatHistoryPersistence() {
+        String testUserId = "history-test-user";
+        String sessionId = "history-session-1";
+
+        // Create agent with both memory and chat history
+        Agent agent = Agent.builder()
+            .name("history-agent")
+            .llmProvider(llmProviders.getProvider())
+            .systemPrompt("You are a helpful assistant. Be concise.")
+            .unifiedMemory(longTermMemory)
+            .chatHistory(chatHistoryStore)
+            .build();
+
+        ExecutionContext context = ExecutionContext.builder()
+            .userId(testUserId)
+            .sessionId(sessionId)
+            .build();
+
+        // Have a conversation
+        LOGGER.info("=== Starting conversation with chat history ===");
+        String response1 = agent.run("Hello! My name is Test User.", context);
+        LOGGER.info("Response 1: {}", response1);
+        assertNotNull(response1);
+
+        String response2 = agent.run("What's 2 + 2?", context);
+        LOGGER.info("Response 2: {}", response2);
+        assertNotNull(response2);
+
+        // Verify chat history was persisted
+        var savedSession = chatHistoryStore.findById(sessionId);
+        assertTrue(savedSession.isPresent(), "Session should be persisted");
+
+        ChatSession session = savedSession.get();
+        LOGGER.info("Persisted session: id={}, title={}, messageCount={}",
+            session.getId(), session.getTitle(), session.getMessageCount());
+
+        // Verify messages
+        var messages = chatHistoryStore.getMessages(sessionId);
+        LOGGER.info("Persisted {} messages:", messages.size());
+        messages.forEach(m -> LOGGER.info("  - [{}] {}", m.role, truncate(m.content, 50)));
+
+        assertTrue(messages.size() >= 2, "Should have at least 2 messages");
+    }
+
+    @Test
+    @DisplayName("Chat history with multiple sessions for same user")
+    void testChatHistoryMultipleSessions() {
+        String testUserId = "history-test-user";
+
+        // Session 1
+        Agent agent1 = Agent.builder()
+            .name("session1-agent")
+            .llmProvider(llmProviders.getProvider())
+            .systemPrompt("You are a helpful assistant.")
+            .chatHistory(chatHistoryStore)
+            .build();
+
+        ExecutionContext ctx1 = ExecutionContext.builder()
+            .userId(testUserId)
+            .sessionId("multi-session-1")
+            .build();
+
+        agent1.run("Hello from session 1!", ctx1);
+
+        // Session 2
+        Agent agent2 = Agent.builder()
+            .name("session2-agent")
+            .llmProvider(llmProviders.getProvider())
+            .systemPrompt("You are a helpful assistant.")
+            .chatHistory(chatHistoryStore)
+            .build();
+
+        ExecutionContext ctx2 = ExecutionContext.builder()
+            .userId(testUserId)
+            .sessionId("multi-session-2")
+            .build();
+
+        agent2.run("Hello from session 2!", ctx2);
+
+        // Verify both sessions exist
+        var sessions = chatHistoryStore.listByUser(testUserId);
+        LOGGER.info("User has {} sessions", sessions.size());
+        sessions.forEach(s -> LOGGER.info("  - Session: {} - {}", s.getId(), s.getTitle()));
+
+        assertTrue(sessions.size() >= 2, "Should have at least 2 sessions");
+
+        // Verify session count
+        int count = chatHistoryStore.countByUser(testUserId);
+        assertEquals(sessions.size(), count, "Count should match list size");
+    }
+
+    @Test
+    @DisplayName("Chat history combined with LongTermMemory - full memory stack")
+    void testFullMemoryStack() {
+        String testUserId = "history-test-user";
+        String sessionId = "full-stack-session";
+        Namespace namespace = Namespace.forUser(testUserId);
+
+        // Create agent with full memory stack
+        Agent agent = Agent.builder()
+            .name("full-stack-agent")
+            .llmProvider(llmProviders.getProvider())
+            .systemPrompt("""
+                You are a helpful assistant with memory capabilities.
+                You can remember information about users.
+                Use search_memory_tool when asked about user's information.
+                """)
+            .unifiedMemory(longTermMemory)
+            .chatHistory(chatHistoryStore)
+            .build();
+
+        ExecutionContext context = ExecutionContext.builder()
+            .userId(testUserId)
+            .sessionId(sessionId)
+            .build();
+
+        // Conversation
+        LOGGER.info("=== Full Memory Stack Test ===");
+        String response1 = agent.run(
+            "Hi! I'm a software engineer. I love Java and Spring Boot.",
+            context
+        );
+        LOGGER.info("Response 1: {}", response1);
+
+        String response2 = agent.run("What do you remember about me?", context);
+        LOGGER.info("Response 2: {}", response2);
+
+        // Verify chat history
+        var chatSession = chatHistoryStore.findById(sessionId);
+        assertTrue(chatSession.isPresent(), "Chat session should exist");
+        LOGGER.info("Chat history: {} messages", chatSession.get().getMessageCount());
+
+        // Verify long-term memory extraction (may take time for async)
+        var memories = store.getMetadataStore().findByUserId(namespace.toPath());
+        LOGGER.info("Long-term memories: {} records", memories.size());
+        memories.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
+
+        // Both should work together
+        assertNotNull(response1);
+        assertNotNull(response2);
+    }
+
+    @Test
+    @DisplayName("Reload and continue conversation from chat history")
+    void testReloadConversationFromHistory() {
+        String testUserId = "history-test-user";
+        String sessionId = "reload-session";
+
+        // Session 1: Start conversation
+        Agent agent1 = Agent.builder()
+            .name("reload-agent-1")
+            .llmProvider(llmProviders.getProvider())
+            .systemPrompt("You are a helpful assistant.")
+            .chatHistory(chatHistoryStore)
+            .build();
+
+        ExecutionContext ctx1 = ExecutionContext.builder()
+            .userId(testUserId)
+            .sessionId(sessionId)
+            .build();
+
+        agent1.run("Remember this: the secret code is ABC123", ctx1);
+        LOGGER.info("Session 1: Stored secret code");
+
+        // Verify session was saved
+        var savedAfter1 = chatHistoryStore.findById(sessionId);
+        assertTrue(savedAfter1.isPresent());
+        int messageCountAfter1 = savedAfter1.get().getMessageCount();
+        LOGGER.info("After session 1: {} messages", messageCountAfter1);
+
+        // Session 2: Continue conversation (simulate app restart)
+        Agent agent2 = Agent.builder()
+            .name("reload-agent-2")
+            .llmProvider(llmProviders.getProvider())
+            .systemPrompt("You are a helpful assistant.")
+            .chatHistory(chatHistoryStore)
+            .build();
+
+        ExecutionContext ctx2 = ExecutionContext.builder()
+            .userId(testUserId)
+            .sessionId(sessionId)  // Same session ID
+            .build();
+
+        agent2.run("What was the secret code?", ctx2);
+        LOGGER.info("Session 2: Asked about secret code");
+
+        // Verify messages were appended
+        var savedAfter2 = chatHistoryStore.findById(sessionId);
+        assertTrue(savedAfter2.isPresent());
+        int messageCountAfter2 = savedAfter2.get().getMessageCount();
+        LOGGER.info("After session 2: {} messages", messageCountAfter2);
+
+        assertTrue(messageCountAfter2 > messageCountAfter1,
+            "Message count should increase after second session");
+
+        // List all messages
+        var allMessages = chatHistoryStore.getMessages(sessionId);
+        LOGGER.info("All {} messages in session:", allMessages.size());
+        allMessages.forEach(m -> LOGGER.info("  - [{}] {}",
+            m.role, truncate(m.content, 60)));
+    }
+
+    private String truncate(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() > maxLen ? text.substring(0, maxLen) + "..." : text;
     }
 }

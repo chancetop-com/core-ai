@@ -34,7 +34,7 @@ import java.util.Locale;
  *
  * @author xander
  */
-public class MemoryRecallTool extends ToolCall {
+public final class MemoryRecallTool extends ToolCall {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MemoryRecallTool.class);
     public static final String TOOL_NAME = "search_memory_tool";
@@ -54,10 +54,6 @@ public class MemoryRecallTool extends ToolCall {
     public MemoryRecallTool(LongTermMemory longTermMemory, int maxRecords) {
         this.longTermMemory = longTermMemory;
         this.maxRecords = maxRecords;
-        initializeToolMetadata();
-    }
-
-    private void initializeToolMetadata() {
         super.setName(TOOL_NAME);
         super.setDescription("Search and recall relevant memories about the user. "
             + "Use this tool when you need to personalize your response based on user preferences, "

@@ -82,12 +82,12 @@ class AgentWithMemoryTest {
             .name("assistant")
             .systemPrompt("You are a helpful assistant.")
             .llmProvider(llmProvider)
-            .enableMemory(true)
+            .enableShortTermMemory(true)
             .slidingWindowTurns(10)
             .build();
 
         assertNotNull(agent);
-        // Short-term memory is enabled by default when enableMemory(true)
+        // Short-term memory is enabled by default when enableShortTermMemory(true)
         assertNotNull(agent.getMessages());
     }
 
@@ -168,7 +168,7 @@ class AgentWithMemoryTest {
             .name("personalized-assistant")
             .systemPrompt(systemPromptWithMemory)
             .llmProvider(llmProvider)
-            .enableMemory(true)
+            .enableShortTermMemory(true)
             .build();
 
         assertNotNull(agent);
@@ -217,7 +217,7 @@ class AgentWithMemoryTest {
                 to provide personalized, relevant responses.
                 """.formatted(longTermContext))
             .llmProvider(llmProvider)
-            .enableMemory(true)           // Enable short-term memory
+            .enableShortTermMemory(true)           // Enable short-term memory
             .slidingWindowTurns(20)       // Keep last 20 turns
             .build();
 
