@@ -268,7 +268,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     private void copyValue(Agent agent) {
-        agent.systemPrompt = this.systemPrompt == null ? "" : this.systemPrompt;
+        agent.systemPrompt = this.systemPrompt == null ? "you are a helpful assistant" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
         agent.maxTurnNumber = this.maxTurnNumber == null ? 20 : this.maxTurnNumber;
         agent.temperature = this.temperature;

@@ -1,8 +1,7 @@
 package ai.core.agent;
 
-import ai.core.agent.slidingwindow.SlidingWindowConfig;
-import ai.core.agent.slashcommand.SlashCommandExecutor;
 import ai.core.agent.slashcommand.SlashCommandParser;
+import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
@@ -12,11 +11,12 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
-import ai.core.memory.ShortTermMemory;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
+import ai.core.memory.ShortTermMemory;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -44,6 +44,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -104,38 +106,11 @@ public class Agent extends Node<Agent> {
         return getTracer();
     }
 
-    private String doExecute(String query, Map<String, Object> variables) {
-        return doExecute(query, variables, false);
+    private void chatCommand(String query, Map<String, Object> variables) {
+        chatTurns(query, variables, this::constructionFakeSlashCommandAssistantMsg);
     }
 
-    private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
-        boolean isFirstExecution = getInput() == null;
-        if (isFirstExecution) {
-            setInput(query);
-            if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
-                authenticated = true;
-            }
-            updateNodeStatus(NodeStatus.RUNNING);
-        }
-
-        // Check for slash command - execute tool directly
-        if (SlashCommandParser.isSlashCommand(query)) {
-            var slashResult = executeSlashCommand(query);
-            // If tool result is not empty, continue to LLM processing
-            if (slashResult != null && !slashResult.isBlank()) {
-                logger.info("Slash command result not empty, continuing with LLM processing");
-                // Messages already added by executeSlashCommand (USER, ASSISTANT+FunctionCall, TOOL)
-                // Continue directly with chat loop to let LLM process the tool result
-                chatTurnsLoop();
-            } else {
-                setOutput(slashResult != null ? slashResult : "");
-            }
-            if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
-                updateNodeStatus(NodeStatus.COMPLETED);
-            }
-            return getOutput();
-        }
-
+    private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
         // Execute full agent flow: RAG + template + chat
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
@@ -150,13 +125,26 @@ public class Agent extends Node<Agent> {
         prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
 
         // Chat with LLM
-        chatTurns(prompt, variables);
+        chatTurns(prompt, variables, this::handLLM);
 
         // Reflection loop if enabled and not skipped
         if (reflectionConfig != null && reflectionConfig.enabled() && !skipReflection) {
             reflectionLoop(variables);
         }
-
+    }
+    private String doExecute(String query, Map<String, Object> variables) {
+        return doExecute(query, variables, false);
+    }
+    private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
+        boolean isFirstExecution = getInput() == null;
+        if (isFirstExecution) {
+            setInput(query);
+            if (getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT && Prompts.CONFIRMATION_PROMPT.equalsIgnoreCase(query)) {
+                authenticated = true;
+            }
+            updateNodeStatus(NodeStatus.RUNNING);
+        }
+        commandOrLoops(query, variables, skipReflection);
         // Update status to completed only for first execution
         if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
             updateNodeStatus(NodeStatus.COMPLETED);
@@ -164,33 +152,17 @@ public class Agent extends Node<Agent> {
         return getOutput();
     }
 
-    private String executeSlashCommand(String query) {
-        logger.info("Executing slash command: {}", query);
-
-        // Ensure system message is present
-        if (getMessages().isEmpty()) {
-            addMessage(buildSystemMessage(null));
+    private void commandOrLoops(String query, Map<String, Object> variables, boolean skipReflection) {
+        if (SlashCommandParser.isSlashCommand(query)) {
+            chatCommand(query, variables);
+        } else {
+            chatLoops(query, variables, skipReflection);
         }
+    }
 
-        // Parse the slash command
-        var parsed = SlashCommandParser.parse(query);
-        if (parsed.isNotValid()) {
-            logger.warn("Invalid slash command: {}", query);
-            setOutput("Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments");
-            return getOutput();
-        }
 
-        // Execute the slash command
-        var result = SlashCommandExecutor.execute(parsed, toolCalls, getExecutionContext());
-
-        // Add all 3 messages to the message list
-        result.getMessages().forEach(this::addMessage);
-
-        // Set output to the tool result
-        setOutput(result.getToolResult());
-
-        logger.info("Slash command completed: tool={}, success={}", parsed.getToolName(), result.isSuccess());
-        return getOutput();
+    private String generateToolCallId() {
+        return "slash_command_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
     // Execute reflection loop to iteratively improve the solution
@@ -198,7 +170,8 @@ public class Agent extends Node<Agent> {
         ReflectionHistory history = new ReflectionHistory(getId(), getName(), getInput(), reflectionConfig.evaluationCriteria());
         int currentRound = 1;
         setRound(currentRound);  // Initialize round counter
-        if (reflectionListener != null) reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
+        if (reflectionListener != null)
+            reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
 
         while (currentRound <= reflectionConfig.maxRound()) {
             setRound(currentRound);  // Update round counter
@@ -222,16 +195,16 @@ public class Agent extends Node<Agent> {
                 logger.error("Invalid evaluation score: {}, terminating reflection", evaluation.getScore());
                 history.complete(ReflectionStatus.FAILED);
                 if (reflectionListener != null) reflectionListener.onError(this, currentRound,
-                    new IllegalStateException("Invalid evaluation score: " + evaluation.getScore()));
+                        new IllegalStateException("Invalid evaluation score: " + evaluation.getScore()));
                 return;
             }
 
             logger.info("Round {} evaluation: score={}, pass={}, continue={}",
-                currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
+                    currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
 
             // Record round
             history.addRound(new ReflectionHistory.ReflectionRound(currentRound, solutionToEvaluate, evaluationJson,
-                evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
+                    evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
 
             // Check termination
             if (shouldTerminateReflection(evaluation, currentRound)) {
@@ -242,7 +215,8 @@ public class Agent extends Node<Agent> {
 
             // Regenerate solution and skip reflection loop (to avoid infinite recursion)
             doExecute(ReflectionEvaluator.buildImprovementPrompt(evaluationJson, evaluation), variables, true);
-            if (reflectionListener != null) reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
+            if (reflectionListener != null)
+                reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
             currentRound++;
         }
 
@@ -280,20 +254,15 @@ public class Agent extends Node<Agent> {
     }
 
     // Public method for chat execution (used by executeAgentFlow)
-    public void chatTurns(String query, Map<String, Object> variables) {
+    public void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         buildUserQueryToMessage(query, variables);
-        chatTurnsLoop();
-    }
-
-    // Core chat loop - executes LLM turns until no more tool calls
-    private void chatTurnsLoop() {
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
             // apply sliding window if needed before each LLM call
             applyMemoryCoordinatorIfNeeded();
             // turn = call model + call func
-            var turnMsgList = turn(getMessages(), toReqTools(toolCalls), model);
+            var turnMsgList = turn(getMessages(), toReqTools(toolCalls), constructionAssistantMsg);
             logger.info("Agent turn {}: received {} messages", currentIteCount + 1, turnMsgList.size());
             // add msg into global
             turnMsgList.forEach(this::addMessage);
@@ -306,6 +275,19 @@ public class Agent extends Node<Agent> {
         setOutput(agentOut.toString());
         if (currentIteCount >= maxTurnNumber) {
             logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
+        }
+    }
+
+
+    private Choice constructionFakeSlashCommandAssistantMsg(List<Message> messages, List<Tool> tools) {
+        logger.debug("all tools size is {}", tools.size());
+        String query = messages.getLast().content;
+        var command = SlashCommandParser.parse(query);
+        if (command.isNotValid()) {
+            return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments"));
+        } else {
+            var functionCall = FunctionCall.of(generateToolCallId(), "function", command.getToolName(), command.hasArguments() ? command.getArguments() : "{}");
+            return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, null, List.of(functionCall)));
         }
     }
 
@@ -333,9 +315,9 @@ public class Agent extends Node<Agent> {
         return llmProvider;
     }
 
-    public List<Message> turn(List<Message> messages, List<Tool> tools, String model) {
+    public List<Message> turn(List<Message> messages, List<Tool> tools, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         var resultMsg = new ArrayList<Message>();
-        var choice = handLLM(messages, tools, model);
+        var choice = constructionAssistantMsg.apply(messages, tools);
         resultMsg.add(choice.message);
         if (choice.finishReason == FinishReason.TOOL_CALLS) {
             if (!Strings.isBlank(choice.message.content)) {
@@ -347,11 +329,12 @@ public class Agent extends Node<Agent> {
         return resultMsg;
     }
 
+
     private boolean lastIsToolMsg() {
         return RoleType.TOOL == getMessages().getLast().role;
     }
 
-    private Choice handLLM(List<Message> messages, List<Tool> tools, String model) {
+    private Choice handLLM(List<Message> messages, List<Tool> tools) {
         var req = CompletionRequest.of(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), model, this.getName());
         return aroundLLM(r -> llmProvider.completionStream(r, elseDefaultCallback()), req);
     }
@@ -370,9 +353,20 @@ public class Agent extends Node<Agent> {
 
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream().map(tool -> {
+            var msg = new ArrayList<Message>();
             var result = getToolExecutor().execute(tool, getExecutionContext());
-            return Message.of(RoleType.TOOL, result, tool.function.name, tool.id, null, null);
-        }).toList();
+            if (result.isDirectReturn() || Strings.isBlank(result.toResultForLLM())) {
+                msg.add(Message.of(RoleType.TOOL, specialReminder(tool.function.name, result.toResultForLLM()), tool.function.name, tool.id, null, null));
+                msg.add(Message.of(RoleType.ASSISTANT, result.toResultForLLM()));
+            } else {
+                msg.add(Message.of(RoleType.TOOL, result.toResultForLLM(), tool.function.name, tool.id, null, null));
+            }
+            return msg;
+        }).flatMap(List::stream).toList();
+    }
+
+    private String specialReminder(String toolName, String toolResult) {
+        return Prompts.TOOL_DIRECT_RETURN_REMINDER_PROMPT.formatted(toolName, toolResult);
     }
 
     private ToolExecutor getToolExecutor() {
