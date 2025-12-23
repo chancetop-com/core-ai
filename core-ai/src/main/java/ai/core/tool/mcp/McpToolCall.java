@@ -21,10 +21,10 @@ public class McpToolCall extends ToolCall {
         try {
             var result = mcpClientService.callTool(this.getName(), text);
             return ToolCallResult.completed(result)
-                    .withDuration(System.currentTimeMillis() - startTime);
+                    .withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         } catch (Exception e) {
             return ToolCallResult.failed("MCP call failed: " + e.getMessage(), e)
-                    .withDuration(System.currentTimeMillis() - startTime);
+                    .withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         }
     }
 

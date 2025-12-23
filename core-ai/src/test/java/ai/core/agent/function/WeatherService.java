@@ -34,4 +34,14 @@ public class WeatherService {
         if (!airQualities.containsKey(city)) throw new BadRequestException("CITY NOT SUPPORTED");
         return airQualities.get(city);
     }
+
+    @CoreAiMethod(name = "getTemperaturePro", description = "get temperature of city: beijing, shanghai, xiamen.", directReturn = true)
+    public String getTemperatureProDirect(@CoreAiParameter(
+            name = "city",
+            description = "the city that you want to get the temperature",
+            required = true,
+            enums = {"beijing", "shanghai", "xiamen"}) String city) {
+        if (!weathers.containsKey(city)) throw new BadRequestException("CITY NOT SUPPORTED");
+        return String.valueOf(weathers.get(city));
+    }
 }

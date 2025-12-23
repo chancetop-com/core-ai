@@ -19,7 +19,7 @@ public abstract class ToolCall {
     String description;
     List<ToolCallParameter> parameters;
     Boolean needAuth;
-    Boolean continueAfterSlash;
+    Boolean directReturn;
 
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         return execute(arguments);
@@ -75,12 +75,13 @@ public abstract class ToolCall {
         this.needAuth = needAuth;
     }
 
-    public void setContinueAfterSlash(Boolean continueAfterSlash) {
-        this.continueAfterSlash = continueAfterSlash;
+
+    public Boolean isDirectReturn() {
+        return directReturn != null && directReturn;
     }
 
-    public Boolean isContinueAfterSlash() {
-        return continueAfterSlash == null || continueAfterSlash;
+    public void setDirectReturn(Boolean directReturn) {
+        this.directReturn = directReturn;
     }
 
     @Override
@@ -117,6 +118,7 @@ public abstract class ToolCall {
         List<ToolCallParameter> parameters;
         Boolean needAuth;
         Boolean continueAfterSlash;
+        Boolean directReturn;
 
         protected abstract B self();
 
@@ -165,7 +167,7 @@ public abstract class ToolCall {
             toolCall.description = description;
             toolCall.parameters = parameters;
             toolCall.needAuth = needAuth != null && needAuth;
-            toolCall.continueAfterSlash = continueAfterSlash != null && continueAfterSlash;
+            toolCall.directReturn = directReturn != null && directReturn;
         }
     }
 }
