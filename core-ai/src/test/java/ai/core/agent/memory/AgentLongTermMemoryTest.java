@@ -19,7 +19,6 @@ import ai.core.tool.tools.MemoryRecallTool;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import core.framework.inject.Inject;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -74,6 +73,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
             .llmProvider(llmProviders.getProvider())
             .store(store)
             .config(LongTermMemoryConfig.builder()
+                    //todo
                 .embeddingDimension(1536)
                 .asyncExtraction(false)
                 .enableConflictResolution(true)
@@ -89,17 +89,6 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         // Clean up any leftover data from previous test runs
         cleanupTestData();
     }
-//
-//    @AfterEach
-//    void tearDown() {
-//        // Clean up test data
-//        if (store != null && chatHistoryStore != null) {
-//            cleanupTestData();
-//        }
-//        if (dataSource != null && !dataSource.isClosed()) {
-//            dataSource.close();
-//        }
-//    }
 
     private void cleanupTestData() {
         store.deleteByNamespace(Namespace.forUser(USER_ID));
@@ -112,7 +101,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         chatHistoryStore.deleteByUser("cross-session-user");
         chatHistoryStore.deleteByUser("history-test-user");
     }
-
+    //todo abstract data layer
     private HikariDataSource createPostgresDataSource() {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(String.format("jdbc:postgresql://%s:%d/%s", PG_HOST, PG_PORT, PG_DATABASE));

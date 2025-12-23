@@ -5,6 +5,7 @@ package ai.core.memory.conflict;
  *
  * @author xander
  */
+//todo
 public enum ConflictStrategy {
 
     /**
@@ -15,6 +16,7 @@ public enum ConflictStrategy {
     /**
      * Use LLM to merge all conflicting records into one.
      */
+    //todo Merge by llm
     MERGE,
 
     /**

@@ -141,9 +141,6 @@ public class LongTermMemoryCoordinator {
         }
     }
 
-    /**
-     * Trigger batch extraction of buffered messages.
-     */
     private void triggerBatchExtraction() {
         List<Message> toExtract;
         int startTurn;
@@ -182,9 +179,6 @@ public class LongTermMemoryCoordinator {
         }
     }
 
-    /**
-     * Perform the actual extraction and storage.
-     */
     private void performExtraction(List<Message> messages, int startTurn, int endTurn) {
         try {
             List<MemoryRecord> records = extractor.extract(namespace, messages);

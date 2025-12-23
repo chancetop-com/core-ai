@@ -38,15 +38,17 @@ public final class LongTermMemoryConfig {
 
     // Search configuration
     private int defaultTopK = 10;
-    private double minSimilarityThreshold = 0.5;
+    private Double minSimilarityThreshold = 0.5;
 
     // Extraction trigger configuration
+    // todo convert double to Double ...
+    // todo Enmu
     private int maxBufferTurns = 10;
     private int maxBufferTokens = 2000;
     private boolean extractOnSessionEnd = true;
     private boolean asyncExtraction = true;
     private Duration extractionTimeout = Duration.ofSeconds(30);
-
+    //todo private to public?
     // Conflict resolution configuration
     private boolean enableConflictResolution = true;
     private ConflictStrategy conflictStrategy = ConflictStrategy.NEWEST_WITH_MERGE;

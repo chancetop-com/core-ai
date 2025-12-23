@@ -199,13 +199,7 @@ public class MemoryConflictResolver {
             .build();
     }
 
-    /**
-     * Check if two records are potentially conflicting.
-     *
-     * @param a first record
-     * @param b second record
-     * @return true if records may conflict
-     */
+
     public boolean mayConflict(MemoryRecord a, MemoryRecord b) {
         if (a == null || b == null) {
             return false;
@@ -250,7 +244,7 @@ public class MemoryConflictResolver {
 
         for (String word : words) {
             if (isSignificantWord(word)) {
-                if (topic.length() > 0) {
+                if (!topic.isEmpty()) {
                     topic.append(' ');
                 }
                 topic.append(word);
@@ -261,7 +255,7 @@ public class MemoryConflictResolver {
             }
         }
 
-        return topic.length() > 0 ? topic.toString() : "general";
+        return !topic.isEmpty() ? topic.toString() : "general";
     }
 
     private boolean isSignificantWord(String word) {
