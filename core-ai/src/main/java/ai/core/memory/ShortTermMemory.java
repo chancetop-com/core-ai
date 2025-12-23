@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * @author xander
  */
+
+//todo use tool methode to execute
 public class ShortTermMemory {
     private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemory.class);
     private static final int DEFAULT_MAX_SUMMARY_TOKENS = 1000;

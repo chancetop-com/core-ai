@@ -18,6 +18,7 @@ import java.util.Objects;
  *
  * @author xander
  */
+//todo anegt/session/user
 public final class Namespace {
 
     private static final String DELIMITER = "/";
