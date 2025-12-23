@@ -23,7 +23,7 @@ public class BFCLTest extends IntegrationTest {
     @Test
     void test() {
         Agent agent = Agent.builder()
-                .model("gpt-5-nano")
+                .model("gpt-4o")
                 .llmProvider(llmProviders.getProvider())
                 .build();
         var handle = new BFCLAgentFCHandle();
