@@ -40,6 +40,7 @@ public final class ToolCallResult {
     private String toolName;
     private long durationMs;
     private final Map<String, Object> stats;
+    private Boolean directReturn;
     private RuntimeException runtimeException;
 
     private ToolCallResult() {
@@ -94,6 +95,10 @@ public final class ToolCallResult {
         return durationMs;
     }
 
+    public boolean isDirectReturn() {
+        return directReturn != null && directReturn;
+    }
+
     public Map<String, Object> getStats() {
         return stats;
     }
@@ -120,6 +125,11 @@ public final class ToolCallResult {
 
     public ToolCallResult withStats(Map<String, Object> stats) {
         this.stats.putAll(stats);
+        return this;
+    }
+
+    public ToolCallResult withDirectReturn(Boolean directReturn) {
+        this.directReturn = directReturn;
         return this;
     }
 
