@@ -3,12 +3,11 @@ package ai.core.agent.memory;
 import ai.core.IntegrationTest;
 import ai.core.agent.Agent;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
-import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.ShortTermMemory;
 import core.framework.inject.Inject;
-import org.junit.jupiter.api.Disabled;
+//import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,14 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * @author xander
  */
-@Disabled
+//@Disabled
 class AgentShortTermMemoryTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentShortTermMemoryTest.class);
 
     @Inject
     LLMProviders llmProviders;
-
-    private LLMProvider llmProvider;
 
     @Test
     void testAgentWithDefaultShortTermMemory() {
@@ -164,7 +161,7 @@ class AgentShortTermMemoryTest extends IntegrationTest {
         var agent = Agent.builder()
             .llmProvider(llmProviders.getProvider())
             .systemPrompt("You are a helpful assistant.")
-            .disableShortTermMemory()
+            .enableShortTermMemory(false)
             .build();
 
         var result = agent.run("Hello");

@@ -52,7 +52,7 @@ import ai.core.agent.Agent;
 Agent agent = Agent.builder()
     .name("assistant")
     .llmProvider(llmProvider)
-    .enableMemory(true)  // Default: true
+    .enableShortTermMemory(true)  // Default: true
     .build();
 
 // Agent remembers previous messages in the session
@@ -116,7 +116,7 @@ Agent agent = Agent.builder()
 Agent agent = Agent.builder()
     .name("stateless-agent")
     .llmProvider(llmProvider)
-    .enableMemory(false)  // Disable memory
+    .enableShortTermMemory(false)  // Disable short-term memory
     .build();
 ```
 
@@ -334,19 +334,19 @@ AgentOutput output = agent.execute("Help me with code", context);
 ### 1. Choose the Right Memory Type
 
 ```java
-// Stateless operations: disable memory
+// Stateless operations: disable short-term memory
 Agent statelessAgent = Agent.builder()
-    .enableMemory(false)
+    .enableShortTermMemory(false)
     .build();
 
 // Single session: short-term only (default)
 Agent sessionAgent = Agent.builder()
-    .enableMemory(true)
+    .enableShortTermMemory(true)
     .build();
 
 // Personalized experience: both memories
 Agent personalizedAgent = Agent.builder()
-    .enableMemory(true)
+    .enableShortTermMemory(true)
     .unifiedMemory(longTermMemory, config)
     .build();
 ```

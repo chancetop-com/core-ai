@@ -52,7 +52,7 @@ import ai.core.agent.Agent;
 Agent agent = Agent.builder()
     .name("assistant")
     .llmProvider(llmProvider)
-    .enableMemory(true)  // 默认值：true
+    .enableShortTermMemory(true)  // 默认值：true
     .build();
 
 // Agent 在会话中记住之前的消息
@@ -116,7 +116,7 @@ Agent agent = Agent.builder()
 Agent agent = Agent.builder()
     .name("stateless-agent")
     .llmProvider(llmProvider)
-    .enableMemory(false)  // 禁用记忆
+    .enableShortTermMemory(false)  // 禁用短期记忆
     .build();
 ```
 
@@ -334,19 +334,19 @@ AgentOutput output = agent.execute("帮我写代码", context);
 ### 1. 选择正确的记忆类型
 
 ```java
-// 无状态操作：禁用记忆
+// 无状态操作：禁用短期记忆
 Agent statelessAgent = Agent.builder()
-    .enableMemory(false)
+    .enableShortTermMemory(false)
     .build();
 
 // 单会话：仅短期记忆（默认）
 Agent sessionAgent = Agent.builder()
-    .enableMemory(true)
+    .enableShortTermMemory(true)
     .build();
 
 // 个性化体验：两种记忆都用
 Agent personalizedAgent = Agent.builder()
-    .enableMemory(true)
+    .enableShortTermMemory(true)
     .unifiedMemory(longTermMemory, config)
     .build();
 ```
