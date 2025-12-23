@@ -36,7 +36,7 @@ public class ToolExecutor {
         this.authenticated = authenticated;
     }
 
-    public String execute(FunctionCall functionCall, ExecutionContext context) {
+    public ToolCallResult execute(FunctionCall functionCall, ExecutionContext context) {
         // before
         lifecycles.forEach(lc -> lc.beforeTool(functionCall, context));
 
@@ -44,7 +44,7 @@ public class ToolExecutor {
         var result = doExecute(functionCall, context);
         // after
         lifecycles.forEach(lc -> lc.afterTool(functionCall, context, result));
-        return result.toResultForLLM();
+        return result;
     }
 
     private ToolCallResult doExecute(FunctionCall functionCall, ExecutionContext context) {
@@ -52,7 +52,8 @@ public class ToolExecutor {
                 .filter(v -> v.getName().equalsIgnoreCase(functionCall.function.name))
                 .findFirst();
 
-        if (optional.isEmpty()) optional = toolCalls.stream().filter(v -> v.getName().endsWith(functionCall.function.name)).findFirst();
+        if (optional.isEmpty())
+            optional = toolCalls.stream().filter(v -> v.getName().endsWith(functionCall.function.name)).findFirst();
 
         if (optional.isEmpty()) {
             return ToolCallResult.failed("tool not found: " + functionCall.function.name);
