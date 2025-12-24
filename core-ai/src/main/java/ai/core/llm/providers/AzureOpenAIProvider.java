@@ -80,7 +80,7 @@ public class AzureOpenAIProvider extends LLMProvider {
         var usage = new Usage(0, 0, 0);
         var contentBuilder = new StringBuilder();
         String finishReason = null;
-        var toolCalls = new ArrayList<FunctionCall>();
+        var completionsFunctionToolCalls = new ArrayList<ChatCompletionsToolCall>();
 
         try {
             for (var completion : stream) {
@@ -109,23 +109,19 @@ public class AzureOpenAIProvider extends LLMProvider {
                     callback.onChunk(content);
                 }
 
-                // Merge tool calls by array index
+
                 if (choice.getDelta().getToolCalls() != null) {
-                    mergeToolCalls(choice, toolCalls);
+                    completionsFunctionToolCalls.addAll(choice.getDelta().getToolCalls());
                 }
             }
-
             // Stream completed successfully
             callback.onComplete();
-
-            // Remove null entries from toolCalls
-            toolCalls.removeIf(Objects::isNull);
 
             // Build complete message
             var message = new Message();
             message.role = RoleType.ASSISTANT;
             message.content = contentBuilder.toString();
-            message.toolCalls = toolCalls.isEmpty() ? null : toolCalls;
+            message.toolCalls = completionsFunctionToolCalls.isEmpty() ? null : toFc(completionsFunctionToolCalls);
             message.name = request.getName();
 
             // Build complete choice
@@ -144,57 +140,28 @@ public class AzureOpenAIProvider extends LLMProvider {
         return CompletionResponse.of(choices, usage);
     }
 
-    private void mergeToolCalls(ChatChoice choice, List<FunctionCall> toolCalls) {
-        var deltaToolCalls = choice.getDelta().getToolCalls();
-        for (int i = 0; i < deltaToolCalls.size(); i++) {
-            var deltaToolCall = deltaToolCalls.get(i);
-
-            while (toolCalls.size() <= i) {
-                toolCalls.add(null);
+    private List<FunctionCall> toFc(List<ChatCompletionsToolCall> toolCalls) {
+        var fcs = toolCalls
+                .stream()
+                .map(t -> (ChatCompletionsFunctionToolCall) t)
+                .map(t -> FunctionCall.of(t.getId(), t.getType(), t.getFunction().getName(), t.getFunction().getArguments()))
+                .toList();
+        List<FunctionCall> result = new ArrayList<>();
+        FunctionCall current = null;
+        for (FunctionCall fc : fcs) {
+            if (Objects.nonNull(fc.id)) {
+                current = FunctionCall.of(fc.id, fc.type, fc.function.name, fc.function.arguments);
+                result.add(current);
+                continue;
             }
-
-            var existingToolCall = toolCalls.get(i);
-            if (existingToolCall == null) {
-                addNewToolCall(i, deltaToolCall, toolCalls);
-            } else {
-                mergeDeltaToolCall(existingToolCall, deltaToolCall);
+            if (Objects.nonNull(current) && Objects.nonNull(fc.function.name)) {
+                current.function.name += fc.function.name;
             }
-        }
-    }
-
-    private void addNewToolCall(int i, ChatCompletionsToolCall deltaToolCall, List<FunctionCall> toolCalls) {
-        var existingToolCall = new FunctionCall();
-        existingToolCall.id = deltaToolCall.getId();
-        existingToolCall.type = deltaToolCall.getType();
-        existingToolCall.function = new FunctionCall.Function();
-        if (deltaToolCall instanceof ChatCompletionsFunctionToolCall fCall && fCall.getFunction() != null) {
-            existingToolCall.function.name = fCall.getFunction().getName();
-            existingToolCall.function.arguments = fCall.getFunction().getArguments() != null ? fCall.getFunction().getArguments() : "";
-        } else {
-            existingToolCall.function.name = "";
-            existingToolCall.function.arguments = "";
-        }
-        toolCalls.set(i, existingToolCall);
-    }
-
-    private void mergeDeltaToolCall(FunctionCall existingToolCall, ChatCompletionsToolCall deltaToolCall) {
-        if (existingToolCall.function.arguments == null) {
-            existingToolCall.function.arguments = "";
-        }
-        if (deltaToolCall instanceof ChatCompletionsFunctionToolCall fCall && fCall.getFunction() != null) {
-            if (fCall.getFunction().getArguments() != null) {
-                existingToolCall.function.arguments += fCall.getFunction().getArguments();
-            }
-            if (fCall.getFunction().getName() != null) {
-                existingToolCall.function.name = fCall.getFunction().getName();
+            if (Objects.nonNull(current) && Objects.nonNull(fc.function.arguments)) {
+                current.function.arguments += fc.function.arguments;
             }
         }
-        if (deltaToolCall.getId() != null && !deltaToolCall.getId().isEmpty()) {
-            existingToolCall.id = deltaToolCall.getId();
-        }
-        if (deltaToolCall.getType() != null) {
-            existingToolCall.type = deltaToolCall.getType();
-        }
+        return result;
     }
 
     @Override

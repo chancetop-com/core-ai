@@ -3,7 +3,13 @@ package ai.core.llm.providers;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.domain.CaptionImageRequest;
+import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.Choice;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
@@ -12,12 +18,6 @@ import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.inner.AzureInferenceModelsUtil;
-import ai.core.llm.domain.CaptionImageRequest;
-import ai.core.llm.domain.CaptionImageResponse;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.domain.EmbeddingRequest;
-import ai.core.llm.domain.EmbeddingResponse;
 import com.azure.ai.inference.ChatCompletionsClient;
 import com.azure.ai.inference.ChatCompletionsClientBuilder;
 import com.azure.ai.inference.EmbeddingsClient;
@@ -25,7 +25,7 @@ import com.azure.ai.inference.EmbeddingsClientBuilder;
 import com.azure.ai.inference.ModelServiceVersion;
 import com.azure.ai.inference.models.EmbeddingEncodingFormat;
 import com.azure.ai.inference.models.EmbeddingInputType;
-import com.azure.ai.inference.models.StreamingChatChoiceUpdate;
+import com.azure.ai.inference.models.StreamingChatResponseToolCallUpdate;
 import com.azure.core.credential.AccessToken;
 import com.azure.core.credential.AzureKeyCredential;
 import com.azure.core.credential.TokenCredential;
@@ -91,7 +91,7 @@ public class AzureInferenceProvider extends LLMProvider {
         var usage = new Usage(0, 0, 0);
         var contentBuilder = new StringBuilder();
         String finishReason = null;
-        var toolCalls = new ArrayList<FunctionCall>();
+        var toolCallUpdates = new ArrayList<StreamingChatResponseToolCallUpdate>();
 
         try {
             for (var completion : stream) {
@@ -122,21 +122,19 @@ public class AzureInferenceProvider extends LLMProvider {
 
                 // Merge tool calls by array index
                 if (choice.getDelta().getToolCalls() != null) {
-                    mergeToolCalls(choice, toolCalls);
+                    toolCallUpdates.addAll(choice.getDelta().getToolCalls());
                 }
             }
 
             // Stream completed successfully
             callback.onComplete();
 
-            // Remove null entries from toolCalls
-            toolCalls.removeIf(Objects::isNull);
 
             // Build complete message
             var message = new Message();
             message.role = RoleType.ASSISTANT;
             message.content = contentBuilder.toString();
-            message.toolCalls = toolCalls.isEmpty() ? null : toolCalls;
+            message.toolCalls = toolCallUpdates.isEmpty() ? null : toFc(toolCallUpdates);
             message.name = request.getName();
 
             // Build complete choice
@@ -155,46 +153,27 @@ public class AzureInferenceProvider extends LLMProvider {
         return CompletionResponse.of(choices, usage);
     }
 
-    private void mergeToolCalls(StreamingChatChoiceUpdate choice, List<FunctionCall> toolCalls) {
-        for (int i = 0; i < choice.getDelta().getToolCalls().size(); i++) {
-            var deltaToolCall = choice.getDelta().getToolCalls().get(i);
-
-            // Ensure list is large enough
-            while (toolCalls.size() <= i) {
-                toolCalls.add(null);
+    private List<FunctionCall> toFc(List<StreamingChatResponseToolCallUpdate> toolCalls) {
+        var fcs = toolCalls
+                .stream()
+                .map(t -> FunctionCall.of(t.getId(), "function", t.getFunction().getName(), t.getFunction().getArguments()))
+                .toList();
+        List<FunctionCall> result = new ArrayList<>();
+        FunctionCall current = null;
+        for (FunctionCall fc : fcs) {
+            if (Objects.nonNull(fc.id)) {
+                current = FunctionCall.of(fc.id, fc.type, fc.function.name, fc.function.arguments);
+                result.add(current);
+                continue;
             }
-
-            var existingToolCall = toolCalls.get(i);
-            if (existingToolCall == null) {
-                // Create new tool call
-                existingToolCall = new FunctionCall();
-                existingToolCall.id = deltaToolCall.getId();
-                existingToolCall.type = "function";
-                existingToolCall.function = new FunctionCall.Function();
-                existingToolCall.function.name = deltaToolCall.getFunction() != null ? deltaToolCall.getFunction().getName() : "";
-                existingToolCall.function.arguments = deltaToolCall.getFunction() != null ? deltaToolCall.getFunction().getArguments() : "";
-                toolCalls.set(i, existingToolCall);
-            } else {
-                if (existingToolCall.function.arguments == null) {
-                    existingToolCall.function.arguments = "";
-                }
-
-                // Merge arguments incrementally
-                if (deltaToolCall.getFunction() != null && deltaToolCall.getFunction().getArguments() != null) {
-                    existingToolCall.function.arguments += deltaToolCall.getFunction().getArguments();
-                }
-
-                // Update id if it's provided in this chunk
-                if (deltaToolCall.getId() != null && !deltaToolCall.getId().isEmpty()) {
-                    existingToolCall.id = deltaToolCall.getId();
-                }
-
-                // Update function name if it's provided in this chunk
-                if (deltaToolCall.getFunction() != null && deltaToolCall.getFunction().getName() != null) {
-                    existingToolCall.function.name = deltaToolCall.getFunction().getName();
-                }
+            if (Objects.nonNull(current) && Objects.nonNull(fc.function.name)) {
+                current.function.name += fc.function.name;
+            }
+            if (Objects.nonNull(current) && Objects.nonNull(fc.function.arguments)) {
+                current.function.arguments += fc.function.arguments;
             }
         }
+        return result;
     }
 
     @Override

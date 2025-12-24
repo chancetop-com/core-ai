@@ -44,6 +44,7 @@ class AgentEndToTest extends IntegrationTest {
     void chatSlashCommand() {
         var agent = Agent.builder()
                 .llmProvider(llmProviders.getProvider())
+                .model("gpt-4o")
                 .toolCalls(Functions.from(weatherService))
                 .slidingWindowConfig(null)
                 .build();
@@ -52,8 +53,18 @@ class AgentEndToTest extends IntegrationTest {
         // The tool will not be called again, and the text will be polished.
         out = agent.run("What's the weather like in Xiamen?", ExecutionContext.builder().build());
         LOGGER.info(out);
+    }
 
-
+    @Test
+    void chatTool() {
+        var agent = Agent.builder()
+                .llmProvider(llmProviders.getProvider())
+                .toolCalls(Functions.from(weatherService))
+                .slidingWindowConfig(null)
+                .build();
+        // The tool will not be called again, and the text will be polished.
+        var out = agent.run("What's the weather like in Xiamen?", ExecutionContext.builder().build());
+        LOGGER.info(out);
     }
 
 
