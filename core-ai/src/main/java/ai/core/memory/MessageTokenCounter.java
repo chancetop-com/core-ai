@@ -7,15 +7,10 @@ import ai.core.llm.domain.RoleType;
 import java.util.List;
 
 /**
- * Utility for counting tokens in messages.
- *
  * @author xander
  */
 public final class MessageTokenCounter {
 
-    /**
-     * Count tokens in a single message.
-     */
     public static int count(Message message) {
         int tokens = 0;
         if (message.content != null) {
@@ -31,16 +26,10 @@ public final class MessageTokenCounter {
         return tokens;
     }
 
-    /**
-     * Count tokens in multiple messages.
-     */
     public static int count(List<Message> messages) {
         return countFrom(messages, 0, false);
     }
 
-    /**
-     * Count tokens from a specific index.
-     */
     public static int countFrom(List<Message> messages, int fromIndex) {
         return countFrom(messages, fromIndex, false);
     }

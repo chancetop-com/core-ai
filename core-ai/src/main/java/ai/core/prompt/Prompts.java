@@ -23,4 +23,15 @@ public class Prompts {
             - The `write_todos` tool should never be called multiple times in parallel.
             - Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.
             """;
+    public static final String TOOL_DIRECT_RETURN_REMINDER_PROMPT = """
+              %s successfully executed.
+              <system-reminder>
+              This tool is triggered manually by the user or executed automatically by the system.
+              please return the tool results directly to the user.
+              The tool result is :
+            
+              %s
+            
+              </system-reminder>
+            """;
 }
