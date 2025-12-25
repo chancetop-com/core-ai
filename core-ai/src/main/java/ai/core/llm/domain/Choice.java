@@ -19,8 +19,4 @@ public class Choice {
     public FinishReason finishReason;
     @Property(name = "message")
     public Message message;
-    @Property(name = "delta")
-    public Message delta;
-    @Property(name = "index")
-    public Integer index;
 }
