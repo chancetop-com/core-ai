@@ -352,7 +352,7 @@ public class Agent extends Node<Agent> {
     }
 
     public List<Message> handleFunc(Message funcMsg) {
-        return funcMsg.toolCalls.stream().map(tool -> {
+        return funcMsg.toolCalls.parallelStream().map(tool -> {
             var msg = new ArrayList<Message>();
             var result = getToolExecutor().execute(tool, getExecutionContext());
             if (result.isDirectReturn() || Strings.isBlank(result.toResultForLLM())) {
