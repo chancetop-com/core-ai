@@ -36,28 +36,36 @@ public class Function extends ToolCall {
     ResponseConverter responseConverter = new DefaultJsonResponseConverter();
     Logger logger = LoggerFactory.getLogger(Function.class);
 
-    private String executeSupport(String text) throws InvocationTargetException, IllegalAccessException {
+    private String executeSupport(String text, ExecutionContext context) throws InvocationTargetException, IllegalAccessException {
         if (dynamicArguments != null && dynamicArguments) {
             // args convert by method itself
             var rst = method.invoke(object, List.of(this.getName(), text).toArray());
             return responseConverter.convert(rst);
-        } else {
-            var argsMap = JsonUtil.fromJson(Map.class, text);
-            var args = new Object[this.getParameters().size()];
-            for (int i = 0; i < this.getParameters().size(); i++) {
-                var name = this.getParameters().get(i).getName();
-                var value = argsMap.get(name);
-                if (value == null && this.getParameters().get(i).isRequired()) {
-                    throw new IllegalAccessException(Strings.format("require arg: {} is null", getName(), name));
+        }
+        var argsMap = JsonUtil.fromJson(Map.class, text);
+        var methodParams = method.getParameters();
+        var args = new Object[methodParams.length];
+
+        int jsonParamIndex = 0;
+        for (int i = 0; i < methodParams.length; i++) {
+            // auto-inject ExecutionContext type parameter
+            if (methodParams[i].getType() == ExecutionContext.class) {
+                args[i] = context;
+            } else {
+                var toolParam = this.getParameters().get(jsonParamIndex);
+                var value = argsMap.get(toolParam.getName());
+                if (value == null && toolParam.isRequired()) {
+                    throw new IllegalAccessException(Strings.format("require arg: {} is null", getName(), toolParam.getName()));
                 } else if (value == null) {
                     args[i] = null;
                 } else {
-                    args[i] = JsonUtil.fromJson(method.getParameters()[i].getParameterizedType(), JsonUtil.toJson(value));
+                    args[i] = JsonUtil.fromJson(methodParams[i].getParameterizedType(), JsonUtil.toJson(value));
                 }
+                jsonParamIndex++;
             }
-            var rst = method.invoke(object, args);
-            return responseConverter.convert(rst);
         }
+        var rst = method.invoke(object, args);
+        return responseConverter.convert(rst);
     }
 
     @Override
@@ -65,7 +73,7 @@ public class Function extends ToolCall {
         logger.info("func text is {}", text);
         long startTime = System.currentTimeMillis();
         try {
-            String result = executeSupport(text);
+            String result = executeSupport(text, context);
             return ToolCallResult.completed(result).withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         } catch (IllegalAccessException | InvocationTargetException e) {
             logger.error(Markers.errorCode("FUNCTION_EXECUTE_FAILED"), "function<{}.{}> execute failed, params: {}", object.toString(), getName(), text, e);
@@ -91,6 +99,10 @@ public class Function extends ToolCall {
         var parameterList = new ArrayList<ToolCallParameter>();
         var methodParameters = method.getParameters();
         for (var methodParameter : methodParameters) {
+            // skip ExecutionContext type, not included in tool parameter definition
+            if (methodParameter.getType() == ExecutionContext.class) {
+                continue;
+            }
             var parameter = getParameter(methodParameter);
             parameterList.add(parameter);
         }

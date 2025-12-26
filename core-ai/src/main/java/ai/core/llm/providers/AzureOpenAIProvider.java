@@ -3,7 +3,13 @@ package ai.core.llm.providers;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.domain.CaptionImageRequest;
+import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.Choice;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
@@ -12,16 +18,10 @@ import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.inner.AzureOpenAIModelsUtil;
-import ai.core.llm.domain.CaptionImageRequest;
-import ai.core.llm.domain.CaptionImageResponse;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.domain.EmbeddingRequest;
-import ai.core.llm.domain.EmbeddingResponse;
 import com.azure.ai.openai.OpenAIClient;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.ai.openai.OpenAIServiceVersion;
-import com.azure.ai.openai.models.ChatChoice;
+import com.azure.ai.openai.models.ChatCompletionStreamOptions;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolCall;
 import com.azure.ai.openai.models.ChatCompletionsToolCall;
 import com.azure.ai.openai.models.EmbeddingsOptions;
@@ -75,7 +75,7 @@ public class AzureOpenAIProvider extends LLMProvider {
     @Override
     protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
         // Use sync client to ensure callback executes on the same thread
-        var stream = chatClient.getChatCompletionsStream(request.model, AzureOpenAIModelsUtil.toAzureRequest(request));
+        var stream = chatClient.getChatCompletionsStream(request.model, AzureOpenAIModelsUtil.toAzureRequest(request), includeUsage());
         var choices = new ArrayList<Choice>();
         var usage = new Usage(0, 0, 0);
         var contentBuilder = new StringBuilder();
@@ -138,6 +138,12 @@ public class AzureOpenAIProvider extends LLMProvider {
         }
 
         return CompletionResponse.of(choices, usage);
+    }
+
+    private ChatCompletionStreamOptions includeUsage() {
+        var options = new ChatCompletionStreamOptions();
+        options.setIncludeUsage(true);
+        return options;
     }
 
     private List<FunctionCall> toFc(List<ChatCompletionsToolCall> toolCalls) {

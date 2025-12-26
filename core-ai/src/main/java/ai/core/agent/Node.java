@@ -27,7 +27,6 @@ import core.framework.util.Strings;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
@@ -223,9 +222,7 @@ public abstract class Node<T extends Node<T>> {
         if (persistenceProvider.load(id).isPresent()) {
             persistence.deserialization((T) this, persistenceProvider.load(id).get());
             this.id = id;
-            return;
         }
-        throw new NoSuchElementException("No data found");
     }
 
     @SuppressWarnings("unchecked")

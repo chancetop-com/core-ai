@@ -107,7 +107,6 @@ project(":core-ai") {
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
         implementation("com.azure:azure-ai-openai:${Versions.AZURE_OPENAI_JAVA_VERSION}")
-        implementation("com.azure:azure-ai-inference:${Versions.AZURE_INFERENCE_JAVA_VERSION}")
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")
         implementation("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
         implementation("com.github.jelmerk:hnswlib-core:${Versions.HNSWLIB_JAVA_VERSION}")

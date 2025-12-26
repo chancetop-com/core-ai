@@ -35,6 +35,7 @@ public class CompletionRequest {
     public ResponseFormat responseFormat;
 
     private String name;
+    //todo other params(advanced)
 
     public String getName() {
         return name;
