@@ -5,6 +5,7 @@ import ai.core.agent.AgentBuilder;
 import ai.core.benchmark.domain.BFCLItem;
 import ai.core.benchmark.evaluator.handle.BFCLAgentFCHandle;
 import ai.core.llm.LLMProviders;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -32,7 +33,7 @@ public class BFCLTest extends IntegrationTest {
                 """);
         var res = handle.handle(agent, item);
 
-        System.out.println(res);
+        logger.info(JsonUtil.toJson(res));
 
     }
 }

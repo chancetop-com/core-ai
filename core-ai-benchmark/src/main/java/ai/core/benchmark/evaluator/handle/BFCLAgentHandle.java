@@ -1,17 +1,17 @@
 package ai.core.benchmark.evaluator.handle;
 
 import ai.core.agent.Agent;
-import ai.core.agent.AgentBuilder;
 import ai.core.benchmark.domain.BFCLItem;
 import ai.core.benchmark.domain.BFCLItemAgentResult;
-import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.Tool;
+import core.framework.util.Lists;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * author: lim chen
@@ -41,11 +41,13 @@ public abstract class BFCLAgentHandle implements AgentHandle<BFCLItem, BFCLItemA
     }
 
     protected BFCLItemAgentResult fromCompletionResponse(CompletionResponseWithLatency completionResponseWithLatency, String id, String category) {
+        List<Map<String, Object>> result = Lists.newArrayList();
         var rawRes = completionResponseWithLatency.response;
         if (rawRes.choices.getFirst().finishReason == FinishReason.TOOL_CALLS) {
-            return null;
+            var tools = rawRes.choices.getFirst().message.toolCalls;
+            tools.stream().map(tool -> Map.of(tool.function.name,(Object) tool.function.arguments)).forEach(result::add);
         }
-        return null;
+        return BFCLItemAgentResult.of(id,category,result,rawRes.usage.getPromptTokens(),rawRes.usage.getCompletionTokens(),completionResponseWithLatency.latency);
     }
 
     public static class CompletionResponseWithLatency {
