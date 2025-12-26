@@ -3,7 +3,13 @@ package ai.core.llm.providers;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.domain.CaptionImageRequest;
+import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.Choice;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
@@ -12,16 +18,10 @@ import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.inner.AzureOpenAIModelsUtil;
-import ai.core.llm.domain.CaptionImageRequest;
-import ai.core.llm.domain.CaptionImageResponse;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.domain.EmbeddingRequest;
-import ai.core.llm.domain.EmbeddingResponse;
 import com.azure.ai.openai.OpenAIClient;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.ai.openai.OpenAIServiceVersion;
-import com.azure.ai.openai.models.ChatChoice;
+import com.azure.ai.openai.models.ChatCompletionStreamOptions;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolCall;
 import com.azure.ai.openai.models.ChatCompletionsToolCall;
 import com.azure.ai.openai.models.EmbeddingsOptions;
@@ -75,12 +75,12 @@ public class AzureOpenAIProvider extends LLMProvider {
     @Override
     protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
         // Use sync client to ensure callback executes on the same thread
-        var stream = chatClient.getChatCompletionsStream(request.model, AzureOpenAIModelsUtil.toAzureRequest(request));
+        var stream = chatClient.getChatCompletionsStream(request.model, AzureOpenAIModelsUtil.toAzureRequest(request), includeUsage());
         var choices = new ArrayList<Choice>();
         var usage = new Usage(0, 0, 0);
         var contentBuilder = new StringBuilder();
         String finishReason = null;
-        var toolCalls = new ArrayList<FunctionCall>();
+        var completionsFunctionToolCalls = new ArrayList<ChatCompletionsToolCall>();
 
         try {
             for (var completion : stream) {
@@ -109,23 +109,19 @@ public class AzureOpenAIProvider extends LLMProvider {
                     callback.onChunk(content);
                 }
 
-                // Merge tool calls by array index
+
                 if (choice.getDelta().getToolCalls() != null) {
-                    mergeToolCalls(choice, toolCalls);
+                    completionsFunctionToolCalls.addAll(choice.getDelta().getToolCalls());
                 }
             }
-
             // Stream completed successfully
             callback.onComplete();
-
-            // Remove null entries from toolCalls
-            toolCalls.removeIf(Objects::isNull);
 
             // Build complete message
             var message = new Message();
             message.role = RoleType.ASSISTANT;
             message.content = contentBuilder.toString();
-            message.toolCalls = toolCalls.isEmpty() ? null : toolCalls;
+            message.toolCalls = completionsFunctionToolCalls.isEmpty() ? null : toFc(completionsFunctionToolCalls);
             message.name = request.getName();
 
             // Build complete choice
@@ -144,57 +140,34 @@ public class AzureOpenAIProvider extends LLMProvider {
         return CompletionResponse.of(choices, usage);
     }
 
-    private void mergeToolCalls(ChatChoice choice, List<FunctionCall> toolCalls) {
-        var deltaToolCalls = choice.getDelta().getToolCalls();
-        for (int i = 0; i < deltaToolCalls.size(); i++) {
-            var deltaToolCall = deltaToolCalls.get(i);
-
-            while (toolCalls.size() <= i) {
-                toolCalls.add(null);
-            }
-
-            var existingToolCall = toolCalls.get(i);
-            if (existingToolCall == null) {
-                addNewToolCall(i, deltaToolCall, toolCalls);
-            } else {
-                mergeDeltaToolCall(existingToolCall, deltaToolCall);
-            }
-        }
+    private ChatCompletionStreamOptions includeUsage() {
+        var options = new ChatCompletionStreamOptions();
+        options.setIncludeUsage(true);
+        return options;
     }
 
-    private void addNewToolCall(int i, ChatCompletionsToolCall deltaToolCall, List<FunctionCall> toolCalls) {
-        var existingToolCall = new FunctionCall();
-        existingToolCall.id = deltaToolCall.getId();
-        existingToolCall.type = deltaToolCall.getType();
-        existingToolCall.function = new FunctionCall.Function();
-        if (deltaToolCall instanceof ChatCompletionsFunctionToolCall fCall && fCall.getFunction() != null) {
-            existingToolCall.function.name = fCall.getFunction().getName();
-            existingToolCall.function.arguments = fCall.getFunction().getArguments() != null ? fCall.getFunction().getArguments() : "";
-        } else {
-            existingToolCall.function.name = "";
-            existingToolCall.function.arguments = "";
-        }
-        toolCalls.set(i, existingToolCall);
-    }
-
-    private void mergeDeltaToolCall(FunctionCall existingToolCall, ChatCompletionsToolCall deltaToolCall) {
-        if (existingToolCall.function.arguments == null) {
-            existingToolCall.function.arguments = "";
-        }
-        if (deltaToolCall instanceof ChatCompletionsFunctionToolCall fCall && fCall.getFunction() != null) {
-            if (fCall.getFunction().getArguments() != null) {
-                existingToolCall.function.arguments += fCall.getFunction().getArguments();
+    private List<FunctionCall> toFc(List<ChatCompletionsToolCall> toolCalls) {
+        var fcs = toolCalls
+                .stream()
+                .map(t -> (ChatCompletionsFunctionToolCall) t)
+                .map(t -> FunctionCall.of(t.getId(), t.getType(), t.getFunction().getName(), t.getFunction().getArguments()))
+                .toList();
+        List<FunctionCall> result = new ArrayList<>();
+        FunctionCall current = null;
+        for (FunctionCall fc : fcs) {
+            if (Objects.nonNull(fc.id)) {
+                current = FunctionCall.of(fc.id, fc.type, fc.function.name, fc.function.arguments);
+                result.add(current);
+                continue;
             }
-            if (fCall.getFunction().getName() != null) {
-                existingToolCall.function.name = fCall.getFunction().getName();
+            if (Objects.nonNull(current) && Objects.nonNull(fc.function.name)) {
+                current.function.name += fc.function.name;
+            }
+            if (Objects.nonNull(current) && Objects.nonNull(fc.function.arguments)) {
+                current.function.arguments += fc.function.arguments;
             }
         }
-        if (deltaToolCall.getId() != null && !deltaToolCall.getId().isEmpty()) {
-            existingToolCall.id = deltaToolCall.getId();
-        }
-        if (deltaToolCall.getType() != null) {
-            existingToolCall.type = deltaToolCall.getType();
-        }
+        return result;
     }
 
     @Override

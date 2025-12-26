@@ -6,7 +6,6 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
-import ai.core.llm.providers.AzureInferenceProvider;
 import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.mcp.client.McpClientManager;
@@ -31,7 +30,6 @@ import ai.core.vectorstore.vectorstores.hnswlib.HnswConfig;
 import ai.core.vectorstore.vectorstores.hnswlib.HnswLibVectorStore;
 import ai.core.vectorstore.vectorstores.milvus.MilvusConfig;
 import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
-import com.azure.ai.inference.ModelServiceVersion;
 import com.azure.ai.openai.OpenAIServiceVersion;
 import core.framework.json.JSON;
 import core.framework.module.Module;
@@ -87,7 +85,6 @@ public class MultiAgentModule extends Module {
         var providers = new LLMProviders();
         bind(providers);
         configLiteLLM(providers, setupLLMProperties(LLMProviderType.LITELLM));
-        configAzureInference(providers, setupLLMProperties(LLMProviderType.AZURE_INFERENCE));
         configDeepSeek(providers, setupLLMProperties(LLMProviderType.DEEPSEEK));
         configAzureOpenAI(providers, setupLLMProperties(LLMProviderType.AZURE));
         configOpenAI(providers, setupLLMProperties(LLMProviderType.OPENAI));
@@ -95,9 +92,9 @@ public class MultiAgentModule extends Module {
 
     private void configOpenAI(LLMProviders providers, LLMProviderConfig config) {
         property("openai.api.key").ifPresent(key -> {
-            var provider = new AzureInferenceProvider(config, key, null, false);
+            var provider = new LiteLLMProvider(config, property("openai.api.base").orElseThrow(), key);
             injectTracerIfAvailable(provider);
-            bind(AzureInferenceProvider.class, "openai", provider);
+            bind(LiteLLMProvider.class, "openai", provider);
             providers.addProvider(LLMProviderType.OPENAI, provider);
         });
     }
@@ -112,21 +109,13 @@ public class MultiAgentModule extends Module {
         }));
     }
 
-    private void configAzureInference(LLMProviders providers, LLMProviderConfig config) {
-        property("azure.ai.api.key").ifPresent(key -> property("azure.ai.api.base").ifPresent(base -> {
-            AtomicReference<AzureInferenceProvider> provider = new AtomicReference<>();
-            property("azure.ai.api.version").ifPresentOrElse(version -> provider.set(new AzureInferenceProvider(config, key, base, true, ModelServiceVersion.valueOf(version))), () -> provider.set(new AzureInferenceProvider(config, key, base, true)));
-            injectTracerIfAvailable(provider.get());
-            bind(provider.get());
-            providers.addProvider(LLMProviderType.AZURE_INFERENCE, provider.get());
-        }));
-    }
+
 
     private void configDeepSeek(LLMProviders providers, LLMProviderConfig config) {
         property("deepseek.api.key").ifPresent(key -> {
-            var provider = new AzureInferenceProvider(config, key, "https://api.deepseek.com/v1", false);
+            var provider = new LiteLLMProvider(config, "https://api.deepseek.com/v1", key);
             injectTracerIfAvailable(provider);
-            bind(AzureInferenceProvider.class, "deepseek", provider);
+            bind(LiteLLMProvider.class, "deepseek", provider);
             providers.addProvider(LLMProviderType.DEEPSEEK, provider);
         });
     }
