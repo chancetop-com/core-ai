@@ -1,46 +1,72 @@
 package ai.core.llm.providers;
 
 import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.Choice;
-import ai.core.llm.domain.EmbeddingRequest;
-import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
+import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.Function;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
+import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Tool;
+import ai.core.llm.domain.Usage;
 import ai.core.utils.JsonUtil;
-import core.framework.http.ContentType;
-import core.framework.http.HTTPClient;
-import core.framework.http.HTTPMethod;
-import core.framework.http.HTTPRequest;
-import core.framework.json.JSON;
-import core.framework.util.Strings;
+import com.openai.client.OpenAIClient;
+import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.core.JsonValue;
+import com.openai.core.http.StreamResponse;
+import com.openai.models.FunctionDefinition;
+import com.openai.models.FunctionParameters;
+import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
+import com.openai.models.chat.completions.ChatCompletionChunk;
+import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.openai.models.chat.completions.ChatCompletionFunctionTool;
+import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
+import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import com.openai.models.chat.completions.ChatCompletionStreamOptions;
+import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
+import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
+import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import reactor.util.function.Tuples;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * @author stephen
  */
+//todo 1. Support for structured/response api  2. set max tokens and other params(advanced) 3. LLMProviderConfig Refactoring 4. standalone embed provider
+
 public class LiteLLMProvider extends LLMProvider {
-    private final String url;
-    private final String token;
+    private final Logger logger = LoggerFactory.getLogger(LiteLLMProvider.class);
+    private final OpenAIClient client;
 
     public LiteLLMProvider(LLMProviderConfig config, String url, String token) {
         super(config);
-        this.url = url;
-        this.token = token;
+        this.client = OpenAIOkHttpClient.builder()
+                .apiKey(token)
+                .baseUrl(url)
+                .timeout(config.getTimeout())
+                .build();
     }
 
     @Override
     protected CompletionResponse doCompletion(CompletionRequest dto) {
-        return chatCompletion(dto);
+        throw new IllegalArgumentException("Not implemented");
     }
 
     @Override
@@ -69,193 +95,145 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     public CompletionResponse chatCompletionStream(CompletionRequest request, StreamingCallback callback) {
-        request.stream = true; // Ensure streaming is enabled
 
-        var client = HTTPClient.builder().trustAll().build();
-        var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
-        req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
-        req.headers.put("Accept", "text/event-stream");
-        var body = JsonUtil.toJson(request).getBytes(StandardCharsets.UTF_8);
-        req.body(body, ContentType.APPLICATION_JSON);
-        if (!Strings.isBlank(token)) {
-            req.headers.put("Authorization", "Bearer " + token);
+        var createParams = toChatCompletionCreateParams(request);
+        var usage = new Usage(0, 0, 0);
+        var contentBuilder = new StringBuilder();
+        var completionsFunctionToolCalls = new ArrayList<ChatCompletionChunk.Choice.Delta.ToolCall>();
+        try (StreamResponse<ChatCompletionChunk> streamResponse =
+                     client.chat().completions().createStreaming(createParams)) {
+
+            streamResponse
+                    .stream()
+                    .peek(completion -> assignUsage(usage, completion))
+                    .flatMap(completion -> completion.choices().stream())
+                    .peek(choice -> logger.debug("Completion choice: {}", JsonUtil.toJson(choice.delta())))
+                    .peek(choice -> choice.delta().content().ifPresent(callback::onChunk))
+                    .peek(choice -> choice.delta().content().ifPresent(contentBuilder::append))
+                    .forEach(choice -> choice.delta().toolCalls().ifPresent(completionsFunctionToolCalls::addAll));
+            callback.onComplete();
+            var message = new Message();
+            message.role = RoleType.ASSISTANT;
+            message.content = contentBuilder.toString();
+            message.toolCalls = completionsFunctionToolCalls.isEmpty() ? null : toFc(completionsFunctionToolCalls);
+            message.name = request.getName();
+
+            var finishReason = completionsFunctionToolCalls.isEmpty() ? FinishReason.STOP : FinishReason.TOOL_CALLS;
+            return CompletionResponse.of(List.of(Choice.of(finishReason, message)), usage);
+        } catch (Exception e) {
+            logger.error("Error in streaming completion: {}", e.getMessage(), e);
+            callback.onError(e);
+            throw new RuntimeException("Streaming failed", e);
         }
-
-        return executeSSERequest(client, req, callback);
     }
 
-    private CompletionResponse executeSSERequest(HTTPClient client, HTTPRequest req, StreamingCallback callback) {
-        // Execute the request
-        var rsp = client.execute(req);
+    private List<FunctionCall> toFc(List<ChatCompletionChunk.Choice.Delta.ToolCall> toolCalls) {
 
-        if (rsp.statusCode != 200) {
-            throw new RuntimeException(rsp.text());
-        }
-
-        // Process SSE stream
-        CompletionResponse finalResponse = null;
-        var lines = rsp.text().split("\n");
-        for (var line : lines) {
-            // Skip empty lines and lines that do not start with "data: "
-            if (!line.startsWith("data: ")) continue;
-
-            var data = line.substring(6).trim();
-            if ("[DONE]".equals(data)) {
-                break;
-            }
-
-            var chunk = JSON.fromJSON(CompletionResponse.class, data);
-            if (chunk.choices == null || chunk.choices.isEmpty()) {
-                // Skip chunks without choices
+        var fcs = toolCalls
+                .stream()
+                .map(t -> Tuples.of(t.id(), t.function()))
+                .filter(tup -> tup.getT1().isPresent() || tup.getT2().isPresent())
+                .map(tup -> FunctionCall.of(tup.getT1().orElse(null), "function", tup.getT2().flatMap(ChatCompletionChunk.Choice.Delta.ToolCall.Function::name).orElse(null), tup.getT2().flatMap(ChatCompletionChunk.Choice.Delta.ToolCall.Function::arguments).orElse(null)))
+                .toList();
+        List<FunctionCall> result = new ArrayList<>();
+        FunctionCall current = null;
+        for (FunctionCall fc : fcs) {
+            if (Objects.nonNull(fc.id)) {
+                current = FunctionCall.of(fc.id, fc.type, fc.function.name, fc.function.arguments);
+                result.add(current);
                 continue;
             }
-
-            var choice = chunk.choices.getFirst();
-            if (choice.delta != null && choice.delta.content != null) {
-                // Call the streaming callback with the content delta
-                callback.onChunk(choice.delta.content);
+            if (Objects.nonNull(current) && Objects.nonNull(fc.function.name)) {
+                current.function.name += fc.function.name;
             }
-
-            // Initialize final response with first chunk
-            if (finalResponse == null) {
-                finalResponse = chunk;
-                // Initialize message from delta
-                initializeFinalChoiceMessage(finalResponse);
-            } else {
-                // Merge streaming chunks into final response
-                mergeChunkIntoFinalResponse(finalResponse, chunk);
+            if (Objects.nonNull(current) && Objects.nonNull(fc.function.arguments)) {
+                current.function.arguments += fc.function.arguments;
             }
         }
-
-        callback.onComplete();
-        return finalResponse;
+        return result;
     }
 
-    private void initializeFinalChoiceMessage(CompletionResponse finalResponse) {
-        if (finalResponse.choices == null || finalResponse.choices.isEmpty()) {
-            return;
-        }
-
-        var finalChoice = finalResponse.choices.getFirst();
-        if (finalChoice.delta == null) {
-            return;
-        }
-
-        finalChoice.message = new Message();
-        finalChoice.message.role = finalChoice.delta.role;
-        finalChoice.message.content = finalChoice.delta.content != null ? finalChoice.delta.content : "";
-        finalChoice.message.toolCalls = finalChoice.delta.toolCalls != null ? new ArrayList<>(finalChoice.delta.toolCalls) : new ArrayList<>();
-    }
-
-    private void mergeChunkIntoFinalResponse(CompletionResponse finalResponse, CompletionResponse chunk) {
-        if (chunk.choices != null && !chunk.choices.isEmpty() && finalResponse.choices != null && !finalResponse.choices.isEmpty()) {
-            var finalChoice = finalResponse.choices.getFirst();
-            var chunkChoice = chunk.choices.getFirst();
-
-            if (chunkChoice.delta != null) {
-                copyDeltaToFinalChoice(finalChoice, chunkChoice);
-            }
-
-            // Update finish reason from chunk
-            if (chunkChoice.finishReason != null) {
-                finalChoice.finishReason = chunkChoice.finishReason;
-            }
-        }
-
-        // Update usage from chunk
-        if (chunk.usage != null) {
-            finalResponse.usage = chunk.usage;
-        }
-    }
-
-    private void copyDeltaToFinalChoice(Choice finalChoice, Choice chunkChoice) {
-        // Ensure message exists
-        if (finalChoice.message == null) {
-            finalChoice.message = new Message();
-            finalChoice.message.content = "";
-            finalChoice.message.toolCalls = new ArrayList<>();
-        }
-
-        // Merge content into message
-        if (chunkChoice.delta.content != null) {
-            copyMessageContentToFinalChoice(finalChoice, chunkChoice);
-        }
-
-        // Merge tool calls into message by index
-        if (chunkChoice.delta.toolCalls != null) {
-            copyToolCallsToFinalChoice(finalChoice, chunkChoice);
-        }
-
-        // Merge role if not set
-        if (chunkChoice.delta.role != null && finalChoice.message.role == null) {
-            finalChoice.message.role = chunkChoice.delta.role;
-        }
-    }
-
-    private void copyMessageContentToFinalChoice(Choice finalChoice, Choice chunkChoice) {
-        if (finalChoice.message.content == null) {
-            finalChoice.message.content = "";
-        }
-        finalChoice.message.content += chunkChoice.delta.content;
-    }
-
-    private void copyToolCallsToFinalChoice(Choice finalChoice, Choice chunkChoice) {
-        if (finalChoice.message.toolCalls == null) {
-            finalChoice.message.toolCalls = new ArrayList<>();
-        }
-
-        for (var deltaToolCall : chunkChoice.delta.toolCalls) {
-            if (deltaToolCall.index == null) {
-                // If index is not provided, we cannot merge this tool call
-                continue;
-            }
-
-            // Ensure list is large enough
-            while (finalChoice.message.toolCalls.size() <= deltaToolCall.index) {
-                finalChoice.message.toolCalls.add(null);
-            }
-
-            var existingToolCall = finalChoice.message.toolCalls.get(deltaToolCall.index);
-            if (existingToolCall == null) {
-                // Create new tool call
-                existingToolCall = new FunctionCall();
-                existingToolCall.id = deltaToolCall.id;
-                existingToolCall.type = deltaToolCall.type;
-                existingToolCall.function = new FunctionCall.Function();
-                existingToolCall.function.name = deltaToolCall.function != null ? deltaToolCall.function.name : "";
-                existingToolCall.function.arguments = deltaToolCall.function != null ? deltaToolCall.function.arguments : "";
-                finalChoice.message.toolCalls.set(deltaToolCall.index, existingToolCall);
-            } else {
-                // Merge arguments incrementally
-                if (deltaToolCall.function != null && deltaToolCall.function.arguments != null) {
-                    if (existingToolCall.function.arguments == null) {
-                        existingToolCall.function.arguments = "";
-                    }
-                    existingToolCall.function.arguments += deltaToolCall.function.arguments;
-                }
-            }
-        }
-    }
-
-    public CompletionResponse chatCompletion(CompletionRequest request) {
-        var client = HTTPClient.builder().connectTimeout(this.config.getConnectTimeout()).timeout(this.config.getTimeout()).trustAll().build();
-        var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
-        req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
-        var body = JsonUtil.toJson(request).getBytes(StandardCharsets.UTF_8);
-        req.body(body, ContentType.APPLICATION_JSON);
-        if (!Strings.isBlank(token)) {
-            req.headers.put("Authorization", "Bearer " + token);
-        }
-        var rsp = client.execute(req);
-        if (rsp.statusCode != 200) {
-            throw new RuntimeException(rsp.text());
-        }
-        var rst = JSON.fromJSON(CompletionResponse.class, rsp.text());
-        rst.choices.forEach(v -> {
-            if (v.message.content == null) {
-                v.message.content = "";
-            }
+    private void assignUsage(Usage usage, ChatCompletionChunk chunk) {
+        chunk.usage().ifPresent(chunkUsage -> {
+            usage.setCompletionTokens((int) chunkUsage.completionTokens());
+            usage.setPromptTokens((int) chunkUsage.promptTokens());
+            usage.setTotalTokens((int) chunkUsage.totalTokens());
         });
-        return rst;
+
+    }
+
+
+    private ChatCompletionCreateParams toChatCompletionCreateParams(CompletionRequest request) {
+        var builder = ChatCompletionCreateParams.builder().model(request.model).temperature(request.temperature).streamOptions(ChatCompletionStreamOptions.builder().includeUsage(true).build());
+        request.messages.stream().map(this::fromMessage).forEach(builder::addMessage);
+        if (request.tools != null && !request.tools.isEmpty()) {
+            request.tools.stream()
+                    .map(this::toFunctionDefinition)
+                    .map(fd -> ChatCompletionFunctionTool.builder().function(fd).build())
+                    .forEach(builder::addTool);
+        }
+        return builder.build();
+
+
+    }
+
+    private ChatCompletionMessageParam fromMessage(Message message) {
+        if (message.role == RoleType.USER) {
+            return ChatCompletionMessageParam.ofUser(ChatCompletionUserMessageParam.builder()
+                    .content(message.content)
+                    .build()
+            );
+        }
+        if (message.role == RoleType.ASSISTANT) {
+            var aiBuilder = ChatCompletionAssistantMessageParam.builder()
+                    .content(message.content);
+            if (message.toolCalls != null && !message.toolCalls.isEmpty()) {
+                message.toolCalls.stream()
+                        .map(t -> {
+                            var fc = ChatCompletionMessageFunctionToolCall.Function.builder().name(t.function.name).arguments(t.function.arguments).build();
+                            return ChatCompletionMessageFunctionToolCall.builder().id(t.id).function(fc).build();
+                        })
+                        .forEach(aiBuilder::addToolCall);
+            }
+            return ChatCompletionMessageParam.ofAssistant(aiBuilder.build());
+        }
+        if (message.role == RoleType.SYSTEM) {
+            return ChatCompletionMessageParam.ofSystem(ChatCompletionSystemMessageParam.builder()
+                    .content(message.content)
+                    .build()
+            );
+        }
+        if (message.role == RoleType.TOOL) {
+            return ChatCompletionMessageParam.ofTool(ChatCompletionToolMessageParam.builder()
+                    .content(message.content)
+                    .toolCallId(message.toolCallId)
+                    .build()
+            );
+        }
+        throw new IllegalArgumentException("Invalid role: " + message.role);
+
+    }
+
+
+    private FunctionDefinition toFunctionDefinition(Tool tool) {
+        return FunctionDefinition.builder()
+                .name(tool.function.name)
+                .description(tool.function.description)
+                .parameters(toFunctionParameters(tool.function))
+                .build();
+    }
+
+    private FunctionParameters toFunctionParameters(Function function) {
+        var jsonSchema = JsonUtil.toJson(function.parameters);
+        var jsonMap = JsonUtil.toMap(jsonSchema)
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> JsonValue.from(entry.getValue())
+                ));
+        return FunctionParameters.builder()
+                .additionalProperties(jsonMap)
+                .build();
     }
 }
