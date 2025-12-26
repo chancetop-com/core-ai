@@ -49,7 +49,8 @@ import java.util.stream.Collectors;
 /**
  * @author stephen
  */
-//todo use openai sdk
+//todo 1. Support for structured/response api  2. set max tokens and other params(advanced) 3. LLMProviderConfig Refactoring 4. standalone embed provider
+
 public class LiteLLMProvider extends LLMProvider {
     private final Logger logger = LoggerFactory.getLogger(LiteLLMProvider.class);
     private final OpenAIClient client;
@@ -164,7 +165,6 @@ public class LiteLLMProvider extends LLMProvider {
 
     private ChatCompletionCreateParams toChatCompletionCreateParams(CompletionRequest request) {
         var builder = ChatCompletionCreateParams.builder().model(request.model).temperature(request.temperature).streamOptions(ChatCompletionStreamOptions.builder().includeUsage(true).build());
-        //todo set max tokens
         request.messages.stream().map(this::fromMessage).forEach(builder::addMessage);
         if (request.tools != null && !request.tools.isEmpty()) {
             request.tools.stream()
