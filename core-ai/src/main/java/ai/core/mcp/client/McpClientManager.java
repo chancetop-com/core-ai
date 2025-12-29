@@ -52,18 +52,27 @@ public class McpClientManager implements AutoCloseable {
     private final Map<String, ConnectionState> states = new ConcurrentHashMap<>();
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
     private final List<ConnectionStateListener> listeners = new CopyOnWriteArrayList<>();
-    private final McpConnectionMonitor connectionMonitor;
+    private McpConnectionMonitor connectionMonitor;
+    private volatile boolean connectionMonitorInitialized = false;
     private Thread shutdownHook;
     private volatile boolean closed = false;
 
     public McpClientManager() {
-        this.connectionMonitor = new McpConnectionMonitor(
-            () -> configs,
-            () -> clients,
-            this::getState,
-            this::handleDisconnection,
-            new ManagerReconnectCallback()
-        );
+        // connectionMonitor is lazily initialized to avoid 'this' escape warning
+    }
+
+    private synchronized McpConnectionMonitor getConnectionMonitor() {
+        if (!connectionMonitorInitialized) {
+            this.connectionMonitor = new McpConnectionMonitor(
+                () -> configs,
+                () -> clients,
+                this::getState,
+                this::handleDisconnection,
+                new ManagerReconnectCallback()
+            );
+            connectionMonitorInitialized = true;
+        }
+        return connectionMonitor;
     }
 
     public void addServer(McpServerConfig config) {
@@ -74,12 +83,12 @@ public class McpClientManager implements AutoCloseable {
         configs.put(name, config);
         states.put(name, ConnectionState.NOT_CONNECTED);
         locks.put(name, new Object());
-        connectionMonitor.addServer(name);
+        getConnectionMonitor().addServer(name);
         LOGGER.info("Added MCP server config: {}", name);
     }
 
     public void removeServer(String serverName) {
-        connectionMonitor.removeServer(serverName);
+        getConnectionMonitor().removeServer(serverName);
         closeClient(serverName);
         configs.remove(serverName);
         states.remove(serverName);
@@ -144,11 +153,11 @@ public class McpClientManager implements AutoCloseable {
     }
 
     public void startHeartbeat() {
-        connectionMonitor.startHeartbeat();
+        getConnectionMonitor().startHeartbeat();
     }
 
     public void stopHeartbeat() {
-        connectionMonitor.stopHeartbeat();
+        getConnectionMonitor().stopHeartbeat();
     }
 
     public void reconnect(String serverName) {
@@ -156,11 +165,11 @@ public class McpClientManager implements AutoCloseable {
             throw new IllegalArgumentException("Server not configured: " + serverName);
         }
         LOGGER.info("Manual reconnect requested for server: {}", serverName);
-        connectionMonitor.resetReconnectAttempts(serverName);
+        getConnectionMonitor().resetReconnectAttempts(serverName);
         handleDisconnection(serverName);
         var config = configs.get(serverName);
         if (config != null && !config.isAutoReconnect()) {
-            connectionMonitor.scheduleReconnect(serverName);
+            getConnectionMonitor().scheduleReconnect(serverName);
         }
     }
 
@@ -234,7 +243,7 @@ public class McpClientManager implements AutoCloseable {
         }
         closed = true;
         LOGGER.info("Closing McpClientManager with {} clients...", clients.size());
-        connectionMonitor.close();
+        getConnectionMonitor().close();
         for (String serverName : List.copyOf(clients.keySet())) {
             closeClient(serverName);
         }

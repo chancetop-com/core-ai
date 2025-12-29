@@ -49,6 +49,7 @@ public class DynamicApiCaller {
     }
 
     public String callApi(String name, String args) {
+        ActionLogContext.triggerTrace(true);
         return callApiWithRsp(name, args).text();
     }
 
@@ -64,7 +65,6 @@ public class DynamicApiCaller {
 
     @SuppressWarnings("unchecked")
     private HTTPResponse call(String name, ApiDefinition.Operation operation, String args) {
-        ActionLogContext.triggerTrace(true);
         var argsMap = (Map<String, Object>) JsonUtil.fromJsonSafe(Map.class, args);
         ActionLogContext.put("mcp-call-api-args-map", argsMap);
         var apiDefinition = apiDefinitionMap.get(name);
@@ -78,6 +78,7 @@ public class DynamicApiCaller {
         }
         var req = new HTTPRequest(HTTPMethod.valueOf(operation.method), url);
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
+        req.headers.put("ref-id", ActionLogContext.id());
         ActionLogContext.put("mcp-call-api-url", url);
         if (operation.requestType != null) {
             var requestType = typeMap.get(apiDefinition.app).get(operation.requestType);
