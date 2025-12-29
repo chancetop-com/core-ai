@@ -10,12 +10,9 @@ import java.util.Map;
  * date: 2025/12/19
  * description: Agent execution result for BFCL benchmark item
  */
-public class BFCLItemAgentResult {
+public class BFCLItemEvalResult {
     @JsonProperty("id")
     public String id;
-
-    @JsonProperty("category")
-    public String category;
 
     @JsonProperty("result")
     public List<Map<String, Object>> result;
@@ -30,13 +27,12 @@ public class BFCLItemAgentResult {
     public Double latency;
 
 
-    public static BFCLItemAgentResult of(String id, String category,
-                                              List<Map<String, Object>> result,
-                                              Integer inputTokenCount, Integer outputTokenCount,
-                                              Double latency) {
-        BFCLItemAgentResult agentResult = new BFCLItemAgentResult();
+    public static BFCLItemEvalResult of(String id,
+                                        List<Map<String, Object>> result,
+                                        Integer inputTokenCount, Integer outputTokenCount,
+                                        Double latency) {
+        BFCLItemEvalResult agentResult = new BFCLItemEvalResult();
         agentResult.id = id;
-        agentResult.category = category;
         agentResult.result = result;
         agentResult.inputTokenCount = inputTokenCount;
         agentResult.outputTokenCount = outputTokenCount;

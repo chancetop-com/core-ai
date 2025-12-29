@@ -1,103 +1,132 @@
 package ai.core.benchmark.evaluator;
 
-import ai.core.agent.Agent;
+import ai.core.benchmark.common.BFCLCategory;
+import ai.core.benchmark.domain.BFCLFileInfo;
 import ai.core.benchmark.domain.BFCLItem;
-import ai.core.benchmark.domain.BFCLItemAgentResult;
-import ai.core.benchmark.evaluator.handle.BFCLAgentHandle;
+import ai.core.benchmark.domain.BFCLItemEvalResult;
 import ai.core.benchmark.executor.ConcurrentBatchExecutor;
+import ai.core.benchmark.inference.BFCLInferenceFCHandle;
+import ai.core.benchmark.inference.BFCLInferenceHandle;
 import ai.core.benchmark.loader.BFCLDatasetLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 
 /**
  * author: lim chen
  * date: 2025/12/19
- * description: BFCL Benchmark Evaluator with concurrent agent execution
+ * description: BFCL Benchmark Evaluator with batch processing
  */
-public class BFCLEvaluator implements Evaluator {
+public class BFCLEvaluator {
     private static final Logger LOGGER = LoggerFactory.getLogger(BFCLEvaluator.class);
 
-    private final List<BFCLDatasetLoader> loaders;
-    private final int splitSize;
+    private final int batchSize;
     private final int threadPoolSize;
-    private final Map<String, BFCLItemAgentResult> results;
-    private final BFCLAgentHandle agentHandle;
+    private final AtomicInteger processedCount;
+    private final BFCLDatasetLoader datasetLoader;
+    private final BFCLInferenceHandle inferenceHandle;
 
-    public BFCLEvaluator(List<BFCLDatasetLoader> loaders, BFCLAgentHandle agentHandle) {
-        this(loaders, agentHandle, Runtime.getRuntime().availableProcessors(), 50);
+    public BFCLEvaluator(BFCLInferenceHandle inferenceHandle) {
+        this.threadPoolSize = Runtime.getRuntime().availableProcessors();
+        this.batchSize = 50;
+        this.processedCount = new AtomicInteger(0);
+        this.datasetLoader = new BFCLDatasetLoader();
+        this.inferenceHandle = inferenceHandle;
     }
 
-    public BFCLEvaluator(List<BFCLDatasetLoader> loaders, BFCLAgentHandle agentHandle, int threadPoolSize, int splitSize) {
-        this.loaders = loaders;
-        this.threadPoolSize = threadPoolSize;
-        this.splitSize = splitSize;
-        this.results = new ConcurrentHashMap<>();
-        this.agentHandle = agentHandle;
+
+    private List<BFCLFileInfo> loadDataset(BFCLCategory category) {
+        return datasetLoader.load(category);
     }
 
-    @Override
-    public void evaluate(Supplier<Agent> agentSupplier) {
-        // Calculate total items for progress tracking
-        int totalItems = loaders.stream()
-                .mapToInt(loader -> loader.getAllItems().size())
-                .sum();
+    public void eval(BFCLCategory category) {
+        LOGGER.info("Starting evaluation for category: {}", category);
 
-        LOGGER.info("Starting evaluation for {} items across {} categories", totalItems, loaders.size());
+        // Load dataset files
+        var fileInfos = loadDataset(category);
+        if (fileInfos == null || fileInfos.isEmpty()) {
+            LOGGER.warn("No data files found for category: {}", category);
+            return;
+        }
 
-        List<BatchTask> tasks = prepareBatchTasks(agentSupplier.get());
-        executeBatchTasks(tasks, totalItems);
-    }
+        // Calculate total items across all files
+        int totalItems = fileInfos.stream().mapToInt(f -> f.items.size()).sum();
+        LOGGER.info("Loaded {} files with {} total items for evaluation", fileInfos.size(), totalItems);
 
-    private List<BatchTask> prepareBatchTasks(Agent agent) {
-        List<BatchTask> tasks = new ArrayList<>();
+        // Prepare batch tasks - split each file into batches
+        List<Runnable> tasks = new ArrayList<>();
+        int totalBatches = 0;
 
-        for (BFCLDatasetLoader loader : loaders) {
-            String category = loader.getCategory();
-            List<List<BFCLItem>> splits = loader.splitDataset(splitSize);
-            LOGGER.info("Category: {} - {} items split into {} batches",
-                    category, loader.getAllItems().size(), splits.size());
+        for (BFCLFileInfo fileInfo : fileInfos) {
+            List<List<BFCLItem>> fileBatches = splitIntoBatches(fileInfo.items, batchSize);
+            totalBatches += fileBatches.size();
 
-            for (int batchIndex = 0; batchIndex < splits.size(); batchIndex++) {
-                List<BFCLItem> batch = splits.get(batchIndex);
-                BatchTask task = new BatchTask(agentHandle, agent, category, batch, batchIndex);
-                tasks.add(task);
+            for (int i = 0; i < fileBatches.size(); i++) {
+                final int batchIndex = i;
+                final List<BFCLItem> batch = fileBatches.get(i);
+                final BFCLFileInfo currentFileInfo = BFCLFileInfo.of(fileInfo.name, category.name().toLowerCase(),fileInfo.path, batch);
+                tasks.add(() -> processBatch(currentFileInfo, batchIndex, totalItems));
             }
         }
 
-        return tasks;
-    }
+        LOGGER.info("Split into {} total batches across {} files (batch size: {})",
+                totalBatches, fileInfos.size(), batchSize);
 
-    private void executeBatchTasks(List<BatchTask> tasks, int totalItems) {
+        // Execute batch tasks concurrently
         ConcurrentBatchExecutor executor = ConcurrentBatchExecutor.create(threadPoolSize);
-        EvaluationStatistics statistics = new EvaluationStatistics();
-
-        tasks.forEach(task -> task.setRuntimeContext(results, statistics, totalItems));
-
         try {
-            executor.execute(new ArrayList<>(tasks));
+            LOGGER.info("Starting concurrent batch execution with {} threads", threadPoolSize);
+            executor.execute(tasks);
+            LOGGER.info("All batches completed. Total processed: {}/{}", processedCount.get(), totalItems);
         } finally {
             executor.shutdown();
         }
     }
 
+    private List<List<BFCLItem>> splitIntoBatches(List<BFCLItem> dataset, int batchSize) {
+        List<List<BFCLItem>> batches = new ArrayList<>();
+        for (int i = 0; i < dataset.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, dataset.size());
+            batches.add(dataset.subList(i, end));
+        }
+        return batches;
+    }
 
-    //todo  重构，整合到task
+    private void processBatch(BFCLFileInfo fileInfo, int batchIndex, int totalItems) {
+        try {
+            LOGGER.info("[{}] Processing batch {} with {} items", fileInfo.name, batchIndex, fileInfo.items.size());
+
+            for (BFCLItem item : fileInfo.items) {
+                BFCLItemEvalResult result = runItem(item);
+                writeResultToFile(fileInfo, result);
+                int processed = processedCount.incrementAndGet();
+                logProgress(processed, totalItems);
+            }
+
+            LOGGER.info("[{}] Completed batch {} ({} items)", fileInfo.name, batchIndex, fileInfo.items.size());
+
+        } catch (Exception e) {
+            LOGGER.error("[{}] Error processing batch {}", fileInfo.name, batchIndex, e);
+        }
+    }
+
+    private BFCLItemEvalResult runItem(BFCLItem item) {
+        return inferenceHandle.handle(item);
+    }
+
+    private void writeResultToFile(BFCLFileInfo fileInfo, BFCLItemEvalResult result) {
+        datasetLoader.writeResultToFile(fileInfo, result);
+    }
 
     private void logProgress(int processed, int total) {
         if (processed % 10 == 0 || processed == total) {
             double progress = (double) processed / total * 100;
-
             String progressBar = generateProgressBar(progress);
 
-            LOGGER.info("Progress: {} [{}/{}]",
-                    progressBar, processed, total);
+            LOGGER.info("Progress: {} [{}/{}]", progressBar, processed, total);
         }
     }
 
@@ -114,64 +143,4 @@ public class BFCLEvaluator implements Evaluator {
                 String.format(" %.1f%%", percentage);
     }
 
-    // Inner class to encapsulate batch task execution
-    private class BatchTask implements Runnable {
-        final BFCLAgentHandle fcHandle;
-        final String category;
-        final List<BFCLItem> batch;
-        final int batchIndex;
-        final Agent agent;
-
-        private Map<String, BFCLItemAgentResult> results;
-        private EvaluationStatistics statistics;
-        private int totalItems;
-
-        BatchTask(BFCLAgentHandle fcHandle, Agent agent, String category, List<BFCLItem> batch, int batchIndex) {
-            this.category = category;
-            this.batch = batch;
-            this.batchIndex = batchIndex;
-            this.fcHandle = fcHandle;
-            this.agent = agent;
-        }
-
-        void setRuntimeContext(Map<String, BFCLItemAgentResult> results,
-                               EvaluationStatistics statistics,
-                               int totalItems) {
-            this.results = results;
-            this.statistics = statistics;
-            this.totalItems = totalItems;
-        }
-
-        @Override
-        public void run() {
-            try {
-                for (BFCLItem item : batch) {
-                    BFCLItemAgentResult result = fcHandle.handle(agent, item);
-                    results.put(result.id, result);
-
-                    int processed = statistics.incrementProcessed();
-                    logProgress(processed, totalItems);
-                }
-
-                LOGGER.info("[{}] Completed batch {} ({} items)",
-                        category, batchIndex, batch.size());
-
-            } catch (Exception e) {
-                LOGGER.error("[{}] Error processing batch {}", category, batchIndex, e);
-            }
-        }
-    }
-
-    private static class EvaluationStatistics {
-        private final AtomicInteger processed = new AtomicInteger(0);
-
-        int incrementProcessed() {
-            return processed.incrementAndGet();
-        }
-
-        int getProcessed() {
-            return processed.get();
-        }
-
-    }
 }

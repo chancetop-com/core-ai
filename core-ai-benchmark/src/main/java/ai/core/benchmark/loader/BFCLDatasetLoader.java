@@ -1,130 +1,158 @@
 package ai.core.benchmark.loader;
 
+import ai.core.benchmark.common.BFCLCategory;
+import ai.core.benchmark.domain.BFCLFileInfo;
 import ai.core.benchmark.domain.BFCLItem;
-import ai.core.benchmark.domain.BFCLItemGroundTruth;
+import ai.core.benchmark.domain.BFCLItemEvalResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * author: lim chen
  * date: 2025/12/19
  * description: BFCL Dataset Loader for loading benchmark data and answers
  */
-public class BFCLDatasetLoader implements DatasetLoader<BFCLItem, BFCLItemGroundTruth> {
+public class BFCLDatasetLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(BFCLDatasetLoader.class);
-    private final String category;
-    private final List<BFCLItem> items = new ArrayList<>();
-    private final Map<String, BFCLItemGroundTruth> answersMap = new HashMap<>();
+    private final String workDir;
+    private final BFCLDownloader datasetDownloader;
 
-    public BFCLDatasetLoader(String category) {
-        this.category = category;
-        load();
+    public BFCLDatasetLoader() {
+        this.workDir = initWorkDir();
+        this.datasetDownloader = new BFCLDownloader();
     }
 
-    @Override
-    public void load() {
-        loadItems();
-        loadAnswers();
+    private String initWorkDir() {
+        var resourceUrl = Paths.get("").toAbsolutePath()
+                .getParent()
+                .resolve("build")
+                .resolve("core-ai-benchmark")
+                .resolve("resources")
+                .resolve("main")
+                .resolve("dataset")
+                .resolve("BFCL");
+        return resourceUrl.toString();
     }
 
-    @Override
-    public List<BFCLItem> getAllItems() {
+    public List<BFCLFileInfo> load(BFCLCategory category) {
+        downloadDataset();
+        return readFiles(category);
+    }
+
+    public void writeResultToFile(BFCLFileInfo fileInfo, BFCLItemEvalResult result) {
+        var path = createTargetFile(fileInfo);
+        writeResultToFile(path, result);
+    }
+
+    private Path createTargetFile(BFCLFileInfo fileInfo) {
+        var path = Paths.get(this.workDir).resolve("eval").resolve(fileInfo.category);
+        try {
+            Files.createDirectories(path);
+            var fileNameSplit = fileInfo.name.split("\\.");
+            var targetFileName = fileNameSplit[0] + "_result." + fileNameSplit[1];
+            var targetFilePath = path.resolve(targetFileName);
+            if (!Files.exists(targetFilePath)) {
+                LOGGER.info("Creating file: {}", targetFilePath);
+                Files.createFile(targetFilePath);
+            }
+            return targetFilePath;
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void writeResultToFile(Path path, BFCLItemEvalResult result) {
+        LOGGER.info("Writing result to file: {}", path.toString());
+        ObjectMapper mapper = new ObjectMapper();
+        try (var writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+            var json = mapper.writeValueAsString(result);
+            writer.write(json);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private boolean isDatasetExist() {
+        if (!Files.exists(Paths.get(this.workDir))) {
+            return false;
+        }
+        try (Stream<Path> stream = Files.list(Paths.get(this.workDir))) {
+            return stream.findAny().isPresent();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void downloadDataset() {
+        LOGGER.info("Using resource directory: {}", Paths.get(workDir).toAbsolutePath());
+
+        if (isDatasetExist()) {
+            LOGGER.info("BFCL dataset already available");
+            return;
+        }
+        LOGGER.info("BFCL dataset not found, starting download...");
+        datasetDownloader.download(workDir);
+    }
+
+    private Map<String, Path> findDatasetFiles() {
+        var files = new HashMap<String, Path>();
+        try (Stream<Path> stream = Files.list(Paths.get(workDir).resolve("data"))) {
+            for (Path path : stream.toList()) {
+                if (path.getFileName().toString().startsWith("BFCL_v4_")) {
+                    files.put(path.getFileName().toString(), path);
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return files;
+    }
+
+    private List<BFCLFileInfo> readFiles(BFCLCategory category) {
+        LOGGER.info("Reading dataset files...");
+        var files = findDatasetFiles();
+        return files.entrySet().stream()
+                .filter(entry -> {
+                    var name = entry.getKey();
+                    return category.getTypes().stream().anyMatch(name::contains);
+                })
+                .peek(entry -> LOGGER.info("Reading file: {}", entry.getKey()))
+                .map(entry -> {
+                    var path = entry.getValue();
+                    var name = entry.getKey();
+                    var items = readFile(path);
+                    return BFCLFileInfo.of(name, category.name().toLowerCase(), path.toString(), items);
+
+                }).toList();
+
+    }
+
+    private List<BFCLItem> readFile(Path path) {
+        var items = new ArrayList<BFCLItem>();
+        try (BufferedReader reader = Files.newBufferedReader(path)) {
+            while (reader.ready()) {
+                var line = reader.readLine();
+                var item = BFCLItem.fromJson(line);
+                items.add(item);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
         return items;
     }
 
-
-    private void loadItems() {
-        String datasetPath = String.format("dataset/BFCL/data/BFCL_v4_%s.json", category);
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream(datasetPath)) {
-            if (is == null) {
-                throw new RuntimeException("Dataset file not found: " + datasetPath);
-            }
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (!line.trim().isEmpty()) {
-                        BFCLItem item = BFCLItem.fromJson(line);
-                        items.add(item);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load dataset: " + datasetPath, e);
-        }
-    }
-
-    private void loadAnswers() {
-        String answerPath = String.format("dataset/BFCL/data/possible_answer/BFCL_v4_%s.json", category);
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream(answerPath)) {
-            if (is != null) {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (!line.trim().isEmpty()) {
-                            BFCLItemGroundTruth answer = BFCLItemGroundTruth.fromJson(line);
-                            answersMap.put(answer.id, answer);
-                        }
-                    }
-                }
-            }
-        } catch (IOException e) {
-            // Answers file might not exist for some categories, that's okay
-            LOGGER.warn("Warning: No answer file found for category: {}", category);
-        }
-    }
-
-
-    @Override
-    public List<List<BFCLItem>> splitDataset(int num) {
-        if (num <= 0 || items.isEmpty()) {
-            return List.of();
-        }
-
-        List<List<BFCLItem>> splits = new ArrayList<>();
-        int splitSize = (int) Math.ceil((double) items.size() / num);
-
-        for (int i = 0; i < num; i++) {
-            int start = i * splitSize;
-            int end = Math.min(start + splitSize, items.size());
-            if (start < items.size()) {
-                splits.add(new ArrayList<>(items.subList(start, end)));
-            }
-        }
-
-        return splits;
-    }
-
-    @Override
-    public List<BFCLItem> getLimitItems(int limit) {
-        if (items.isEmpty() || limit <= 0) {
-            return List.of();
-        }
-        return items.stream().limit(limit).toList();
-    }
-
-    @Override
-    public BFCLItemGroundTruth getOneAnswer(String itemId) {
-        return answersMap.get(itemId);
-    }
-
-    @Override
-    public void officialization(String outPath) {
-
-    }
-
-    // Additional utility methods
-
-    public String getCategory() {
-        return category;
-    }
 }
