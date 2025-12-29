@@ -5,7 +5,6 @@ import ai.core.benchmark.domain.BFCLFileInfo;
 import ai.core.benchmark.domain.BFCLItem;
 import ai.core.benchmark.domain.BFCLItemEvalResult;
 import ai.core.benchmark.executor.ConcurrentBatchExecutor;
-import ai.core.benchmark.inference.BFCLInferenceFCHandle;
 import ai.core.benchmark.inference.BFCLInferenceHandle;
 import ai.core.benchmark.loader.BFCLDatasetLoader;
 import org.slf4j.Logger;
@@ -13,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -38,16 +38,31 @@ public class BFCLEvaluator {
     }
 
 
-    private List<BFCLFileInfo> loadDataset(BFCLCategory category) {
-        return datasetLoader.load(category);
+    private List<BFCLFileInfo> loadDataset(BFCLCategory category, List<String> filterIds) {
+        var loadResult = datasetLoader.load(category);
+        if (filterIds != null && !filterIds.isEmpty()) {
+            return loadResult.stream()
+                    .map(fileInfo -> filterFileInfoByIds(fileInfo, filterIds))
+                    .filter(fileInfo -> !fileInfo.items.isEmpty())
+                    .toList();
+        } else {
+            return loadResult;
+        }
     }
 
-    public void eval(BFCLCategory category) {
+    private BFCLFileInfo filterFileInfoByIds(BFCLFileInfo fileInfo, List<String> filterIds) {
+        fileInfo.items = fileInfo.items.stream()
+                .filter(item -> filterIds.contains(item.id))
+                .toList();
+        return fileInfo;
+    }
+
+    public void eval(BFCLCategory category, List<String> filterIds) {
         LOGGER.info("Starting evaluation for category: {}", category);
 
-        // Load dataset files
-        var fileInfos = loadDataset(category);
-        if (fileInfos == null || fileInfos.isEmpty()) {
+        var fileInfos = loadDataset(category,filterIds);
+
+        if (fileInfos.isEmpty()) {
             LOGGER.warn("No data files found for category: {}", category);
             return;
         }

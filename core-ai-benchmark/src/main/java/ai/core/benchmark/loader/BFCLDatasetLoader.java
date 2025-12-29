@@ -10,10 +10,13 @@ import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +26,7 @@ import java.util.stream.Stream;
 /**
  * author: lim chen
  * date: 2025/12/19
- * description: BFCL Dataset Loader for loading benchmark data and answers
+ * description: BFCL Dataset Loader for loading benchmark data and write result
  */
 public class BFCLDatasetLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(BFCLDatasetLoader.class);
@@ -58,7 +61,10 @@ public class BFCLDatasetLoader {
     }
 
     private Path createTargetFile(BFCLFileInfo fileInfo) {
-        var path = Paths.get(this.workDir).resolve("eval").resolve(fileInfo.category);
+        var path = Paths.get(this.workDir)
+                .resolve("result")
+                .resolve("DeepSeek-V3.2-Exp-FC")
+                .resolve(fileInfo.category);
         try {
             Files.createDirectories(path);
             var fileNameSplit = fileInfo.name.split("\\.");
@@ -76,11 +82,18 @@ public class BFCLDatasetLoader {
     }
 
     private void writeResultToFile(Path path, BFCLItemEvalResult result) {
-        LOGGER.info("Writing result to file: {}", path.toString());
+        LOGGER.debug("Writing result to file: {}", path.toString());
         ObjectMapper mapper = new ObjectMapper();
-        try (var writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+        try (FileChannel channel = FileChannel.open(
+                path,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.APPEND
+        )) {
             var json = mapper.writeValueAsString(result);
-            writer.write(json);
+            ByteBuffer buffer = StandardCharsets.UTF_8.encode(json + System.lineSeparator());
+            var num = channel.write(buffer);
+            LOGGER.debug("Wrote {} bytes to file", num);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

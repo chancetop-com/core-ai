@@ -21,8 +21,6 @@ public class BFCLItem {
     public List<List<Message>> question;
     @JsonProperty("function")
     public List<FunctionDefinition> function;
-    @JsonProperty("category")
-    public String category;
 
 
 
@@ -102,7 +100,7 @@ public class BFCLItem {
         @JsonProperty("properties")
         public Map<String, JsonPropertyInfo> properties;
         @JsonProperty("items")
-        public JsonPropertyInfo items; // 用于数组类型的元素定义
+        public JsonPropertyInfo items;
 
         public static JsonPropertyInfo of(String type, String description, Object defaultValue,
                                           List<String> enumValues, Map<String, JsonPropertyInfo> properties) {

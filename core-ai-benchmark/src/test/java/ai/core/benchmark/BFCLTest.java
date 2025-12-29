@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+
 /**
  * author: lim chen
  * date: 2025/12/22
@@ -24,7 +26,8 @@ public class BFCLTest extends IntegrationTest {
     @Test
     void test2() {
         var eval = new BFCLEvaluator(new BFCLInferenceFCHandle(llmProviders.getProvider()));
-        eval.eval(BFCLCategory.NON_PYTHON);
+        eval.eval(BFCLCategory.NON_PYTHON, List.of("simple_java_1"));
+//        eval.eval(BFCLCategory.NON_PYTHON,List.of());
 
     }
 }
