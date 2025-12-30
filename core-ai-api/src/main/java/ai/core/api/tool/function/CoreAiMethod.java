@@ -17,4 +17,5 @@ public @interface CoreAiMethod {
     String description();
     boolean needAuth() default false;
     boolean directReturn() default false;
+    boolean llmVisible() default true;
 }

@@ -95,6 +95,7 @@ public class Function extends ToolCall {
         this.setDescription(functionDef.description());
         this.setNeedAuth(functionDef.needAuth());
         this.setDirectReturn(functionDef.directReturn());
+        this.setLlmVisible(functionDef.llmVisible());
 
         var parameterList = new ArrayList<ToolCallParameter>();
         var methodParameters = method.getParameters();
