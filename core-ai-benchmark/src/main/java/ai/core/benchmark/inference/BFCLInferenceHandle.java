@@ -40,6 +40,7 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
                 .map(this::toJson)
                 .map(this::readFunctionDefValue)
                 .peek(function -> function.name = function.name.replaceAll("\\.", "_"))
+                .peek(function -> wrapDesc(itemId,function))
                 .map(function -> {
                     var tool = new Tool();
                     tool.type = ToolType.FUNCTION;
@@ -48,6 +49,17 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
                     tool.function = JsonUtil.fromJson(Function.class, funcJson);
                     return tool;
                 }).toList();
+    }
+
+    private void wrapDesc(String itemId,BFCLItem.FunctionDefinition definition) {
+       if(isJava(itemId)){
+           definition.description +=" Note that the provided function is in Java 8 SDK syntax.";
+       } else if(isJs(itemId)){
+           definition.description +=" Note that the provided function is in JavaScript syntax.";
+       }else {
+           definition.description +=" Note that the provided function is in Python 3 syntax.";
+       }
+
     }
 
     private boolean isJava(String itemId) {

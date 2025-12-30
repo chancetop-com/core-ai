@@ -10,7 +10,7 @@ import java.util.stream.Stream;
  */
 public enum BFCLCategory {
 
-    NON_LIVE_CATEGORY(List.of(
+    NON_LIVE(List.of(
             "simple_python",
             "simple_java",
             "simple_javascript",
@@ -19,7 +19,7 @@ public enum BFCLCategory {
             "parallel_multiple",
             "irrelevance"
     )),
-    LIVE_CATEGORY(List.of(
+    LIVE(List.of(
             "live_simple",
             "live_multiple",
             "live_parallel",
@@ -42,7 +42,7 @@ public enum BFCLCategory {
             "live_relevance"
     )),
 
-    SINGLE_TURN_CATEGORY(combine(NON_LIVE_CATEGORY, LIVE_CATEGORY));
+    SINGLE_TURN_CATEGORY(combine(NON_LIVE, LIVE));
 
 
     private final List<String> types;
