@@ -46,6 +46,9 @@ public class BFCLInferenceFCHandle extends BFCLInferenceHandle {
             var tools = rawRes.choices.getFirst().message.toolCalls;
             tools.stream().map(tool -> Map.of(tool.function.name, (Object) tool.function.arguments)).forEach(result::add);
         }
+        if (result.isEmpty()){
+            result.add(Map.of("output", rawRes.choices.getFirst().message.content));
+        }
         return BFCLItemEvalResult.of(id, result, rawRes.usage.getPromptTokens(), rawRes.usage.getCompletionTokens(), completionResponseWithLatency.latency);
     }
 

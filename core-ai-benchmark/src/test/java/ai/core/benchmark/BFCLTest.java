@@ -25,8 +25,8 @@ public class BFCLTest extends IntegrationTest {
     @Test
     void test2() {
         var eval = new BFCLEvaluator(new BFCLInferenceFCHandle(llmProviders.getProvider()));
-        eval.eval(BFCLCategory.NON_LIVE, List.of("multiple_0"));
-//        eval.eval(BFCLCategory.NON_PYTHON,List.of());
+        eval.eval(BFCLCategory.NON_LIVE, List.of("parallel_0"));
+//        eval.eval(BFCLCategory.NON_LIVE,List.of());
 
     }
 }

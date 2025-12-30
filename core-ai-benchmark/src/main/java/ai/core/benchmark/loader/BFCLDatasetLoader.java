@@ -63,7 +63,7 @@ public class BFCLDatasetLoader {
     private Path createTargetFile(BFCLFileInfo fileInfo) {
         var path = Paths.get(this.workDir)
                 .resolve("result")
-                .resolve("DeepSeek-V3.2-Exp-FC")
+                .resolve("gpt-5-nano-2025-08-07-FC")
                 .resolve(fileInfo.category);
         try {
             Files.createDirectories(path);

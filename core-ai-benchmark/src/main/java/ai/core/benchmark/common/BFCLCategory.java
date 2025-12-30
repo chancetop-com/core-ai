@@ -42,7 +42,7 @@ public enum BFCLCategory {
             "live_relevance"
     )),
 
-    SINGLE_TURN_CATEGORY(combine(NON_LIVE, LIVE));
+    SINGLE_TURN(combine(NON_LIVE, LIVE));
 
 
     private final List<String> types;
