@@ -20,6 +20,7 @@ public abstract class ToolCall {
     List<ToolCallParameter> parameters;
     Boolean needAuth;
     Boolean directReturn;
+    Boolean llmVisible;
 
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         return execute(arguments);
@@ -84,6 +85,14 @@ public abstract class ToolCall {
         this.directReturn = directReturn;
     }
 
+    public Boolean isLlmVisible() {
+        return llmVisible == null || llmVisible;
+    }
+
+    public void setLlmVisible(Boolean llmVisible) {
+        this.llmVisible = llmVisible;
+    }
+
     @Override
     public String toString() {
         return JsonUtil.toJson(toTool());
@@ -119,6 +128,7 @@ public abstract class ToolCall {
         Boolean needAuth;
         Boolean continueAfterSlash;
         Boolean directReturn;
+        Boolean llmVisible;
 
         protected abstract B self();
 
@@ -152,6 +162,11 @@ public abstract class ToolCall {
             return self();
         }
 
+        public B llmVisible(Boolean llmVisible) {
+            this.llmVisible = llmVisible;
+            return self();
+        }
+
         public void build(T toolCall) {
             if (name == null) {
                 throw new RuntimeException("name is required");
@@ -168,6 +183,7 @@ public abstract class ToolCall {
             toolCall.parameters = parameters;
             toolCall.needAuth = needAuth != null && needAuth;
             toolCall.directReturn = directReturn != null && directReturn;
+            toolCall.llmVisible = llmVisible == null || llmVisible;
         }
     }
 }
