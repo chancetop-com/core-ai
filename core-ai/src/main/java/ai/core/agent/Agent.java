@@ -403,7 +403,7 @@ public class Agent extends Node<Agent> {
     }
 
     private List<Tool> toReqTools(List<ToolCall> toolCalls) {
-        return toolCalls.stream().map(ToolCall::toTool).toList();
+        return toolCalls.stream().filter(ToolCall::isLlmVisible).map(ToolCall::toTool).toList();
     }
 
     private void removeLastAssistantToolCallMessageIfNotToolResult(Message reqMsg) {
