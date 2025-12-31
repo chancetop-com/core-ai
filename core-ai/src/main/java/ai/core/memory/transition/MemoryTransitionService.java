@@ -7,8 +7,8 @@ import ai.core.memory.conflict.ConflictGroup;
 import ai.core.memory.conflict.ConflictStrategy;
 import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.LongTermMemory;
-import ai.core.memory.longterm.LongTermMemoryStore;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.Namespace;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.slf4j.Logger;
@@ -32,7 +32,7 @@ public class MemoryTransitionService {
     private static final Logger LOGGER = LoggerFactory.getLogger(MemoryTransitionService.class);
 
     private final LongTermMemory longTermMemory;
-    private final LongTermMemoryStore store;
+    private final MemoryStore store;
     private final MemoryExtractor extractor;
     private final MemoryConflictResolver conflictResolver;
     private final LLMProvider llmProvider;

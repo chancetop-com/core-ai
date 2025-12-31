@@ -16,7 +16,7 @@ import ai.core.memory.budget.ContextBudgetManager;
 import ai.core.memory.conflict.ConflictGroup;
 import ai.core.memory.conflict.ConflictStrategy;
 import ai.core.memory.conflict.MemoryConflictResolver;
-import ai.core.memory.longterm.DefaultLongTermMemoryStore;
+import ai.core.memory.longterm.InMemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
@@ -60,13 +60,12 @@ class UnifiedMemoryTest {
     @BeforeEach
     void setUp() {
         LLMProvider llmProvider = createMockLLMProvider();
-        DefaultLongTermMemoryStore store = DefaultLongTermMemoryStore.inMemory();
+        InMemoryStore store = new InMemoryStore();
         longTermMemory = LongTermMemory.builder()
             .llmProvider(llmProvider)
             .store(store)
             .extractor(createMockExtractor())
             .config(LongTermMemoryConfig.builder()
-                .embeddingDimension(EMBEDDING_DIM)
                 .asyncExtraction(false)
                 .build())
             .build();

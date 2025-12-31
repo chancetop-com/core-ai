@@ -10,8 +10,8 @@ import ai.core.memory.conflict.ConflictGroup;
 import ai.core.memory.conflict.ConflictStrategy;
 import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.LongTermMemoryConfig;
-import ai.core.memory.longterm.LongTermMemoryStore;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.Namespace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +40,7 @@ public class LongTermMemoryCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger(LongTermMemoryCoordinator.class);
     private static final int CONFLICT_SEARCH_TOP_K = 5;
 
-    private final LongTermMemoryStore store;
+    private final MemoryStore store;
     private final MemoryExtractor extractor;
     private final LLMProvider llmProvider;
     private final LongTermMemoryConfig config;
@@ -61,14 +61,14 @@ public class LongTermMemoryCoordinator {
     private volatile Namespace namespace;
     private volatile String sessionId;
 
-    public LongTermMemoryCoordinator(LongTermMemoryStore store,
+    public LongTermMemoryCoordinator(MemoryStore store,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
                                      LongTermMemoryConfig config) {
         this(store, extractor, llmProvider, config, null, ForkJoinPool.commonPool());
     }
 
-    public LongTermMemoryCoordinator(LongTermMemoryStore store,
+    public LongTermMemoryCoordinator(MemoryStore store,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
                                      LongTermMemoryConfig config,
@@ -76,7 +76,7 @@ public class LongTermMemoryCoordinator {
         this(store, extractor, llmProvider, config, conflictResolver, ForkJoinPool.commonPool());
     }
 
-    public LongTermMemoryCoordinator(LongTermMemoryStore store,
+    public LongTermMemoryCoordinator(MemoryStore store,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
                                      LongTermMemoryConfig config,

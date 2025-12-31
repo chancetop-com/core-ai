@@ -10,36 +10,6 @@ import ai.core.memory.longterm.extraction.MemoryExtractor;
 import java.util.List;
 
 /**
- * Long-term memory facade for Agent integration.
- * Provides a simplified interface for agents to use long-term memory.
- *
- * <p>This class uses namespaces for flexible memory organization:
- * <ul>
- *   <li>User-scoped: memories isolated per user</li>
- *   <li>Session-scoped: memories isolated per session</li>
- *   <li>Organization-scoped: memories shared within an organization</li>
- *   <li>Global: memories shared across all users</li>
- * </ul>
- *
- * <p>Usage example:
- * <pre>{@code
- * LongTermMemory memory = LongTermMemory.builder()
- *     .llmProvider(llmProvider)
- *     .build();
- *
- * // Start session with namespace
- * memory.startSession(Namespace.of("acme", "john"), "session-123");
- *
- * // Or use simple user-scoped namespace
- * memory.startSessionForUser("user-123", "session-456");
- *
- * // Recall relevant memories
- * List<MemoryRecord> relevant = memory.recall("programming preferences", 5);
- * String context = memory.formatAsContext(relevant);
- *
- * memory.endSession();
- * }</pre>
- *
  * @author xander
  */
 public class LongTermMemory {
@@ -48,21 +18,21 @@ public class LongTermMemory {
         return new LongTermMemoryBuilder();
     }
 
-    private final LongTermMemoryStore store;
+    private final MemoryStore store;
     private final LongTermMemoryCoordinator coordinator;
     private final LLMProvider llmProvider;
     private final LongTermMemoryConfig config;
     private Namespace currentNamespace;
     private String currentSessionId;
 
-    public LongTermMemory(LongTermMemoryStore store,
+    public LongTermMemory(MemoryStore store,
                           MemoryExtractor extractor,
                           LLMProvider llmProvider,
                           LongTermMemoryConfig config) {
         this(store, extractor, llmProvider, config, null);
     }
 
-    public LongTermMemory(LongTermMemoryStore store,
+    public LongTermMemory(MemoryStore store,
                           MemoryExtractor extractor,
                           LLMProvider llmProvider,
                           LongTermMemoryConfig config,
@@ -182,7 +152,7 @@ public class LongTermMemory {
         return currentSessionId;
     }
 
-    public LongTermMemoryStore getStore() {
+    public MemoryStore getStore() {
         return store;
     }
 

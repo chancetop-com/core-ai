@@ -20,7 +20,8 @@ import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
-import ai.core.memory.longterm.DefaultLongTermMemoryStore;
+import ai.core.memory.longterm.InMemoryStore;
+import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
@@ -71,20 +72,19 @@ class AgentMemoryToolTest {
 
     private LLMProvider mockLlmProvider;
     private LongTermMemory longTermMemory;
-    private DefaultLongTermMemoryStore store;
+    private MemoryStore store;
     private Random random;
 
     @BeforeEach
     void setUp() {
         random = new Random(42);
         mockLlmProvider = createMockLLMProvider();
-        store = DefaultLongTermMemoryStore.inMemory();
+        store = new InMemoryStore();
         longTermMemory = LongTermMemory.builder()
             .llmProvider(mockLlmProvider)
             .store(store)
             .extractor(createMockExtractor())
             .config(LongTermMemoryConfig.builder()
-                .embeddingDimension(EMBEDDING_DIM)
                 .asyncExtraction(false)
                 .build())
             .build();
