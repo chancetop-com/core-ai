@@ -52,25 +52,26 @@ public class McpClientManager implements AutoCloseable {
     private final Map<String, ConnectionState> states = new ConcurrentHashMap<>();
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
     private final List<ConnectionStateListener> listeners = new CopyOnWriteArrayList<>();
+    private final Object connectionMonitorLock = new Object();
     private McpConnectionMonitor connectionMonitor;
     private volatile boolean connectionMonitorInitialized = false;
     private Thread shutdownHook;
     private volatile boolean closed = false;
 
-    public McpClientManager() {
-        // connectionMonitor is lazily initialized to avoid 'this' escape warning
-    }
-
-    private synchronized McpConnectionMonitor getConnectionMonitor() {
+    private McpConnectionMonitor getConnectionMonitor() {
         if (!connectionMonitorInitialized) {
-            this.connectionMonitor = new McpConnectionMonitor(
-                () -> configs,
-                () -> clients,
-                this::getState,
-                this::handleDisconnection,
-                new ManagerReconnectCallback()
-            );
-            connectionMonitorInitialized = true;
+            synchronized (connectionMonitorLock) {
+                if (!connectionMonitorInitialized) {
+                    this.connectionMonitor = new McpConnectionMonitor(
+                        () -> configs,
+                        () -> clients,
+                        this::getState,
+                        this::handleDisconnection,
+                        new ManagerReconnectCallback()
+                    );
+                    connectionMonitorInitialized = true;
+                }
+            }
         }
         return connectionMonitor;
     }
