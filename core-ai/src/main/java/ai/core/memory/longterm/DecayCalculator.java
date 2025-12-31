@@ -4,9 +4,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Utility for calculating memory decay factors.
- * Uses exponential decay: decay = e^(-lambda * days)
- *
  * @author xander
  */
 public final class DecayCalculator {

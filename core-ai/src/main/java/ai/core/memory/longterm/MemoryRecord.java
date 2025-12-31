@@ -144,10 +144,6 @@ public class MemoryRecord {
         this.metadata = metadata != null ? metadata : new HashMap<>();
     }
 
-    /**
-     * Calculate the effective score for ranking.
-     * score = similarity × importance × decayFactor × frequencyBonus
-     */
     public double calculateEffectiveScore(double similarity) {
         double frequencyBonus = 1.0 + FREQUENCY_BONUS_FACTOR * Math.log1p(accessCount);
         return similarity * importance * decayFactor * frequencyBonus;

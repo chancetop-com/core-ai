@@ -5,9 +5,6 @@ import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 
 /**
- * Builder for creating LongTermMemory instances.
- * Provides sensible defaults for quick setup.
- *
  * @author xander
  */
 public class LongTermMemoryBuilder {
@@ -15,7 +12,7 @@ public class LongTermMemoryBuilder {
     private LLMProvider llmProvider;
     private MemoryExtractor extractor;
     private LongTermMemoryConfig config;
-    private LongTermMemoryStore store;
+    private MemoryStore store;
     private MemoryConflictResolver conflictResolver;
 
     public LongTermMemoryBuilder llmProvider(LLMProvider llmProvider) {
@@ -33,7 +30,7 @@ public class LongTermMemoryBuilder {
         return this;
     }
 
-    public LongTermMemoryBuilder store(LongTermMemoryStore store) {
+    public LongTermMemoryBuilder store(MemoryStore store) {
         this.store = store;
         return this;
     }
@@ -53,14 +50,13 @@ public class LongTermMemoryBuilder {
         }
 
         if (store == null) {
-            store = new DefaultLongTermMemoryStore(config);
+            store = new InMemoryStore();
         }
 
         if (extractor == null) {
             extractor = createDefaultExtractor();
         }
 
-        // Create default conflict resolver if enabled and not provided
         MemoryConflictResolver resolver = this.conflictResolver;
         if (resolver == null && config.isEnableConflictResolution()) {
             resolver = new MemoryConflictResolver(llmProvider, null);

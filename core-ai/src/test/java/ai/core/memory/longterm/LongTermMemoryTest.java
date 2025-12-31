@@ -8,9 +8,6 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
-import ai.core.memory.longterm.store.InMemoryMetadataStore;
-import ai.core.memory.longterm.store.InMemoryVectorStore;
-import ai.core.memory.longterm.store.JdbcMetadataStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -21,7 +18,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,7 +37,7 @@ class LongTermMemoryTest {
     private static final int EMBEDDING_DIM = 8;
     private static final Namespace USER_NAMESPACE = Namespace.forUser(USER_ID);
 
-    private LongTermMemoryStore store;
+    private MemoryStore store;
     private MemoryExtractor extractor;
     private LLMProvider llmProvider;
     private LongTermMemoryCoordinator coordinator;
@@ -49,9 +45,6 @@ class LongTermMemoryTest {
     @BeforeEach
     void setUp() {
         LongTermMemoryConfig config = LongTermMemoryConfig.builder()
-                .metadataStoreType(LongTermMemoryConfig.MetadataStoreType.IN_MEMORY)
-                .vectorStoreType(LongTermMemoryConfig.VectorStoreType.IN_MEMORY)
-                .embeddingDimension(EMBEDDING_DIM)
                 .maxBufferTurns(3)
                 .maxBufferTokens(500)
                 .extractOnSessionEnd(true)
@@ -59,7 +52,7 @@ class LongTermMemoryTest {
                 .enableDecay(true)
                 .build();
 
-        store = new DefaultLongTermMemoryStore(config);
+        store = new InMemoryStore();
         extractor = createMockExtractor();
         llmProvider = createMockLLMProvider();
         coordinator = new LongTermMemoryCoordinator(store, extractor, llmProvider, config);
@@ -144,7 +137,7 @@ class LongTermMemoryTest {
             .asyncExtraction(false)
             .build();
 
-        LongTermMemoryStore batchStore = new DefaultLongTermMemoryStore(batchConfig);
+        MemoryStore batchStore = new InMemoryStore();
         LongTermMemoryCoordinator batchCoordinator = new LongTermMemoryCoordinator(
             batchStore, extractor, llmProvider, batchConfig);
 
@@ -174,10 +167,10 @@ class LongTermMemoryTest {
         store.save(record, randomEmbedding());
 
         // Manually set low decay factor (simulating old memory)
-        record.setDecayFactor(0.05);
+        store.updateDecayFactor(record.getId(), 0.05);
 
         // Get decayed memories
-        List<MemoryRecord> decayed = store.getDecayedMemories(USER_NAMESPACE, 0.1);
+        List<MemoryRecord> decayed = store.findDecayed(USER_NAMESPACE, 0.1);
         assertEquals(1, decayed.size());
     }
 
@@ -303,7 +296,7 @@ class LongTermMemoryTest {
                 .asyncExtraction(false)
                 .build();
 
-            LongTermMemoryStore facadeStore = new DefaultLongTermMemoryStore(facadeConfig);
+            MemoryStore facadeStore = new InMemoryStore();
 
             memory = new LongTermMemory(facadeStore, extractor, llmProvider, facadeConfig);
         }
@@ -624,271 +617,81 @@ class LongTermMemoryTest {
     }
 
     /**
-     * Tests for JdbcMetadataStore with SQLite.
+     * Tests for InMemoryStore implementation.
      */
     @Nested
-    @DisplayName("Jdbc Metadata Store Tests")
-    class JdbcMetadataStoreTests {
+    @DisplayName("InMemoryStore Tests")
+    class InMemoryStoreTests {
 
-        private JdbcMetadataStore jdbcStore;
-
-        @BeforeEach
-        void setUpJdbcStore() throws Exception {
-            // Use temporary file-based database
-            java.io.File dbFile = java.io.File.createTempFile("memory_test_", ".db");
-            dbFile.deleteOnExit();
-
-            org.sqlite.SQLiteDataSource dataSource = new org.sqlite.SQLiteDataSource();
-            dataSource.setUrl("jdbc:sqlite:" + dbFile.getAbsolutePath());
-
-            jdbcStore = new JdbcMetadataStore(
-                dataSource, LongTermMemoryConfig.MetadataStoreType.SQLITE);
-            jdbcStore.initialize();
+        @Test
+        @DisplayName("Should create InMemoryStore")
+        void testCreateInMemoryStore() {
+            MemoryStore memStore = new InMemoryStore();
+            assertNotNull(memStore);
         }
 
         @Test
-        @DisplayName("Should save and retrieve memory record")
-        void testSaveAndFind() {
+        @DisplayName("Should save and retrieve records")
+        void testSaveAndRetrieve() {
+            MemoryStore memStore = new InMemoryStore();
+
             MemoryRecord record = MemoryRecord.builder()
                 .namespace(USER_NAMESPACE)
-                .content("Test content for JDBC store")
+                .content("Test content")
                 .type(MemoryType.FACT)
-                .importance(0.8)
                 .build();
 
-            jdbcStore.save(record);
+            memStore.save(record, randomEmbedding());
+            assertEquals(1, memStore.count(USER_NAMESPACE));
 
-            var found = jdbcStore.findById(record.getId());
+            var found = memStore.findById(record.getId());
             assertTrue(found.isPresent());
-            assertEquals("Test content for JDBC store", found.get().getContent());
-            assertEquals(MemoryType.FACT, found.get().getType());
-            assertEquals(0.8, found.get().getImportance(), 0.01);
+            assertEquals("Test content", found.get().getContent());
         }
 
         @Test
-        @DisplayName("Should save batch of records")
-        void testSaveAll() {
-            List<MemoryRecord> records = List.of(
-                MemoryRecord.builder()
-                    .namespace(USER_NAMESPACE)
-                    .content("Batch record 1")
-                    .type(MemoryType.FACT)
-                    .build(),
-                MemoryRecord.builder()
-                    .namespace(USER_NAMESPACE)
-                    .content("Batch record 2")
-                    .type(MemoryType.PREFERENCE)
-                    .build()
-            );
-
-            jdbcStore.saveAll(records);
-            assertEquals(2, jdbcStore.count(USER_NAMESPACE.toPath()));
-        }
-
-        @Test
-        @DisplayName("Should find by namespace path")
-        void testFindByUserId() {
-            Namespace nsA = Namespace.forUser("userA");
-            Namespace nsB = Namespace.forUser("userB");
-
-            jdbcStore.save(MemoryRecord.builder()
-                .namespace(nsA)
-                .content("User A memory")
-                .type(MemoryType.FACT)
-                .build());
-
-            jdbcStore.save(MemoryRecord.builder()
-                .namespace(nsB)
-                .content("User B memory")
-                .type(MemoryType.FACT)
-                .build());
-
-            List<MemoryRecord> userARecords = jdbcStore.findByUserId(nsA.toPath());
-            assertEquals(1, userARecords.size());
-            assertEquals("User A memory", userARecords.getFirst().getContent());
-        }
-
-        @Test
-        @DisplayName("Should delete by id")
+        @DisplayName("Should delete records")
         void testDelete() {
+            MemoryStore memStore = new InMemoryStore();
+
             MemoryRecord record = MemoryRecord.builder()
                 .namespace(USER_NAMESPACE)
                 .content("To be deleted")
                 .type(MemoryType.FACT)
                 .build();
 
-            jdbcStore.save(record);
-            assertEquals(1, jdbcStore.countAll());
+            memStore.save(record, randomEmbedding());
+            assertEquals(1, memStore.count(USER_NAMESPACE));
 
-            jdbcStore.delete(record.getId());
-            assertEquals(0, jdbcStore.countAll());
-        }
-
-        @Test
-        @DisplayName("Should update access count")
-        void testRecordAccess() {
-            MemoryRecord record = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
-                .content("Access test")
-                .type(MemoryType.FACT)
-                .build();
-
-            jdbcStore.save(record);
-
-            jdbcStore.recordAccess(record.getId());
-            jdbcStore.recordAccess(record.getId());
-
-            var updated = jdbcStore.findById(record.getId());
-            assertTrue(updated.isPresent());
-            assertEquals(2, updated.get().getAccessCount());
-        }
-
-        @Test
-        @DisplayName("Should update decay factor")
-        void testUpdateDecayFactor() {
-            MemoryRecord record = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
-                .content("Decay test")
-                .type(MemoryType.FACT)
-                .build();
-
-            jdbcStore.save(record);
-            jdbcStore.updateDecayFactor(record.getId(), 0.5);
-
-            var updated = jdbcStore.findById(record.getId());
-            assertTrue(updated.isPresent());
-            assertEquals(0.5, updated.get().getDecayFactor(), 0.01);
-        }
-
-        @Test
-        @DisplayName("Should find decayed memories")
-        void testFindDecayed() {
-            MemoryRecord fresh = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
-                .content("Fresh memory")
-                .type(MemoryType.FACT)
-                .build();
-
-            MemoryRecord decayed = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
-                .content("Decayed memory")
-                .type(MemoryType.FACT)
-                .build();
-
-            jdbcStore.save(fresh);
-            jdbcStore.save(decayed);
-            jdbcStore.updateDecayFactor(decayed.getId(), 0.05);
-
-            List<MemoryRecord> decayedRecords = jdbcStore.findDecayed(USER_NAMESPACE.toPath(), 0.1);
-            assertEquals(1, decayedRecords.size());
-            assertEquals("Decayed memory", decayedRecords.getFirst().getContent());
+            memStore.delete(record.getId());
+            assertEquals(0, memStore.count(USER_NAMESPACE));
         }
 
         @Test
         @DisplayName("Should count by type")
         void testCountByType() {
-            jdbcStore.save(MemoryRecord.builder()
+            MemoryStore memStore = new InMemoryStore();
+
+            memStore.save(MemoryRecord.builder()
                 .namespace(USER_NAMESPACE)
                 .content("Fact 1")
                 .type(MemoryType.FACT)
-                .build());
+                .build(), randomEmbedding());
 
-            jdbcStore.save(MemoryRecord.builder()
+            memStore.save(MemoryRecord.builder()
                 .namespace(USER_NAMESPACE)
                 .content("Fact 2")
                 .type(MemoryType.FACT)
-                .build());
+                .build(), randomEmbedding());
 
-            jdbcStore.save(MemoryRecord.builder()
+            memStore.save(MemoryRecord.builder()
                 .namespace(USER_NAMESPACE)
                 .content("Preference 1")
                 .type(MemoryType.PREFERENCE)
-                .build());
+                .build(), randomEmbedding());
 
-            assertEquals(2, jdbcStore.countByType(USER_NAMESPACE.toPath(), MemoryType.FACT));
-            assertEquals(1, jdbcStore.countByType(USER_NAMESPACE.toPath(), MemoryType.PREFERENCE));
-        }
-
-        @Test
-        @DisplayName("Should store and retrieve metadata as JSON")
-        void testMetadataJsonStorage() {
-            MemoryRecord record = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
-                .content("With metadata")
-                .type(MemoryType.FACT)
-                .metadata("source", "conversation")
-                .metadata("confidence", 0.95)
-                .build();
-
-            jdbcStore.save(record);
-
-            var found = jdbcStore.findById(record.getId());
-            assertTrue(found.isPresent());
-            assertEquals("conversation", found.get().getMetadata().get("source"));
-            assertEquals(0.95, (Double) found.get().getMetadata().get("confidence"), 0.01);
-        }
-    }
-
-    /**
-     * Tests for DefaultLongTermMemoryStore factory method.
-     */
-    @Nested
-    @DisplayName("Factory Method Tests")
-    class FactoryMethodTests {
-
-        @Test
-        @DisplayName("Should create in-memory store using convenience method")
-        void testCreateInMemoryStore() {
-            DefaultLongTermMemoryStore memStore = DefaultLongTermMemoryStore.inMemory();
-            assertNotNull(memStore);
-            assertInstanceOf(InMemoryMetadataStore.class, memStore.getMetadataStore());
-            assertInstanceOf(InMemoryVectorStore.class, memStore.getVectorStore());
-        }
-
-        @Test
-        @DisplayName("Should create SQLite-backed store using convenience method")
-        void testCreateSqliteStore() throws Exception {
-            java.io.File dbFile = java.io.File.createTempFile("factory_test_", ".db");
-            dbFile.deleteOnExit();
-
-            org.sqlite.SQLiteDataSource dataSource = new org.sqlite.SQLiteDataSource();
-            dataSource.setUrl("jdbc:sqlite:" + dbFile.getAbsolutePath());
-
-            // Use new convenience method
-            DefaultLongTermMemoryStore sqliteStore = DefaultLongTermMemoryStore.withSqlite(dataSource);
-            assertNotNull(sqliteStore);
-            assertInstanceOf(JdbcMetadataStore.class, sqliteStore.getMetadataStore());
-
-            MemoryRecord record = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
-                .content("SQLite test")
-                .type(MemoryType.FACT)
-                .build();
-
-            sqliteStore.save(record, randomEmbedding());
-            assertEquals(1, sqliteStore.count(USER_NAMESPACE));
-
-        }
-
-        @Test
-        @DisplayName("Should create store using config builder with sqlite()")
-        void testCreateWithConfigBuilder() throws Exception {
-            java.io.File dbFile = java.io.File.createTempFile("config_test_", ".db");
-            dbFile.deleteOnExit();
-
-            org.sqlite.SQLiteDataSource dataSource = new org.sqlite.SQLiteDataSource();
-            dataSource.setUrl("jdbc:sqlite:" + dbFile.getAbsolutePath());
-
-            // Use config builder with new sqlite() method
-            LongTermMemoryConfig config = LongTermMemoryConfig.builder()
-                .sqlite(dataSource)
-                .embeddingDimension(384)
-                .build();
-
-            DefaultLongTermMemoryStore store = DefaultLongTermMemoryStore.create(config);
-            assertNotNull(store);
-            assertInstanceOf(JdbcMetadataStore.class, store.getMetadataStore());
-
+            assertEquals(2, memStore.countByType(USER_NAMESPACE, MemoryType.FACT));
+            assertEquals(1, memStore.countByType(USER_NAMESPACE, MemoryType.PREFERENCE));
         }
     }
 }

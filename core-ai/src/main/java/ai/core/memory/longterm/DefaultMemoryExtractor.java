@@ -17,9 +17,6 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Default memory extractor using LLM to analyze conversations.
- * Extracts facts, preferences, goals, and other memorable information.
- *
  * @author xander
  */
 public class DefaultMemoryExtractor implements MemoryExtractor {
@@ -173,9 +170,6 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
         }
     }
 
-    /**
-     * Internal class for parsing LLM response.
-     */
     public static class ExtractedMemory {
         public String content;
         public String type;

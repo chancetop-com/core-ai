@@ -10,7 +10,8 @@ import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
-import ai.core.memory.longterm.DefaultLongTermMemoryStore;
+import ai.core.memory.longterm.InMemoryStore;
+import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
@@ -51,7 +52,7 @@ class AgentWithMemoryTest {
 
     private LLMProvider llmProvider;
     private LongTermMemory longTermMemory;
-    private DefaultLongTermMemoryStore store;
+    private MemoryStore store;
     private Random random;
 
     @BeforeEach
@@ -60,7 +61,7 @@ class AgentWithMemoryTest {
         llmProvider = createMockLLMProvider();
 
         // Create in-memory store for testing
-        store = DefaultLongTermMemoryStore.inMemory();
+        store = new InMemoryStore();
 
         // Build long-term memory
         longTermMemory = LongTermMemory.builder()
@@ -68,7 +69,6 @@ class AgentWithMemoryTest {
             .store(store)
             .extractor(createMockExtractor())
             .config(LongTermMemoryConfig.builder()
-                .embeddingDimension(EMBEDDING_DIM)
                 .asyncExtraction(false)
                 .build())
             .build();
@@ -231,22 +231,16 @@ class AgentWithMemoryTest {
     }
 
     @Test
-    @DisplayName("Memory-aware agent example with SQLite persistence")
-    void testMemoryAwareAgentWithSqlite() throws Exception {
-        // Create temporary SQLite database
-        java.io.File dbFile = java.io.File.createTempFile("agent_memory_", ".db");
-        dbFile.deleteOnExit();
+    @DisplayName("Memory-aware agent with custom MemoryStore implementation")
+    void testMemoryAwareAgentWithCustomStore() {
+        // Developers can implement their own MemoryStore for persistence
+        // Here we demonstrate with InMemoryStore
+        MemoryStore customStore = new InMemoryStore();
 
-        org.sqlite.SQLiteDataSource dataSource = new org.sqlite.SQLiteDataSource();
-        dataSource.setUrl("jdbc:sqlite:" + dbFile.getAbsolutePath());
-
-        // Create persistent store
-        DefaultLongTermMemoryStore sqliteStore = DefaultLongTermMemoryStore.withSqlite(dataSource);
-
-        // Build long-term memory with SQLite
+        // Build long-term memory with custom store
         LongTermMemory persistentMemory = LongTermMemory.builder()
             .llmProvider(llmProvider)
-            .store(sqliteStore)
+            .store(customStore)
             .extractor(createMockExtractor())
             .build();
 
@@ -254,19 +248,17 @@ class AgentWithMemoryTest {
 
         // Session 1: Save some memories
         persistentMemory.startSession(userNs, "session-1");
-        sqliteStore.save(MemoryRecord.builder()
+        customStore.save(MemoryRecord.builder()
             .namespace(userNs)
             .content("User is a Python developer")
             .type(MemoryType.FACT)
             .build(), randomEmbedding());
         persistentMemory.endSession();
 
-        // Session 2: Memories should persist
+        // Session 2: Memories should persist (within same JVM)
         persistentMemory.startSession(userNs, "session-2");
         assertEquals(1, persistentMemory.getMemoryCount());
         persistentMemory.endSession();
-
-        dbFile.delete();
     }
 
     @Test

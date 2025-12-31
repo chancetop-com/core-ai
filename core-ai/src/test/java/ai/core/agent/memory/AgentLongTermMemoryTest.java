@@ -6,7 +6,8 @@ import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.conflict.ConflictStrategy;
-import ai.core.memory.longterm.DefaultLongTermMemoryStore;
+import ai.core.memory.longterm.InMemoryStore;
+import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
@@ -62,19 +63,18 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     LLMProviders llmProviders;
 
     private LongTermMemory longTermMemory;
-    private DefaultLongTermMemoryStore store;
+    private MemoryStore store;
     private ChatHistoryStore chatHistoryStore;
 
     @BeforeEach
     void setUp() {
         HikariDataSource dataSource = createPostgresDataSource();
-        store = DefaultLongTermMemoryStore.withPostgres(dataSource);
+        // Using InMemoryStore for testing - developers can implement their own MemoryStore for production
+        store = new InMemoryStore();
         longTermMemory = LongTermMemory.builder()
             .llmProvider(llmProviders.getProvider())
             .store(store)
             .config(LongTermMemoryConfig.builder()
-                    //todo
-                .embeddingDimension(1536)
                 .asyncExtraction(false)
                 .enableConflictResolution(true)
                 .conflictStrategy(ConflictStrategy.NEWEST_WITH_MERGE)
@@ -384,7 +384,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         assertNotNull(response3);
 
         // Verify memories were stored
-        var storedMemories = store.getMetadataStore().findByUserId(namespace.toPath());
+        var storedMemories = store.findByNamespace(namespace);
         LOGGER.info("Stored {} memories for user", storedMemories.size());
         storedMemories.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
     }
@@ -424,7 +424,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         longTermMemory.endSession();
 
         // Check what memories were stored
-        var memoriesAfterSession1 = store.getMetadataStore().findByUserId(namespace.toPath());
+        var memoriesAfterSession1 = store.findByNamespace(namespace);
         LOGGER.info("Memories after Session 1: {}", memoriesAfterSession1.size());
         memoriesAfterSession1.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
 
@@ -767,7 +767,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         LOGGER.info("Chat history: {} messages", chatSession.get().getMessageCount());
 
         // Verify long-term memory extraction (may take time for async)
-        var memories = store.getMetadataStore().findByUserId(namespace.toPath());
+        var memories = store.findByNamespace(namespace);
         LOGGER.info("Long-term memories: {} records", memories.size());
         memories.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
 
