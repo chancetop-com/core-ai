@@ -26,7 +26,7 @@ public class LongTermMemory {
     private final LongTermMemoryCoordinator coordinator;
     private final LLMProvider llmProvider;
     private final LongTermMemoryConfig config;
-    private Namespace currentNamespace;
+    private MemoryScope currentScope;
     private String currentSessionId;
 
     public LongTermMemory(MemoryStore store,
@@ -48,14 +48,14 @@ public class LongTermMemory {
     }
 
     // ==================== Session Management ====================
-    public void startSession(Namespace namespace, String sessionId) {
-        this.currentNamespace = namespace;
+    public void startSession(MemoryScope scope, String sessionId) {
+        this.currentScope = scope;
         this.currentSessionId = sessionId;
-        coordinator.initSession(namespace, sessionId);
+        coordinator.initSession(scope, sessionId);
     }
 
     public void startSessionForUser(String userId, String sessionId) {
-        startSession(Namespace.forUser(userId), sessionId);
+        startSession(MemoryScope.forUser(userId), sessionId);
     }
 
     public void onMessage(Message message) {
@@ -68,22 +68,22 @@ public class LongTermMemory {
 
     // ==================== Memory Recall ====================
     public List<MemoryRecord> recall(String query, int topK) {
-        if (currentNamespace == null) {
+        if (currentScope == null) {
             return List.of();
         }
-        return recall(currentNamespace, query, topK);
+        return recall(currentScope, query, topK);
     }
 
-    public List<MemoryRecord> recall(Namespace namespace, String query, int topK) {
+    public List<MemoryRecord> recall(MemoryScope scope, String query, int topK) {
         float[] queryEmbedding = generateEmbedding(query);
         if (queryEmbedding == null) {
             return List.of();
         }
-        return store.search(namespace, queryEmbedding, topK);
+        return store.searchByVector(scope, queryEmbedding, topK);
     }
 
     public List<MemoryRecord> recall(String query, int topK, MemoryType... types) {
-        if (currentNamespace == null || types == null || types.length == 0) {
+        if (currentScope == null || types == null || types.length == 0) {
             return recall(query, topK);
         }
 
@@ -95,7 +95,7 @@ public class LongTermMemory {
         SearchFilter filter = SearchFilter.builder()
             .types(types)
             .build();
-        return store.search(currentNamespace, queryEmbedding, topK, filter);
+        return store.searchByVector(currentScope, queryEmbedding, topK, filter);
     }
 
     // ==================== Context Formatting ====================
@@ -114,11 +114,11 @@ public class LongTermMemory {
 
     // ==================== Status Methods ====================
     public boolean hasMemories() {
-        return currentNamespace != null && store.count(currentNamespace) > 0;
+        return currentScope != null && store.count(currentScope) > 0;
     }
 
     public int getMemoryCount() {
-        return currentNamespace != null ? store.count(currentNamespace) : 0;
+        return currentScope != null ? store.count(currentScope) : 0;
     }
 
     public void waitForExtraction() {
@@ -153,8 +153,8 @@ public class LongTermMemory {
 
     // ==================== Getters ====================
 
-    public Namespace getCurrentNamespace() {
-        return currentNamespace;
+    public MemoryScope getCurrentScope() {
+        return currentScope;
     }
 
     public String getCurrentSessionId() {

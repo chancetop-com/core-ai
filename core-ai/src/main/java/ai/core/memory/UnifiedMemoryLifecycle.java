@@ -4,7 +4,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.memory.longterm.LongTermMemory;
-import ai.core.memory.longterm.Namespace;
+import ai.core.memory.longterm.MemoryScope;
 import ai.core.tool.tools.MemoryRecallTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +35,7 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
     private final int maxRecallRecords;
     private MemoryRecallTool memoryRecallTool;
 
-    private Namespace currentNamespace;
+    private MemoryScope currentScope;
     private boolean sessionStarted;
 
     public UnifiedMemoryLifecycle(LongTermMemory longTermMemory) {
@@ -60,15 +60,15 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
     @Override
     public void beforeAgentRun(AtomicReference<String> query, ExecutionContext executionContext) {
         initializeSession(executionContext);
-        LOGGER.debug("UnifiedMemoryLifecycle initialized, namespace={}",
-            currentNamespace != null ? currentNamespace.toPath() : "none");
+        LOGGER.debug("UnifiedMemoryLifecycle initialized, scope={}",
+            currentScope != null ? currentScope.toKey() : "none");
     }
 
     @Override
     public void beforeModel(CompletionRequest request, ExecutionContext executionContext) {
-        // Update the tool's namespace so it can access correct user memories
-        if (memoryRecallTool != null && currentNamespace != null) {
-            memoryRecallTool.setCurrentNamespace(currentNamespace);
+        // Update the tool's scope so it can access correct user memories
+        if (memoryRecallTool != null && currentScope != null) {
+            memoryRecallTool.setCurrentScope(currentScope);
         }
     }
 
@@ -79,32 +79,32 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
                 longTermMemory.endSession();
             }
         } finally {
-            currentNamespace = null;
+            currentScope = null;
             sessionStarted = false;
         }
     }
 
     private void initializeSession(ExecutionContext context) {
         sessionStarted = false;
-        currentNamespace = extractNamespace(context);
+        currentScope = extractScope(context);
         startSessionIfNeeded(context);
     }
 
-    private Namespace extractNamespace(ExecutionContext context) {
+    private MemoryScope extractScope(ExecutionContext context) {
         if (context == null) {
             return null;
         }
         String userId = context.getUserId();
-        return (userId != null && !userId.isBlank()) ? Namespace.forUser(userId) : null;
+        return (userId != null && !userId.isBlank()) ? MemoryScope.forUser(userId) : null;
     }
 
     private void startSessionIfNeeded(ExecutionContext context) {
-        if (currentNamespace == null || context == null) {
+        if (currentScope == null || context == null) {
             return;
         }
         String sessionId = context.getSessionId();
         if (sessionId != null) {
-            longTermMemory.startSession(currentNamespace, sessionId);
+            longTermMemory.startSession(currentScope, sessionId);
             sessionStarted = true;
         }
     }
@@ -113,8 +113,8 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
         return longTermMemory;
     }
 
-    public Namespace getCurrentNamespace() {
-        return currentNamespace;
+    public MemoryScope getCurrentScope() {
+        return currentScope;
     }
 
     public int getMaxRecallRecords() {

@@ -15,11 +15,6 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Coordinates sliding window operations for Agent.
- *
- * <p>When sliding window triggers, evicted messages are first compressed into a summary
- * using ShortTermMemory, then the summary is prepended to the remaining messages.
- *
  * @author xander
  */
 class AgentMemoryCoordinator {
@@ -51,14 +46,10 @@ class AgentMemoryCoordinator {
         var messages = messagesSupplier.get();
         if (slidingWindow.shouldSlide(messages)) {
             var beforeSize = messages.size();
-
-            // Compress evicted messages before sliding
             List<Message> summaryMessages = compressEvictedIfNeeded(messages);
 
-            // Slide the window
             var slidMessages = slidingWindow.slide(messages);
 
-            // Prepend summary messages after system message
             if (!summaryMessages.isEmpty()) {
                 slidMessages = prependSummaryMessages(slidMessages, summaryMessages);
             }
@@ -83,7 +74,6 @@ class AgentMemoryCoordinator {
     private List<Message> prependSummaryMessages(List<Message> messages, List<Message> summaryMessages) {
         var result = new ArrayList<Message>();
 
-        // Add system message first if present
         for (var msg : messages) {
             if (msg.role == RoleType.SYSTEM) {
                 result.add(msg);
@@ -91,10 +81,8 @@ class AgentMemoryCoordinator {
             }
         }
 
-        // Add summary messages
         result.addAll(summaryMessages);
 
-        // Add remaining messages (skip system message)
         for (var msg : messages) {
             if (msg.role != RoleType.SYSTEM) {
                 result.add(msg);

@@ -7,12 +7,12 @@ import ai.core.llm.LLMProviders;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.conflict.ConflictStrategy;
 import ai.core.memory.longterm.InMemoryStore;
-import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryScope;
+import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.MemoryType;
-import ai.core.memory.longterm.Namespace;
 import ai.core.memory.history.ChatHistoryStore;
 import ai.core.memory.history.ChatSession;
 import ai.core.memory.history.JdbcChatHistoryStore;
@@ -91,11 +91,11 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     }
 
     private void cleanupTestData() {
-        store.deleteByNamespace(Namespace.forUser(USER_ID));
-        store.deleteByNamespace(Namespace.forUser("multi-turn-user"));
-        store.deleteByNamespace(Namespace.forUser("cross-session-user"));
-        store.deleteByNamespace(Namespace.forUser("history-test-user"));
-        store.deleteByNamespace(Namespace.forUser("stats-test-user"));
+        store.deleteByScope(MemoryScope.forUser(USER_ID));
+        store.deleteByScope(MemoryScope.forUser("multi-turn-user"));
+        store.deleteByScope(MemoryScope.forUser("cross-session-user"));
+        store.deleteByScope(MemoryScope.forUser("history-test-user"));
+        store.deleteByScope(MemoryScope.forUser("stats-test-user"));
         chatHistoryStore.deleteByUser(USER_ID);
         chatHistoryStore.deleteByUser("multi-turn-user");
         chatHistoryStore.deleteByUser("cross-session-user");
@@ -136,18 +136,18 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     @DisplayName("Agent can recall pre-stored memories with ExecutionContext")
     void testAgentRecallsPreStoredMemories() {
         // Pre-store some memories for the user
-        Namespace namespace = Namespace.forUser(USER_ID);
-        longTermMemory.startSession(namespace, SESSION_ID);
+        MemoryScope scope = MemoryScope.forUser(USER_ID);
+        longTermMemory.startSession(scope, SESSION_ID);
 
         store.save(MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User prefers dark mode in applications")
             .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build(), generateMockEmbedding());
 
         store.save(MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User is a Java developer working on AI projects")
             .type(MemoryType.FACT)
             .importance(0.85)
@@ -184,16 +184,16 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Memory is isolated by userId namespace")
+    @DisplayName("Memory is isolated by userId scope")
     void testMemoryIsolationByUser() {
         String user1 = "user-alice";
         String user2 = "user-bob";
 
         // Store memory for user1
-        Namespace ns1 = Namespace.forUser(user1);
-        longTermMemory.startSession(ns1, "session-1");
+        MemoryScope scope1 = MemoryScope.forUser(user1);
+        longTermMemory.startSession(scope1, "session-1");
         store.save(MemoryRecord.builder()
-            .namespace(ns1)
+            .scope(scope1)
             .content("Alice likes Python programming")
             .type(MemoryType.PREFERENCE)
             .importance(0.9)
@@ -201,10 +201,10 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         longTermMemory.endSession();
 
         // Store memory for user2
-        Namespace ns2 = Namespace.forUser(user2);
-        longTermMemory.startSession(ns2, "session-2");
+        MemoryScope scope2 = MemoryScope.forUser(user2);
+        longTermMemory.startSession(scope2, "session-2");
         store.save(MemoryRecord.builder()
-            .namespace(ns2)
+            .scope(scope2)
             .content("Bob prefers JavaScript development")
             .type(MemoryType.PREFERENCE)
             .importance(0.9)
@@ -212,8 +212,8 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         longTermMemory.endSession();
 
         // Recall for user1 should only get Alice's memory
-        var aliceMemories = longTermMemory.recall(ns1, "programming preferences", 10);
-        var bobMemories = longTermMemory.recall(ns2, "programming preferences", 10);
+        var aliceMemories = longTermMemory.recall(scope1, "programming preferences", 10);
+        var bobMemories = longTermMemory.recall(scope2, "programming preferences", 10);
 
         LOGGER.info("Alice's memories: {}", aliceMemories.size());
         LOGGER.info("Bob's memories: {}", bobMemories.size());
@@ -231,12 +231,12 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     @Test
     @DisplayName("Cross-session memory persistence")
     void testCrossSessionMemoryPersistence() {
-        Namespace namespace = Namespace.forUser(USER_ID);
+        MemoryScope scope = MemoryScope.forUser(USER_ID);
 
         // Session 1: Store some memories
-        longTermMemory.startSession(namespace, "session-1");
+        longTermMemory.startSession(scope, "session-1");
         store.save(MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User mentioned they are learning Kotlin")
             .type(MemoryType.FACT)
             .importance(0.8)
@@ -246,9 +246,9 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         LOGGER.info("Session 1 completed, memory stored");
 
         // Session 2: Memory should persist and be accessible
-        longTermMemory.startSession(namespace, "session-2");
+        longTermMemory.startSession(scope, "session-2");
 
-        var memories = longTermMemory.recall(namespace, "learning programming", 5);
+        var memories = longTermMemory.recall(scope, "learning programming", 5);
         assertFalse(memories.isEmpty(), "Memory should persist across sessions");
         LOGGER.info("Session 2 can access {} memories from previous sessions", memories.size());
 
@@ -329,7 +329,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     @DisplayName("Multi-turn conversation with memory extraction and recall")
     void testMultiTurnConversationWithMemory() {
         String testUserId = "multi-turn-user";
-        Namespace namespace = Namespace.forUser(testUserId);
+        MemoryScope scope = MemoryScope.forUser(testUserId);
 
         // Create agent with memory capabilities
         Agent agent = Agent.builder()
@@ -384,7 +384,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         assertNotNull(response3);
 
         // Verify memories were stored
-        var storedMemories = store.findByNamespace(namespace);
+        var storedMemories = store.findByScope(scope);
         LOGGER.info("Stored {} memories for user", storedMemories.size());
         storedMemories.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
     }
@@ -393,7 +393,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     @DisplayName("Cross-session memory recall - Session 1 stores, Session 2 recalls")
     void testCrossSessionMemoryRecallWithRealAgent() {
         String testUserId = "cross-session-user";
-        Namespace namespace = Namespace.forUser(testUserId);
+        MemoryScope scope = MemoryScope.forUser(testUserId);
 
         // ========== Session 1: User shares information ==========
         LOGGER.info("========== SESSION 1: Storing memories ==========");
@@ -424,7 +424,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         longTermMemory.endSession();
 
         // Check what memories were stored
-        var memoriesAfterSession1 = store.findByNamespace(namespace);
+        var memoriesAfterSession1 = store.findByScope(scope);
         LOGGER.info("Memories after Session 1: {}", memoriesAfterSession1.size());
         memoriesAfterSession1.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
 
@@ -463,25 +463,25 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     @DisplayName("Memory recall tool is triggered by specific queries")
     void testMemoryRecallToolTriggering() {
         String testUserId = "recall-trigger-user";
-        Namespace namespace = Namespace.forUser(testUserId);
+        MemoryScope scope = MemoryScope.forUser(testUserId);
 
         // Pre-store some memories
         store.save(MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User's favorite programming language is Kotlin")
             .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build(), generateMockEmbedding());
 
         store.save(MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User is building a mobile app for fitness tracking")
             .type(MemoryType.FACT)
             .importance(0.85)
             .build(), generateMockEmbedding());
 
         store.save(MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User's goal is to become a full-stack developer")
             .type(MemoryType.GOAL)
             .importance(0.8)
@@ -531,27 +531,27 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     @DisplayName("Direct memory store and recall verification")
     void testDirectMemoryStoreAndRecall() {
         String testUserId = "direct-test-user";
-        Namespace namespace = Namespace.forUser(testUserId);
+        MemoryScope scope = MemoryScope.forUser(testUserId);
 
         // Store memories directly
         LOGGER.info("=== Storing memories directly ===");
 
         MemoryRecord pref = MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User prefers dark theme in all applications")
             .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build();
 
         MemoryRecord fact = MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User is 30 years old and lives in Shanghai")
             .type(MemoryType.FACT)
             .importance(0.8)
             .build();
 
         MemoryRecord goal = MemoryRecord.builder()
-            .namespace(namespace)
+            .scope(scope)
             .content("User wants to learn machine learning this year")
             .type(MemoryType.GOAL)
             .importance(0.85)
@@ -576,15 +576,15 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         // Recall using semantic search
         LOGGER.info("=== Recalling memories ===");
 
-        var themeMemories = longTermMemory.recall(namespace, "theme preferences", 5);
+        var themeMemories = longTermMemory.recall(scope, "theme preferences", 5);
         LOGGER.info("Query 'theme preferences' returned {} results:", themeMemories.size());
         themeMemories.forEach(m -> LOGGER.info("  - {}", m.getContent()));
 
-        var locationMemories = longTermMemory.recall(namespace, "where does user live", 5);
+        var locationMemories = longTermMemory.recall(scope, "where does user live", 5);
         LOGGER.info("Query 'where does user live' returned {} results:", locationMemories.size());
         locationMemories.forEach(m -> LOGGER.info("  - {}", m.getContent()));
 
-        var learningMemories = longTermMemory.recall(namespace, "learning goals", 5);
+        var learningMemories = longTermMemory.recall(scope, "learning goals", 5);
         LOGGER.info("Query 'learning goals' returned {} results:", learningMemories.size());
         learningMemories.forEach(m -> LOGGER.info("  - {}", m.getContent()));
 
@@ -598,31 +598,31 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     @DisplayName("Memory count and type statistics")
     void testMemoryCountAndStatistics() {
         String testUserId = "stats-test-user";
-        Namespace namespace = Namespace.forUser(testUserId);
+        MemoryScope scope = MemoryScope.forUser(testUserId);
 
         // Store various types of memories
         store.save(MemoryRecord.builder()
-            .namespace(namespace).content("Pref 1").type(MemoryType.PREFERENCE).importance(0.9)
+            .scope(scope).content("Pref 1").type(MemoryType.PREFERENCE).importance(0.9)
             .build(), generateMockEmbedding());
         store.save(MemoryRecord.builder()
-            .namespace(namespace).content("Pref 2").type(MemoryType.PREFERENCE).importance(0.8)
+            .scope(scope).content("Pref 2").type(MemoryType.PREFERENCE).importance(0.8)
             .build(), generateMockEmbedding());
         store.save(MemoryRecord.builder()
-            .namespace(namespace).content("Fact 1").type(MemoryType.FACT).importance(0.7)
+            .scope(scope).content("Fact 1").type(MemoryType.FACT).importance(0.7)
             .build(), generateMockEmbedding());
         store.save(MemoryRecord.builder()
-            .namespace(namespace).content("Goal 1").type(MemoryType.GOAL).importance(0.85)
+            .scope(scope).content("Goal 1").type(MemoryType.GOAL).importance(0.85)
             .build(), generateMockEmbedding());
 
         // Count total memories
-        int totalCount = store.count(namespace);
+        int totalCount = store.count(scope);
         LOGGER.info("Total memories: {}", totalCount);
         assertEquals(4, totalCount, "Should have 4 total memories");
 
         // Count by type
-        int prefCount = store.countByType(namespace, MemoryType.PREFERENCE);
-        int factCount = store.countByType(namespace, MemoryType.FACT);
-        int goalCount = store.countByType(namespace, MemoryType.GOAL);
+        int prefCount = store.countByType(scope, MemoryType.PREFERENCE);
+        int factCount = store.countByType(scope, MemoryType.FACT);
+        int goalCount = store.countByType(scope, MemoryType.GOAL);
 
         LOGGER.info("PREFERENCE: {}, FACT: {}, GOAL: {}", prefCount, factCount, goalCount);
         assertEquals(2, prefCount, "Should have 2 preferences");
@@ -730,7 +730,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     void testFullMemoryStack() {
         String testUserId = "history-test-user";
         String sessionId = "full-stack-session";
-        Namespace namespace = Namespace.forUser(testUserId);
+        MemoryScope scope = MemoryScope.forUser(testUserId);
 
         // Create agent with full memory stack
         Agent agent = Agent.builder()
@@ -767,7 +767,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         LOGGER.info("Chat history: {} messages", chatSession.get().getMessageCount());
 
         // Verify long-term memory extraction (may take time for async)
-        var memories = store.findByNamespace(namespace);
+        var memories = store.findByScope(scope);
         LOGGER.info("Long-term memories: {} records", memories.size());
         memories.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
 

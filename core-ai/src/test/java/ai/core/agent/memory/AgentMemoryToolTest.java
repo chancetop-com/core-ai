@@ -21,12 +21,12 @@ import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.memory.longterm.InMemoryStore;
-import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryScope;
+import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.MemoryType;
-import ai.core.memory.longterm.Namespace;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import ai.core.tool.tools.MemoryRecallTool;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -94,10 +95,10 @@ class AgentMemoryToolTest {
     @DisplayName("MemoryRecallTool executes successfully and returns formatted memories")
     void testMemoryRecallToolExecution() {
         // Pre-store memories
-        Namespace namespace = Namespace.forUser(USER_ID);
-        store.save(createMemoryRecord(namespace, "User prefers dark mode", MemoryType.PREFERENCE, 0.9),
+        MemoryScope scope = MemoryScope.forUser(USER_ID);
+        store.save(createMemoryRecord(scope, "User prefers dark mode", MemoryType.PREFERENCE, 0.9),
             randomEmbedding());
-        store.save(createMemoryRecord(namespace, "User is learning Python", MemoryType.FACT, 0.8),
+        store.save(createMemoryRecord(scope, "User is learning Python", MemoryType.FACT, 0.8),
             randomEmbedding());
 
         // Create tool
@@ -105,7 +106,7 @@ class AgentMemoryToolTest {
             .longTermMemory(longTermMemory)
             .maxRecords(5)
             .build();
-        tool.setCurrentNamespace(namespace);
+        tool.setCurrentScope(scope);
 
         // Execute tool
         var result = tool.execute("{\"query\": \"user preferences\"}");
@@ -119,13 +120,13 @@ class AgentMemoryToolTest {
     @Test
     @DisplayName("MemoryRecallTool returns no memories message when empty")
     void testMemoryRecallToolEmptyResult() {
-        Namespace namespace = Namespace.forUser(USER_ID);
+        MemoryScope scope = MemoryScope.forUser(USER_ID);
 
         MemoryRecallTool tool = MemoryRecallTool.builder()
             .longTermMemory(longTermMemory)
             .maxRecords(5)
             .build();
-        tool.setCurrentNamespace(namespace);
+        tool.setCurrentScope(scope);
 
         var result = tool.execute("{\"query\": \"something that doesn't exist\"}");
 
@@ -138,21 +139,21 @@ class AgentMemoryToolTest {
     @Test
     @DisplayName("MemoryRecallTool filters by memory type")
     void testMemoryRecallToolTypeFilter() {
-        Namespace namespace = Namespace.forUser(USER_ID);
+        MemoryScope scope = MemoryScope.forUser(USER_ID);
 
         // Store different types
-        store.save(createMemoryRecord(namespace, "User prefers dark mode", MemoryType.PREFERENCE, 0.9),
+        store.save(createMemoryRecord(scope, "User prefers dark mode", MemoryType.PREFERENCE, 0.9),
             randomEmbedding());
-        store.save(createMemoryRecord(namespace, "User works at TechCorp", MemoryType.FACT, 0.8),
+        store.save(createMemoryRecord(scope, "User works at TechCorp", MemoryType.FACT, 0.8),
             randomEmbedding());
-        store.save(createMemoryRecord(namespace, "User wants to learn AI", MemoryType.GOAL, 0.85),
+        store.save(createMemoryRecord(scope, "User wants to learn AI", MemoryType.GOAL, 0.85),
             randomEmbedding());
 
         MemoryRecallTool tool = MemoryRecallTool.builder()
             .longTermMemory(longTermMemory)
             .maxRecords(10)
             .build();
-        tool.setCurrentNamespace(namespace);
+        tool.setCurrentScope(scope);
 
         // Filter by PREFERENCE type
         var result = tool.execute("{\"query\": \"user info\", \"types\": [\"PREFERENCE\"]}");
@@ -194,8 +195,8 @@ class AgentMemoryToolTest {
     @DisplayName("LLM can call search_memory_tool during agent execution")
     void testLLMCallsMemoryTool() {
         // Pre-store memory
-        Namespace namespace = Namespace.forUser(USER_ID);
-        store.save(createMemoryRecord(namespace, "User prefers concise answers", MemoryType.PREFERENCE, 0.9),
+        MemoryScope scope = MemoryScope.forUser(USER_ID);
+        store.save(createMemoryRecord(scope, "User prefers concise answers", MemoryType.PREFERENCE, 0.9),
             randomEmbedding());
 
         // Create mock that simulates LLM calling search_memory_tool
@@ -239,11 +240,10 @@ class AgentMemoryToolTest {
             .findFirst()
             .orElseThrow();
 
-        // Before agent run, namespace should be null
-        assertTrue(memoryTool.getCurrentNamespace() == null
-            || memoryTool.getCurrentNamespace().isGlobal());
+        // Before agent run, scope should be null
+        assertNull(memoryTool.getCurrentScope());
 
-        // After agent run with context, namespace should be set
+        // After agent run with context, scope should be set
         ExecutionContext context = ExecutionContext.builder()
             .userId(USER_ID)
             .sessionId(SESSION_ID)
@@ -251,18 +251,18 @@ class AgentMemoryToolTest {
 
         agent.run("Hello", context);
 
-        // The lifecycle should have set the namespace
-        Namespace ns = memoryTool.getCurrentNamespace();
-        assertNotNull(ns, "Namespace should be set after agent run");
-        assertEquals(Namespace.forUser(USER_ID), ns, "Namespace should match user namespace");
-        LOGGER.info("Namespace set to: {}", ns.toPath());
+        // The lifecycle should have set the scope
+        MemoryScope currentScope = memoryTool.getCurrentScope();
+        assertNotNull(currentScope, "Scope should be set after agent run");
+        assertEquals(MemoryScope.forUser(USER_ID), currentScope, "Scope should match user scope");
+        LOGGER.info("Scope set to: {}", currentScope.toKey());
     }
 
     // ==================== Helper Methods ====================
 
-    private MemoryRecord createMemoryRecord(Namespace ns, String content, MemoryType type, double importance) {
+    private MemoryRecord createMemoryRecord(MemoryScope scope, String content, MemoryType type, double importance) {
         return MemoryRecord.builder()
-            .namespace(ns)
+            .scope(scope)
             .content(content)
             .type(type)
             .importance(importance)
@@ -287,7 +287,7 @@ class AgentMemoryToolTest {
 
     private MemoryExtractor createMockExtractor() {
         MemoryExtractor mock = mock(MemoryExtractor.class);
-        when(mock.extract(any(Namespace.class), any())).thenReturn(List.of());
+        when(mock.extract(any(MemoryScope.class), any())).thenReturn(List.of());
         return mock;
     }
 

@@ -20,8 +20,8 @@ import ai.core.memory.longterm.InMemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryScope;
 import ai.core.memory.longterm.MemoryType;
-import ai.core.memory.longterm.Namespace;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import ai.core.memory.recall.MemoryRecallService;
 import ai.core.tool.tools.MemoryRecallTool;
@@ -75,16 +75,16 @@ class UnifiedMemoryTest {
 
     private MemoryRecord createMemoryRecord(String content, MemoryType type, double importance) {
         return MemoryRecord.builder()
-            .namespace(Namespace.forUser(USER_ID))
+            .scope(MemoryScope.forUser(USER_ID))
             .content(content)
             .type(type)
             .importance(importance)
             .build();
     }
 
-    private MemoryRecord createMemoryRecordWithNamespace(Namespace ns, String content, MemoryType type) {
+    private MemoryRecord createMemoryRecordWithScope(MemoryScope scope, String content, MemoryType type) {
         return MemoryRecord.builder()
-            .namespace(ns)
+            .scope(scope)
             .content(content)
             .type(type)
             .importance(0.8)
@@ -121,7 +121,7 @@ class UnifiedMemoryTest {
 
     private MemoryExtractor createMockExtractor() {
         MemoryExtractor mock = mock(MemoryExtractor.class);
-        when(mock.extract(any(Namespace.class), any())).thenReturn(List.of());
+        when(mock.extract(any(MemoryScope.class), any())).thenReturn(List.of());
         return mock;
     }
 
@@ -198,11 +198,11 @@ class UnifiedMemoryTest {
         @DisplayName("Detect conflicts between similar records")
         void testDetectConflicts() {
             MemoryConflictResolver resolver = new MemoryConflictResolver();
-            Namespace ns = Namespace.forUser(USER_ID);
+            MemoryScope scope = MemoryScope.forUser(USER_ID);
 
             List<MemoryRecord> records = List.of(
-                createMemoryRecordWithNamespace(ns, "User prefers Python programming", MemoryType.PREFERENCE),
-                createMemoryRecordWithNamespace(ns, "User prefers Java programming", MemoryType.PREFERENCE),
+                createMemoryRecordWithScope(scope, "User prefers Python programming", MemoryType.PREFERENCE),
+                createMemoryRecordWithScope(scope, "User prefers Java programming", MemoryType.PREFERENCE),
                 createMemoryRecord("User works at company X", MemoryType.FACT, 0.8)
             );
 
@@ -396,7 +396,7 @@ class UnifiedMemoryTest {
                 .longTermMemory(longTermMemory)
                 .maxRecords(5)
                 .build();
-            tool.setCurrentNamespace(Namespace.forUser(USER_ID));
+            tool.setCurrentScope(MemoryScope.forUser(USER_ID));
 
             var result = tool.execute("{\"query\": \"user preferences\"}");
 
@@ -476,9 +476,9 @@ class UnifiedMemoryTest {
             // beforeModel should set the namespace on the tool
             lifecycle.beforeModel(request, context);
 
-            // Verify the tool now has the correct namespace
-            assertNotNull(recallTool.getCurrentNamespace());
-            assertEquals(Namespace.forUser(USER_ID), recallTool.getCurrentNamespace());
+            // Verify the tool now has the correct scope
+            assertNotNull(recallTool.getCurrentScope());
+            assertEquals(MemoryScope.forUser(USER_ID), recallTool.getCurrentScope());
 
             longTermMemory.endSession();
         }

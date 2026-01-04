@@ -11,12 +11,12 @@ import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.longterm.InMemoryStore;
-import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryScope;
+import ai.core.memory.longterm.MemoryStore;
 import ai.core.memory.longterm.MemoryType;
-import ai.core.memory.longterm.Namespace;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -94,21 +94,21 @@ class AgentWithMemoryTest {
     @Test
     @DisplayName("Long-term memory persists user preferences across sessions")
     void testLongTermMemoryPersistence() {
-        Namespace userNamespace = Namespace.forUser(USER_ID);
+        MemoryScope userScope = MemoryScope.forUser(USER_ID);
 
         // Session 1: User shares preferences
         longTermMemory.startSessionForUser(USER_ID, SESSION_ID);
 
         // Manually save some preferences (simulating extraction)
         MemoryRecord preference1 = MemoryRecord.builder()
-            .namespace(userNamespace)
+            .scope(userScope)
             .content("User prefers dark mode for all applications")
             .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build();
 
         MemoryRecord preference2 = MemoryRecord.builder()
-            .namespace(userNamespace)
+            .scope(userScope)
             .content("User's favorite programming language is Python")
             .type(MemoryType.PREFERENCE)
             .importance(0.8)
@@ -135,11 +135,11 @@ class AgentWithMemoryTest {
     @Test
     @DisplayName("Agent integrates long-term memory context into conversation")
     void testAgentWithLongTermMemoryContext() {
-        Namespace userNamespace = Namespace.forUser(USER_ID);
+        MemoryScope userScope = MemoryScope.forUser(USER_ID);
 
         // Pre-populate long-term memory with user facts
         MemoryRecord fact = MemoryRecord.builder()
-            .namespace(userNamespace)
+            .scope(userScope)
             .content("User is a software engineer working on AI projects")
             .type(MemoryType.FACT)
             .importance(0.85)
@@ -180,18 +180,18 @@ class AgentWithMemoryTest {
     @Test
     @DisplayName("Combined short-term and long-term memory workflow")
     void testCombinedMemoryWorkflow() {
-        Namespace userNamespace = Namespace.forUser(USER_ID);
+        MemoryScope userScope = MemoryScope.forUser(USER_ID);
 
         // Pre-populate some long-term memories
         store.save(MemoryRecord.builder()
-            .namespace(userNamespace)
+            .scope(userScope)
             .content("User prefers concise explanations")
             .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .namespace(userNamespace)
+            .scope(userScope)
             .content("User is learning machine learning")
             .type(MemoryType.FACT)
             .importance(0.8)
@@ -244,19 +244,19 @@ class AgentWithMemoryTest {
             .extractor(createMockExtractor())
             .build();
 
-        Namespace userNs = Namespace.forUser("persistent-user");
+        MemoryScope userScope = MemoryScope.forUser("persistent-user");
 
         // Session 1: Save some memories
-        persistentMemory.startSession(userNs, "session-1");
+        persistentMemory.startSession(userScope, "session-1");
         customStore.save(MemoryRecord.builder()
-            .namespace(userNs)
+            .scope(userScope)
             .content("User is a Python developer")
             .type(MemoryType.FACT)
             .build(), randomEmbedding());
         persistentMemory.endSession();
 
         // Session 2: Memories should persist (within same JVM)
-        persistentMemory.startSession(userNs, "session-2");
+        persistentMemory.startSession(userScope, "session-2");
         assertEquals(1, persistentMemory.getMemoryCount());
         persistentMemory.endSession();
     }
@@ -264,28 +264,28 @@ class AgentWithMemoryTest {
     @Test
     @DisplayName("Format memories as context for agent prompt")
     void testFormatMemoriesAsContext() {
-        Namespace ns = Namespace.forUser("format-test-user");
+        MemoryScope scope = MemoryScope.forUser("format-test-user");
 
         // Add various memory types
         store.save(MemoryRecord.builder()
-            .namespace(ns)
+            .scope(scope)
             .content("User prefers TypeScript over JavaScript")
             .type(MemoryType.PREFERENCE)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .namespace(ns)
+            .scope(scope)
             .content("User works at a startup company")
             .type(MemoryType.FACT)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .namespace(ns)
+            .scope(scope)
             .content("User often asks about React best practices")
             .type(MemoryType.EPISODE)
             .build(), randomEmbedding());
 
-        longTermMemory.startSession(ns, "test-session");
+        longTermMemory.startSession(scope, "test-session");
 
         // Format all memories as context
         var allMemories = longTermMemory.recall("user information", 10);
@@ -341,7 +341,7 @@ class AgentWithMemoryTest {
 
     private MemoryExtractor createMockExtractor() {
         MemoryExtractor mock = mock(MemoryExtractor.class);
-        when(mock.extract(any(Namespace.class), any())).thenReturn(List.of());
+        when(mock.extract(any(MemoryScope.class), any())).thenReturn(List.of());
         return mock;
     }
 }

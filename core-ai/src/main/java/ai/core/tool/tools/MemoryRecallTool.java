@@ -2,8 +2,8 @@ package ai.core.tool.tools;
 
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryScope;
 import ai.core.memory.longterm.MemoryType;
-import ai.core.memory.longterm.Namespace;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
@@ -45,7 +45,7 @@ public final class MemoryRecallTool extends ToolCall {
 
     private final LongTermMemory longTermMemory;
     private final int maxRecords;
-    private volatile Namespace currentNamespace;
+    private volatile MemoryScope currentScope;
 
     public MemoryRecallTool(LongTermMemory longTermMemory) {
         this(longTermMemory, 5);
@@ -77,9 +77,9 @@ public final class MemoryRecallTool extends ToolCall {
             // Parse optional type filter
             List<MemoryType> typeFilter = parseTypeFilter(params);
 
-            // Get namespace from current context or fall back to LongTermMemory's current namespace
-            Namespace namespace = currentNamespace != null ? currentNamespace : longTermMemory.getCurrentNamespace();
-            if (namespace == null) {
+            // Get scope from current context or fall back to LongTermMemory's current scope
+            MemoryScope scope = currentScope != null ? currentScope : longTermMemory.getCurrentScope();
+            if (scope == null) {
                 return ToolCallResult.completed("[No user context available - unable to recall memories]")
                     .withDuration(System.currentTimeMillis() - startTime);
             }
@@ -87,7 +87,7 @@ public final class MemoryRecallTool extends ToolCall {
             // Recall memories
             List<MemoryRecord> memories;
             if (typeFilter.isEmpty()) {
-                memories = longTermMemory.recall(namespace, query, maxRecords);
+                memories = longTermMemory.recall(scope, query, maxRecords);
             } else {
                 memories = longTermMemory.recall(query, maxRecords, typeFilter.toArray(new MemoryType[0]));
             }
@@ -166,15 +166,15 @@ public final class MemoryRecallTool extends ToolCall {
     }
 
     /**
-     * Set the current namespace for memory recall.
-     * Called by UnifiedMemoryLifecycle to update the namespace.
+     * Set the current scope for memory recall.
+     * Called by UnifiedMemoryLifecycle to update the scope.
      */
-    public void setCurrentNamespace(Namespace namespace) {
-        this.currentNamespace = namespace;
+    public void setCurrentScope(MemoryScope scope) {
+        this.currentScope = scope;
     }
 
-    public Namespace getCurrentNamespace() {
-        return currentNamespace;
+    public MemoryScope getCurrentScope() {
+        return currentScope;
     }
 
     public LongTermMemory getLongTermMemory() {

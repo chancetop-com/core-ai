@@ -35,7 +35,7 @@ class LongTermMemoryTest {
     private static final String USER_ID = "user-123";
     private static final String SESSION_ID = "session-456";
     private static final int EMBEDDING_DIM = 8;
-    private static final Namespace USER_NAMESPACE = Namespace.forUser(USER_ID);
+    private static final MemoryScope USER_SCOPE = MemoryScope.forUser(USER_ID);
 
     private MemoryStore store;
     private MemoryExtractor extractor;
@@ -62,7 +62,7 @@ class LongTermMemoryTest {
     void testBasicMemoryStorageAndRetrieval() {
         // 1. Manually save a memory
         MemoryRecord record = MemoryRecord.builder()
-            .namespace(USER_NAMESPACE)
+            .scope(USER_SCOPE)
             .content("User is a Java developer who prefers clean code")
             .type(MemoryType.FACT)
             .build();
@@ -71,10 +71,10 @@ class LongTermMemoryTest {
         store.save(record, embedding);
 
         // 2. Verify storage
-        assertEquals(1, store.count(USER_NAMESPACE));
+        assertEquals(1, store.count(USER_SCOPE));
 
         // 3. Search for the memory
-        List<MemoryRecord> results = store.search(USER_NAMESPACE, embedding, 5);
+        List<MemoryRecord> results = store.searchByVector(USER_SCOPE, embedding, 5);
         assertFalse(results.isEmpty());
         assertEquals("User is a Java developer who prefers clean code", results.getFirst().getContent());
     }
@@ -82,17 +82,17 @@ class LongTermMemoryTest {
     @Test
     void testMemoryIsolationByUserId() {
         // Save memories for different users
-        Namespace namespaceA = Namespace.forUser("user-A");
-        Namespace namespaceB = Namespace.forUser("user-B");
+        MemoryScope scopeA = MemoryScope.forUser("user-A");
+        MemoryScope scopeB = MemoryScope.forUser("user-B");
 
         MemoryRecord record1 = MemoryRecord.builder()
-            .namespace(namespaceA)
+            .scope(scopeA)
             .content("User A likes Python")
             .type(MemoryType.PREFERENCE)
             .build();
 
         MemoryRecord record2 = MemoryRecord.builder()
-            .namespace(namespaceB)
+            .scope(scopeB)
             .content("User B likes Java")
             .type(MemoryType.PREFERENCE)
             .build();
@@ -101,11 +101,11 @@ class LongTermMemoryTest {
         store.save(record2, randomEmbedding());
 
         // Verify isolation
-        assertEquals(1, store.count(namespaceA));
-        assertEquals(1, store.count(namespaceB));
+        assertEquals(1, store.count(scopeA));
+        assertEquals(1, store.count(scopeB));
 
         // Search should only return memories for the specific user
-        List<MemoryRecord> resultsA = store.search(namespaceA, randomEmbedding(), 10);
+        List<MemoryRecord> resultsA = store.searchByVector(scopeA, randomEmbedding(), 10);
         assertEquals(1, resultsA.size());
         assertTrue(resultsA.getFirst().getContent().contains("User A"));
     }
@@ -113,20 +113,20 @@ class LongTermMemoryTest {
     @Test
     void testCoordinatorExtractionOnSessionEnd() {
         // Initialize session
-        coordinator.initSession(USER_NAMESPACE, SESSION_ID);
+        coordinator.initSession(USER_SCOPE, SESSION_ID);
 
         // Simulate conversation (not enough to trigger batch extraction)
         coordinator.onMessage(Message.of(RoleType.USER, "Hello, I'm a senior Java developer"));
         coordinator.onMessage(Message.of(RoleType.ASSISTANT, "Nice to meet you!"));
 
         // Verify no extraction yet (buffer size < maxBufferTurns)
-        assertEquals(0, store.count(USER_NAMESPACE));
+        assertEquals(0, store.count(USER_SCOPE));
 
         // End session - should trigger extraction
         coordinator.onSessionEnd();
 
         // Verify memories were extracted and stored
-        assertTrue(store.count(USER_NAMESPACE) > 0);
+        assertTrue(store.count(USER_SCOPE) > 0);
     }
 
     @Test
@@ -141,7 +141,7 @@ class LongTermMemoryTest {
         LongTermMemoryCoordinator batchCoordinator = new LongTermMemoryCoordinator(
             batchStore, extractor, llmProvider, batchConfig);
 
-        batchCoordinator.initSession(USER_NAMESPACE, SESSION_ID);
+        batchCoordinator.initSession(USER_SCOPE, SESSION_ID);
 
         // First turn
         batchCoordinator.onMessage(Message.of(RoleType.USER, "I prefer using IntelliJ IDEA"));
@@ -152,14 +152,14 @@ class LongTermMemoryTest {
         batchCoordinator.onMessage(Message.of(RoleType.ASSISTANT, "Spring Boot is excellent!"));
 
         // Verify extraction was triggered
-        assertTrue(batchStore.count(USER_NAMESPACE) > 0);
+        assertTrue(batchStore.count(USER_SCOPE) > 0);
     }
 
     @Test
     void testMemoryDecay() {
         // Create a memory with specific decay factor
         MemoryRecord record = MemoryRecord.builder()
-            .namespace(USER_NAMESPACE)
+            .scope(USER_SCOPE)
             .content("Old memory that should decay")
             .type(MemoryType.EPISODE)
             .build();
@@ -170,7 +170,7 @@ class LongTermMemoryTest {
         store.updateDecayFactor(record.getId(), 0.05);
 
         // Get decayed memories
-        List<MemoryRecord> decayed = store.findDecayed(USER_NAMESPACE, 0.1);
+        List<MemoryRecord> decayed = store.findDecayed(USER_SCOPE, 0.1);
         assertEquals(1, decayed.size());
     }
 
@@ -178,19 +178,19 @@ class LongTermMemoryTest {
     void testSearchWithFilter() {
         // Save different types of memories
         store.save(MemoryRecord.builder()
-            .namespace(USER_NAMESPACE)
+            .scope(USER_SCOPE)
             .content("User's goal is to learn AI")
             .type(MemoryType.GOAL)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .namespace(USER_NAMESPACE)
+            .scope(USER_SCOPE)
             .content("User prefers dark mode")
             .type(MemoryType.PREFERENCE)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .namespace(USER_NAMESPACE)
+            .scope(USER_SCOPE)
             .content("User is 30 years old")
             .type(MemoryType.FACT)
             .build(), randomEmbedding());
@@ -200,7 +200,7 @@ class LongTermMemoryTest {
             .types(MemoryType.GOAL)
             .build();
 
-        List<MemoryRecord> goals = store.search(USER_NAMESPACE, randomEmbedding(), 10, goalFilter);
+        List<MemoryRecord> goals = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, goalFilter);
         assertEquals(1, goals.size());
         assertEquals(MemoryType.GOAL, goals.getFirst().getType());
     }
@@ -208,7 +208,7 @@ class LongTermMemoryTest {
     @Test
     void testEffectiveScoreCalculation() {
         MemoryRecord record = MemoryRecord.builder()
-            .namespace(USER_NAMESPACE)
+            .scope(USER_SCOPE)
             .content("Test memory")
             .type(MemoryType.FACT)
             .importance(0.8)
@@ -235,7 +235,7 @@ class LongTermMemoryTest {
                 if (msg.role == RoleType.USER && msg.content != null) {
                     // Simple extraction: create a FACT memory from user messages
                     MemoryRecord record = MemoryRecord.builder()
-                        .namespace(namespace)
+                        .scope(namespace)
                         .content("User said: " + msg.content)
                         .type(MemoryType.FACT)
                         .build();
@@ -305,9 +305,9 @@ class LongTermMemoryTest {
         @DisplayName("Should work with session lifecycle")
         void testSessionLifecycle() {
             // Start session
-            Namespace expectedNs = Namespace.forUser(USER_ID);
-            memory.startSession(expectedNs, SESSION_ID);
-            assertEquals(expectedNs, memory.getCurrentNamespace());
+            MemoryScope expectedScope = MemoryScope.forUser(USER_ID);
+            memory.startSession(expectedScope, SESSION_ID);
+            assertEquals(expectedScope, memory.getCurrentScope());
             assertEquals(SESSION_ID, memory.getCurrentSessionId());
 
             // Process messages
@@ -326,7 +326,7 @@ class LongTermMemoryTest {
         @Test
         @DisplayName("Should recall memories after extraction")
         void testRecallAfterExtraction() {
-            memory.startSession(Namespace.forUser(USER_ID), SESSION_ID);
+            memory.startSession(MemoryScope.forUser(USER_ID), SESSION_ID);
 
             // Add some messages
             memory.onMessage(Message.of(RoleType.USER, "I love Python programming"));
@@ -348,13 +348,13 @@ class LongTermMemoryTest {
         void testFormatAsContext() {
             // Manually add a memory for testing
             MemoryRecord record = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("User is a Java developer")
                 .type(MemoryType.FACT)
                 .build();
             memory.getStore().save(record, randomEmbedding());
 
-            memory.startSession(Namespace.forUser(USER_ID), SESSION_ID);
+            memory.startSession(MemoryScope.forUser(USER_ID), SESSION_ID);
 
             List<MemoryRecord> memories = List.of(record);
             String context = memory.formatAsContext(memories);
@@ -377,17 +377,17 @@ class LongTermMemoryTest {
         @Test
         @DisplayName("Should recall with type filter")
         void testRecallWithTypeFilter() {
-            memory.startSession(Namespace.forUser(USER_ID), SESSION_ID);
+            memory.startSession(MemoryScope.forUser(USER_ID), SESSION_ID);
 
             // Add memories directly
             memory.getStore().save(MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("User likes dark mode")
                 .type(MemoryType.PREFERENCE)
                 .build(), randomEmbedding());
 
             memory.getStore().save(MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("User is 25 years old")
                 .type(MemoryType.FACT)
                 .build(), randomEmbedding());
@@ -400,100 +400,81 @@ class LongTermMemoryTest {
     }
 
     /**
-     * Tests for Namespace functionality.
+     * Tests for MemoryScope functionality.
      */
     @Nested
-    @DisplayName("Namespace Tests")
-    class NamespaceTests {
+    @DisplayName("MemoryScope Tests")
+    class MemoryScopeTests {
 
         @Test
-        @DisplayName("Should create namespace with different scopes")
-        void testNamespaceCreation() {
+        @DisplayName("Should create scope with different dimensions")
+        void testScopeCreation() {
             // User-scoped
-            Namespace userNs = Namespace.forUser("alice");
-            assertEquals("user/alice", userNs.toPath());
-            assertEquals(2, userNs.depth());
+            MemoryScope userScope = MemoryScope.forUser("alice");
+            assertEquals("u:alice", userScope.toKey());
+            assertTrue(userScope.hasUserId());
+            assertFalse(userScope.hasSessionId());
 
             // Session-scoped
-            Namespace sessionNs = Namespace.forSession("sess-001");
-            assertEquals("session/sess-001", sessionNs.toPath());
+            MemoryScope sessionScope = MemoryScope.forSession("alice", "sess-001");
+            assertEquals("u:alice/s:sess-001", sessionScope.toKey());
+            assertTrue(sessionScope.hasUserId());
+            assertTrue(sessionScope.hasSessionId());
 
-            // Multi-level (org/user)
-            Namespace orgUserNs = Namespace.of("acme-corp", "alice");
-            assertEquals("acme-corp/alice", orgUserNs.toPath());
-
-            // Global
-            Namespace globalNs = Namespace.global();
-            assertTrue(globalNs.isGlobal());
+            // Agent-scoped
+            MemoryScope agentScope = MemoryScope.forAgent("alice", "assistant");
+            assertEquals("u:alice/a:assistant", agentScope.toKey());
+            assertTrue(agentScope.hasAgentName());
         }
 
         @Test
-        @DisplayName("Should isolate memories by hierarchical namespace")
-        void testHierarchicalNamespaceIsolation() {
-            // Organization A - User 1
-            Namespace orgAUser1 = Namespace.of("org-A", "user-1");
-            // Organization A - User 2
-            Namespace orgAUser2 = Namespace.of("org-A", "user-2");
-            // Organization B - User 1
-            Namespace orgBUser1 = Namespace.of("org-B", "user-1");
+        @DisplayName("Should isolate memories by scope")
+        void testScopeIsolation() {
+            // User A
+            MemoryScope scopeA = MemoryScope.forUser("user-A");
+            // User B
+            MemoryScope scopeB = MemoryScope.forUser("user-B");
 
-            // Save memories in different namespaces
+            // Save memories in different scopes
             store.save(MemoryRecord.builder()
-                .namespace(orgAUser1)
-                .content("OrgA User1 prefers Java")
+                .scope(scopeA)
+                .content("UserA prefers Java")
                 .type(MemoryType.PREFERENCE)
                 .build(), randomEmbedding());
 
             store.save(MemoryRecord.builder()
-                .namespace(orgAUser2)
-                .content("OrgA User2 prefers Python")
-                .type(MemoryType.PREFERENCE)
-                .build(), randomEmbedding());
-
-            store.save(MemoryRecord.builder()
-                .namespace(orgBUser1)
-                .content("OrgB User1 prefers Go")
+                .scope(scopeB)
+                .content("UserB prefers Python")
                 .type(MemoryType.PREFERENCE)
                 .build(), randomEmbedding());
 
             // Verify isolation
-            assertEquals(1, store.count(orgAUser1));
-            assertEquals(1, store.count(orgAUser2));
-            assertEquals(1, store.count(orgBUser1));
+            assertEquals(1, store.count(scopeA));
+            assertEquals(1, store.count(scopeB));
 
-            // Search should only return memories from specific namespace
-            List<MemoryRecord> results = store.search(orgAUser1, randomEmbedding(), 10);
+            // Search should only return memories from specific scope
+            List<MemoryRecord> results = store.searchByVector(scopeA, randomEmbedding(), 10);
             assertEquals(1, results.size());
-            assertTrue(results.getFirst().getContent().contains("OrgA User1"));
+            assertTrue(results.getFirst().getContent().contains("UserA"));
         }
 
         @Test
-        @DisplayName("Should support namespace hierarchy operations")
-        void testNamespaceHierarchy() {
-            Namespace parent = Namespace.of("company", "department");
-            Namespace child = parent.child("team");
+        @DisplayName("Should support scope matching")
+        void testScopeMatching() {
+            MemoryScope userScope = MemoryScope.forUser("alice");
+            MemoryScope sessionScope = MemoryScope.forSession("alice", "sess-001");
+            MemoryScope fullScope = MemoryScope.of("alice", "sess-001", "assistant");
 
-            assertEquals("company/department/team", child.toPath());
-            assertEquals(3, child.depth());
+            // User scope matches session scope (userId matches)
+            assertTrue(userScope.matches(sessionScope));
+            assertTrue(userScope.matches(fullScope));
 
-            // Parent navigation
-            assertEquals(parent, child.parent());
-            assertEquals("company", parent.getFirst());
-            assertEquals("department", parent.getLast());
+            // Session scope should match full scope
+            assertTrue(sessionScope.matches(fullScope));
 
-            // StartsWith check
-            assertTrue(child.startsWith(parent));
-            assertFalse(parent.startsWith(child));
-        }
-
-        @Test
-        @DisplayName("Should parse namespace from path string")
-        void testNamespaceFromPath() {
-            Namespace ns = Namespace.fromPath("org/dept/user");
-            assertEquals(3, ns.depth());
-            assertEquals("org", ns.getFirst());
-            assertEquals("user", ns.getLast());
-            assertEquals(List.of("org", "dept", "user"), ns.getParts());
+            // Different user should not match
+            MemoryScope otherUser = MemoryScope.forUser("bob");
+            assertFalse(userScope.matches(otherUser));
         }
     }
 
@@ -508,7 +489,7 @@ class LongTermMemoryTest {
         @DisplayName("Should return 1.0 for newly created memory")
         void testNewMemoryDecay() {
             MemoryRecord record = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("Fresh memory")
                 .type(MemoryType.FACT)
                 .build();
@@ -545,21 +526,21 @@ class LongTermMemoryTest {
         void setUpFilterTests() {
             // Add various memories for filter testing
             store.save(MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("User wants to learn Rust")
                 .type(MemoryType.GOAL)
                 .importance(0.9)
                 .build(), randomEmbedding());
 
             store.save(MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("User prefers vim editor")
                 .type(MemoryType.PREFERENCE)
                 .importance(0.7)
                 .build(), randomEmbedding());
 
             store.save(MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("User is from Beijing")
                 .type(MemoryType.FACT)
                 .importance(0.5)
@@ -573,7 +554,7 @@ class LongTermMemoryTest {
                 .types(MemoryType.GOAL, MemoryType.PREFERENCE)
                 .build();
 
-            List<MemoryRecord> results = store.search(USER_NAMESPACE, randomEmbedding(), 10, filter);
+            List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
             assertEquals(2, results.size());
             assertTrue(results.stream().allMatch(r ->
                 r.getType() == MemoryType.GOAL || r.getType() == MemoryType.PREFERENCE));
@@ -586,7 +567,7 @@ class LongTermMemoryTest {
                 .minImportance(0.8)
                 .build();
 
-            List<MemoryRecord> results = store.search(USER_NAMESPACE, randomEmbedding(), 10, filter);
+            List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
             assertEquals(1, results.size());
             assertEquals(MemoryType.GOAL, results.getFirst().getType());
         }
@@ -599,7 +580,7 @@ class LongTermMemoryTest {
                 .minImportance(0.6)
                 .build();
 
-            List<MemoryRecord> results = store.search(USER_NAMESPACE, randomEmbedding(), 10, filter);
+            List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
             assertEquals(2, results.size());
             assertTrue(results.stream().allMatch(r -> r.getImportance() >= 0.6));
         }
@@ -611,7 +592,7 @@ class LongTermMemoryTest {
                 .types(MemoryType.RELATIONSHIP)
                 .build();
 
-            List<MemoryRecord> results = store.search(USER_NAMESPACE, randomEmbedding(), 10, filter);
+            List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
             assertTrue(results.isEmpty());
         }
     }
@@ -636,13 +617,13 @@ class LongTermMemoryTest {
             MemoryStore memStore = new InMemoryStore();
 
             MemoryRecord record = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("Test content")
                 .type(MemoryType.FACT)
                 .build();
 
             memStore.save(record, randomEmbedding());
-            assertEquals(1, memStore.count(USER_NAMESPACE));
+            assertEquals(1, memStore.count(USER_SCOPE));
 
             var found = memStore.findById(record.getId());
             assertTrue(found.isPresent());
@@ -655,16 +636,16 @@ class LongTermMemoryTest {
             MemoryStore memStore = new InMemoryStore();
 
             MemoryRecord record = MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("To be deleted")
                 .type(MemoryType.FACT)
                 .build();
 
             memStore.save(record, randomEmbedding());
-            assertEquals(1, memStore.count(USER_NAMESPACE));
+            assertEquals(1, memStore.count(USER_SCOPE));
 
             memStore.delete(record.getId());
-            assertEquals(0, memStore.count(USER_NAMESPACE));
+            assertEquals(0, memStore.count(USER_SCOPE));
         }
 
         @Test
@@ -673,25 +654,25 @@ class LongTermMemoryTest {
             MemoryStore memStore = new InMemoryStore();
 
             memStore.save(MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("Fact 1")
                 .type(MemoryType.FACT)
                 .build(), randomEmbedding());
 
             memStore.save(MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("Fact 2")
                 .type(MemoryType.FACT)
                 .build(), randomEmbedding());
 
             memStore.save(MemoryRecord.builder()
-                .namespace(USER_NAMESPACE)
+                .scope(USER_SCOPE)
                 .content("Preference 1")
                 .type(MemoryType.PREFERENCE)
                 .build(), randomEmbedding());
 
-            assertEquals(2, memStore.countByType(USER_NAMESPACE, MemoryType.FACT));
-            assertEquals(1, memStore.countByType(USER_NAMESPACE, MemoryType.PREFERENCE));
+            assertEquals(2, memStore.countByType(USER_SCOPE, MemoryType.FACT));
+            assertEquals(1, memStore.countByType(USER_SCOPE, MemoryType.PREFERENCE));
         }
     }
 }

@@ -64,7 +64,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     }
 
     @Override
-    public List<MemoryRecord> extract(Namespace namespace, List<Message> messages) {
+    public List<MemoryRecord> extract(MemoryScope scope, List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return List.of();
         }
@@ -78,7 +78,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
 
         try {
             String response = callLLM(prompt);
-            return parseResponse(namespace, response);
+            return parseResponse(scope, response);
         } catch (Exception e) {
             LOGGER.error("Failed to extract memories", e);
             return List.of();
@@ -119,7 +119,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
         return "[]";
     }
 
-    private List<MemoryRecord> parseResponse(Namespace namespace, String response) {
+    private List<MemoryRecord> parseResponse(MemoryScope scope, String response) {
         List<MemoryRecord> records = new ArrayList<>();
 
         try {
@@ -135,7 +135,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
                 double importance = mem.importance != null ? mem.importance : 0.5;
 
                 MemoryRecord record = MemoryRecord.builder()
-                    .namespace(namespace)
+                    .scope(scope)
                     .content(mem.content)
                     .type(type)
                     .importance(importance)
