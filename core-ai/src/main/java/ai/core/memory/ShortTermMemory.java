@@ -3,6 +3,7 @@ package ai.core.memory;
 import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import org.slf4j.Logger;
@@ -12,22 +13,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Short-term memory compression service for Agent.
- * Provides synchronous conversation compression when context exceeds threshold.
- *
- * <p>Compression strategy:
- * <ul>
- *   <li>Triggered when token count exceeds threshold ratio of max context</li>
- *   <li>Keeps system message and recent N turns intact</li>
- *   <li>Compresses older messages into a summary message</li>
- * </ul>
- *
  * @author xander
  */
 public class ShortTermMemory {
     private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemory.class);
 
-    private static final double DEFAULT_TRIGGER_THRESHOLD = 0.7;
+    private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
     private static final int DEFAULT_KEEP_RECENT_TURNS = 5;
     private static final int DEFAULT_MAX_CONTEXT_TOKENS = 128000;
     private static final int MIN_SUMMARY_TOKENS = 500;
@@ -77,9 +68,6 @@ public class ShortTermMemory {
         }
     }
 
-    /**
-     * Check if compression should be triggered based on current token count.
-     */
     public boolean shouldCompress(int currentTokens) {
         if (llmProvider == null) {
             return false;
@@ -87,13 +75,6 @@ public class ShortTermMemory {
         return currentTokens >= (int) (maxContextTokens * triggerThreshold);
     }
 
-    /**
-     * Compress messages by summarizing older messages and keeping recent ones.
-     * Returns a new message list with compression applied.
-     *
-     * @param messages the current message list
-     * @return compressed message list, or original if no compression needed
-     */
     public List<Message> compress(List<Message> messages) {
         if (messages == null || messages.isEmpty() || llmProvider == null) {
             return messages;
@@ -125,14 +106,18 @@ public class ShortTermMemory {
         }
 
         lastSummary = summary;
-        Message summaryMsg = Message.of(RoleType.USER, "[Conversation Summary]\n" + summary);
+
+        String toolCallId = "memory_compress_" + System.currentTimeMillis();
+        FunctionCall compressCall = FunctionCall.of(toolCallId, "function", "memory_compress", "{}");
+        Message toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(compressCall));
+        Message toolResultMsg = Message.of(RoleType.TOOL, summary, "memory_compress", toolCallId, null, null);
 
         List<Message> result = new ArrayList<>();
         if (systemMsg != null) {
             result.add(systemMsg);
         }
-        result.add(summaryMsg);
-        result.add(Message.of(RoleType.ASSISTANT, "I understand. I'll continue our conversation with this context in mind."));
+        result.add(toolCallMsg);
+        result.add(toolResultMsg);
         result.addAll(toKeep);
 
         int newTokens = MessageTokenCounter.count(result);
@@ -142,9 +127,6 @@ public class ShortTermMemory {
         return result;
     }
 
-    /**
-     * Get the last generated summary.
-     */
     public String getLastSummary() {
         return lastSummary;
     }
@@ -193,7 +175,7 @@ public class ShortTermMemory {
             }
         }
 
-        return Math.max(0, keepFromIndex);
+        return keepFromIndex;
     }
 
     private String summarize(List<Message> messagesToSummarize) {

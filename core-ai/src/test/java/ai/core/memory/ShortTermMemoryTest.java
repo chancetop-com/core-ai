@@ -26,6 +26,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -46,7 +47,7 @@ class ShortTermMemoryTest {
     @Test
     void testDefaultConstructor() {
         ShortTermMemory defaultMemory = new ShortTermMemory();
-        assertEquals(0.7, defaultMemory.getTriggerThreshold());
+        assertEquals(0.8, defaultMemory.getTriggerThreshold());
         assertEquals(5, defaultMemory.getKeepRecentTurns());
         assertTrue(defaultMemory.getLastSummary().isEmpty());
         LOGGER.info("Default constructor test passed");
@@ -150,8 +151,13 @@ class ShortTermMemoryTest {
         assertTrue(result.size() < messages.size());
         // Should have system message first
         assertEquals(RoleType.SYSTEM, result.get(0).role);
-        // Should have summary message
-        assertTrue(result.get(1).content.contains("[Conversation Summary]"));
+        // Should have tool call message (ASSISTANT with toolCalls)
+        assertEquals(RoleType.ASSISTANT, result.get(1).role);
+        assertNotNull(result.get(1).toolCalls);
+        assertEquals("memory_compress", result.get(1).toolCalls.getFirst().function.name);
+        // Should have tool result message (TOOL with summary)
+        assertEquals(RoleType.TOOL, result.get(2).role);
+        assertEquals("Test summary", result.get(2).content);
         // Should have kept recent messages
         assertEquals("Test summary", testMemory.getLastSummary());
 
