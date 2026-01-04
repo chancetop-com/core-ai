@@ -77,7 +77,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
             .config(LongTermMemoryConfig.builder()
                 .asyncExtraction(false)
                 .enableConflictResolution(true)
-                .conflictStrategy(ConflictStrategy.NEWEST_WITH_MERGE)
+                .conflictStrategy(ConflictStrategy.SMART_MERGE)
                 .build())
             .build();
 
@@ -273,7 +273,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     void testUnifiedMemoryConfigMaxRecallRecords() {
         UnifiedMemoryConfig config = UnifiedMemoryConfig.builder()
             .maxRecallRecords(3)
-            .conflictStrategy(ConflictStrategy.IMPORTANCE_BASED)
+            .conflictStrategy(ConflictStrategy.KEEP_MOST_IMPORTANT)
             .build();
 
         Agent agent = Agent.builder()

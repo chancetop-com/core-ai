@@ -213,8 +213,8 @@ class UnifiedMemoryTest {
         }
 
         @Test
-        @DisplayName("Resolve conflicts with NEWEST_WINS strategy")
-        void testResolveNewestWins() {
+        @DisplayName("Resolve conflicts with KEEP_LATEST strategy")
+        void testResolveKeepLatest() {
             MemoryConflictResolver resolver = new MemoryConflictResolver();
 
             MemoryRecord older = createMemoryRecord("User prefers dark mode", MemoryType.PREFERENCE, 0.8);
@@ -222,15 +222,15 @@ class UnifiedMemoryTest {
 
             ConflictGroup group = new ConflictGroup("user prefers", List.of(older, newer));
 
-            MemoryRecord resolved = resolver.resolveGroup(group, ConflictStrategy.NEWEST_WINS);
+            MemoryRecord resolved = resolver.resolveGroup(group, ConflictStrategy.KEEP_LATEST);
 
             assertNotNull(resolved);
             assertEquals(newer, resolved, "Should select the newest record");
         }
 
         @Test
-        @DisplayName("Resolve conflicts with IMPORTANCE_BASED strategy")
-        void testResolveImportanceBased() {
+        @DisplayName("Resolve conflicts with KEEP_MOST_IMPORTANT strategy")
+        void testResolveKeepMostImportant() {
             MemoryConflictResolver resolver = new MemoryConflictResolver();
 
             MemoryRecord lowImportance = createMemoryRecord("Less important memory", MemoryType.FACT, 0.3);
@@ -238,7 +238,7 @@ class UnifiedMemoryTest {
 
             ConflictGroup group = new ConflictGroup("importance test", List.of(lowImportance, highImportance));
 
-            MemoryRecord resolved = resolver.resolveGroup(group, ConflictStrategy.IMPORTANCE_BASED);
+            MemoryRecord resolved = resolver.resolveGroup(group, ConflictStrategy.KEEP_MOST_IMPORTANT);
 
             assertNotNull(resolved);
             assertEquals(highImportance, resolved, "Should select the most important record");
@@ -318,7 +318,7 @@ class UnifiedMemoryTest {
             assertTrue(config.isAutoRecall());
             assertTrue(config.isAutoTransition());
             assertEquals(5, config.getMaxRecallRecords());
-            assertEquals(ConflictStrategy.NEWEST_WITH_MERGE, config.getConflictStrategy());
+            assertEquals(ConflictStrategy.SMART_MERGE, config.getConflictStrategy());
         }
 
         @Test

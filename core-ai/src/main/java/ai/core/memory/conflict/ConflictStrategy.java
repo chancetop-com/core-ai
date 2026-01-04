@@ -5,28 +5,29 @@ package ai.core.memory.conflict;
  *
  * @author xander
  */
-//todo
 public enum ConflictStrategy {
 
     /**
      * Keep only the newest record, discard older ones.
+     * Simple and fast, but may lose important historical context.
      */
-    NEWEST_WINS,
+    KEEP_LATEST,
 
     /**
      * Use LLM to merge all conflicting records into one.
+     * Best quality but requires LLM call.
      */
-    //todo Merge by llm
-    MERGE,
+    LLM_MERGE,
 
     /**
      * Keep the record with highest importance score.
+     * Useful when importance is well-calibrated.
      */
-    IMPORTANCE_BASED,
+    KEEP_MOST_IMPORTANT,
 
     /**
-     * Prefer newest, but merge if content is complementary.
+     * Smart merge: prefer newest, use LLM merge when beneficial.
      * This is the default recommended strategy.
      */
-    NEWEST_WITH_MERGE
+    SMART_MERGE
 }
