@@ -1,8 +1,6 @@
 package ai.core.memory.longterm;
 
 /**
- * Types of long-term memory with different decay characteristics.
- *
  * @author xander
  */
 public enum MemoryType {

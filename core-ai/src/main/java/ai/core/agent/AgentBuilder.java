@@ -7,8 +7,6 @@ import ai.core.memory.ShortTermMemory;
 import ai.core.memory.ShortTermMemoryLifecycle;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.UnifiedMemoryLifecycle;
-import ai.core.memory.history.ChatHistoryLifecycle;
-import ai.core.memory.history.ChatHistoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
@@ -50,9 +48,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     // Long-term memory (unified memory) configuration
     private LongTermMemory longTermMemory;
     private UnifiedMemoryConfig unifiedMemoryConfig;
-
-    // Chat history configuration
-    private ChatHistoryStore chatHistoryStore;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -101,11 +96,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     public AgentBuilder unifiedMemory(LongTermMemory longTermMemory, UnifiedMemoryConfig config) {
         this.longTermMemory = longTermMemory;
         this.unifiedMemoryConfig = config;
-        return this;
-    }
-
-    public AgentBuilder chatHistory(ChatHistoryStore chatHistoryStore) {
-        this.chatHistoryStore = chatHistoryStore;
         return this;
     }
 
@@ -271,15 +261,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
 
         configureUnifiedMemory(agent);
-        configureChatHistory(agent);
-    }
-
-    private void configureChatHistory(Agent agent) {
-        if (this.chatHistoryStore == null) {
-            return;
-        }
-        var lifecycle = new ChatHistoryLifecycle(this.chatHistoryStore, agent.getName());
-        agent.agentLifecycles.add(lifecycle);
     }
 
     private void configureUnifiedMemory(Agent agent) {
