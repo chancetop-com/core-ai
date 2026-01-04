@@ -2,10 +2,13 @@ package ai.core.memory.longterm;
 
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.Message;
 import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -13,6 +16,7 @@ import java.util.List;
  * @author xander
  */
 public class LongTermMemory {
+    private static final Logger LOGGER = LoggerFactory.getLogger(LongTermMemory.class);
 
     public static LongTermMemoryBuilder builder() {
         return new LongTermMemoryBuilder();
@@ -132,12 +136,17 @@ public class LongTermMemory {
             return null;
         }
 
-        var response = llmProvider.embeddings(new EmbeddingRequest(List.of(text)));
-        if (response != null && response.embeddings != null && !response.embeddings.isEmpty()) {
-            var embeddingData = response.embeddings.getFirst();
-            if (embeddingData.embedding != null) {
-                return embeddingData.embedding.toFloatArray();
+        try {
+            EmbeddingResponse response = llmProvider.embeddings(new EmbeddingRequest(List.of(text)));
+            if (response != null && response.embeddings != null && !response.embeddings.isEmpty()) {
+                var embeddingData = response.embeddings.getFirst();
+                if (embeddingData.embedding != null) {
+                    return embeddingData.embedding.toFloatArray();
+                }
             }
+            LOGGER.warn("Failed to generate embedding: empty or invalid response for query, textLength={}", text.length());
+        } catch (Exception e) {
+            LOGGER.warn("Failed to generate embedding for memory recall, textLength={}", text.length(), e);
         }
         return null;
     }

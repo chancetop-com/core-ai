@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Represents a long-term memory record.
@@ -28,8 +29,8 @@ public class MemoryRecord {
 
     // Weight and decay
     private double importance;
-    private int accessCount;
-    private double decayFactor;
+    private final AtomicInteger accessCount = new AtomicInteger(0);
+    private volatile double decayFactor;
 
     // Timestamps
     private Instant createdAt;
@@ -44,7 +45,6 @@ public class MemoryRecord {
     public MemoryRecord() {
         this.id = UUID.randomUUID().toString();
         this.importance = DEFAULT_IMPORTANCE;
-        this.accessCount = 0;
         this.decayFactor = DEFAULT_DECAY_FACTOR;
         this.createdAt = Instant.now();
         this.lastAccessedAt = Instant.now();
@@ -92,15 +92,15 @@ public class MemoryRecord {
     }
 
     public int getAccessCount() {
-        return accessCount;
+        return accessCount.get();
     }
 
     public void setAccessCount(int accessCount) {
-        this.accessCount = accessCount;
+        this.accessCount.set(accessCount);
     }
 
     public void incrementAccessCount() {
-        this.accessCount++;
+        this.accessCount.incrementAndGet();
         this.lastAccessedAt = Instant.now();
     }
 
@@ -145,7 +145,7 @@ public class MemoryRecord {
     }
 
     public double calculateEffectiveScore(double similarity) {
-        double frequencyBonus = 1.0 + FREQUENCY_BONUS_FACTOR * Math.log1p(accessCount);
+        double frequencyBonus = 1.0 + FREQUENCY_BONUS_FACTOR * Math.log1p(accessCount.get());
         return similarity * importance * decayFactor * frequencyBonus;
     }
 

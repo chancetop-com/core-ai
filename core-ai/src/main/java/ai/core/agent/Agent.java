@@ -292,9 +292,11 @@ public class Agent extends Node<Agent> {
     }
 
     private void applyMemoryCoordinatorIfNeeded() {
-        if (slidingWindowConfig == null) return;
+        if (slidingWindowConfig == null) {
+            return;
+        }
         if (memoryCoordinator == null) {
-            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, shortTermMemory, llmProvider, model);
+            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, llmProvider, model);
         }
         memoryCoordinator.applySlidingWindowIfNeeded(this::getMessages, msgs -> {
             clearMessages();
@@ -380,7 +382,6 @@ public class Agent extends Node<Agent> {
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
-            injectMemoryAsToolCall();
             addTaskHistoriesToMessages();
         }
 
@@ -391,15 +392,6 @@ public class Agent extends Node<Agent> {
         var reqMsg = Message.of(RoleType.USER, query, buildRequestName(false), null, null, null);
         removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
-    }
-
-    private void injectMemoryAsToolCall() {
-        if (memoryCoordinator == null && slidingWindowConfig != null) {
-            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, shortTermMemory, llmProvider, model);
-        }
-        if (memoryCoordinator != null) {
-            memoryCoordinator.injectMemoryAsToolCall(getMessages());
-        }
     }
 
     private List<Tool> toReqTools(List<ToolCall> toolCalls) {
