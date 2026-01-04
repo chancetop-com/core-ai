@@ -15,19 +15,13 @@ public enum ConflictStrategy {
 
     /**
      * Use LLM to merge all conflicting records into one.
-     * Best quality but requires LLM call.
+     * Best quality but requires LLM call. This is the default strategy.
      */
     LLM_MERGE,
 
     /**
-     * Keep the record with highest importance score.
+     * Keep the record with the highest importance score.
      * Useful when importance is well-calibrated.
      */
-    KEEP_MOST_IMPORTANT,
-
-    /**
-     * Smart merge: prefer newest, use LLM merge when beneficial.
-     * This is the default recommended strategy.
-     */
-    SMART_MERGE
+    KEEP_MOST_IMPORTANT
 }

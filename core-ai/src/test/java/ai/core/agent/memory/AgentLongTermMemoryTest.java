@@ -77,7 +77,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
             .config(LongTermMemoryConfig.builder()
                 .asyncExtraction(false)
                 .enableConflictResolution(true)
-                .conflictStrategy(ConflictStrategy.SMART_MERGE)
+                .conflictStrategy(ConflictStrategy.LLM_MERGE)
                 .build())
             .build();
 
