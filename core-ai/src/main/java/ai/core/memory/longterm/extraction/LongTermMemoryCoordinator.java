@@ -29,11 +29,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Coordinates long-term memory extraction and storage.
- * Manages extraction triggers: batch and session-end.
- * <p>
- * Thread-safe: uses locks for buffer operations and CompletableFuture for async coordination.
- *
  * @author xander
  */
 public class LongTermMemoryCoordinator {
@@ -47,17 +42,15 @@ public class LongTermMemoryCoordinator {
     private final MemoryConflictResolver conflictResolver;
     private final Executor executor;
 
-    // Buffer with lock for thread safety
     private final ReentrantLock bufferLock = new ReentrantLock();
     private final List<Message> buffer = new ArrayList<>();
     private final AtomicInteger bufferedTokenCount = new AtomicInteger(0);
     private final AtomicInteger currentTurnIndex = new AtomicInteger(0);
     private final AtomicInteger lastExtractedTurnIndex = new AtomicInteger(0);
+    private volatile int pendingEndTurn = -1;
 
-    // Async extraction tracking
     private volatile CompletableFuture<Void> currentExtraction;
 
-    // Session context
     private volatile MemoryScope scope;
     private volatile String sessionId;
 
@@ -106,9 +99,6 @@ public class LongTermMemoryCoordinator {
         lastExtractedTurnIndex.set(0);
     }
 
-    /**
-     * Process a new message. Checks trigger conditions and extracts if needed.
-     */
     public void onMessage(Message message) {
         if (message == null || message.role == RoleType.SYSTEM) {
             return;
@@ -125,9 +115,6 @@ public class LongTermMemoryCoordinator {
         }
     }
 
-    /**
-     * Called when the session ends. Extracts remaining buffer.
-     */
     public void onSessionEnd() {
         if (!config.isExtractOnSessionEnd()) {
             return;
@@ -161,9 +148,9 @@ public class LongTermMemoryCoordinator {
             toExtract = new ArrayList<>(buffer);
             startTurn = lastExtractedTurnIndex.get() + 1;
             endTurn = currentTurnIndex.get();
+            pendingEndTurn = endTurn;
 
-            buffer.clear();
-            bufferedTokenCount.set(0);
+            // Don't clear buffer here - clear after successful extraction
         } finally {
             bufferLock.unlock();
         }
@@ -180,10 +167,12 @@ public class LongTermMemoryCoordinator {
     }
 
     private void performExtraction(List<Message> messages, int startTurn, int endTurn) {
+        boolean success = false;
         try {
             List<MemoryRecord> records = extractor.extract(scope, messages);
             if (records.isEmpty()) {
                 LOGGER.debug("No memories extracted from {} messages", messages.size());
+                success = true;  // No records is still a successful extraction
                 return;
             }
 
@@ -192,35 +181,69 @@ public class LongTermMemoryCoordinator {
                 record.setSessionId(sessionId);
             }
 
-            // Resolve conflicts with existing memories if enabled
-            List<MemoryRecord> finalRecords = resolveConflictsIfEnabled(records);
+            // Generate embeddings first (used for both conflict detection and storage)
+            List<float[]> embeddings = generateEmbeddings(records);
+            if (embeddings.size() != records.size()) {
+                LOGGER.error("Embedding count mismatch: {} records, {} embeddings",
+                    records.size(), embeddings.size());
+                return;
+            }
+
+            // Resolve conflicts with existing memories if enabled (reuse embeddings)
+            List<MemoryRecord> finalRecords = resolveConflictsIfEnabled(records, embeddings);
             if (finalRecords.isEmpty()) {
                 LOGGER.debug("No records to save after conflict resolution");
+                success = true;
                 return;
             }
 
-            List<float[]> embeddings = generateEmbeddings(finalRecords);
-            if (embeddings.size() != finalRecords.size()) {
-                LOGGER.error("Embedding count mismatch: {} records, {} embeddings",
-                    finalRecords.size(), embeddings.size());
-                return;
-            }
+            // Filter embeddings to match final records
+            List<float[]> finalEmbeddings = filterEmbeddings(records, embeddings, finalRecords);
 
-            store.saveAll(finalRecords, embeddings);
-            lastExtractedTurnIndex.set(endTurn);
+            store.saveAll(finalRecords, finalEmbeddings);
+            success = true;
 
             LOGGER.info("Extracted and saved {} memories from turns {}-{}",
                 finalRecords.size(), startTurn, endTurn);
 
         } catch (Exception e) {
             LOGGER.error("Failed to extract memories", e);
+        } finally {
+            if (success) {
+                clearBufferAfterExtraction(endTurn);
+            }
         }
     }
 
-    /**
-     * Resolve conflicts between new records and existing memories.
-     */
-    private List<MemoryRecord> resolveConflictsIfEnabled(List<MemoryRecord> newRecords) {
+    private void clearBufferAfterExtraction(int extractedEndTurn) {
+        bufferLock.lock();
+        try {
+            if (pendingEndTurn == extractedEndTurn) {
+                buffer.clear();
+                bufferedTokenCount.set(0);
+                lastExtractedTurnIndex.set(extractedEndTurn);
+                pendingEndTurn = -1;
+            }
+        } finally {
+            bufferLock.unlock();
+        }
+    }
+
+    private List<float[]> filterEmbeddings(List<MemoryRecord> original, List<float[]> embeddings,
+                                           List<MemoryRecord> filtered) {
+        if (original.size() == filtered.size()) {
+            return embeddings;
+        }
+        List<float[]> result = new ArrayList<>();
+        for (int i = 0; i < original.size(); i++) {
+            if (filtered.contains(original.get(i))) {
+                result.add(embeddings.get(i));
+            }
+        }
+        return result;
+    }
+
+    private List<MemoryRecord> resolveConflictsIfEnabled(List<MemoryRecord> newRecords, List<float[]> embeddings) {
         if (!config.isEnableConflictResolution() || conflictResolver == null) {
             return newRecords;
         }
@@ -228,8 +251,10 @@ public class LongTermMemoryCoordinator {
         ConflictStrategy strategy = config.getConflictStrategy();
         List<MemoryRecord> resolved = new ArrayList<>();
 
-        for (MemoryRecord newRecord : newRecords) {
-            MemoryRecord result = resolveConflictForRecord(newRecord, strategy);
+        for (int i = 0; i < newRecords.size(); i++) {
+            MemoryRecord newRecord = newRecords.get(i);
+            float[] embedding = embeddings.get(i);
+            MemoryRecord result = resolveConflictForRecord(newRecord, embedding, strategy);
             if (result != null) {
                 resolved.add(result);
             }
@@ -238,12 +263,9 @@ public class LongTermMemoryCoordinator {
         return resolved;
     }
 
-    /**
-     * Resolve conflict for a single new record against existing memories.
-     */
-    private MemoryRecord resolveConflictForRecord(MemoryRecord newRecord, ConflictStrategy strategy) {
-        // Search for similar existing memories
-        List<MemoryRecord> similar = findSimilarExisting(newRecord);
+    private MemoryRecord resolveConflictForRecord(MemoryRecord newRecord, float[] embedding, ConflictStrategy strategy) {
+        // Search for similar existing memories using pre-generated embedding
+        List<MemoryRecord> similar = findSimilarExisting(embedding);
         if (similar.isEmpty()) {
             return newRecord;
         }
@@ -282,34 +304,11 @@ public class LongTermMemoryCoordinator {
         return merged;
     }
 
-    /**
-     * Find existing memories similar to the given record.
-     */
-    private List<MemoryRecord> findSimilarExisting(MemoryRecord record) {
-        if (scope == null || record.getContent() == null) {
+    private List<MemoryRecord> findSimilarExisting(float[] embedding) {
+        if (scope == null || embedding == null) {
             return List.of();
         }
-
-        float[] embedding = generateSingleEmbedding(record.getContent());
-        if (embedding == null) {
-            return List.of();
-        }
-
         return store.searchByVector(scope, embedding, CONFLICT_SEARCH_TOP_K);
-    }
-
-    private float[] generateSingleEmbedding(String text) {
-        if (llmProvider == null || text == null || text.isBlank()) {
-            return null;
-        }
-        EmbeddingResponse response = llmProvider.embeddings(new EmbeddingRequest(List.of(text)));
-        if (response != null && response.embeddings != null && !response.embeddings.isEmpty()) {
-            var embeddingData = response.embeddings.getFirst();
-            if (embeddingData.embedding != null) {
-                return embeddingData.embedding.toFloatArray();
-            }
-        }
-        return null;
     }
 
     private String extractSimpleTopic(String content) {

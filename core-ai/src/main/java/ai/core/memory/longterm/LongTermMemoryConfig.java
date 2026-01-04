@@ -13,23 +13,19 @@ public final class LongTermMemoryConfig {
         return new Builder();
     }
 
-    // Decay configuration
     private boolean enableDecay = true;
     private Duration decayCheckInterval = Duration.ofHours(24);
     private double decayThreshold = 0.1;
 
-    // Search configuration
     private int defaultTopK = 10;
     private double minSimilarityThreshold = 0.5;
 
-    // Extraction trigger configuration
     private int maxBufferTurns = 10;
     private int maxBufferTokens = 2000;
     private boolean extractOnSessionEnd = true;
     private boolean asyncExtraction = true;
     private Duration extractionTimeout = Duration.ofSeconds(30);
 
-    // Conflict resolution configuration
     private boolean enableConflictResolution = true;
     private ConflictStrategy conflictStrategy = ConflictStrategy.LLM_MERGE;
     private double conflictSimilarityThreshold = 0.8;
@@ -92,8 +88,6 @@ public final class LongTermMemoryConfig {
     public static class Builder {
         private final LongTermMemoryConfig config = new LongTermMemoryConfig();
 
-        // Decay
-
         public Builder enableDecay(boolean enable) {
             config.enableDecay = enable;
             return this;
@@ -147,8 +141,6 @@ public final class LongTermMemoryConfig {
             config.extractionTimeout = timeout;
             return this;
         }
-
-        // Conflict resolution
 
         public Builder enableConflictResolution(boolean enable) {
             config.enableConflictResolution = enable;

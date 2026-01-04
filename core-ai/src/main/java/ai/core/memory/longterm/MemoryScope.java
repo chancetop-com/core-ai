@@ -65,10 +65,6 @@ public final class MemoryScope {
         return agentName != null && !agentName.isEmpty();
     }
 
-    /**
-     * Check if this scope matches the given record scope.
-     * A scope matches if all non-null fields in this scope equal the corresponding fields in record scope.
-     */
     public boolean matches(MemoryScope recordScope) {
         if (recordScope == null) {
             return false;

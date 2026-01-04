@@ -18,13 +18,6 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Resolves conflicts between memory records.
- *
- * <p>Supports multiple conflict resolution strategies:
- * - KEEP_LATEST: Keep the most recent record
- * - LLM_MERGE: Use LLM to merge conflicting records (default)
- * - KEEP_MOST_IMPORTANT: Keep the most important record
- *
  * @author xander
  */
 public class MemoryConflictResolver {
@@ -61,15 +54,6 @@ public class MemoryConflictResolver {
         this.model = model;
     }
 
-    /**
-     * Detect conflicting memories from a list of records.
-     *
-     * <p>Groups records by type and checks for semantic similarity.
-     * Records with high similarity but different content are considered conflicts.
-     *
-     * @param records the memory records to check
-     * @return list of conflict groups
-     */
     public List<ConflictGroup> detectConflicts(List<MemoryRecord> records) {
         if (records == null || records.size() < 2) {
             return List.of();
@@ -105,13 +89,6 @@ public class MemoryConflictResolver {
         return conflicts;
     }
 
-    /**
-     * Resolve conflicts using the specified strategy.
-     *
-     * @param conflicts list of conflict groups
-     * @param strategy  resolution strategy
-     * @return resolved memory records (one per conflict group)
-     */
     public List<MemoryRecord> resolve(List<ConflictGroup> conflicts, ConflictStrategy strategy) {
         if (conflicts == null || conflicts.isEmpty()) {
             return List.of();
@@ -127,13 +104,6 @@ public class MemoryConflictResolver {
         return resolved;
     }
 
-    /**
-     * Resolve a single conflict group.
-     *
-     * @param group    the conflict group
-     * @param strategy resolution strategy
-     * @return resolved memory record
-     */
     public MemoryRecord resolveGroup(ConflictGroup group, ConflictStrategy strategy) {
         if (group == null || !group.hasConflict()) {
             return group != null && !group.getRecords().isEmpty() ? group.getRecords().getFirst() : null;
@@ -146,12 +116,6 @@ public class MemoryConflictResolver {
         };
     }
 
-    /**
-     * Merge multiple similar memories into one.
-     *
-     * @param group the conflict group to merge
-     * @return merged memory record
-     */
     public MemoryRecord merge(ConflictGroup group) {
         if (group == null || group.getRecords().isEmpty()) {
             return null;
@@ -218,8 +182,6 @@ public class MemoryConflictResolver {
         // Simple content similarity check
         return hasOverlappingTopic(a.getContent(), b.getContent());
     }
-
-    // ==================== Private Methods ====================
 
     private Map<String, List<MemoryRecord>> groupByTopic(List<MemoryRecord> records) {
         Map<String, List<MemoryRecord>> groups = new HashMap<>();
