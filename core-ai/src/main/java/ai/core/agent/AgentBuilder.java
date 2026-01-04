@@ -245,7 +245,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.reflectionListener = this.reflectionListener;
         agent.useGroupContext = this.useGroupContext;
         agent.setPersistence(new AgentPersistence());
-        agent.agentLifecycles = agentLifecycles;
+        agent.agentLifecycles = new ArrayList<>(agentLifecycles);
         if (this.enableReflection && this.reflectionConfig == null) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
         }

@@ -147,13 +147,6 @@ public class ShortTermMemory {
         return keepRecentTurns;
     }
 
-    /**
-     * Compress evicted messages from sliding window into summary messages.
-     * Returns tool call/result messages to prepend to the remaining messages.
-     *
-     * @param evictedMessages messages being evicted by sliding window
-     * @return list containing tool call and tool result messages, or empty if compression fails
-     */
     public List<Message> compressEvictedMessages(List<Message> evictedMessages) {
         if (evictedMessages == null || evictedMessages.isEmpty() || llmProvider == null) {
             return List.of();
