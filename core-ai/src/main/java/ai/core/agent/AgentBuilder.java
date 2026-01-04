@@ -4,6 +4,7 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.memory.ShortTermMemory;
+import ai.core.memory.ShortTermMemoryLifecycle;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.UnifiedMemoryLifecycle;
 import ai.core.memory.history.ChatHistoryLifecycle;
@@ -266,6 +267,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
                     ? this.shortTermMemory
                     : new ShortTermMemory();
             agent.shortTermMemory.setLLMProvider(this.llmProvider, this.model);
+            agent.agentLifecycles.add(new ShortTermMemoryLifecycle(agent.shortTermMemory));
         }
 
         configureUnifiedMemory(agent);
