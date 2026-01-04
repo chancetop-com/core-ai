@@ -31,7 +31,7 @@ public final class LongTermMemoryConfig {
 
     // Conflict resolution configuration
     private boolean enableConflictResolution = true;
-    private ConflictStrategy conflictStrategy = ConflictStrategy.SMART_MERGE;
+    private ConflictStrategy conflictStrategy = ConflictStrategy.LLM_MERGE;
     private double conflictSimilarityThreshold = 0.8;
 
     private LongTermMemoryConfig() {

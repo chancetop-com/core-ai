@@ -41,7 +41,7 @@ public class MemoryTransitionService {
     public MemoryTransitionService(LongTermMemory longTermMemory,
                                    MemoryExtractor extractor,
                                    LLMProvider llmProvider) {
-        this(longTermMemory, extractor, llmProvider, ConflictStrategy.SMART_MERGE);
+        this(longTermMemory, extractor, llmProvider, ConflictStrategy.LLM_MERGE);
     }
 
     public MemoryTransitionService(LongTermMemory longTermMemory,
@@ -156,8 +156,7 @@ public class MemoryTransitionService {
     }
 
     private boolean shouldDeleteExistingOnMerge() {
-        return defaultStrategy == ConflictStrategy.LLM_MERGE
-            || defaultStrategy == ConflictStrategy.SMART_MERGE;
+        return defaultStrategy == ConflictStrategy.LLM_MERGE;
     }
 
     /**

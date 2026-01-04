@@ -22,9 +22,8 @@ import java.util.Map;
  *
  * <p>Supports multiple conflict resolution strategies:
  * - KEEP_LATEST: Keep the most recent record
- * - LLM_MERGE: Use LLM to merge conflicting records
+ * - LLM_MERGE: Use LLM to merge conflicting records (default)
  * - KEEP_MOST_IMPORTANT: Keep the most important record
- * - SMART_MERGE: Intelligent merge (default)
  *
  * @author xander
  */
@@ -143,7 +142,7 @@ public class MemoryConflictResolver {
         return switch (strategy) {
             case KEEP_LATEST -> group.getNewest();
             case KEEP_MOST_IMPORTANT -> group.getMostImportant();
-            case LLM_MERGE, SMART_MERGE -> merge(group);
+            case LLM_MERGE -> merge(group);
         };
     }
 

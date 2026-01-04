@@ -318,7 +318,7 @@ class UnifiedMemoryTest {
             assertTrue(config.isAutoRecall());
             assertTrue(config.isAutoTransition());
             assertEquals(5, config.getMaxRecallRecords());
-            assertEquals(ConflictStrategy.SMART_MERGE, config.getConflictStrategy());
+            assertEquals(ConflictStrategy.LLM_MERGE, config.getConflictStrategy());
         }
 
         @Test
