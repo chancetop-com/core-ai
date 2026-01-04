@@ -12,17 +12,16 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Lifecycle for long-term memory management in agent execution.
+ * Lifecycle for long-term memory scope management in agent execution.
  *
- * <p>This lifecycle provides memory recall through a Tool (search_memory_tool),
- * allowing the LLM to proactively decide when to query user memories,
- * similar to the LangMem pattern.
+ * <p>This lifecycle only handles scope initialization and passing to MemoryRecallTool.
+ * Message tracking and memory extraction are left to user control.
  *
- * <p>Key responsibilities:
+ * <p>User responsibilities:
  * <ul>
- *   <li>Initialize memory session before agent run</li>
- *   <li>Update memory tool's namespace before each LLM call</li>
- *   <li>End session and trigger memory extraction after agent run</li>
+ *   <li>Call longTermMemory.onMessage() to track messages for extraction</li>
+ *   <li>Call longTermMemory.endSession() to trigger extraction</li>
+ *   <li>Implement MemoryStore for custom storage (Redis, PostgreSQL, Milvus, etc.)</li>
  * </ul>
  *
  * @author xander
@@ -36,7 +35,6 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
     private MemoryRecallTool memoryRecallTool;
 
     private MemoryScope currentScope;
-    private boolean sessionStarted;
 
     public UnifiedMemoryLifecycle(LongTermMemory longTermMemory) {
         this(longTermMemory, 5);
@@ -59,14 +57,13 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
 
     @Override
     public void beforeAgentRun(AtomicReference<String> query, ExecutionContext executionContext) {
-        initializeSession(executionContext);
+        currentScope = extractScope(executionContext);
         LOGGER.debug("UnifiedMemoryLifecycle initialized, scope={}",
             currentScope != null ? currentScope.toKey() : "none");
     }
 
     @Override
     public void beforeModel(CompletionRequest request, ExecutionContext executionContext) {
-        // Update the tool's scope so it can access correct user memories
         if (memoryRecallTool != null && currentScope != null) {
             memoryRecallTool.setCurrentScope(currentScope);
         }
@@ -74,20 +71,7 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
 
     @Override
     public void afterAgentRun(String query, AtomicReference<String> result, ExecutionContext executionContext) {
-        try {
-            if (sessionStarted) {
-                longTermMemory.endSession();
-            }
-        } finally {
-            currentScope = null;
-            sessionStarted = false;
-        }
-    }
-
-    private void initializeSession(ExecutionContext context) {
-        sessionStarted = false;
-        currentScope = extractScope(context);
-        startSessionIfNeeded(context);
+        currentScope = null;
     }
 
     private MemoryScope extractScope(ExecutionContext context) {
@@ -96,17 +80,6 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
         }
         String userId = context.getUserId();
         return (userId != null && !userId.isBlank()) ? MemoryScope.forUser(userId) : null;
-    }
-
-    private void startSessionIfNeeded(ExecutionContext context) {
-        if (currentScope == null || context == null) {
-            return;
-        }
-        String sessionId = context.getSessionId();
-        if (sessionId != null) {
-            longTermMemory.startSession(currentScope, sessionId);
-            sessionStarted = true;
-        }
     }
 
     public LongTermMemory getLongTermMemory() {
