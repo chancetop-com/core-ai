@@ -3,8 +3,6 @@ package ai.core.memory.longterm;
 import java.util.Objects;
 
 /**
- * Memory scope for isolation by user, session, and agent dimensions.
- *
  * @author xander
  */
 public final class MemoryScope {
