@@ -147,6 +147,35 @@ public class ShortTermMemory {
         return keepRecentTurns;
     }
 
+    /**
+     * Compress evicted messages from sliding window into summary messages.
+     * Returns tool call/result messages to prepend to the remaining messages.
+     *
+     * @param evictedMessages messages being evicted by sliding window
+     * @return list containing tool call and tool result messages, or empty if compression fails
+     */
+    public List<Message> compressEvictedMessages(List<Message> evictedMessages) {
+        if (evictedMessages == null || evictedMessages.isEmpty() || llmProvider == null) {
+            return List.of();
+        }
+
+        String summary = summarize(evictedMessages);
+        if (summary.isBlank()) {
+            LOGGER.warn("Failed to compress evicted messages");
+            return List.of();
+        }
+
+        lastSummary = summary;
+        LOGGER.info("Compressed {} evicted messages into summary", evictedMessages.size());
+
+        String toolCallId = "memory_compress_" + System.currentTimeMillis();
+        FunctionCall compressCall = FunctionCall.of(toolCallId, "function", "memory_compress", "{}");
+        Message toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(compressCall));
+        Message toolResultMsg = Message.of(RoleType.TOOL, summary, "memory_compress", toolCallId, null, null);
+
+        return List.of(toolCallMsg, toolResultMsg);
+    }
+
     private Message extractSystemMessage(List<Message> messages) {
         return messages.stream()
             .filter(m -> m.role == RoleType.SYSTEM)

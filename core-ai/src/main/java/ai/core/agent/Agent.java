@@ -296,7 +296,7 @@ public class Agent extends Node<Agent> {
             return;
         }
         if (memoryCoordinator == null) {
-            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, llmProvider, model);
+            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, llmProvider, model, shortTermMemory);
         }
         memoryCoordinator.applySlidingWindowIfNeeded(this::getMessages, msgs -> {
             clearMessages();
