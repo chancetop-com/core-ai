@@ -9,8 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
- * In-memory implementation of MemoryStore with vector and keyword search.
- *
  * @author xander
  */
 public class InMemoryStore implements MemoryStore {
@@ -19,8 +17,13 @@ public class InMemoryStore implements MemoryStore {
     private final Map<String, float[]> embeddings = new ConcurrentHashMap<>();
 
     @Override
-    public void save(MemoryRecord record, float[] embedding) {
+    public void save(MemoryRecord record) {
         records.put(record.getId(), record);
+    }
+
+    @Override
+    public void save(MemoryRecord record, float[] embedding) {
+        save(record);
         if (embedding != null) {
             embeddings.put(record.getId(), embedding);
         }

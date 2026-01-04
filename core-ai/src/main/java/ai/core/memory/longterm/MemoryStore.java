@@ -10,6 +10,14 @@ import java.util.Optional;
  */
 public interface MemoryStore {
 
+    /**
+     * Save memory record without embedding (for keyword-only search).
+     */
+    void save(MemoryRecord record);
+
+    /**
+     * Save memory record with embedding (for vector search).
+     */
     void save(MemoryRecord record, float[] embedding);
 
     void saveAll(List<MemoryRecord> records, List<float[]> embeddings);
