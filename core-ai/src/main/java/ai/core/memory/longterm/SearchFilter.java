@@ -4,8 +4,6 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Filter criteria for memory search.
- *
  * @author xander
  */
 public final class SearchFilter {
