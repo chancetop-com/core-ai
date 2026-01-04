@@ -11,11 +11,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Lifecycle for short-term memory compression.
- *
- * <p>Triggers compression in beforeModel when context exceeds threshold.
- * Replaces older messages with a summary to stay within context limits.
- *
  * @author xander
  */
 public class ShortTermMemoryLifecycle extends AbstractLifecycle {
@@ -40,7 +35,7 @@ public class ShortTermMemoryLifecycle extends AbstractLifecycle {
         }
 
         List<Message> compressed = shortTermMemory.compress(request.messages);
-        if (compressed != request.messages) {  // reference check: compress returns same object if no compression
+        if (compressed != request.messages) {
             request.messages = compressed;
             LOGGER.debug("Messages compressed before model call");
         }
