@@ -13,18 +13,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Lifecycle for persisting chat history in agent execution.
- *
- * <p>This lifecycle automatically saves conversation messages to persistent storage,
- * enabling features like conversation replay, analytics, and audit trails.
- *
- * <p>Key responsibilities:
- * <ul>
- *   <li>Initialize or retrieve session before agent run</li>
- *   <li>Track messages during conversation</li>
- *   <li>Persist messages after agent run</li>
- * </ul>
- *
  * @author xander
  */
 public class ChatHistoryLifecycle extends AbstractLifecycle {
@@ -98,21 +86,13 @@ public class ChatHistoryLifecycle extends AbstractLifecycle {
         }
     }
 
-    /**
-     * Get the current session.
-     */
     public ChatSession getCurrentSession() {
         return currentSession;
     }
 
-    /**
-     * Get the history store.
-     */
     public ChatHistoryStore getHistoryStore() {
         return historyStore;
     }
-
-    // ==================== Private Methods ====================
 
     private void initializeSession(ExecutionContext context) {
         if (context == null) {
@@ -168,17 +148,8 @@ public class ChatHistoryLifecycle extends AbstractLifecycle {
                 currentSession.setTitle(generateTitle(messagesToSave));
             }
 
-            // Check if session exists
-            var existing = historyStore.findById(currentSession.getId());
-            if (existing.isPresent()) {
-                // Append new messages
-                historyStore.appendMessages(currentSession.getId(), messagesToSave);
-                historyStore.updateTitle(currentSession.getId(), currentSession.getTitle());
-            } else {
-                // Save new session with messages
-                currentSession.setMessages(messagesToSave);
-                historyStore.save(currentSession);
-            }
+            currentSession.setMessages(messagesToSave);
+            historyStore.save(currentSession);
 
             LOGGER.info("Persisted {} messages to session {}", messagesToSave.size(), currentSession.getId());
         } catch (Exception e) {

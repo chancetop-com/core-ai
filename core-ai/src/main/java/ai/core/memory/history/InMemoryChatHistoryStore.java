@@ -11,8 +11,6 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory implementation of ChatHistoryStore for testing.
- *
  * @author xander
  */
 public class InMemoryChatHistoryStore implements ChatHistoryStore {
@@ -25,29 +23,30 @@ public class InMemoryChatHistoryStore implements ChatHistoryStore {
             return;
         }
 
-        ChatSession existing = sessions.get(session.getId());
-        if (existing != null) {
-            // Update existing session
-            existing.setTitle(session.getTitle());
-            existing.setUpdatedAt(Instant.now());
-            existing.setMetadata(session.getMetadata());
-            if (session.getMessages() != null) {
-                existing.addMessages(session.getMessages());
+        sessions.compute(session.getId(), (id, existing) -> {
+            if (existing != null) {
+                // Update existing session
+                existing.setTitle(session.getTitle());
+                existing.setUpdatedAt(Instant.now());
+                existing.setMetadata(session.getMetadata());
+                if (session.getMessages() != null) {
+                    existing.addMessages(session.getMessages());
+                }
+                return existing;
+            } else {
+                // Clone and store new session
+                return ChatSession.builder()
+                    .id(session.getId())
+                    .userId(session.getUserId())
+                    .agentId(session.getAgentId())
+                    .title(session.getTitle())
+                    .messages(session.getMessages() != null ? new ArrayList<>(session.getMessages()) : new ArrayList<>())
+                    .createdAt(session.getCreatedAt())
+                    .updatedAt(session.getUpdatedAt())
+                    .metadata(session.getMetadata())
+                    .build();
             }
-        } else {
-            // Clone and store
-            ChatSession copy = ChatSession.builder()
-                .id(session.getId())
-                .userId(session.getUserId())
-                .agentId(session.getAgentId())
-                .title(session.getTitle())
-                .messages(session.getMessages() != null ? new ArrayList<>(session.getMessages()) : new ArrayList<>())
-                .createdAt(session.getCreatedAt())
-                .updatedAt(session.getUpdatedAt())
-                .metadata(session.getMetadata())
-                .build();
-            sessions.put(session.getId(), copy);
-        }
+        });
     }
 
     @Override

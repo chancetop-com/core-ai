@@ -329,29 +329,38 @@ public class LongTermMemoryCoordinator {
             .map(MemoryRecord::getContent)
             .toList();
 
-        EmbeddingResponse response = llmProvider.embeddings(new EmbeddingRequest(contents));
+        try {
+            EmbeddingResponse response = llmProvider.embeddings(new EmbeddingRequest(contents));
 
-        List<float[]> embeddings = new ArrayList<>();
-        if (response != null && response.embeddings != null) {
-            for (var embeddingData : response.embeddings) {
-                if (embeddingData.embedding != null) {
-                    embeddings.add(embeddingData.embedding.toFloatArray());
+            List<float[]> embeddings = new ArrayList<>();
+            if (response != null && response.embeddings != null) {
+                for (var embeddingData : response.embeddings) {
+                    if (embeddingData.embedding != null) {
+                        embeddings.add(embeddingData.embedding.toFloatArray());
+                    }
                 }
             }
+
+            if (embeddings.size() != records.size()) {
+                LOGGER.warn("Embedding generation returned incomplete results: expected={}, got={}",
+                    records.size(), embeddings.size());
+            }
+            return embeddings;
+        } catch (Exception e) {
+            LOGGER.error("Failed to generate embeddings for {} memory records", records.size(), e);
+            return List.of();
         }
-        return embeddings;
     }
 
     private void addToBuffer(Message message) {
         bufferLock.lock();
         try {
             buffer.add(message);
+            if (message.content != null) {
+                bufferedTokenCount.addAndGet(Tokenizer.tokenCount(message.content));
+            }
         } finally {
             bufferLock.unlock();
-        }
-
-        if (message.content != null) {
-            bufferedTokenCount.addAndGet(Tokenizer.tokenCount(message.content));
         }
     }
 

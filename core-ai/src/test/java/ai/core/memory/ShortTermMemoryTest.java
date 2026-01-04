@@ -5,27 +5,32 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
+import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
+import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Usage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for ShortTermMemory summary service.
+ * Unit tests for ShortTermMemory compression service.
  *
  * @author xander
  */
@@ -35,242 +40,185 @@ class ShortTermMemoryTest {
 
     @BeforeEach
     void setUp() {
-        memory = new ShortTermMemory(1000, 0.33, Runnable::run);
+        memory = new ShortTermMemory(0.7, 5);
     }
 
     @Test
     void testDefaultConstructor() {
         ShortTermMemory defaultMemory = new ShortTermMemory();
-        assertEquals("", defaultMemory.getSummary());
+        assertEquals(0.7, defaultMemory.getTriggerThreshold());
+        assertEquals(5, defaultMemory.getKeepRecentTurns());
+        assertTrue(defaultMemory.getLastSummary().isEmpty());
         LOGGER.info("Default constructor test passed");
     }
 
     @Test
-    void testSingleArgConstructor() {
-        ShortTermMemory customMemory = new ShortTermMemory(500);
-        assertEquals("", customMemory.getSummary());
-        LOGGER.info("Single arg constructor test passed");
-    }
-
-    @Test
-    void testSummaryManagement() {
-        assertTrue(memory.getSummary().isEmpty());
-
-        memory.setSummary("Test summary");
-        assertEquals("Test summary", memory.getSummary());
-
-        memory.setSummary(null);
-        assertEquals("", memory.getSummary());
-
-        LOGGER.info("Summary management test passed");
+    void testCustomConstructor() {
+        ShortTermMemory customMemory = new ShortTermMemory(0.8, 3);
+        assertEquals(0.8, customMemory.getTriggerThreshold());
+        assertEquals(3, customMemory.getKeepRecentTurns());
+        LOGGER.info("Custom constructor test passed");
     }
 
     @Test
     void testClear() {
-        memory.setSummary("Some summary");
+        memory.setLLMProvider(createMockProvider(), "test-model");
         memory.clear();
-
-        assertTrue(memory.getSummary().isEmpty());
+        assertTrue(memory.getLastSummary().isEmpty());
         LOGGER.info("Clear test passed");
     }
 
     @Test
-    void testGetSummaryTokens() {
-        memory.setSummary("");
-        assertEquals(0, memory.getSummaryTokens());
-
-        memory.setSummary("Hello world");
-        assertTrue(memory.getSummaryTokens() > 0);
-
-        LOGGER.info("Get summary tokens test passed");
+    void testShouldCompressWithoutProvider() {
+        assertFalse(memory.shouldCompress(100000));
+        LOGGER.info("Should compress without provider test passed");
     }
 
     @Test
-    void testBuildSummaryBlockEmpty() {
-        memory.setSummary("");
-        assertEquals("", memory.buildSummaryBlock());
-
-        LOGGER.info("Build summary block empty test passed");
-    }
-
-    @Test
-    void testBuildSummaryBlockWithContent() {
-        memory.setSummary("User prefers dark mode");
-        String block = memory.buildSummaryBlock();
-
-        assertTrue(block.contains("[Conversation Memory]"));
-        assertTrue(block.contains("User prefers dark mode"));
-
-        LOGGER.info("Build summary block with content test passed: {}", block);
-    }
-
-    @Test
-    void testShouldTriggerAsyncWithoutProvider() {
-        // Without LLM provider, should never trigger
-        assertFalse(memory.shouldTriggerAsync(10, 20, 500, 1000));
-
-        LOGGER.info("Should trigger async without provider test passed");
-    }
-
-    @Test
-    void testShouldTriggerAsyncMessageThreshold() {
+    void testShouldCompressWithProvider() {
         memory.setLLMProvider(createMockProvider(), "test-model");
 
-        // Below threshold (33% of 20 = 6.6, so need >= 7)
-        assertFalse(memory.shouldTriggerAsync(5, 20, 100, 1000));
-
-        // At threshold
-        assertTrue(memory.shouldTriggerAsync(7, 20, 100, 1000));
+        // Below threshold (70% of 128000 = 89600)
+        assertFalse(memory.shouldCompress(50000));
 
         // Above threshold
-        assertTrue(memory.shouldTriggerAsync(10, 20, 100, 1000));
+        assertTrue(memory.shouldCompress(100000));
 
-        LOGGER.info("Should trigger async message threshold test passed");
+        LOGGER.info("Should compress with provider test passed");
     }
 
     @Test
-    void testShouldTriggerAsyncTokenThreshold() {
+    void testCompressWithoutProvider() {
+        List<Message> messages = createTestMessages(10);
+        List<Message> result = memory.compress(messages);
+
+        // Without provider, should return original
+        assertSame(messages, result);
+        LOGGER.info("Compress without provider test passed");
+    }
+
+    @Test
+    void testCompressWithEmptyMessages() {
         memory.setLLMProvider(createMockProvider(), "test-model");
-
-        // Below threshold (33% of 1000 = 330)
-        assertFalse(memory.shouldTriggerAsync(1, 20, 300, 1000));
-
-        // At threshold
-        assertTrue(memory.shouldTriggerAsync(1, 20, 330, 1000));
-
-        // Above threshold
-        assertTrue(memory.shouldTriggerAsync(1, 20, 500, 1000));
-
-        LOGGER.info("Should trigger async token threshold test passed");
-    }
-
-    @Test
-    void testTriggerAsyncWithoutProvider() {
-        List<Message> messages = List.of(
-            Message.of(RoleType.USER, "Hello"),
-            Message.of(RoleType.ASSISTANT, "Hi there")
-        );
-
-        // Should not throw, just return silently
-        memory.triggerAsync(messages);
-
-        LOGGER.info("Trigger async without provider test passed");
-    }
-
-    @Test
-    void testTriggerAsyncWithEmptyMessages() {
-        memory.setLLMProvider(createMockProvider(), "test-model");
-
         List<Message> messages = List.of();
-        memory.triggerAsync(messages);
+        List<Message> result = memory.compress(messages);
 
-        // Should handle empty gracefully
-        assertFalse(memory.tryApplyAsyncResult());
-
-        LOGGER.info("Trigger async with empty messages test passed");
+        assertSame(messages, result);
+        LOGGER.info("Compress with empty messages test passed");
     }
 
     @Test
-    void testTryApplyAsyncResultNoPending() {
-        assertFalse(memory.tryApplyAsyncResult());
-
-        LOGGER.info("Try apply async result no pending test passed");
-    }
-
-    @Test
-    void testSummarizeWithoutProvider() {
-        List<Message> messages = List.of(
-            Message.of(RoleType.USER, "Hello"),
-            Message.of(RoleType.ASSISTANT, "Hi")
-        );
-
-        // Should not throw, just return silently
-        memory.summarize(messages);
-        assertTrue(memory.getSummary().isEmpty());
-
-        LOGGER.info("Summarize without provider test passed");
-    }
-
-    @Test
-    void testSummarizeWithEmptyMessages() {
+    void testCompressNotEnoughMessages() {
         memory.setLLMProvider(createMockProvider(), "test-model");
+        // keepRecentTurns=5, so need more than 5*2=10 messages to compress
+        List<Message> messages = createTestMessages(3);
+        List<Message> result = memory.compress(messages);
 
-        List<Message> messages = List.of();
-        memory.summarize(messages);
-
-        assertTrue(memory.getSummary().isEmpty());
-
-        LOGGER.info("Summarize with empty messages test passed");
+        // Not enough messages to compress, return original
+        assertSame(messages, result);
+        LOGGER.info("Compress not enough messages test passed");
     }
 
     @Test
-    void testCompressSummaryWithoutProvider() {
-        memory.setSummary("Some summary content");
-        memory.compressSummary(100);
-
-        // Should not change without provider
-        assertEquals("Some summary content", memory.getSummary());
-
-        LOGGER.info("Compress summary without provider test passed");
-    }
-
-    @Test
-    void testCompressSummaryEmptySummary() {
+    void testCompressBelowThreshold() {
         memory.setLLMProvider(createMockProvider(), "test-model");
-        memory.setSummary("");
+        // Create messages but tokens won't exceed threshold
+        List<Message> messages = createTestMessages(15);
+        List<Message> result = memory.compress(messages);
 
-        memory.compressSummary(100);
-        assertTrue(memory.getSummary().isEmpty());
-
-        LOGGER.info("Compress summary empty summary test passed");
+        // Below threshold, return original
+        assertSame(messages, result);
+        LOGGER.info("Compress below threshold test passed");
     }
 
     @Test
-    void testCompressSummaryWithinLimit() {
-        memory.setLLMProvider(createMockProvider(), "test-model");
-        memory.setSummary("Short");
+    void testCompressSuccessful() {
+        // Create a memory with low threshold for testing
+        ShortTermMemory testMemory = new ShortTermMemory(0.0001, 2);
+        testMemory.setLLMProvider(createMockProviderWithSummary("Test summary"), "test-model");
 
-        // Target is larger than current, should not compress
-        memory.compressSummary(1000);
-        assertEquals("Short", memory.getSummary());
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.of(RoleType.SYSTEM, "You are helpful"));
+        for (int i = 0; i < 10; i++) {
+            messages.add(Message.of(RoleType.USER, "User message " + i));
+            messages.add(Message.of(RoleType.ASSISTANT, "Assistant response " + i));
+        }
 
-        LOGGER.info("Compress summary within limit test passed");
+        List<Message> result = testMemory.compress(messages);
+
+        // Should have compressed
+        assertTrue(result.size() < messages.size());
+        // Should have system message first
+        assertEquals(RoleType.SYSTEM, result.get(0).role);
+        // Should have summary message
+        assertTrue(result.get(1).content.contains("[Conversation Summary]"));
+        // Should have kept recent messages
+        assertEquals("Test summary", testMemory.getLastSummary());
+
+        LOGGER.info("Compress successful test passed: {} -> {} messages", messages.size(), result.size());
     }
 
     @Test
-    void testSystemMessagesSkippedInFormatting() {
-        memory.setLLMProvider(createMockProvider(), "test-model");
+    void testSystemMessagePreserved() {
+        ShortTermMemory testMemory = new ShortTermMemory(0.0001, 1);
+        testMemory.setLLMProvider(createMockProviderWithSummary("Summary"), "test-model");
 
-        List<Message> messages = List.of(
-            Message.of(RoleType.SYSTEM, "You are a helpful assistant"),
-            Message.of(RoleType.USER, "Hello"),
-            Message.of(RoleType.ASSISTANT, "Hi")
-        );
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.of(RoleType.SYSTEM, "System prompt"));
+        for (int i = 0; i < 5; i++) {
+            messages.add(Message.of(RoleType.USER, "User " + i));
+            messages.add(Message.of(RoleType.ASSISTANT, "Assistant " + i));
+        }
 
-        // System messages should be skipped when formatting
-        // This tests internal behavior indirectly
-        memory.triggerAsync(messages);
+        List<Message> result = testMemory.compress(messages);
 
-        LOGGER.info("System messages skipped in formatting test passed");
+        // System message should be first
+        assertEquals(RoleType.SYSTEM, result.get(0).role);
+        assertEquals("System prompt", result.get(0).content);
+
+        LOGGER.info("System message preserved test passed");
+    }
+
+    private List<Message> createTestMessages(int turns) {
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.of(RoleType.SYSTEM, "You are a helpful assistant"));
+        for (int i = 0; i < turns; i++) {
+            messages.add(Message.of(RoleType.USER, "Hello " + i));
+            messages.add(Message.of(RoleType.ASSISTANT, "Hi there " + i));
+        }
+        return messages;
     }
 
     private LLMProvider createMockProvider() {
-        return new MockLLMProvider();
+        return new MockLLMProvider(null);
+    }
+
+    private LLMProvider createMockProviderWithSummary(String summary) {
+        return new MockLLMProvider(summary);
     }
 
     static class MockLLMProvider extends LLMProvider {
-        MockLLMProvider() {
+        private final String summaryResponse;
+
+        MockLLMProvider(String summaryResponse) {
             super(new LLMProviderConfig("test-model", 0.7, null));
+            this.summaryResponse = summaryResponse;
         }
 
         @Override
         protected CompletionResponse doCompletion(CompletionRequest request) {
+            if (summaryResponse != null) {
+                var response = new CompletionResponse();
+                response.choices = List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, summaryResponse)));
+                response.usage = new Usage();
+                return response;
+            }
             return null;
         }
 
         @Override
         protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
-            return null;
+            return doCompletion(request);
         }
 
         @Override
