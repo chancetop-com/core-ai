@@ -316,18 +316,17 @@ class UnifiedMemoryTest {
             UnifiedMemoryConfig config = UnifiedMemoryConfig.defaultConfig();
 
             assertTrue(config.isAutoRecall());
-            assertTrue(config.isAutoTransition());
             assertEquals(5, config.getMaxRecallRecords());
-            assertEquals(ConflictStrategy.LLM_MERGE, config.getConflictStrategy());
         }
 
         @Test
-        @DisplayName("Recall-only config disables transition")
-        void testRecallOnlyConfig() {
-            UnifiedMemoryConfig config = UnifiedMemoryConfig.recallOnly();
+        @DisplayName("Builder can disable auto recall")
+        void testDisableAutoRecall() {
+            UnifiedMemoryConfig config = UnifiedMemoryConfig.builder()
+                .autoRecall(false)
+                .build();
 
-            assertTrue(config.isAutoRecall());
-            assertFalse(config.isAutoTransition());
+            assertFalse(config.isAutoRecall());
         }
 
         @Test
@@ -335,11 +334,9 @@ class UnifiedMemoryTest {
         void testBuilderBounds() {
             UnifiedMemoryConfig config = UnifiedMemoryConfig.builder()
                 .maxRecallRecords(100)
-                .memoryBudgetRatio(1.0)
                 .build();
 
             assertTrue(config.getMaxRecallRecords() <= 20);
-            assertTrue(config.getMemoryBudgetRatio() <= 0.5);
         }
     }
 

@@ -286,15 +286,18 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (this.longTermMemory == null) {
             return;
         }
-        int maxRecallRecords = this.unifiedMemoryConfig != null
-            ? this.unifiedMemoryConfig.getMaxRecallRecords()
-            : UnifiedMemoryConfig.defaultConfig().getMaxRecallRecords();
-        var lifecycle = new UnifiedMemoryLifecycle(this.longTermMemory, maxRecallRecords);
+        var config = this.unifiedMemoryConfig != null
+            ? this.unifiedMemoryConfig
+            : UnifiedMemoryConfig.defaultConfig();
+
+        var lifecycle = new UnifiedMemoryLifecycle(this.longTermMemory, config.getMaxRecallRecords());
         agent.agentLifecycles.add(lifecycle);
 
-        // Auto-register MemoryRecallTool for LLM-driven memory recall
-        var memoryRecallTool = lifecycle.getMemoryRecallTool();
-        agent.toolCalls.add(memoryRecallTool);
+        // Only auto-register MemoryRecallTool if autoRecall is enabled
+        if (config.isAutoRecall()) {
+            var memoryRecallTool = lifecycle.getMemoryRecallTool();
+            agent.toolCalls.add(memoryRecallTool);
+        }
     }
 
     private void fetchLangfusePromptsIfConfigured() {

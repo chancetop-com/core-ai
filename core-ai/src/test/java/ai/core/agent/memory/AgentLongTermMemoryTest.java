@@ -273,7 +273,6 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     void testUnifiedMemoryConfigMaxRecallRecords() {
         UnifiedMemoryConfig config = UnifiedMemoryConfig.builder()
             .maxRecallRecords(3)
-            .conflictStrategy(ConflictStrategy.KEEP_MOST_IMPORTANT)
             .build();
 
         Agent agent = Agent.builder()
