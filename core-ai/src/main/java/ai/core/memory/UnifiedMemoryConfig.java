@@ -50,7 +50,7 @@ public final class UnifiedMemoryConfig {
         this.autoTransition = true;
         this.maxRecallRecords = DEFAULT_MAX_RECALL_RECORDS;
         this.memoryBudgetRatio = DEFAULT_MEMORY_BUDGET_RATIO;
-        this.conflictStrategy = ConflictStrategy.NEWEST_WITH_MERGE;
+        this.conflictStrategy = ConflictStrategy.SMART_MERGE;
     }
 
     /**
@@ -159,7 +159,7 @@ public final class UnifiedMemoryConfig {
          * @return this builder
          */
         public Builder conflictStrategy(ConflictStrategy strategy) {
-            config.conflictStrategy = strategy != null ? strategy : ConflictStrategy.NEWEST_WITH_MERGE;
+            config.conflictStrategy = strategy != null ? strategy : ConflictStrategy.SMART_MERGE;
             return this;
         }
 
