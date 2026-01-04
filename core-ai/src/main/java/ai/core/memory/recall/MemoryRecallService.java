@@ -12,11 +12,6 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Service for recalling and formatting long-term memories.
- *
- * <p>Recalls relevant memories based on user query and formats them
- * as Tool Call messages for injection into conversation context.
- *
  * @author xander
  */
 public class MemoryRecallService {
@@ -40,14 +35,6 @@ public class MemoryRecallService {
         this.defaultMaxRecords = defaultMaxRecords;
     }
 
-    /**
-     * Recall memories relevant to the query.
-     *
-     * @param query     the query to search for
-     * @param scope the scope to search in
-     * @param maxRecords maximum number of records to return
-     * @return list of relevant memory records
-     */
     public List<MemoryRecord> recall(String query, MemoryScope scope, int maxRecords) {
         if (query == null || query.isBlank() || scope == null) {
             return List.of();
@@ -55,24 +42,10 @@ public class MemoryRecallService {
         return longTermMemory.recall(scope, query, maxRecords);
     }
 
-    /**
-     * Recall memories using current session scope.
-     *
-     * @param query the query to search for
-     * @return list of relevant memory records
-     */
     public List<MemoryRecord> recall(String query) {
         return recall(query, longTermMemory.getCurrentScope(), defaultMaxRecords);
     }
 
-    /**
-     * Recall memories with budget constraint.
-     *
-     * @param query           the query to search for
-     * @param currentMessages current message history for budget calculation
-     * @param systemPrompt    system prompt for budget calculation
-     * @return list of memories within budget
-     */
     public List<MemoryRecord> recallWithBudget(String query,
                                                 List<Message> currentMessages,
                                                 String systemPrompt) {
@@ -89,16 +62,6 @@ public class MemoryRecallService {
         return budgetManager.selectWithinBudget(candidates, budget);
     }
 
-    /**
-     * Format memories as Tool Call messages for injection.
-     *
-     * <p>Creates a pair of messages:
-     * 1. ASSISTANT message with tool_calls
-     * 2. TOOL message with the memory content
-     *
-     * @param memories the memories to format
-     * @return list of messages (2 messages if memories exist, empty otherwise)
-     */
     public List<Message> formatAsToolMessages(List<MemoryRecord> memories) {
         if (memories == null || memories.isEmpty()) {
             return List.of();
@@ -118,12 +81,6 @@ public class MemoryRecallService {
         return List.of(assistantMsg, toolMsg);
     }
 
-    /**
-     * Format memory records as readable content.
-     *
-     * @param memories the memories to format
-     * @return formatted string content
-     */
     public String formatMemoryContent(List<MemoryRecord> memories) {
         if (memories == null || memories.isEmpty()) {
             return "";
@@ -143,21 +100,10 @@ public class MemoryRecallService {
         return sb.toString().trim();
     }
 
-    /**
-     * Check if there are any memories available for recall.
-     *
-     * @return true if memories exist
-     */
     public boolean hasMemories() {
         return longTermMemory != null && longTermMemory.hasMemories();
     }
 
-    /**
-     * Extract the latest user query from messages.
-     *
-     * @param messages the message list
-     * @return the latest user message content, or null if not found
-     */
     public String extractLatestUserQuery(List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return null;
@@ -173,20 +119,10 @@ public class MemoryRecallService {
         return null;
     }
 
-    /**
-     * Get the underlying long-term memory.
-     *
-     * @return the long-term memory instance
-     */
     public LongTermMemory getLongTermMemory() {
         return longTermMemory;
     }
 
-    /**
-     * Get the budget manager.
-     *
-     * @return the context budget manager
-     */
     public ContextBudgetManager getBudgetManager() {
         return budgetManager;
     }

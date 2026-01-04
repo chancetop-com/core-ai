@@ -24,7 +24,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    private static final String EXTRACTION_PROMPT = """
+    private static final String DEFAULT_EXTRACTION_PROMPT = """
         Analyze the following conversation and extract memorable information about the user.
 
         Extract these types of information:
@@ -53,14 +53,20 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
 
     private final LLMProvider llmProvider;
     private final String model;
+    private final String extractionPrompt;
 
     public DefaultMemoryExtractor(LLMProvider llmProvider) {
-        this(llmProvider, null);
+        this(llmProvider, null, null);
     }
 
     public DefaultMemoryExtractor(LLMProvider llmProvider, String model) {
+        this(llmProvider, model, null);
+    }
+
+    public DefaultMemoryExtractor(LLMProvider llmProvider, String model, String customPrompt) {
         this.llmProvider = llmProvider;
         this.model = model;
+        this.extractionPrompt = customPrompt != null ? customPrompt : DEFAULT_EXTRACTION_PROMPT;
     }
 
     @Override
@@ -74,7 +80,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
             return List.of();
         }
 
-        String prompt = String.format(EXTRACTION_PROMPT, conversation);
+        String prompt = String.format(extractionPrompt, conversation);
 
         try {
             String response = callLLM(prompt);
@@ -151,12 +157,40 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     }
 
     private String extractJson(String response) {
-        int start = response.indexOf('[');
-        int end = response.lastIndexOf(']');
-        if (start >= 0 && end > start) {
-            return response.substring(start, end + 1);
+        if (response == null || response.isBlank()) {
+            return "[]";
         }
+
+        String text = stripMarkdownCodeBlock(response.trim());
+
+        // Find JSON array boundaries
+        int start = text.indexOf('[');
+        int end = text.lastIndexOf(']');
+        if (start >= 0 && end > start) {
+            return text.substring(start, end + 1);
+        }
+
+        LOGGER.debug("No valid JSON array found in response: {}", truncateForLog(response));
         return "[]";
+    }
+
+    private String stripMarkdownCodeBlock(String text) {
+        if (!text.contains("```")) {
+            return text;
+        }
+        int codeStart = text.indexOf("```");
+        int codeEnd = text.lastIndexOf("```");
+        if (codeEnd <= codeStart) {
+            return text;
+        }
+        String inner = text.substring(codeStart + 3, codeEnd).trim();
+        // Remove language identifier like "json"
+        return inner.startsWith("json") ? inner.substring(4).trim() : inner;
+    }
+
+    private String truncateForLog(String text) {
+        if (text == null) return "";
+        return text.length() > 100 ? text.substring(0, 100) + "..." : text;
     }
 
     private MemoryType parseMemoryType(String type) {

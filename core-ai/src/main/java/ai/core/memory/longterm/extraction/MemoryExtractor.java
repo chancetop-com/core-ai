@@ -7,8 +7,6 @@ import ai.core.memory.longterm.MemoryScope;
 import java.util.List;
 
 /**
- * Interface for extracting long-term memories from conversations.
- *
  * @author xander
  */
 public interface MemoryExtractor {
