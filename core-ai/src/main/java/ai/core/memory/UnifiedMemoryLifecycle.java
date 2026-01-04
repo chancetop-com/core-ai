@@ -12,18 +12,6 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Lifecycle for long-term memory scope management in agent execution.
- *
- * <p>This lifecycle only handles scope initialization and passing to MemoryRecallTool.
- * Message tracking and memory extraction are left to user control.
- *
- * <p>User responsibilities:
- * <ul>
- *   <li>Call longTermMemory.onMessage() to track messages for extraction</li>
- *   <li>Call longTermMemory.endSession() to trigger extraction</li>
- *   <li>Implement MemoryStore for custom storage (Redis, PostgreSQL, Milvus, etc.)</li>
- * </ul>
- *
  * @author xander
  */
 public class UnifiedMemoryLifecycle extends AbstractLifecycle {
