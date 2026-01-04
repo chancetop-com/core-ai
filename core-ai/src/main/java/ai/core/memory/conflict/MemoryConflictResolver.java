@@ -5,8 +5,8 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryScope;
 import ai.core.memory.longterm.MemoryType;
-import ai.core.memory.longterm.Namespace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -191,7 +191,7 @@ public class MemoryConflictResolver {
         // Create new merged record based on newest
         MemoryRecord newest = group.getNewest();
         return MemoryRecord.builder()
-            .namespace(newest.getNamespace())
+            .scope(newest.getScope())
             .content(mergedContent.trim())
             .type(newest.getType())
             .importance(calculateMergedImportance(records))
@@ -210,8 +210,8 @@ public class MemoryConflictResolver {
             return false;
         }
 
-        // Same namespace check
-        if (!isSameNamespace(a.getNamespace(), b.getNamespace())) {
+        // Same scope check
+        if (!isSameScope(a.getScope(), b.getScope())) {
             return false;
         }
 
@@ -278,14 +278,14 @@ public class MemoryConflictResolver {
         return topic1.equals(topic2);
     }
 
-    private boolean isSameNamespace(Namespace a, Namespace b) {
+    private boolean isSameScope(MemoryScope a, MemoryScope b) {
         if (a == null && b == null) {
             return true;
         }
         if (a == null || b == null) {
             return false;
         }
-        return a.toPath().equals(b.toPath());
+        return a.toKey().equals(b.toKey());
     }
 
     private double calculateConflictScore(List<MemoryRecord> records) {

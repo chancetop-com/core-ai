@@ -5,17 +5,6 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Namespace for organizing memories hierarchically.
- * Allows flexible segmentation by organization, user, application, or any structure.
- *
- * <p>Examples:
- * <pre>{@code
- * Namespace.of("user-123")                    // Single level - by user
- * Namespace.of("org-abc", "user-123")         // Two levels - org/user
- * Namespace.of("app", "chat", "session-456")  // Three levels - app/chat/session
- * Namespace.global()                          // Global shared namespace
- * }</pre>
- *
  * @author xander
  */
 //todo anegt/session/user

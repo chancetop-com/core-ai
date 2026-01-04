@@ -6,7 +6,7 @@ import ai.core.llm.domain.RoleType;
 import ai.core.memory.budget.ContextBudgetManager;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.MemoryRecord;
-import ai.core.memory.longterm.Namespace;
+import ai.core.memory.longterm.MemoryScope;
 
 import java.util.List;
 import java.util.UUID;
@@ -44,25 +44,25 @@ public class MemoryRecallService {
      * Recall memories relevant to the query.
      *
      * @param query     the query to search for
-     * @param namespace the namespace to search in
+     * @param scope the scope to search in
      * @param maxRecords maximum number of records to return
      * @return list of relevant memory records
      */
-    public List<MemoryRecord> recall(String query, Namespace namespace, int maxRecords) {
-        if (query == null || query.isBlank() || namespace == null) {
+    public List<MemoryRecord> recall(String query, MemoryScope scope, int maxRecords) {
+        if (query == null || query.isBlank() || scope == null) {
             return List.of();
         }
-        return longTermMemory.recall(namespace, query, maxRecords);
+        return longTermMemory.recall(scope, query, maxRecords);
     }
 
     /**
-     * Recall memories using current session namespace.
+     * Recall memories using current session scope.
      *
      * @param query the query to search for
      * @return list of relevant memory records
      */
     public List<MemoryRecord> recall(String query) {
-        return recall(query, longTermMemory.getCurrentNamespace(), defaultMaxRecords);
+        return recall(query, longTermMemory.getCurrentScope(), defaultMaxRecords);
     }
 
     /**
@@ -77,7 +77,7 @@ public class MemoryRecallService {
                                                 List<Message> currentMessages,
                                                 String systemPrompt) {
         // First recall more candidates
-        List<MemoryRecord> candidates = recall(query, longTermMemory.getCurrentNamespace(),
+        List<MemoryRecord> candidates = recall(query, longTermMemory.getCurrentScope(),
             defaultMaxRecords * 2);
 
         if (candidates.isEmpty()) {

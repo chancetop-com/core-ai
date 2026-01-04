@@ -8,8 +8,8 @@ import ai.core.memory.conflict.ConflictStrategy;
 import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryScope;
 import ai.core.memory.longterm.MemoryStore;
-import ai.core.memory.longterm.Namespace;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,17 +59,17 @@ public class MemoryTransitionService {
     /**
      * Extract memories from messages and save to long-term storage.
      *
-     * @param namespace the namespace to save under
+     * @param scope the scope to save under
      * @param messages  the conversation messages
      * @return list of saved memory records
      */
-    public List<MemoryRecord> extractAndSave(Namespace namespace, List<Message> messages) {
-        if (namespace == null || messages == null || messages.isEmpty()) {
+    public List<MemoryRecord> extractAndSave(MemoryScope scope, List<Message> messages) {
+        if (scope == null || messages == null || messages.isEmpty()) {
             return List.of();
         }
 
         // Extract memories from conversation
-        List<MemoryRecord> extracted = extractor.extract(namespace, messages);
+        List<MemoryRecord> extracted = extractor.extract(scope, messages);
         if (extracted.isEmpty()) {
             LOGGER.debug("No memories extracted from {} messages", messages.size());
             return List.of();
@@ -78,7 +78,7 @@ public class MemoryTransitionService {
         LOGGER.info("Extracted {} memories from conversation", extracted.size());
 
         // Check for conflicts with existing memories
-        List<MemoryRecord> toSave = resolveConflictsWithExisting(namespace, extracted);
+        List<MemoryRecord> toSave = resolveConflictsWithExisting(scope, extracted);
 
         // Generate embeddings and save
         return saveWithEmbeddings(toSave);
@@ -87,18 +87,18 @@ public class MemoryTransitionService {
     /**
      * Handle session end event - trigger memory extraction.
      *
-     * @param namespace       the user's namespace
+     * @param scope       the user's scope
      * @param sessionMessages all messages from the session
      */
-    public void onSessionEnd(Namespace namespace, List<Message> sessionMessages) {
-        if (namespace == null || sessionMessages == null || sessionMessages.isEmpty()) {
+    public void onSessionEnd(MemoryScope scope, List<Message> sessionMessages) {
+        if (scope == null || sessionMessages == null || sessionMessages.isEmpty()) {
             return;
         }
 
-        LOGGER.info("Session ended, extracting memories for namespace: {}", namespace.toPath());
+        LOGGER.info("Session ended, extracting memories for scope: {}", scope.toKey());
 
         try {
-            List<MemoryRecord> saved = extractAndSave(namespace, sessionMessages);
+            List<MemoryRecord> saved = extractAndSave(scope, sessionMessages);
             LOGGER.info("Saved {} memories on session end", saved.size());
         } catch (Exception e) {
             LOGGER.error("Failed to extract memories on session end", e);
@@ -108,11 +108,11 @@ public class MemoryTransitionService {
     /**
      * Check and resolve conflicts between new and existing memories.
      *
-     * @param namespace the namespace
+     * @param scope the scope
      * @param newRecords new memory records to check
      * @return resolved list of records to save
      */
-    public List<MemoryRecord> resolveConflictsWithExisting(Namespace namespace,
+    public List<MemoryRecord> resolveConflictsWithExisting(MemoryScope scope,
                                                            List<MemoryRecord> newRecords) {
         if (newRecords == null || newRecords.isEmpty()) {
             return List.of();
@@ -122,7 +122,7 @@ public class MemoryTransitionService {
 
         for (MemoryRecord newRecord : newRecords) {
             // Find potentially conflicting existing memories
-            List<MemoryRecord> existing = findSimilarExisting(namespace, newRecord);
+            List<MemoryRecord> existing = findSimilarExisting(scope, newRecord);
 
             if (existing.isEmpty()) {
                 // No conflicts, add as-is
@@ -163,17 +163,17 @@ public class MemoryTransitionService {
     /**
      * Find existing memories that may conflict with the new one.
      *
-     * @param namespace the namespace
+     * @param scope the scope
      * @param newRecord the new record
      * @return list of potentially conflicting existing records
      */
-    private List<MemoryRecord> findSimilarExisting(Namespace namespace, MemoryRecord newRecord) {
+    private List<MemoryRecord> findSimilarExisting(MemoryScope scope, MemoryRecord newRecord) {
         if (newRecord.getContent() == null || newRecord.getContent().isBlank()) {
             return List.of();
         }
 
         // Recall similar memories
-        List<MemoryRecord> similar = longTermMemory.recall(namespace, newRecord.getContent(), 3);
+        List<MemoryRecord> similar = longTermMemory.recall(scope, newRecord.getContent(), 3);
 
         // Filter to same type
         return similar.stream()

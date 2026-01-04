@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
+ * Memory store interface supporting vector search and keyword search.
+ *
  * @author xander
  */
 public interface MemoryStore {
@@ -14,25 +16,35 @@ public interface MemoryStore {
 
     Optional<MemoryRecord> findById(String id);
 
-    List<MemoryRecord> findByNamespace(Namespace namespace);
+    List<MemoryRecord> findByScope(MemoryScope scope);
 
-    List<MemoryRecord> search(Namespace namespace, float[] queryEmbedding, int topK);
+    /**
+     * Vector-based semantic search using embedding similarity.
+     */
+    List<MemoryRecord> searchByVector(MemoryScope scope, float[] queryEmbedding, int topK);
 
-    List<MemoryRecord> search(Namespace namespace, float[] queryEmbedding, int topK, SearchFilter filter);
+    List<MemoryRecord> searchByVector(MemoryScope scope, float[] queryEmbedding, int topK, SearchFilter filter);
+
+    /**
+     * Keyword-based search using text matching.
+     */
+    List<MemoryRecord> searchByKeyword(MemoryScope scope, String keyword, int topK);
+
+    List<MemoryRecord> searchByKeyword(MemoryScope scope, String keyword, int topK, SearchFilter filter);
 
     void delete(String id);
 
-    void deleteByNamespace(Namespace namespace);
+    void deleteByScope(MemoryScope scope);
 
     void recordAccess(List<String> ids);
 
     void updateDecayFactor(String id, double decayFactor);
 
-    List<MemoryRecord> findDecayed(Namespace namespace, double threshold);
+    List<MemoryRecord> findDecayed(MemoryScope scope, double threshold);
 
     int deleteDecayed(double threshold);
 
-    int count(Namespace namespace);
+    int count(MemoryScope scope);
 
-    int countByType(Namespace namespace, MemoryType type);
+    int countByType(MemoryScope scope, MemoryType type);
 }

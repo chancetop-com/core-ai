@@ -11,8 +11,8 @@ import ai.core.memory.conflict.ConflictStrategy;
 import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.longterm.MemoryScope;
 import ai.core.memory.longterm.MemoryStore;
-import ai.core.memory.longterm.Namespace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +58,7 @@ public class LongTermMemoryCoordinator {
     private volatile CompletableFuture<Void> currentExtraction;
 
     // Session context
-    private volatile Namespace namespace;
+    private volatile MemoryScope scope;
     private volatile String sessionId;
 
     public LongTermMemoryCoordinator(MemoryStore store,
@@ -90,8 +90,8 @@ public class LongTermMemoryCoordinator {
         this.executor = executor;
     }
 
-    public void initSession(Namespace namespace, String sessionId) {
-        this.namespace = namespace;
+    public void initSession(MemoryScope scope, String sessionId) {
+        this.scope = scope;
         this.sessionId = sessionId;
 
         bufferLock.lock();
@@ -181,14 +181,14 @@ public class LongTermMemoryCoordinator {
 
     private void performExtraction(List<Message> messages, int startTurn, int endTurn) {
         try {
-            List<MemoryRecord> records = extractor.extract(namespace, messages);
+            List<MemoryRecord> records = extractor.extract(scope, messages);
             if (records.isEmpty()) {
                 LOGGER.debug("No memories extracted from {} messages", messages.size());
                 return;
             }
 
             for (MemoryRecord record : records) {
-                record.setNamespace(namespace);
+                record.setScope(scope);
                 record.setSessionId(sessionId);
             }
 
@@ -286,7 +286,7 @@ public class LongTermMemoryCoordinator {
      * Find existing memories similar to the given record.
      */
     private List<MemoryRecord> findSimilarExisting(MemoryRecord record) {
-        if (namespace == null || record.getContent() == null) {
+        if (scope == null || record.getContent() == null) {
             return List.of();
         }
 
@@ -295,7 +295,7 @@ public class LongTermMemoryCoordinator {
             return List.of();
         }
 
-        return store.search(namespace, embedding, CONFLICT_SEARCH_TOP_K);
+        return store.searchByVector(scope, embedding, CONFLICT_SEARCH_TOP_K);
     }
 
     private float[] generateSingleEmbedding(String text) {
