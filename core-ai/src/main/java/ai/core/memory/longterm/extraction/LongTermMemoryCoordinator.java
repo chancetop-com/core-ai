@@ -47,7 +47,6 @@ public class LongTermMemoryCoordinator {
     private volatile CompletableFuture<Void> currentExtraction;
 
     private volatile MemoryScope scope;
-    private volatile String sessionId;
 
     public LongTermMemoryCoordinator(MemoryStore store,
                                      MemoryExtractor extractor,
@@ -70,7 +69,6 @@ public class LongTermMemoryCoordinator {
 
     public void initSession(MemoryScope scope, String sessionId) {
         this.scope = scope;
-        this.sessionId = sessionId;
 
         bufferLock.lock();
         try {
@@ -163,7 +161,6 @@ public class LongTermMemoryCoordinator {
 
             for (MemoryRecord record : records) {
                 record.setScope(scope);
-                record.setSessionId(sessionId);
             }
 
             // Generate embeddings

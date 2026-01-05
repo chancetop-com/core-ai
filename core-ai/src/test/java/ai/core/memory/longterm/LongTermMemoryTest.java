@@ -349,21 +349,11 @@ class LongTermMemoryTest {
     class MemoryScopeTests {
 
         @Test
-        @DisplayName("Should create scope with different dimensions")
+        @DisplayName("Should create scope for user")
         void testScopeCreation() {
             MemoryScope userScope = MemoryScope.forUser("alice");
             assertEquals("u:alice", userScope.toKey());
-            assertTrue(userScope.hasUserId());
-            assertFalse(userScope.hasSessionId());
-
-            MemoryScope sessionScope = MemoryScope.forSession("alice", "sess-001");
-            assertEquals("u:alice/s:sess-001", sessionScope.toKey());
-            assertTrue(sessionScope.hasUserId());
-            assertTrue(sessionScope.hasSessionId());
-
-            MemoryScope agentScope = MemoryScope.forAgent("alice", "assistant");
-            assertEquals("u:alice/a:assistant", agentScope.toKey());
-            assertTrue(agentScope.hasAgentName());
+            assertEquals("alice", userScope.getUserId());
         }
 
         @Test
@@ -395,16 +385,12 @@ class LongTermMemoryTest {
         @Test
         @DisplayName("Should support scope matching")
         void testScopeMatching() {
-            MemoryScope userScope = MemoryScope.forUser("alice");
-            MemoryScope sessionScope = MemoryScope.forSession("alice", "sess-001");
-            MemoryScope fullScope = MemoryScope.of("alice", "sess-001", "assistant");
+            MemoryScope aliceScope = MemoryScope.forUser("alice");
+            MemoryScope aliceScope2 = MemoryScope.forUser("alice");
+            MemoryScope bobScope = MemoryScope.forUser("bob");
 
-            assertTrue(userScope.matches(sessionScope));
-            assertTrue(userScope.matches(fullScope));
-            assertTrue(sessionScope.matches(fullScope));
-
-            MemoryScope otherUser = MemoryScope.forUser("bob");
-            assertFalse(userScope.matches(otherUser));
+            assertTrue(aliceScope.matches(aliceScope2));
+            assertFalse(aliceScope.matches(bobScope));
         }
     }
 
