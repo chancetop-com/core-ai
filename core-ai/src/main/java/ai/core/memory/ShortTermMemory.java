@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * @author xander
  */
-//todo add a interface
+//todo Whether is necessary that adding a interface for developer to self-define the Short Term Memory ?
 public class ShortTermMemory {
     private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemory.class);
 

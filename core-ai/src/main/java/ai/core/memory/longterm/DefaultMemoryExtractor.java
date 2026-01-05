@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * @author xander
@@ -28,26 +27,24 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     private static final String DEFAULT_EXTRACTION_PROMPT = """
         Analyze the following conversation and extract memorable information about the user.
 
-        Extract these types of information:
-        - FACT: Factual information about the user (e.g., "works as a software engineer", "lives in Tokyo")
-        - PREFERENCE: User preferences and likes/dislikes (e.g., "prefers dark mode", "likes coffee")
-        - GOAL: User goals or intentions (e.g., "wants to learn AI", "planning to travel")
-        - EPISODE: Notable events or experiences mentioned (e.g., "attended a conference last week")
-        - RELATIONSHIP: Information about people the user knows (e.g., "has a colleague named John")
-
         Conversation:
         %s
 
         Return a JSON array of extracted memories. Each memory should have:
         - "content": the extracted information as a clear, standalone statement
-        - "type": one of FACT, PREFERENCE, GOAL, EPISODE, RELATIONSHIP
-        - "importance": a number from 0.0 to 1.0 indicating importance
+        - "importance": a number from 0.0 to 1.0 indicating how important this information is for future interactions
+
+        Guidelines for importance:
+        - 0.9-1.0: Critical personal info (name, core preferences, important goals)
+        - 0.7-0.8: Useful context (occupation, interests, ongoing projects)
+        - 0.5-0.6: Nice to know (casual mentions, minor preferences)
+        - Below 0.5: Skip - not worth storing
 
         Only extract meaningful, non-trivial information. Skip greetings and small talk.
         If no meaningful information can be extracted, return an empty array: []
 
         Response format:
-        [{"content": "...", "type": "...", "importance": 0.8}, ...]
+        [{"content": "...", "importance": 0.8}, ...]
         """;
 
     private static final TypeReference<List<ExtractedMemory>> EXTRACTION_TYPE_REF = new TypeReference<>() { };
@@ -128,7 +125,6 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
 
     private List<MemoryRecord> parseResponse(MemoryScope scope, String response) {
         List<MemoryRecord> records = new ArrayList<>();
-        //todo try/for
         try {
             String json = extractJson(response);
             var extracted = OBJECT_MAPPER.readValue(json, EXTRACTION_TYPE_REF);
@@ -138,13 +134,11 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
                     continue;
                 }
 
-                MemoryType type = parseMemoryType(mem.type);
                 double importance = mem.importance != null ? mem.importance : 0.5;
 
                 MemoryRecord record = MemoryRecord.builder()
                     .scope(scope)
                     .content(mem.content)
-                    .type(type)
                     .importance(importance)
                     .build();
 
@@ -194,20 +188,8 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
         return text.length() > 100 ? text.substring(0, 100) + "..." : text;
     }
 
-    private MemoryType parseMemoryType(String type) {
-        if (type == null) {
-            return MemoryType.FACT;
-        }
-        try {
-            return MemoryType.valueOf(type.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return MemoryType.FACT;
-        }
-    }
-
     public static class ExtractedMemory {
         public String content;
-        public String type;
         public Double importance;
     }
 }

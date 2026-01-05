@@ -60,20 +60,17 @@ class LongTermMemoryTest {
 
     @Test
     void testBasicMemoryStorageAndRetrieval() {
-        // 1. Manually save a memory
         MemoryRecord record = MemoryRecord.builder()
             .scope(USER_SCOPE)
             .content("User is a Java developer who prefers clean code")
-            .type(MemoryType.FACT)
+            .importance(0.8)
             .build();
 
         List<Double> embedding = randomEmbedding();
         store.save(record, embedding);
 
-        // 2. Verify storage
         assertEquals(1, store.count(USER_SCOPE));
 
-        // 3. Search for the memory
         List<MemoryRecord> results = store.searchByVector(USER_SCOPE, embedding, 5);
         assertFalse(results.isEmpty());
         assertEquals("User is a Java developer who prefers clean code", results.getFirst().getContent());
@@ -81,30 +78,27 @@ class LongTermMemoryTest {
 
     @Test
     void testMemoryIsolationByUserId() {
-        // Save memories for different users
         MemoryScope scopeA = MemoryScope.forUser("user-A");
         MemoryScope scopeB = MemoryScope.forUser("user-B");
 
         MemoryRecord record1 = MemoryRecord.builder()
             .scope(scopeA)
             .content("User A likes Python")
-            .type(MemoryType.PREFERENCE)
+            .importance(0.8)
             .build();
 
         MemoryRecord record2 = MemoryRecord.builder()
             .scope(scopeB)
             .content("User B likes Java")
-            .type(MemoryType.PREFERENCE)
+            .importance(0.8)
             .build();
 
         store.save(record1, randomEmbedding());
         store.save(record2, randomEmbedding());
 
-        // Verify isolation
         assertEquals(1, store.count(scopeA));
         assertEquals(1, store.count(scopeB));
 
-        // Search should only return memories for the specific user
         List<MemoryRecord> resultsA = store.searchByVector(scopeA, randomEmbedding(), 10);
         assertEquals(1, resultsA.size());
         assertTrue(resultsA.getFirst().getContent().contains("User A"));
@@ -112,26 +106,20 @@ class LongTermMemoryTest {
 
     @Test
     void testCoordinatorExtractionOnSessionEnd() {
-        // Initialize session
         coordinator.initSession(USER_SCOPE, SESSION_ID);
 
-        // Simulate conversation (not enough to trigger batch extraction)
         coordinator.onMessage(Message.of(RoleType.USER, "Hello, I'm a senior Java developer"));
         coordinator.onMessage(Message.of(RoleType.ASSISTANT, "Nice to meet you!"));
 
-        // Verify no extraction yet (buffer size < maxBufferTurns)
         assertEquals(0, store.count(USER_SCOPE));
 
-        // End session - should trigger extraction
         coordinator.onSessionEnd();
 
-        // Verify memories were extracted and stored
         assertTrue(store.count(USER_SCOPE) > 0);
     }
 
     @Test
     void testCoordinatorBatchExtractionTrigger() {
-        // Configure to trigger after 2 turns
         LongTermMemoryConfig batchConfig = LongTermMemoryConfig.builder()
             .maxBufferTurns(2)
             .asyncExtraction(false)
@@ -143,66 +131,58 @@ class LongTermMemoryTest {
 
         batchCoordinator.initSession(USER_SCOPE, SESSION_ID);
 
-        // First turn
         batchCoordinator.onMessage(Message.of(RoleType.USER, "I prefer using IntelliJ IDEA"));
         batchCoordinator.onMessage(Message.of(RoleType.ASSISTANT, "Great choice!"));
 
-        // Second turn - should trigger batch extraction
         batchCoordinator.onMessage(Message.of(RoleType.USER, "I also like Spring Boot"));
         batchCoordinator.onMessage(Message.of(RoleType.ASSISTANT, "Spring Boot is excellent!"));
 
-        // Verify extraction was triggered
         assertTrue(batchStore.count(USER_SCOPE) > 0);
     }
 
     @Test
     void testMemoryDecay() {
-        // Create a memory with specific decay factor
         MemoryRecord record = MemoryRecord.builder()
             .scope(USER_SCOPE)
             .content("Old memory that should decay")
-            .type(MemoryType.EPISODE)
+            .importance(0.6)
             .build();
 
         store.save(record, randomEmbedding());
 
-        // Manually set low decay factor (simulating old memory)
         store.updateDecayFactor(record.getId(), 0.05);
 
-        // Get decayed memories
         List<MemoryRecord> decayed = store.findDecayed(USER_SCOPE, 0.1);
         assertEquals(1, decayed.size());
     }
 
     @Test
-    void testSearchWithFilter() {
-        // Save different types of memories
+    void testSearchWithImportanceFilter() {
         store.save(MemoryRecord.builder()
             .scope(USER_SCOPE)
-            .content("User's goal is to learn AI")
-            .type(MemoryType.GOAL)
+            .content("High importance memory")
+            .importance(0.9)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
             .scope(USER_SCOPE)
-            .content("User prefers dark mode")
-            .type(MemoryType.PREFERENCE)
+            .content("Medium importance memory")
+            .importance(0.7)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
             .scope(USER_SCOPE)
-            .content("User is 30 years old")
-            .type(MemoryType.FACT)
+            .content("Low importance memory")
+            .importance(0.5)
             .build(), randomEmbedding());
 
-        // Search with type filter
-        SearchFilter goalFilter = SearchFilter.builder()
-            .types(MemoryType.GOAL)
+        SearchFilter highImportanceFilter = SearchFilter.builder()
+            .minImportance(0.8)
             .build();
 
-        List<MemoryRecord> goals = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, goalFilter);
-        assertEquals(1, goals.size());
-        assertEquals(MemoryType.GOAL, goals.getFirst().getType());
+        List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, highImportanceFilter);
+        assertEquals(1, results.size());
+        assertTrue(results.getFirst().getImportance() >= 0.8);
     }
 
     @Test
@@ -210,7 +190,6 @@ class LongTermMemoryTest {
         MemoryRecord record = MemoryRecord.builder()
             .scope(USER_SCOPE)
             .content("Test memory")
-            .type(MemoryType.FACT)
             .importance(0.8)
             .build();
 
@@ -220,7 +199,6 @@ class LongTermMemoryTest {
         double score = record.calculateEffectiveScore(0.95);
 
         // score = similarity(0.95) * importance(0.8) * decay(0.9) * frequencyBonus
-        // frequencyBonus = 1.0 + 0.1 * ln(1 + 5) ≈ 1.179
         assertTrue(score > 0.6);
         assertTrue(score < 1.0);
     }
@@ -233,11 +211,10 @@ class LongTermMemoryTest {
 
             for (Message msg : messages) {
                 if (msg.role == RoleType.USER && msg.content != null) {
-                    // Simple extraction: create a FACT memory from user messages
                     MemoryRecord record = MemoryRecord.builder()
                         .scope(namespace)
                         .content("User said: " + msg.content)
-                        .type(MemoryType.FACT)
+                        .importance(0.7)
                         .build();
                     records.add(record);
                 }
@@ -283,9 +260,6 @@ class LongTermMemoryTest {
         return embedding;
     }
 
-    /**
-     * Tests for LongTermMemory facade - the recommended way to use long-term memory with Agent.
-     */
     @Nested
     @DisplayName("LongTermMemory Facade Tests")
     class LongTermMemoryFacadeTests {
@@ -307,22 +281,18 @@ class LongTermMemoryTest {
         @Test
         @DisplayName("Should work with session lifecycle")
         void testSessionLifecycle() {
-            // Start session
             MemoryScope expectedScope = MemoryScope.forUser(USER_ID);
             memory.startSession(expectedScope, SESSION_ID);
             assertEquals(expectedScope, memory.getCurrentScope());
             assertEquals(SESSION_ID, memory.getCurrentSessionId());
 
-            // Process messages
             memory.onMessage(Message.of(RoleType.USER, "I'm a Java developer"));
             memory.onMessage(Message.of(RoleType.ASSISTANT, "Nice!"));
             memory.onMessage(Message.of(RoleType.USER, "I prefer IntelliJ"));
             memory.onMessage(Message.of(RoleType.ASSISTANT, "Great choice!"));
 
-            // End session
             memory.endSession();
 
-            // Verify memories were extracted
             assertTrue(memory.getMemoryCount() > 0);
         }
 
@@ -331,7 +301,6 @@ class LongTermMemoryTest {
         void testRecallAfterExtraction() {
             memory.startSession(MemoryScope.forUser(USER_ID), SESSION_ID);
 
-            // Add some messages
             memory.onMessage(Message.of(RoleType.USER, "I love Python programming"));
             memory.onMessage(Message.of(RoleType.ASSISTANT, "Python is great!"));
             memory.onMessage(Message.of(RoleType.USER, "I also like machine learning"));
@@ -339,21 +308,18 @@ class LongTermMemoryTest {
 
             memory.endSession();
 
-            // Recall memories
             List<MemoryRecord> recalled = memory.recall("programming", 5);
             assertNotNull(recalled);
-            // Should have extracted some memories
             assertTrue(memory.hasMemories());
         }
 
         @Test
         @DisplayName("Should format memories as context string")
         void testFormatAsContext() {
-            // Manually add a memory for testing
             MemoryRecord record = MemoryRecord.builder()
                 .scope(USER_SCOPE)
                 .content("User is a Java developer")
-                .type(MemoryType.FACT)
+                .importance(0.8)
                 .build();
             memory.getStore().save(record, randomEmbedding());
 
@@ -376,35 +342,8 @@ class LongTermMemoryTest {
             context = memory.formatAsContext(null);
             assertEquals("", context);
         }
-
-        @Test
-        @DisplayName("Should recall with type filter")
-        void testRecallWithTypeFilter() {
-            memory.startSession(MemoryScope.forUser(USER_ID), SESSION_ID);
-
-            // Add memories directly
-            memory.getStore().save(MemoryRecord.builder()
-                .scope(USER_SCOPE)
-                .content("User likes dark mode")
-                .type(MemoryType.PREFERENCE)
-                .build(), randomEmbedding());
-
-            memory.getStore().save(MemoryRecord.builder()
-                .scope(USER_SCOPE)
-                .content("User is 25 years old")
-                .type(MemoryType.FACT)
-                .build(), randomEmbedding());
-
-            // Recall only preferences
-            List<MemoryRecord> preferences = memory.recall("mode", 10, MemoryType.PREFERENCE);
-            assertFalse(preferences.isEmpty());
-            assertEquals(MemoryType.PREFERENCE, preferences.getFirst().getType());
-        }
     }
 
-    /**
-     * Tests for MemoryScope functionality.
-     */
     @Nested
     @DisplayName("MemoryScope Tests")
     class MemoryScopeTests {
@@ -412,19 +351,16 @@ class LongTermMemoryTest {
         @Test
         @DisplayName("Should create scope with different dimensions")
         void testScopeCreation() {
-            // User-scoped
             MemoryScope userScope = MemoryScope.forUser("alice");
             assertEquals("u:alice", userScope.toKey());
             assertTrue(userScope.hasUserId());
             assertFalse(userScope.hasSessionId());
 
-            // Session-scoped
             MemoryScope sessionScope = MemoryScope.forSession("alice", "sess-001");
             assertEquals("u:alice/s:sess-001", sessionScope.toKey());
             assertTrue(sessionScope.hasUserId());
             assertTrue(sessionScope.hasSessionId());
 
-            // Agent-scoped
             MemoryScope agentScope = MemoryScope.forAgent("alice", "assistant");
             assertEquals("u:alice/a:assistant", agentScope.toKey());
             assertTrue(agentScope.hasAgentName());
@@ -433,29 +369,24 @@ class LongTermMemoryTest {
         @Test
         @DisplayName("Should isolate memories by scope")
         void testScopeIsolation() {
-            // User A
             MemoryScope scopeA = MemoryScope.forUser("user-A");
-            // User B
             MemoryScope scopeB = MemoryScope.forUser("user-B");
 
-            // Save memories in different scopes
             store.save(MemoryRecord.builder()
                 .scope(scopeA)
                 .content("UserA prefers Java")
-                .type(MemoryType.PREFERENCE)
+                .importance(0.8)
                 .build(), randomEmbedding());
 
             store.save(MemoryRecord.builder()
                 .scope(scopeB)
                 .content("UserB prefers Python")
-                .type(MemoryType.PREFERENCE)
+                .importance(0.8)
                 .build(), randomEmbedding());
 
-            // Verify isolation
             assertEquals(1, store.count(scopeA));
             assertEquals(1, store.count(scopeB));
 
-            // Search should only return memories from specific scope
             List<MemoryRecord> results = store.searchByVector(scopeA, randomEmbedding(), 10);
             assertEquals(1, results.size());
             assertTrue(results.getFirst().getContent().contains("UserA"));
@@ -468,22 +399,15 @@ class LongTermMemoryTest {
             MemoryScope sessionScope = MemoryScope.forSession("alice", "sess-001");
             MemoryScope fullScope = MemoryScope.of("alice", "sess-001", "assistant");
 
-            // User scope matches session scope (userId matches)
             assertTrue(userScope.matches(sessionScope));
             assertTrue(userScope.matches(fullScope));
-
-            // Session scope should match full scope
             assertTrue(sessionScope.matches(fullScope));
 
-            // Different user should not match
             MemoryScope otherUser = MemoryScope.forUser("bob");
             assertFalse(userScope.matches(otherUser));
         }
     }
 
-    /**
-     * Tests for DecayCalculator functionality.
-     */
     @Nested
     @DisplayName("Decay Calculator Tests")
     class DecayCalculatorTests {
@@ -494,7 +418,7 @@ class LongTermMemoryTest {
             MemoryRecord record = MemoryRecord.builder()
                 .scope(USER_SCOPE)
                 .content("Fresh memory")
-                .type(MemoryType.FACT)
+                .importance(0.7)
                 .build();
 
             double decay = DecayCalculator.calculate(record);
@@ -507,60 +431,31 @@ class LongTermMemoryTest {
             double decay = DecayCalculator.calculate(null);
             assertEquals(1.0, decay, 0.01);
         }
-
-        @Test
-        @DisplayName("Should apply different decay rates by memory type")
-        void testDecayRatesByType() {
-            // EPISODE has higher decay rate (0.05) - decays faster
-            // GOAL has lower decay rate (0.01) - decays slower
-            assertTrue(MemoryType.EPISODE.getDecayRate() > MemoryType.GOAL.getDecayRate());
-            assertTrue(MemoryType.FACT.getDecayRate() > MemoryType.PREFERENCE.getDecayRate());
-        }
     }
 
-    /**
-     * Tests for SearchFilter functionality.
-     */
     @Nested
     @DisplayName("Search Filter Tests")
     class SearchFilterTests {
 
         @BeforeEach
         void setUpFilterTests() {
-            // Add various memories for filter testing
             store.save(MemoryRecord.builder()
                 .scope(USER_SCOPE)
                 .content("User wants to learn Rust")
-                .type(MemoryType.GOAL)
                 .importance(0.9)
                 .build(), randomEmbedding());
 
             store.save(MemoryRecord.builder()
                 .scope(USER_SCOPE)
                 .content("User prefers vim editor")
-                .type(MemoryType.PREFERENCE)
                 .importance(0.7)
                 .build(), randomEmbedding());
 
             store.save(MemoryRecord.builder()
                 .scope(USER_SCOPE)
                 .content("User is from Beijing")
-                .type(MemoryType.FACT)
                 .importance(0.5)
                 .build(), randomEmbedding());
-        }
-
-        @Test
-        @DisplayName("Should filter by multiple memory types")
-        void testMultipleTypeFilter() {
-            SearchFilter filter = SearchFilter.builder()
-                .types(MemoryType.GOAL, MemoryType.PREFERENCE)
-                .build();
-
-            List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
-            assertEquals(2, results.size());
-            assertTrue(results.stream().allMatch(r ->
-                r.getType() == MemoryType.GOAL || r.getType() == MemoryType.PREFERENCE));
         }
 
         @Test
@@ -572,37 +467,21 @@ class LongTermMemoryTest {
 
             List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
             assertEquals(1, results.size());
-            assertEquals(MemoryType.GOAL, results.getFirst().getType());
+            assertTrue(results.getFirst().getImportance() >= 0.8);
         }
 
         @Test
-        @DisplayName("Should combine multiple filter criteria")
-        void testCombinedFilters() {
+        @DisplayName("Should filter by minimum decay factor")
+        void testMinDecayFactorFilter() {
             SearchFilter filter = SearchFilter.builder()
-                .types(MemoryType.GOAL, MemoryType.PREFERENCE, MemoryType.FACT)
-                .minImportance(0.6)
+                .minDecayFactor(0.5)
                 .build();
 
             List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
-            assertEquals(2, results.size());
-            assertTrue(results.stream().allMatch(r -> r.getImportance() >= 0.6));
-        }
-
-        @Test
-        @DisplayName("Should return empty list when no matches")
-        void testNoMatchFilter() {
-            SearchFilter filter = SearchFilter.builder()
-                .types(MemoryType.RELATIONSHIP)
-                .build();
-
-            List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
-            assertTrue(results.isEmpty());
+            assertEquals(3, results.size());
         }
     }
 
-    /**
-     * Tests for InMemoryStore implementation.
-     */
     @Nested
     @DisplayName("InMemoryStore Tests")
     class InMemoryStoreTests {
@@ -622,7 +501,7 @@ class LongTermMemoryTest {
             MemoryRecord record = MemoryRecord.builder()
                 .scope(USER_SCOPE)
                 .content("Test content")
-                .type(MemoryType.FACT)
+                .importance(0.7)
                 .build();
 
             memStore.save(record, randomEmbedding());
@@ -641,7 +520,7 @@ class LongTermMemoryTest {
             MemoryRecord record = MemoryRecord.builder()
                 .scope(USER_SCOPE)
                 .content("To be deleted")
-                .type(MemoryType.FACT)
+                .importance(0.7)
                 .build();
 
             memStore.save(record, randomEmbedding());
@@ -649,33 +528,6 @@ class LongTermMemoryTest {
 
             memStore.delete(record.getId());
             assertEquals(0, memStore.count(USER_SCOPE));
-        }
-
-        @Test
-        @DisplayName("Should count by type")
-        void testCountByType() {
-            MemoryStore memStore = new InMemoryStore();
-
-            memStore.save(MemoryRecord.builder()
-                .scope(USER_SCOPE)
-                .content("Fact 1")
-                .type(MemoryType.FACT)
-                .build(), randomEmbedding());
-
-            memStore.save(MemoryRecord.builder()
-                .scope(USER_SCOPE)
-                .content("Fact 2")
-                .type(MemoryType.FACT)
-                .build(), randomEmbedding());
-
-            memStore.save(MemoryRecord.builder()
-                .scope(USER_SCOPE)
-                .content("Preference 1")
-                .type(MemoryType.PREFERENCE)
-                .build(), randomEmbedding());
-
-            assertEquals(2, memStore.countByType(USER_SCOPE, MemoryType.FACT));
-            assertEquals(1, memStore.countByType(USER_SCOPE, MemoryType.PREFERENCE));
         }
     }
 }

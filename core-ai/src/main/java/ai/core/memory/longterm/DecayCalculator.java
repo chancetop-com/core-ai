@@ -15,16 +15,13 @@ public final class DecayCalculator {
             return 1.0;
         }
 
-        MemoryType type = record.getType();
-        double lambda = type != null ? type.getDecayRate() : DEFAULT_DECAY_RATE;
-
         Instant lastAccessedAt = record.getLastAccessedAt();
         long daysSinceAccess = ChronoUnit.DAYS.between(lastAccessedAt, Instant.now());
         if (daysSinceAccess < 0) {
             daysSinceAccess = 0;
         }
 
-        return Math.exp(-lambda * daysSinceAccess);
+        return Math.exp(-DEFAULT_DECAY_RATE * daysSinceAccess);
     }
 
     private DecayCalculator() {

@@ -11,7 +11,6 @@ import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryScope;
 import ai.core.memory.longterm.MemoryStore;
-import ai.core.memory.longterm.MemoryType;
 import ai.core.tool.tools.MemoryRecallTool;
 import core.framework.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
@@ -106,14 +105,12 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User prefers dark mode in applications")
-            .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build(), generateMockEmbedding());
 
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User is a Java developer working on AI projects")
-            .type(MemoryType.FACT)
             .importance(0.85)
             .build(), generateMockEmbedding());
 
@@ -159,7 +156,6 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         store.save(MemoryRecord.builder()
             .scope(scope1)
             .content("Alice likes Python programming")
-            .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build(), generateMockEmbedding());
         longTermMemory.endSession();
@@ -170,7 +166,6 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         store.save(MemoryRecord.builder()
             .scope(scope2)
             .content("Bob prefers JavaScript development")
-            .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build(), generateMockEmbedding());
         longTermMemory.endSession();
@@ -202,7 +197,6 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User mentioned they are learning Kotlin")
-            .type(MemoryType.FACT)
             .importance(0.8)
             .build(), generateMockEmbedding());
         longTermMemory.endSession();
@@ -349,7 +343,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         // Verify memories were stored
         var storedMemories = store.findByScope(scope);
         LOGGER.info("Stored {} memories for user", storedMemories.size());
-        storedMemories.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
+        storedMemories.forEach(m -> LOGGER.info("  - {}", m.getContent()));
     }
 
     @Test
@@ -389,7 +383,7 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         // Check what memories were stored
         var memoriesAfterSession1 = store.findByScope(scope);
         LOGGER.info("Memories after Session 1: {}", memoriesAfterSession1.size());
-        memoriesAfterSession1.forEach(m -> LOGGER.info("  - [{}] {}", m.getType(), m.getContent()));
+        memoriesAfterSession1.forEach(m -> LOGGER.info("  - {}", m.getContent()));
 
         // ========== Session 2: New session, recall previous information ==========
         LOGGER.info("========== SESSION 2: Recalling memories ==========");
@@ -432,21 +426,18 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User's favorite programming language is Kotlin")
-            .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build(), generateMockEmbedding());
 
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User is building a mobile app for fitness tracking")
-            .type(MemoryType.FACT)
             .importance(0.85)
             .build(), generateMockEmbedding());
 
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User's goal is to become a full-stack developer")
-            .type(MemoryType.GOAL)
             .importance(0.8)
             .build(), generateMockEmbedding());
 
@@ -502,21 +493,18 @@ class AgentLongTermMemoryTest extends IntegrationTest {
         MemoryRecord pref = MemoryRecord.builder()
             .scope(scope)
             .content("User prefers dark theme in all applications")
-            .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build();
 
         MemoryRecord fact = MemoryRecord.builder()
             .scope(scope)
             .content("User is 30 years old and lives in Shanghai")
-            .type(MemoryType.FACT)
             .importance(0.8)
             .build();
 
         MemoryRecord goal = MemoryRecord.builder()
             .scope(scope)
             .content("User wants to learn machine learning this year")
-            .type(MemoryType.GOAL)
             .importance(0.85)
             .build();
 
@@ -558,38 +546,28 @@ class AgentLongTermMemoryTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Memory count and type statistics")
-    void testMemoryCountAndStatistics() {
+    @DisplayName("Memory count statistics")
+    void testMemoryCountStatistics() {
         String testUserId = "stats-test-user";
         MemoryScope scope = MemoryScope.forUser(testUserId);
 
-        // Store various types of memories
+        // Store memories with different importance levels
         store.save(MemoryRecord.builder()
-            .scope(scope).content("Pref 1").type(MemoryType.PREFERENCE).importance(0.9)
+            .scope(scope).content("Memory 1").importance(0.9)
             .build(), generateMockEmbedding());
         store.save(MemoryRecord.builder()
-            .scope(scope).content("Pref 2").type(MemoryType.PREFERENCE).importance(0.8)
+            .scope(scope).content("Memory 2").importance(0.8)
             .build(), generateMockEmbedding());
         store.save(MemoryRecord.builder()
-            .scope(scope).content("Fact 1").type(MemoryType.FACT).importance(0.7)
+            .scope(scope).content("Memory 3").importance(0.7)
             .build(), generateMockEmbedding());
         store.save(MemoryRecord.builder()
-            .scope(scope).content("Goal 1").type(MemoryType.GOAL).importance(0.85)
+            .scope(scope).content("Memory 4").importance(0.85)
             .build(), generateMockEmbedding());
 
         // Count total memories
         int totalCount = store.count(scope);
         LOGGER.info("Total memories: {}", totalCount);
         assertEquals(4, totalCount, "Should have 4 total memories");
-
-        // Count by type
-        int prefCount = store.countByType(scope, MemoryType.PREFERENCE);
-        int factCount = store.countByType(scope, MemoryType.FACT);
-        int goalCount = store.countByType(scope, MemoryType.GOAL);
-
-        LOGGER.info("PREFERENCE: {}, FACT: {}, GOAL: {}", prefCount, factCount, goalCount);
-        assertEquals(2, prefCount, "Should have 2 preferences");
-        assertEquals(1, factCount, "Should have 1 fact");
-        assertEquals(1, goalCount, "Should have 1 goal");
     }
 }

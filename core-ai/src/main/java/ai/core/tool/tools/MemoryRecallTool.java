@@ -3,7 +3,6 @@ package ai.core.tool.tools;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryScope;
-import ai.core.memory.longterm.MemoryType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
@@ -13,9 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Tool for LLM to proactively recall user memories from long-term memory.
@@ -37,6 +34,7 @@ import java.util.Locale;
 public final class MemoryRecallTool extends ToolCall {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MemoryRecallTool.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     public static final String TOOL_NAME = "search_memory_tool";
 
     public static Builder builder() {
@@ -65,17 +63,13 @@ public final class MemoryRecallTool extends ToolCall {
     public ToolCallResult execute(String arguments) {
         long startTime = System.currentTimeMillis();
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode params = mapper.readTree(arguments);
+            JsonNode params = OBJECT_MAPPER.readTree(arguments);
 
             String query = params.has("query") ? params.get("query").asText() : "";
             if (query.isEmpty()) {
                 return ToolCallResult.failed("Error: 'query' parameter is required")
                     .withDuration(System.currentTimeMillis() - startTime);
             }
-
-            // Parse optional type filter
-            List<MemoryType> typeFilter = parseTypeFilter(params);
 
             // Get scope from current context or fall back to LongTermMemory's current scope
             MemoryScope scope = currentScope != null ? currentScope : longTermMemory.getCurrentScope();
@@ -85,12 +79,7 @@ public final class MemoryRecallTool extends ToolCall {
             }
 
             // Recall memories
-            List<MemoryRecord> memories;
-            if (typeFilter.isEmpty()) {
-                memories = longTermMemory.recall(scope, query, maxRecords);
-            } else {
-                memories = longTermMemory.recall(query, maxRecords, typeFilter.toArray(new MemoryType[0]));
-            }
+            List<MemoryRecord> memories = longTermMemory.recall(scope, query, maxRecords);
 
             // Format result
             String result = formatMemories(memories);
@@ -108,20 +97,6 @@ public final class MemoryRecallTool extends ToolCall {
         }
     }
 
-    private List<MemoryType> parseTypeFilter(JsonNode params) {
-        List<MemoryType> types = new ArrayList<>();
-        if (params.has("types") && params.get("types").isArray()) {
-            for (JsonNode typeNode : params.get("types")) {
-                try {
-                    types.add(MemoryType.valueOf(typeNode.asText().toUpperCase(Locale.ROOT)));
-                } catch (IllegalArgumentException e) {
-                    LOGGER.warn("Unknown memory type: {}", typeNode.asText());
-                }
-            }
-        }
-        return types;
-    }
-
     private String formatMemories(List<MemoryRecord> memories) {
         if (memories == null || memories.isEmpty()) {
             return "[No relevant memories found for this query]";
@@ -129,11 +104,7 @@ public final class MemoryRecallTool extends ToolCall {
 
         StringBuilder sb = new StringBuilder("[User Memory]\n");
         for (MemoryRecord record : memories) {
-            sb.append("- ");
-            if (record.getType() != null) {
-                sb.append('[').append(record.getType().name()).append("] ");
-            }
-            sb.append(record.getContent()).append('\n');
+            sb.append("- ").append(record.getContent()).append('\n');
         }
         return sb.toString();
     }
@@ -152,15 +123,6 @@ public final class MemoryRecallTool extends ToolCall {
                 .type(ToolCallParameterType.STRING)
                 .classType(String.class)
                 .required(true)
-                .build(),
-            ToolCallParameter.builder()
-                .name("types")
-                .description("Optional filter by memory types. "
-                    + "Available types: FACT, PREFERENCE, GOAL, EPISODE, RELATIONSHIP")
-                .type(ToolCallParameterType.LIST)
-                .classType(List.class)
-                .itemType(String.class)
-                .required(false)
                 .build()
         );
     }

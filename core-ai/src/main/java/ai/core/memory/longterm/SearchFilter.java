@@ -1,9 +1,10 @@
 package ai.core.memory.longterm;
 
 import java.time.Instant;
-import java.util.List;
 
 /**
+ * Filter for memory search operations.
+ *
  * @author xander
  */
 public final class SearchFilter {
@@ -12,22 +13,16 @@ public final class SearchFilter {
         return new Builder();
     }
 
-    private final List<MemoryType> types;
     private final Double minImportance;
     private final Double minDecayFactor;
     private final Instant createdAfter;
     private final Instant createdBefore;
 
     private SearchFilter(Builder builder) {
-        this.types = builder.types;
         this.minImportance = builder.minImportance;
         this.minDecayFactor = builder.minDecayFactor;
         this.createdAfter = builder.createdAfter;
         this.createdBefore = builder.createdBefore;
-    }
-
-    public List<MemoryType> getTypes() {
-        return types;
     }
 
     public Double getMinImportance() {
@@ -47,9 +42,6 @@ public final class SearchFilter {
     }
 
     public boolean matches(MemoryRecord record) {
-        if (types != null && !types.isEmpty() && !types.contains(record.getType())) {
-            return false;
-        }
         if (minImportance != null && record.getImportance() < minImportance) {
             return false;
         }
@@ -67,21 +59,10 @@ public final class SearchFilter {
     }
 
     public static class Builder {
-        private List<MemoryType> types;
         private Double minImportance;
         private Double minDecayFactor;
         private Instant createdAfter;
         private Instant createdBefore;
-
-        public Builder types(List<MemoryType> types) {
-            this.types = types;
-            return this;
-        }
-
-        public Builder types(MemoryType... types) {
-            this.types = List.of(types);
-            return this;
-        }
 
         public Builder minImportance(double minImportance) {
             this.minImportance = minImportance;
