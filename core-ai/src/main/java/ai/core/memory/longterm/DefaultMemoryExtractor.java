@@ -6,6 +6,7 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
+import ai.core.prompt.Prompts;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,30 +24,6 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     //todo
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    //todo move prompt to prompt
-    private static final String DEFAULT_EXTRACTION_PROMPT = """
-        Analyze the following conversation and extract memorable information about the user.
-
-        Conversation:
-        %s
-
-        Return a JSON array of extracted memories. Each memory should have:
-        - "content": the extracted information as a clear, standalone statement
-        - "importance": a number from 0.0 to 1.0 indicating how important this information is for future interactions
-
-        Guidelines for importance:
-        - 0.9-1.0: Critical personal info (name, core preferences, important goals)
-        - 0.7-0.8: Useful context (occupation, interests, ongoing projects)
-        - 0.5-0.6: Nice to know (casual mentions, minor preferences)
-        - Below 0.5: Skip - not worth storing
-
-        Only extract meaningful, non-trivial information. Skip greetings and small talk.
-        If no meaningful information can be extracted, return an empty array: []
-
-        Response format:
-        [{"content": "...", "importance": 0.8}, ...]
-        """;
-
     private static final TypeReference<List<ExtractedMemory>> EXTRACTION_TYPE_REF = new TypeReference<>() { };
 
     private final LLMProvider llmProvider;
@@ -64,7 +41,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     public DefaultMemoryExtractor(LLMProvider llmProvider, String model, String customPrompt) {
         this.llmProvider = llmProvider;
         this.model = model;
-        this.extractionPrompt = customPrompt != null ? customPrompt : DEFAULT_EXTRACTION_PROMPT;
+        this.extractionPrompt = customPrompt != null ? customPrompt : Prompts.LONG_TERM_MEMORY_EXTRACTION_PROMPT;
     }
 
     @Override
