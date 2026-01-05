@@ -123,10 +123,6 @@ public class ShortTermMemory {
         return result;
     }
 
-    public int getMaxContextTokens() {
-        return maxContextTokens;
-    }
-
     public double getTriggerThreshold() {
         return triggerThreshold;
     }
@@ -149,7 +145,7 @@ public class ShortTermMemory {
     }
 
     private int calculateKeepFromIndex(List<Message> conversationMsgs) {
-        int lastUserIndex = findLastUserIndex(conversationMsgs);
+        var lastUserIndex = findLastUserIndex(conversationMsgs);
         if (lastUserIndex < 0) {
             LOGGER.debug("No USER message found, skip compression");
             return conversationMsgs.size();
@@ -157,17 +153,15 @@ public class ShortTermMemory {
 
         boolean isCurrentChainActive = conversationMsgs.getLast().role != RoleType.USER;
 
-        int minKeepFromIndex = isCurrentChainActive ? lastUserIndex : conversationMsgs.size() - 1;
-        int keepFromIndex = findKeepFromIndexByTurns(conversationMsgs, lastUserIndex);
+        var minKeepFromIndex = isCurrentChainActive ? lastUserIndex : conversationMsgs.size() - 1;
+        var keepFromIndex = findKeepFromIndexByTurns(conversationMsgs, lastUserIndex);
 
         keepFromIndex = Math.min(keepFromIndex, minKeepFromIndex);
 
-        // Check if keeping these messages exceeds threshold
-        int keepTokens = MessageTokenCounter.countFrom(conversationMsgs, keepFromIndex);
-        int threshold = (int) (maxContextTokens * triggerThreshold);
+        var keepTokens = MessageTokenCounter.countFrom(conversationMsgs, keepFromIndex);
+        var threshold = (int) (maxContextTokens * triggerThreshold);
 
         if (keepTokens >= threshold) {
-            // Too large, only keep current conversation chain
             LOGGER.info("Recent turns exceed threshold ({} >= {}), keeping only current conversation chain",
                 keepTokens, threshold);
             return minKeepFromIndex;
@@ -185,9 +179,9 @@ public class ShortTermMemory {
         return -1;
     }
 
-    private int findKeepFromIndexByTurns(List<Message> conversationMsgs, int lastUserIndex) {
-        int keepFromIndex = lastUserIndex;
-        int turnCount = 0;
+    private Integer findKeepFromIndexByTurns(List<Message> conversationMsgs, Integer lastUserIndex) {
+        var keepFromIndex = lastUserIndex;
+        var turnCount = 0;
 
         for (int i = lastUserIndex - 1; i >= 0 && turnCount < keepRecentTurns; i--) {
             keepFromIndex = i;
