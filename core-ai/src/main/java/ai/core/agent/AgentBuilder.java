@@ -233,10 +233,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-        // Sliding window config is always set for token protection
-        agent.slidingWindowConfig = this.slidingWindowConfig != null
-                ? this.slidingWindowConfig
-                : SlidingWindowConfig.builder().autoTokenProtection(true).build();
         // Short-term memory configuration
         if (this.shortTermMemoryEnabled) {
             agent.shortTermMemory = this.shortTermMemory != null
