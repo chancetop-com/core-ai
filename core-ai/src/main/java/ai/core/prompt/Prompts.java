@@ -50,4 +50,26 @@ public class Prompts {
 
             Output summary directly:
             """;
+    public static final String LONG_TERM_MEMORY_EXTRACTION_PROMPT = """
+            Analyze the following conversation and extract memorable information about the user.
+
+            Conversation:
+            %s
+
+            Return a JSON array of extracted memories. Each memory should have:
+            - "content": the extracted information as a clear, standalone statement
+            - "importance": a number from 0.0 to 1.0 indicating how important this information is for future interactions
+
+            Guidelines for importance:
+            - 0.9-1.0: Critical personal info (name, core preferences, important goals)
+            - 0.7-0.8: Useful context (occupation, interests, ongoing projects)
+            - 0.5-0.6: Nice to know (casual mentions, minor preferences)
+            - Below 0.5: Skip - not worth storing
+
+            Only extract meaningful, non-trivial information. Skip greetings and small talk.
+            If no meaningful information can be extracted, return an empty array: []
+
+            Response format:
+            [{"content": "...", "importance": 0.8}, ...]
+            """;
 }
