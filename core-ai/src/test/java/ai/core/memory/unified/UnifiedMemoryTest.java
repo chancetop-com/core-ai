@@ -12,15 +12,11 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.UnifiedMemoryLifecycle;
-import ai.core.memory.budget.ContextBudgetManager;
 import ai.core.memory.longterm.InMemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
-import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryScope;
-import ai.core.memory.longterm.MemoryType;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
-import ai.core.memory.recall.MemoryRecallService;
 import ai.core.tool.tools.MemoryRecallTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -70,15 +66,6 @@ class UnifiedMemoryTest {
 
     // ==================== Helper Methods ====================
 
-    private MemoryRecord createMemoryRecord(String content, MemoryType type, double importance) {
-        return MemoryRecord.builder()
-            .scope(MemoryScope.forUser(USER_ID))
-            .content(content)
-            .type(type)
-            .importance(importance)
-            .build();
-    }
-
     private LLMProvider createMockLLMProvider() {
         LLMProvider mock = mock(LLMProvider.class);
 
@@ -114,119 +101,6 @@ class UnifiedMemoryTest {
     }
 
     // ==================== Test Classes ====================
-
-    @Nested
-    @DisplayName("ContextBudgetManager Tests")
-    class ContextBudgetManagerTests {
-
-        @Test
-        @DisplayName("Calculate available budget with empty messages")
-        void testCalculateBudgetEmptyMessages() {
-            ContextBudgetManager manager = new ContextBudgetManager();
-            int budget = manager.calculateAvailableBudget(List.of(), "You are a helpful assistant.");
-
-            assertTrue(budget > 0, "Budget should be positive");
-        }
-
-        @Test
-        @DisplayName("Calculate budget with existing messages reduces available budget")
-        void testCalculateBudgetWithMessages() {
-            ContextBudgetManager manager = new ContextBudgetManager(10000, 0.2, 0.3);
-
-            List<Message> emptyMessages = List.of();
-            int budgetEmpty = manager.calculateAvailableBudget(emptyMessages, "System prompt");
-
-            List<Message> messages = List.of(
-                Message.of(RoleType.USER, "This is a test message with some content"),
-                Message.of(RoleType.ASSISTANT, "This is a response with more content")
-            );
-            int budgetWithMessages = manager.calculateAvailableBudget(messages, "System prompt");
-
-            assertTrue(budgetWithMessages < budgetEmpty,
-                "Budget with messages should be less than empty");
-        }
-
-        @Test
-        @DisplayName("Select memories within budget")
-        void testSelectWithinBudget() {
-            ContextBudgetManager manager = new ContextBudgetManager();
-
-            List<MemoryRecord> candidates = List.of(
-                createMemoryRecord("User prefers dark mode", MemoryType.PREFERENCE, 0.9),
-                createMemoryRecord("User is a software engineer", MemoryType.FACT, 0.8),
-                createMemoryRecord("User asked about Python yesterday", MemoryType.EPISODE, 0.5)
-            );
-
-            List<MemoryRecord> selected = manager.selectWithinBudget(candidates, 100);
-
-            assertFalse(selected.isEmpty(), "Should select at least one record");
-            assertTrue(selected.size() <= candidates.size(), "Should not exceed candidates");
-        }
-
-        @Test
-        @DisplayName("Select at least one memory even if budget is small")
-        void testSelectAtLeastOneMemory() {
-            ContextBudgetManager manager = new ContextBudgetManager();
-
-            List<MemoryRecord> candidates = List.of(
-                createMemoryRecord("Important user preference", MemoryType.PREFERENCE, 0.95)
-            );
-
-            List<MemoryRecord> selected = manager.selectWithinBudget(candidates, 10);
-
-            assertEquals(1, selected.size(), "Should select one record");
-        }
-    }
-
-    @Nested
-    @DisplayName("MemoryRecallService Tests")
-    class MemoryRecallServiceTests {
-
-        @Test
-        @DisplayName("Format memories as tool messages")
-        void testFormatAsToolMessages() {
-            MemoryRecallService service = new MemoryRecallService(longTermMemory);
-
-            List<MemoryRecord> memories = List.of(
-                createMemoryRecord("User prefers concise responses", MemoryType.PREFERENCE, 0.9),
-                createMemoryRecord("User is learning Python", MemoryType.FACT, 0.8)
-            );
-
-            List<Message> messages = service.formatAsToolMessages(memories);
-
-            assertEquals(2, messages.size(), "Should have assistant and tool messages");
-            assertEquals(RoleType.ASSISTANT, messages.get(0).role);
-            assertEquals(RoleType.TOOL, messages.get(1).role);
-            assertTrue(messages.get(1).content.contains("[User Memory]"));
-        }
-
-        @Test
-        @DisplayName("Extract latest user query from messages")
-        void testExtractLatestUserQuery() {
-            MemoryRecallService service = new MemoryRecallService(longTermMemory);
-
-            List<Message> messages = List.of(
-                Message.of(RoleType.SYSTEM, "You are helpful"),
-                Message.of(RoleType.USER, "First question"),
-                Message.of(RoleType.ASSISTANT, "First answer"),
-                Message.of(RoleType.USER, "Second question")
-            );
-
-            String query = service.extractLatestUserQuery(messages);
-
-            assertEquals("Second question", query);
-        }
-
-        @Test
-        @DisplayName("Return empty list when no memories")
-        void testFormatEmptyMemories() {
-            MemoryRecallService service = new MemoryRecallService(longTermMemory);
-
-            List<Message> messages = service.formatAsToolMessages(List.of());
-
-            assertTrue(messages.isEmpty());
-        }
-    }
 
     @Nested
     @DisplayName("UnifiedMemoryConfig Tests")

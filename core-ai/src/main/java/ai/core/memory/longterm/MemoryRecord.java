@@ -25,7 +25,6 @@ public class MemoryRecord {
     private String id;
     private MemoryScope scope;
     private String content;
-    private MemoryType type;
 
     // Weight and decay
     private double importance;
@@ -73,14 +72,6 @@ public class MemoryRecord {
 
     public void setContent(String content) {
         this.content = content;
-    }
-
-    public MemoryType getType() {
-        return type;
-    }
-
-    public void setType(MemoryType type) {
-        this.type = type;
     }
 
     public double getImportance() {
@@ -153,7 +144,6 @@ public class MemoryRecord {
         private String id;
         private MemoryScope scope;
         private String content;
-        private MemoryType type;
         private Double importance;
         private String sessionId;
         private final Map<String, Object> metadata = new HashMap<>();
@@ -170,11 +160,6 @@ public class MemoryRecord {
 
         public Builder content(String content) {
             this.content = content;
-            return this;
-        }
-
-        public Builder type(MemoryType type) {
-            this.type = type;
             return this;
         }
 
@@ -198,12 +183,7 @@ public class MemoryRecord {
             if (id != null) record.setId(id);
             if (scope != null) record.setScope(scope);
             if (content != null) record.setContent(content);
-            if (type != null) {
-                record.setType(type);
-                record.setImportance(importance != null ? importance : type.getDefaultImportance());
-            } else if (importance != null) {
-                record.setImportance(importance);
-            }
+            if (importance != null) record.setImportance(importance);
             if (sessionId != null) record.setSessionId(sessionId);
             if (!metadata.isEmpty()) record.setMetadata(new HashMap<>(metadata));
             return record;

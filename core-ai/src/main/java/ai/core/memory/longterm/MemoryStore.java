@@ -39,6 +39,4 @@ public interface MemoryStore {
     int deleteDecayed(double threshold);
 
     int count(MemoryScope scope);
-
-    int countByType(MemoryScope scope, MemoryType type);
 }

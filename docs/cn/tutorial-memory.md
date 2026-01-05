@@ -155,14 +155,21 @@ Agent agent = Agent.builder()
 └─────────────────────────────────────────────────────┘
 ```
 
-### 记忆类型
+### 记忆属性
 
-| 类型 | 描述 | 示例 |
+每条记忆记录具有以下关键属性：
+
+| 属性 | 描述 | 范围 |
 |------|------|------|
-| `FACT` | 关于用户的事实信息 | "是软件工程师" |
-| `PREFERENCE` | 用户偏好和喜好 | "喜欢简洁的回复" |
-| `GOAL` | 用户目标和意图 | "正在学习机器学习" |
-| `EPISODE` | 值得注意的过往交互 | "昨天问过 Python 问题" |
+| `importance` | 记忆的重要程度 | 0.0 - 1.0 |
+| `decayFactor` | 时间衰减因子（随时间降低） | 0.0 - 1.0 |
+| `accessCount` | 记忆被访问的次数 | 0+ |
+
+**重要性指南：**
+- **0.9-1.0**：关键个人信息（姓名、核心偏好、重要目标）
+- **0.7-0.8**：有用的上下文（职业、兴趣、正在进行的项目）
+- **0.5-0.6**：可有可无的信息（随意提及、次要偏好）
+- **低于 0.5**：不值得存储
 
 ### 设置长期记忆
 
@@ -216,11 +223,12 @@ List<MemoryRecord> memories = longTermMemory.recall(
     5            // 返回前 K 条
 );
 
-// 按类型过滤召回
-List<MemoryRecord> prefs = longTermMemory.recall(
-    "偏好设置",
-    5,
-    MemoryType.PREFERENCE, MemoryType.FACT
+// 使用 SearchFilter 按重要性过滤召回
+SearchFilter filter = SearchFilter.builder()
+    .minImportance(0.7)  // 只返回高重要性记忆
+    .build();
+List<MemoryRecord> importantMemories = store.searchByVector(
+    scope, queryEmbedding, 5, filter
 );
 
 // 格式化记忆为上下文
@@ -408,7 +416,7 @@ AgentOutput output = agent.execute("query", context);  // 带上下文
 1. **短期记忆**：基于会话的对话历史，带自动总结
 2. **长期记忆**：带向量搜索的持久化用户记忆
 3. **统一记忆生命周期**：自动将记忆注入 LLM 调用
-4. **记忆类型**：FACT、PREFERENCE、GOAL、EPISODE
+4. **记忆属性**：重要性评分和时间衰减
 5. **命名空间**：用户、组织、会话作用域
 
 下一步：

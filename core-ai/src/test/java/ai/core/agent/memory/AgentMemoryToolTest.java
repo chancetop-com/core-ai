@@ -26,7 +26,6 @@ import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryScope;
 import ai.core.memory.longterm.MemoryStore;
-import ai.core.memory.longterm.MemoryType;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import ai.core.tool.tools.MemoryRecallTool;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,9 +95,9 @@ class AgentMemoryToolTest {
     void testMemoryRecallToolExecution() {
         // Pre-store memories
         MemoryScope scope = MemoryScope.forUser(USER_ID);
-        store.save(createMemoryRecord(scope, "User prefers dark mode", MemoryType.PREFERENCE, 0.9),
+        store.save(createMemoryRecord(scope, "User prefers dark mode", 0.9),
             randomEmbedding());
-        store.save(createMemoryRecord(scope, "User is learning Python", MemoryType.FACT, 0.8),
+        store.save(createMemoryRecord(scope, "User is learning Python", 0.8),
             randomEmbedding());
 
         // Create tool
@@ -137,16 +136,16 @@ class AgentMemoryToolTest {
     }
 
     @Test
-    @DisplayName("MemoryRecallTool filters by memory type")
-    void testMemoryRecallToolTypeFilter() {
+    @DisplayName("MemoryRecallTool retrieves memories by importance")
+    void testMemoryRecallToolByImportance() {
         MemoryScope scope = MemoryScope.forUser(USER_ID);
 
-        // Store different types
-        store.save(createMemoryRecord(scope, "User prefers dark mode", MemoryType.PREFERENCE, 0.9),
+        // Store memories with different importance
+        store.save(createMemoryRecord(scope, "User prefers dark mode", 0.9),
             randomEmbedding());
-        store.save(createMemoryRecord(scope, "User works at TechCorp", MemoryType.FACT, 0.8),
+        store.save(createMemoryRecord(scope, "User works at TechCorp", 0.8),
             randomEmbedding());
-        store.save(createMemoryRecord(scope, "User wants to learn AI", MemoryType.GOAL, 0.85),
+        store.save(createMemoryRecord(scope, "User wants to learn AI", 0.85),
             randomEmbedding());
 
         MemoryRecallTool tool = MemoryRecallTool.builder()
@@ -155,11 +154,11 @@ class AgentMemoryToolTest {
             .build();
         tool.setCurrentScope(scope);
 
-        // Filter by PREFERENCE type
-        var result = tool.execute("{\"query\": \"user info\", \"types\": [\"PREFERENCE\"]}");
+        // Query memories
+        var result = tool.execute("{\"query\": \"user info\"}");
 
         assertTrue(result.isCompleted());
-        LOGGER.info("Filtered result: {}", result.getResult());
+        LOGGER.info("Retrieved result: {}", result.getResult());
     }
 
     @Test
@@ -196,7 +195,7 @@ class AgentMemoryToolTest {
     void testLLMCallsMemoryTool() {
         // Pre-store memory
         MemoryScope scope = MemoryScope.forUser(USER_ID);
-        store.save(createMemoryRecord(scope, "User prefers concise answers", MemoryType.PREFERENCE, 0.9),
+        store.save(createMemoryRecord(scope, "User prefers concise answers", 0.9),
             randomEmbedding());
 
         // Create mock that simulates LLM calling search_memory_tool
@@ -260,11 +259,10 @@ class AgentMemoryToolTest {
 
     // ==================== Helper Methods ====================
 
-    private MemoryRecord createMemoryRecord(MemoryScope scope, String content, MemoryType type, double importance) {
+    private MemoryRecord createMemoryRecord(MemoryScope scope, String content, double importance) {
         return MemoryRecord.builder()
             .scope(scope)
             .content(content)
-            .type(type)
             .importance(importance)
             .build();
     }

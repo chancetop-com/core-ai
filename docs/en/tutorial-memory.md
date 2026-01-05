@@ -155,14 +155,21 @@ Long-term memory persists user information across sessions using vector embeddin
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Memory Types
+### Memory Attributes
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `FACT` | Factual information about the user | "Works as software engineer" |
-| `PREFERENCE` | User preferences and likes | "Prefers concise responses" |
-| `GOAL` | User goals and objectives | "Learning machine learning" |
-| `EPISODE` | Notable past interactions | "Asked about Python yesterday" |
+Each memory record has the following key attributes:
+
+| Attribute | Description | Range |
+|-----------|-------------|-------|
+| `importance` | How important the memory is | 0.0 - 1.0 |
+| `decayFactor` | Time-based decay (decreases over time) | 0.0 - 1.0 |
+| `accessCount` | How often the memory has been accessed | 0+ |
+
+**Importance Guidelines:**
+- **0.9-1.0**: Critical personal info (name, core preferences, important goals)
+- **0.7-0.8**: Useful context (occupation, interests, ongoing projects)
+- **0.5-0.6**: Nice to know (casual mentions, minor preferences)
+- **Below 0.5**: Not worth storing
 
 ### Setting Up Long-term Memory
 
@@ -216,11 +223,12 @@ List<MemoryRecord> memories = longTermMemory.recall(
     5                           // top K results
 );
 
-// Recall with type filter
-List<MemoryRecord> prefs = longTermMemory.recall(
-    "preferences",
-    5,
-    MemoryType.PREFERENCE, MemoryType.FACT
+// Recall with importance filter using SearchFilter
+SearchFilter filter = SearchFilter.builder()
+    .minImportance(0.7)  // Only high-importance memories
+    .build();
+List<MemoryRecord> importantMemories = store.searchByVector(
+    scope, queryEmbedding, 5, filter
 );
 
 // Format memories as context
@@ -408,7 +416,7 @@ Key concepts covered:
 1. **Short-term Memory**: Session-based conversation history with auto-summarization
 2. **Long-term Memory**: Persistent user memories with vector search
 3. **Unified Memory Lifecycle**: Automatic memory injection into LLM calls
-4. **Memory Types**: FACT, PREFERENCE, GOAL, EPISODE
+4. **Memory Attributes**: Importance scoring and time-based decay
 5. **Namespaces**: User, Organization, Session scoping
 
 Next steps:

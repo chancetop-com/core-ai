@@ -164,14 +164,6 @@ public class InMemoryStore implements MemoryStore {
             .count();
     }
 
-    @Override
-    public int countByType(MemoryScope scope, MemoryType type) {
-        return (int) records.values().stream()
-            .filter(r -> matchesScope(r, scope))
-            .filter(r -> type == r.getType())
-            .count();
-    }
-
     private boolean matchesScope(MemoryRecord record, MemoryScope queryScope) {
         if (queryScope == null) {
             return true;

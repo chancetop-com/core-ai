@@ -73,22 +73,6 @@ public class LongTermMemory {
         return store.searchByVector(scope, queryEmbedding, topK);
     }
 
-    public List<MemoryRecord> recall(String query, int topK, MemoryType... types) {
-        if (currentScope == null || types == null || types.length == 0) {
-            return recall(query, topK);
-        }
-
-        List<Double> queryEmbedding = generateEmbedding(query);
-        if (queryEmbedding == null) {
-            return List.of();
-        }
-
-        SearchFilter filter = SearchFilter.builder()
-            .types(types)
-            .build();
-        return store.searchByVector(currentScope, queryEmbedding, topK, filter);
-    }
-
     // ==================== Context Formatting ====================
     public String formatAsContext(List<MemoryRecord> memories) {
         if (memories == null || memories.isEmpty()) {

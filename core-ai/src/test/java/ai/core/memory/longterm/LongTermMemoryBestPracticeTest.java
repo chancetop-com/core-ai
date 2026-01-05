@@ -95,7 +95,7 @@ class LongTermMemoryBestPracticeTest {
             MemoryRecord.builder()
                 .scope(MemoryScope.forUser(USER_ID))
                 .content("User prefers Python programming")
-                .type(MemoryType.PREFERENCE)
+                .importance(0.8)
                 .build()
         ));
         return mock;
@@ -131,7 +131,6 @@ class LongTermMemoryBestPracticeTest {
             MemoryRecord preference = MemoryRecord.builder()
                 .scope(scope)
                 .content("User prefers dark mode")
-                .type(MemoryType.PREFERENCE)
                 .importance(0.9)
                 .metadata("source", "settings-page")
                 .build();
@@ -139,7 +138,6 @@ class LongTermMemoryBestPracticeTest {
             MemoryRecord fact = MemoryRecord.builder()
                 .scope(scope)
                 .content("User is a software engineer")
-                .type(MemoryType.FACT)
                 .importance(0.8)
                 .build();
 
@@ -153,8 +151,6 @@ class LongTermMemoryBestPracticeTest {
 
             // 5. Verify storage
             assertEquals(2, store.count(scope));
-            assertEquals(1, store.countByType(scope, MemoryType.PREFERENCE));
-            assertEquals(1, store.countByType(scope, MemoryType.FACT));
         }
 
         /**
@@ -171,17 +167,17 @@ class LongTermMemoryBestPracticeTest {
                 MemoryRecord.builder()
                     .scope(scope)
                     .content("User likes Python")
-                    .type(MemoryType.PREFERENCE)
+                    .importance(0.9)
                     .build(),
                 MemoryRecord.builder()
                     .scope(scope)
                     .content("User wants to learn machine learning")
-                    .type(MemoryType.GOAL)
+                    .importance(0.85)
                     .build(),
                 MemoryRecord.builder()
                     .scope(scope)
                     .content("User works at TechCorp")
-                    .type(MemoryType.FACT)
+                    .importance(0.8)
                     .build()
             );
 
@@ -217,33 +213,32 @@ class LongTermMemoryBestPracticeTest {
         }
 
         /**
-         * Best practice for filtering search results.
+         * Best practice for filtering search results by importance.
          */
         @Test
-        @DisplayName("Search with type filter")
+        @DisplayName("Search with importance filter")
         void searchWithFilter() {
             MemoryStore store = new InMemoryStore();
             MemoryScope scope = MemoryScope.forUser(USER_ID);
 
             storeTestMemories(store, scope);
 
-            // Search only PREFERENCE type
+            // Search with minimum importance filter
             List<Double> queryEmbedding = generateEmbedding("user preferences");
             SearchFilter filter = SearchFilter.builder()
-                .types(MemoryType.PREFERENCE)
-                .minImportance(0.5)
+                .minImportance(0.8)
                 .build();
 
             List<MemoryRecord> results = store.searchByVector(scope, queryEmbedding, 5, filter);
 
-            results.forEach(r -> assertEquals(MemoryType.PREFERENCE, r.getType()));
+            results.forEach(r -> assertTrue(r.getImportance() >= 0.8));
         }
 
         private void storeTestMemories(MemoryStore store, MemoryScope scope) {
             List<MemoryRecord> records = List.of(
-                MemoryRecord.builder().scope(scope).content("User likes Java").type(MemoryType.PREFERENCE).build(),
-                MemoryRecord.builder().scope(scope).content("User is learning Kotlin").type(MemoryType.GOAL).build(),
-                MemoryRecord.builder().scope(scope).content("User joined team in 2023").type(MemoryType.FACT).build()
+                MemoryRecord.builder().scope(scope).content("User likes Java").importance(0.9).build(),
+                MemoryRecord.builder().scope(scope).content("User is learning Kotlin").importance(0.85).build(),
+                MemoryRecord.builder().scope(scope).content("User joined team in 2023").importance(0.7).build()
             );
             List<List<Double>> embeddings = records.stream().map(r -> generateEmbedding(r.getContent())).toList();
             store.saveAll(records, embeddings);
@@ -293,11 +288,11 @@ class LongTermMemoryBestPracticeTest {
         }
 
         /**
-         * Best practice for recalling memories with type filter.
+         * Best practice for recalling memories.
          */
         @Test
-        @DisplayName("Recall with type filter")
-        void recallWithTypeFilter() {
+        @DisplayName("Recall memories by query")
+        void recallMemories() {
             LongTermMemory memory = LongTermMemory.builder()
                 .llmProvider(llmProvider)
                 .store(new InMemoryStore())
@@ -311,7 +306,7 @@ class LongTermMemoryBestPracticeTest {
                 MemoryRecord.builder()
                     .scope(scope)
                     .content("User prefers concise answers")
-                    .type(MemoryType.PREFERENCE)
+                    .importance(0.9)
                     .build(),
                 generateEmbedding("User prefers concise answers")
             );
@@ -320,18 +315,16 @@ class LongTermMemoryBestPracticeTest {
                 MemoryRecord.builder()
                     .scope(scope)
                     .content("User wants to become a tech lead")
-                    .type(MemoryType.GOAL)
+                    .importance(0.85)
                     .build(),
                 generateEmbedding("User wants to become a tech lead")
             );
 
-            // Start session and recall by type
+            // Start session and recall
             memory.startSessionForUser(USER_ID, SESSION_ID);
-            List<MemoryRecord> goals = memory.recall("career", 5, MemoryType.GOAL);
+            List<MemoryRecord> memories = memory.recall("career", 5);
 
-            assertNotNull(goals);
-            // All results should be GOAL type
-            goals.forEach(r -> assertEquals(MemoryType.GOAL, r.getType()));
+            assertNotNull(memories);
         }
     }
 
@@ -539,12 +532,6 @@ class LongTermMemoryBestPracticeTest {
             @Override
             public int count(MemoryScope scope) {
                 // SELECT COUNT(*) FROM memories WHERE user_id = ?
-                return 0;
-            }
-
-            @Override
-            public int countByType(MemoryScope scope, MemoryType type) {
-                // SELECT COUNT(*) FROM memories WHERE user_id = ? AND type = ?
                 return 0;
             }
         }

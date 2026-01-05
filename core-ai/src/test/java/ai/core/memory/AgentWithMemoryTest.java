@@ -16,7 +16,6 @@ import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryScope;
 import ai.core.memory.longterm.MemoryStore;
-import ai.core.memory.longterm.MemoryType;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -102,14 +101,12 @@ class AgentWithMemoryTest {
         MemoryRecord preference1 = MemoryRecord.builder()
             .scope(userScope)
             .content("User prefers dark mode for all applications")
-            .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build();
 
         MemoryRecord preference2 = MemoryRecord.builder()
             .scope(userScope)
             .content("User's favorite programming language is Python")
-            .type(MemoryType.PREFERENCE)
             .importance(0.8)
             .build();
 
@@ -140,7 +137,6 @@ class AgentWithMemoryTest {
         MemoryRecord fact = MemoryRecord.builder()
             .scope(userScope)
             .content("User is a software engineer working on AI projects")
-            .type(MemoryType.FACT)
             .importance(0.85)
             .build();
 
@@ -185,14 +181,12 @@ class AgentWithMemoryTest {
         store.save(MemoryRecord.builder()
             .scope(userScope)
             .content("User prefers concise explanations")
-            .type(MemoryType.PREFERENCE)
             .importance(0.9)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
             .scope(userScope)
             .content("User is learning machine learning")
-            .type(MemoryType.FACT)
             .importance(0.8)
             .build(), randomEmbedding());
 
@@ -249,7 +243,7 @@ class AgentWithMemoryTest {
         customStore.save(MemoryRecord.builder()
             .scope(userScope)
             .content("User is a Python developer")
-            .type(MemoryType.FACT)
+            .importance(0.8)
             .build(), randomEmbedding());
         persistentMemory.endSession();
 
@@ -264,23 +258,23 @@ class AgentWithMemoryTest {
     void testFormatMemoriesAsContext() {
         MemoryScope scope = MemoryScope.forUser("format-test-user");
 
-        // Add various memory types
+        // Add various memories
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User prefers TypeScript over JavaScript")
-            .type(MemoryType.PREFERENCE)
+            .importance(0.9)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User works at a startup company")
-            .type(MemoryType.FACT)
+            .importance(0.8)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
             .scope(scope)
             .content("User often asks about React best practices")
-            .type(MemoryType.EPISODE)
+            .importance(0.7)
             .build(), randomEmbedding());
 
         longTermMemory.startSession(scope, "test-session");
