@@ -54,7 +54,6 @@ class AgentEndToTest extends IntegrationTest {
                 .llmProvider(llmProviders.getProvider())
                 .model("gpt-4o")
                 .toolCalls(Functions.from(weatherService))
-                .slidingWindowConfig(null)
                 .build();
         var out = agent.run("/slash_command:getTemperaturePro:{\"city\": \"xiamen\"}", ExecutionContext.builder().build());
         LOGGER.info(out);
@@ -68,7 +67,6 @@ class AgentEndToTest extends IntegrationTest {
         var agent = Agent.builder()
                 .llmProvider(llmProviders.getProvider())
                 .toolCalls(Functions.from(weatherService))
-                .slidingWindowConfig(null)
                 .build();
         // The tool will not be called again, and the text will be polished.
         var out = agent.run("What's the weather like in Xiamen?", ExecutionContext.builder().build());
@@ -105,7 +103,6 @@ class AgentEndToTest extends IntegrationTest {
         var agent = Agent.builder()
                 .llmProvider(llmProviders.getProvider())
                 .toolCalls(Functions.from(weatherService))
-                .slidingWindowConfig(null)
                 .streamingCallback(new StreamingCallback() {
                     @Override
                     public void onChunk(String chunk) {

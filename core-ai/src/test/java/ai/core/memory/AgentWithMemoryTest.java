@@ -83,7 +83,6 @@ class AgentWithMemoryTest {
             .systemPrompt("You are a helpful assistant.")
             .llmProvider(llmProvider)
             .enableShortTermMemory(true)
-            .slidingWindowTurns(10)
             .build();
 
         assertNotNull(agent);
@@ -218,7 +217,6 @@ class AgentWithMemoryTest {
                 """.formatted(longTermContext))
             .llmProvider(llmProvider)
             .enableShortTermMemory(true)           // Enable short-term memory
-            .slidingWindowTurns(20)       // Keep last 20 turns
             .build();
 
         assertNotNull(agent);
