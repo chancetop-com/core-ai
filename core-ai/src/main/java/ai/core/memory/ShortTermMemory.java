@@ -25,7 +25,6 @@ public class ShortTermMemory {
     private static final int DEFAULT_MAX_CONTEXT_TOKENS = 128000;
     private static final int MIN_SUMMARY_TOKENS = 500;
     private static final int MAX_SUMMARY_TOKENS = 4000;
-
     private final double triggerThreshold;
     private final int keepRecentTurns;
     private final int maxContextTokens;
@@ -68,25 +67,53 @@ public class ShortTermMemory {
 
         LOGGER.info("Compressing messages: currentTokens={}, threshold={}", currentTokens, (int) (maxContextTokens * triggerThreshold));
 
+        return doCompress(messages);
+    }
+
+    private List<Message> doCompress(List<Message> messages) {
         var systemMsg = extractSystemMessage(messages);
         var conversationMsgs = extractConversationMessages(messages);
 
-        if (conversationMsgs.size() <= keepRecentTurns * 2) {
+        if (conversationMsgs.size() <= 2) {
             LOGGER.debug("Not enough messages to compress, keeping all");
             return messages;
         }
 
-        int keepFromIndex = calculateKeepFromIndex(conversationMsgs);
-        //todo keepFromIndex need be consider if text is Beyond context window.
-        var toCompress = new ArrayList<Message>(conversationMsgs.subList(0, keepFromIndex));
-        var toKeep = new ArrayList<Message>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
+        // Only compress when last message is USER (new user input)
+        if (conversationMsgs.getLast().role != RoleType.USER) {
+            LOGGER.debug("Last message is not USER, skip compression");
+            return messages;
+        }
 
-        var summary = summarize(toCompress);
+        int keepFromIndex = calculateKeepFromIndex(conversationMsgs);
+        if (keepFromIndex <= 0) {
+            LOGGER.warn("No messages to compress after calculation");
+            return messages;
+        }
+
+        var toCompress = new ArrayList<>(conversationMsgs.subList(0, keepFromIndex));
+        var toKeep = new ArrayList<>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
+
+        if (toCompress.isEmpty()) {
+            LOGGER.debug("Nothing to compress, keeping all messages");
+            return messages;
+        }
+
+        String summary = summarize(toCompress);
         if (summary.isBlank()) {
             LOGGER.warn("Summarization returned empty result, keeping original messages");
             return messages;
         }
 
+        List<Message> result = buildCompressedResult(systemMsg, summary, toKeep);
+        int newTokens = MessageTokenCounter.count(result);
+        LOGGER.info("Compression complete: {} -> {} tokens, {} -> {} messages",
+            MessageTokenCounter.count(messages), newTokens, messages.size(), result.size());
+
+        return result;
+    }
+
+    private List<Message> buildCompressedResult(Message systemMsg, String summary, List<Message> toKeep) {
         var toolCallId = "memory_compress_" + System.currentTimeMillis();
         FunctionCall compressCall = FunctionCall.of(toolCallId, "function", "memory_compress", "{}");
         var toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(compressCall));
@@ -99,11 +126,6 @@ public class ShortTermMemory {
         result.add(toolCallMsg);
         result.add(toolResultMsg);
         result.addAll(toKeep);
-
-        var newTokens = MessageTokenCounter.count(result);
-        LOGGER.info("Compression complete: {} -> {} tokens, {} -> {} messages",
-            currentTokens, newTokens, messages.size(), result.size());
-
         return result;
     }
 
@@ -133,17 +155,34 @@ public class ShortTermMemory {
     }
 
     private int calculateKeepFromIndex(List<Message> conversationMsgs) {
-        int turnCount = 0;
-        int keepFromIndex = conversationMsgs.size();
+        // Last message is guaranteed to be USER (checked in doCompress)
+        int lastUserIndex = conversationMsgs.size() - 1;
 
-        for (int i = conversationMsgs.size() - 1; i >= 0; i--) {
-            Message msg = conversationMsgs.get(i);
-            if (msg.role == RoleType.USER) {
+        // Try to keep recent N turns
+        int keepFromIndex = findKeepFromIndexByTurns(conversationMsgs, lastUserIndex);
+
+        // Check if keeping N turns exceeds threshold
+        int keepTokens = MessageTokenCounter.countFrom(conversationMsgs, keepFromIndex);
+        int threshold = (int) (maxContextTokens * triggerThreshold);
+
+        if (keepTokens >= threshold) {
+            // N turns too large, only keep last USER message
+            LOGGER.info("Recent {} turns exceed threshold ({} >= {}), keeping only last USER message",
+                keepRecentTurns, keepTokens, threshold);
+            return lastUserIndex;
+        }
+
+        return keepFromIndex;
+    }
+
+    private int findKeepFromIndexByTurns(List<Message> conversationMsgs, int lastUserIndex) {
+        int keepFromIndex = lastUserIndex;
+        int turnCount = 0;
+
+        for (int i = lastUserIndex - 1; i >= 0 && turnCount < keepRecentTurns; i--) {
+            keepFromIndex = i;
+            if (conversationMsgs.get(i).role == RoleType.USER) {
                 turnCount++;
-                if (turnCount >= keepRecentTurns) {
-                    keepFromIndex = i;
-                    break;
-                }
             }
         }
 
@@ -186,11 +225,21 @@ public class ShortTermMemory {
     }
 
     private String formatMessages(List<Message> messages) {
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(1024);
         for (Message msg : messages) {
             if (msg.role == RoleType.SYSTEM) {
                 continue;
             }
+
+            // Handle tool calls (ASSISTANT with toolCalls but no content)
+            if (msg.toolCalls != null && !msg.toolCalls.isEmpty()) {
+                String toolNames = msg.toolCalls.stream()
+                    .map(tc -> tc.function != null ? tc.function.name : "unknown")
+                    .collect(java.util.stream.Collectors.joining(", "));
+                sb.append("Assistant: [Called tools: ").append(toolNames).append("]\n");
+            }
+
+            // Handle regular content
             String content = msg.content != null ? msg.content : "";
             if (!content.isBlank()) {
                 String role = switch (msg.role) {

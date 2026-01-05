@@ -135,6 +135,8 @@ class ShortTermMemoryTest {
             messages.add(Message.of(RoleType.USER, "User message " + i));
             messages.add(Message.of(RoleType.ASSISTANT, "Assistant response " + i));
         }
+        // Add final USER message (compression only triggers on new user input)
+        messages.add(Message.of(RoleType.USER, "Final user message"));
 
         List<Message> result = testMemory.compress(messages);
 
@@ -166,6 +168,8 @@ class ShortTermMemoryTest {
             messages.add(Message.of(RoleType.USER, "User " + i));
             messages.add(Message.of(RoleType.ASSISTANT, "Assistant " + i));
         }
+        // Add final USER message (compression only triggers on new user input)
+        messages.add(Message.of(RoleType.USER, "Final user message"));
 
         List<Message> result = testMemory.compress(messages);
 
