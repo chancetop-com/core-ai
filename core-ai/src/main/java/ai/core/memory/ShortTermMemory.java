@@ -157,13 +157,9 @@ public class ShortTermMemory {
 
         boolean isCurrentChainActive = conversationMsgs.getLast().role != RoleType.USER;
 
-        // If in middle of tool call chain, must preserve from lastUserIndex to end
         int minKeepFromIndex = isCurrentChainActive ? lastUserIndex : conversationMsgs.size() - 1;
-
-        // Try to keep recent N turns (counting from last USER)
         int keepFromIndex = findKeepFromIndexByTurns(conversationMsgs, lastUserIndex);
 
-        // Ensure we don't break the current conversation chain
         keepFromIndex = Math.min(keepFromIndex, minKeepFromIndex);
 
         // Check if keeping these messages exceeds threshold
@@ -245,7 +241,6 @@ public class ShortTermMemory {
                 continue;
             }
 
-            // Handle tool calls (ASSISTANT with toolCalls but no content)
             if (msg.toolCalls != null && !msg.toolCalls.isEmpty()) {
                 String toolNames = msg.toolCalls.stream()
                     .map(tc -> tc.function != null ? tc.function.name : "unknown")
@@ -253,7 +248,6 @@ public class ShortTermMemory {
                 sb.append("Assistant: [Called tools: ").append(toolNames).append("]\n");
             }
 
-            // Handle regular content
             String content = msg.content != null ? msg.content : "";
             if (!content.isBlank()) {
                 String role = switch (msg.role) {

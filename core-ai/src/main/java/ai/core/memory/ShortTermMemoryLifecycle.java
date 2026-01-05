@@ -34,8 +34,4 @@ public class ShortTermMemoryLifecycle extends AbstractLifecycle {
             LOGGER.debug("Messages compressed before model call");
         }
     }
-
-    public ShortTermMemory getShortTermMemory() {
-        return shortTermMemory;
-    }
 }
