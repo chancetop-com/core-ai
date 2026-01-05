@@ -5,6 +5,7 @@ import java.util.Objects;
 /**
  * @author xander
  */
+//todo 没有隔离，如何查Session 过去的会话内容
 public final class MemoryScope {
 
     public static MemoryScope of(String userId) {

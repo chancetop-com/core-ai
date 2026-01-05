@@ -5,7 +5,6 @@ import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProviders;
 import ai.core.memory.UnifiedMemoryConfig;
-import ai.core.memory.conflict.ConflictStrategy;
 import ai.core.memory.longterm.InMemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
@@ -64,8 +63,6 @@ class AgentLongTermMemoryTest extends IntegrationTest {
             .store(store)
             .config(LongTermMemoryConfig.builder()
                 .asyncExtraction(false)
-                .enableConflictResolution(true)
-                .conflictStrategy(ConflictStrategy.LLM_MERGE)
                 .build())
             .build();
 
@@ -281,10 +278,10 @@ class AgentLongTermMemoryTest extends IntegrationTest {
      * Generate a mock embedding for testing.
      * In real scenarios, this would come from the LLM provider.
      */
-    private float[] generateMockEmbedding() {
-        float[] embedding = new float[1536];
-        for (int i = 0; i < embedding.length; i++) {
-            embedding[i] = (float) Math.random() * 2 - 1;
+    private List<Double> generateMockEmbedding() {
+        List<Double> embedding = new java.util.ArrayList<>();
+        for (int i = 0; i < 1536; i++) {
+            embedding.add(Math.random() * 2 - 1);
         }
         return embedding;
     }
@@ -529,9 +526,9 @@ class AgentLongTermMemoryTest extends IntegrationTest {
                 pref.getContent(), fact.getContent(), goal.getContent()
             ))
         );
-        float[] prefEmbedding = embeddingResponse.embeddings.get(0).embedding.toFloatArray();
-        float[] factEmbedding = embeddingResponse.embeddings.get(1).embedding.toFloatArray();
-        float[] goalEmbedding = embeddingResponse.embeddings.get(2).embedding.toFloatArray();
+        List<Double> prefEmbedding = embeddingResponse.embeddings.get(0).embedding.vectors();
+        List<Double> factEmbedding = embeddingResponse.embeddings.get(1).embedding.vectors();
+        List<Double> goalEmbedding = embeddingResponse.embeddings.get(2).embedding.vectors();
 
         store.save(pref, prefEmbedding);
         store.save(fact, factEmbedding);

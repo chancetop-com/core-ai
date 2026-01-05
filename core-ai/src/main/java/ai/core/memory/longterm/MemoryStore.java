@@ -10,17 +10,17 @@ public interface MemoryStore {
 
     void save(MemoryRecord record);
 
-    void save(MemoryRecord record, float[] embedding);
+    void save(MemoryRecord record, List<Double> embedding);
 
-    void saveAll(List<MemoryRecord> records, List<float[]> embeddings);
+    void saveAll(List<MemoryRecord> records, List<List<Double>> embeddings);
 
     Optional<MemoryRecord> findById(String id);
 
     List<MemoryRecord> findByScope(MemoryScope scope);
 
-    List<MemoryRecord> searchByVector(MemoryScope scope, float[] queryEmbedding, int topK);
+    List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK);
 
-    List<MemoryRecord> searchByVector(MemoryScope scope, float[] queryEmbedding, int topK, SearchFilter filter);
+    List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK, SearchFilter filter);
 
     List<MemoryRecord> searchByKeyword(MemoryScope scope, String keyword, int topK);
 

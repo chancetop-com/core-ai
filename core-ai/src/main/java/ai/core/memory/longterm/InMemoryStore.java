@@ -9,12 +9,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
+ * In-memory implementation of MemoryStore for testing and development.
+ *
  * @author xander
  */
 public class InMemoryStore implements MemoryStore {
 
     private final Map<String, MemoryRecord> records = new ConcurrentHashMap<>();
-    private final Map<String, float[]> embeddings = new ConcurrentHashMap<>();
+    private final Map<String, List<Double>> embeddings = new ConcurrentHashMap<>();
 
     @Override
     public void save(MemoryRecord record) {
@@ -22,7 +24,7 @@ public class InMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void save(MemoryRecord record, float[] embedding) {
+    public void save(MemoryRecord record, List<Double> embedding) {
         save(record);
         if (embedding != null) {
             embeddings.put(record.getId(), embedding);
@@ -30,7 +32,7 @@ public class InMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void saveAll(List<MemoryRecord> recordList, List<float[]> embeddingList) {
+    public void saveAll(List<MemoryRecord> recordList, List<List<Double>> embeddingList) {
         if (recordList.size() != embeddingList.size()) {
             throw new IllegalArgumentException("Records and embeddings must have same size");
         }
@@ -52,19 +54,20 @@ public class InMemoryStore implements MemoryStore {
     }
 
     @Override
-    public List<MemoryRecord> searchByVector(MemoryScope scope, float[] queryEmbedding, int topK) {
+    public List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK) {
         return searchByVector(scope, queryEmbedding, topK, null);
     }
 
     @Override
-    public List<MemoryRecord> searchByVector(MemoryScope scope, float[] queryEmbedding, int topK, SearchFilter filter) {
+    public List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK,
+                                              SearchFilter filter) {
         List<ScoredRecord> scored = new ArrayList<>();
 
         for (MemoryRecord record : records.values()) {
             if (!matchesScope(record, scope)) continue;
             if (filter != null && !filter.matches(record)) continue;
 
-            float[] embedding = embeddings.get(record.getId());
+            List<Double> embedding = embeddings.get(record.getId());
             if (embedding == null) continue;
 
             double similarity = cosineSimilarity(queryEmbedding, embedding);
@@ -189,31 +192,31 @@ public class InMemoryStore implements MemoryStore {
             if (kw.isEmpty()) continue;
             totalWeight++;
 
-            // Exact word match (higher score)
             Pattern wordPattern = Pattern.compile("\\b" + Pattern.quote(kw) + "\\b");
             if (wordPattern.matcher(lowerContent).find()) {
                 matchCount += 2;
             } else if (lowerContent.contains(kw)) {
-                // Partial match (lower score)
                 matchCount += 1;
             }
         }
 
         if (totalWeight == 0) return 0.0;
-        return (double) matchCount / (totalWeight * 2);  // Normalize to 0-1
+        return (double) matchCount / (totalWeight * 2);
     }
 
-    private double cosineSimilarity(float[] a, float[] b) {
-        if (a == null || b == null || a.length != b.length) return 0.0;
+    private double cosineSimilarity(List<Double> a, List<Double> b) {
+        if (a == null || b == null || a.size() != b.size()) return 0.0;
 
         double dotProduct = 0.0;
         double normA = 0.0;
         double normB = 0.0;
 
-        for (int i = 0; i < a.length; i++) {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
+        for (int i = 0; i < a.size(); i++) {
+            double valA = a.get(i);
+            double valB = b.get(i);
+            dotProduct += valA * valB;
+            normA += valA * valA;
+            normB += valB * valB;
         }
 
         if (normA == 0.0 || normB == 0.0) return 0.0;

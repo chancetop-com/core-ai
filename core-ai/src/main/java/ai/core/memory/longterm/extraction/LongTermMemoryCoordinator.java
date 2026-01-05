@@ -6,9 +6,6 @@ import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
-import ai.core.memory.conflict.ConflictGroup;
-import ai.core.memory.conflict.ConflictStrategy;
-import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryScope;
@@ -33,13 +30,11 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class LongTermMemoryCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger(LongTermMemoryCoordinator.class);
-    private static final int CONFLICT_SEARCH_TOP_K = 5;
 
     private final MemoryStore store;
     private final MemoryExtractor extractor;
     private final LLMProvider llmProvider;
     private final LongTermMemoryConfig config;
-    private final MemoryConflictResolver conflictResolver;
     private final Executor executor;
 
     private final ReentrantLock bufferLock = new ReentrantLock();
@@ -58,28 +53,18 @@ public class LongTermMemoryCoordinator {
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
                                      LongTermMemoryConfig config) {
-        this(store, extractor, llmProvider, config, null, ForkJoinPool.commonPool());
+        this(store, extractor, llmProvider, config, ForkJoinPool.commonPool());
     }
 
     public LongTermMemoryCoordinator(MemoryStore store,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
                                      LongTermMemoryConfig config,
-                                     MemoryConflictResolver conflictResolver) {
-        this(store, extractor, llmProvider, config, conflictResolver, ForkJoinPool.commonPool());
-    }
-
-    public LongTermMemoryCoordinator(MemoryStore store,
-                                     MemoryExtractor extractor,
-                                     LLMProvider llmProvider,
-                                     LongTermMemoryConfig config,
-                                     MemoryConflictResolver conflictResolver,
                                      Executor executor) {
         this.store = store;
         this.extractor = extractor;
         this.llmProvider = llmProvider;
         this.config = config;
-        this.conflictResolver = conflictResolver;
         this.executor = executor;
     }
 
@@ -172,7 +157,7 @@ public class LongTermMemoryCoordinator {
             List<MemoryRecord> records = extractor.extract(scope, messages);
             if (records.isEmpty()) {
                 LOGGER.debug("No memories extracted from {} messages", messages.size());
-                success = true;  // No records is still a successful extraction
+                success = true;
                 return;
             }
 
@@ -181,30 +166,19 @@ public class LongTermMemoryCoordinator {
                 record.setSessionId(sessionId);
             }
 
-            // Generate embeddings first (used for both conflict detection and storage)
-            List<float[]> embeddings = generateEmbeddings(records);
+            // Generate embeddings
+            List<List<Double>> embeddings = generateEmbeddings(records);
             if (embeddings.size() != records.size()) {
                 LOGGER.error("Embedding count mismatch: {} records, {} embeddings",
                     records.size(), embeddings.size());
                 return;
             }
 
-            // Resolve conflicts with existing memories if enabled (reuse embeddings)
-            List<MemoryRecord> finalRecords = resolveConflictsIfEnabled(records, embeddings);
-            if (finalRecords.isEmpty()) {
-                LOGGER.debug("No records to save after conflict resolution");
-                success = true;
-                return;
-            }
-
-            // Filter embeddings to match final records
-            List<float[]> finalEmbeddings = filterEmbeddings(records, embeddings, finalRecords);
-
-            store.saveAll(finalRecords, finalEmbeddings);
+            store.saveAll(records, embeddings);
             success = true;
 
             LOGGER.info("Extracted and saved {} memories from turns {}-{}",
-                finalRecords.size(), startTurn, endTurn);
+                records.size(), startTurn, endTurn);
 
         } catch (Exception e) {
             LOGGER.error("Failed to extract memories", e);
@@ -229,101 +203,7 @@ public class LongTermMemoryCoordinator {
         }
     }
 
-    private List<float[]> filterEmbeddings(List<MemoryRecord> original, List<float[]> embeddings,
-                                           List<MemoryRecord> filtered) {
-        if (original.size() == filtered.size()) {
-            return embeddings;
-        }
-        List<float[]> result = new ArrayList<>();
-        for (int i = 0; i < original.size(); i++) {
-            if (filtered.contains(original.get(i))) {
-                result.add(embeddings.get(i));
-            }
-        }
-        return result;
-    }
-
-    private List<MemoryRecord> resolveConflictsIfEnabled(List<MemoryRecord> newRecords, List<float[]> embeddings) {
-        if (!config.isEnableConflictResolution() || conflictResolver == null) {
-            return newRecords;
-        }
-
-        ConflictStrategy strategy = config.getConflictStrategy();
-        List<MemoryRecord> resolved = new ArrayList<>();
-
-        for (int i = 0; i < newRecords.size(); i++) {
-            MemoryRecord newRecord = newRecords.get(i);
-            float[] embedding = embeddings.get(i);
-            MemoryRecord result = resolveConflictForRecord(newRecord, embedding, strategy);
-            if (result != null) {
-                resolved.add(result);
-            }
-        }
-
-        return resolved;
-    }
-
-    private MemoryRecord resolveConflictForRecord(MemoryRecord newRecord, float[] embedding, ConflictStrategy strategy) {
-        // Search for similar existing memories using pre-generated embedding
-        List<MemoryRecord> similar = findSimilarExisting(embedding);
-        if (similar.isEmpty()) {
-            return newRecord;
-        }
-
-        // Filter to find actual conflicts
-        List<MemoryRecord> conflicts = similar.stream()
-            .filter(existing -> conflictResolver.mayConflict(newRecord, existing))
-            .toList();
-
-        if (conflicts.isEmpty()) {
-            return newRecord;
-        }
-
-        LOGGER.debug("Found {} conflicts for new memory: {}", conflicts.size(),
-            truncate(newRecord.getContent(), 50));
-
-        // Create conflict group with new record and existing conflicts
-        List<MemoryRecord> allConflicting = new ArrayList<>(conflicts);
-        allConflicting.add(newRecord);
-        String topic = extractSimpleTopic(newRecord.getContent());
-        ConflictGroup group = new ConflictGroup(topic, allConflicting);
-
-        // Resolve the conflict
-        MemoryRecord merged = conflictResolver.resolveGroup(group, strategy);
-
-        // Delete the old conflicting records from store
-        for (MemoryRecord oldRecord : conflicts) {
-            try {
-                store.delete(oldRecord.getId());
-                LOGGER.debug("Deleted conflicting memory: {}", oldRecord.getId());
-            } catch (Exception e) {
-                LOGGER.warn("Failed to delete conflicting memory: {}", oldRecord.getId(), e);
-            }
-        }
-
-        return merged;
-    }
-
-    private List<MemoryRecord> findSimilarExisting(float[] embedding) {
-        if (scope == null || embedding == null) {
-            return List.of();
-        }
-        return store.searchByVector(scope, embedding, CONFLICT_SEARCH_TOP_K);
-    }
-
-    private String extractSimpleTopic(String content) {
-        if (content == null || content.isBlank()) {
-            return "unknown";
-        }
-        return content.length() > 30 ? content.substring(0, 30) : content;
-    }
-
-    private String truncate(String text, int maxLen) {
-        if (text == null) return "";
-        return text.length() > maxLen ? text.substring(0, maxLen) + "..." : text;
-    }
-
-    private List<float[]> generateEmbeddings(List<MemoryRecord> records) {
+    private List<List<Double>> generateEmbeddings(List<MemoryRecord> records) {
         List<String> contents = records.stream()
             .map(MemoryRecord::getContent)
             .toList();
@@ -331,11 +211,11 @@ public class LongTermMemoryCoordinator {
         try {
             EmbeddingResponse response = llmProvider.embeddings(new EmbeddingRequest(contents));
 
-            List<float[]> embeddings = new ArrayList<>();
+            List<List<Double>> embeddings = new ArrayList<>();
             if (response != null && response.embeddings != null) {
                 for (var embeddingData : response.embeddings) {
                     if (embeddingData.embedding != null) {
-                        embeddings.add(embeddingData.embedding.toFloatArray());
+                        embeddings.add(embeddingData.embedding.vectors());
                     }
                 }
             }
@@ -397,8 +277,6 @@ public class LongTermMemoryCoordinator {
             LOGGER.error("Extraction failed", e.getCause());
         }
     }
-
-    // Getters for testing/monitoring
 
     public int getBufferSize() {
         bufferLock.lock();

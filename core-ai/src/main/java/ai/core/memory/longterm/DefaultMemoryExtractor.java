@@ -21,9 +21,10 @@ import java.util.Locale;
  */
 public class DefaultMemoryExtractor implements MemoryExtractor {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultMemoryExtractor.class);
+    //todo
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
+    //todo move prompt to prompt
     private static final String DEFAULT_EXTRACTION_PROMPT = """
         Analyze the following conversation and extract memorable information about the user.
 
@@ -127,10 +128,10 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
 
     private List<MemoryRecord> parseResponse(MemoryScope scope, String response) {
         List<MemoryRecord> records = new ArrayList<>();
-
+        //todo try/for
         try {
             String json = extractJson(response);
-            List<ExtractedMemory> extracted = OBJECT_MAPPER.readValue(json, EXTRACTION_TYPE_REF);
+            var extracted = OBJECT_MAPPER.readValue(json, EXTRACTION_TYPE_REF);
 
             for (ExtractedMemory mem : extracted) {
                 if (mem.content == null || mem.content.isBlank()) {

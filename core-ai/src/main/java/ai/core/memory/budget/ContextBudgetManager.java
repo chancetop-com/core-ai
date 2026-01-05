@@ -11,16 +11,9 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Manages context token budget for memory injection.
- *
- * <p>Calculates available budget for memory based on:
- * - Model's max context window
- * - Current message history tokens
- * - System prompt tokens
- * - Reserved tokens for new generation
- *
  * @author xander
  */
+//todo remove
 public class ContextBudgetManager {
 
     private static final double DEFAULT_MEMORY_BUDGET_RATIO = 0.2;
@@ -54,13 +47,6 @@ public class ContextBudgetManager {
         this.reservedForGeneration = reservedForGeneration;
     }
 
-    /**
-     * Calculate available token budget for memory injection.
-     *
-     * @param currentMessages current message history
-     * @param systemPrompt    system prompt content
-     * @return available tokens for memory
-     */
     public int calculateAvailableBudget(List<Message> currentMessages, String systemPrompt) {
         int usedTokens = 0;
 
@@ -84,14 +70,6 @@ public class ContextBudgetManager {
         return Math.max(MIN_MEMORY_BUDGET, memoryBudget);
     }
 
-    /**
-     * Select memories that fit within the given token budget.
-     * Prioritizes by effective score (importance, recency, similarity).
-     *
-     * @param candidates memory candidates sorted by relevance
-     * @param budget     available token budget
-     * @return selected memories within budget
-     */
     public List<MemoryRecord> selectWithinBudget(List<MemoryRecord> candidates, int budget) {
         if (candidates == null || candidates.isEmpty() || budget <= 0) {
             return List.of();
@@ -121,12 +99,6 @@ public class ContextBudgetManager {
         return selected;
     }
 
-    /**
-     * Estimate token count for a memory record.
-     *
-     * @param record the memory record
-     * @return estimated token count
-     */
     public int estimateRecordTokens(MemoryRecord record) {
         if (record == null || record.getContent() == null) {
             return 0;
@@ -136,11 +108,6 @@ public class ContextBudgetManager {
         return contentTokens + 10; // ~10 tokens overhead for formatting
     }
 
-    /**
-     * Get the max context tokens for this manager.
-     *
-     * @return max context tokens
-     */
     public int getMaxContextTokens() {
         return maxContextTokens;
     }

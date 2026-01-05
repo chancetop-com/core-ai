@@ -1,7 +1,6 @@
 package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.memory.ShortTermMemory;
 import ai.core.memory.ShortTermMemoryLifecycle;
@@ -41,7 +40,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Boolean useGroupContext = false;
     private Boolean enableReflection = false;
     private Integer maxTurnNumber;
-    private SlidingWindowConfig slidingWindowConfig;
     private ShortTermMemory shortTermMemory;
     private boolean shortTermMemoryEnabled = true;
 
@@ -63,18 +61,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder maxTurn(Integer maxTurnNumber) {
         this.maxTurnNumber = maxTurnNumber;
-        return this;
-    }
-
-    public AgentBuilder slidingWindowTurns(Integer maxTurns) {
-        this.slidingWindowConfig = SlidingWindowConfig.builder()
-                .maxTurns(maxTurns)
-                .build();
-        return this;
-    }
-
-    public AgentBuilder slidingWindowConfig(SlidingWindowConfig config) {
-        this.slidingWindowConfig = config;
         return this;
     }
 
@@ -255,10 +241,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (this.shortTermMemoryEnabled) {
             agent.shortTermMemory = this.shortTermMemory != null
                     ? this.shortTermMemory
-                    : new ShortTermMemory();
-            agent.shortTermMemory.setLLMProvider(this.llmProvider, this.model);
+                    : new ShortTermMemory(this.llmProvider, this.model);
             agent.agentLifecycles.add(new ShortTermMemoryLifecycle(agent.shortTermMemory));
         }
+        //todo shorTermMemory (xxxxxxx)
 
         configureUnifiedMemory(agent);
     }

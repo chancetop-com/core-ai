@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author xander
@@ -20,11 +19,6 @@ public class ShortTermMemoryLifecycle extends AbstractLifecycle {
 
     public ShortTermMemoryLifecycle(ShortTermMemory shortTermMemory) {
         this.shortTermMemory = shortTermMemory;
-    }
-
-    @Override
-    public void beforeAgentRun(AtomicReference<String> query, ExecutionContext executionContext) {
-        shortTermMemory.clear();
     }
 
     @Override
