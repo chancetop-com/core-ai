@@ -67,9 +67,10 @@ import ai.core.memory.ShortTermMemory;
 
 // 创建自定义配置
 ShortTermMemory memory = new ShortTermMemory(
-    2000,    // maxSummaryTokens - 摘要最大 token 数
-    0.33,    // triggerRatio - 触发总结的阈值比例
-    executor // 自定义异步执行器
+    0.8,         // triggerThreshold - 触发压缩的阈值比例（默认 0.8，即 80%）
+    5,           // keepRecentTurns - 保留最近的对话轮数（默认 5）
+    llmProvider, // LLM 提供者（用于生成摘要）
+    "gpt-4"      // 模型名称（用于获取最大 token 限制）
 );
 
 Agent agent = Agent.builder()
@@ -79,35 +80,43 @@ Agent agent = Agent.builder()
     .build();
 ```
 
-### 总结机制原理
+### 压缩机制原理
+
+短期记忆的压缩在每次 LLM 调用前（`beforeModel` 生命周期）同步触发：
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                      对话流程                             │
+│                      压缩流程                             │
 ├──────────────────────────────────────────────────────────┤
-│  第 1 轮：用户提问                                        │
-│  第 2 轮：助手回复                                        │
-│  第 3 轮：用户追问                                        │
-│     ...                                                  │
-│  第 N 轮：Token 数量 > 阈值                               │
+│  1. 检查当前 Token 数量是否超过阈值                         │
+│     （阈值 = 模型最大上下文 × triggerThreshold）            │
 │          ↓                                               │
-│  [触发异步总结]                                          │
+│  2. 如果超过阈值，执行压缩：                                │
+│     • 保留系统消息                                        │
+│     • 保留最近 N 轮对话（keepRecentTurns）                  │
+│     • 如果 N 轮仍超过阈值，只保留当前对话链                  │
 │          ↓                                               │
-│  旧消息 → 摘要                                           │
-│  保留最近消息                                            │
+│  3. 调用 LLM 生成摘要                                      │
+│          ↓                                               │
+│  4. 摘要作为 Tool Call 消息注入：                          │
+│     [ASSISTANT] tool_call: memory_compress                │
+│     [TOOL] [Previous Conversation Summary]...             │
 └──────────────────────────────────────────────────────────┘
 ```
 
-### 滑动窗口记忆
+### 对话链保护
 
-对于长对话，使用滑动窗口保留最近的上下文：
+当 Agent 正在执行工具调用时（最后一条消息是 TOOL），压缩会保护当前对话链不被截断：
 
-```java
-Agent agent = Agent.builder()
-    .name("agent")
-    .llmProvider(llmProvider)
-    .slidingWindowTurns(10)  // 保留最近 10 轮对话
-    .build();
+```
+┌──────────────────────────────────────────────────────────┐
+│  示例：工具调用过程中触发压缩                               │
+├──────────────────────────────────────────────────────────┤
+│  [历史消息...]  ← 这部分会被压缩成摘要                      │
+│  [USER] 帮我查询天气                                      │
+│  [ASSISTANT] tool_call: get_weather                      │
+│  [TOOL] 北京今天 25°C，晴  ← 当前对话链保护                 │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### 禁用短期记忆

@@ -67,9 +67,10 @@ import ai.core.memory.ShortTermMemory;
 
 // Create with custom configuration
 ShortTermMemory memory = new ShortTermMemory(
-    2000,    // maxSummaryTokens
-    0.33,    // triggerRatio (when to start summarizing)
-    executor // custom executor for async operations
+    0.8,         // triggerThreshold - ratio to trigger compression (default 0.8, i.e., 80%)
+    5,           // keepRecentTurns - number of recent turns to keep (default 5)
+    llmProvider, // LLM provider (for generating summaries)
+    "gpt-4"      // model name (for getting max token limit)
 );
 
 Agent agent = Agent.builder()
@@ -79,35 +80,43 @@ Agent agent = Agent.builder()
     .build();
 ```
 
-### How Summarization Works
+### How Compression Works
+
+Short-term memory compression triggers synchronously before each LLM call (in the `beforeModel` lifecycle):
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                   Conversation Flow                       │
+│                   Compression Flow                        │
 ├──────────────────────────────────────────────────────────┤
-│  Turn 1: User asks question                              │
-│  Turn 2: Assistant responds                              │
-│  Turn 3: User follows up                                 │
-│     ...                                                  │
-│  Turn N: Token count > threshold                         │
+│  1. Check if current token count exceeds threshold        │
+│     (threshold = model max context × triggerThreshold)    │
 │          ↓                                               │
-│  [Async Summarization Triggered]                         │
+│  2. If exceeded, perform compression:                     │
+│     • Preserve system message                            │
+│     • Keep recent N turns (keepRecentTurns)              │
+│     • If N turns still exceed, keep only current chain   │
 │          ↓                                               │
-│  Old messages → Summary                                  │
-│  Recent messages kept                                    │
+│  3. Call LLM to generate summary                         │
+│          ↓                                               │
+│  4. Summary injected as Tool Call message:               │
+│     [ASSISTANT] tool_call: memory_compress               │
+│     [TOOL] [Previous Conversation Summary]...            │
 └──────────────────────────────────────────────────────────┘
 ```
 
-### Sliding Window Memory
+### Conversation Chain Protection
 
-For large conversations, use sliding window to keep recent context:
+When the Agent is executing tool calls (last message is TOOL), compression protects the current conversation chain from being truncated:
 
-```java
-Agent agent = Agent.builder()
-    .name("agent")
-    .llmProvider(llmProvider)
-    .slidingWindowTurns(10)  // Keep last 10 conversation turns
-    .build();
+```
+┌──────────────────────────────────────────────────────────┐
+│  Example: Compression during tool execution               │
+├──────────────────────────────────────────────────────────┤
+│  [Historical messages...]  ← Compressed into summary      │
+│  [USER] Check the weather                                │
+│  [ASSISTANT] tool_call: get_weather                      │
+│  [TOOL] Beijing 25°C, sunny  ← Current chain protected   │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### Disabling Short-term Memory

@@ -233,15 +233,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-        // Short-term memory configuration
+
         if (this.shortTermMemoryEnabled) {
             agent.shortTermMemory = this.shortTermMemory != null
                     ? this.shortTermMemory
                     : new ShortTermMemory(this.llmProvider, this.model);
             agent.agentLifecycles.add(new ShortTermMemoryLifecycle(agent.shortTermMemory));
         }
-        //todo shorTermMemory (xxxxxxx)
-
         configureUnifiedMemory(agent);
     }
 
