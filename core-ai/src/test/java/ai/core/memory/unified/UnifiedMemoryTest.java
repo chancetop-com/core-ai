@@ -13,9 +13,6 @@ import ai.core.llm.domain.RoleType;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.UnifiedMemoryLifecycle;
 import ai.core.memory.budget.ContextBudgetManager;
-import ai.core.memory.conflict.ConflictGroup;
-import ai.core.memory.conflict.ConflictStrategy;
-import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.InMemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
@@ -79,15 +76,6 @@ class UnifiedMemoryTest {
             .content(content)
             .type(type)
             .importance(importance)
-            .build();
-    }
-
-    private MemoryRecord createMemoryRecordWithScope(MemoryScope scope, String content, MemoryType type) {
-        return MemoryRecord.builder()
-            .scope(scope)
-            .content(content)
-            .type(type)
-            .importance(0.8)
             .build();
     }
 
@@ -187,72 +175,6 @@ class UnifiedMemoryTest {
             List<MemoryRecord> selected = manager.selectWithinBudget(candidates, 10);
 
             assertEquals(1, selected.size(), "Should select one record");
-        }
-    }
-
-    @Nested
-    @DisplayName("MemoryConflictResolver Tests")
-    class MemoryConflictResolverTests {
-
-        @Test
-        @DisplayName("Detect conflicts between similar records")
-        void testDetectConflicts() {
-            MemoryConflictResolver resolver = new MemoryConflictResolver();
-            MemoryScope scope = MemoryScope.forUser(USER_ID);
-
-            List<MemoryRecord> records = List.of(
-                createMemoryRecordWithScope(scope, "User prefers Python programming", MemoryType.PREFERENCE),
-                createMemoryRecordWithScope(scope, "User prefers Java programming", MemoryType.PREFERENCE),
-                createMemoryRecord("User works at company X", MemoryType.FACT, 0.8)
-            );
-
-            List<ConflictGroup> conflicts = resolver.detectConflicts(records);
-
-            // May or may not detect conflicts depending on topic extraction
-            assertNotNull(conflicts);
-        }
-
-        @Test
-        @DisplayName("Resolve conflicts with KEEP_LATEST strategy")
-        void testResolveKeepLatest() {
-            MemoryConflictResolver resolver = new MemoryConflictResolver();
-
-            MemoryRecord older = createMemoryRecord("User prefers dark mode", MemoryType.PREFERENCE, 0.8);
-            MemoryRecord newer = createMemoryRecord("User prefers light mode", MemoryType.PREFERENCE, 0.8);
-
-            ConflictGroup group = new ConflictGroup("user prefers", List.of(older, newer));
-
-            MemoryRecord resolved = resolver.resolveGroup(group, ConflictStrategy.KEEP_LATEST);
-
-            assertNotNull(resolved);
-            assertEquals(newer, resolved, "Should select the newest record");
-        }
-
-        @Test
-        @DisplayName("Resolve conflicts with KEEP_MOST_IMPORTANT strategy")
-        void testResolveKeepMostImportant() {
-            MemoryConflictResolver resolver = new MemoryConflictResolver();
-
-            MemoryRecord lowImportance = createMemoryRecord("Less important memory", MemoryType.FACT, 0.3);
-            MemoryRecord highImportance = createMemoryRecord("High importance memory", MemoryType.FACT, 0.95);
-
-            ConflictGroup group = new ConflictGroup("importance test", List.of(lowImportance, highImportance));
-
-            MemoryRecord resolved = resolver.resolveGroup(group, ConflictStrategy.KEEP_MOST_IMPORTANT);
-
-            assertNotNull(resolved);
-            assertEquals(highImportance, resolved, "Should select the most important record");
-        }
-
-        @Test
-        @DisplayName("mayConflict returns false for different types")
-        void testMayConflictDifferentTypes() {
-            MemoryConflictResolver resolver = new MemoryConflictResolver();
-
-            MemoryRecord pref = createMemoryRecord("User prefers X", MemoryType.PREFERENCE, 0.8);
-            MemoryRecord fact = createMemoryRecord("User prefers X", MemoryType.FACT, 0.8);
-
-            assertFalse(resolver.mayConflict(pref, fact), "Different types should not conflict");
         }
     }
 

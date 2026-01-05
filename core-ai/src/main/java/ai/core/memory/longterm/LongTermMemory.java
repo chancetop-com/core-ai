@@ -4,7 +4,6 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.Message;
-import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.slf4j.Logger;
@@ -33,16 +32,8 @@ public class LongTermMemory {
                           MemoryExtractor extractor,
                           LLMProvider llmProvider,
                           LongTermMemoryConfig config) {
-        this(store, extractor, llmProvider, config, null);
-    }
-
-    public LongTermMemory(MemoryStore store,
-                          MemoryExtractor extractor,
-                          LLMProvider llmProvider,
-                          LongTermMemoryConfig config,
-                          MemoryConflictResolver conflictResolver) {
         this.store = store;
-        this.coordinator = new LongTermMemoryCoordinator(store, extractor, llmProvider, config, conflictResolver);
+        this.coordinator = new LongTermMemoryCoordinator(store, extractor, llmProvider, config);
         this.llmProvider = llmProvider;
         this.config = config;
     }
@@ -75,7 +66,7 @@ public class LongTermMemory {
     }
 
     public List<MemoryRecord> recall(MemoryScope scope, String query, int topK) {
-        float[] queryEmbedding = generateEmbedding(query);
+        List<Double> queryEmbedding = generateEmbedding(query);
         if (queryEmbedding == null) {
             return List.of();
         }
@@ -87,7 +78,7 @@ public class LongTermMemory {
             return recall(query, topK);
         }
 
-        float[] queryEmbedding = generateEmbedding(query);
+        List<Double> queryEmbedding = generateEmbedding(query);
         if (queryEmbedding == null) {
             return List.of();
         }
@@ -131,7 +122,7 @@ public class LongTermMemory {
 
     // ==================== Internal Methods ====================
 
-    private float[] generateEmbedding(String text) {
+    private List<Double> generateEmbedding(String text) {
         if (llmProvider == null || text == null || text.isBlank()) {
             return null;
         }
@@ -141,10 +132,10 @@ public class LongTermMemory {
             if (response != null && response.embeddings != null && !response.embeddings.isEmpty()) {
                 var embeddingData = response.embeddings.getFirst();
                 if (embeddingData.embedding != null) {
-                    return embeddingData.embedding.toFloatArray();
+                    return embeddingData.embedding.vectors();
                 }
             }
-            LOGGER.warn("Failed to generate embedding: empty or invalid response for query, textLength={}", text.length());
+            LOGGER.warn("Failed to generate embedding: empty or invalid response, textLength={}", text.length());
         } catch (Exception e) {
             LOGGER.warn("Failed to generate embedding for memory recall, textLength={}", text.length(), e);
         }

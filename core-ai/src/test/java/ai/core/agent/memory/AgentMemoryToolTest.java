@@ -269,10 +269,10 @@ class AgentMemoryToolTest {
             .build();
     }
 
-    private float[] randomEmbedding() {
-        float[] embedding = new float[EMBEDDING_DIM];
+    private List<Double> randomEmbedding() {
+        List<Double> embedding = new ArrayList<>();
         for (int i = 0; i < EMBEDDING_DIM; i++) {
-            embedding[i] = random.nextFloat() * 2 - 1;
+            embedding.add((double) (random.nextFloat() * 2 - 1));
         }
         return embedding;
     }

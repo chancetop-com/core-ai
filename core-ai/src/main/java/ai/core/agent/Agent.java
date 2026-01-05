@@ -1,7 +1,6 @@
 package ai.core.agent;
 
 import ai.core.agent.slashcommand.SlashCommandParser;
-import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
@@ -71,9 +70,7 @@ public class Agent extends Node<Agent> {
     Integer maxTurnNumber;
     Boolean authenticated = false;
     ToolExecutor toolExecutor;
-    SlidingWindowConfig slidingWindowConfig;
     ShortTermMemory shortTermMemory;
-    private AgentMemoryCoordinator memoryCoordinator;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -246,7 +243,6 @@ public class Agent extends Node<Agent> {
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
-            applyMemoryCoordinatorIfNeeded();
             var turnMsgList = turn(getMessages(), toReqTools(toolCalls), constructionAssistantMsg);
             logger.info("Agent turn {}: received {} messages", currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
@@ -271,19 +267,6 @@ public class Agent extends Node<Agent> {
             var functionCall = FunctionCall.of(generateToolCallId(), "function", command.getToolName(), command.hasArguments() ? command.getArguments() : "{}");
             return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, null, List.of(functionCall)));
         }
-    }
-
-    private void applyMemoryCoordinatorIfNeeded() {
-        if (slidingWindowConfig == null) {
-            return;
-        }
-        if (memoryCoordinator == null) {
-            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, llmProvider, model, shortTermMemory);
-        }
-        memoryCoordinator.applySlidingWindowIfNeeded(this::getMessages, msgs -> {
-            clearMessages();
-            addMessages(msgs);
-        });
     }
 
     public Double getTemperature() {

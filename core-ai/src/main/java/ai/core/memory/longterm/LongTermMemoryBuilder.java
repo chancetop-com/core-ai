@@ -1,7 +1,6 @@
 package ai.core.memory.longterm;
 
 import ai.core.llm.LLMProvider;
-import ai.core.memory.conflict.MemoryConflictResolver;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 
 /**
@@ -13,7 +12,6 @@ public class LongTermMemoryBuilder {
     private MemoryExtractor extractor;
     private LongTermMemoryConfig config;
     private MemoryStore store;
-    private MemoryConflictResolver conflictResolver;
 
     public LongTermMemoryBuilder llmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
@@ -35,11 +33,6 @@ public class LongTermMemoryBuilder {
         return this;
     }
 
-    public LongTermMemoryBuilder conflictResolver(MemoryConflictResolver conflictResolver) {
-        this.conflictResolver = conflictResolver;
-        return this;
-    }
-
     public LongTermMemory build() {
         if (llmProvider == null) {
             throw new IllegalStateException("llmProvider is required for LongTermMemory");
@@ -57,12 +50,7 @@ public class LongTermMemoryBuilder {
             extractor = createDefaultExtractor();
         }
 
-        MemoryConflictResolver resolver = this.conflictResolver;
-        if (resolver == null && config.isEnableConflictResolution()) {
-            resolver = new MemoryConflictResolver(llmProvider, null);
-        }
-
-        return new LongTermMemory(store, extractor, llmProvider, config, resolver);
+        return new LongTermMemory(store, extractor, llmProvider, config);
     }
 
     private MemoryExtractor createDefaultExtractor() {

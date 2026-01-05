@@ -101,11 +101,11 @@ class LongTermMemoryBestPracticeTest {
         return mock;
     }
 
-    private float[] generateEmbedding(String text) {
-        float[] emb = new float[EMBEDDING_DIM];
+    private List<Double> generateEmbedding(String text) {
+        List<Double> emb = new ArrayList<>();
         Random r = new Random(text.hashCode());
         for (int i = 0; i < EMBEDDING_DIM; i++) {
-            emb[i] = r.nextFloat() * 2 - 1;
+            emb.add((double) (r.nextFloat() * 2 - 1));
         }
         return emb;
     }
@@ -144,8 +144,8 @@ class LongTermMemoryBestPracticeTest {
                 .build();
 
             // 3. Generate embeddings
-            float[] prefEmbedding = generateEmbedding("User prefers dark mode");
-            float[] factEmbedding = generateEmbedding("User is a software engineer");
+            List<Double> prefEmbedding = generateEmbedding("User prefers dark mode");
+            List<Double> factEmbedding = generateEmbedding("User is a software engineer");
 
             // 4. Store with embeddings
             store.save(preference, prefEmbedding);
@@ -186,7 +186,7 @@ class LongTermMemoryBestPracticeTest {
             );
 
             // Generate embeddings for all
-            List<float[]> embeddings = records.stream()
+            var embeddings = records.stream()
                 .map(r -> generateEmbedding(r.getContent()))
                 .toList();
 
@@ -209,7 +209,7 @@ class LongTermMemoryBestPracticeTest {
             storeTestMemories(store, scope);
 
             // Search by vector similarity
-            float[] queryEmbedding = generateEmbedding("What programming language does user like?");
+            List<Double> queryEmbedding = generateEmbedding("What programming language does user like?");
             List<MemoryRecord> results = store.searchByVector(scope, queryEmbedding, 3);
 
             assertFalse(results.isEmpty());
@@ -228,7 +228,7 @@ class LongTermMemoryBestPracticeTest {
             storeTestMemories(store, scope);
 
             // Search only PREFERENCE type
-            float[] queryEmbedding = generateEmbedding("user preferences");
+            List<Double> queryEmbedding = generateEmbedding("user preferences");
             SearchFilter filter = SearchFilter.builder()
                 .types(MemoryType.PREFERENCE)
                 .minImportance(0.5)
@@ -245,7 +245,7 @@ class LongTermMemoryBestPracticeTest {
                 MemoryRecord.builder().scope(scope).content("User is learning Kotlin").type(MemoryType.GOAL).build(),
                 MemoryRecord.builder().scope(scope).content("User joined team in 2023").type(MemoryType.FACT).build()
             );
-            List<float[]> embeddings = records.stream().map(r -> generateEmbedding(r.getContent())).toList();
+            List<List<Double>> embeddings = records.stream().map(r -> generateEmbedding(r.getContent())).toList();
             store.saveAll(records, embeddings);
         }
     }
@@ -453,13 +453,13 @@ class LongTermMemoryBestPracticeTest {
             }
 
             @Override
-            public void save(MemoryRecord record, float[] embedding) {
+            public void save(MemoryRecord record, List<Double> embedding) {
                 // Store record in metadata table
                 // Store embedding in vector index
             }
 
             @Override
-            public void saveAll(List<MemoryRecord> records, List<float[]> embeddings) {
+            public void saveAll(List<MemoryRecord> records, List<List<Double>> embeddings) {
                 // Batch insert for efficiency
                 for (int i = 0; i < records.size(); i++) {
                     save(records.get(i), embeddings.get(i));
@@ -479,14 +479,14 @@ class LongTermMemoryBestPracticeTest {
             }
 
             @Override
-            public List<MemoryRecord> searchByVector(MemoryScope scope, float[] queryEmbedding, int topK) {
+            public List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK) {
                 // Use vector database similarity search
                 // e.g., Milvus, Pinecone, pgvector
                 return List.of();
             }
 
             @Override
-            public List<MemoryRecord> searchByVector(MemoryScope scope, float[] queryEmbedding, int topK,
+            public List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK,
                                                       SearchFilter filter) {
                 // Vector search with metadata filtering
                 return List.of();

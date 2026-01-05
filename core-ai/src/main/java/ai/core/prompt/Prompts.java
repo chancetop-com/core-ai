@@ -29,9 +29,25 @@ public class Prompts {
               This tool is triggered manually by the user or executed automatically by the system.
               please return the tool results directly to the user.
               The tool result is :
-            
+
               %s
-            
+
               </system-reminder>
+            """;
+    public static final String SHORT_TERM_MEMORY_SUMMARY_PREFIX = "[Previous Conversation Summary]\n";
+    public static final String SHORT_TERM_MEMORY_SUMMARY_SUFFIX = "\n[End Summary]";
+    public static final String SHORT_TERM_MEMORY_COMPRESS_PROMPT = """
+            Summarize the following conversation into a concise summary.
+            Requirements:
+            1. Preserve key facts, decisions, and context
+            2. Keep important user preferences and goals mentioned
+            3. Remove redundant back-and-forth and filler content
+            4. Use bullet points for clarity
+            5. Keep within %d words
+
+            Conversation to summarize:
+            %s
+
+            Output summary directly:
             """;
 }

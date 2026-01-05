@@ -6,6 +6,7 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.prompt.Prompts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,6 +16,7 @@ import java.util.List;
 /**
  * @author xander
  */
+//todo add a interface
 public class ShortTermMemory {
     private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemory.class);
 
@@ -24,47 +26,26 @@ public class ShortTermMemory {
     private static final int MIN_SUMMARY_TOKENS = 500;
     private static final int MAX_SUMMARY_TOKENS = 4000;
 
-    private static final String COMPRESS_PROMPT = """
-        Summarize the following conversation into a concise summary.
-        Requirements:
-        1. Preserve key facts, decisions, and context
-        2. Keep important user preferences and goals mentioned
-        3. Remove redundant back-and-forth and filler content
-        4. Use bullet points for clarity
-        5. Keep within %d words
-
-        Conversation to summarize:
-        %s
-
-        Output summary directly:
-        """;
-
     private final double triggerThreshold;
     private final int keepRecentTurns;
-    private int maxContextTokens;
+    private final int maxContextTokens;
+    private final LLMProvider llmProvider;
+    private final String model;
 
-    private LLMProvider llmProvider;
-    private String model;
-    private String lastSummary = "";
-
-    public ShortTermMemory() {
-        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS);
+    public ShortTermMemory(LLMProvider llmProvider, String model) {
+        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, llmProvider, model);
     }
 
-    public ShortTermMemory(double triggerThreshold, int keepRecentTurns) {
+    public ShortTermMemory(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String model) {
         this.triggerThreshold = triggerThreshold;
         this.keepRecentTurns = keepRecentTurns;
-        this.maxContextTokens = DEFAULT_MAX_CONTEXT_TOKENS;
-    }
-
-    public void setLLMProvider(LLMProvider llmProvider, String model) {
         this.llmProvider = llmProvider;
         this.model = model;
         if (model != null) {
             int modelMax = LLMModelContextRegistry.getInstance().getMaxInputTokens(model);
-            if (modelMax > 0) {
-                this.maxContextTokens = modelMax;
-            }
+            this.maxContextTokens = modelMax > 0 ? modelMax : DEFAULT_MAX_CONTEXT_TOKENS;
+        } else {
+            this.maxContextTokens = DEFAULT_MAX_CONTEXT_TOKENS;
         }
     }
 
@@ -87,8 +68,8 @@ public class ShortTermMemory {
 
         LOGGER.info("Compressing messages: currentTokens={}, threshold={}", currentTokens, (int) (maxContextTokens * triggerThreshold));
 
-        Message systemMsg = extractSystemMessage(messages);
-        List<Message> conversationMsgs = extractConversationMessages(messages);
+        var systemMsg = extractSystemMessage(messages);
+        var conversationMsgs = extractConversationMessages(messages);
 
         if (conversationMsgs.size() <= keepRecentTurns * 2) {
             LOGGER.debug("Not enough messages to compress, keeping all");
@@ -96,20 +77,19 @@ public class ShortTermMemory {
         }
 
         int keepFromIndex = calculateKeepFromIndex(conversationMsgs);
-        List<Message> toCompress = new ArrayList<>(conversationMsgs.subList(0, keepFromIndex));
-        List<Message> toKeep = new ArrayList<>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
+        //todo keepFromIndex need be consider if text is Beyond context window.
+        var toCompress = new ArrayList<Message>(conversationMsgs.subList(0, keepFromIndex));
+        var toKeep = new ArrayList<Message>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
 
-        String summary = summarize(toCompress);
+        var summary = summarize(toCompress);
         if (summary.isBlank()) {
             LOGGER.warn("Summarization returned empty result, keeping original messages");
             return messages;
         }
 
-        lastSummary = summary;
-
-        String toolCallId = "memory_compress_" + System.currentTimeMillis();
+        var toolCallId = "memory_compress_" + System.currentTimeMillis();
         FunctionCall compressCall = FunctionCall.of(toolCallId, "function", "memory_compress", "{}");
-        Message toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(compressCall));
+        var toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(compressCall));
         Message toolResultMsg = Message.of(RoleType.TOOL, summary, "memory_compress", toolCallId, null, null);
 
         List<Message> result = new ArrayList<>();
@@ -120,19 +100,11 @@ public class ShortTermMemory {
         result.add(toolResultMsg);
         result.addAll(toKeep);
 
-        int newTokens = MessageTokenCounter.count(result);
+        var newTokens = MessageTokenCounter.count(result);
         LOGGER.info("Compression complete: {} -> {} tokens, {} -> {} messages",
             currentTokens, newTokens, messages.size(), result.size());
 
         return result;
-    }
-
-    public String getLastSummary() {
-        return lastSummary;
-    }
-
-    public void clear() {
-        this.lastSummary = "";
     }
 
     public int getMaxContextTokens() {
@@ -145,28 +117,6 @@ public class ShortTermMemory {
 
     public int getKeepRecentTurns() {
         return keepRecentTurns;
-    }
-
-    public List<Message> compressEvictedMessages(List<Message> evictedMessages) {
-        if (evictedMessages == null || evictedMessages.isEmpty() || llmProvider == null) {
-            return List.of();
-        }
-
-        String summary = summarize(evictedMessages);
-        if (summary.isBlank()) {
-            LOGGER.warn("Failed to compress evicted messages");
-            return List.of();
-        }
-
-        lastSummary = summary;
-        LOGGER.info("Compressed {} evicted messages into summary", evictedMessages.size());
-
-        String toolCallId = "memory_compress_" + System.currentTimeMillis();
-        FunctionCall compressCall = FunctionCall.of(toolCallId, "function", "memory_compress", "{}");
-        Message toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(compressCall));
-        Message toolResultMsg = Message.of(RoleType.TOOL, summary, "memory_compress", toolCallId, null, null);
-
-        return List.of(toolCallMsg, toolResultMsg);
     }
 
     private Message extractSystemMessage(List<Message> messages) {
@@ -208,9 +158,13 @@ public class ShortTermMemory {
 
         int targetTokens = Math.min(MAX_SUMMARY_TOKENS, Math.max(MIN_SUMMARY_TOKENS, maxContextTokens / 10));
         int targetWords = (int) (targetTokens * 0.75);
-        String prompt = String.format(COMPRESS_PROMPT, targetWords, content);
+        String prompt = String.format(Prompts.SHORT_TERM_MEMORY_COMPRESS_PROMPT, targetWords, content);
 
-        return callLLM(prompt);
+        String summary = callLLM(prompt);
+        if (summary.isBlank()) {
+            return "";
+        }
+        return Prompts.SHORT_TERM_MEMORY_SUMMARY_PREFIX + summary + Prompts.SHORT_TERM_MEMORY_SUMMARY_SUFFIX;
     }
 
     private String callLLM(String prompt) {

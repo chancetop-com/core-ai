@@ -67,7 +67,7 @@ class LongTermMemoryTest {
             .type(MemoryType.FACT)
             .build();
 
-        float[] embedding = randomEmbedding();
+        List<Double> embedding = randomEmbedding();
         store.save(record, embedding);
 
         // 2. Verify storage
@@ -255,7 +255,10 @@ class LongTermMemoryTest {
             List<EmbeddingResponse.EmbeddingData> embeddings = new ArrayList<>();
 
             for (int i = 0; i < request.query().size(); i++) {
-                float[] vec = randomEmbedding();
+                float[] vec = new float[EMBEDDING_DIM];
+                for (int j = 0; j < EMBEDDING_DIM; j++) {
+                    vec[j] = (float) Math.random();
+                }
                 embeddings.add(EmbeddingResponse.EmbeddingData.of(request.query().get(i), Embedding.of(vec)));
             }
 
@@ -265,17 +268,17 @@ class LongTermMemoryTest {
         return mockProvider;
     }
 
-    private float[] randomEmbedding() {
-        float[] embedding = new float[EMBEDDING_DIM];
+    private List<Double> randomEmbedding() {
+        List<Double> embedding = new ArrayList<>();
+        double norm = 0;
+        double[] values = new double[EMBEDDING_DIM];
         for (int i = 0; i < EMBEDDING_DIM; i++) {
-            embedding[i] = (float) Math.random();
+            values[i] = Math.random();
+            norm += values[i] * values[i];
         }
-        // Normalize
-        float norm = 0;
-        for (float v : embedding) norm += v * v;
-        norm = (float) Math.sqrt(norm);
-        for (int i = 0; i < embedding.length; i++) {
-            embedding[i] /= norm;
+        norm = Math.sqrt(norm);
+        for (int i = 0; i < EMBEDDING_DIM; i++) {
+            embedding.add(values[i] / norm);
         }
         return embedding;
     }

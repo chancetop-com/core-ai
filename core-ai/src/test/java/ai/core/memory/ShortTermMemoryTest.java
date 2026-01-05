@@ -41,32 +41,23 @@ class ShortTermMemoryTest {
 
     @BeforeEach
     void setUp() {
-        memory = new ShortTermMemory(0.7, 5);
+        memory = new ShortTermMemory(0.7, 5, null, null);
     }
 
     @Test
     void testDefaultConstructor() {
-        ShortTermMemory defaultMemory = new ShortTermMemory();
+        ShortTermMemory defaultMemory = new ShortTermMemory(createMockProvider(), "test-model");
         assertEquals(0.8, defaultMemory.getTriggerThreshold());
         assertEquals(5, defaultMemory.getKeepRecentTurns());
-        assertTrue(defaultMemory.getLastSummary().isEmpty());
         LOGGER.info("Default constructor test passed");
     }
 
     @Test
     void testCustomConstructor() {
-        ShortTermMemory customMemory = new ShortTermMemory(0.8, 3);
+        ShortTermMemory customMemory = new ShortTermMemory(0.8, 3, createMockProvider(), "test-model");
         assertEquals(0.8, customMemory.getTriggerThreshold());
         assertEquals(3, customMemory.getKeepRecentTurns());
         LOGGER.info("Custom constructor test passed");
-    }
-
-    @Test
-    void testClear() {
-        memory.setLLMProvider(createMockProvider(), "test-model");
-        memory.clear();
-        assertTrue(memory.getLastSummary().isEmpty());
-        LOGGER.info("Clear test passed");
     }
 
     @Test
@@ -77,13 +68,13 @@ class ShortTermMemoryTest {
 
     @Test
     void testShouldCompressWithProvider() {
-        memory.setLLMProvider(createMockProvider(), "test-model");
+        ShortTermMemory memoryWithProvider = new ShortTermMemory(0.7, 5, createMockProvider(), "test-model");
 
         // Below threshold (70% of 128000 = 89600)
-        assertFalse(memory.shouldCompress(50000));
+        assertFalse(memoryWithProvider.shouldCompress(50000));
 
         // Above threshold
-        assertTrue(memory.shouldCompress(100000));
+        assertTrue(memoryWithProvider.shouldCompress(100000));
 
         LOGGER.info("Should compress with provider test passed");
     }
@@ -100,9 +91,9 @@ class ShortTermMemoryTest {
 
     @Test
     void testCompressWithEmptyMessages() {
-        memory.setLLMProvider(createMockProvider(), "test-model");
+        ShortTermMemory memoryWithProvider = new ShortTermMemory(createMockProvider(), "test-model");
         List<Message> messages = List.of();
-        List<Message> result = memory.compress(messages);
+        List<Message> result = memoryWithProvider.compress(messages);
 
         assertSame(messages, result);
         LOGGER.info("Compress with empty messages test passed");
@@ -110,10 +101,10 @@ class ShortTermMemoryTest {
 
     @Test
     void testCompressNotEnoughMessages() {
-        memory.setLLMProvider(createMockProvider(), "test-model");
+        ShortTermMemory memoryWithProvider = new ShortTermMemory(0.7, 5, createMockProvider(), "test-model");
         // keepRecentTurns=5, so need more than 5*2=10 messages to compress
         List<Message> messages = createTestMessages(3);
-        List<Message> result = memory.compress(messages);
+        List<Message> result = memoryWithProvider.compress(messages);
 
         // Not enough messages to compress, return original
         assertSame(messages, result);
@@ -122,10 +113,10 @@ class ShortTermMemoryTest {
 
     @Test
     void testCompressBelowThreshold() {
-        memory.setLLMProvider(createMockProvider(), "test-model");
+        ShortTermMemory memoryWithProvider = new ShortTermMemory(0.7, 5, createMockProvider(), "test-model");
         // Create messages but tokens won't exceed threshold
         List<Message> messages = createTestMessages(15);
-        List<Message> result = memory.compress(messages);
+        List<Message> result = memoryWithProvider.compress(messages);
 
         // Below threshold, return original
         assertSame(messages, result);
@@ -135,8 +126,8 @@ class ShortTermMemoryTest {
     @Test
     void testCompressSuccessful() {
         // Create a memory with low threshold for testing
-        ShortTermMemory testMemory = new ShortTermMemory(0.0001, 2);
-        testMemory.setLLMProvider(createMockProviderWithSummary("Test summary"), "test-model");
+        ShortTermMemory testMemory = new ShortTermMemory(0.0001, 2,
+            createMockProviderWithSummary("Test summary"), "test-model");
 
         List<Message> messages = new ArrayList<>();
         messages.add(Message.of(RoleType.SYSTEM, "You are helpful"));
@@ -155,19 +146,19 @@ class ShortTermMemoryTest {
         assertEquals(RoleType.ASSISTANT, result.get(1).role);
         assertNotNull(result.get(1).toolCalls);
         assertEquals("memory_compress", result.get(1).toolCalls.getFirst().function.name);
-        // Should have tool result message (TOOL with summary)
+        // Should have tool result message (TOOL with formatted summary)
         assertEquals(RoleType.TOOL, result.get(2).role);
-        assertEquals("Test summary", result.get(2).content);
-        // Should have kept recent messages
-        assertEquals("Test summary", testMemory.getLastSummary());
+        assertTrue(result.get(2).content.contains("[Previous Conversation Summary]"));
+        assertTrue(result.get(2).content.contains("Test summary"));
+        assertTrue(result.get(2).content.contains("[End Summary]"));
 
         LOGGER.info("Compress successful test passed: {} -> {} messages", messages.size(), result.size());
     }
 
     @Test
     void testSystemMessagePreserved() {
-        ShortTermMemory testMemory = new ShortTermMemory(0.0001, 1);
-        testMemory.setLLMProvider(createMockProviderWithSummary("Summary"), "test-model");
+        ShortTermMemory testMemory = new ShortTermMemory(0.0001, 1,
+            createMockProviderWithSummary("Summary"), "test-model");
 
         List<Message> messages = new ArrayList<>();
         messages.add(Message.of(RoleType.SYSTEM, "System prompt"));

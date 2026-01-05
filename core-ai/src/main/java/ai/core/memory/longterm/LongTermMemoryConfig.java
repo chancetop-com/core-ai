@@ -1,7 +1,5 @@
 package ai.core.memory.longterm;
 
-import ai.core.memory.conflict.ConflictStrategy;
-
 import java.time.Duration;
 
 /**
@@ -25,10 +23,6 @@ public final class LongTermMemoryConfig {
     private boolean extractOnSessionEnd = true;
     private boolean asyncExtraction = true;
     private Duration extractionTimeout = Duration.ofSeconds(30);
-
-    private boolean enableConflictResolution = true;
-    private ConflictStrategy conflictStrategy = ConflictStrategy.LLM_MERGE;
-    private double conflictSimilarityThreshold = 0.8;
 
     private LongTermMemoryConfig() {
     }
@@ -73,18 +67,6 @@ public final class LongTermMemoryConfig {
         return extractionTimeout;
     }
 
-    public boolean isEnableConflictResolution() {
-        return enableConflictResolution;
-    }
-
-    public ConflictStrategy getConflictStrategy() {
-        return conflictStrategy;
-    }
-
-    public double getConflictSimilarityThreshold() {
-        return conflictSimilarityThreshold;
-    }
-
     public static class Builder {
         private final LongTermMemoryConfig config = new LongTermMemoryConfig();
 
@@ -103,8 +85,6 @@ public final class LongTermMemoryConfig {
             return this;
         }
 
-        // Search
-
         public Builder defaultTopK(int topK) {
             config.defaultTopK = topK;
             return this;
@@ -114,8 +94,6 @@ public final class LongTermMemoryConfig {
             config.minSimilarityThreshold = threshold;
             return this;
         }
-
-        // Extraction trigger
 
         public Builder maxBufferTurns(int turns) {
             config.maxBufferTurns = turns;
@@ -139,21 +117,6 @@ public final class LongTermMemoryConfig {
 
         public Builder extractionTimeout(Duration timeout) {
             config.extractionTimeout = timeout;
-            return this;
-        }
-
-        public Builder enableConflictResolution(boolean enable) {
-            config.enableConflictResolution = enable;
-            return this;
-        }
-
-        public Builder conflictStrategy(ConflictStrategy strategy) {
-            config.conflictStrategy = strategy;
-            return this;
-        }
-
-        public Builder conflictSimilarityThreshold(double threshold) {
-            config.conflictSimilarityThreshold = threshold;
             return this;
         }
 
