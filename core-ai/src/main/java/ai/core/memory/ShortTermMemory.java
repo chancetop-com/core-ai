@@ -79,12 +79,6 @@ public class ShortTermMemory {
             return messages;
         }
 
-        // Only compress when last message is USER (new user input)
-        if (conversationMsgs.getLast().role != RoleType.USER) {
-            LOGGER.debug("Last message is not USER, skip compression");
-            return messages;
-        }
-
         int keepFromIndex = calculateKeepFromIndex(conversationMsgs);
         if (keepFromIndex <= 0) {
             LOGGER.warn("No messages to compress after calculation");
@@ -155,24 +149,44 @@ public class ShortTermMemory {
     }
 
     private int calculateKeepFromIndex(List<Message> conversationMsgs) {
-        // Last message is guaranteed to be USER (checked in doCompress)
-        int lastUserIndex = conversationMsgs.size() - 1;
+        int lastUserIndex = findLastUserIndex(conversationMsgs);
+        if (lastUserIndex < 0) {
+            LOGGER.debug("No USER message found, skip compression");
+            return conversationMsgs.size();
+        }
 
-        // Try to keep recent N turns
+        boolean isCurrentChainActive = conversationMsgs.getLast().role != RoleType.USER;
+
+        // If in middle of tool call chain, must preserve from lastUserIndex to end
+        int minKeepFromIndex = isCurrentChainActive ? lastUserIndex : conversationMsgs.size() - 1;
+
+        // Try to keep recent N turns (counting from last USER)
         int keepFromIndex = findKeepFromIndexByTurns(conversationMsgs, lastUserIndex);
 
-        // Check if keeping N turns exceeds threshold
+        // Ensure we don't break the current conversation chain
+        keepFromIndex = Math.min(keepFromIndex, minKeepFromIndex);
+
+        // Check if keeping these messages exceeds threshold
         int keepTokens = MessageTokenCounter.countFrom(conversationMsgs, keepFromIndex);
         int threshold = (int) (maxContextTokens * triggerThreshold);
 
         if (keepTokens >= threshold) {
-            // N turns too large, only keep last USER message
-            LOGGER.info("Recent {} turns exceed threshold ({} >= {}), keeping only last USER message",
-                keepRecentTurns, keepTokens, threshold);
-            return lastUserIndex;
+            // Too large, only keep current conversation chain
+            LOGGER.info("Recent turns exceed threshold ({} >= {}), keeping only current conversation chain",
+                keepTokens, threshold);
+            return minKeepFromIndex;
         }
 
         return keepFromIndex;
+    }
+
+    private int findLastUserIndex(List<Message> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i).role == RoleType.USER) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private int findKeepFromIndexByTurns(List<Message> conversationMsgs, int lastUserIndex) {
