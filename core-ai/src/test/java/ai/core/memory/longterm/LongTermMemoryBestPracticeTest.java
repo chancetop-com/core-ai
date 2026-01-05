@@ -552,47 +552,43 @@ class LongTermMemoryBestPracticeTest {
             // Good for: preferences, facts, goals
             // These memories are accessible in any session for this user
             assertNotNull(scope.getUserId());
-            assertFalse(scope.hasSessionId());
-            assertFalse(scope.hasAgentName());
+            assertEquals("user-123", scope.getUserId());
+            assertEquals("u:user-123", scope.toKey());
         }
 
         @Test
-        @DisplayName("Session-level scope (session-specific memories)")
-        void sessionLevelScope() {
-            // Session-level: memories specific to a conversation
-            MemoryScope scope = MemoryScope.forSession("user-123", "session-abc");
+        @DisplayName("Scope matching for same user")
+        void scopeMatching() {
+            MemoryScope scope1 = MemoryScope.forUser("user-123");
+            MemoryScope scope2 = MemoryScope.forUser("user-123");
+            MemoryScope scope3 = MemoryScope.forUser("user-456");
 
-            // Good for: conversation context, temporary decisions
-            // These memories are only accessible within this session
-            assertTrue(scope.hasUserId());
-            assertTrue(scope.hasSessionId());
-            assertFalse(scope.hasAgentName());
+            assertTrue(scope1.matches(scope2));
+            assertFalse(scope1.matches(scope3));
         }
 
         @Test
-        @DisplayName("Agent-level scope (agent-specific memories)")
-        void agentLevelScope() {
-            // Agent-level: memories specific to an agent
-            MemoryScope scope = MemoryScope.forAgent("user-123", "support-agent");
+        @DisplayName("Scope isolation between users")
+        void scopeIsolation() {
+            MemoryStore store = new InMemoryStore();
 
-            // Good for: agent-specific user preferences
-            // e.g., user prefers detailed answers from support agent
-            assertTrue(scope.hasUserId());
-            assertFalse(scope.hasSessionId());
-            assertTrue(scope.hasAgentName());
-        }
+            MemoryScope aliceScope = MemoryScope.forUser("alice");
+            MemoryScope bobScope = MemoryScope.forUser("bob");
 
-        @Test
-        @DisplayName("Full scope (most specific)")
-        void fullScope() {
-            // Full scope: most specific isolation
-            MemoryScope scope = MemoryScope.of("user-123", "session-abc", "support-agent");
+            store.save(MemoryRecord.builder()
+                .scope(aliceScope)
+                .content("Alice's memory")
+                .importance(0.8)
+                .build(), generateEmbedding("alice"));
 
-            // Good for: highly specific context that shouldn't leak
-            assertTrue(scope.hasUserId());
-            assertTrue(scope.hasSessionId());
-            assertTrue(scope.hasAgentName());
-            assertEquals("u:user-123/s:session-abc/a:support-agent", scope.toKey());
+            store.save(MemoryRecord.builder()
+                .scope(bobScope)
+                .content("Bob's memory")
+                .importance(0.8)
+                .build(), generateEmbedding("bob"));
+
+            assertEquals(1, store.count(aliceScope));
+            assertEquals(1, store.count(bobScope));
         }
     }
 }

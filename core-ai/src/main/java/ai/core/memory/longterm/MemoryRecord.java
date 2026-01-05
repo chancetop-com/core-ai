@@ -35,9 +35,6 @@ public class MemoryRecord {
     private Instant createdAt;
     private Instant lastAccessedAt;
 
-    // Session tracking
-    private String sessionId;
-
     // Extension
     private Map<String, Object> metadata;
 
@@ -119,14 +116,6 @@ public class MemoryRecord {
         this.lastAccessedAt = lastAccessedAt;
     }
 
-    public String getSessionId() {
-        return sessionId;
-    }
-
-    public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
-    }
-
     public Map<String, Object> getMetadata() {
         return new HashMap<>(metadata);
     }
@@ -145,7 +134,6 @@ public class MemoryRecord {
         private MemoryScope scope;
         private String content;
         private Double importance;
-        private String sessionId;
         private final Map<String, Object> metadata = new HashMap<>();
 
         public Builder id(String id) {
@@ -168,11 +156,6 @@ public class MemoryRecord {
             return this;
         }
 
-        public Builder sessionId(String sessionId) {
-            this.sessionId = sessionId;
-            return this;
-        }
-
         public Builder metadata(String key, Object value) {
             this.metadata.put(key, value);
             return this;
@@ -184,7 +167,6 @@ public class MemoryRecord {
             if (scope != null) record.setScope(scope);
             if (content != null) record.setContent(content);
             if (importance != null) record.setImportance(importance);
-            if (sessionId != null) record.setSessionId(sessionId);
             if (!metadata.isEmpty()) record.setMetadata(new HashMap<>(metadata));
             return record;
         }
