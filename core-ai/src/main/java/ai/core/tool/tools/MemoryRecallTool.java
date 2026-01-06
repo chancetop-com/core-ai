@@ -14,20 +14,6 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Tool for LLM to proactively recall user memories from long-term memory.
- *
- * <p>This tool allows the LLM to decide when to query user memories,
- * similar to the LangMem pattern. Instead of auto-injecting memories
- * before every LLM call, this tool gives the LLM control over when
- * to retrieve relevant user information.
- *
- * <p>Usage scenarios:
- * <ul>
- *   <li>User asks about something they mentioned before</li>
- *   <li>Personalizing responses based on user preferences</li>
- *   <li>Referencing past interactions</li>
- * </ul>
- *
  * @author xander
  */
 public final class MemoryRecallTool extends ToolCall {
