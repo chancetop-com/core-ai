@@ -25,7 +25,6 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultMemoryExtractor.class);
     private static final int DEFAULT_MAX_TURNS_PER_EXTRACTION = 5;
     private static final int DEFAULT_MAX_TOKENS_PER_MESSAGE = 1000;
-    //todo
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private static final TypeReference<List<ExtractedMemory>> EXTRACTION_TYPE_REF = new TypeReference<>() { };
