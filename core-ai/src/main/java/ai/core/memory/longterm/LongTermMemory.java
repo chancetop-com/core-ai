@@ -4,6 +4,7 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.Message;
+import ai.core.memory.history.ChatHistoryStore;
 import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.slf4j.Logger;
@@ -21,32 +22,26 @@ public class LongTermMemory {
         return new LongTermMemoryBuilder();
     }
 
-    private final MemoryStore store;
+    private final MemoryStore memoryStore;
     private final LongTermMemoryCoordinator coordinator;
     private final LLMProvider llmProvider;
     private final LongTermMemoryConfig config;
-    private MemoryScope currentScope;
     private String currentSessionId;
 
-    public LongTermMemory(MemoryStore store,
+    public LongTermMemory(MemoryStore memoryStore,
+                          ChatHistoryStore chatHistoryStore,
                           MemoryExtractor extractor,
                           LLMProvider llmProvider,
                           LongTermMemoryConfig config) {
-        this.store = store;
-        this.coordinator = new LongTermMemoryCoordinator(store, extractor, llmProvider, config);
+        this.memoryStore = memoryStore;
+        this.coordinator = new LongTermMemoryCoordinator(memoryStore, chatHistoryStore, extractor, llmProvider, config);
         this.llmProvider = llmProvider;
         this.config = config;
     }
 
-    // ==================== Session Management ====================
-    public void startSession(MemoryScope scope, String sessionId) {
-        this.currentScope = scope;
+    public void startSession(String sessionId) {
         this.currentSessionId = sessionId;
-        coordinator.initSession(scope, sessionId);
-    }
-
-    public void startSessionForUser(String userId, String sessionId) {
-        startSession(MemoryScope.forUser(userId), sessionId);
+        coordinator.initSession(sessionId);
     }
 
     public void onMessage(Message message) {
@@ -57,23 +52,16 @@ public class LongTermMemory {
         coordinator.onSessionEnd();
     }
 
-    // ==================== Memory Recall ====================
-    public List<MemoryRecord> recall(String query, int topK) {
-        if (currentScope == null) {
-            return List.of();
-        }
-        return recall(currentScope, query, topK);
-    }
 
-    public List<MemoryRecord> recall(MemoryScope scope, String query, int topK) {
+    public List<MemoryRecord> recall(String query, int topK) {
         List<Double> queryEmbedding = generateEmbedding(query);
         if (queryEmbedding == null) {
             return List.of();
         }
-        return store.searchByVector(scope, queryEmbedding, topK);
+        return memoryStore.searchByVector(queryEmbedding, topK);
     }
 
-    // ==================== Context Formatting ====================
+
     public String formatAsContext(List<MemoryRecord> memories) {
         if (memories == null || memories.isEmpty()) {
             return "";
@@ -87,24 +75,13 @@ public class LongTermMemory {
         return sb.toString();
     }
 
-    // ==================== Status Methods ====================
     public boolean hasMemories() {
-        return currentScope != null && store.count(currentScope) > 0;
+        return memoryStore.count() > 0;
     }
 
     public int getMemoryCount() {
-        return currentScope != null ? store.count(currentScope) : 0;
+        return memoryStore.count();
     }
-
-    public void waitForExtraction() {
-        coordinator.waitForCompletion();
-    }
-
-    public boolean isExtractionInProgress() {
-        return coordinator.isExtractionInProgress();
-    }
-
-    // ==================== Internal Methods ====================
 
     private List<Double> generateEmbedding(String text) {
         if (llmProvider == null || text == null || text.isBlank()) {
@@ -126,18 +103,12 @@ public class LongTermMemory {
         return null;
     }
 
-    // ==================== Getters ====================
-
-    public MemoryScope getCurrentScope() {
-        return currentScope;
-    }
-
     public String getCurrentSessionId() {
         return currentSessionId;
     }
 
     public MemoryStore getStore() {
-        return store;
+        return memoryStore;
     }
 
     public LongTermMemoryConfig getConfig() {

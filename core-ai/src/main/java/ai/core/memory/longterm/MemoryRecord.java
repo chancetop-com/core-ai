@@ -7,9 +7,6 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Represents a long-term memory record.
- * Embedding is stored separately in VectorStore, linked by id.
- *
  * @author xander
  */
 public class MemoryRecord {
@@ -23,7 +20,6 @@ public class MemoryRecord {
     }
 
     private String id;
-    private MemoryScope scope;
     private String content;
 
     // Weight and decay
@@ -53,14 +49,6 @@ public class MemoryRecord {
 
     public void setId(String id) {
         this.id = id;
-    }
-
-    public MemoryScope getScope() {
-        return scope;
-    }
-
-    public void setScope(MemoryScope scope) {
-        this.scope = scope;
     }
 
     public String getContent() {
@@ -131,18 +119,12 @@ public class MemoryRecord {
 
     public static class Builder {
         private String id;
-        private MemoryScope scope;
         private String content;
         private Double importance;
         private final Map<String, Object> metadata = new HashMap<>();
 
         public Builder id(String id) {
             this.id = id;
-            return this;
-        }
-
-        public Builder scope(MemoryScope scope) {
-            this.scope = scope;
             return this;
         }
 
@@ -164,7 +146,6 @@ public class MemoryRecord {
         public MemoryRecord build() {
             MemoryRecord record = new MemoryRecord();
             if (id != null) record.setId(id);
-            if (scope != null) record.setScope(scope);
             if (content != null) record.setContent(content);
             if (importance != null) record.setImportance(importance);
             if (!metadata.isEmpty()) record.setMetadata(new HashMap<>(metadata));

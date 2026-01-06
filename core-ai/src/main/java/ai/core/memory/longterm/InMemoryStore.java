@@ -9,8 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
- * In-memory implementation of MemoryStore for testing and development.
- *
  * @author xander
  */
 public class InMemoryStore implements MemoryStore {
@@ -47,24 +45,20 @@ public class InMemoryStore implements MemoryStore {
     }
 
     @Override
-    public List<MemoryRecord> findByScope(MemoryScope scope) {
-        return records.values().stream()
-            .filter(r -> matchesScope(r, scope))
-            .toList();
+    public List<MemoryRecord> findAll() {
+        return new ArrayList<>(records.values());
     }
 
     @Override
-    public List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK) {
-        return searchByVector(scope, queryEmbedding, topK, null);
+    public List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK) {
+        return searchByVector(queryEmbedding, topK, null);
     }
 
     @Override
-    public List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK,
-                                              SearchFilter filter) {
+    public List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK, SearchFilter filter) {
         List<ScoredRecord> scored = new ArrayList<>();
 
         for (MemoryRecord record : records.values()) {
-            if (!matchesScope(record, scope)) continue;
             if (filter != null && !filter.matches(record)) continue;
 
             List<Double> embedding = embeddings.get(record.getId());
@@ -79,12 +73,12 @@ public class InMemoryStore implements MemoryStore {
     }
 
     @Override
-    public List<MemoryRecord> searchByKeyword(MemoryScope scope, String keyword, int topK) {
-        return searchByKeyword(scope, keyword, topK, null);
+    public List<MemoryRecord> searchByKeyword(String keyword, int topK) {
+        return searchByKeyword(keyword, topK, null);
     }
 
     @Override
-    public List<MemoryRecord> searchByKeyword(MemoryScope scope, String keyword, int topK, SearchFilter filter) {
+    public List<MemoryRecord> searchByKeyword(String keyword, int topK, SearchFilter filter) {
         if (keyword == null || keyword.isBlank()) {
             return List.of();
         }
@@ -93,7 +87,6 @@ public class InMemoryStore implements MemoryStore {
         List<ScoredRecord> scored = new ArrayList<>();
 
         for (MemoryRecord record : records.values()) {
-            if (!matchesScope(record, scope)) continue;
             if (filter != null && !filter.matches(record)) continue;
 
             double keywordScore = calculateKeywordScore(record.getContent(), keywords);
@@ -113,12 +106,9 @@ public class InMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void deleteByScope(MemoryScope scope) {
-        List<String> idsToDelete = records.values().stream()
-            .filter(r -> matchesScope(r, scope))
-            .map(MemoryRecord::getId)
-            .toList();
-        idsToDelete.forEach(this::delete);
+    public void deleteAll() {
+        records.clear();
+        embeddings.clear();
     }
 
     @Override
@@ -140,9 +130,8 @@ public class InMemoryStore implements MemoryStore {
     }
 
     @Override
-    public List<MemoryRecord> findDecayed(MemoryScope scope, double threshold) {
+    public List<MemoryRecord> findDecayed(double threshold) {
         return records.values().stream()
-            .filter(r -> matchesScope(r, scope))
             .filter(r -> r.getDecayFactor() < threshold)
             .toList();
     }
@@ -158,17 +147,8 @@ public class InMemoryStore implements MemoryStore {
     }
 
     @Override
-    public int count(MemoryScope scope) {
-        return (int) records.values().stream()
-            .filter(r -> matchesScope(r, scope))
-            .count();
-    }
-
-    private boolean matchesScope(MemoryRecord record, MemoryScope queryScope) {
-        if (queryScope == null) {
-            return true;
-        }
-        return queryScope.matches(record.getScope());
+    public int count() {
+        return records.size();
     }
 
     private double calculateKeywordScore(String content, String[] keywords) {
