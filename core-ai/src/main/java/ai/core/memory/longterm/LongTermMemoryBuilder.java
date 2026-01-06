@@ -1,6 +1,8 @@
 package ai.core.memory.longterm;
 
 import ai.core.llm.LLMProvider;
+import ai.core.memory.history.ChatHistoryStore;
+import ai.core.memory.history.InMemoryChatHistoryStore;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 
 /**
@@ -11,7 +13,8 @@ public class LongTermMemoryBuilder {
     private LLMProvider llmProvider;
     private MemoryExtractor extractor;
     private LongTermMemoryConfig config;
-    private MemoryStore store;
+    private MemoryStore memoryStore;
+    private ChatHistoryStore chatHistoryStore;
 
     public LongTermMemoryBuilder llmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
@@ -28,8 +31,17 @@ public class LongTermMemoryBuilder {
         return this;
     }
 
+    public LongTermMemoryBuilder memoryStore(MemoryStore memoryStore) {
+        this.memoryStore = memoryStore;
+        return this;
+    }
+
     public LongTermMemoryBuilder store(MemoryStore store) {
-        this.store = store;
+        return memoryStore(store);
+    }
+
+    public LongTermMemoryBuilder chatHistoryStore(ChatHistoryStore chatHistoryStore) {
+        this.chatHistoryStore = chatHistoryStore;
         return this;
     }
 
@@ -42,15 +54,19 @@ public class LongTermMemoryBuilder {
             config = LongTermMemoryConfig.builder().build();
         }
 
-        if (store == null) {
-            store = new InMemoryStore();
+        if (memoryStore == null) {
+            memoryStore = new InMemoryStore();
+        }
+
+        if (chatHistoryStore == null) {
+            chatHistoryStore = new InMemoryChatHistoryStore();
         }
 
         if (extractor == null) {
             extractor = createDefaultExtractor();
         }
 
-        return new LongTermMemory(store, extractor, llmProvider, config);
+        return new LongTermMemory(memoryStore, chatHistoryStore, extractor, llmProvider, config);
     }
 
     private MemoryExtractor createDefaultExtractor() {

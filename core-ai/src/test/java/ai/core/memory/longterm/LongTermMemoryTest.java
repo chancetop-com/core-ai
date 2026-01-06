@@ -6,6 +6,8 @@ import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.memory.history.ChatHistoryStore;
+import ai.core.memory.history.InMemoryChatHistoryStore;
 import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,17 +27,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Test for long-term memory functionality.
- *
  * @author xander
  */
 @SuppressWarnings("PMD.SingularField")
 class LongTermMemoryTest {
 
-    private static final String USER_ID = "user-123";
     private static final String SESSION_ID = "session-456";
     private static final int EMBEDDING_DIM = 8;
-    private static final MemoryScope USER_SCOPE = MemoryScope.forUser(USER_ID);
 
     private MemoryStore store;
     private MemoryExtractor extractor;
@@ -53,15 +51,15 @@ class LongTermMemoryTest {
                 .build();
 
         store = new InMemoryStore();
+        ChatHistoryStore chatHistoryStore = new InMemoryChatHistoryStore();
         extractor = createMockExtractor();
         llmProvider = createMockLLMProvider();
-        coordinator = new LongTermMemoryCoordinator(store, extractor, llmProvider, config);
+        coordinator = new LongTermMemoryCoordinator(store, chatHistoryStore, extractor, llmProvider, config);
     }
 
     @Test
     void testBasicMemoryStorageAndRetrieval() {
         MemoryRecord record = MemoryRecord.builder()
-            .scope(USER_SCOPE)
             .content("User is a Java developer who prefers clean code")
             .importance(0.8)
             .build();
@@ -69,53 +67,25 @@ class LongTermMemoryTest {
         List<Double> embedding = randomEmbedding();
         store.save(record, embedding);
 
-        assertEquals(1, store.count(USER_SCOPE));
+        assertEquals(1, store.count());
 
-        List<MemoryRecord> results = store.searchByVector(USER_SCOPE, embedding, 5);
+        List<MemoryRecord> results = store.searchByVector(embedding, 5);
         assertFalse(results.isEmpty());
         assertEquals("User is a Java developer who prefers clean code", results.getFirst().getContent());
     }
 
     @Test
-    void testMemoryIsolationByUserId() {
-        MemoryScope scopeA = MemoryScope.forUser("user-A");
-        MemoryScope scopeB = MemoryScope.forUser("user-B");
-
-        MemoryRecord record1 = MemoryRecord.builder()
-            .scope(scopeA)
-            .content("User A likes Python")
-            .importance(0.8)
-            .build();
-
-        MemoryRecord record2 = MemoryRecord.builder()
-            .scope(scopeB)
-            .content("User B likes Java")
-            .importance(0.8)
-            .build();
-
-        store.save(record1, randomEmbedding());
-        store.save(record2, randomEmbedding());
-
-        assertEquals(1, store.count(scopeA));
-        assertEquals(1, store.count(scopeB));
-
-        List<MemoryRecord> resultsA = store.searchByVector(scopeA, randomEmbedding(), 10);
-        assertEquals(1, resultsA.size());
-        assertTrue(resultsA.getFirst().getContent().contains("User A"));
-    }
-
-    @Test
     void testCoordinatorExtractionOnSessionEnd() {
-        coordinator.initSession(USER_SCOPE, SESSION_ID);
+        coordinator.initSession(SESSION_ID);
 
         coordinator.onMessage(Message.of(RoleType.USER, "Hello, I'm a senior Java developer"));
         coordinator.onMessage(Message.of(RoleType.ASSISTANT, "Nice to meet you!"));
 
-        assertEquals(0, store.count(USER_SCOPE));
+        assertEquals(0, store.count());
 
         coordinator.onSessionEnd();
 
-        assertTrue(store.count(USER_SCOPE) > 0);
+        assertTrue(store.count() > 0);
     }
 
     @Test
@@ -126,10 +96,11 @@ class LongTermMemoryTest {
             .build();
 
         MemoryStore batchStore = new InMemoryStore();
+        ChatHistoryStore batchChatHistoryStore = new InMemoryChatHistoryStore();
         LongTermMemoryCoordinator batchCoordinator = new LongTermMemoryCoordinator(
-            batchStore, extractor, llmProvider, batchConfig);
+            batchStore, batchChatHistoryStore, extractor, llmProvider, batchConfig);
 
-        batchCoordinator.initSession(USER_SCOPE, SESSION_ID);
+        batchCoordinator.initSession(SESSION_ID);
 
         batchCoordinator.onMessage(Message.of(RoleType.USER, "I prefer using IntelliJ IDEA"));
         batchCoordinator.onMessage(Message.of(RoleType.ASSISTANT, "Great choice!"));
@@ -137,13 +108,12 @@ class LongTermMemoryTest {
         batchCoordinator.onMessage(Message.of(RoleType.USER, "I also like Spring Boot"));
         batchCoordinator.onMessage(Message.of(RoleType.ASSISTANT, "Spring Boot is excellent!"));
 
-        assertTrue(batchStore.count(USER_SCOPE) > 0);
+        assertTrue(batchStore.count() > 0);
     }
 
     @Test
     void testMemoryDecay() {
         MemoryRecord record = MemoryRecord.builder()
-            .scope(USER_SCOPE)
             .content("Old memory that should decay")
             .importance(0.6)
             .build();
@@ -152,26 +122,23 @@ class LongTermMemoryTest {
 
         store.updateDecayFactor(record.getId(), 0.05);
 
-        List<MemoryRecord> decayed = store.findDecayed(USER_SCOPE, 0.1);
+        List<MemoryRecord> decayed = store.findDecayed(0.1);
         assertEquals(1, decayed.size());
     }
 
     @Test
     void testSearchWithImportanceFilter() {
         store.save(MemoryRecord.builder()
-            .scope(USER_SCOPE)
             .content("High importance memory")
             .importance(0.9)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .scope(USER_SCOPE)
             .content("Medium importance memory")
             .importance(0.7)
             .build(), randomEmbedding());
 
         store.save(MemoryRecord.builder()
-            .scope(USER_SCOPE)
             .content("Low importance memory")
             .importance(0.5)
             .build(), randomEmbedding());
@@ -180,7 +147,7 @@ class LongTermMemoryTest {
             .minImportance(0.8)
             .build();
 
-        List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, highImportanceFilter);
+        List<MemoryRecord> results = store.searchByVector(randomEmbedding(), 10, highImportanceFilter);
         assertEquals(1, results.size());
         assertTrue(results.getFirst().getImportance() >= 0.8);
     }
@@ -188,7 +155,6 @@ class LongTermMemoryTest {
     @Test
     void testEffectiveScoreCalculation() {
         MemoryRecord record = MemoryRecord.builder()
-            .scope(USER_SCOPE)
             .content("Test memory")
             .importance(0.8)
             .build();
@@ -206,13 +172,12 @@ class LongTermMemoryTest {
     // ==================== Helper Methods ====================
 
     private MemoryExtractor createMockExtractor() {
-        return (namespace, messages) -> {
+        return messages -> {
             List<MemoryRecord> records = new ArrayList<>();
 
             for (Message msg : messages) {
                 if (msg.role == RoleType.USER && msg.content != null) {
                     MemoryRecord record = MemoryRecord.builder()
-                        .scope(namespace)
                         .content("User said: " + msg.content)
                         .importance(0.7)
                         .build();
@@ -274,16 +239,15 @@ class LongTermMemoryTest {
                 .build();
 
             MemoryStore facadeStore = new InMemoryStore();
+            ChatHistoryStore facadeChatHistoryStore = new InMemoryChatHistoryStore();
 
-            memory = new LongTermMemory(facadeStore, extractor, llmProvider, facadeConfig);
+            memory = new LongTermMemory(facadeStore, facadeChatHistoryStore, extractor, llmProvider, facadeConfig);
         }
 
         @Test
         @DisplayName("Should work with session lifecycle")
         void testSessionLifecycle() {
-            MemoryScope expectedScope = MemoryScope.forUser(USER_ID);
-            memory.startSession(expectedScope, SESSION_ID);
-            assertEquals(expectedScope, memory.getCurrentScope());
+            memory.startSession(SESSION_ID);
             assertEquals(SESSION_ID, memory.getCurrentSessionId());
 
             memory.onMessage(Message.of(RoleType.USER, "I'm a Java developer"));
@@ -299,7 +263,7 @@ class LongTermMemoryTest {
         @Test
         @DisplayName("Should recall memories after extraction")
         void testRecallAfterExtraction() {
-            memory.startSession(MemoryScope.forUser(USER_ID), SESSION_ID);
+            memory.startSession(SESSION_ID);
 
             memory.onMessage(Message.of(RoleType.USER, "I love Python programming"));
             memory.onMessage(Message.of(RoleType.ASSISTANT, "Python is great!"));
@@ -317,13 +281,12 @@ class LongTermMemoryTest {
         @DisplayName("Should format memories as context string")
         void testFormatAsContext() {
             MemoryRecord record = MemoryRecord.builder()
-                .scope(USER_SCOPE)
                 .content("User is a Java developer")
                 .importance(0.8)
                 .build();
             memory.getStore().save(record, randomEmbedding());
 
-            memory.startSession(MemoryScope.forUser(USER_ID), SESSION_ID);
+            memory.startSession(SESSION_ID);
 
             List<MemoryRecord> memories = List.of(record);
             String context = memory.formatAsContext(memories);
@@ -345,56 +308,6 @@ class LongTermMemoryTest {
     }
 
     @Nested
-    @DisplayName("MemoryScope Tests")
-    class MemoryScopeTests {
-
-        @Test
-        @DisplayName("Should create scope for user")
-        void testScopeCreation() {
-            MemoryScope userScope = MemoryScope.forUser("alice");
-            assertEquals("u:alice", userScope.toKey());
-            assertEquals("alice", userScope.getUserId());
-        }
-
-        @Test
-        @DisplayName("Should isolate memories by scope")
-        void testScopeIsolation() {
-            MemoryScope scopeA = MemoryScope.forUser("user-A");
-            MemoryScope scopeB = MemoryScope.forUser("user-B");
-
-            store.save(MemoryRecord.builder()
-                .scope(scopeA)
-                .content("UserA prefers Java")
-                .importance(0.8)
-                .build(), randomEmbedding());
-
-            store.save(MemoryRecord.builder()
-                .scope(scopeB)
-                .content("UserB prefers Python")
-                .importance(0.8)
-                .build(), randomEmbedding());
-
-            assertEquals(1, store.count(scopeA));
-            assertEquals(1, store.count(scopeB));
-
-            List<MemoryRecord> results = store.searchByVector(scopeA, randomEmbedding(), 10);
-            assertEquals(1, results.size());
-            assertTrue(results.getFirst().getContent().contains("UserA"));
-        }
-
-        @Test
-        @DisplayName("Should support scope matching")
-        void testScopeMatching() {
-            MemoryScope aliceScope = MemoryScope.forUser("alice");
-            MemoryScope aliceScope2 = MemoryScope.forUser("alice");
-            MemoryScope bobScope = MemoryScope.forUser("bob");
-
-            assertTrue(aliceScope.matches(aliceScope2));
-            assertFalse(aliceScope.matches(bobScope));
-        }
-    }
-
-    @Nested
     @DisplayName("Decay Calculator Tests")
     class DecayCalculatorTests {
 
@@ -402,7 +315,6 @@ class LongTermMemoryTest {
         @DisplayName("Should return 1.0 for newly created memory")
         void testNewMemoryDecay() {
             MemoryRecord record = MemoryRecord.builder()
-                .scope(USER_SCOPE)
                 .content("Fresh memory")
                 .importance(0.7)
                 .build();
@@ -426,19 +338,16 @@ class LongTermMemoryTest {
         @BeforeEach
         void setUpFilterTests() {
             store.save(MemoryRecord.builder()
-                .scope(USER_SCOPE)
                 .content("User wants to learn Rust")
                 .importance(0.9)
                 .build(), randomEmbedding());
 
             store.save(MemoryRecord.builder()
-                .scope(USER_SCOPE)
                 .content("User prefers vim editor")
                 .importance(0.7)
                 .build(), randomEmbedding());
 
             store.save(MemoryRecord.builder()
-                .scope(USER_SCOPE)
                 .content("User is from Beijing")
                 .importance(0.5)
                 .build(), randomEmbedding());
@@ -451,7 +360,7 @@ class LongTermMemoryTest {
                 .minImportance(0.8)
                 .build();
 
-            List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
+            List<MemoryRecord> results = store.searchByVector(randomEmbedding(), 10, filter);
             assertEquals(1, results.size());
             assertTrue(results.getFirst().getImportance() >= 0.8);
         }
@@ -463,7 +372,7 @@ class LongTermMemoryTest {
                 .minDecayFactor(0.5)
                 .build();
 
-            List<MemoryRecord> results = store.searchByVector(USER_SCOPE, randomEmbedding(), 10, filter);
+            List<MemoryRecord> results = store.searchByVector(randomEmbedding(), 10, filter);
             assertEquals(3, results.size());
         }
     }
@@ -485,13 +394,12 @@ class LongTermMemoryTest {
             MemoryStore memStore = new InMemoryStore();
 
             MemoryRecord record = MemoryRecord.builder()
-                .scope(USER_SCOPE)
                 .content("Test content")
                 .importance(0.7)
                 .build();
 
             memStore.save(record, randomEmbedding());
-            assertEquals(1, memStore.count(USER_SCOPE));
+            assertEquals(1, memStore.count());
 
             var found = memStore.findById(record.getId());
             assertTrue(found.isPresent());
@@ -504,16 +412,15 @@ class LongTermMemoryTest {
             MemoryStore memStore = new InMemoryStore();
 
             MemoryRecord record = MemoryRecord.builder()
-                .scope(USER_SCOPE)
                 .content("To be deleted")
                 .importance(0.7)
                 .build();
 
             memStore.save(record, randomEmbedding());
-            assertEquals(1, memStore.count(USER_SCOPE));
+            assertEquals(1, memStore.count());
 
             memStore.delete(record.getId());
-            assertEquals(0, memStore.count(USER_SCOPE));
+            assertEquals(0, memStore.count());
         }
     }
 }

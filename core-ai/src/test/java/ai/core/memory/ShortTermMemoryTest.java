@@ -31,8 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for ShortTermMemory compression service.
- *
  * @author xander
  */
 class ShortTermMemoryTest {

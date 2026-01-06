@@ -3,8 +3,6 @@ package ai.core.memory.longterm;
 import java.time.Instant;
 
 /**
- * Filter for memory search operations.
- *
  * @author xander
  */
 public final class SearchFilter {
@@ -25,22 +23,6 @@ public final class SearchFilter {
         this.createdBefore = builder.createdBefore;
     }
 
-    public Double getMinImportance() {
-        return minImportance;
-    }
-
-    public Double getMinDecayFactor() {
-        return minDecayFactor;
-    }
-
-    public Instant getCreatedAfter() {
-        return createdAfter;
-    }
-
-    public Instant getCreatedBefore() {
-        return createdBefore;
-    }
-
     public boolean matches(MemoryRecord record) {
         if (minImportance != null && record.getImportance() < minImportance) {
             return false;
@@ -52,10 +34,7 @@ public final class SearchFilter {
         if (createdAfter != null && (createdAt == null || createdAt.isBefore(createdAfter))) {
             return false;
         }
-        if (createdBefore != null && (createdAt == null || createdAt.isAfter(createdBefore))) {
-            return false;
-        }
-        return true;
+        return createdBefore == null || createdAt != null && !createdAt.isAfter(createdBefore);
     }
 
     public static class Builder {
@@ -71,16 +50,6 @@ public final class SearchFilter {
 
         public Builder minDecayFactor(double minDecayFactor) {
             this.minDecayFactor = minDecayFactor;
-            return this;
-        }
-
-        public Builder createdAfter(Instant after) {
-            this.createdAfter = after;
-            return this;
-        }
-
-        public Builder createdBefore(Instant before) {
-            this.createdBefore = before;
             return this;
         }
 

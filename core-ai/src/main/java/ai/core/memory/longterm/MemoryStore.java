@@ -16,27 +16,27 @@ public interface MemoryStore {
 
     Optional<MemoryRecord> findById(String id);
 
-    List<MemoryRecord> findByScope(MemoryScope scope);
+    List<MemoryRecord> findAll();
 
-    List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK);
+    List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK);
 
-    List<MemoryRecord> searchByVector(MemoryScope scope, List<Double> queryEmbedding, int topK, SearchFilter filter);
+    List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK, SearchFilter filter);
 
-    List<MemoryRecord> searchByKeyword(MemoryScope scope, String keyword, int topK);
+    List<MemoryRecord> searchByKeyword(String keyword, int topK);
 
-    List<MemoryRecord> searchByKeyword(MemoryScope scope, String keyword, int topK, SearchFilter filter);
+    List<MemoryRecord> searchByKeyword(String keyword, int topK, SearchFilter filter);
 
     void delete(String id);
 
-    void deleteByScope(MemoryScope scope);
+    void deleteAll();
 
     void recordAccess(List<String> ids);
 
     void updateDecayFactor(String id, double decayFactor);
 
-    List<MemoryRecord> findDecayed(MemoryScope scope, double threshold);
+    List<MemoryRecord> findDecayed(double threshold);
 
     int deleteDecayed(double threshold);
 
-    int count(MemoryScope scope);
+    int count();
 }

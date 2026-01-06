@@ -2,7 +2,6 @@ package ai.core.tool.tools;
 
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.MemoryRecord;
-import ai.core.memory.longterm.MemoryScope;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
@@ -43,7 +42,6 @@ public final class MemoryRecallTool extends ToolCall {
 
     private final LongTermMemory longTermMemory;
     private final int maxRecords;
-    private volatile MemoryScope currentScope;
 
     public MemoryRecallTool(LongTermMemory longTermMemory) {
         this(longTermMemory, 5);
@@ -71,15 +69,8 @@ public final class MemoryRecallTool extends ToolCall {
                     .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            // Get scope from current context or fall back to LongTermMemory's current scope
-            MemoryScope scope = currentScope != null ? currentScope : longTermMemory.getCurrentScope();
-            if (scope == null) {
-                return ToolCallResult.completed("[No user context available - unable to recall memories]")
-                    .withDuration(System.currentTimeMillis() - startTime);
-            }
-
-            // Recall memories
-            List<MemoryRecord> memories = longTermMemory.recall(scope, query, maxRecords);
+            // Recall memories - storage handles user isolation internally
+            List<MemoryRecord> memories = longTermMemory.recall(query, maxRecords);
 
             // Format result
             String result = formatMemories(memories);
@@ -125,18 +116,6 @@ public final class MemoryRecallTool extends ToolCall {
                 .required(true)
                 .build()
         );
-    }
-
-    /**
-     * Set the current scope for memory recall.
-     * Called by UnifiedMemoryLifecycle to update the scope.
-     */
-    public void setCurrentScope(MemoryScope scope) {
-        this.currentScope = scope;
-    }
-
-    public MemoryScope getCurrentScope() {
-        return currentScope;
     }
 
     public LongTermMemory getLongTermMemory() {

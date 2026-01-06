@@ -7,7 +7,7 @@
 1. [概述](#概述)
 2. [短期记忆](#短期记忆)
 3. [长期记忆](#长期记忆)
-4. [统一记忆生命周期](#统一记忆生命周期)
+4. [与 Agent 集成](#与-agent-集成)
 5. [最佳实践](#最佳实践)
 
 ## 概述
@@ -27,7 +27,7 @@ Core-AI 提供两层记忆架构：
 │ • Token 管理                │ • 历史交互                     │
 ├─────────────────────────────┼───────────────────────────────┤
 │ 生命周期：会话内            │ 生命周期：跨会话                │
-│ 存储：内存                  │ 存储：向量数据库 / SQLite       │
+│ 存储：内存                  │ 存储：用户自定义（向量数据库等）  │
 └─────────────────────────────┴───────────────────────────────┘
 ```
 
@@ -104,19 +104,71 @@ Agent agent = Agent.builder()
 └──────────────────────────────────────────────────────────┘
 ```
 
-### 对话链保护
+### 压缩算法详解
 
-当 Agent 正在执行工具调用时（最后一条消息是 TOOL），压缩会保护当前对话链不被截断：
+**1. 触发条件判断**
+
+```java
+boolean shouldCompress = currentTokens >= maxContextTokens * triggerThreshold;
+// 例如：模型最大 128K，阈值 0.8，当 tokens >= 102400 时触发
+```
+
+**2. 消息分割策略**
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  示例：工具调用过程中触发压缩                               │
-├──────────────────────────────────────────────────────────┤
-│  [历史消息...]  ← 这部分会被压缩成摘要                      │
-│  [USER] 帮我查询天气                                      │
-│  [ASSISTANT] tool_call: get_weather                      │
-│  [TOOL] 北京今天 25°C，晴  ← 当前对话链保护                 │
-└──────────────────────────────────────────────────────────┘
+原始消息列表：
+┌─────────────────────────────────────────────────────────┐
+│ [SYSTEM] 你是一个助手...                                 │  ← 始终保留
+├─────────────────────────────────────────────────────────┤
+│ [USER] 第一个问题                                        │
+│ [ASSISTANT] 第一个回答                                   │
+│ [USER] 第二个问题                                        │  ← 被压缩为摘要
+│ [ASSISTANT] 第二个回答                                   │
+│ ...更多历史对话...                                       │
+├─────────────────────────────────────────────────────────┤
+│ [USER] 最近的问题 1                                      │
+│ [ASSISTANT] 最近的回答 1                                 │  ← 保留最近 N 轮
+│ [USER] 最近的问题 2                                      │
+│ [ASSISTANT] tool_call: get_weather                      │  ← 当前对话链
+│ [TOOL] 北京 25°C                                        │
+└─────────────────────────────────────────────────────────┘
+```
+
+**3. 对话链保护**
+
+当最后一条消息不是 USER 时（正在执行 Tool Call），压缩会保护当前对话链不被截断：
+
+```java
+// 找到最后一个 USER 消息的位置
+boolean isCurrentChainActive = messages.getLast().role != RoleType.USER;
+if (isCurrentChainActive) {
+    // 保护从最后一个 USER 开始的整个对话链
+    minKeepFromIndex = lastUserIndex;
+}
+```
+
+**4. 摘要生成**
+
+压缩后的摘要通过 LLM 生成，目标 token 数为 `min(4000, max(500, maxContext/10))`：
+
+```
+摘要格式：
+[Previous Conversation Summary]
+用户询问了天气情况，助手通过工具获取了北京的天气信息...
+[End of Summary]
+```
+
+**5. 最终消息结构**
+
+```
+压缩后的消息列表：
+┌─────────────────────────────────────────────────────────┐
+│ [SYSTEM] 你是一个助手...                                 │
+│ [ASSISTANT] tool_call: memory_compress                  │  ← 虚拟 Tool Call
+│ [TOOL] [Previous Conversation Summary]...               │  ← 摘要内容
+│ [USER] 最近的问题                                        │  ← 保留的消息
+│ [ASSISTANT] ...                                         │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### 禁用短期记忆
@@ -136,24 +188,31 @@ Agent agent = Agent.builder()
 ### 架构
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    长期记忆                          │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────┐ │
-│  │    召回     │    │    提取     │    │  存储   │ │
-│  │  (搜索)     │    │  (保存)     │    │ (向量)  │ │
-│  └──────┬──────┘    └──────┬──────┘    └────┬────┘ │
-│         │                  │                │      │
-│         └──────────────────┼────────────────┘      │
-│                            │                       │
-│                    ┌───────┴───────┐               │
-│                    │   命名空间     │               │
-│                    │ (用户/组织/...)│               │
-│                    └───────────────┘               │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              Agent                                       │
+│                                │                                         │
+│     ┌──────────────────────────┴──────────────────────────┐             │
+│     │                                                      │             │
+│     ▼                                                      ▼             │
+│  MemoryRecallTool ◄────── LongTermMemory ──────► LongTermMemoryCoordinator
+│  (LLM主动调用查询)              │                          │             │
+│                                │                          │             │
+│                    ┌───────────┴───────────┐              │             │
+│                    ▼                       ▼              ▼             │
+│              MemoryStore          ChatHistoryStore   MemoryExtractor    │
+│              (记忆存储)            (对话历史存储)      (LLM提取记忆)      │
+│                    │                       │              │             │
+│                    ▼                       ▼              ▼             │
+│            用户自定义实现           用户自定义实现    DefaultMemoryExtractor
+│           (Milvus/Redis等)        (MySQL/Redis等)                       │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+### 核心概念
+
+**用户控制数据隔离**：框架不强制隔离策略，用户在实现 `MemoryStore` 和 `ChatHistoryStore` 时自己决定如何隔离数据（按租户、用户等）。
+
+**LangMem 模式**：LLM 通过 Tool 主动决定何时查询记忆，而不是每次请求都自动注入，更智能且节省 token。
 
 ### 记忆属性
 
@@ -164,6 +223,8 @@ Agent agent = Agent.builder()
 | `importance` | 记忆的重要程度 | 0.0 - 1.0 |
 | `decayFactor` | 时间衰减因子（随时间降低） | 0.0 - 1.0 |
 | `accessCount` | 记忆被访问的次数 | 0+ |
+| `createdAt` | 记忆创建时间 | Instant |
+| `lastAccessedAt` | 最后访问时间 | Instant |
 
 **重要性指南：**
 - **0.9-1.0**：关键个人信息（姓名、核心偏好、重要目标）
@@ -171,180 +232,298 @@ Agent agent = Agent.builder()
 - **0.5-0.6**：可有可无的信息（随意提及、次要偏好）
 - **低于 0.5**：不值得存储
 
+### 记忆提取机制
+
+长期记忆的核心是从对话中自动提取有价值的信息：
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           提取流程                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. 消息进入                                                             │
+│     ┌─────────────────┐                                                 │
+│     │ onMessage(msg)  │                                                 │
+│     └────────┬────────┘                                                 │
+│              ↓                                                          │
+│  2. 持久化到 ChatHistoryStore                                            │
+│     ┌─────────────────────────────────────┐                             │
+│     │ chatHistoryStore.save(sessionId, msg)│                            │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  3. 检查是否触发提取（用户消息数 >= maxBufferTurns）                       │
+│     ┌─────────────────────────────────────┐                             │
+│     │ if (userTurnCount >= 5) trigger()   │                             │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  4. 获取未提取的消息                                                     │
+│     ┌─────────────────────────────────────┐                             │
+│     │ loadUnextracted(sessionId)          │                             │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  5. LLM 提取记忆（异步或同步）                                            │
+│     ┌─────────────────────────────────────┐                             │
+│     │ extractor.extract(messages)         │                             │
+│     │                                     │                             │
+│     │ 输入: "User: 我叫张三，是程序员"      │                             │
+│     │       "Assistant: 你好张三！"        │                             │
+│     │                                     │                             │
+│     │ 输出: [                             │                             │
+│     │   {content: "用户名字是张三",        │                             │
+│     │    importance: 0.9},               │                             │
+│     │   {content: "用户是程序员",          │                             │
+│     │    importance: 0.7}                │                             │
+│     │ ]                                  │                             │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  6. 生成 Embedding 向量                                                  │
+│     ┌─────────────────────────────────────┐                             │
+│     │ llmProvider.embeddings(contents)    │                             │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  7. 保存到 MemoryStore                                                   │
+│     ┌─────────────────────────────────────┐                             │
+│     │ memoryStore.saveAll(records, embeds)│                             │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  8. 标记已提取位置                                                        │
+│     ┌─────────────────────────────────────┐                             │
+│     │ markExtracted(sessionId, lastIndex) │                             │
+│     └─────────────────────────────────────┘                             │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**提取 Prompt 示例**：
+
+```
+Extract important facts, preferences, and information about the user from
+the following conversation. Return a JSON array of memories.
+
+Conversation:
+User: 我叫张三，在北京做程序员
+Assistant: 你好张三！程序员工作怎么样？
+User: 还不错，我主要写 Java
+
+Output format:
+[
+  {"content": "用户名字是张三", "importance": 0.9},
+  {"content": "用户在北京工作", "importance": 0.7},
+  {"content": "用户是程序员", "importance": 0.8},
+  {"content": "用户主要使用 Java 编程", "importance": 0.7}
+]
+```
+
+### 记忆召回机制
+
+当 LLM 需要查询用户记忆时，通过 MemoryRecallTool 触发召回：
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           召回流程                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. LLM 判断需要查询记忆                                                  │
+│     ┌─────────────────────────────────────────────────────────────────┐ │
+│     │ 用户: "你还记得我是做什么工作的吗？"                               │ │
+│     │ LLM: 我需要查询用户信息... → 调用 search_memory_tool             │ │
+│     └────────┬────────────────────────────────────────────────────────┘ │
+│              ↓                                                          │
+│  2. MemoryRecallTool 接收查询                                            │
+│     ┌─────────────────────────────────────┐                             │
+│     │ query = "用户的工作"                 │                             │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  3. 生成查询向量                                                         │
+│     ┌─────────────────────────────────────┐                             │
+│     │ queryEmbedding = embed(query)       │                             │
+│     │ [0.12, -0.34, 0.56, ...]           │                             │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  4. 向量相似度搜索                                                        │
+│     ┌─────────────────────────────────────┐                             │
+│     │ memoryStore.searchByVector(         │                             │
+│     │   queryEmbedding,                   │                             │
+│     │   topK = 5                          │                             │
+│     │ )                                   │                             │
+│     │                                     │                             │
+│     │ 计算余弦相似度:                       │                             │
+│     │ similarity = cosine(query, memory)  │                             │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  5. 返回相关记忆                                                         │
+│     ┌─────────────────────────────────────┐                             │
+│     │ [User Memory]                       │                             │
+│     │ - 用户是程序员 (similarity: 0.89)    │                             │
+│     │ - 用户主要使用 Java (similarity: 0.76)│                            │
+│     └────────┬────────────────────────────┘                             │
+│              ↓                                                          │
+│  6. LLM 基于记忆生成回复                                                  │
+│     ┌─────────────────────────────────────────────────────────────────┐ │
+│     │ "我记得你是一名程序员，主要使用 Java 进行开发。"                    │ │
+│     └─────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
 ### 设置长期记忆
 
 ```java
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
-import ai.core.memory.longterm.DefaultLongTermMemoryStore;
+import ai.core.memory.longterm.InMemoryStore;
+import ai.core.memory.history.InMemoryChatHistoryStore;
 
-// 创建存储（开发用内存，生产用 SQLite）
-var store = DefaultLongTermMemoryStore.inMemory();
-// 或者: var store = DefaultLongTermMemoryStore.withSqlite(dataSource);
+// 创建存储（用户可自定义实现）
+MemoryStore memoryStore = new InMemoryStore();
+ChatHistoryStore chatHistoryStore = new InMemoryChatHistoryStore();
 
 // 构建长期记忆
 LongTermMemory longTermMemory = LongTermMemory.builder()
     .llmProvider(llmProvider)
-    .store(store)
+    .memoryStore(memoryStore)
+    .chatHistoryStore(chatHistoryStore)
     .config(LongTermMemoryConfig.builder()
-        .embeddingDimension(1536)      // 取决于嵌入模型
-        .asyncExtraction(true)          // 异步记忆提取
-        .extractionBatchSize(5)         // 每批提取的消息数
+        .maxBufferTurns(5)           // 每 5 轮触发一次提取
+        .asyncExtraction(true)        // 异步提取
+        .extractOnSessionEnd(true)    // 会话结束时提取剩余消息
         .build())
     .build();
 ```
 
-### 命名空间组织
+### 自定义存储实现
 
-命名空间按作用域组织记忆：
+用户自己控制数据隔离：
 
 ```java
-import ai.core.memory.longterm.Namespace;
+// 为每个用户创建独立的存储实例
+public class UserMemoryStoreFactory {
+    private final MilvusClient milvusClient;
 
-// 用户作用域（最常用）
-Namespace userNs = Namespace.forUser("user-123");
+    public MemoryStore createForUser(String userId) {
+        return new MilvusMemoryStore(milvusClient, "memory_" + userId);
+    }
+}
 
-// 组织作用域（组织内共享）
-Namespace orgNs = Namespace.of("acme-corp", null);
+// 或者在实现内部处理隔离
+public class MultiTenantMemoryStore implements MemoryStore {
+    private final String tenantId;
+    private final MilvusClient client;
 
-// 会话作用域（临时）
-Namespace sessionNs = Namespace.forSession("session-456");
+    public MultiTenantMemoryStore(String tenantId, MilvusClient client) {
+        this.tenantId = tenantId;
+        this.client = client;
+    }
+
+    @Override
+    public List<MemoryRecord> searchByVector(List<Double> embedding, int topK) {
+        // 自己决定查哪个 collection、怎么筛选
+        return client.search("memory_" + tenantId, embedding, topK);
+    }
+
+    // ... 其他方法实现
+}
 ```
 
-### 手动记忆操作
+### 会话管理
 
 ```java
 // 开始会话
-longTermMemory.startSessionForUser("user-123", "session-456");
+longTermMemory.startSession("session-123");
 
-// 召回相关记忆
-List<MemoryRecord> memories = longTermMemory.recall(
-    "编程偏好",  // 查询
-    5            // 返回前 K 条
-);
+// 记录对话消息（自动存储 + 触发提取）
+longTermMemory.onMessage(Message.user("我喜欢吃辣"));
+longTermMemory.onMessage(Message.assistant("好的，我记住了"));
 
-// 使用 SearchFilter 按重要性过滤召回
-SearchFilter filter = SearchFilter.builder()
-    .minImportance(0.7)  // 只返回高重要性记忆
-    .build();
-List<MemoryRecord> importantMemories = store.searchByVector(
-    scope, queryEmbedding, 5, filter
-);
+// 手动召回记忆
+List<MemoryRecord> memories = longTermMemory.recall("用户喜欢什么", 5);
 
-// 格式化记忆为上下文
+// 格式化为上下文
 String context = longTermMemory.formatAsContext(memories);
+// 输出: [User Memory]
+//       - 用户喜欢吃辣的食物
 
-// 结束会话
+// 结束会话（触发最后一次提取）
 longTermMemory.endSession();
 ```
 
-## 统一记忆生命周期
+### 存储接口
 
-`UnifiedMemoryLifecycle` 在 LLM 调用前自动注入长期记忆。
+**MemoryStore** - 记忆存储接口：
 
-### 工作原理
-
-```
-┌───────────────────────────────────────────────────────────┐
-│                   Agent 执行流程                           │
-├───────────────────────────────────────────────────────────┤
-│                                                           │
-│   用户查询                                                 │
-│       │                                                   │
-│       ▼                                                   │
-│   ┌─────────────────────────────────────┐                │
-│   │     beforeAgentRun()                │                │
-│   │     • 初始化会话                     │                │
-│   │     • 从 userId 设置命名空间         │                │
-│   └─────────────────────────────────────┘                │
-│       │                                                   │
-│       ▼                                                   │
-│   ┌─────────────────────────────────────┐                │
-│   │     beforeModel()                   │                │
-│   │     • 提取用户查询                   │                │
-│   │     • 召回相关记忆                   │                │
-│   │     • 注入为 Tool Call 消息          │                │
-│   └─────────────────────────────────────┘                │
-│       │                                                   │
-│       ▼                                                   │
-│   [带记忆上下文的 LLM 调用]                                │
-│       │                                                   │
-│       ▼                                                   │
-│   ┌─────────────────────────────────────┐                │
-│   │     afterAgentRun()                 │                │
-│   │     • 结束会话                       │                │
-│   │     • 重置状态                       │                │
-│   └─────────────────────────────────────┘                │
-│                                                           │
-└───────────────────────────────────────────────────────────┘
+```java
+public interface MemoryStore {
+    void save(MemoryRecord record, List<Double> embedding);
+    void saveAll(List<MemoryRecord> records, List<List<Double>> embeddings);
+    List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK);
+    List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK, SearchFilter filter);
+    List<MemoryRecord> searchByKeyword(String keyword, int topK);
+    void delete(String id);
+    int count();
+    // ...
+}
 ```
 
-### 与 Agent 集成
+**ChatHistoryStore** - 对话历史存储接口：
+
+```java
+public interface ChatHistoryStore {
+    void save(String sessionId, Message message);
+    List<Message> load(String sessionId);
+    List<Message> loadRecent(String sessionId, int limit);
+    void markExtracted(String sessionId, int messageIndex);
+    List<Message> loadUnextracted(String sessionId);
+    // ...
+}
+```
+
+## 与 Agent 集成
+
+### 使用 unifiedMemory 配置
 
 ```java
 import ai.core.memory.UnifiedMemoryConfig;
-import ai.core.memory.UnifiedMemoryLifecycle;
 
-// 方式一：使用 Agent builder（推荐）
+// 推荐方式：使用 Agent builder
+Agent agent = Agent.builder()
+    .name("personalized-agent")
+    .llmProvider(llmProvider)
+    .unifiedMemory(longTermMemory)  // 自动注册 Tool + Lifecycle
+    .build();
+
+// 或者自定义配置
 Agent agent = Agent.builder()
     .name("personalized-agent")
     .llmProvider(llmProvider)
     .unifiedMemory(longTermMemory, UnifiedMemoryConfig.builder()
-        .maxRecallRecords(5)       // 最大注入记忆条数
+        .maxRecallRecords(5)       // 最多返回 5 条记忆
+        .autoRecall(true)          // 自动注册 MemoryRecallTool
         .build())
     .build();
-
-// 方式二：手动设置生命周期
-UnifiedMemoryLifecycle lifecycle = new UnifiedMemoryLifecycle(
-    longTermMemory,
-    5  // maxRecallRecords
-);
-agent.addLifecycle(lifecycle);
 ```
 
-### 配置选项
-
-```java
-UnifiedMemoryConfig config = UnifiedMemoryConfig.builder()
-    .maxRecallRecords(5)          // 最大召回记忆数（1-20）
-    .memoryBudgetRatio(0.2)       // 记忆的 token 预算（5%-50%）
-    .build();
-```
-
-### 记忆注入格式
-
-记忆作为 Tool Call 消息注入以保持一致性：
+### LangMem 模式工作流程
 
 ```
-发送给 LLM 的消息:
-┌────────────────────────────────────────────────────┐
-│ [SYSTEM] 你是一个有帮助的助手...                    │
-├────────────────────────────────────────────────────┤
-│ [ASSISTANT] tool_call: recall_long_term_memory     │
-├────────────────────────────────────────────────────┤
-│ [TOOL] [User Memory]                               │
-│ - 用户喜欢简洁的回复                                │
-│ - 用户正在学习 Python                              │
-│ - 用户从事数据科学工作                              │
-├────────────────────────────────────────────────────┤
-│ [USER] 帮我处理 pandas 数据框                       │
-└────────────────────────────────────────────────────┘
+用户: "你还记得我喜欢吃什么吗？"
+     ↓
+Agent 判断需要查记忆
+     ↓
+LLM 调用 search_memory_tool(query="用户喜欢吃什么")
+     ↓
+MemoryRecallTool.execute() → longTermMemory.recall()
+     ↓
+返回: [User Memory]
+      - 用户喜欢吃辣的食物
+     ↓
+LLM 生成回复: "我记得你喜欢吃辣的，要不要推荐川菜？"
 ```
 
-### 执行上下文
+### Tool 描述
 
-要启用记忆查找，需要在 ExecutionContext 中提供 userId：
+`MemoryRecallTool` 的描述告诉 LLM 何时该调用：
 
-```java
-import ai.core.agent.ExecutionContext;
-
-ExecutionContext context = ExecutionContext.builder()
-    .userId("user-123")         // 记忆查找必需
-    .sessionId("session-456")   // 可选
-    .build();
-
-AgentOutput output = agent.execute("帮我写代码", context);
-```
+> "Search and recall relevant memories about the user. Use this tool when you need to personalize your response based on user preferences, recall something the user mentioned before, or reference past interactions."
 
 ## 最佳实践
 
@@ -364,49 +543,59 @@ Agent sessionAgent = Agent.builder()
 // 个性化体验：两种记忆都用
 Agent personalizedAgent = Agent.builder()
     .enableShortTermMemory(true)
-    .unifiedMemory(longTermMemory, config)
+    .unifiedMemory(longTermMemory)
     .build();
 ```
 
-### 2. 管理 Token 预算
-
-```java
-// 对于上下文窗口较小的模型
-UnifiedMemoryConfig config = UnifiedMemoryConfig.builder()
-    .maxRecallRecords(3)          // 较少记忆
-    .memoryBudgetRatio(0.1)       // 10% 的上下文
-    .build();
-
-// 对于上下文窗口较大的模型
-UnifiedMemoryConfig config = UnifiedMemoryConfig.builder()
-    .maxRecallRecords(10)
-    .memoryBudgetRatio(0.3)
-    .build();
-```
-
-### 3. 生产环境存储设置
+### 2. 生产环境存储设置
 
 ```java
 // 开发环境：内存存储
-var devStore = DefaultLongTermMemoryStore.inMemory();
+MemoryStore devStore = new InMemoryStore();
+ChatHistoryStore devHistory = new InMemoryChatHistoryStore();
 
-// 生产环境：SQLite 持久化
-var prodStore = DefaultLongTermMemoryStore.withSqlite(dataSource);
+// 生产环境：为每个用户创建独立存储
+public LongTermMemory createForUser(String userId) {
+    MemoryStore store = new MilvusMemoryStore(userId);
+    ChatHistoryStore history = new RedisChatHistoryStore(userId);
 
-// 大规模：自定义向量存储（Milvus 等）
-var scaleStore = new CustomVectorStore(milvusClient);
+    return LongTermMemory.builder()
+        .llmProvider(llmProvider)
+        .memoryStore(store)
+        .chatHistoryStore(history)
+        .config(LongTermMemoryConfig.builder()
+            .maxBufferTurns(5)
+            .asyncExtraction(true)
+            .build())
+        .build();
+}
 ```
 
-### 4. 优雅处理缺失上下文
+### 3. 提取配置优化
 
 ```java
-// 生命周期优雅处理缺失上下文
-// - 没有 userId：跳过记忆注入
-// - 没有找到记忆：继续执行，不注入
-// - 错误：记录日志，但不使请求失败
+LongTermMemoryConfig config = LongTermMemoryConfig.builder()
+    .maxBufferTurns(5)           // 每 5 轮用户消息触发提取
+    .asyncExtraction(true)       // 异步提取，不阻塞响应
+    .extractOnSessionEnd(true)   // 会话结束时提取剩余消息
+    .extractionTimeout(Duration.ofSeconds(30))  // 提取超时
+    .build();
+```
 
-AgentOutput output = agent.execute("query");  // 无上下文也能工作
-AgentOutput output = agent.execute("query", context);  // 带上下文
+### 4. 使用 SearchFilter 过滤
+
+```java
+// 只查询高重要性记忆
+SearchFilter filter = SearchFilter.builder()
+    .minImportance(0.7)
+    .build();
+
+List<MemoryRecord> memories = store.searchByVector(embedding, 5, filter);
+
+// 按时间过滤
+SearchFilter recentFilter = SearchFilter.builder()
+    .createdAfter(Instant.now().minus(Duration.ofDays(30)))
+    .build();
 ```
 
 ## 总结
@@ -414,10 +603,19 @@ AgentOutput output = agent.execute("query", context);  // 带上下文
 本教程涵盖的关键概念：
 
 1. **短期记忆**：基于会话的对话历史，带自动总结
-2. **长期记忆**：带向量搜索的持久化用户记忆
-3. **统一记忆生命周期**：自动将记忆注入 LLM 调用
-4. **记忆属性**：重要性评分和时间衰减
-5. **命名空间**：用户、组织、会话作用域
+   - 触发条件：token 数量超过阈值（默认 80%）
+   - 压缩策略：保留系统消息 + 最近 N 轮 + 当前对话链
+   - 摘要注入：通过虚拟 Tool Call 消息
+
+2. **长期记忆**：持久化用户记忆，支持向量语义搜索
+   - 提取机制：LLM 从对话中提取重要信息
+   - 召回机制：向量相似度搜索
+
+3. **LangMem 模式**：LLM 通过 Tool 主动查询记忆
+
+4. **用户控制隔离**：框架不强制隔离策略，用户自定义存储实现
+
+5. **双存储设计**：`MemoryStore`（记忆）+ `ChatHistoryStore`（对话历史）
 
 下一步：
 - 学习[工具调用](tutorial-tool-calling.md)扩展代理能力
