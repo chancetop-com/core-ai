@@ -4,9 +4,6 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.tool.tools.MemoryRecallTool;
 
 /**
- * Lifecycle for unified memory management.
- * Creates and manages MemoryRecallTool for agent integration.
- *
  * @author xander
  */
 public class UnifiedMemoryLifecycle extends AbstractLifecycle {

@@ -151,7 +151,7 @@ Agent agent = Agent.builder()
 - `Extraction`：独立运行，从聊天历史提取记忆并存储
 - `Memory`：仅用于检索，被 Agent 使用
 
-**用户级隔离**：所有操作都通过 `userId` 参数隔离数据。
+**用户级隔离**：所有操作都通过 `ExecutionContext.userId` 隔离数据。
 
 **LangMem 模式**：LLM 通过 Tool 主动决定何时查询记忆，而不是每次请求都自动注入。
 
@@ -233,12 +233,33 @@ Agent 判断需要查记忆
      ↓
 LLM 调用 search_memory_tool(query="用户喜欢什么")
      ↓
-MemoryRecallTool.execute() → memory.retrieve(userId, query)
+MemoryRecallTool.execute(args, context)
+     ↓
+userId = context.getUserId()  // 从 ExecutionContext 获取
+memory.retrieve(userId, query)
      ↓
 返回: [User Memory]
       - 用户喜欢深色模式
      ↓
 LLM 生成回复: "我记得你喜欢深色模式。"
+```
+
+### userId 传递机制
+
+`userId` 通过 `ExecutionContext` 在整个执行链中传递：
+
+```
+agent.run(query, context)
+       ↓
+Agent 存储 executionContext
+       ↓
+ToolExecutor.execute(functionCall, context)
+       ↓
+MemoryRecallTool.execute(args, context)
+       ↓
+String userId = context.getUserId()
+       ↓
+memory.retrieve(userId, query)
 ```
 
 ### 存储接口
@@ -324,10 +345,23 @@ ChatHistoryProvider historyProvider = userId -> repository.findByUserId(userId);
 
 ## 与 Agent 集成
 
+### ExecutionContext
+
+`ExecutionContext` 是 Agent 执行时的上下文，包含：
+
+```java
+public final class ExecutionContext {
+    private final String sessionId;      // 会话ID
+    private final String userId;         // 用户ID（用于记忆隔离）
+    private final Map<String, Object> customVariables;  // 自定义变量
+}
+```
+
 ### 使用 unifiedMemory 配置
 
 ```java
 import ai.core.memory.UnifiedMemoryConfig;
+import ai.core.agent.ExecutionContext;
 
 // 推荐方式：使用 Agent builder
 Agent agent = Agent.builder()
@@ -336,6 +370,16 @@ Agent agent = Agent.builder()
     .unifiedMemory(memory)  // 自动注册 MemoryRecallTool
     .build();
 
+// 运行时传入 ExecutionContext
+ExecutionContext context = ExecutionContext.builder()
+    .userId("user-123")
+    .sessionId("session-456")
+    .build();
+
+agent.run("你好", context);
+```
+
+```java
 // 或者自定义配置
 Agent agent = Agent.builder()
     .name("personalized-agent")
@@ -350,7 +394,13 @@ Agent agent = Agent.builder()
 ### 完整示例
 
 ```java
+import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
+import ai.core.memory.Memory;
+import ai.core.memory.Extraction;
+import ai.core.memory.InMemoryStore;
+import ai.core.memory.history.ChatRecord;
+import ai.core.memory.history.InMemoryChatHistoryProvider;
 
 public class MemoryExample {
     public static void main(String[] args) {
@@ -377,11 +427,11 @@ public class MemoryExample {
             .unifiedMemory(memory)
             .build();
 
-        // 4. 模拟对话
+        // 4. 模拟对话并记录到 historyProvider
         historyProvider.addRecord(userId, ChatRecord.user("我喜欢 Vim 编辑器", Instant.now()));
         historyProvider.addRecord(userId, ChatRecord.assistant("好的，已记录！", Instant.now()));
 
-        // 5. 会话结束后提取
+        // 5. 会话结束后提取记忆
         extraction.run(userId);
 
         // 6. 下次会话时 Agent 可以检索记忆
@@ -400,22 +450,42 @@ public class MemoryExample {
 ```java
 // 无状态操作：禁用压缩
 Agent statelessAgent = Agent.builder()
+    .name("stateless")
+    .llmProvider(llmProvider)
     .enableCompression(false)
     .build();
 
 // 单会话：仅压缩（默认）
 Agent sessionAgent = Agent.builder()
+    .name("session")
+    .llmProvider(llmProvider)
     .enableCompression(true)
     .build();
 
 // 个性化体验：两种记忆都用
 Agent personalizedAgent = Agent.builder()
+    .name("personalized")
+    .llmProvider(llmProvider)
     .enableCompression(true)   // 会话内
     .unifiedMemory(memory)     // 跨会话
     .build();
 ```
 
-### 2. 生产环境存储设置
+### 2. 正确使用 ExecutionContext
+
+```java
+// 创建带 userId 的上下文
+ExecutionContext context = ExecutionContext.builder()
+    .userId("user-123")
+    .sessionId("session-456")  // 可选
+    .customVariable("key", value)  // 可选：自定义变量
+    .build();
+
+// 每次调用 agent.run 时传入 context
+String response = agent.run("查询内容", context);
+```
+
+### 3. 生产环境存储设置
 
 ```java
 // 开发环境：内存存储
@@ -425,21 +495,55 @@ ChatHistoryProvider devHistory = new InMemoryChatHistoryProvider();
 // 生产环境：持久化存储
 MemoryStore prodStore = new MilvusMemoryStore(milvusClient);
 ChatHistoryProvider prodHistory = new DatabaseHistoryProvider(repository);
+// 或使用 Lambda
+ChatHistoryProvider prodHistory = userId -> repository.findByUserId(userId);
 ```
 
-### 3. 提取时机
+### 4. 提取时机
 
 ```java
-// 会话结束时提取
+// 方式1：会话结束时提取
 public void onSessionEnd(String userId) {
     extraction.run(userId);
+    historyProvider.clear(userId);  // 可选：清理历史
 }
 
-// 或定时任务批量提取
+// 方式2：定时任务批量提取
 @Scheduled(cron = "0 0 * * * *")  // 每小时
 public void batchExtraction() {
     for (String userId : activeUsers) {
         extraction.run(userId);
+    }
+}
+```
+
+### 5. 服务层封装
+
+```java
+public class ChatService {
+    private final Agent agent;
+    private final Extraction extraction;
+    private final InMemoryChatHistoryProvider historyProvider;
+
+    public String chat(String userId, String message) {
+        // 记录用户消息
+        historyProvider.addRecord(userId, ChatRecord.user(message, Instant.now()));
+
+        // 创建上下文并执行
+        ExecutionContext context = ExecutionContext.builder()
+            .userId(userId)
+            .build();
+        String response = agent.run(message, context);
+
+        // 记录助手回复
+        historyProvider.addRecord(userId, ChatRecord.assistant(response, Instant.now()));
+
+        return response;
+    }
+
+    public void endSession(String userId) {
+        extraction.run(userId);
+        historyProvider.clear(userId);
     }
 }
 ```
@@ -456,9 +560,10 @@ public void batchExtraction() {
    - `Extraction`：独立提取器，从聊天历史提取记忆
    - `Memory`：检索器，被 Agent 使用
 
-3. **LangMem 模式**：LLM 通过 Tool 主动查询记忆
+3. **ExecutionContext**：执行上下文，传递 userId 等信息
+   - 通过 `context.getUserId()` 实现用户级数据隔离
 
-4. **用户级隔离**：所有操作通过 `userId` 参数隔离
+4. **LangMem 模式**：LLM 通过 Tool 主动查询记忆
 
 下一步：
 - 学习[工具调用](tutorial-tool-calling.md)扩展代理能力
