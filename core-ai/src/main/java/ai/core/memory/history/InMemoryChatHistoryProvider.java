@@ -6,8 +6,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * In-memory implementation of ChatHistoryProvider for testing.
- *
  * @author xander
  */
 public class InMemoryChatHistoryProvider implements ChatHistoryProvider {

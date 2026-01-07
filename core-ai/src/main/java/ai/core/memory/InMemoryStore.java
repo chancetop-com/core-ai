@@ -9,8 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
- * In-memory implementation of MemoryStore with user-level isolation.
- *
  * @author xander
  */
 public class InMemoryStore implements MemoryStore {
@@ -53,18 +51,11 @@ public class InMemoryStore implements MemoryStore {
 
     @Override
     public List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK) {
-        return searchByVector(userId, queryEmbedding, topK, null);
-    }
-
-    @Override
-    public List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK, SearchFilter filter) {
         List<ScoredRecord> scored = new ArrayList<>();
         Map<String, MemoryRecord> records = getRecordsForUser(userId);
         Map<String, List<Double>> embeddings = getEmbeddingsForUser(userId);
 
         for (MemoryRecord record : records.values()) {
-            if (filter != null && !filter.matches(record)) continue;
-
             List<Double> embedding = embeddings.get(record.getId());
             if (embedding == null) continue;
 
@@ -78,11 +69,6 @@ public class InMemoryStore implements MemoryStore {
 
     @Override
     public List<MemoryRecord> searchByKeyword(String userId, String keyword, int topK) {
-        return searchByKeyword(userId, keyword, topK, null);
-    }
-
-    @Override
-    public List<MemoryRecord> searchByKeyword(String userId, String keyword, int topK, SearchFilter filter) {
         if (keyword == null || keyword.isBlank()) {
             return List.of();
         }
@@ -92,8 +78,6 @@ public class InMemoryStore implements MemoryStore {
         Map<String, MemoryRecord> records = getRecordsForUser(userId);
 
         for (MemoryRecord record : records.values()) {
-            if (filter != null && !filter.matches(record)) continue;
-
             double keywordScore = calculateKeywordScore(record.getContent(), keywords);
             if (keywordScore > 0) {
                 double effectiveScore = record.calculateEffectiveScore(keywordScore);

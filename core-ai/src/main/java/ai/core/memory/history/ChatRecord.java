@@ -5,9 +5,6 @@ import ai.core.llm.domain.RoleType;
 import java.time.Instant;
 
 /**
- * Represents a single chat message in conversation history.
- * Used by ChatHistoryProvider to provide chat history for memory extraction.
- *
  * @author xander
  */
 public record ChatRecord(

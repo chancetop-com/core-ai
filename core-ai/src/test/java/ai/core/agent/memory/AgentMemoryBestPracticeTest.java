@@ -18,14 +18,12 @@ import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
+import ai.core.memory.Extraction;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.history.ChatRecord;
 import ai.core.memory.history.InMemoryChatHistoryProvider;
 import ai.core.memory.InMemoryStore;
 import ai.core.memory.Memory;
-import ai.core.memory.MemoryConfig;
-import ai.core.memory.MemoryRecord;
-import ai.core.memory.extraction.MemoryExtractor;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -60,23 +58,20 @@ class AgentMemoryBestPracticeTest {
         @Test
         @DisplayName("Create agent with long-term memory using default config")
         void createAgentWithDefaultConfig() {
-            // 1. Create stores - user implements their own for production
+            // 1. Create stores
             var memoryStore = new InMemoryStore();
-            // User provides their own history provider that reads from their storage
-            var historyProvider = new InMemoryChatHistoryProvider();
 
-            // 2. Create long-term memory with default extractor
-            Memory longTermMemory = Memory.builder()
+            // 2. Create memory (only for retrieval)
+            Memory memory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
-                .historyProvider(historyProvider)
                 .build();
 
-            // 3. Create agent with unified memory
+            // 3. Create agent with memory
             Agent agent = Agent.builder()
                 .name("assistant")
                 .llmProvider(llmProvider)
-                .unifiedMemory(longTermMemory)  // Auto-registers MemoryRecallTool
+                .unifiedMemory(memory)  // Auto-registers MemoryRecallTool
                 .build();
 
             assertNotNull(agent);
@@ -89,73 +84,20 @@ class AgentMemoryBestPracticeTest {
         @DisplayName("Create agent with custom memory config")
         void createAgentWithCustomConfig() {
             var memoryStore = new InMemoryStore();
-            var historyProvider = new InMemoryChatHistoryProvider();
 
-            Memory longTermMemory = Memory.builder()
+            Memory memory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
-                .historyProvider(historyProvider)
-                .config(MemoryConfig.builder()
-                    .maxBufferTurns(3)            // Extract after every 3 user turns
-                    .asyncExtraction(false)        // Sync extraction for testing
-                    .extractOnSessionEnd(true)     // Extract remaining on session end
-                    .build())
+                .defaultTopK(10)
                 .build();
 
             Agent agent = Agent.builder()
                 .name("assistant")
                 .llmProvider(llmProvider)
-                .unifiedMemory(longTermMemory, UnifiedMemoryConfig.builder()
+                .unifiedMemory(memory, UnifiedMemoryConfig.builder()
                     .maxRecallRecords(10)         // Return max 10 memories
                     .autoRecall(true)              // Register MemoryRecallTool
                     .build())
-                .build();
-
-            assertNotNull(agent);
-        }
-    }
-
-    @Nested
-    @DisplayName("Memory with Custom Extractor")
-    class MemoryWithCustomExtractor {
-
-        @Test
-        @DisplayName("Use custom memory extractor")
-        void useCustomExtractor() {
-            var memoryStore = new InMemoryStore();
-            var historyProvider = new InMemoryChatHistoryProvider();
-
-            // Custom extractor that extracts user preferences
-            MemoryExtractor customExtractor = records -> {
-                List<MemoryRecord> memoryRecords = new ArrayList<>();
-                for (ChatRecord record : records) {
-                    // Simple extraction: look for "I like" or "I prefer" in user messages
-                    if (record.role() == RoleType.USER && record.content() != null
-                        && (record.content().contains("like") || record.content().contains("prefer"))) {
-                        memoryRecords.add(MemoryRecord.builder()
-                            .content("User preference: " + record.content())
-                            .importance(0.8)
-                            .build());
-                    }
-                }
-                return memoryRecords;
-            };
-
-            Memory longTermMemory = Memory.builder()
-                .llmProvider(llmProvider)
-                .memoryStore(memoryStore)
-                .historyProvider(historyProvider)
-                .extractor(customExtractor)
-                .config(MemoryConfig.builder()
-                    .maxBufferTurns(2)
-                    .asyncExtraction(false)
-                    .build())
-                .build();
-
-            Agent agent = Agent.builder()
-                .name("assistant")
-                .llmProvider(llmProvider)
-                .unifiedMemory(longTermMemory)
                 .build();
 
             assertNotNull(agent);
@@ -167,26 +109,24 @@ class AgentMemoryBestPracticeTest {
     class ProductionSetup {
 
         @Test
-        @DisplayName("Per-user memory isolation pattern")
-        void perUserMemoryIsolation() {
-            // In production, userId is the key for isolation
+        @DisplayName("Extraction and Memory separation pattern")
+        void extractionAndMemorySeparation() {
             String userId = "user-123";
 
-            // Memory store and history provider are shared, isolation is by userId
+            // Shared store and history provider
             var memoryStore = new InMemoryStore();
             var historyProvider = new InMemoryChatHistoryProvider();
 
+            // 1. Extraction - run separately (e.g., end of session, scheduled task)
+            Extraction extraction = new Extraction(memoryStore, historyProvider, llmProvider);
+
+            // 2. Memory - only for retrieval, used by Agent
             Memory memory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
-                .historyProvider(historyProvider)
-                .config(MemoryConfig.builder()
-                    .maxBufferTurns(5)
-                    .asyncExtraction(true)  // Use async in production
-                    .extractOnSessionEnd(true)
-                    .build())
                 .build();
 
+            // 3. Agent only uses Memory
             Agent agent = Agent.builder()
                 .name("personalized-assistant")
                 .systemPrompt("You are a personalized assistant. Use the memory tool to recall user preferences.")
@@ -196,38 +136,35 @@ class AgentMemoryBestPracticeTest {
 
             assertNotNull(agent);
 
-            // Simulate conversation - in production, messages are stored by user's system
+            // Simulate conversation - user's system stores chat history
             historyProvider.addRecord(userId, ChatRecord.user("I prefer dark mode", Instant.now()));
             historyProvider.addRecord(userId, ChatRecord.assistant("Noted!", Instant.now()));
 
-            // Trigger extraction (e.g., at end of session or periodically)
-            memory.extract(userId);
-            memory.waitForExtraction();
+            // Trigger extraction separately (e.g., at end of session)
+            extraction.run(userId);
         }
 
         @Test
-        @DisplayName("Agent with both short-term and long-term memory")
+        @DisplayName("Agent with both compression and long-term memory")
         void agentWithBothMemories() {
             var memoryStore = new InMemoryStore();
-            var historyProvider = new InMemoryChatHistoryProvider();
 
-            Memory longTermMemory = Memory.builder()
+            Memory memory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
-                .historyProvider(historyProvider)
                 .build();
 
             // Both memories enabled
             Agent agent = Agent.builder()
                 .name("full-memory-assistant")
                 .llmProvider(llmProvider)
-                .enableCompression(true)   // Conversation compression
-                .unifiedMemory(longTermMemory)  // Cross-session memory
+                .enableCompression(true)   // Conversation compression (within session)
+                .unifiedMemory(memory)     // Cross-session memory
                 .build();
 
             assertNotNull(agent);
-            // Short-term: handles conversation context within session
-            // Long-term: remembers user preferences across sessions
+            // Compression: handles conversation context within session
+            // Memory: remembers user preferences across sessions
         }
     }
 

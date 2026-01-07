@@ -4,9 +4,6 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Storage interface for memory records with user-level isolation.
- * All operations are scoped by userId.
- *
  * @author xander
  */
 public interface MemoryStore {
@@ -23,11 +20,7 @@ public interface MemoryStore {
 
     List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK);
 
-    List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK, SearchFilter filter);
-
     List<MemoryRecord> searchByKeyword(String userId, String keyword, int topK);
-
-    List<MemoryRecord> searchByKeyword(String userId, String keyword, int topK, SearchFilter filter);
 
     void delete(String userId, String id);
 
