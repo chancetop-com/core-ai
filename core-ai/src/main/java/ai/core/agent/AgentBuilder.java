@@ -115,12 +115,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     public AgentBuilder mcpServers(List<String> serverNames, List<String> includes) {
+        return mcpServers(serverNames, includes, List.of());
+    }
+
+    public AgentBuilder mcpServers(List<String> serverNames, List<String> includes, List<String> excludes) {
         var manager = McpClientManagerRegistry.getManager();
         if (manager == null) {
             throw new IllegalStateException("MCP servers requested but McpClientManager is not configured. "
                     + "Please configure mcp.servers in your properties file.");
         }
-        this.toolCalls.addAll(McpToolCalls.from(manager, serverNames, includes));
+        this.toolCalls.addAll(McpToolCalls.from(manager, serverNames, includes, excludes));
         return this;
     }
 
