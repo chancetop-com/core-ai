@@ -5,45 +5,39 @@ This tutorial covers Core-AI's memory systems for building agents that remember 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Long-term Memory](#long-term-memory)
+2. [Memory System](#memory-system)
 3. [Agent Integration](#agent-integration)
 4. [Best Practices](#best-practices)
 
 ## Overview
 
-Core-AI provides a two-tier memory architecture:
+Core-AI's memory system persists user information, supporting cross-session storage of user preferences, facts, and interaction history.
 
 ```
-+---------------------------------------------------------+
-|                   Agent Memory System                    |
-+----------------------------+----------------------------+
-|        Compression         |      Long-term Memory      |
-|    (Session/Conversation)  |  (Persistent/Cross-session)|
-+----------------------------+----------------------------+
-| - Message history          | - User preferences         |
-| - Conversation summary     | - Facts and knowledge      |
-| - Auto-summarization       | - Goals and intents        |
-| - Token management         | - Past interactions        |
-+----------------------------+----------------------------+
-| Lifecycle: Within session  | Lifecycle: Across sessions |
-| Storage: In-memory         | Storage: User-defined      |
-|                            | (Vector DB, etc.)          |
-+----------------------------+----------------------------+
++-------------------------------------------------------------+
+|                    Memory System Architecture                |
++-------------------------------------------------------------+
+|                                                             |
+|  Core Capabilities:                                         |
+|  - User preference persistence                              |
+|  - Facts and knowledge storage                              |
+|  - Goals and intents recording                              |
+|  - Interaction history tracking                             |
+|                                                             |
+|  Features:                                                  |
+|  - Vector semantic search                                   |
+|  - User-level data isolation                                |
+|  - LangMem pattern (on-demand retrieval)                    |
+|                                                             |
+|  Lifecycle: Across sessions                                 |
+|  Storage: User-defined (Vector DB, etc.)                    |
+|                                                             |
++-------------------------------------------------------------+
 ```
 
-### When to Use Each Type
+## Memory System
 
-| Memory Type | Use Case | Documentation |
-|-------------|----------|---------------|
-| **Compression** | Maintaining conversation context within a session | [Compression Tutorial](tutorial-compression.md) |
-| **Long-term Memory** | Remembering user preferences across sessions | This document |
-| **Both** | Personalized assistants that remember past interactions | Combine both |
-
-> **Note**: For detailed information about Compression (session-based context management), see [Compression Tutorial](tutorial-compression.md).
-
-## Long-term Memory
-
-Long-term memory persists user information across sessions using vector embeddings for semantic search.
+The memory system persists user information across sessions using vector embeddings for semantic search.
 
 ### Architecture
 
@@ -92,7 +86,7 @@ Each memory record has the following key attributes:
 - **0.5-0.6**: Nice to know (casual mentions, minor preferences)
 - **Below 0.5**: Not worth storing
 
-### Setting Up Long-term Memory
+### Setting Up Memory
 
 ```java
 import ai.core.memory.Memory;
@@ -189,6 +183,104 @@ extraction.run(userId);
 |                                                                       |
 +-----------------------------------------------------------------------+
 ```
+
+### Memory Retrieval Principles
+
+The memory retrieval mechanism is based on **vector similarity search**, which converts natural language queries into vector representations and finds the most relevant memories:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  Vector Similarity Search Flow               │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  User Query: "What does the user like?"                     │
+│         │                                                   │
+│         ▼                                                   │
+│  1. Vectorize query                                         │
+│     queryEmbedding = llmProvider.embeddings(query)          │
+│         │                                                   │
+│         ▼                                                   │
+│  2. Similarity search in MemoryStore                        │
+│     candidates = store.searchByVector(                      │
+│         userId,                                             │
+│         queryEmbedding,                                     │
+│         topK                                                │
+│     )                                                       │
+│         │                                                   │
+│         ▼                                                   │
+│  3. Apply scoring factors                                   │
+│     score = similarity                                      │
+│           × importance                                      │
+│           × decayFactor                                     │
+│           × recencyBoost                                    │
+│         │                                                   │
+│         ▼                                                   │
+│  4. Return top-K results                                    │
+│     [MemoryRecord, MemoryRecord, ...]                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Core Retrieval Code**:
+```java
+public List<MemoryRecord> retrieve(String userId, String query, int topK) {
+    // 1. Generate query embedding
+    List<Double> queryEmbedding = llmProvider.embeddings(List.of(query)).getFirst();
+
+    // 2. Vector similarity search
+    List<MemoryRecord> candidates = memoryStore.searchByVector(userId, queryEmbedding, topK * 2);
+
+    // 3. Re-rank by composite score
+    return candidates.stream()
+        .sorted((a, b) -> Double.compare(
+            computeScore(b, queryEmbedding),
+            computeScore(a, queryEmbedding)
+        ))
+        .limit(topK)
+        .toList();
+}
+```
+
+### LangMem Pattern
+
+Core-AI adopts the **LangMem pattern** for memory integration, where the LLM proactively decides when to query memories via a tool call, rather than automatically injecting memories on every request:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    LangMem Pattern Flow                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  User: "Do you remember what I like?"                       │
+│         │                                                   │
+│         ▼                                                   │
+│  Agent receives query                                       │
+│         │                                                   │
+│         ▼                                                   │
+│  LLM analyzes: "Need to recall user preferences"            │
+│         │                                                   │
+│         ▼                                                   │
+│  LLM outputs: tool_call: search_memory_tool                 │
+│               arguments: {"query": "user preferences"}      │
+│         │                                                   │
+│         ▼                                                   │
+│  MemoryRecallTool executes                                  │
+│  memory.retrieve(userId, "user preferences")                │
+│         │                                                   │
+│         ▼                                                   │
+│  Returns: ["User likes dark mode", "User prefers Vim"]      │
+│         │                                                   │
+│         ▼                                                   │
+│  LLM generates response with memory context                 │
+│  "I remember you like dark mode and prefer using Vim!"      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Benefits of LangMem Pattern**:
+- **On-demand retrieval**: Only queries memory when contextually relevant
+- **Reduced noise**: Avoids injecting irrelevant memories
+- **LLM control**: LLM decides what to remember based on conversation context
+- **Efficiency**: Saves tokens by not auto-injecting on every request
 
 ### Memory Recall
 
@@ -424,33 +516,7 @@ public class MemoryExample {
 
 ## Best Practices
 
-### 1. Choose the Right Memory Type
-
-```java
-// Stateless operations: disable compression
-Agent statelessAgent = Agent.builder()
-    .name("stateless")
-    .llmProvider(llmProvider)
-    .enableCompression(false)
-    .build();
-
-// Single session: compression only (default)
-Agent sessionAgent = Agent.builder()
-    .name("session")
-    .llmProvider(llmProvider)
-    .enableCompression(true)
-    .build();
-
-// Personalized experience: use both memories
-Agent personalizedAgent = Agent.builder()
-    .name("personalized")
-    .llmProvider(llmProvider)
-    .enableCompression(true)   // Within session
-    .unifiedMemory(memory)     // Across sessions
-    .build();
-```
-
-### 2. Proper Use of ExecutionContext
+### 1. Proper Use of ExecutionContext
 
 ```java
 // Create context with userId
@@ -464,7 +530,7 @@ ExecutionContext context = ExecutionContext.builder()
 String response = agent.run("query content", context);
 ```
 
-### 3. Production Storage Setup
+### 2. Production Storage Setup
 
 ```java
 // Development: in-memory stores
@@ -478,7 +544,7 @@ ChatHistoryProvider prodHistory = new DatabaseHistoryProvider(repository);
 ChatHistoryProvider prodHistory = userId -> repository.findByUserId(userId);
 ```
 
-### 4. Extraction Timing
+### 3. Extraction Timing
 
 ```java
 // Option 1: Extract at session end
@@ -496,7 +562,7 @@ public void batchExtraction() {
 }
 ```
 
-### 5. Service Layer Encapsulation
+### 4. Service Layer Encapsulation
 
 ```java
 public class ChatService {
@@ -531,7 +597,7 @@ public class ChatService {
 
 Key concepts covered in this tutorial:
 
-1. **Long-term Memory**: Persistent user memories with vector semantic search
+1. **Memory System**: Persistent user memories with vector semantic search
    - `Extraction`: Independent extractor, extracts memories from chat history
    - `Memory`: Retriever, used by Agent
 
@@ -543,7 +609,6 @@ Key concepts covered in this tutorial:
 4. **Dual Storage Design**: `MemoryStore` (memories) + `ChatHistoryProvider` (read from user's messages)
 
 Next steps:
-- Learn [Compression](tutorial-compression.md) for session-based context management
 - Learn [Tool Calling](tutorial-tool-calling.md) to extend agent capabilities
 - Explore [RAG Integration](tutorial-rag.md) for knowledge enhancement
 - Build [Multi-Agent Systems](tutorial-multi-agent.md) for complex applications

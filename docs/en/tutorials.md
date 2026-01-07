@@ -9,6 +9,10 @@ If you're new to Core-AI, start here:
 1. **[Quick Start Guide](quickstart.md)** - Get up and running in 10 minutes
 2. **[Basic Agent Tutorial](tutorial-basic-agent.md)** - Create your first intelligent agent
 
+### 🔬 Deep Dive
+For understanding core mechanisms:
+- **[Architecture & Internals](tutorial-architecture.md)** - Framework core mechanisms deep dive ⭐ NEW
+
 ### 🚀 Core Tutorials
 
 #### 1. [Building Intelligent Agents](tutorial-basic-agent.md)
@@ -38,6 +42,21 @@ Deep dive into Core-AI's memory architecture for personalized and context-aware 
 - Token budget management
 
 **Perfect for:** Building agents that remember users across sessions
+
+---
+
+#### 3. [Compression Mechanism](tutorial-compression.md)
+Master in-session context management for handling long conversations.
+
+**Topics covered:**
+- Compression principles and triggers
+- Automatic context summarization
+- Message splitting strategies
+- Conversation chain protection
+- LLM-generated summaries
+- Configuration and best practices
+
+**Perfect for:** Agents handling long conversations with token limits
 
 ---
 
@@ -106,7 +125,7 @@ Build complex workflows and business processes with visual flow design.
 1. [Tool Calling](tutorial-tool-calling.md) → [Multi-Agent Systems](tutorial-multi-agent.md) → [RAG Integration](tutorial-rag.md)
 
 ### Advanced Path
-1. [Flow Orchestration](tutorial-flow.md) → Production deployment
+1. [Architecture & Internals](tutorial-architecture.md) → [Flow Orchestration](tutorial-flow.md) → [Compression](tutorial-compression.md) → Production deployment
 
 ## 💡 Tutorial Features
 
@@ -150,7 +169,9 @@ Choose a tutorial based on your needs:
 |-------------|------------|
 | Build my first AI agent | [Basic Agent Tutorial](tutorial-basic-agent.md) |
 | Create a chatbot | [Quick Start Guide](quickstart.md) |
+| Understand framework internals | [Architecture & Internals](tutorial-architecture.md) |
 | Remember users across sessions | [Memory Systems](tutorial-memory.md) |
+| Handle long conversations | [Compression Mechanism](tutorial-compression.md) |
 | Build a multi-expert system | [Multi-Agent Systems](tutorial-multi-agent.md) |
 | Add knowledge retrieval | [RAG Integration](tutorial-rag.md) |
 | Integrate external APIs | [Tool Calling](tutorial-tool-calling.md) |

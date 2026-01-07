@@ -21,6 +21,78 @@ In Core-AI, an Agent is an autonomous AI entity that can:
 - Maintain conversation context and memory
 - Reflect and improve its responses
 
+### Core Architecture Design
+
+Agent execution is divided into **outer wrapper** and **core execution** two layers:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Node Layer                               │
+│   aroundExecute() - Lifecycle hook wrapper                       │
+│   ├─ beforeAgentRun() - Can modify input query                  │
+│   ├─ execute()        - Core execution                          │
+│   └─ afterAgentRun()  - Can modify output result                │
+├─────────────────────────────────────────────────────────────────┤
+│                         Agent Layer                              │
+│   execute() → doExecute() → commandOrLoops()                     │
+│   ├─ Message building (system prompt + history + user query)    │
+│   ├─ RAG retrieval (if enabled)                                 │
+│   └─ chatTurns() - Enter conversation turn layer                │
+├─────────────────────────────────────────────────────────────────┤
+│                    Conversation Turn Layer                       │
+│   chatTurns() - Core multi-turn dialogue loop                   │
+│   while (hasToolCall && turn < maxTurn) {                       │
+│       ├─ beforeModel() lifecycle hook                           │
+│       ├─ LLM completion (get assistant response)                │
+│       ├─ afterModel() lifecycle hook                            │
+│       ├─ Tool execution (if tool_calls present)                 │
+│       └─ Output accumulation                                    │
+│   }                                                             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Design Highlights**:
+- **Layered Separation**: Node layer handles cross-cutting concerns (lifecycle hooks), Agent layer handles business logic (RAG, message building), Turn layer handles LLM interaction
+- **Lifecycle Extension Points**: 8 hook points allow customization without modifying core code
+- **Parallel Tool Execution**: Multiple tool calls execute in parallel via `parallelStream`
+
+### State Transition Mechanism
+
+Agent uses a state machine to manage execution status:
+
+```
+                    ┌─────────┐
+                    │  INITED │ (Initial state after build)
+                    └────┬────┘
+                         │ run() called
+                         ▼
+                    ┌─────────┐
+            ┌───────│ RUNNING │───────┐
+            │       └────┬────┘       │
+            │            │            │
+     Tool needs     Normal       Exception
+     user auth     completion    occurred
+            │            │            │
+            ▼            ▼            ▼
+┌───────────────────┐ ┌─────────┐ ┌────────┐
+│WAITING_FOR_USER   │ │COMPLETED│ │ FAILED │
+│     _INPUT        │ └─────────┘ └────────┘
+└─────────┬─────────┘
+          │ User confirms with "yes"
+          │
+          ▼
+     ┌─────────┐
+     │ RUNNING │ (Continue execution)
+     └─────────┘
+```
+
+**Key States**:
+- `INITED`: Initial state after Agent is built
+- `RUNNING`: Currently executing
+- `COMPLETED`: Execution finished successfully
+- `FAILED`: Execution encountered an error
+- `WAITING_FOR_USER_INPUT`: A tool requires user authentication before proceeding
+
 ### Agent Core Components
 
 ```java
