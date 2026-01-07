@@ -52,7 +52,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
                                    int maxTokensPerMessage) {
         this.llmProvider = llmProvider;
         this.model = model;
-        this.extractionPrompt = customPrompt != null ? customPrompt : Prompts.LONG_TERM_MEMORY_EXTRACTION_PROMPT;
+        this.extractionPrompt = customPrompt != null ? customPrompt : Prompts.MEMORY_EXTRACTION_PROMPT;
         this.maxTurnsPerExtraction = maxTurnsPerExtraction;
         this.maxTokensPerMessage = maxTokensPerMessage;
     }
