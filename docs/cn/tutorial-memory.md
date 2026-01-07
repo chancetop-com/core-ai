@@ -47,6 +47,9 @@ Core-AI 提供两层记忆架构：
 
 ```java
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
+
+String userId = "user-123";
 
 // 压缩默认启用
 Agent agent = Agent.builder()
@@ -55,9 +58,14 @@ Agent agent = Agent.builder()
     .enableCompression(true)  // 默认值：true
     .build();
 
+// 创建执行上下文（包含 userId）
+ExecutionContext context = ExecutionContext.builder()
+    .userId(userId)
+    .build();
+
 // Agent 在会话中记住之前的消息
-agent.run(userId, "我叫张三");
-agent.run(userId, "我叫什么名字？");  // 记住："张三"
+agent.run("我叫张三", context);
+agent.run("我叫什么名字？", context);  // 记住："张三"
 ```
 
 ### 配置选项
@@ -342,6 +350,8 @@ Agent agent = Agent.builder()
 ### 完整示例
 
 ```java
+import ai.core.agent.ExecutionContext;
+
 public class MemoryExample {
     public static void main(String[] args) {
         String userId = "user-123";
@@ -375,7 +385,10 @@ public class MemoryExample {
         extraction.run(userId);
 
         // 6. 下次会话时 Agent 可以检索记忆
-        agent.run(userId, "你还记得我喜欢什么编辑器吗？");
+        ExecutionContext context = ExecutionContext.builder()
+            .userId(userId)
+            .build();
+        agent.run("你还记得我喜欢什么编辑器吗？", context);
     }
 }
 ```

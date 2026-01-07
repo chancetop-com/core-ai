@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.memory.Memory;
 import ai.core.memory.MemoryRecord;
 import ai.core.tool.ToolCall;
@@ -12,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * @author xander
@@ -27,17 +27,15 @@ public final class MemoryRecallTool extends ToolCall {
         return new Builder();
     }
 
-    private final Memory longTermMemory;
+    private final Memory memory;
     private final int maxRecords;
-    private final Supplier<String> userIdSupplier;
 
-    public MemoryRecallTool(Memory longTermMemory, Supplier<String> userIdSupplier) {
-        this(longTermMemory, userIdSupplier, 5);
+    public MemoryRecallTool(Memory memory) {
+        this(memory, 5);
     }
 
-    public MemoryRecallTool(Memory longTermMemory, Supplier<String> userIdSupplier, int maxRecords) {
-        this.longTermMemory = longTermMemory;
-        this.userIdSupplier = userIdSupplier;
+    public MemoryRecallTool(Memory memory, int maxRecords) {
+        this.memory = memory;
         this.maxRecords = maxRecords;
         super.setName(TOOL_NAME);
         super.setDescription("Search and recall relevant memories about the user. "
@@ -47,7 +45,7 @@ public final class MemoryRecallTool extends ToolCall {
     }
 
     @Override
-    public ToolCallResult execute(String arguments) {
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {
             JsonNode params = OBJECT_MAPPER.readTree(arguments);
@@ -58,13 +56,13 @@ public final class MemoryRecallTool extends ToolCall {
                     .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            String userId = userIdSupplier.get();
+            String userId = context != null ? context.getUserId() : null;
             if (userId == null || userId.isEmpty()) {
-                return ToolCallResult.failed("Error: userId is not available")
+                return ToolCallResult.failed("Error: userId is not available in ExecutionContext")
                     .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            List<MemoryRecord> memories = longTermMemory.retrieve(userId, query, maxRecords);
+            List<MemoryRecord> memories = memory.retrieve(userId, query, maxRecords);
 
             String result = formatMemories(memories);
             LOGGER.debug("Retrieved {} memories for user: {}, query: {}", memories.size(), userId, truncate(query, 50));
@@ -79,6 +77,11 @@ public final class MemoryRecallTool extends ToolCall {
             return ToolCallResult.failed("Error retrieving memories: " + e.getMessage())
                 .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    @Override
+    public ToolCallResult execute(String arguments) {
+        return ToolCallResult.failed("Error: MemoryRecallTool requires ExecutionContext with userId. Use execute(arguments, context) instead.");
     }
 
     private String formatMemories(List<MemoryRecord> memories) {
@@ -112,7 +115,7 @@ public final class MemoryRecallTool extends ToolCall {
     }
 
     public Memory getMemory() {
-        return longTermMemory;
+        return memory;
     }
 
     public int getMaxRecords() {
@@ -120,8 +123,7 @@ public final class MemoryRecallTool extends ToolCall {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, MemoryRecallTool> {
-        private Memory longTermMemory;
-        private Supplier<String> userIdSupplier;
+        private Memory memory;
         private int maxRecords = 5;
 
         @Override
@@ -129,13 +131,8 @@ public final class MemoryRecallTool extends ToolCall {
             return this;
         }
 
-        public Builder longTermMemory(Memory longTermMemory) {
-            this.longTermMemory = longTermMemory;
-            return this;
-        }
-
-        public Builder userIdSupplier(Supplier<String> userIdSupplier) {
-            this.userIdSupplier = userIdSupplier;
+        public Builder memory(Memory memory) {
+            this.memory = memory;
             return this;
         }
 
@@ -145,13 +142,10 @@ public final class MemoryRecallTool extends ToolCall {
         }
 
         public MemoryRecallTool build() {
-            if (longTermMemory == null) {
-                throw new IllegalStateException("longTermMemory is required");
+            if (memory == null) {
+                throw new IllegalStateException("memory is required");
             }
-            if (userIdSupplier == null) {
-                throw new IllegalStateException("userIdSupplier is required");
-            }
-            return new MemoryRecallTool(longTermMemory, userIdSupplier, maxRecords);
+            return new MemoryRecallTool(memory, maxRecords);
         }
     }
 }

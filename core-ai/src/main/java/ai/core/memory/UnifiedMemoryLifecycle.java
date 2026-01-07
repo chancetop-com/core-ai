@@ -11,23 +11,23 @@ import ai.core.tool.tools.MemoryRecallTool;
  */
 public class UnifiedMemoryLifecycle extends AbstractLifecycle {
 
-    private final Memory longTermMemory;
+    private final Memory memory;
     private final int maxRecallRecords;
     private MemoryRecallTool memoryRecallTool;
 
-    public UnifiedMemoryLifecycle(Memory longTermMemory) {
-        this(longTermMemory, 5);
+    public UnifiedMemoryLifecycle(Memory memory) {
+        this(memory, 5);
     }
 
-    public UnifiedMemoryLifecycle(Memory longTermMemory, int maxRecallRecords) {
-        this.longTermMemory = longTermMemory;
+    public UnifiedMemoryLifecycle(Memory memory, int maxRecallRecords) {
+        this.memory = memory;
         this.maxRecallRecords = maxRecallRecords;
     }
 
     public MemoryRecallTool getMemoryRecallTool() {
         if (memoryRecallTool == null) {
             memoryRecallTool = MemoryRecallTool.builder()
-                .longTermMemory(longTermMemory)
+                .memory(memory)
                 .maxRecords(maxRecallRecords)
                 .build();
         }
@@ -35,7 +35,7 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
     }
 
     public Memory getMemory() {
-        return longTermMemory;
+        return memory;
     }
 
     public int getMaxRecallRecords() {
