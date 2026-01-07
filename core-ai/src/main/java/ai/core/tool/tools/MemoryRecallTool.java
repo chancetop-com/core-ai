@@ -1,7 +1,7 @@
 package ai.core.tool.tools;
 
-import ai.core.memory.longterm.Memory;
-import ai.core.memory.longterm.MemoryRecord;
+import ai.core.memory.Memory;
+import ai.core.memory.MemoryRecord;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;

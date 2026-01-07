@@ -1,14 +1,14 @@
-package ai.core.memory.longterm.extraction;
+package ai.core.memory.extraction;
 
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.RoleType;
+import ai.core.memory.MemoryConfig;
+import ai.core.memory.MemoryRecord;
+import ai.core.memory.MemoryStore;
 import ai.core.memory.history.ChatHistoryProvider;
 import ai.core.memory.history.ChatRecord;
-import ai.core.memory.longterm.MemoryConfig;
-import ai.core.memory.longterm.MemoryRecord;
-import ai.core.memory.longterm.MemoryStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

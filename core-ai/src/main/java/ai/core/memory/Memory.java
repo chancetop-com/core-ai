@@ -1,11 +1,11 @@
-package ai.core.memory.longterm;
+package ai.core.memory;
 
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
+import ai.core.memory.extraction.MemoryCoordinator;
+import ai.core.memory.extraction.MemoryExtractor;
 import ai.core.memory.history.ChatHistoryProvider;
-import ai.core.memory.longterm.extraction.MemoryCoordinator;
-import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

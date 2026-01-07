@@ -1,4 +1,4 @@
-package ai.core.memory.longterm;
+package ai.core.memory;
 
 import java.time.Instant;
 

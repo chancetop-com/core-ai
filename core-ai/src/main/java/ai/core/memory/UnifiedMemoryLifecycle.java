@@ -1,7 +1,6 @@
 package ai.core.memory;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.memory.longterm.Memory;
 import ai.core.tool.tools.MemoryRecallTool;
 
 /**

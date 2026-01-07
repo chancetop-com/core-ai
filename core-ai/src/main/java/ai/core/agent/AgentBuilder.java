@@ -6,7 +6,7 @@ import ai.core.compression.Compression;
 import ai.core.compression.CompressionLifecycle;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.UnifiedMemoryLifecycle;
-import ai.core.memory.longterm.Memory;
+import ai.core.memory.Memory;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;

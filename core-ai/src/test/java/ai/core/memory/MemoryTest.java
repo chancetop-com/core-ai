@@ -1,14 +1,14 @@
-package ai.core.memory.longterm;
+package ai.core.memory;
 
 import ai.core.document.Embedding;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.RoleType;
+import ai.core.memory.extraction.MemoryCoordinator;
+import ai.core.memory.extraction.MemoryExtractor;
 import ai.core.memory.history.ChatRecord;
 import ai.core.memory.history.InMemoryChatHistoryProvider;
-import ai.core.memory.longterm.extraction.MemoryCoordinator;
-import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

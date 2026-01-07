@@ -16,7 +16,6 @@ import java.util.List;
 /**
  * @author xander
  */
-//todo Whether is necessary that adding a interface for developer to self-define the Short Term Memory ?
 public class Compression {
     private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
