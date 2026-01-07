@@ -4,39 +4,42 @@ import java.util.List;
 import java.util.Optional;
 
 /**
+ * Storage interface for memory records with user-level isolation.
+ * All operations are scoped by userId.
+ *
  * @author xander
  */
 public interface MemoryStore {
 
-    void save(MemoryRecord record);
+    void save(String userId, MemoryRecord record);
 
-    void save(MemoryRecord record, List<Double> embedding);
+    void save(String userId, MemoryRecord record, List<Double> embedding);
 
-    void saveAll(List<MemoryRecord> records, List<List<Double>> embeddings);
+    void saveAll(String userId, List<MemoryRecord> records, List<List<Double>> embeddings);
 
-    Optional<MemoryRecord> findById(String id);
+    Optional<MemoryRecord> findById(String userId, String id);
 
-    List<MemoryRecord> findAll();
+    List<MemoryRecord> findAll(String userId);
 
-    List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK);
+    List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK);
 
-    List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK, SearchFilter filter);
+    List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK, SearchFilter filter);
 
-    List<MemoryRecord> searchByKeyword(String keyword, int topK);
+    List<MemoryRecord> searchByKeyword(String userId, String keyword, int topK);
 
-    List<MemoryRecord> searchByKeyword(String keyword, int topK, SearchFilter filter);
+    List<MemoryRecord> searchByKeyword(String userId, String keyword, int topK, SearchFilter filter);
 
-    void delete(String id);
+    void delete(String userId, String id);
 
-    void deleteAll();
+    void deleteAll(String userId);
 
-    void recordAccess(List<String> ids);
+    void recordAccess(String userId, List<String> ids);
 
-    void updateDecayFactor(String id, double decayFactor);
+    void updateDecayFactor(String userId, String id, double decayFactor);
 
-    List<MemoryRecord> findDecayed(double threshold);
+    List<MemoryRecord> findDecayed(String userId, double threshold);
 
-    int deleteDecayed(double threshold);
+    int deleteDecayed(String userId, double threshold);
 
-    int count();
+    int count(String userId);
 }

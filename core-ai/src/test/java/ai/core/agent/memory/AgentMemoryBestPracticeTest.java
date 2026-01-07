@@ -19,7 +19,8 @@ import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.memory.UnifiedMemoryConfig;
-import ai.core.memory.history.InMemoryChatHistoryStore;
+import ai.core.memory.history.ChatRecord;
+import ai.core.memory.history.InMemoryChatHistoryProvider;
 import ai.core.memory.longterm.InMemoryStore;
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -60,13 +62,14 @@ class AgentMemoryBestPracticeTest {
         void createAgentWithDefaultConfig() {
             // 1. Create stores - user implements their own for production
             var memoryStore = new InMemoryStore();
-            var chatHistoryStore = new InMemoryChatHistoryStore();
+            // User provides their own history provider that reads from their storage
+            var historyProvider = new InMemoryChatHistoryProvider();
 
             // 2. Create long-term memory with default extractor
             LongTermMemory longTermMemory = LongTermMemory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
-                .chatHistoryStore(chatHistoryStore)
+                .historyProvider(historyProvider)
                 .build();
 
             // 3. Create agent with unified memory
@@ -86,12 +89,12 @@ class AgentMemoryBestPracticeTest {
         @DisplayName("Create agent with custom memory config")
         void createAgentWithCustomConfig() {
             var memoryStore = new InMemoryStore();
-            var chatHistoryStore = new InMemoryChatHistoryStore();
+            var historyProvider = new InMemoryChatHistoryProvider();
 
             LongTermMemory longTermMemory = LongTermMemory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
-                .chatHistoryStore(chatHistoryStore)
+                .historyProvider(historyProvider)
                 .config(LongTermMemoryConfig.builder()
                     .maxBufferTurns(3)            // Extract after every 3 user turns
                     .asyncExtraction(false)        // Sync extraction for testing
@@ -120,28 +123,28 @@ class AgentMemoryBestPracticeTest {
         @DisplayName("Use custom memory extractor")
         void useCustomExtractor() {
             var memoryStore = new InMemoryStore();
-            var chatHistoryStore = new InMemoryChatHistoryStore();
+            var historyProvider = new InMemoryChatHistoryProvider();
 
             // Custom extractor that extracts user preferences
-            MemoryExtractor customExtractor = messages -> {
-                List<MemoryRecord> records = new ArrayList<>();
-                for (Message msg : messages) {
+            MemoryExtractor customExtractor = records -> {
+                List<MemoryRecord> memoryRecords = new ArrayList<>();
+                for (ChatRecord record : records) {
                     // Simple extraction: look for "I like" or "I prefer" in user messages
-                    if (msg.role == RoleType.USER && msg.content != null
-                        && (msg.content.contains("like") || msg.content.contains("prefer"))) {
-                        records.add(MemoryRecord.builder()
-                            .content("User preference: " + msg.content)
+                    if (record.role() == RoleType.USER && record.content() != null
+                        && (record.content().contains("like") || record.content().contains("prefer"))) {
+                        memoryRecords.add(MemoryRecord.builder()
+                            .content("User preference: " + record.content())
                             .importance(0.8)
                             .build());
                     }
                 }
-                return records;
+                return memoryRecords;
             };
 
             LongTermMemory longTermMemory = LongTermMemory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
-                .chatHistoryStore(chatHistoryStore)
+                .historyProvider(historyProvider)
                 .extractor(customExtractor)
                 .config(LongTermMemoryConfig.builder()
                     .maxBufferTurns(2)
@@ -166,18 +169,17 @@ class AgentMemoryBestPracticeTest {
         @Test
         @DisplayName("Per-user memory isolation pattern")
         void perUserMemoryIsolation() {
-            // In production, create separate LongTermMemory per user
+            // In production, userId is the key for isolation
             String userId = "user-123";
 
-            // Each user gets their own stores
-            // In production: new MilvusMemoryStore(userId), new RedisChatHistoryStore(userId)
-            var userMemoryStore = new InMemoryStore();
-            var userChatHistoryStore = new InMemoryChatHistoryStore();
+            // Memory store and history provider are shared, isolation is by userId
+            var memoryStore = new InMemoryStore();
+            var historyProvider = new InMemoryChatHistoryProvider();
 
-            LongTermMemory userMemory = LongTermMemory.builder()
+            LongTermMemory memory = LongTermMemory.builder()
                 .llmProvider(llmProvider)
-                .memoryStore(userMemoryStore)
-                .chatHistoryStore(userChatHistoryStore)
+                .memoryStore(memoryStore)
+                .historyProvider(historyProvider)
                 .config(LongTermMemoryConfig.builder()
                     .maxBufferTurns(5)
                     .asyncExtraction(true)  // Use async in production
@@ -189,26 +191,30 @@ class AgentMemoryBestPracticeTest {
                 .name("personalized-assistant")
                 .systemPrompt("You are a personalized assistant. Use the memory tool to recall user preferences.")
                 .llmProvider(llmProvider)
-                .unifiedMemory(userMemory)
+                .unifiedMemory(memory)
                 .build();
 
             assertNotNull(agent);
 
-            // Start session for this user
-            userMemory.startSession("session-" + userId + "-" + System.currentTimeMillis());
-            userMemory.endSession();
+            // Simulate conversation - in production, messages are stored by user's system
+            historyProvider.addRecord(userId, ChatRecord.user("I prefer dark mode", Instant.now()));
+            historyProvider.addRecord(userId, ChatRecord.assistant("Noted!", Instant.now()));
+
+            // Trigger extraction (e.g., at end of session or periodically)
+            memory.extract(userId);
+            memory.waitForExtraction();
         }
 
         @Test
         @DisplayName("Agent with both short-term and long-term memory")
         void agentWithBothMemories() {
             var memoryStore = new InMemoryStore();
-            var chatHistoryStore = new InMemoryChatHistoryStore();
+            var historyProvider = new InMemoryChatHistoryProvider();
 
             LongTermMemory longTermMemory = LongTermMemory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
-                .chatHistoryStore(chatHistoryStore)
+                .historyProvider(historyProvider)
                 .build();
 
             // Both memories enabled

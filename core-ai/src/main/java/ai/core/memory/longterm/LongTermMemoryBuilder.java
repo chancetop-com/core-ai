@@ -1,11 +1,12 @@
 package ai.core.memory.longterm;
 
 import ai.core.llm.LLMProvider;
-import ai.core.memory.history.ChatHistoryStore;
-import ai.core.memory.history.InMemoryChatHistoryStore;
+import ai.core.memory.history.ChatHistoryProvider;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 
 /**
+ * Builder for LongTermMemory.
+ *
  * @author xander
  */
 public class LongTermMemoryBuilder {
@@ -14,7 +15,7 @@ public class LongTermMemoryBuilder {
     private MemoryExtractor extractor;
     private LongTermMemoryConfig config;
     private MemoryStore memoryStore;
-    private ChatHistoryStore chatHistoryStore;
+    private ChatHistoryProvider historyProvider;
 
     public LongTermMemoryBuilder llmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
@@ -40,14 +41,18 @@ public class LongTermMemoryBuilder {
         return memoryStore(store);
     }
 
-    public LongTermMemoryBuilder chatHistoryStore(ChatHistoryStore chatHistoryStore) {
-        this.chatHistoryStore = chatHistoryStore;
+    public LongTermMemoryBuilder historyProvider(ChatHistoryProvider historyProvider) {
+        this.historyProvider = historyProvider;
         return this;
     }
 
     public LongTermMemory build() {
         if (llmProvider == null) {
             throw new IllegalStateException("llmProvider is required for LongTermMemory");
+        }
+
+        if (historyProvider == null) {
+            throw new IllegalStateException("historyProvider is required for LongTermMemory");
         }
 
         if (config == null) {
@@ -58,15 +63,11 @@ public class LongTermMemoryBuilder {
             memoryStore = new InMemoryStore();
         }
 
-        if (chatHistoryStore == null) {
-            chatHistoryStore = new InMemoryChatHistoryStore();
-        }
-
         if (extractor == null) {
             extractor = createDefaultExtractor();
         }
 
-        return new LongTermMemory(memoryStore, chatHistoryStore, extractor, llmProvider, config);
+        return new LongTermMemory(memoryStore, historyProvider, extractor, llmProvider, config);
     }
 
     private MemoryExtractor createDefaultExtractor() {

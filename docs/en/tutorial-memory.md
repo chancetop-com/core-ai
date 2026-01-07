@@ -199,18 +199,20 @@ Long-term memory persists user information across sessions using vector embeddin
 │                                │                          │             │
 │                    ┌───────────┴───────────┐              │             │
 │                    ▼                       ▼              ▼             │
-│              MemoryStore          ChatHistoryStore   MemoryExtractor    │
-│              (Memory storage)    (Conversation store)  (LLM extraction) │
+│              MemoryStore         ChatHistoryProvider  MemoryExtractor    │
+│              (Memory storage)    (Read from user store) (LLM extraction) │
 │                    │                       │              │             │
 │                    ▼                       ▼              ▼             │
 │            User implementation      User implementation  DefaultMemoryExtractor
-│           (Milvus/Redis/etc.)      (MySQL/Redis/etc.)                   │
+│           (Milvus/Redis/etc.)      (Read-only interface)                │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Core Concepts
 
-**User-Controlled Data Isolation**: The framework does not enforce isolation strategies. Users decide how to isolate data (by tenant, user, etc.) when implementing `MemoryStore` and `ChatHistoryStore`.
+**User-Controlled Data Isolation**: The framework does not enforce isolation strategies. Users decide how to isolate data (by tenant, user, etc.) when implementing `MemoryStore` and `ChatHistoryProvider`.
+
+**Read-Only History Access**: Users store messages in their own system. The framework only needs read access via `ChatHistoryProvider` to extract memories. No duplicate storage required.
 
 **LangMem Pattern**: LLM proactively decides when to query memories via Tool, rather than automatically injecting on every request. This is smarter and saves tokens.
 
@@ -234,34 +236,29 @@ Each memory record has the following key attributes:
 
 ### Memory Extraction Mechanism
 
-The core of long-term memory is automatically extracting valuable information from conversations:
+The core of long-term memory is extracting valuable information from conversations. Users trigger extraction when appropriate (e.g., after a conversation ends):
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         Extraction Flow                                  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  1. Message arrives                                                     │
-│     ┌─────────────────┐                                                 │
-│     │ onMessage(msg)  │                                                 │
-│     └────────┬────────┘                                                 │
+│  1. User triggers extraction                                            │
+│     ┌───────────────────────────────────┐                               │
+│     │ memory.extractFromHistory(sessionId)│                             │
+│     └────────┬──────────────────────────┘                               │
 │              ↓                                                          │
-│  2. Persist to ChatHistoryStore                                         │
+│  2. Load messages from user's storage                                   │
 │     ┌─────────────────────────────────────┐                             │
-│     │ chatHistoryStore.save(sessionId, msg)│                            │
+│     │ historyProvider.load(sessionId)     │                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  3. Check if extraction should trigger (user turns >= maxBufferTurns)   │
+│  3. Filter unextracted messages (tracked internally)                    │
 │     ┌─────────────────────────────────────┐                             │
-│     │ if (userTurnCount >= 5) trigger()   │                             │
+│     │ messages.subList(lastExtracted + 1) │                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  4. Load unextracted messages                                           │
-│     ┌─────────────────────────────────────┐                             │
-│     │ loadUnextracted(sessionId)          │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  5. LLM extracts memories (async or sync)                               │
+│  4. LLM extracts memories (async or sync)                               │
 │     ┌─────────────────────────────────────┐                             │
 │     │ extractor.extract(messages)         │                             │
 │     │                                     │                             │
@@ -276,19 +273,19 @@ The core of long-term memory is automatically extracting valuable information fr
 │     │ ]                                  │                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  6. Generate embedding vectors                                          │
+│  5. Generate embedding vectors                                          │
 │     ┌─────────────────────────────────────┐                             │
 │     │ llmProvider.embeddings(contents)    │                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  7. Save to MemoryStore                                                 │
+│  6. Save to MemoryStore                                                 │
 │     ┌─────────────────────────────────────┐                             │
 │     │ memoryStore.saveAll(records, embeds)│                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  8. Mark extracted position                                             │
+│  7. Update extraction state (tracked internally)                        │
 │     ┌─────────────────────────────────────┐                             │
-│     │ markExtracted(sessionId, lastIndex) │                             │
+│     │ extractedIndexMap.put(sessionId, n) │                             │
 │     └─────────────────────────────────────┘                             │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -372,21 +369,22 @@ When LLM needs to query user memories, it triggers recall via MemoryRecallTool:
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.InMemoryStore;
-import ai.core.memory.history.InMemoryChatHistoryStore;
+import ai.core.memory.history.ChatHistoryProvider;
 
-// Create stores (users can provide custom implementations)
+// Create memory store (users can provide custom implementations)
 MemoryStore memoryStore = new InMemoryStore();
-ChatHistoryStore chatHistoryStore = new InMemoryChatHistoryStore();
+
+// User provides read access to their message storage
+ChatHistoryProvider historyProvider = sessionId -> myMessageService.getMessages(sessionId);
 
 // Build long-term memory
 LongTermMemory longTermMemory = LongTermMemory.builder()
     .llmProvider(llmProvider)
     .memoryStore(memoryStore)
-    .chatHistoryStore(chatHistoryStore)
+    .historyProvider(historyProvider)  // Required: read from user's storage
     .config(LongTermMemoryConfig.builder()
-        .maxBufferTurns(5)           // Trigger extraction every 5 turns
+        .maxBufferTurns(5)           // Threshold for extractIfNeeded()
         .asyncExtraction(true)        // Async extraction
-        .extractOnSessionEnd(true)    // Extract remaining messages on session end
         .build())
     .build();
 ```
@@ -425,15 +423,21 @@ public class MultiTenantMemoryStore implements MemoryStore {
 }
 ```
 
-### Session Management
+### Triggering Extraction
 
 ```java
-// Start session
-longTermMemory.startSession("session-123");
+// Messages are stored in user's own system (e.g., database)
+// myMessageService.save(sessionId, userMessage);
+// myMessageService.save(sessionId, assistantMessage);
 
-// Record conversation messages (auto-saved + triggers extraction)
-longTermMemory.onMessage(Message.user("I like spicy food"));
-longTermMemory.onMessage(Message.assistant("Got it, I'll remember that"));
+// Extract memories from history (e.g., at end of conversation)
+longTermMemory.extractFromHistory("session-123");
+
+// Or check threshold and extract if needed
+longTermMemory.extractIfNeeded("session-123");
+
+// Wait for async extraction to complete
+longTermMemory.waitForExtraction();
 
 // Manually recall memories
 List<MemoryRecord> memories = longTermMemory.recall("What does the user like?", 5);
@@ -442,9 +446,6 @@ List<MemoryRecord> memories = longTermMemory.recall("What does the user like?", 
 String context = longTermMemory.formatAsContext(memories);
 // Output: [User Memory]
 //         - User likes spicy food
-
-// End session (triggers final extraction)
-longTermMemory.endSession();
 ```
 
 ### Storage Interfaces
@@ -464,16 +465,36 @@ public interface MemoryStore {
 }
 ```
 
-**ChatHistoryStore** - Conversation history storage interface:
+**ChatHistoryProvider** - Read-only interface for accessing user's message storage:
 
 ```java
-public interface ChatHistoryStore {
-    void save(String sessionId, Message message);
+@FunctionalInterface
+public interface ChatHistoryProvider {
+    // Required: Load all messages for a session
     List<Message> load(String sessionId);
-    List<Message> loadRecent(String sessionId, int limit);
-    void markExtracted(String sessionId, int messageIndex);
-    List<Message> loadUnextracted(String sessionId);
-    // ...
+
+    // Optional: Load recent messages (default: loads all and takes last N)
+    default List<Message> loadRecent(String sessionId, int limit) { ... }
+
+    // Optional: Get message count (default: loads all and returns size)
+    default int count(String sessionId) { ... }
+}
+```
+
+Users implement this interface to provide read access to their existing message storage:
+
+```java
+// Simple lambda implementation
+ChatHistoryProvider provider = sessionId -> messageRepository.findBySessionId(sessionId);
+
+// Or implement the interface
+public class DatabaseHistoryProvider implements ChatHistoryProvider {
+    private final MessageRepository repository;
+
+    @Override
+    public List<Message> load(String sessionId) {
+        return repository.findBySessionId(sessionId);
+    }
 }
 ```
 
@@ -552,17 +573,19 @@ Agent personalizedAgent = Agent.builder()
 ```java
 // Development: in-memory stores
 MemoryStore devStore = new InMemoryStore();
-ChatHistoryStore devHistory = new InMemoryChatHistoryStore();
+ChatHistoryProvider devHistory = new InMemoryChatHistoryProvider();
 
-// Production: create separate store per user
+// Production: connect to existing message storage
 public LongTermMemory createForUser(String userId) {
     MemoryStore store = new MilvusMemoryStore(userId);
-    ChatHistoryStore history = new RedisChatHistoryStore(userId);
+    // Read from user's existing message storage
+    ChatHistoryProvider historyProvider = sessionId ->
+        messageService.getMessages(userId, sessionId);
 
     return LongTermMemory.builder()
         .llmProvider(llmProvider)
         .memoryStore(store)
-        .chatHistoryStore(history)
+        .historyProvider(historyProvider)
         .config(LongTermMemoryConfig.builder()
             .maxBufferTurns(5)
             .asyncExtraction(true)
@@ -575,11 +598,16 @@ public LongTermMemory createForUser(String userId) {
 
 ```java
 LongTermMemoryConfig config = LongTermMemoryConfig.builder()
-    .maxBufferTurns(5)           // Trigger extraction every 5 user messages
+    .maxBufferTurns(5)           // Threshold for extractIfNeeded()
     .asyncExtraction(true)       // Async extraction, don't block response
-    .extractOnSessionEnd(true)   // Extract remaining messages on session end
     .extractionTimeout(Duration.ofSeconds(30))  // Extraction timeout
     .build();
+
+// Trigger extraction explicitly
+longTermMemory.extractFromHistory(sessionId);
+
+// Or use threshold-based extraction
+longTermMemory.extractIfNeeded(sessionId);  // Only extracts if >= maxBufferTurns
 ```
 
 ### 4. Using SearchFilter
@@ -610,12 +638,15 @@ Key concepts covered in this tutorial:
 2. **Long-term Memory**: Persistent user memories with vector semantic search
    - Extraction mechanism: LLM extracts important information from conversations
    - Recall mechanism: vector similarity search
+   - User triggers extraction via `extractFromHistory()` or `extractIfNeeded()`
 
 3. **LangMem Pattern**: LLM proactively queries memories via Tool
 
 4. **User-Controlled Isolation**: Framework doesn't enforce isolation; users implement custom storage
 
-5. **Dual Storage Design**: `MemoryStore` (memories) + `ChatHistoryStore` (conversation history)
+5. **Read-Only History Access**: `ChatHistoryProvider` reads from user's existing message storage - no duplicate storage needed
+
+6. **Dual Storage Design**: `MemoryStore` (memories) + `ChatHistoryProvider` (read from user's messages)
 
 Next steps:
 - Learn [Tool Calling](tutorial-tool-calling.md) to extend agent capabilities
