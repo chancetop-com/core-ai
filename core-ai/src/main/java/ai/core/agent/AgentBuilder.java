@@ -2,8 +2,8 @@ package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
-import ai.core.memory.ShortTermMemory;
-import ai.core.memory.ShortTermMemoryLifecycle;
+import ai.core.compression.Compression;
+import ai.core.compression.CompressionLifecycle;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.UnifiedMemoryLifecycle;
 import ai.core.memory.longterm.Memory;
@@ -40,8 +40,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Boolean useGroupContext = false;
     private Boolean enableReflection = false;
     private Integer maxTurnNumber;
-    private ShortTermMemory shortTermMemory;
-    private boolean shortTermMemoryEnabled = true;
+    private Compression compression;
+    private boolean compressionEnabled = true;
 
     // Long-term memory (unified memory) configuration
     private Memory longTermMemory;
@@ -64,13 +64,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
-    public AgentBuilder shortTermMemory(ShortTermMemory shortTermMemory) {
-        this.shortTermMemory = shortTermMemory;
+    public AgentBuilder compression(Compression compression) {
+        this.compression = compression;
         return this;
     }
 
-    public AgentBuilder enableShortTermMemory(boolean enabled) {
-        this.shortTermMemoryEnabled = enabled;
+    public AgentBuilder enableCompression(boolean enabled) {
+        this.compressionEnabled = enabled;
         return this;
     }
 
@@ -234,11 +234,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agent.ragConfig = new RagConfig();
         }
 
-        if (this.shortTermMemoryEnabled) {
-            agent.shortTermMemory = this.shortTermMemory != null
-                    ? this.shortTermMemory
-                    : new ShortTermMemory(this.llmProvider, this.model);
-            agent.agentLifecycles.add(new ShortTermMemoryLifecycle(agent.shortTermMemory));
+        if (this.compressionEnabled) {
+            agent.compression = this.compression != null
+                    ? this.compression
+                    : new Compression(this.llmProvider, this.model);
+            agent.agentLifecycles.add(new CompressionLifecycle(agent.compression));
         }
         configureUnifiedMemory(agent);
     }

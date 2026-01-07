@@ -221,7 +221,7 @@ class AgentMemoryBestPracticeTest {
             Agent agent = Agent.builder()
                 .name("full-memory-assistant")
                 .llmProvider(llmProvider)
-                .enableShortTermMemory(true)   // Conversation compression
+                .enableCompression(true)   // Conversation compression
                 .unifiedMemory(longTermMemory)  // Cross-session memory
                 .build();
 

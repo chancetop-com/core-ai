@@ -1,4 +1,4 @@
-package ai.core.memory;
+package ai.core.compression;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
@@ -12,13 +12,13 @@ import java.util.List;
 /**
  * @author xander
  */
-public class ShortTermMemoryLifecycle extends AbstractLifecycle {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemoryLifecycle.class);
+public class CompressionLifecycle extends AbstractLifecycle {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CompressionLifecycle.class);
 
-    private final ShortTermMemory shortTermMemory;
+    private final Compression compression;
 
-    public ShortTermMemoryLifecycle(ShortTermMemory shortTermMemory) {
-        this.shortTermMemory = shortTermMemory;
+    public CompressionLifecycle(Compression compression) {
+        this.compression = compression;
     }
 
     @Override
@@ -28,7 +28,7 @@ public class ShortTermMemoryLifecycle extends AbstractLifecycle {
             return;
         }
 
-        List<Message> compressed = shortTermMemory.compress(request.messages);
+        List<Message> compressed = compression.compress(request.messages);
         if (compressed != request.messages) {
             request.messages = compressed;
             LOGGER.debug("Messages compressed before model call");

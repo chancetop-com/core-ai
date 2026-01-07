@@ -151,7 +151,7 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     private void roundCompleted() {
-        currentAgent.clearShortTermMemory();
+        currentAgent.reset();
     }
 
     private boolean waitingForUserInput() {
@@ -197,12 +197,12 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     @Override
-    public void clearShortTermMemory() {
+    public void reset() {
         if (handoff instanceof AutoHandoff) {
-            ((AutoHandoff) handoff).moderator().clearShortTermMemory();
+            ((AutoHandoff) handoff).moderator().reset();
         }
         currentAgent = null;
-        super.clearShortTermMemory();
+        super.reset();
     }
 
     public Node<?> getCurrentAgent() {

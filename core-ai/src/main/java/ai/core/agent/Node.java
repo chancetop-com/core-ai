@@ -201,7 +201,7 @@ public abstract class Node<T extends Node<T>> {
         this.input = input;
     }
 
-    public void clearShortTermMemory() {
+    public void reset() {
         this.clearMessages();
         this.setInput(null);
         this.setOutput(null);
