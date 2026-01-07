@@ -1,8 +1,6 @@
 package ai.core.memory;
 
 import ai.core.llm.LLMProvider;
-import ai.core.memory.extraction.MemoryExtractor;
-import ai.core.memory.history.ChatHistoryProvider;
 
 /**
  * Builder for Memory.
@@ -12,23 +10,11 @@ import ai.core.memory.history.ChatHistoryProvider;
 public class MemoryBuilder {
 
     private LLMProvider llmProvider;
-    private MemoryExtractor extractor;
-    private MemoryConfig config;
     private MemoryStore memoryStore;
-    private ChatHistoryProvider historyProvider;
+    private int defaultTopK = 5;
 
     public MemoryBuilder llmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
-        return this;
-    }
-
-    public MemoryBuilder extractor(MemoryExtractor extractor) {
-        this.extractor = extractor;
-        return this;
-    }
-
-    public MemoryBuilder config(MemoryConfig config) {
-        this.config = config;
         return this;
     }
 
@@ -41,8 +27,8 @@ public class MemoryBuilder {
         return memoryStore(store);
     }
 
-    public MemoryBuilder historyProvider(ChatHistoryProvider historyProvider) {
-        this.historyProvider = historyProvider;
+    public MemoryBuilder defaultTopK(int defaultTopK) {
+        this.defaultTopK = defaultTopK;
         return this;
     }
 
@@ -51,26 +37,10 @@ public class MemoryBuilder {
             throw new IllegalStateException("llmProvider is required for Memory");
         }
 
-        if (historyProvider == null) {
-            throw new IllegalStateException("historyProvider is required for Memory");
-        }
-
-        if (config == null) {
-            config = MemoryConfig.builder().build();
-        }
-
         if (memoryStore == null) {
             memoryStore = new InMemoryStore();
         }
 
-        if (extractor == null) {
-            extractor = createDefaultExtractor();
-        }
-
-        return new Memory(memoryStore, historyProvider, extractor, llmProvider, config);
-    }
-
-    private MemoryExtractor createDefaultExtractor() {
-        return new DefaultMemoryExtractor(llmProvider);
+        return new Memory(memoryStore, llmProvider, defaultTopK);
     }
 }
