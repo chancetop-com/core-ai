@@ -1,0 +1,18 @@
+package ai.core.benchmark.loader;
+
+import java.nio.file.Path;
+
+/**
+ * author: lim chen
+ * date: 2026/01/07
+ * description: Interface for writing evaluation results to files
+ * @param <R> Result type
+ */
+public interface ResultWriter<R> {
+    /**
+     * Write evaluation result to the specified file path
+     * @param filePath target file path
+     * @param result evaluation result to write
+     */
+    void writeResultToFile(Path filePath, R result);
+}

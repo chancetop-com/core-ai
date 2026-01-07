@@ -28,14 +28,18 @@ import java.util.stream.Stream;
  * date: 2025/12/19
  * description: BFCL Dataset Loader for loading benchmark data and write result
  */
-public class BFCLDatasetLoader {
+public class BFCLDatasetLoader implements
+        ResumableLoader<BFCLCategory, BFCLFileInfo>,
+        ResultWriter<BFCLItemEvalResult> {
     private static final Logger LOGGER = LoggerFactory.getLogger(BFCLDatasetLoader.class);
     private final String workDir;
     private final BFCLDownloader datasetDownloader;
+    private final String resultDirName;
 
-    public BFCLDatasetLoader() {
+    public BFCLDatasetLoader(String resultDirName) {
         this.workDir = initWorkDir();
         this.datasetDownloader = new BFCLDownloader();
+        this.resultDirName = resultDirName;
     }
 
     private String initWorkDir() {
@@ -50,9 +54,33 @@ public class BFCLDatasetLoader {
         return resourceUrl.toString();
     }
 
+    @Override
     public List<BFCLFileInfo> load(BFCLCategory category) {
         downloadDataset();
         return readFiles(category);
+    }
+
+    @Override
+    public List<BFCLFileInfo> loadUncompleted(BFCLCategory category) {
+        var allFiles = load(category);
+        var completedIds = getCompletedItemIds(category);
+
+        if (completedIds.isEmpty()) {
+            return allFiles;
+        }
+
+        // Filter out completed items
+        return allFiles.stream()
+                .map(fileInfo -> filterOutCompletedItems(fileInfo, completedIds))
+                .filter(fileInfo -> !fileInfo.items.isEmpty())
+                .toList();
+    }
+
+    private BFCLFileInfo filterOutCompletedItems(BFCLFileInfo fileInfo, List<String> completedIds) {
+        var uncompletedItems = fileInfo.items.stream()
+                .filter(item -> !completedIds.contains(item.id))
+                .toList();
+        return BFCLFileInfo.of(fileInfo.name, fileInfo.category, fileInfo.path, uncompletedItems);
     }
 
     public void writeResultToFile(BFCLFileInfo fileInfo, BFCLItemEvalResult result) {
@@ -60,10 +88,52 @@ public class BFCLDatasetLoader {
         writeResultToFile(path, result);
     }
 
+    public List<String> getCompletedItemIds(BFCLCategory category) {
+        var resultDir = Paths.get(this.workDir)
+                .resolve("result")
+                .resolve(this.resultDirName)
+                .resolve(category.name().toLowerCase());
+
+        if (!Files.exists(resultDir)) {
+            LOGGER.info("No result directory found, starting from scratch");
+            return List.of();
+        }
+
+        var completedIds = new ArrayList<String>();
+        try (Stream<Path> files = Files.list(resultDir)) {
+            for (Path file : files.toList()) {
+                if (file.getFileName().toString().endsWith("_result.json")) {
+                    completedIds.addAll(readCompletedIdsFromFile(file));
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Error reading completed items, will process all items", e);
+            return List.of();
+        }
+
+        LOGGER.info("Found {} completed items for category {}", completedIds.size(), category);
+        return completedIds;
+    }
+
+    private List<String> readCompletedIdsFromFile(Path file) {
+        var ids = new ArrayList<String>();
+        ObjectMapper mapper = new ObjectMapper();
+        try (BufferedReader reader = Files.newBufferedReader(file)) {
+            while (reader.ready()) {
+                var line = reader.readLine();
+                var result = mapper.readValue(line, BFCLItemEvalResult.class);
+                ids.add(result.id);
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Error reading file: {}", file, e);
+        }
+        return ids;
+    }
+
     private Path createTargetFile(BFCLFileInfo fileInfo) {
         var path = Paths.get(this.workDir)
                 .resolve("result")
-                .resolve("gpt-5-nano-2025-08-07-FC")
+                .resolve(this.resultDirName)
                 .resolve(fileInfo.category);
         try {
             Files.createDirectories(path);
@@ -81,11 +151,12 @@ public class BFCLDatasetLoader {
         }
     }
 
-    private void writeResultToFile(Path path, BFCLItemEvalResult result) {
-        LOGGER.debug("Writing result to file: {}", path.toString());
+    @Override
+    public void writeResultToFile(Path filePath, BFCLItemEvalResult result) {
+        LOGGER.debug("Writing result to file: {}", filePath.toString());
         ObjectMapper mapper = new ObjectMapper();
         try (FileChannel channel = FileChannel.open(
-                path,
+                filePath,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE,
                 StandardOpenOption.APPEND
@@ -141,7 +212,7 @@ public class BFCLDatasetLoader {
         return files.entrySet().stream()
                 .filter(entry -> {
                     var name = entry.getKey();
-                    return category.getTypes().stream().anyMatch(partName->name.startsWith("BFCL_v4_"+partName));
+                    return category.getTypes().stream().anyMatch(partName -> name.startsWith("BFCL_v4_" + partName));
                 })
                 .peek(entry -> LOGGER.info("Reading file: {}", entry.getKey()))
                 .map(entry -> {

@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -29,17 +28,18 @@ public class BFCLEvaluator {
     private final BFCLDatasetLoader datasetLoader;
     private final BFCLInferenceHandle inferenceHandle;
 
-    public BFCLEvaluator(BFCLInferenceHandle inferenceHandle) {
+    public BFCLEvaluator(BFCLInferenceHandle inferenceHandle, String resultDirName) {
         this.threadPoolSize = Runtime.getRuntime().availableProcessors();
         this.batchSize = 50;
         this.processedCount = new AtomicInteger(0);
-        this.datasetLoader = new BFCLDatasetLoader();
+        this.datasetLoader = new BFCLDatasetLoader(resultDirName);
         this.inferenceHandle = inferenceHandle;
     }
 
 
-    private List<BFCLFileInfo> loadDataset(BFCLCategory category, List<String> filterIds) {
-        var loadResult = datasetLoader.load(category);
+    private List<BFCLFileInfo> loadDataset(BFCLCategory category, List<String> filterIds, boolean skipCompleted) {
+        var loadResult = skipCompleted ? datasetLoader.loadUncompleted(category) : datasetLoader.load(category);
+
         if (filterIds != null && !filterIds.isEmpty()) {
             return loadResult.stream()
                     .map(fileInfo -> filterFileInfoByIds(fileInfo, filterIds))
@@ -58,9 +58,13 @@ public class BFCLEvaluator {
     }
 
     public void eval(BFCLCategory category, List<String> filterIds) {
-        LOGGER.info("Starting evaluation for category: {}", category);
+        eval(category, filterIds, false);
+    }
 
-        var fileInfos = loadDataset(category,filterIds);
+    public void eval(BFCLCategory category, List<String> filterIds, boolean skipCompleted) {
+        LOGGER.info("Starting evaluation for category: {} (skipCompleted: {})", category, skipCompleted);
+
+        var fileInfos = loadDataset(category, filterIds, skipCompleted);
 
         if (fileInfos.isEmpty()) {
             LOGGER.warn("No data files found for category: {}", category);
