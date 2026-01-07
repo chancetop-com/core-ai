@@ -12,7 +12,8 @@ public interface StreamingCallback {
 
     void onChunk(String chunk);
 
-    void onComplete();
+    default void onComplete() {
+    }
 
     void onError(Throwable error);
 }
