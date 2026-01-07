@@ -100,6 +100,8 @@ System.out.println(output.getOutput());
 
 **Tutorials**
 - [Building AI Agents](./docs/en/tutorial-basic-agent.md) - Create intelligent agents with memory and reflection
+- [Memory Systems](./docs/en/tutorial-memory.md) - Long-term memory with vector semantic search
+- [Compression](./docs/en/tutorial-compression.md) - Session-based context management
 - [Multi-Agent Systems](./docs/en/tutorial-multi-agent.md) - Orchestrate multiple agents with handoff strategies
 - [RAG Integration](./docs/en/tutorial-rag.md) - Implement retrieval-augmented generation
 - [Tool Calling](./docs/en/tutorial-tool-calling.md) - Extend agents with custom tools
