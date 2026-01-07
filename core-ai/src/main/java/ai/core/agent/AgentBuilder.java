@@ -4,8 +4,8 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.compression.Compression;
 import ai.core.compression.CompressionLifecycle;
-import ai.core.memory.UnifiedMemoryConfig;
-import ai.core.memory.UnifiedMemoryLifecycle;
+import ai.core.memory.MemoryConfig;
+import ai.core.memory.MemoryLifecycle;
 import ai.core.memory.Memory;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
@@ -43,9 +43,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Compression compression;
     private boolean compressionEnabled = true;
 
-    // Unified memory configuration
+    // Memory configuration
     private Memory memory;
-    private UnifiedMemoryConfig unifiedMemoryConfig;
+    private MemoryConfig memoryConfig;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -79,9 +79,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
-    public AgentBuilder unifiedMemory(Memory memory, UnifiedMemoryConfig config) {
+    public AgentBuilder unifiedMemory(Memory memory, MemoryConfig config) {
         this.memory = memory;
-        this.unifiedMemoryConfig = config;
+        this.memoryConfig = config;
         return this;
     }
 
@@ -244,18 +244,18 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
                     : new Compression(this.llmProvider, this.model);
             agent.agentLifecycles.add(new CompressionLifecycle(agent.compression));
         }
-        configureUnifiedMemory(agent);
+        configureMemory(agent);
     }
 
-    private void configureUnifiedMemory(Agent agent) {
+    private void configureMemory(Agent agent) {
         if (this.memory == null) {
             return;
         }
-        var config = this.unifiedMemoryConfig != null
-            ? this.unifiedMemoryConfig
-            : UnifiedMemoryConfig.defaultConfig();
+        var config = this.memoryConfig != null
+            ? this.memoryConfig
+            : MemoryConfig.defaultConfig();
 
-        var lifecycle = new UnifiedMemoryLifecycle(this.memory, config.getMaxRecallRecords());
+        var lifecycle = new MemoryLifecycle(this.memory, config.getMaxRecallRecords());
         agent.agentLifecycles.add(lifecycle);
 
         // Only auto-register MemoryRecallTool if autoRecall is enabled

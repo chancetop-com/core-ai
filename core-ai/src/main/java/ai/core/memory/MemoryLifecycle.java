@@ -6,17 +6,17 @@ import ai.core.tool.tools.MemoryRecallTool;
 /**
  * @author xander
  */
-public class UnifiedMemoryLifecycle extends AbstractLifecycle {
+public class MemoryLifecycle extends AbstractLifecycle {
 
     private final Memory memory;
     private final int maxRecallRecords;
     private MemoryRecallTool memoryRecallTool;
 
-    public UnifiedMemoryLifecycle(Memory memory) {
+    public MemoryLifecycle(Memory memory) {
         this(memory, 5);
     }
 
-    public UnifiedMemoryLifecycle(Memory memory, int maxRecallRecords) {
+    public MemoryLifecycle(Memory memory, int maxRecallRecords) {
         this.memory = memory;
         this.maxRecallRecords = maxRecallRecords;
     }
