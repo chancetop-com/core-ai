@@ -153,7 +153,7 @@ extraction.run(userId);
 |          |                                                            |
 |          v                                                            |
 |  2. Load messages from historyProvider                                |
-|     historyProvider.load(userId)                                      |
+|     historyProvider.loadForExtraction(userId)                         |
 |          |                                                            |
 |          v                                                            |
 |  3. Filter unextracted messages (tracked internally)                  |
@@ -369,7 +369,7 @@ public interface MemoryStore {
 ```java
 @FunctionalInterface
 public interface ChatHistoryProvider {
-    List<ChatRecord> load(String userId);
+    List<ChatRecord> loadForExtraction(String userId);
 }
 ```
 
@@ -377,7 +377,7 @@ The framework provides built-in `InMemoryChatHistoryProvider` with `addRecord` m
 
 ```java
 public class InMemoryChatHistoryProvider implements ChatHistoryProvider {
-    List<ChatRecord> load(String userId);
+    List<ChatRecord> loadForExtraction(String userId);
     void addRecord(String userId, ChatRecord record);
     void addRecords(String userId, List<ChatRecord> records);
     void clear(String userId);
@@ -400,12 +400,12 @@ public class MilvusMemoryStore implements MemoryStore {
     // ... other methods
 }
 
-// Implement ChatHistoryProvider interface (functional interface, only needs load method)
+// Implement ChatHistoryProvider interface (functional interface, only needs loadForExtraction method)
 public class DatabaseHistoryProvider implements ChatHistoryProvider {
     private final MessageRepository repository;
 
     @Override
-    public List<ChatRecord> load(String userId) {
+    public List<ChatRecord> loadForExtraction(String userId) {
         return repository.findByUserId(userId);
     }
 }

@@ -13,7 +13,7 @@ public class InMemoryChatHistoryProvider implements ChatHistoryProvider {
     private final ConcurrentMap<String, List<ChatRecord>> history = new ConcurrentHashMap<>();
 
     @Override
-    public List<ChatRecord> load(String userId) {
+    public List<ChatRecord> loadForExtraction(String userId) {
         String key = buildKey(userId);
         List<ChatRecord> records = history.get(key);
         return records != null ? new ArrayList<>(records) : new ArrayList<>();

@@ -62,13 +62,13 @@ public class Extraction {
             return;
         }
 
-        int totalCount = historyProvider.load(userId).size();
+        int totalCount = historyProvider.loadForExtraction(userId).size();
         LOGGER.info("Triggering extraction: {} unextracted messages", unextracted.size());
         performExtraction(userId, unextracted, totalCount - 1);
     }
 
     private List<ChatRecord> loadUnextracted(String userId) {
-        List<ChatRecord> all = historyProvider.load(userId);
+        List<ChatRecord> all = historyProvider.loadForExtraction(userId);
         int lastExtracted = extractedIndexMap.getOrDefault(userId, -1);
 
         if (lastExtracted < 0) {

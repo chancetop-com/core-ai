@@ -238,7 +238,7 @@ class AgentMemoryBestPracticeTest {
             historyProvider.addRecord(userId, ChatRecord.assistant("Noted!", Instant.now()));
 
             // Verify history is recorded
-            assertEquals(2, historyProvider.load(userId).size());
+            assertEquals(2, historyProvider.loadForExtraction(userId).size());
 
             // Trigger extraction (in real usage, this runs at session end)
             extraction.run(userId);

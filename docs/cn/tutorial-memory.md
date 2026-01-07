@@ -279,7 +279,7 @@ public interface MemoryStore {
 ```java
 @FunctionalInterface
 public interface ChatHistoryProvider {
-    List<ChatRecord> load(String userId);
+    List<ChatRecord> loadForExtraction(String userId);
 }
 ```
 
@@ -287,7 +287,7 @@ public interface ChatHistoryProvider {
 
 ```java
 public class InMemoryChatHistoryProvider implements ChatHistoryProvider {
-    List<ChatRecord> load(String userId);
+    List<ChatRecord> loadForExtraction(String userId);
     void addRecord(String userId, ChatRecord record);
     void addRecords(String userId, List<ChatRecord> records);
     void clear(String userId);
@@ -310,12 +310,12 @@ public class MilvusMemoryStore implements MemoryStore {
     // ... 其他方法
 }
 
-// 实现 ChatHistoryProvider 接口（函数式接口，仅需实现 load 方法）
+// 实现 ChatHistoryProvider 接口（函数式接口，仅需实现 loadForExtraction 方法）
 public class DatabaseHistoryProvider implements ChatHistoryProvider {
     private final MessageRepository repository;
 
     @Override
-    public List<ChatRecord> load(String userId) {
+    public List<ChatRecord> loadForExtraction(String userId) {
         return repository.findByUserId(userId);
     }
 }
