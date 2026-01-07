@@ -19,8 +19,4 @@ public record ChatRecord(
     public static ChatRecord assistant(String content, Instant timestamp) {
         return new ChatRecord(RoleType.ASSISTANT, content, timestamp);
     }
-
-    public static ChatRecord tool(String content, Instant timestamp) {
-        return new ChatRecord(RoleType.TOOL, content, timestamp);
-    }
 }
