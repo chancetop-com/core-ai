@@ -1,30 +1,38 @@
 package ai.core.memory;
 
-import ai.core.llm.domain.Message;
-
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Base interface for memory storage.
- * Provides a unified contract for different memory types (short-term, long-term, episodic).
- *
  * @author xander
  */
 public interface MemoryStore {
 
-    void add(String content);
+    void save(String userId, MemoryRecord record);
 
-    void add(Message message);
+    void save(String userId, MemoryRecord record, List<Double> embedding);
 
-    List<String> retrieve(String query, int topK);
+    void saveAll(String userId, List<MemoryRecord> records, List<List<Double>> embeddings);
 
-    String buildContext();
+    Optional<MemoryRecord> findById(String userId, String id);
 
-    void clear();
+    List<MemoryRecord> findAll(String userId);
 
-    int size();
+    List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK);
 
-    default boolean isEmpty() {
-        return size() == 0;
-    }
+    List<MemoryRecord> searchByKeyword(String userId, String keyword, int topK);
+
+    void delete(String userId, String id);
+
+    void deleteAll(String userId);
+
+    void recordAccess(String userId, List<String> ids);
+
+    void updateDecayFactor(String userId, String id, double decayFactor);
+
+    List<MemoryRecord> findDecayed(String userId, double threshold);
+
+    int deleteDecayed(String userId, double threshold);
+
+    int count(String userId);
 }

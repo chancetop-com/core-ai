@@ -12,6 +12,7 @@ Welcome to the English documentation for Core-AI!
 
 ### 🚧 In Progress
 The following tutorials need full English translation:
+- [Memory Systems](tutorial-memory.md)
 - [Multi-Agent Systems](tutorial-multi-agent.md)
 - [RAG Integration](tutorial-rag.md)
 - [Tool Calling](tutorial-tool-calling.md)

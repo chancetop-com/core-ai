@@ -29,9 +29,47 @@ public class Prompts {
               This tool is triggered manually by the user or executed automatically by the system.
               please return the tool results directly to the user.
               The tool result is :
-            
+
               %s
-            
+
               </system-reminder>
+            """;
+    public static final String COMPRESSION_SUMMARY_PREFIX = "[Previous Conversation Summary]\n";
+    public static final String COMPRESSION_SUMMARY_SUFFIX = "\n[End Summary]";
+    public static final String COMPRESSION_PROMPT = """
+            Summarize the following conversation into a concise summary.
+            Requirements:
+            1. Preserve key facts, decisions, and context
+            2. Keep important user preferences and goals mentioned
+            3. Remove redundant back-and-forth and filler content
+            4. Use bullet points for clarity
+            5. Keep within %d words
+
+            Conversation to summarize:
+            %s
+
+            Output summary directly:
+            """;
+    public static final String MEMORY_EXTRACTION_PROMPT = """
+            Analyze the following conversation and extract memorable information about the user.
+
+            Conversation:
+            %s
+
+            Return a JSON array of extracted memories. Each memory should have:
+            - "content": the extracted information as a clear, standalone statement
+            - "importance": a number from 0.0 to 1.0 indicating how important this information is for future interactions
+
+            Guidelines for importance:
+            - 0.9-1.0: Critical personal info (name, core preferences, important goals)
+            - 0.7-0.8: Useful context (occupation, interests, ongoing projects)
+            - 0.5-0.6: Nice to know (casual mentions, minor preferences)
+            - Below 0.5: Skip - not worth storing
+
+            Only extract meaningful, non-trivial information. Skip greetings and small talk.
+            If no meaningful information can be extracted, return an empty array: []
+
+            Response format:
+            [{"content": "...", "importance": 0.8}, ...]
             """;
 }
