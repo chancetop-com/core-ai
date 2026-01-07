@@ -778,5 +778,5 @@ public class MemoryIntegrationExample {
 - 学习[工具调用](tutorial-tool-calling.md)扩展代理能力
 - 探索[记忆系统](tutorial-memory.md)实现持久化记忆
 - 学习[压缩机制](tutorial-compression.md)管理上下文
-- 构建[多代理系统](tutorial-multi-agent.md)处理复杂应用
+- 探索 [RAG 集成](tutorial-rag.md)实现知识增强
 - 了解[流程编排](tutorial-flow.md)实现工作流

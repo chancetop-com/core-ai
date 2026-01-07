@@ -783,5 +783,5 @@ Next steps:
 - Learn [Tool Calling](tutorial-tool-calling.md) to extend agent capabilities
 - Explore [Memory Systems](tutorial-memory.md) for persistent memory
 - Learn [Compression](tutorial-compression.md) for context management
-- Build [Multi-Agent Systems](tutorial-multi-agent.md) for complex applications
+- Explore [RAG Integration](tutorial-rag.md) for knowledge enhancement
 - Understand [Flow Orchestration](tutorial-flow.md) for workflows

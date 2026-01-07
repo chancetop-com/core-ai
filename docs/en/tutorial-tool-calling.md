@@ -1442,4 +1442,4 @@ Through this tutorial, you learned:
 Next steps:
 - Learn [Flow Orchestration](tutorial-flow.md) for complex workflows
 - Explore [Memory Systems](tutorial-memory.md) for context management
-- Read [Multi-Agent Systems](tutorial-multi-agent.md) for agent coordination
+- Read [Architecture Deep Dive](tutorial-architecture.md) for core mechanisms

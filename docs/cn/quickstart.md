@@ -324,7 +324,7 @@ Agent agent = Agent.builder()
 恭喜！您已经成功创建了第一个 AI 代理。接下来您可以：
 
 1. 阅读[详细教程](tutorial.md)学习高级功能
-2. 探索[多代理系统](tutorial-multi-agent.md)构建复杂应用
+2. 探索[流程编排](tutorial-flow.md)构建复杂应用
 3. 了解[RAG 集成](tutorial-rag.md)增强知识检索
 4. 学习[流程编排](tutorial-flow.md)构建工作流
 

@@ -25,7 +25,6 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
   - [Building AI Agents](../en/tutorial-basic-agent.md)
   - [Memory Systems](../en/tutorial-memory.md)
   - [Compression Mechanism](../en/tutorial-compression.md)
-  - [Multi-Agent Systems](../en/tutorial-multi-agent.md)
   - [RAG Integration](../en/tutorial-rag.md)
   - [Tool Calling](../en/tutorial-tool-calling.md)
   - [Flow Orchestration](../en/tutorial-flow.md)
@@ -39,7 +38,6 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | **Agent Development** | Build intelligent agents with memory and tools | [Agent Tutorial](../en/tutorial-basic-agent.md) |
 | **Memory Systems** | Short-term and long-term memory management | [Memory Tutorial](../en/tutorial-memory.md) |
 | **Compression** | Context compression and token management | [Compression Tutorial](../en/tutorial-compression.md) |
-| **Multi-Agent Systems** | Orchestrate multiple agents working together | [Multi-Agent Tutorial](../en/tutorial-multi-agent.md) |
 | **RAG & Vector Search** | Implement retrieval-augmented generation | [RAG Tutorial](../en/tutorial-rag.md) |
 | **Tool Integration** | Extend agents with custom tools | [Tool Tutorial](../en/tutorial-tool-calling.md) |
 | **Workflow Design** | Build complex execution flows | [Flow Tutorial](../en/tutorial-flow.md) |
@@ -59,7 +57,6 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
   - [构建智能代理](tutorial-basic-agent.md)
   - [记忆系统](tutorial-memory.md)
   - [压缩机制](tutorial-compression.md)
-  - [多代理系统](tutorial-multi-agent.md)
   - [RAG 集成](tutorial-rag.md)
   - [工具调用](tutorial-tool-calling.md)
   - [流程编排](tutorial-flow.md)
@@ -73,7 +70,6 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | **代理开发** | 构建具有记忆和工具的智能代理 | [代理教程](tutorial-basic-agent.md) |
 | **记忆系统** | 短期和长期记忆管理 | [记忆教程](tutorial-memory.md) |
 | **压缩机制** | 上下文压缩与管理 | [压缩教程](tutorial-compression.md) |
-| **多代理系统** | 协调多个代理协同工作 | [多代理教程](tutorial-multi-agent.md) |
 | **RAG 与向量搜索** | 实现检索增强生成 | [RAG 教程](tutorial-rag.md) |
 | **工具集成** | 使用自定义工具扩展代理 | [工具教程](tutorial-tool-calling.md) |
 | **工作流设计** | 构建复杂的执行流程 | [流程教程](tutorial-flow.md) |
@@ -102,7 +98,6 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | [Basic Agent](../en/tutorial-basic-agent.md) | [基础代理](tutorial-basic-agent.md) | Agent creation, memory, reflection |
 | [Memory Systems](../en/tutorial-memory.md) | [记忆系统](tutorial-memory.md) | Short-term, long-term, unified memory |
 | [Compression](../en/tutorial-compression.md) | [压缩机制](tutorial-compression.md) | Context compression, token management |
-| [Multi-Agent](../en/tutorial-multi-agent.md) | [多代理系统](tutorial-multi-agent.md) | Agent groups, handoff, planning |
 | [RAG Integration](../en/tutorial-rag.md) | [RAG 集成](tutorial-rag.md) | Vector stores, retrieval, reranking |
 | [Tool Calling](../en/tutorial-tool-calling.md) | [工具调用](tutorial-tool-calling.md) | Custom tools, MCP protocol |
 | [Flow Orchestration](../en/tutorial-flow.md) | [流程编排](tutorial-flow.md) | Workflows, routing, state management |

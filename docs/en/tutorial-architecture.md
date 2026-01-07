@@ -9,9 +9,8 @@ This document provides an in-depth analysis of Core-AI framework's core architec
 3. [Lifecycle System](#lifecycle-system)
 4. [Tool Execution Mechanism](#tool-execution-mechanism)
 5. [Message Processing Flow](#message-processing-flow)
-6. [AgentGroup Coordination](#agentgroup-coordination)
-7. [Flow Execution Engine](#flow-execution-engine)
-8. [Tracing and Telemetry](#tracing-and-telemetry)
+6. [Flow Execution Engine](#flow-execution-engine)
+7. [Tracing and Telemetry](#tracing-and-telemetry)
 
 ## Overall Architecture
 
@@ -25,8 +24,8 @@ Core-AI adopts a clear layered architecture with well-defined responsibilities f
 │          User code, business logic, service interfaces       │
 ├─────────────────────────────────────────────────────────────┤
 │                    Orchestration Layer                       │
-│              Flow │ AgentGroup │ Planning                    │
-│           Node traversal, multi-Agent coordination           │
+│                    Flow │ Planning                           │
+│               Node traversal, task planning                  │
 ├─────────────────────────────────────────────────────────────┤
 │                     Agent Layer                              │
 │          Agent │ Lifecycle │ Memory │ Reflection             │
@@ -527,183 +526,6 @@ public List<Message> handleFunc(Message funcMsg) {
 }
 ```
 
-## AgentGroup Coordination
-
-### Multi-Agent Coordination Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    AgentGroup Architecture                   │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                    AgentGroup                        │    │
-│  │  ┌───────────┐  ┌───────────┐  ┌───────────┐        │    │
-│  │  │  Agent A  │  │  Agent B  │  │  Agent C  │        │    │
-│  │  │ (Analyst) │  │ (Planner) │  │ (Executor)│        │    │
-│  │  └───────────┘  └───────────┘  └───────────┘        │    │
-│  │         │              │              │              │    │
-│  │         └──────────────┼──────────────┘              │    │
-│  │                        │                             │    │
-│  │                        ▼                             │    │
-│  │  ┌─────────────────────────────────────────────┐    │    │
-│  │  │               Handoff Strategy               │    │    │
-│  │  │  ┌─────────┐ ┌─────────┐ ┌───────────────┐ │    │    │
-│  │  │  │ Direct  │ │  Auto   │ │HybridAutoDirect│ │    │    │
-│  │  │  │ Handoff │ │ Handoff │ │   Handoff     │ │    │    │
-│  │  │  └─────────┘ └─────────┘ └───────────────┘ │    │    │
-│  │  └─────────────────────────────────────────────┘    │    │
-│  │                        │                             │    │
-│  │                        ▼                             │    │
-│  │  ┌─────────────────────────────────────────────┐    │    │
-│  │  │               Planning                       │    │    │
-│  │  │  • nextAgentName: Next Agent to execute     │    │    │
-│  │  │  • nextQuery: Query for next Agent          │    │    │
-│  │  │  • nextAction: Next action                  │    │    │
-│  │  └─────────────────────────────────────────────┘    │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### AgentGroup Execution Flow
-
-```
-AgentGroup.run(query)
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────┐
-│  1. setupAgentGroupSystemVariables()                         │
-│     Set system variables: agents info, maxRound, termWord   │
-│                                                             │
-│  2. startRunning()                                          │
-│     Status → RUNNING, round = 1                             │
-│                                                             │
-│  3. while (notTerminated()) {                               │
-│     │                                                       │
-│     │  // Token overflow handling                           │
-│     │  if (currentTokenUsageOutOfMax()) {                   │
-│     │      currentQuery = handleToShortQuery()              │
-│     │  }                                                    │
-│     │                                                       │
-│     │  // Execute Handoff strategy                          │
-│     │  handoff.handoff(this, planning, variables)           │
-│     │       │                                               │
-│     │       ├─ DirectHandoff: Sequential next Agent         │
-│     │       ├─ AutoHandoff: Moderator Agent decides         │
-│     │       └─ HybridHandoff: Mixed strategy                │
-│     │                                                       │
-│     │  // Check if finished                                 │
-│     │  if (finished()) return output                        │
-│     │                                                       │
-│     │  // Execute selected Agent                            │
-│     │  currentAgent = getAgentByName(planning.nextAgentName)│
-│     │  output = currentAgent.run(planning.nextQuery)        │
-│     │                                                       │
-│     │  // Check waiting status                              │
-│     │  if (waitingForUserInput()) return output             │
-│     │                                                       │
-│     │  // Round complete, reset state                       │
-│     │  roundCompleted()                                     │
-│     │  round++                                              │
-│     }                                                       │
-│                                                             │
-│  4. return "Run out of round..."                            │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Handoff Strategy Details
-
-#### DirectHandoff (Sequential Switching)
-
-```java
-public class DirectHandoff implements Handoff {
-    @Override
-    public void handoff(AgentGroup agentGroup, Planning planning,
-                       Map<String, Object> variables) {
-        var currentAgent = agentGroup.getCurrentAgent();
-
-        // Get next Agent (circular order)
-        String nextAgentName = getNextAgentNameOf(
-            agentGroup.getAgents(),
-            currentAgent == null ? null : currentAgent.getName()
-        );
-
-        // Set planning result
-        var result = new DefaultPlanningResult();
-        result.name = nextAgentName;
-        result.query = agentGroup.getOutput() == null
-            ? agentGroup.getInput()
-            : agentGroup.getOutput();
-        result.planning = "direct handoff to " + nextAgentName;
-
-        planning.directPlanning(result);
-    }
-
-    // Circular get next Agent
-    private String getNextAgentNameOf(List<Node<?>> agents, String currentName) {
-        if (currentName == null) return agents.getFirst().getName();
-
-        for (int i = 0; i < agents.size(); i++) {
-            if (agents.get(i).getName().equals(currentName)) {
-                int nextIndex = (i + 1) % agents.size();
-                return agents.get(nextIndex).getName();
-            }
-        }
-        return "";
-    }
-}
-```
-
-#### AutoHandoff (Automatic Decision)
-
-```java
-public record AutoHandoff(Agent moderator) implements Handoff {
-    @Override
-    public void handoff(AgentGroup agentGroup, Planning planning,
-                       Map<String, Object> variables) {
-        // Set moderator's parent node
-        if (moderator.getParentNode() == null) {
-            moderator.setParentNode(agentGroup);
-        }
-
-        agentGroup.setCurrentAgent(moderator);
-
-        // Let moderator Agent make planning decision
-        // moderator's systemPrompt contains info about all available Agents
-        // It outputs JSON-formatted planning result
-        String text = planning.agentPlanning(moderator,
-            agentGroup.getCurrentQuery(), variables);
-
-        agentGroup.setRawOutput(text);
-    }
-}
-```
-
-### Planning Interface Design
-
-```java
-public interface Planning {
-    /**
-     * Agent planning mode: Let moderator Agent think about next action
-     * @return moderator's raw output (JSON format)
-     */
-    String agentPlanning(Agent agent, String query, Map<String, Object> variables);
-
-    /**
-     * Directly set planning result (for DirectHandoff)
-     */
-    <T> void directPlanning(T instance);
-
-    /**
-     * Get planning result
-     */
-    String nextAgentName();  // Next Agent name to execute
-    String nextQuery();      // Query to pass to next Agent
-    String nextAction();     // Next action (may be termination word)
-}
-```
-
 ## Flow Execution Engine
 
 ### Flow Graph Structure
@@ -716,7 +538,6 @@ public interface Planning {
 │  Nodes:                                                     │
 │    ├─ FlowNodeType.EXECUTE      - Execute node              │
 │    ├─ FlowNodeType.AGENT        - Agent node                │
-│    ├─ FlowNodeType.AGENT_GROUP  - AgentGroup node           │
 │    ├─ FlowNodeType.TOOL         - Tool node                 │
 │    ├─ FlowNodeType.OPERATOR_FILTER - Filter node            │
 │    └─ FlowNodeType.LLM          - Direct LLM call node      │
@@ -953,8 +774,7 @@ Core-AI framework achieves powerful and flexible AI Agent capabilities through t
 2. **Lifecycle Hooks**: 8 hook points covering complete execution process, supporting AOP-style extension
 3. **State Machine**: Clear state transitions for handling async and waiting scenarios
 4. **Tool System**: Auto JSON Schema generation, supports auth and async execution
-5. **Multi-Agent Coordination**: Handoff + Planning dual mechanism for flexible coordination
-6. **Flow Orchestration**: Directed graph execution engine with conditional routing and event listeners
-7. **Observability**: Native OpenTelemetry support, compatible with mainstream observability platforms
+5. **Flow Orchestration**: Directed graph execution engine with conditional routing and event listeners
+6. **Observability**: Native OpenTelemetry support, compatible with mainstream observability platforms
 
 Understanding these core mechanisms will help you better use Core-AI to build complex AI applications.
