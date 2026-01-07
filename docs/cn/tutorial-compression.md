@@ -154,6 +154,57 @@ Agent agent = Agent.builder()
 
 ## 压缩算法
 
+压缩算法是 Core-AI 的核心机制之一，它确保长对话能够在 LLM 的上下文窗口限制内有效运行。
+
+### 算法设计原则
+
+1. **保护关键信息**：系统消息和当前对话链始终被保护
+2. **智能拆分**：根据对话轮次而非单纯 token 数量进行拆分
+3. **LLM 生成摘要**：使用 LLM 生成高质量的对话摘要
+4. **无缝集成**：压缩结果以伪工具调用形式注入，对 LLM 透明
+
+### 核心算法流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      压缩算法核心流程                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  输入: messages (当前消息列表)                                   │
+│                                                                 │
+│  Step 1: 触发检查                                               │
+│    currentTokens >= maxContext * triggerThreshold ?             │
+│    └─ 否: 返回原消息列表                                        │
+│                                                                 │
+│  Step 2: 消息分类                                               │
+│    ├─ systemMsg: 系统消息 (始终保留)                            │
+│    ├─ conversationMsgs: 对话消息                                │
+│    └─ currentChain: 当前未完成的对话链 (受保护)                  │
+│                                                                 │
+│  Step 3: 计算保留边界                                           │
+│    keepFromIndex = min(                                         │
+│        findKeepFromIndexByTurns(),  // 最近 N 轮                │
+│        minKeepFromIndex             // 当前链起点                │
+│    )                                                            │
+│                                                                 │
+│  Step 4: 拆分消息                                               │
+│    toCompress = conversationMsgs[0:keepFromIndex]               │
+│    toKeep = conversationMsgs[keepFromIndex:]                    │
+│                                                                 │
+│  Step 5: 生成摘要                                               │
+│    summary = llmProvider.complete(summarizePrompt + toCompress) │
+│                                                                 │
+│  Step 6: 组装结果                                               │
+│    result = [systemMsg]                                         │
+│           + [ASSISTANT: tool_call(memory_compress)]             │
+│           + [TOOL: summary]                                     │
+│           + toKeep                                              │
+│                                                                 │
+│  输出: result (压缩后的消息列表)                                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ### 步骤 1：检查触发条件
 
 ```java

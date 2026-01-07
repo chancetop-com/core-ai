@@ -22,6 +22,49 @@
 - 执行计算和数据处理
 - 访问实时信息
 
+### 工具执行机制原理
+
+Core-AI 的工具执行遵循以下流程：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    工具执行完整流程                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. LLM 返回 tool_calls                                         │
+│     └─ [{id: "call_1", function: {name: "get_weather",          │
+│           arguments: "{\"city\":\"北京\"}"}}]                   │
+│                      │                                          │
+│                      ▼                                          │
+│  2. Agent.handleFunc(funcMsg)                                   │
+│     └─ parallelStream: 并行执行多个工具调用                      │
+│                      │                                          │
+│                      ▼                                          │
+│  3. ToolExecutor.execute(functionCall, context)                 │
+│     ├─ beforeTool() 生命周期钩子                                │
+│     ├─ 工具查找: 按 name 匹配 ToolCall                          │
+│     ├─ 认证检查: needAuth && !authenticated?                    │
+│     │   └─ Yes: 状态 → WAITING_FOR_USER_INPUT                   │
+│     ├─ tool.execute(arguments, context)                         │
+│     └─ afterTool() 生命周期钩子                                 │
+│                      │                                          │
+│                      ▼                                          │
+│  4. 构建 TOOL 消息                                              │
+│     └─ Message.of(TOOL, result, toolName, toolCallId, ...)      │
+│                      │                                          │
+│                      ▼                                          │
+│  5. 继续对话循环 (如果需要)                                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**关键设计点**：
+
+1. **并行执行**：多个工具调用通过 `parallelStream` 并行执行，提高效率
+2. **生命周期钩子**：`beforeTool` 和 `afterTool` 允许在工具执行前后进行拦截
+3. **认证机制**：设置 `needAuth=true` 的工具会暂停执行，等待用户确认
+4. **追踪支持**：通过 `AgentTracer` 追踪每次工具调用
+
 ### Core-AI 工具架构
 
 ```
@@ -252,6 +295,102 @@ public class AsyncToolExample {
 ```
 
 ## JSON Schema 定义
+
+### JSON Schema 自动生成原理
+
+Core-AI 会自动将 `ToolCall` 的参数定义转换为符合 OpenAI 规范的 JSON Schema，这个过程对开发者透明：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              工具定义 → JSON Schema 转换流程                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ToolCall                                                       │
+│    ├─ name: "get_weather"                                       │
+│    ├─ description: "获取天气信息"                                │
+│    └─ parameters: List<ToolCallParameter>                       │
+│         ├─ city (String, required)                              │
+│         └─ unit (String, optional, enum: [celsius, ...])        │
+│                        │                                        │
+│                        ▼  toTool()                              │
+│                                                                 │
+│  Tool (OpenAI 格式)                                             │
+│    ├─ type: "function"                                          │
+│    └─ function:                                                 │
+│         ├─ name: "get_weather" (最长64字符，自动截断)            │
+│         ├─ description: "获取天气信息"                          │
+│         └─ parameters: JsonSchema                               │
+│              {                                                  │
+│                "type": "object",                                │
+│                "properties": {                                  │
+│                  "city": {                                      │
+│                    "type": "string",                            │
+│                    "description": "城市名称"                     │
+│                  },                                             │
+│                  "unit": {                                      │
+│                    "type": "string",                            │
+│                    "enum": ["celsius", "fahrenheit"]            │
+│                  }                                              │
+│                },                                               │
+│                "required": ["city"]                             │
+│              }                                                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Schema 生成核心逻辑**：
+
+```java
+public class JsonSchemaUtil {
+    public static JsonSchema toJsonSchema(List<ToolCallParameter> parameters) {
+        var schema = new JsonSchema();
+        schema.type = PropertyType.OBJECT;
+
+        // 提取必需字段
+        schema.required = parameters.stream()
+            .filter(p -> p.isRequired() != null && p.isRequired())
+            .map(ToolCallParameter::getName)
+            .toList();
+
+        // 为每个参数生成 Schema 属性
+        schema.properties = parameters.stream()
+            .filter(p -> p.getName() != null)
+            .collect(Collectors.toMap(
+                ToolCallParameter::getName,
+                JsonSchemaUtil::toSchemaProperty
+            ));
+
+        return schema;
+    }
+
+    private static JsonSchema toSchemaProperty(ToolCallParameter p) {
+        var property = new JsonSchema();
+        property.description = p.getDescription();
+        property.type = buildJsonSchemaType(p.getClassType());
+        property.enums = p.getEnums();
+
+        // 递归处理嵌套对象
+        if (property.type == PropertyType.OBJECT && isCustomObjectType(p.getClassType())) {
+            var nestedSchema = toJsonSchema(p.getClassType());
+            property.properties = nestedSchema.properties;
+            property.required = nestedSchema.required;
+        }
+
+        return property;
+    }
+}
+```
+
+**支持的参数类型映射**：
+
+| Java 类型 | JSON Schema 类型 | 说明 |
+|----------|-----------------|------|
+| `String` | `string` | 字符串 |
+| `Integer`, `int`, `Long`, `long` | `integer` | 整数 |
+| `Double`, `double`, `Float`, `float` | `number` | 浮点数 |
+| `Boolean`, `boolean` | `boolean` | 布尔值 |
+| `List<T>`, `Array` | `array` | 数组，支持嵌套 |
+| 自定义类 | `object` | 对象，递归生成 Schema |
 
 ### 1. 自动 Schema 生成
 

@@ -154,6 +154,57 @@ Agent agent = Agent.builder()
 
 ## Compression Algorithm
 
+The compression algorithm is one of Core-AI's core mechanisms, ensuring long conversations can operate effectively within LLM context window limits.
+
+### Algorithm Design Principles
+
+1. **Protect Critical Information**: System messages and current conversation chain are always protected
+2. **Intelligent Splitting**: Split by conversation turns rather than pure token count
+3. **LLM-Generated Summary**: Use LLM to generate high-quality conversation summaries
+4. **Seamless Integration**: Compression results are injected as pseudo tool calls, transparent to LLM
+
+### Core Algorithm Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Compression Algorithm Core Flow                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Input: messages (current message list)                         │
+│                                                                 │
+│  Step 1: Trigger Check                                          │
+│    currentTokens >= maxContext * triggerThreshold ?             │
+│    └─ No: Return original message list                          │
+│                                                                 │
+│  Step 2: Message Classification                                 │
+│    ├─ systemMsg: System message (always keep)                   │
+│    ├─ conversationMsgs: Conversation messages                   │
+│    └─ currentChain: Current incomplete chain (protected)        │
+│                                                                 │
+│  Step 3: Calculate Keep Boundary                                │
+│    keepFromIndex = min(                                         │
+│        findKeepFromIndexByTurns(),  // Recent N turns           │
+│        minKeepFromIndex             // Current chain start      │
+│    )                                                            │
+│                                                                 │
+│  Step 4: Split Messages                                         │
+│    toCompress = conversationMsgs[0:keepFromIndex]               │
+│    toKeep = conversationMsgs[keepFromIndex:]                    │
+│                                                                 │
+│  Step 5: Generate Summary                                       │
+│    summary = llmProvider.complete(summarizePrompt + toCompress) │
+│                                                                 │
+│  Step 6: Assemble Result                                        │
+│    result = [systemMsg]                                         │
+│           + [ASSISTANT: tool_call(memory_compress)]             │
+│           + [TOOL: summary]                                     │
+│           + toKeep                                              │
+│                                                                 │
+│  Output: result (compressed message list)                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ### Step 1: Check Trigger Condition
 
 ```java

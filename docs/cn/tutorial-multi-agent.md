@@ -135,6 +135,77 @@ public class ConfiguredAgentGroupExample {
 
 ## 切换策略（Handoff）
 
+### Handoff 机制原理
+
+Handoff 是 Core-AI 多代理协作的核心机制，负责决定"下一步由哪个代理执行"。
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Handoff 机制架构                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  AgentGroup.execute()                                           │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────┐           │
+│  │           Handoff 策略执行                        │           │
+│  │                                                 │           │
+│  │  handoff.handoff(agentGroup, planning, vars)    │           │
+│  │       │                                         │           │
+│  │       ├─ DirectHandoff: 顺序选择下一个 Agent     │           │
+│  │       │   └─ getNextAgentNameOf(agents, current)│           │
+│  │       │                                         │           │
+│  │       ├─ AutoHandoff: Moderator Agent 决策      │           │
+│  │       │   └─ moderator.run(query) → JSON result│           │
+│  │       │                                         │           │
+│  │       └─ HybridHandoff: 混合策略                 │           │
+│  │           └─ 先检查固定路由，否则自动决策         │           │
+│  │                                                 │           │
+│  └─────────────────────────────────────────────────┘           │
+│       │                                                         │
+│       ▼                                                         │
+│  Planning 结果                                                  │
+│  ├─ nextAgentName: 下一个执行的 Agent                           │
+│  ├─ nextQuery: 传递的查询/上下文                                │
+│  └─ nextAction: 动作（可能是终止词）                            │
+│       │                                                         │
+│       ▼                                                         │
+│  currentAgent = getAgentByName(planning.nextAgentName())        │
+│  output = currentAgent.run(planning.nextQuery())                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Handoff 接口定义**：
+
+```java
+public interface Handoff {
+    /**
+     * 执行切换策略，决定下一步的执行计划
+     * @param agentGroup 当前代理组
+     * @param planning 规划结果容器
+     * @param variables 执行变量
+     */
+    void handoff(AgentGroup agentGroup, Planning planning, Map<String, Object> variables);
+
+    /**
+     * 获取切换类型
+     */
+    HandoffType getType();
+}
+```
+
+**Planning 结果结构**：
+
+```java
+public class DefaultPlanningResult {
+    String name;      // 下一个 Agent 名称
+    String query;     // 传递给下一个 Agent 的查询
+    String planning;  // 规划说明
+    String nextStep;  // 下一步动作（可能是终止词 "DONE"）
+}
+```
+
 ### 1. 直接切换（DirectHandoff）
 
 ```java

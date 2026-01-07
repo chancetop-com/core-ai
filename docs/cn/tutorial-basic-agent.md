@@ -7,10 +7,9 @@
 1. [代理基础概念](#代理基础概念)
 2. [创建基本代理](#创建基本代理)
 3. [系统提示和模板](#系统提示和模板)
-4. [记忆系统](#记忆系统)
-5. [反思机制](#反思机制)
-6. [状态管理](#状态管理)
-7. [最佳实践](#最佳实践)
+4. [反思机制](#反思机制)
+5. [状态管理](#状态管理)
+6. [最佳实践](#最佳实践)
 
 ## 代理基础概念
 
@@ -26,14 +25,80 @@
 
 ```java
 Agent agent = Agent.builder()
-    .name("agent-name")           // 代理名称
-    .description("agent purpose")  // 代理描述
-    .llmProvider(provider)         // LLM 提供商
-    .systemPrompt(prompt)          // 系统提示
-    .tools(toolList)               // 可用工具
-    .memory(memorySystem)          // 记忆系统
-    .enableReflection(true)        // 反思能力
+    .name("agent-name")           // 代理名称（可选，默认："assistant"）
+    .description("agent purpose") // 代理描述（可选，默认："assistant agent that help with user"）
+    .llmProvider(provider)        // LLM 提供商（必需）
+    .systemPrompt(prompt)         // 系统提示
+    .toolCalls(toolList)          // 可用工具
     .build();
+```
+
+### 核心架构设计
+
+Agent 的执行分为**外层包装**和**核心执行**两个层次：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Node 层                                  │
+│   aroundExecute() - 生命周期钩子包装                             │
+│   ├─ beforeAgentRun() - 可修改输入查询                          │
+│   ├─ execute()        - 核心执行                                │
+│   └─ afterAgentRun()  - 可修改输出结果                          │
+├─────────────────────────────────────────────────────────────────┤
+│                        Agent 层                                  │
+│   execute() → doExecute() → commandOrLoops()                    │
+│   ├─ SlashCommand → chatCommand() - 斜杠命令快捷处理            │
+│   └─ 普通查询 → chatLoops() → chatTurns() - 多轮对话循环        │
+├─────────────────────────────────────────────────────────────────┤
+│                        对话轮次层                                │
+│   chatTurns() - 核心对话循环                                    │
+│   while (lastIsToolMsg && turn < maxTurn):                      │
+│       ├─ beforeModel()   - LLM 调用前钩子                       │
+│       ├─ LLM 推理        - 调用大模型                           │
+│       ├─ afterModel()    - LLM 调用后钩子                       │
+│       ├─ 工具执行        - 并行执行工具调用                      │
+│       └─ 累积输出        - 收集 ASSISTANT 消息                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 代理执行流程
+
+```
++------------------------------------------------------------------+
+|                        代理执行流程                                |
++------------------------------------------------------------------+
+|                                                                  |
+|  1. agent.run(query, context)                                    |
+|          |                                                       |
+|          v                                                       |
+|  2. 生命周期: beforeAgentRun                                      |
+|          |                                                       |
+|          v                                                       |
+|  3. 构建消息 (系统提示 + 历史 + 用户查询)                          |
+|          |                                                       |
+|          v                                                       |
+|  4. RAG 检索 (如果启用)                                           |
+|          |                                                       |
+|          v                                                       |
+|  5. LLM 推理 (带工具定义)                                         |
+|     |-- 生命周期: beforeModel / afterModel                       |
+|          |                                                       |
+|          v                                                       |
+|  6. 如果有工具调用:                                               |
+|     |-- 执行工具                                                  |
+|     |-- 添加结果到消息                                            |
+|     |-- 循环回到步骤 5 (受最大轮次限制)                           |
+|          |                                                       |
+|          v                                                       |
+|  7. 反思 (如果启用)                                               |
+|          |                                                       |
+|          v                                                       |
+|  8. 生命周期: afterAgentRun                                       |
+|          |                                                       |
+|          v                                                       |
+|  9. 返回输出                                                      |
+|                                                                  |
++------------------------------------------------------------------+
 ```
 
 ## 创建基本代理
@@ -42,7 +107,7 @@ Agent agent = Agent.builder()
 
 ```java
 import ai.core.agent.Agent;
-import ai.core.agent.AgentOutput;
+import ai.core.agent.NodeStatus;
 import ai.core.llm.LLMProvider;
 
 public class BasicAgentExample {
@@ -55,15 +120,15 @@ public class BasicAgentExample {
             .build();
     }
 
-    public void useAgent() {
+    public void useAgent(LLMProvider llmProvider) {
         Agent agent = createSimpleAgent(llmProvider);
 
         // 执行查询
-        AgentOutput output = agent.execute("你好，请介绍一下自己");
-        System.out.println(output.getOutput());
+        String output = agent.run("你好，请介绍一下自己");
+        System.out.println(output);
 
         // 检查状态
-        if (output.getStatus() == NodeStatus.COMPLETED) {
+        if (agent.getNodeStatus() == NodeStatus.COMPLETED) {
             System.out.println("执行成功");
         }
     }
@@ -73,6 +138,9 @@ public class BasicAgentExample {
 ### 2. 配置丰富的代理
 
 ```java
+import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
+
 public class ConfiguredAgentExample {
 
     public Agent createConfiguredAgent(LLMProvider llmProvider) {
@@ -83,19 +151,64 @@ public class ConfiguredAgentExample {
 
             // 基本配置
             .systemPrompt("你是一个专业的客户服务代表...")
-            .maxTokens(2000)
             .temperature(0.7)
-            .topP(0.95)
+            .model("gpt-4")
 
-            // 高级特性
-            .streaming(true)           // 流式输出
-            .enableReflection(true)    // 启用反思
-            .maxReflectionDepth(2)     // 反思深度
+            // 工具配置
+            .toolCalls(List.of(searchTool, orderTool))
 
-            // 重试策略
-            .maxRetries(3)
-            .retryDelay(1000)          // 毫秒
+            // 轮次限制
+            .maxTurn(20)  // 最大对话轮次（默认：20）
 
+            // 反思
+            .enableReflection(true)
+
+            .build();
+    }
+
+    public void runWithContext(Agent agent) {
+        // 创建执行上下文
+        ExecutionContext context = ExecutionContext.builder()
+            .userId("user-123")
+            .sessionId("session-456")
+            .build();
+
+        // 带上下文执行
+        String response = agent.run("我有个订单问题", context);
+        System.out.println(response);
+    }
+}
+```
+
+### 3. 流式输出代理
+
+```java
+import ai.core.agent.streaming.StreamingCallback;
+
+public class StreamingAgentExample {
+
+    public Agent createStreamingAgent(LLMProvider llmProvider) {
+        return Agent.builder()
+            .name("streaming-agent")
+            .description("支持流式输出的代理")
+            .llmProvider(llmProvider)
+            .streaming(true)
+            .streamingCallback(new StreamingCallback() {
+                @Override
+                public void onToken(String token) {
+                    System.out.print(token);  // 逐字打印
+                }
+
+                @Override
+                public void onComplete(String fullResponse) {
+                    System.out.println("\n--- 完成 ---");
+                }
+
+                @Override
+                public void onError(Throwable error) {
+                    System.err.println("错误: " + error.getMessage());
+                }
+            })
             .build();
     }
 }
@@ -108,6 +221,7 @@ public class ConfiguredAgentExample {
 ```java
 Agent agent = Agent.builder()
     .name("technical-writer")
+    .description("技术文档专家")
     .llmProvider(llmProvider)
     .systemPrompt("""
         你是一个专业的技术文档编写专家。
@@ -122,21 +236,21 @@ Agent agent = Agent.builder()
         - 保持客观中立
         - 结构化组织内容
 
-        请始终用中文回答。
+        请始终用用户使用的语言回答。
         """)
     .build();
 ```
 
 ### 2. 动态模板（Mustache）
 
-```java
-import ai.core.prompt.PromptTemplate;
+Core-AI 使用 Mustache 模板引擎实现动态提示：
 
+```java
 public class TemplatedAgentExample {
 
     public Agent createTemplatedAgent(LLMProvider llmProvider) {
-        // 创建提示模板
-        String template = """
+        // 使用 Mustache 语法的模板
+        String systemPromptTemplate = """
             你是 {{company}} 的 AI 助手。
 
             公司信息：
@@ -150,8 +264,17 @@ public class TemplatedAgentExample {
             请根据以上信息为用户提供个性化服务。
             """;
 
-        // 准备模板数据
-        Map<String, Object> templateData = Map.of(
+        return Agent.builder()
+            .name("templated-agent")
+            .description("支持动态提示的代理")
+            .llmProvider(llmProvider)
+            .systemPrompt(systemPromptTemplate)
+            .build();
+    }
+
+    public void runWithVariables(Agent agent) {
+        // 通过 ExecutionContext 传递变量
+        Map<String, Object> variables = Map.of(
             "company", "科技创新公司",
             "industry", "人工智能",
             "products", "AI 解决方案",
@@ -160,308 +283,233 @@ public class TemplatedAgentExample {
             "userLocation", "北京"
         );
 
-        // 渲染模板
-        PromptTemplate promptTemplate = new PromptTemplate(template);
-        String renderedPrompt = promptTemplate.render(templateData);
-
-        return Agent.builder()
-            .name("templated-agent")
-            .llmProvider(llmProvider)
-            .systemPrompt(renderedPrompt)
+        ExecutionContext context = ExecutionContext.builder()
+            .customVariables(variables)
             .build();
+
+        agent.run("你好，你们提供什么服务？", context);
     }
 }
 ```
 
-### 3. 高级模板使用
+### 3. 用户查询的提示模板
 
 ```java
-public class AdvancedTemplateExample {
+public class PromptTemplateExample {
 
-    public Agent createContextAwareAgent(
-            LLMProvider llmProvider,
-            UserContext userContext) {
-
-        // 复杂模板，包含条件逻辑
-        String template = """
-            你是一个智能助手。
-
-            {{#isPremiumUser}}
-            用户是高级会员，请提供优先服务。
-            可用高级功能：
-            {{#premiumFeatures}}
-            - {{.}}
-            {{/premiumFeatures}}
-            {{/isPremiumUser}}
-
-            {{^isPremiumUser}}
-            用户是普通会员。
-            {{/isPremiumUser}}
-
-            用户偏好：
-            - 语言：{{language}}
-            - 专业水平：{{expertiseLevel}}
-
-            {{#hasHistory}}
-            历史互动摘要：
-            {{historyS- ummary}}
-            {{/hasHistory}}
-            """;
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("isPremiumUser", userContext.isPremium());
-        data.put("premiumFeatures", List.of(
-            "优先响应",
-            "高级分析",
-            "定制化建议"
-        ));
-        data.put("language", userContext.getLanguage());
-        data.put("expertiseLevel", userContext.getExpertiseLevel());
-        data.put("hasHistory", userContext.hasHistory());
-        data.put("historySummary", userContext.getHistorySummary());
-
-        PromptTemplate template = new PromptTemplate(template);
-
+    public Agent createAgentWithPromptTemplate(LLMProvider llmProvider) {
         return Agent.builder()
-            .name("context-aware-agent")
+            .name("qa-agent")
+            .description("带模板的问答代理")
             .llmProvider(llmProvider)
-            .systemPrompt(template.render(data))
-            .promptTemplate(template)  // 保存模板以供动态更新
-            .promptData(data)           // 保存数据以供更新
-            .build();
-    }
-}
-```
+            .systemPrompt("你是一个有帮助的问答助手。")
+            // promptTemplate 会添加到用户查询前面
+            .promptTemplate("""
+                上下文: {{context}}
 
-## 记忆系统
-
-### 1. 短期记忆（会话记忆）
-
-```java
-import ai.core.memory.NaiveMemory;
-
-public class MemoryAgentExample {
-
-    public void demonstrateShortTermMemory() {
-        // 代理默认维护会话历史
-        Agent agent = Agent.builder()
-            .name("memory-agent")
-            .llmProvider(llmProvider)
-            .systemPrompt("你是一个有记忆的助手")
-            .build();
-
-        // 第一次对话
-        AgentOutput output1 = agent.execute("我叫张三");
-        System.out.println(output1.getOutput());
-        // 输出：你好张三！很高兴认识你。
-
-        // 第二次对话（记住了名字）
-        AgentOutput output2 = agent.execute("你还记得我的名字吗？");
-        System.out.println(output2.getOutput());
-        // 输出：当然记得，你叫张三。
-
-        // 获取会话历史
-        List<Message> history = agent.getMessages();
-        System.out.println("对话轮次：" + history.size());
-    }
-}
-```
-
-### 2. 长期记忆
-
-```java
-import ai.core.memory.Memory;
-import ai.core.memory.NaiveMemory;
-
-public class LongTermMemoryExample {
-
-    public Agent createAgentWithLongTermMemory() {
-        // 创建长期记忆系统
-        Memory longTermMemory = new NaiveMemory();
-
-        // 预加载记忆
-        longTermMemory.save("user_preferences", Map.of(
-            "name", "张三",
-            "role", "开发工程师",
-            "project", "AI平台",
-            "tech_stack", List.of("Java", "Python", "Docker")
-        ));
-
-        longTermMemory.save("project_context", Map.of(
-            "deadline", "2024-06-30",
-            "priority", "high",
-            "team_size", 5
-        ));
-
-        return Agent.builder()
-            .name("memory-enhanced-agent")
-            .llmProvider(llmProvider)
-            .memory(longTermMemory)
-            .systemPrompt("""
-                你是一个项目助手。使用你的记忆来提供个性化帮助。
-
-                在回答时，请参考：
-                - 用户的个人信息和偏好
-                - 项目上下文和约束
-                - 之前的对话历史
+                请回答以下问题:
                 """)
             .build();
     }
 
-    public void useMemoryDuringConversation() {
-        Agent agent = createAgentWithLongTermMemory();
+    public void runWithTemplate(Agent agent) {
+        ExecutionContext context = ExecutionContext.builder()
+            .customVariable("context", "这是关于 Java 编程的问题")
+            .build();
 
-        // 代理可以访问长期记忆
-        AgentOutput output = agent.execute(
-            "基于我的技术栈，推荐一个适合的架构方案"
-        );
-
-        // 代理会参考记忆中的 tech_stack 信息
-        System.out.println(output.getOutput());
-
-        // 更新记忆
-        Memory memory = agent.getMemory();
-        memory.save("architecture_decision", Map.of(
-            "pattern", "microservices",
-            "chosen_date", LocalDate.now().toString()
-        ));
+        // 最终提示 = promptTemplate + 用户查询
+        agent.run("如何创建线程池？", context);
     }
 }
 ```
 
-### 3. 向量记忆（语义检索）
+### 4. Langfuse 提示集成
 
 ```java
-import ai.core.vectorstore.VectorStore;
-import ai.core.vectorstore.MilvusVectorStore;
-
-public class VectorMemoryExample {
-
-    public Agent createAgentWithVectorMemory() {
-        // 初始化向量存储
-        VectorStore vectorStore = new MilvusVectorStore(
-            "localhost", 19530, "agent_memory"
-        );
-
-        // 配置 RAG
-        RAGConfig ragConfig = RAGConfig.builder()
-            .vectorStore(vectorStore)
-            .embeddingModel("text-embedding-ada-002")
-            .topK(5)
-            .similarityThreshold(0.75)
-            .build();
-
-        return Agent.builder()
-            .name("vector-memory-agent")
-            .llmProvider(llmProvider)
-            .enableRAG(true)
-            .ragConfig(ragConfig)
-            .systemPrompt("""
-                你是一个知识助手。
-                使用向量记忆检索相关信息来回答问题。
-                如果检索到相关信息，请基于这些信息回答。
-                如果没有相关信息，请诚实地说明。
-                """)
-            .build();
-    }
-}
+// 从 Langfuse 提示管理获取提示
+Agent agent = Agent.builder()
+    .name("langfuse-agent")
+    .description("使用 Langfuse 提示的代理")
+    .llmProvider(llmProvider)
+    .langfuseSystemPrompt("customer-service-prompt")  // Langfuse 中的提示名称
+    .langfusePromptVersion(2)  // 可选：指定版本
+    // 或使用标签
+    // .langfusePromptLabel("production")
+    .build();
 ```
 
 ## 反思机制
 
+反思允许代理评估和改进其响应。
+
 ### 1. 基本反思
 
 ```java
+import ai.core.reflection.ReflectionConfig;
+
 public class ReflectionExample {
 
-    public Agent createReflectiveAgent() {
+    public Agent createReflectiveAgent(LLMProvider llmProvider) {
         return Agent.builder()
             .name("reflective-agent")
+            .description("具有反思能力的代理")
             .llmProvider(llmProvider)
-            .enableReflection(true)
-            .reflectionPrompt("""
-                请反思你的回答：
-                1. 回答是否准确和完整？
-                2. 是否有遗漏的重要信息？
-                3. 表达是否清晰易懂？
-                4. 是否需要改进？
-
-                如果需要改进，请提供更好的回答。
-                """)
-            .maxReflectionDepth(2)  // 最多反思2次
+            .enableReflection(true)  // 使用默认反思配置
             .build();
-    }
-
-    public void demonstrateReflection() {
-        Agent agent = createReflectiveAgent();
-
-        // 执行带反思的查询
-        AgentOutput output = agent.execute(
-            "解释什么是依赖注入，并给出例子"
-        );
-
-        // 查看反思过程
-        if (output.getReflections() != null) {
-            for (Reflection reflection : output.getReflections()) {
-                System.out.println("反思 " + reflection.getDepth() + ":");
-                System.out.println("原始输出: " + reflection.getOriginalOutput());
-                System.out.println("反思内容: " + reflection.getReflectionContent());
-                System.out.println("改进输出: " + reflection.getImprovedOutput());
-                System.out.println("---");
-            }
-        }
-
-        // 最终输出（经过反思改进）
-        System.out.println("最终回答: " + output.getOutput());
     }
 }
 ```
 
-### 2. 条件反思
+### 2. 自定义反思配置
 
 ```java
-public class ConditionalReflectionExample {
+public class CustomReflectionExample {
 
-    public Agent createSmartReflectiveAgent() {
-        return Agent.builder()
-            .name("smart-reflective-agent")
-            .llmProvider(llmProvider)
-            .enableReflection(true)
+    public Agent createCustomReflectiveAgent(LLMProvider llmProvider) {
+        // 创建自定义反思配置
+        ReflectionConfig reflectionConfig = ReflectionConfig.builder()
+            .enabled(true)
+            .minRound(1)           // 最小反思轮数
+            .maxRound(3)           // 最大反思轮数
+            .evaluationCriteria("""
+                根据以下标准评估回答：
+                1. 准确性 - 信息是否正确？
+                2. 完整性 - 是否涵盖所有方面？
+                3. 清晰度 - 解释是否清楚？
+                4. 实用性 - 是否对用户有帮助？
 
-            // 自定义反思条件
-            .reflectionCondition(output -> {
-                // 只有当输出包含代码或技术内容时才反思
-                return output.contains("```") ||
-                       output.contains("代码") ||
-                       output.contains("实现") ||
-                       output.length() < 100;  // 或输出太短
-            })
-
-            .reflectionPrompt("""
-                评估你的技术回答：
-
-                技术准确性：
-                - 代码是否正确？
-                - 概念解释是否准确？
-
-                完整性：
-                - 是否包含必要的示例？
-                - 是否解释了关键概念？
-
-                可读性：
-                - 代码是否有注释？
-                - 解释是否循序渐进？
-
-                如果有不足，请改进你的回答。
+                评分 1-10，8 分以上为通过。
                 """)
+            .build();
 
-            .maxReflectionDepth(3)
+        return Agent.builder()
+            .name("custom-reflective-agent")
+            .description("自定义反思的代理")
+            .llmProvider(llmProvider)
+            .reflectionConfig(reflectionConfig)
             .build();
     }
 }
+```
+
+### 3. 带监听器的反思
+
+```java
+import ai.core.reflection.ReflectionListener;
+import ai.core.reflection.ReflectionHistory;
+import ai.core.reflection.ReflectionEvaluation;
+
+public class ReflectionListenerExample {
+
+    public Agent createAgentWithReflectionListener(LLMProvider llmProvider) {
+        ReflectionListener listener = new ReflectionListener() {
+            @Override
+            public void onReflectionStart(Agent agent, String input, String criteria) {
+                System.out.println("开始反思: " + input);
+            }
+
+            @Override
+            public void onBeforeRound(Agent agent, int round, String solution) {
+                System.out.println("第 " + round + " 轮 - 评估解决方案");
+            }
+
+            @Override
+            public void onAfterRound(Agent agent, int round, String improved, ReflectionEvaluation eval) {
+                System.out.println("第 " + round + " 轮 - 分数: " + eval.getScore());
+            }
+
+            @Override
+            public void onScoreAchieved(Agent agent, int score, int round) {
+                System.out.println("目标分数达成: " + score + " 在第 " + round + " 轮");
+            }
+
+            @Override
+            public void onNoImprovement(Agent agent, int score, int round) {
+                System.out.println("无法进一步改进，在第 " + round + " 轮");
+            }
+
+            @Override
+            public void onMaxRoundsReached(Agent agent, int finalScore) {
+                System.out.println("达到最大轮数。最终分数: " + finalScore);
+            }
+
+            @Override
+            public void onError(Agent agent, int round, Exception e) {
+                System.err.println("第 " + round + " 轮反思错误: " + e.getMessage());
+            }
+
+            @Override
+            public void onReflectionComplete(Agent agent, ReflectionHistory history) {
+                System.out.println("反思完成。总轮数: " + history.getRounds().size());
+            }
+        };
+
+        return Agent.builder()
+            .name("monitored-agent")
+            .description("带反思监控的代理")
+            .llmProvider(llmProvider)
+            .enableReflection(true)
+            .reflectionListener(listener)
+            .build();
+    }
+}
+```
+
+### 4. 简化的反思配置
+
+```java
+// 简化的反思设置
+Agent agent = Agent.builder()
+    .name("simple-reflective")
+    .description("简单反思代理")
+    .llmProvider(llmProvider)
+    .reflectionEvaluationCriteria("""
+        检查代码是否正确且有良好的文档。
+        代码可运行且有注释则评 8 分以上。
+        """)
+    .build();
 ```
 
 ## 状态管理
+
+### 状态转换机制原理
+
+Agent 使用有限状态机（FSM）管理执行状态。理解状态转换对于正确处理代理执行非常重要：
+
+```
+                    ┌─────────┐
+                    │  INITED │ (初始状态 - Agent 创建后)
+                    └────┬────┘
+                         │ run() 被调用
+                         ▼
+                    ┌─────────┐
+            ┌───────│ RUNNING │───────┐
+            │       └────┬────┘       │
+            │            │            │
+     工具需认证      正常完成     发生异常
+            │            │            │
+            ▼            ▼            ▼
+┌───────────────────┐ ┌─────────┐ ┌────────┐
+│WAITING_FOR_USER   │ │COMPLETED│ │ FAILED │
+│     _INPUT        │ └─────────┘ └────────┘
+└─────────┬─────────┘
+          │ 用户确认 "yes"
+          │
+          ▼
+     ┌─────────┐
+     │ RUNNING │ (继续执行)
+     └─────────┘
+```
+
+**状态说明**：
+
+| 状态 | 描述 | 触发条件 |
+|------|------|---------|
+| `INITED` | 初始状态 | Agent 创建后 |
+| `RUNNING` | 执行中 | `run()` 被调用 |
+| `COMPLETED` | 成功完成 | 正常执行结束 |
+| `WAITING_FOR_USER_INPUT` | 等待用户输入 | 工具设置了 `needAuth=true` |
+| `FAILED` | 执行失败 | 发生未处理异常 |
 
 ### 1. 代理状态
 
@@ -470,42 +518,32 @@ import ai.core.agent.NodeStatus;
 
 public class StatusManagementExample {
 
-    public void handleAgentStatus() {
-        Agent agent = createAgent();
+    public void handleAgentStatus(Agent agent) {
+        String response = agent.run("执行一个任务");
 
-        // 执行并检查状态
-        AgentOutput output = agent.execute("执行一个任务");
-
-        switch (output.getStatus()) {
-            case PENDING:
-                System.out.println("任务待处理");
+        switch (agent.getNodeStatus()) {
+            case INITED:
+                System.out.println("代理已初始化");
                 break;
 
             case RUNNING:
-                System.out.println("任务执行中");
+                System.out.println("代理运行中");
                 break;
 
             case COMPLETED:
                 System.out.println("任务完成");
-                System.out.println("结果: " + output.getOutput());
+                System.out.println("结果: " + agent.getOutput());
                 break;
 
             case WAITING_FOR_USER_INPUT:
-                System.out.println("需要用户输入");
-                System.out.println("提示: " + output.getWaitingMessage());
-                // 收集用户输入
-                String userInput = getUserInput();
-                // 继续执行
-                output = agent.continueWithInput(userInput);
+                System.out.println("等待用户输入");
+                // 当工具需要认证时会进入此状态
+                // 用户需要用 "yes" 确认
+                agent.run("yes");  // 确认并继续
                 break;
 
             case FAILED:
                 System.out.println("任务失败");
-                System.out.println("错误: " + output.getError());
-                // 可选：重试
-                if (shouldRetry()) {
-                    output = agent.retry();
-                }
                 break;
         }
     }
@@ -515,122 +553,103 @@ public class StatusManagementExample {
 ### 2. 持久化和恢复
 
 ```java
-import ai.core.persistence.AgentPersistence;
+import ai.core.persistence.PersistenceProvider;
 
 public class PersistenceExample {
 
-    private final AgentPersistence persistence = new AgentPersistence();
-
-    public void saveAgentState() {
-        Agent agent = createConfiguredAgent();
+    public void setupPersistence(LLMProvider llmProvider, PersistenceProvider provider) {
+        Agent agent = Agent.builder()
+            .name("persistent-agent")
+            .description("支持持久化的代理")
+            .llmProvider(llmProvider)
+            .persistenceProvider(provider)
+            .build();
 
         // 执行一些任务
-        agent.execute("任务1");
-        agent.execute("任务2");
+        agent.run("任务 1");
+        agent.run("任务 2");
 
         // 保存状态
-        String agentId = agent.getId();
-        persistence.saveAgent(agentId, agent);
-
+        String agentId = agent.save("my-agent-session");
         System.out.println("代理状态已保存: " + agentId);
     }
 
-    public void restoreAgentState(String agentId) {
-        // 恢复代理状态
-        Agent restoredAgent = persistence.loadAgent(agentId);
+    public void restoreAgent(LLMProvider llmProvider, PersistenceProvider provider) {
+        Agent agent = Agent.builder()
+            .name("persistent-agent")
+            .description("支持持久化的代理")
+            .llmProvider(llmProvider)
+            .persistenceProvider(provider)
+            .build();
 
-        if (restoredAgent != null) {
-            // 继续之前的对话
-            AgentOutput output = restoredAgent.execute("继续我们之前的讨论");
-            System.out.println(output.getOutput());
+        // 加载保存的状态
+        agent.load("my-agent-session");
 
-            // 查看恢复的历史
-            List<Message> history = restoredAgent.getMessages();
-            System.out.println("恢复了 " + history.size() + " 条消息");
-        }
+        // 继续对话，带有恢复的历史
+        String response = agent.run("继续我们之前的讨论");
+        System.out.println(response);
+
+        // 检查恢复的消息历史
+        List<Message> history = agent.getMessages();
+        System.out.println("恢复了 " + history.size() + " 条消息");
     }
 }
 ```
 
-### 3. 并发和线程安全
+### 3. 重置代理状态
 
 ```java
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+public class ResetExample {
 
-public class ConcurrentAgentExample {
+    public void resetAgentState(Agent agent) {
+        // 执行一些任务
+        agent.run("问题 1");
+        agent.run("问题 2");
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(5);
+        // 重置到初始状态
+        agent.reset();
 
-    public void handleConcurrentRequests() {
-        // 每个请求创建独立的代理实例（推荐）
-        List<CompletableFuture<AgentOutput>> futures = new ArrayList<>();
-
-        for (int i = 0; i < 10; i++) {
-            final int requestId = i;
-            CompletableFuture<AgentOutput> future = CompletableFuture
-                .supplyAsync(() -> {
-                    // 为每个请求创建新代理
-                    Agent agent = createAgent();
-                    return agent.execute("请求 " + requestId);
-                }, executor);
-
-            futures.add(future);
-        }
-
-        // 等待所有请求完成
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-            .thenRun(() -> {
-                futures.forEach(future -> {
-                    try {
-                        AgentOutput output = future.get();
-                        System.out.println("输出: " + output.getOutput());
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                });
-            });
+        // 代理现在没有历史了
+        System.out.println("重置后的消息数: " + agent.getMessages().size());  // 0
+        System.out.println("状态: " + agent.getNodeStatus());  // INITED
     }
+}
+```
 
-    // 如果需要共享代理（注意线程安全）
-    public void handleWithSharedAgent() {
-        // 使用线程安全的代理包装器
-        Agent sharedAgent = createThreadSafeAgent();
+### 4. Token 使用跟踪
 
-        List<CompletableFuture<AgentOutput>> futures = new ArrayList<>();
+```java
+import ai.core.llm.domain.Usage;
 
-        for (int i = 0; i < 10; i++) {
-            final String query = "查询 " + i;
-            CompletableFuture<AgentOutput> future = CompletableFuture
-                .supplyAsync(() -> {
-                    // 同步访问共享代理
-                    synchronized (sharedAgent) {
-                        return sharedAgent.execute(query);
-                    }
-                }, executor);
+public class TokenTrackingExample {
 
-            futures.add(future);
-        }
+    public void trackTokenUsage(Agent agent) {
+        agent.run("分析这个复杂问题...");
+
+        Usage usage = agent.getCurrentTokenUsage();
+        System.out.println("Prompt tokens: " + usage.getPromptTokens());
+        System.out.println("Completion tokens: " + usage.getCompletionTokens());
+        System.out.println("Total tokens: " + usage.getTotalTokens());
     }
 }
 ```
 
 ## 最佳实践
 
-### 1. 代理设计原则
+### 1. 单一职责原则
 
 ```java
 public class BestPracticesExample {
 
-    // ✅ 好的做法：单一职责
-    public Agent createSpecializedAgent() {
+    // 好的做法：单一职责
+    public Agent createCodeReviewer(LLMProvider llmProvider) {
         return Agent.builder()
             .name("code-reviewer")
-            .description("专门进行代码审查的代理")
+            .description("代码审查专家")
+            .llmProvider(llmProvider)
             .systemPrompt("""
                 你是一个代码审查专家。
-                只负责：
+                你的职责仅包括：
                 1. 检查代码质量
                 2. 发现潜在问题
                 3. 提供改进建议
@@ -638,11 +657,12 @@ public class BestPracticesExample {
             .build();
     }
 
-    // ❌ 不好的做法：职责过多
-    public Agent createOverloadedAgent() {
+    // 不好的做法：职责过多
+    public Agent createOverloadedAgent(LLMProvider llmProvider) {
         return Agent.builder()
             .name("do-everything")
-            .description("什么都做的代理")
+            .description("什么都做的代理")  // 太宽泛
+            .llmProvider(llmProvider)
             .systemPrompt("""
                 你要做代码审查、写文档、
                 管理项目、回答问题、部署应用...
@@ -657,120 +677,87 @@ public class BestPracticesExample {
 ```java
 public class ErrorHandlingExample {
 
-    public AgentOutput executeWithErrorHandling(Agent agent, String query) {
+    public String executeWithErrorHandling(Agent agent, String query) {
         try {
-            // 设置超时
-            AgentOutput output = agent.execute(query, 30000); // 30秒超时
+            String output = agent.run(query);
 
-            if (output.getStatus() == NodeStatus.FAILED) {
-                // 记录错误
-                logger.error("Agent execution failed: {}", output.getError());
-
-                // 尝试降级策略
-                return fallbackStrategy(query);
+            if (agent.getNodeStatus() == NodeStatus.FAILED) {
+                // 记录错误并使用备用方案
+                logger.error("代理执行失败");
+                return fallbackResponse(query);
             }
 
             return output;
 
-        } catch (TimeoutException e) {
-            logger.error("Agent execution timeout", e);
-            return AgentOutput.failed("执行超时，请重试");
-
         } catch (Exception e) {
-            logger.error("Unexpected error", e);
+            logger.error("意外错误", e);
             // 优雅降级
-            return AgentOutput.failed("系统繁忙，请稍后重试");
+            return "系统繁忙，请稍后重试。";
         }
     }
 
-    private AgentOutput fallbackStrategy(String query) {
-        // 使用更简单的模型或预定义响应
-        return AgentOutput.success("抱歉，我暂时无法处理这个请求。");
+    private String fallbackResponse(String query) {
+        return "抱歉，我暂时无法处理这个请求。";
     }
 }
 ```
 
-### 3. 性能优化
+### 3. 正确使用上下文
 
 ```java
-public class PerformanceOptimizationExample {
+public class ContextExample {
 
-    // 使用对象池管理代理
-    private final ObjectPool<Agent> agentPool;
-
-    public PerformanceOptimizationExample() {
-        // 创建代理池
-        this.agentPool = new GenericObjectPool<>(new AgentFactory());
-        agentPool.setMaxTotal(10);
-        agentPool.setMaxIdle(5);
-    }
-
-    public AgentOutput processRequest(String query) throws Exception {
-        Agent agent = null;
-        try {
-            // 从池中借用代理
-            agent = agentPool.borrowObject();
-            return agent.execute(query);
-        } finally {
-            if (agent != null) {
-                // 归还代理到池中
-                agentPool.returnObject(agent);
-            }
-        }
-    }
-
-    // 缓存常用响应
-    private final Cache<String, AgentOutput> responseCache =
-        CacheBuilder.newBuilder()
-            .maximumSize(100)
-            .expireAfterWrite(10, TimeUnit.MINUTES)
+    public void properContextUsage(Agent agent) {
+        // 创建包含所有必要信息的上下文
+        ExecutionContext context = ExecutionContext.builder()
+            .userId("user-123")          // 用于记忆隔离
+            .sessionId("session-456")    // 用于会话跟踪
+            .customVariable("locale", "zh-CN")
+            .customVariable("timezone", "Asia/Shanghai")
             .build();
 
-    public AgentOutput cachedExecute(Agent agent, String query) {
-        try {
-            return responseCache.get(query, () -> agent.execute(query));
-        } catch (ExecutionException e) {
-            return AgentOutput.failed("执行失败");
-        }
+        // 始终传递上下文以确保一致行为
+        agent.run("现在几点？", context);
     }
 }
 ```
 
-### 4. 监控和可观测性
+### 4. 可观测性与追踪
 
 ```java
 import ai.core.telemetry.AgentTracer;
-import ai.core.telemetry.TelemetryConfig;
 
 public class ObservabilityExample {
 
-    @Inject
-    private AgentTracer tracer;
-
-    public Agent createObservableAgent() {
+    public Agent createObservableAgent(LLMProvider llmProvider, AgentTracer tracer) {
         return Agent.builder()
             .name("observable-agent")
+            .description("支持追踪的代理")
             .llmProvider(llmProvider)
-            .tracer(tracer)  // 添加追踪
+            .tracer(tracer)  // 启用分布式追踪
+            .build();
+    }
+}
+```
 
-            // 添加监听器
-            .addExecutionListener(new AgentExecutionListener() {
-                @Override
-                public void beforeExecute(String query) {
-                    metrics.counter("agent.executions").increment();
-                    logger.info("Starting execution: {}", query);
-                }
+### 5. 记忆集成
 
-                @Override
-                public void afterExecute(AgentOutput output) {
-                    metrics.timer("agent.execution.time")
-                        .record(output.getExecutionTime());
+```java
+import ai.core.memory.Memory;
 
-                    if (output.getStatus() == NodeStatus.FAILED) {
-                        metrics.counter("agent.failures").increment();
-                    }
-                }
-            })
+public class MemoryIntegrationExample {
+
+    public Agent createPersonalizedAgent(LLMProvider llmProvider, Memory memory) {
+        return Agent.builder()
+            .name("personalized-agent")
+            .description("带长期记忆的代理")
+            .llmProvider(llmProvider)
+            .enableCompression(true)      // 会话内上下文管理
+            .unifiedMemory(memory)        // 跨会话记忆
+            .systemPrompt("""
+                你是一个个性化助手。
+                使用记忆召回工具来记住用户偏好。
+                """)
             .build();
     }
 }
@@ -778,16 +765,18 @@ public class ObservabilityExample {
 
 ## 总结
 
-通过本教程，您学习了：
+本教程涵盖了：
 
-1. ✅ 如何创建和配置智能代理
-2. ✅ 如何使用系统提示和模板
-3. ✅ 如何实现记忆系统
-4. ✅ 如何启用反思机制
-5. ✅ 如何管理代理状态
-6. ✅ 最佳实践和性能优化
+1. **代理基础**：理解代理结构和执行流程
+2. **创建代理**：从简单到完整配置的代理
+3. **系统提示**：静态提示、Mustache 模板、Langfuse 集成
+4. **反思机制**：自我评估和改进机制
+5. **状态管理**：状态处理、持久化、Token 跟踪
+6. **最佳实践**：单一职责、错误处理、可观测性
 
-下一步，您可以：
-- 学习[工具调用](tutorial-tool-calling.md)增强代理能力
-- 探索[多代理系统](tutorial-multi-agent.md)构建复杂应用
-- 了解[RAG 集成](tutorial-rag.md)实现知识增强
+下一步：
+- 学习[工具调用](tutorial-tool-calling.md)扩展代理能力
+- 探索[记忆系统](tutorial-memory.md)实现持久化记忆
+- 学习[压缩机制](tutorial-compression.md)管理上下文
+- 构建[多代理系统](tutorial-multi-agent.md)处理复杂应用
+- 了解[流程编排](tutorial-flow.md)实现工作流

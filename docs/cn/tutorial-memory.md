@@ -5,44 +5,39 @@
 ## 目录
 
 1. [概述](#概述)
-2. [长期记忆（跨会话）](#长期记忆跨会话)
+2. [记忆系统](#记忆系统)
 3. [与 Agent 集成](#与-agent-集成)
 4. [最佳实践](#最佳实践)
 
 ## 概述
 
-Core-AI 提供两层记忆架构：
+Core-AI 的记忆系统用于持久化用户信息，支持跨会话记住用户偏好、事实和交互历史。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Agent 记忆系统                          │
-├─────────────────────────────┬───────────────────────────────┤
-│           压缩              │          长期记忆              │
-│    (会话/对话级别)          │    (持久化/跨会话)             │
-├─────────────────────────────┼───────────────────────────────┤
-│ • 消息历史                  │ • 用户偏好                     │
-│ • 对话摘要                  │ • 事实和知识                   │
-│ • 自动总结                  │ • 目标和意图                   │
-│ • Token 管理                │ • 历史交互                     │
-├─────────────────────────────┼───────────────────────────────┤
-│ 生命周期：会话内            │ 生命周期：跨会话                │
-│ 存储：内存                  │ 存储：用户自定义（向量数据库等）  │
-└─────────────────────────────┴───────────────────────────────┘
+│                      记忆系统架构                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  核心能力：                                                  │
+│  • 用户偏好持久化                                            │
+│  • 事实和知识存储                                            │
+│  • 目标和意图记录                                            │
+│  • 历史交互追踪                                              │
+│                                                             │
+│  特性：                                                      │
+│  • 向量语义搜索                                              │
+│  • 用户级数据隔离                                            │
+│  • LangMem 模式（按需检索）                                  │
+│                                                             │
+│  生命周期：跨会话                                            │
+│  存储：用户自定义（向量数据库等）                              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 使用场景
+## 记忆系统
 
-| 记忆类型 | 使用场景 | 文档 |
-|---------|---------|------|
-| **压缩** | 在会话内维护对话上下文 | [压缩机制教程](tutorial-compression.md) |
-| **长期记忆** | 跨会话记住用户偏好 | 本文档 |
-| **两者结合** | 个性化助手，记住过往交互 | 结合使用 |
-
-> **注意**：关于压缩（会话内上下文管理）的详细信息，请参阅[压缩机制教程](tutorial-compression.md)。
-
-## 长期记忆（跨会话）
-
-长期记忆使用向量嵌入进行语义搜索，实现跨会话的用户信息持久化。
+记忆系统使用向量嵌入进行语义搜索，实现跨会话的用户信息持久化。
 
 ### 架构
 
@@ -85,7 +80,7 @@ Core-AI 提供两层记忆架构：
 | `createdAt` | 记忆创建时间 | Instant |
 | `lastAccessedAt` | 最后访问时间 | Instant |
 
-### 设置长期记忆
+### 设置记忆
 
 ```java
 import ai.core.memory.Memory;
@@ -161,6 +156,74 @@ memory.retrieve(userId, query)
      ↓
 LLM 生成回复: "我记得你喜欢深色模式。"
 ```
+
+### 记忆检索原理
+
+Memory 的检索流程基于向量相似度搜索：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Memory 检索流程                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. 用户查询输入                                                 │
+│     query = "用户喜欢什么编辑器"                                  │
+│          │                                                      │
+│          ▼                                                      │
+│  2. 向量化查询                                                   │
+│     queryEmbedding = llmProvider.embed(query)                   │
+│     // 生成 1536 维向量 (取决于 embedding 模型)                  │
+│          │                                                      │
+│          ▼                                                      │
+│  3. 向量相似度搜索                                               │
+│     memoryStore.searchByVector(userId, queryEmbedding, topK)    │
+│     // K-Nearest Neighbors (KNN) 搜索                           │
+│     // 按 userId 隔离，只搜索该用户的记忆                         │
+│          │                                                      │
+│          ▼                                                      │
+│  4. 结果排序与返回                                               │
+│     按相似度分数降序排列，返回 topK 条记录                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**核心检索代码**：
+
+```java
+public class Memory {
+    public List<MemoryRecord> retrieve(String userId, String query, int topK) {
+        // 1. 生成查询的 embedding 向量
+        List<Double> queryEmbedding = generateEmbedding(query);
+        if (queryEmbedding == null) {
+            return List.of();
+        }
+
+        // 2. 向量相似度搜索（按 userId 隔离）
+        return memoryStore.searchByVector(userId, queryEmbedding, topK);
+    }
+
+    // 格式化为 LLM 可读的上下文
+    public String formatAsContext(List<MemoryRecord> memories) {
+        if (memories == null || memories.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(128);
+        sb.append("[User Memory]\n");
+        for (MemoryRecord record : memories) {
+            sb.append("- ").append(record.getContent()).append('\n');
+        }
+        return sb.toString();
+    }
+}
+```
+
+**LangMem 模式说明**：
+
+Core-AI 采用 LangMem 模式，即 LLM 通过 Tool 主动决定何时查询记忆，而不是每次请求都自动注入。这种设计的优势：
+
+1. **减少上下文消耗**：只在需要时检索，避免不必要的记忆注入
+2. **LLM 自主决策**：让 LLM 判断何时需要召回记忆
+3. **更灵活的控制**：可以在工具参数中指定查询条件
 
 ### userId 传递机制
 
@@ -363,33 +426,7 @@ public class MemoryExample {
 
 ## 最佳实践
 
-### 1. 选择正确的记忆类型
-
-```java
-// 无状态操作：禁用压缩
-Agent statelessAgent = Agent.builder()
-    .name("stateless")
-    .llmProvider(llmProvider)
-    .enableCompression(false)
-    .build();
-
-// 单会话：仅压缩（默认）
-Agent sessionAgent = Agent.builder()
-    .name("session")
-    .llmProvider(llmProvider)
-    .enableCompression(true)
-    .build();
-
-// 个性化体验：两种记忆都用
-Agent personalizedAgent = Agent.builder()
-    .name("personalized")
-    .llmProvider(llmProvider)
-    .enableCompression(true)   // 会话内
-    .unifiedMemory(memory)     // 跨会话
-    .build();
-```
-
-### 2. 正确使用 ExecutionContext
+### 1. 正确使用 ExecutionContext
 
 ```java
 // 创建带 userId 的上下文
@@ -403,7 +440,7 @@ ExecutionContext context = ExecutionContext.builder()
 String response = agent.run("查询内容", context);
 ```
 
-### 3. 生产环境存储设置
+### 2. 生产环境存储设置
 
 ```java
 // 开发环境：内存存储
@@ -417,7 +454,7 @@ ChatHistoryProvider prodHistory = new DatabaseHistoryProvider(repository);
 ChatHistoryProvider prodHistory = userId -> repository.findByUserId(userId);
 ```
 
-### 4. 提取时机
+### 3. 提取时机
 
 ```java
 // 方式1：会话结束时提取
@@ -435,7 +472,7 @@ public void batchExtraction() {
 }
 ```
 
-### 5. 服务层封装
+### 4. 服务层封装
 
 ```java
 public class ChatService {
@@ -470,18 +507,16 @@ public class ChatService {
 
 本教程涵盖的关键概念：
 
-1. **压缩**：基于会话的对话历史，带自动总结
-   - 触发条件：token 数量超过阈值（默认 80%）
-   - 压缩策略：保留系统消息 + 最近 N 轮 + 当前对话链
-
-2. **长期记忆**：持久化用户记忆，支持向量语义搜索
+1. **记忆系统**：持久化用户记忆，支持向量语义搜索
    - `Extraction`：独立提取器，从聊天历史提取记忆
    - `Memory`：检索器，被 Agent 使用
 
-3. **ExecutionContext**：执行上下文，传递 userId 等信息
+2. **ExecutionContext**：执行上下文，传递 userId 等信息
    - 通过 `context.getUserId()` 实现用户级数据隔离
 
-4. **LangMem 模式**：LLM 通过 Tool 主动查询记忆
+3. **LangMem 模式**：LLM 通过 Tool 主动查询记忆
+
+4. **双存储设计**：`MemoryStore`（记忆存储）+ `ChatHistoryProvider`（聊天历史提供者）
 
 下一步：
 - 学习[工具调用](tutorial-tool-calling.md)扩展代理能力

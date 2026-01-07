@@ -47,6 +47,118 @@ Flow 是 Core-AI 中的工作流编排系统，允许您：
 └─────────────────────────────────────┘
 ```
 
+## Flow 执行引擎原理
+
+### 有向图执行模型
+
+Flow 本质上是一个有向图执行引擎，通过递归遍历节点来执行工作流：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Flow 执行引擎核心流程                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Flow.run(nodeId, input, variables)                             │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  1. validate() - 验证 Flow 配置                          │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  2. 获取当前节点                                          │   │
+│  │     currentNode = getNodeById(nodeId)                    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  3. 初始化节点设置 (SETTING 边)                           │   │
+│  │     settings = getNodeSettings(currentNode)              │   │
+│  │     currentNode.initialize(settings, edges)              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  4. 执行当前节点                                          │   │
+│  │     if (isExecutableType(currentNode.type)) {            │   │
+│  │         result = currentNode.execute(input, variables)   │   │
+│  │     }                                                    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  5. 获取下一个节点 (CONNECTION 边)                        │   │
+│  │     nextNodes = getNextNodes(currentNode)                │   │
+│  │     if (nextNodes.isEmpty()) → FlowStatus.SUCCESS        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  6. 条件路由 (多分支时)                                   │   │
+│  │     if (nextNodes.size() > 1) {                          │   │
+│  │         nextNode = selectNextNodeByEdgeValue(result)     │   │
+│  │     }                                                    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  7. 递归执行下一个节点                                    │   │
+│  │     return execute(nextNode.id, result.text(), vars)     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 边的类型与作用
+
+Flow 中的边（Edge）分为两种类型：
+
+| 边类型 | 作用 | 描述 |
+|-------|------|------|
+| `CONNECTION` | 数据流连接 | 定义节点之间的执行顺序，数据从源节点流向目标节点 |
+| `SETTING` | 配置注入 | 将配置节点的设置注入到目标节点，不参与执行流程 |
+
+```java
+// CONNECTION 边：定义执行流程
+public Map<FlowEdge<?>, FlowNode<?>> getNextNodes(FlowNode<?> node) {
+    return edges.stream()
+        .filter(edge -> edge.type == FlowEdgeType.CONNECTION)
+        .filter(edge -> edge.getSourceNodeId().equals(node.id))
+        .collect(Collectors.toMap(edge -> edge, edge -> getNodeById(edge.getTargetNodeId())));
+}
+
+// SETTING 边：获取配置
+public List<FlowNode<?>> getNodeSettings(FlowNode<?> node) {
+    return edges.stream()
+        .filter(edge -> edge.type == FlowEdgeType.SETTING)
+        .filter(edge -> edge.getSourceNodeId().equals(node.id))
+        .map(edge -> getNodeById(edge.getTargetNodeId()))
+        .toList();
+}
+```
+
+### 条件路由机制
+
+当一个节点有多个下游节点时，Flow 使用边的值（Edge Value）进行路由选择：
+
+```java
+// 基于边值选择下一个节点
+public FlowNode<?> selectNextNodeByEdgeValue(FlowNodeResult result,
+                                              Map<FlowEdge<?>, FlowNode<?>> nextNodes) {
+    for (var entry : nextNodes.entrySet()) {
+        FlowEdge<?> edge = entry.getKey();
+        // 边的值与执行结果匹配时，选择该分支
+        if (edge.getValue() != null &&
+            edge.getValue().toString().equals(result.text())) {
+            return entry.getValue();
+        }
+    }
+    // 默认返回第一个节点
+    return nextNodes.values().iterator().next();
+}
+```
+
 ## 创建基本流程
 
 ### 1. 简单线性流程
