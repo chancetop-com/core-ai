@@ -1,4 +1,4 @@
-package ai.core.memory;
+package ai.core.compression;
 
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
@@ -33,46 +33,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * @author xander
  */
-class ShortTermMemoryTest {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemoryTest.class);
-    private ShortTermMemory memory;
+class CompressionTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CompressionTest.class);
+    private Compression compression;
 
     @BeforeEach
     void setUp() {
-        memory = new ShortTermMemory(0.7, 5, null, null);
+        compression = new Compression(0.7, 5, null, null);
     }
 
     @Test
     void testDefaultConstructor() {
-        ShortTermMemory defaultMemory = new ShortTermMemory(createMockProvider(), "test-model");
-        assertEquals(0.8, defaultMemory.getTriggerThreshold());
-        assertEquals(5, defaultMemory.getKeepRecentTurns());
+        Compression defaultCompression = new Compression(createMockProvider(), "test-model");
+        assertEquals(0.8, defaultCompression.getTriggerThreshold());
+        assertEquals(5, defaultCompression.getKeepRecentTurns());
         LOGGER.info("Default constructor test passed");
     }
 
     @Test
     void testCustomConstructor() {
-        ShortTermMemory customMemory = new ShortTermMemory(0.8, 3, createMockProvider(), "test-model");
-        assertEquals(0.8, customMemory.getTriggerThreshold());
-        assertEquals(3, customMemory.getKeepRecentTurns());
+        Compression customCompression = new Compression(0.8, 3, createMockProvider(), "test-model");
+        assertEquals(0.8, customCompression.getTriggerThreshold());
+        assertEquals(3, customCompression.getKeepRecentTurns());
         LOGGER.info("Custom constructor test passed");
     }
 
     @Test
     void testShouldCompressWithoutProvider() {
-        assertFalse(memory.shouldCompress(100000));
+        assertFalse(compression.shouldCompress(100000));
         LOGGER.info("Should compress without provider test passed");
     }
 
     @Test
     void testShouldCompressWithProvider() {
-        ShortTermMemory memoryWithProvider = new ShortTermMemory(0.7, 5, createMockProvider(), "test-model");
+        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model");
 
         // Below threshold (70% of 128000 = 89600)
-        assertFalse(memoryWithProvider.shouldCompress(50000));
+        assertFalse(compressionWithProvider.shouldCompress(50000));
 
         // Above threshold
-        assertTrue(memoryWithProvider.shouldCompress(100000));
+        assertTrue(compressionWithProvider.shouldCompress(100000));
 
         LOGGER.info("Should compress with provider test passed");
     }
@@ -80,7 +80,7 @@ class ShortTermMemoryTest {
     @Test
     void testCompressWithoutProvider() {
         List<Message> messages = createTestMessages(10);
-        List<Message> result = memory.compress(messages);
+        List<Message> result = compression.compress(messages);
 
         // Without provider, should return original
         assertSame(messages, result);
@@ -89,9 +89,9 @@ class ShortTermMemoryTest {
 
     @Test
     void testCompressWithEmptyMessages() {
-        ShortTermMemory memoryWithProvider = new ShortTermMemory(createMockProvider(), "test-model");
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
         List<Message> messages = List.of();
-        List<Message> result = memoryWithProvider.compress(messages);
+        List<Message> result = compressionWithProvider.compress(messages);
 
         assertSame(messages, result);
         LOGGER.info("Compress with empty messages test passed");
@@ -99,10 +99,10 @@ class ShortTermMemoryTest {
 
     @Test
     void testCompressNotEnoughMessages() {
-        ShortTermMemory memoryWithProvider = new ShortTermMemory(0.7, 5, createMockProvider(), "test-model");
+        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model");
         // keepRecentTurns=5, so need more than 5*2=10 messages to compress
         List<Message> messages = createTestMessages(3);
-        List<Message> result = memoryWithProvider.compress(messages);
+        List<Message> result = compressionWithProvider.compress(messages);
 
         // Not enough messages to compress, return original
         assertSame(messages, result);
@@ -111,10 +111,10 @@ class ShortTermMemoryTest {
 
     @Test
     void testCompressBelowThreshold() {
-        ShortTermMemory memoryWithProvider = new ShortTermMemory(0.7, 5, createMockProvider(), "test-model");
+        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model");
         // Create messages but tokens won't exceed threshold
         List<Message> messages = createTestMessages(15);
-        List<Message> result = memoryWithProvider.compress(messages);
+        List<Message> result = compressionWithProvider.compress(messages);
 
         // Below threshold, return original
         assertSame(messages, result);
@@ -123,8 +123,8 @@ class ShortTermMemoryTest {
 
     @Test
     void testCompressSuccessful() {
-        // Create a memory with low threshold for testing
-        ShortTermMemory testMemory = new ShortTermMemory(0.0001, 2,
+        // Create a compression with low threshold for testing
+        Compression testCompression = new Compression(0.0001, 2,
             createMockProviderWithSummary("Test summary"), "test-model");
 
         List<Message> messages = new ArrayList<>();
@@ -136,7 +136,7 @@ class ShortTermMemoryTest {
         // Add final USER message (compression only triggers on new user input)
         messages.add(Message.of(RoleType.USER, "Final user message"));
 
-        List<Message> result = testMemory.compress(messages);
+        List<Message> result = testCompression.compress(messages);
 
         // Should have compressed
         assertTrue(result.size() < messages.size());
@@ -157,7 +157,7 @@ class ShortTermMemoryTest {
 
     @Test
     void testSystemMessagePreserved() {
-        ShortTermMemory testMemory = new ShortTermMemory(0.0001, 1,
+        Compression testCompression = new Compression(0.0001, 1,
             createMockProviderWithSummary("Summary"), "test-model");
 
         List<Message> messages = new ArrayList<>();
@@ -169,7 +169,7 @@ class ShortTermMemoryTest {
         // Add final USER message (compression only triggers on new user input)
         messages.add(Message.of(RoleType.USER, "Final user message"));
 
-        List<Message> result = testMemory.compress(messages);
+        List<Message> result = testCompression.compress(messages);
 
         // System message should be first
         assertEquals(RoleType.SYSTEM, result.get(0).role);

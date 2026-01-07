@@ -15,7 +15,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
-import ai.core.memory.ShortTermMemory;
+import ai.core.compression.Compression;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -70,7 +70,7 @@ public class Agent extends Node<Agent> {
     Integer maxTurnNumber;
     Boolean authenticated = false;
     ToolExecutor toolExecutor;
-    ShortTermMemory shortTermMemory;
+    Compression compression;
 
     @Override
     String execute(String query, Map<String, Object> variables) {

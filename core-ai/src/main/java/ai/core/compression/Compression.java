@@ -1,4 +1,4 @@
-package ai.core.memory;
+package ai.core.compression;
 
 import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.LLMProvider;
@@ -17,8 +17,8 @@ import java.util.List;
  * @author xander
  */
 //todo Whether is necessary that adding a interface for developer to self-define the Short Term Memory ?
-public class ShortTermMemory {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ShortTermMemory.class);
+public class Compression {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
     private static final int DEFAULT_KEEP_RECENT_TURNS = 5;
@@ -31,11 +31,11 @@ public class ShortTermMemory {
     private final LLMProvider llmProvider;
     private final String model;
 
-    public ShortTermMemory(LLMProvider llmProvider, String model) {
+    public Compression(LLMProvider llmProvider, String model) {
         this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, llmProvider, model);
     }
 
-    public ShortTermMemory(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String model) {
+    public Compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String model) {
         this.triggerThreshold = triggerThreshold;
         this.keepRecentTurns = keepRecentTurns;
         this.llmProvider = llmProvider;
