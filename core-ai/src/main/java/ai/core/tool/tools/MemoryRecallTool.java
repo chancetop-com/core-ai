@@ -1,6 +1,6 @@
 package ai.core.tool.tools;
 
-import ai.core.memory.longterm.LongTermMemory;
+import ai.core.memory.longterm.Memory;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
@@ -27,15 +27,15 @@ public final class MemoryRecallTool extends ToolCall {
         return new Builder();
     }
 
-    private final LongTermMemory longTermMemory;
+    private final Memory longTermMemory;
     private final int maxRecords;
     private final Supplier<String> userIdSupplier;
 
-    public MemoryRecallTool(LongTermMemory longTermMemory, Supplier<String> userIdSupplier) {
+    public MemoryRecallTool(Memory longTermMemory, Supplier<String> userIdSupplier) {
         this(longTermMemory, userIdSupplier, 5);
     }
 
-    public MemoryRecallTool(LongTermMemory longTermMemory, Supplier<String> userIdSupplier, int maxRecords) {
+    public MemoryRecallTool(Memory longTermMemory, Supplier<String> userIdSupplier, int maxRecords) {
         this.longTermMemory = longTermMemory;
         this.userIdSupplier = userIdSupplier;
         this.maxRecords = maxRecords;
@@ -111,7 +111,7 @@ public final class MemoryRecallTool extends ToolCall {
         );
     }
 
-    public LongTermMemory getLongTermMemory() {
+    public Memory getMemory() {
         return longTermMemory;
     }
 
@@ -120,7 +120,7 @@ public final class MemoryRecallTool extends ToolCall {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, MemoryRecallTool> {
-        private LongTermMemory longTermMemory;
+        private Memory longTermMemory;
         private Supplier<String> userIdSupplier;
         private int maxRecords = 5;
 
@@ -129,7 +129,7 @@ public final class MemoryRecallTool extends ToolCall {
             return this;
         }
 
-        public Builder longTermMemory(LongTermMemory longTermMemory) {
+        public Builder longTermMemory(Memory longTermMemory) {
             this.longTermMemory = longTermMemory;
             return this;
         }

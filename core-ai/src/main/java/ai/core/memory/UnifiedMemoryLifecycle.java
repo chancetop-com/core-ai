@@ -1,7 +1,7 @@
 package ai.core.memory;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.memory.longterm.LongTermMemory;
+import ai.core.memory.longterm.Memory;
 import ai.core.tool.tools.MemoryRecallTool;
 
 /**
@@ -12,15 +12,15 @@ import ai.core.tool.tools.MemoryRecallTool;
  */
 public class UnifiedMemoryLifecycle extends AbstractLifecycle {
 
-    private final LongTermMemory longTermMemory;
+    private final Memory longTermMemory;
     private final int maxRecallRecords;
     private MemoryRecallTool memoryRecallTool;
 
-    public UnifiedMemoryLifecycle(LongTermMemory longTermMemory) {
+    public UnifiedMemoryLifecycle(Memory longTermMemory) {
         this(longTermMemory, 5);
     }
 
-    public UnifiedMemoryLifecycle(LongTermMemory longTermMemory, int maxRecallRecords) {
+    public UnifiedMemoryLifecycle(Memory longTermMemory, int maxRecallRecords) {
         this.longTermMemory = longTermMemory;
         this.maxRecallRecords = maxRecallRecords;
     }
@@ -35,7 +35,7 @@ public class UnifiedMemoryLifecycle extends AbstractLifecycle {
         return memoryRecallTool;
     }
 
-    public LongTermMemory getLongTermMemory() {
+    public Memory getMemory() {
         return longTermMemory;
     }
 

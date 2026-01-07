@@ -6,7 +6,7 @@ import ai.core.memory.ShortTermMemory;
 import ai.core.memory.ShortTermMemoryLifecycle;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.UnifiedMemoryLifecycle;
-import ai.core.memory.longterm.LongTermMemory;
+import ai.core.memory.longterm.Memory;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -44,7 +44,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private boolean shortTermMemoryEnabled = true;
 
     // Long-term memory (unified memory) configuration
-    private LongTermMemory longTermMemory;
+    private Memory longTermMemory;
     private UnifiedMemoryConfig unifiedMemoryConfig;
 
     // Langfuse prompt integration (simplified - just names needed)
@@ -74,12 +74,12 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
-    public AgentBuilder unifiedMemory(LongTermMemory longTermMemory) {
+    public AgentBuilder unifiedMemory(Memory longTermMemory) {
         this.longTermMemory = longTermMemory;
         return this;
     }
 
-    public AgentBuilder unifiedMemory(LongTermMemory longTermMemory, UnifiedMemoryConfig config) {
+    public AgentBuilder unifiedMemory(Memory longTermMemory, UnifiedMemoryConfig config) {
         this.longTermMemory = longTermMemory;
         this.unifiedMemoryConfig = config;
         return this;

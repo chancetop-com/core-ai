@@ -5,7 +5,7 @@ import java.time.Duration;
 /**
  * @author xander
  */
-public final class LongTermMemoryConfig {
+public final class MemoryConfig {
 
     public static Builder builder() {
         return new Builder();
@@ -24,7 +24,7 @@ public final class LongTermMemoryConfig {
     private boolean asyncExtraction = true;
     private Duration extractionTimeout = Duration.ofSeconds(30);
 
-    private LongTermMemoryConfig() {
+    private MemoryConfig() {
     }
 
     public boolean isEnableDecay() {
@@ -68,7 +68,7 @@ public final class LongTermMemoryConfig {
     }
 
     public static class Builder {
-        private final LongTermMemoryConfig config = new LongTermMemoryConfig();
+        private final MemoryConfig config = new MemoryConfig();
 
         public Builder enableDecay(boolean enable) {
             config.enableDecay = enable;
@@ -120,7 +120,7 @@ public final class LongTermMemoryConfig {
             return this;
         }
 
-        public LongTermMemoryConfig build() {
+        public MemoryConfig build() {
             return config;
         }
     }

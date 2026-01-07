@@ -5,58 +5,58 @@ import ai.core.memory.history.ChatHistoryProvider;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 
 /**
- * Builder for LongTermMemory.
+ * Builder for Memory.
  *
  * @author xander
  */
-public class LongTermMemoryBuilder {
+public class MemoryBuilder {
 
     private LLMProvider llmProvider;
     private MemoryExtractor extractor;
-    private LongTermMemoryConfig config;
+    private MemoryConfig config;
     private MemoryStore memoryStore;
     private ChatHistoryProvider historyProvider;
 
-    public LongTermMemoryBuilder llmProvider(LLMProvider llmProvider) {
+    public MemoryBuilder llmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
         return this;
     }
 
-    public LongTermMemoryBuilder extractor(MemoryExtractor extractor) {
+    public MemoryBuilder extractor(MemoryExtractor extractor) {
         this.extractor = extractor;
         return this;
     }
 
-    public LongTermMemoryBuilder config(LongTermMemoryConfig config) {
+    public MemoryBuilder config(MemoryConfig config) {
         this.config = config;
         return this;
     }
 
-    public LongTermMemoryBuilder memoryStore(MemoryStore memoryStore) {
+    public MemoryBuilder memoryStore(MemoryStore memoryStore) {
         this.memoryStore = memoryStore;
         return this;
     }
 
-    public LongTermMemoryBuilder store(MemoryStore store) {
+    public MemoryBuilder store(MemoryStore store) {
         return memoryStore(store);
     }
 
-    public LongTermMemoryBuilder historyProvider(ChatHistoryProvider historyProvider) {
+    public MemoryBuilder historyProvider(ChatHistoryProvider historyProvider) {
         this.historyProvider = historyProvider;
         return this;
     }
 
-    public LongTermMemory build() {
+    public Memory build() {
         if (llmProvider == null) {
-            throw new IllegalStateException("llmProvider is required for LongTermMemory");
+            throw new IllegalStateException("llmProvider is required for Memory");
         }
 
         if (historyProvider == null) {
-            throw new IllegalStateException("historyProvider is required for LongTermMemory");
+            throw new IllegalStateException("historyProvider is required for Memory");
         }
 
         if (config == null) {
-            config = LongTermMemoryConfig.builder().build();
+            config = MemoryConfig.builder().build();
         }
 
         if (memoryStore == null) {
@@ -67,7 +67,7 @@ public class LongTermMemoryBuilder {
             extractor = createDefaultExtractor();
         }
 
-        return new LongTermMemory(memoryStore, historyProvider, extractor, llmProvider, config);
+        return new Memory(memoryStore, historyProvider, extractor, llmProvider, config);
     }
 
     private MemoryExtractor createDefaultExtractor() {

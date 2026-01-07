@@ -7,7 +7,7 @@ import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.history.ChatRecord;
 import ai.core.memory.history.InMemoryChatHistoryProvider;
-import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
+import ai.core.memory.longterm.extraction.MemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
  * @author xander
  */
 @SuppressWarnings("PMD.SingularField")
-class LongTermMemoryTest {
+class MemoryTest {
 
     private static final String USER_ID = "user-456";
     private static final int EMBEDDING_DIM = 8;
@@ -39,11 +39,11 @@ class LongTermMemoryTest {
     private MemoryExtractor extractor;
     private LLMProvider llmProvider;
     private InMemoryChatHistoryProvider historyProvider;
-    private LongTermMemoryCoordinator coordinator;
+    private MemoryCoordinator coordinator;
 
     @BeforeEach
     void setUp() {
-        LongTermMemoryConfig config = LongTermMemoryConfig.builder()
+        MemoryConfig config = MemoryConfig.builder()
                 .maxBufferTurns(3)
                 .maxBufferTokens(500)
                 .extractOnSessionEnd(true)
@@ -55,7 +55,7 @@ class LongTermMemoryTest {
         historyProvider = new InMemoryChatHistoryProvider();
         extractor = createMockExtractor();
         llmProvider = createMockLLMProvider();
-        coordinator = new LongTermMemoryCoordinator(store, historyProvider, extractor, llmProvider, config);
+        coordinator = new MemoryCoordinator(store, historyProvider, extractor, llmProvider, config);
     }
 
     @Test
@@ -91,14 +91,14 @@ class LongTermMemoryTest {
 
     @Test
     void testCoordinatorBatchExtractionTrigger() {
-        LongTermMemoryConfig batchConfig = LongTermMemoryConfig.builder()
+        MemoryConfig batchConfig = MemoryConfig.builder()
             .maxBufferTurns(2)
             .asyncExtraction(false)
             .build();
 
         MemoryStore batchStore = new InMemoryStore();
         InMemoryChatHistoryProvider batchHistoryProvider = new InMemoryChatHistoryProvider();
-        LongTermMemoryCoordinator batchCoordinator = new LongTermMemoryCoordinator(
+        MemoryCoordinator batchCoordinator = new MemoryCoordinator(
             batchStore, batchHistoryProvider, extractor, llmProvider, batchConfig);
 
         // Add records to history
@@ -231,15 +231,15 @@ class LongTermMemoryTest {
     }
 
     @Nested
-    @DisplayName("LongTermMemory Facade Tests")
-    class LongTermMemoryFacadeTests {
+    @DisplayName("Memory Facade Tests")
+    class MemoryFacadeTests {
 
-        private LongTermMemory memory;
+        private Memory memory;
         private InMemoryChatHistoryProvider facadeHistoryProvider;
 
         @BeforeEach
         void setUpFacade() {
-            LongTermMemoryConfig facadeConfig = LongTermMemoryConfig.builder()
+            MemoryConfig facadeConfig = MemoryConfig.builder()
                 .maxBufferTurns(2)
                 .asyncExtraction(false)
                 .build();
@@ -247,7 +247,7 @@ class LongTermMemoryTest {
             MemoryStore facadeStore = new InMemoryStore();
             facadeHistoryProvider = new InMemoryChatHistoryProvider();
 
-            memory = new LongTermMemory(facadeStore, facadeHistoryProvider, extractor, llmProvider, facadeConfig);
+            memory = new Memory(facadeStore, facadeHistoryProvider, extractor, llmProvider, facadeConfig);
         }
 
         @Test
