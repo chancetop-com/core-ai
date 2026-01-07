@@ -50,7 +50,7 @@ public class Prompts {
 
             Output summary directly:
             """;
-    public static final String LONG_TERM_MEMORY_EXTRACTION_PROMPT = """
+    public static final String MEMORY_EXTRACTION_PROMPT = """
             Analyze the following conversation and extract memorable information about the user.
 
             Conversation:
