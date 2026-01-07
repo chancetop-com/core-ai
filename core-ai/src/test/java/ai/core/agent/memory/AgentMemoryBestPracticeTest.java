@@ -22,8 +22,8 @@ import ai.core.llm.domain.Usage;
 import ai.core.memory.Extraction;
 import ai.core.memory.InMemoryStore;
 import ai.core.memory.Memory;
+import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryRecord;
-import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.history.ChatRecord;
 import ai.core.memory.history.InMemoryChatHistoryProvider;
 import ai.core.tool.ToolCallResult;
@@ -108,7 +108,7 @@ class AgentMemoryBestPracticeTest {
             Agent agent = Agent.builder()
                 .name("assistant")
                 .llmProvider(llmProvider)
-                .unifiedMemory(memory, UnifiedMemoryConfig.builder()
+                .unifiedMemory(memory, MemoryConfig.builder()
                     .maxRecallRecords(10)         // Return max 10 memories
                     .autoRecall(true)              // Register MemoryRecallTool
                     .build())

@@ -360,7 +360,7 @@ public final class ExecutionContext {
 ### 使用 unifiedMemory 配置
 
 ```java
-import ai.core.memory.UnifiedMemoryConfig;
+import ai.core.memory.MemoryConfig;
 import ai.core.agent.ExecutionContext;
 
 // 推荐方式：使用 Agent builder
@@ -384,7 +384,7 @@ agent.run("你好", context);
 Agent agent = Agent.builder()
     .name("personalized-agent")
     .llmProvider(llmProvider)
-    .unifiedMemory(memory, UnifiedMemoryConfig.builder()
+    .unifiedMemory(memory, MemoryConfig.builder()
         .maxRecallRecords(10)      // 最多返回 10 条记忆
         .autoRecall(true)          // 自动注册 MemoryRecallTool
         .build())

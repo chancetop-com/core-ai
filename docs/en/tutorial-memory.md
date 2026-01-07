@@ -503,7 +503,7 @@ public class DatabaseHistoryProvider implements ChatHistoryProvider {
 ### Using unifiedMemory Configuration
 
 ```java
-import ai.core.memory.UnifiedMemoryConfig;
+import ai.core.memory.MemoryConfig;
 
 // Recommended: Using Agent builder
 Agent agent = Agent.builder()
@@ -516,7 +516,7 @@ Agent agent = Agent.builder()
 Agent agent = Agent.builder()
     .name("personalized-agent")
     .llmProvider(llmProvider)
-    .unifiedMemory(longTermMemory, UnifiedMemoryConfig.builder()
+    .unifiedMemory(memory, MemoryConfig.builder()
         .maxRecallRecords(5)       // Return max 5 memories
         .autoRecall(true)          // Auto-register MemoryRecallTool
         .build())

@@ -15,8 +15,8 @@ public class Memory {
     private static final Logger LOGGER = LoggerFactory.getLogger(Memory.class);
     private static final int DEFAULT_TOP_K = 5;
 
-    public static MemoryBuilder builder() {
-        return new MemoryBuilder();
+    public static Builder builder() {
+        return new Builder();
     }
 
     private final MemoryStore memoryStore;
@@ -88,5 +88,40 @@ public class Memory {
             LOGGER.warn("Failed to generate embedding for memory retrieval, textLength={}", text.length(), e);
         }
         return null;
+    }
+
+    public static class Builder {
+        private LLMProvider llmProvider;
+        private MemoryStore memoryStore;
+        private int defaultTopK = DEFAULT_TOP_K;
+
+        public Builder llmProvider(LLMProvider llmProvider) {
+            this.llmProvider = llmProvider;
+            return this;
+        }
+
+        public Builder memoryStore(MemoryStore memoryStore) {
+            this.memoryStore = memoryStore;
+            return this;
+        }
+
+        public Builder store(MemoryStore store) {
+            return memoryStore(store);
+        }
+
+        public Builder defaultTopK(int defaultTopK) {
+            this.defaultTopK = defaultTopK;
+            return this;
+        }
+
+        public Memory build() {
+            if (llmProvider == null) {
+                throw new IllegalStateException("llmProvider is required for Memory");
+            }
+            if (memoryStore == null) {
+                memoryStore = new InMemoryStore();
+            }
+            return new Memory(memoryStore, llmProvider, defaultTopK);
+        }
     }
 }

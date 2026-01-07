@@ -3,7 +3,7 @@ package ai.core.memory;
 /**
  * @author xander
  */
-public final class UnifiedMemoryConfig {
+public final class MemoryConfig {
 
     private static final int DEFAULT_MAX_RECALL_RECORDS = 5;
 
@@ -11,14 +11,14 @@ public final class UnifiedMemoryConfig {
         return new Builder();
     }
 
-    public static UnifiedMemoryConfig defaultConfig() {
+    public static MemoryConfig defaultConfig() {
         return builder().build();
     }
 
     private boolean autoRecall;
     private int maxRecallRecords;
 
-    private UnifiedMemoryConfig() {
+    private MemoryConfig() {
         this.autoRecall = true;
         this.maxRecallRecords = DEFAULT_MAX_RECALL_RECORDS;
     }
@@ -32,10 +32,10 @@ public final class UnifiedMemoryConfig {
     }
 
     public static final class Builder {
-        private final UnifiedMemoryConfig config;
+        private final MemoryConfig config;
 
         private Builder() {
-            this.config = new UnifiedMemoryConfig();
+            this.config = new MemoryConfig();
         }
 
         public Builder autoRecall(boolean autoRecall) {
@@ -48,7 +48,7 @@ public final class UnifiedMemoryConfig {
             return this;
         }
 
-        public UnifiedMemoryConfig build() {
+        public MemoryConfig build() {
             return config;
         }
     }
