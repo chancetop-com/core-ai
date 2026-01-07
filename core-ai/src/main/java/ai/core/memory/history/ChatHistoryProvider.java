@@ -8,5 +8,5 @@ import java.util.List;
 @FunctionalInterface
 public interface ChatHistoryProvider {
 
-    List<ChatRecord> load(String userId);
+    List<ChatRecord> loadForExtraction(String userId);
 }
