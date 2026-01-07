@@ -1,7 +1,6 @@
 package ai.core.agent;
 
 import ai.core.agent.slashcommand.SlashCommandParser;
-import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
@@ -16,7 +15,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
-import ai.core.memory.ShortTermMemory;
+import ai.core.compression.Compression;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -71,9 +70,7 @@ public class Agent extends Node<Agent> {
     Integer maxTurnNumber;
     Boolean authenticated = false;
     ToolExecutor toolExecutor;
-    SlidingWindowConfig slidingWindowConfig;
-    ShortTermMemory shortTermMemory;
-    private AgentMemoryCoordinator memoryCoordinator;
+    Compression compression;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -111,23 +108,18 @@ public class Agent extends Node<Agent> {
     }
 
     private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
-        // Execute full agent flow: RAG + template + chat
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
 
-        // RAG: Always use original input for semantic search, not improvement prompt
         if (ragConfig.useRag()) {
-            rag(getInput(), context);  // Use original query for RAG
+            rag(getInput(), context);
             prompt += RagConfig.AGENT_RAG_CONTEXT_TEMPLATE;
         }
 
-        // Compile and execute template
         prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
 
-        // Chat with LLM
         chatTurns(prompt, variables, this::handLLM);
 
-        // Reflection loop if enabled and not skipped
         if (reflectionConfig != null && reflectionConfig.enabled() && !skipReflection) {
             reflectionLoop(variables);
         }
@@ -145,7 +137,6 @@ public class Agent extends Node<Agent> {
             updateNodeStatus(NodeStatus.RUNNING);
         }
         commandOrLoops(query, variables, skipReflection);
-        // Update status to completed only for first execution
         if (isFirstExecution && getNodeStatus() == NodeStatus.RUNNING) {
             updateNodeStatus(NodeStatus.COMPLETED);
         }
@@ -165,23 +156,21 @@ public class Agent extends Node<Agent> {
         return "slash_command_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
-    // Execute reflection loop to iteratively improve the solution
     private void reflectionLoop(Map<String, Object> variables) {
         ReflectionHistory history = new ReflectionHistory(getId(), getName(), getInput(), reflectionConfig.evaluationCriteria());
         int currentRound = 1;
-        setRound(currentRound);  // Initialize round counter
+        setRound(currentRound);
         if (reflectionListener != null)
             reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
 
         while (currentRound <= reflectionConfig.maxRound()) {
-            setRound(currentRound);  // Update round counter
+            setRound(currentRound);
             Instant roundStart = Instant.now();
             String solutionToEvaluate = getOutput();
             logger.info("Reflection round: {}/{}, agent: {}", currentRound, reflectionConfig.maxRound(), getName());
 
             if (reflectionListener != null) reflectionListener.onBeforeRound(this, currentRound, solutionToEvaluate);
 
-            // Evaluate using independent evaluator
             var evalRequest = new ReflectionEvaluator.EvaluationRequest(
                     getInput(), getOutput(), getName(), getLLMProvider(),
                     getTemperature(), getModel(), reflectionConfig, variables);
@@ -190,7 +179,6 @@ public class Agent extends Node<Agent> {
             String evaluationJson = evalResult.evaluationJson();
             ReflectionEvaluation evaluation = JSON.fromJSON(ReflectionEvaluation.class, evaluationJson);
 
-            // Validate evaluation score
             if (!isValidEvaluation(evaluation)) {
                 logger.error("Invalid evaluation score: {}, terminating reflection", evaluation.getScore());
                 history.complete(ReflectionStatus.FAILED);
@@ -202,18 +190,15 @@ public class Agent extends Node<Agent> {
             logger.info("Round {} evaluation: score={}, pass={}, continue={}",
                     currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
 
-            // Record round
             history.addRound(new ReflectionHistory.ReflectionRound(currentRound, solutionToEvaluate, evaluationJson,
                     evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
 
-            // Check termination
             if (shouldTerminateReflection(evaluation, currentRound)) {
                 logger.info("Reflection terminating: score={}, pass={}", evaluation.getScore(), evaluation.isPass());
                 notifyTerminationReason(evaluation, currentRound);
                 break;
             }
 
-            // Regenerate solution and skip reflection loop (to avoid infinite recursion)
             doExecute(ReflectionEvaluator.buildImprovementPrompt(evaluationJson, evaluation), variables, true);
             if (reflectionListener != null)
                 reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
@@ -253,25 +238,18 @@ public class Agent extends Node<Agent> {
         return lastEval.isShouldContinue() ? ReflectionStatus.COMPLETED_SUCCESS : ReflectionStatus.COMPLETED_NO_IMPROVEMENT;
     }
 
-    // Public method for chat execution (used by executeAgentFlow)
-    public void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
+    protected void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         buildUserQueryToMessage(query, variables);
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
-            // apply sliding window if needed before each LLM call
-            applyMemoryCoordinatorIfNeeded();
-            // turn = call model + call func
             var turnMsgList = turn(getMessages(), toReqTools(toolCalls), constructionAssistantMsg);
             logger.info("Agent turn {}: received {} messages", currentIteCount + 1, turnMsgList.size());
-            // add msg into global
             turnMsgList.forEach(this::addMessage);
-            // include agent loop msg ,but not tool msg
-            // fix Optional[]
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(m -> m.content).collect(Collectors.joining("")));
             currentIteCount++;
         } while (lastIsToolMsg() && currentIteCount < maxTurnNumber);
-        // set out
+
         setOutput(agentOut.toString());
         if (currentIteCount >= maxTurnNumber) {
             logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
@@ -291,18 +269,6 @@ public class Agent extends Node<Agent> {
         }
     }
 
-    private void applyMemoryCoordinatorIfNeeded() {
-        if (slidingWindowConfig == null) return;
-        if (memoryCoordinator == null) {
-            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, shortTermMemory, llmProvider, model);
-        }
-        memoryCoordinator.applySlidingWindowIfNeeded(this::getMessages, msgs -> {
-            clearMessages();
-            addMessages(msgs);
-        });
-    }
-
-    // Public accessors for reflection executor
     public Double getTemperature() {
         return temperature;
     }
@@ -380,7 +346,6 @@ public class Agent extends Node<Agent> {
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
-            injectMemoryAsToolCall();
             addTaskHistoriesToMessages();
         }
 
@@ -391,15 +356,6 @@ public class Agent extends Node<Agent> {
         var reqMsg = Message.of(RoleType.USER, query, buildRequestName(false), null, null, null);
         removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
-    }
-
-    private void injectMemoryAsToolCall() {
-        if (memoryCoordinator == null && slidingWindowConfig != null) {
-            memoryCoordinator = new AgentMemoryCoordinator(slidingWindowConfig, shortTermMemory, llmProvider, model);
-        }
-        if (memoryCoordinator != null) {
-            memoryCoordinator.injectMemoryAsToolCall(getMessages());
-        }
     }
 
     private List<Tool> toReqTools(List<ToolCall> toolCalls) {

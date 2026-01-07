@@ -61,6 +61,17 @@ public class Tokenizer {
         return decode(encoded, DEFAULT_ENCODING_TYPE);
     }
 
+    public static String truncate(String text, int maxTokens) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        List<Integer> tokens = encode(text);
+        if (tokens.size() <= maxTokens) {
+            return text;
+        }
+        return decode(tokens.subList(0, maxTokens));
+    }
+
     /**
      * Preload the default encoding to avoid slow first-time tokenization.
      */

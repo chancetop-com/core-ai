@@ -1,4 +1,4 @@
-package ai.core.memory;
+package ai.core.compression;
 
 import ai.core.document.Tokenizer;
 import ai.core.llm.domain.Message;

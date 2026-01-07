@@ -1,9 +1,12 @@
 package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.agent.slidingwindow.SlidingWindowConfig;
 import ai.core.llm.LLMProvider;
-import ai.core.memory.ShortTermMemory;
+import ai.core.compression.Compression;
+import ai.core.compression.CompressionLifecycle;
+import ai.core.memory.UnifiedMemoryConfig;
+import ai.core.memory.UnifiedMemoryLifecycle;
+import ai.core.memory.Memory;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -37,10 +40,12 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Boolean useGroupContext = false;
     private Boolean enableReflection = false;
     private Integer maxTurnNumber;
-    private SlidingWindowConfig slidingWindowConfig;
-    private ShortTermMemory shortTermMemory;
-    private boolean disableShortTermMemory = false;
-    private boolean memoryEnabled = true;
+    private Compression compression;
+    private boolean compressionEnabled = true;
+
+    // Unified memory configuration
+    private Memory memory;
+    private UnifiedMemoryConfig unifiedMemoryConfig;
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -59,33 +64,24 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
-    public AgentBuilder slidingWindowTurns(Integer maxTurns) {
-        this.slidingWindowConfig = SlidingWindowConfig.builder()
-                .maxTurns(maxTurns)
-                .build();
+    public AgentBuilder compression(Compression compression) {
+        this.compression = compression;
         return this;
     }
 
-    public AgentBuilder slidingWindowConfig(SlidingWindowConfig config) {
-        this.slidingWindowConfig = config;
+    public AgentBuilder enableCompression(boolean enabled) {
+        this.compressionEnabled = enabled;
         return this;
     }
 
-    public AgentBuilder shortTermMemory(ShortTermMemory shortTermMemory) {
-        this.shortTermMemory = shortTermMemory;
+    public AgentBuilder unifiedMemory(Memory memory) {
+        this.memory = memory;
         return this;
     }
 
-    /**
-     * Disable short-term memory for this agent.
-     */
-    public AgentBuilder disableShortTermMemory() {
-        this.disableShortTermMemory = true;
-        return this;
-    }
-
-    public AgentBuilder enableMemory(boolean enabled) {
-        this.memoryEnabled = enabled;
+    public AgentBuilder unifiedMemory(Memory memory, UnifiedMemoryConfig config) {
+        this.memory = memory;
+        this.unifiedMemoryConfig = config;
         return this;
     }
 
@@ -153,51 +149,26 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
-    /**
-     * Convenience method to set reflection with evaluation criteria.
-     * This creates a ReflectionConfig with the provided criteria.
-     *
-     * @param evaluationCriteria business standards/criteria for evaluation
-     * @return this builder
-     */
     public AgentBuilder reflectionEvaluationCriteria(String evaluationCriteria) {
         this.reflectionConfig = ReflectionConfig.withEvaluationCriteria(evaluationCriteria);
         return this;
     }
 
-    /**
-     * Set the name of the system prompt to fetch from Langfuse
-     * Requires Langfuse configuration in properties (langfuse.prompt.base.url)
-     */
     public AgentBuilder langfuseSystemPrompt(String promptName) {
         this.langfuseSystemPromptName = promptName;
         return this;
     }
 
-    /**
-     * Set the name of the prompt template to fetch from Langfuse
-     * Requires Langfuse configuration in properties (langfuse.prompt.base.url)
-     */
     public AgentBuilder langfusePromptTemplate(String promptName) {
         this.langfusePromptTemplateName = promptName;
         return this;
     }
 
-    /**
-     * Set the version of the Langfuse prompt to fetch (optional)
-     * If not set, the latest production version will be used
-     * Applies to both system prompt and prompt template
-     */
     public AgentBuilder langfusePromptVersion(Integer version) {
         this.langfusePromptVersion = version;
         return this;
     }
 
-    /**
-     * Set the label of the Langfuse prompt to fetch (optional)
-     * Examples: "production", "staging", "development"
-     * Applies to both system prompt and prompt template
-     */
     public AgentBuilder langfusePromptLabel(String label) {
         this.langfusePromptLabel = label;
         return this;
@@ -254,7 +225,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.reflectionListener = this.reflectionListener;
         agent.useGroupContext = this.useGroupContext;
         agent.setPersistence(new AgentPersistence());
-        agent.agentLifecycles = agentLifecycles;
+        agent.agentLifecycles = new ArrayList<>(agentLifecycles);
         if (this.enableReflection && this.reflectionConfig == null) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
         }
@@ -266,25 +237,34 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-        // Memory configuration: only set if memory is enabled
-        if (this.memoryEnabled) {
-            agent.slidingWindowConfig = this.slidingWindowConfig != null
-                    ? this.slidingWindowConfig
-                    : SlidingWindowConfig.builder().autoTokenProtection(true).build();
-            // Default to enabled ShortTermMemory unless explicitly disabled
-            if (!this.disableShortTermMemory) {
-                agent.shortTermMemory = this.shortTermMemory != null
-                        ? this.shortTermMemory
-                        : new ShortTermMemory();
-                agent.shortTermMemory.setLLMProvider(this.llmProvider, this.model);
-            }
+
+        if (this.compressionEnabled) {
+            agent.compression = this.compression != null
+                    ? this.compression
+                    : new Compression(this.llmProvider, this.model);
+            agent.agentLifecycles.add(new CompressionLifecycle(agent.compression));
+        }
+        configureUnifiedMemory(agent);
+    }
+
+    private void configureUnifiedMemory(Agent agent) {
+        if (this.memory == null) {
+            return;
+        }
+        var config = this.unifiedMemoryConfig != null
+            ? this.unifiedMemoryConfig
+            : UnifiedMemoryConfig.defaultConfig();
+
+        var lifecycle = new UnifiedMemoryLifecycle(this.memory, config.getMaxRecallRecords());
+        agent.agentLifecycles.add(lifecycle);
+
+        // Only auto-register MemoryRecallTool if autoRecall is enabled
+        if (config.isAutoRecall()) {
+            var memoryRecallTool = lifecycle.getMemoryRecallTool();
+            agent.toolCalls.add(memoryRecallTool);
         }
     }
 
-    /**
-     * Fetch prompts from Langfuse if prompt names are configured
-     * Uses the globally registered provider from LangfusePromptProviderRegistry
-     */
     private void fetchLangfusePromptsIfConfigured() {
         // Check if any Langfuse prompts are requested
         if (langfuseSystemPromptName == null && langfusePromptTemplateName == null) {
