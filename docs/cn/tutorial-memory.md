@@ -5,10 +5,9 @@
 ## 目录
 
 1. [概述](#概述)
-2. [压缩（会话内）](#压缩会话内)
-3. [长期记忆（跨会话）](#长期记忆跨会话)
-4. [与 Agent 集成](#与-agent-集成)
-5. [最佳实践](#最佳实践)
+2. [长期记忆（跨会话）](#长期记忆跨会话)
+3. [与 Agent 集成](#与-agent-集成)
+4. [最佳实践](#最佳实践)
 
 ## 概述
 
@@ -33,94 +32,13 @@ Core-AI 提供两层记忆架构：
 
 ### 使用场景
 
-| 记忆类型 | 使用场景 |
-|---------|---------|
-| **压缩** | 在会话内维护对话上下文 |
-| **长期记忆** | 跨会话记住用户偏好 |
-| **两者结合** | 个性化助手，记住过往交互 |
+| 记忆类型 | 使用场景 | 文档 |
+|---------|---------|------|
+| **压缩** | 在会话内维护对话上下文 | [压缩机制教程](tutorial-compression.md) |
+| **长期记忆** | 跨会话记住用户偏好 | 本文档 |
+| **两者结合** | 个性化助手，记住过往交互 | 结合使用 |
 
-## 压缩（会话内）
-
-压缩管理单个会话内的对话上下文。它会自动总结长对话以保持在 token 限制内。
-
-### 基本用法
-
-```java
-import ai.core.agent.Agent;
-import ai.core.agent.ExecutionContext;
-
-String userId = "user-123";
-
-// 压缩默认启用
-Agent agent = Agent.builder()
-    .name("assistant")
-    .llmProvider(llmProvider)
-    .enableCompression(true)  // 默认值：true
-    .build();
-
-// 创建执行上下文（包含 userId）
-ExecutionContext context = ExecutionContext.builder()
-    .userId(userId)
-    .build();
-
-// Agent 在会话中记住之前的消息
-agent.run("我叫张三", context);
-agent.run("我叫什么名字？", context);  // 记住："张三"
-```
-
-### 配置选项
-
-```java
-import ai.core.memory.Compression;
-
-// 创建自定义配置
-Compression compression = new Compression(
-    0.8,         // triggerThreshold - 触发压缩的阈值比例（默认 0.8，即 80%）
-    5,           // keepRecentTurns - 保留最近的对话轮数（默认 5）
-    llmProvider, // LLM 提供者（用于生成摘要）
-    "gpt-4"      // 模型名称（用于获取最大 token 限制）
-);
-
-Agent agent = Agent.builder()
-    .name("agent")
-    .llmProvider(llmProvider)
-    .compression(compression)
-    .build();
-```
-
-### 压缩机制原理
-
-压缩在每次 LLM 调用前（`beforeModel` 生命周期）同步触发：
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                      压缩流程                             │
-├──────────────────────────────────────────────────────────┤
-│  1. 检查当前 Token 数量是否超过阈值                         │
-│     （阈值 = 模型最大上下文 × triggerThreshold）            │
-│          ↓                                               │
-│  2. 如果超过阈值，执行压缩：                                │
-│     • 保留系统消息                                        │
-│     • 保留最近 N 轮对话（keepRecentTurns）                  │
-│     • 如果 N 轮仍超过阈值，只保留当前对话链                  │
-│          ↓                                               │
-│  3. 调用 LLM 生成摘要                                      │
-│          ↓                                               │
-│  4. 摘要作为 Tool Call 消息注入：                          │
-│     [ASSISTANT] tool_call: memory_compress                │
-│     [TOOL] [Previous Conversation Summary]...             │
-└──────────────────────────────────────────────────────────┘
-```
-
-### 禁用压缩
-
-```java
-Agent agent = Agent.builder()
-    .name("stateless-agent")
-    .llmProvider(llmProvider)
-    .enableCompression(false)  // 禁用压缩
-    .build();
-```
+> **注意**：关于压缩（会话内上下文管理）的详细信息，请参阅[压缩机制教程](tutorial-compression.md)。
 
 ## 长期记忆（跨会话）
 

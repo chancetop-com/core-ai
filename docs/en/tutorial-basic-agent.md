@@ -1,48 +1,85 @@
-# Tutorial: Building Intelligent Agents
+# Tutorial: Building AI Agents
 
-This tutorial will dive deep into how to build powerful intelligent agents using Core-AI.
+This tutorial provides an in-depth guide to building intelligent agents using Core-AI.
 
 ## Table of Contents
 
-1. [Agent Fundamentals](#agent-fundamentals)
-2. [Creating Basic Agents](#creating-basic-agents)
+1. [Agent Basics](#agent-basics)
+2. [Creating Agents](#creating-agents)
 3. [System Prompts and Templates](#system-prompts-and-templates)
-4. [Memory Systems](#memory-systems)
-5. [Reflection Mechanisms](#reflection-mechanisms)
-6. [State Management](#state-management)
-7. [Best Practices](#best-practices)
+4. [Reflection Mechanism](#reflection-mechanism)
+5. [State Management](#state-management)
+6. [Best Practices](#best-practices)
 
-## Agent Fundamentals
+## Agent Basics
 
 ### What is an Agent?
 
-In Core-AI, an agent is an autonomous AI entity that can:
+In Core-AI, an Agent is an autonomous AI entity that can:
 - Understand and respond to natural language input
 - Call tools to complete tasks
 - Maintain conversation context and memory
-- Reflect on and improve its responses
+- Reflect and improve its responses
 
-### Core Components of an Agent
+### Agent Core Components
 
 ```java
 Agent agent = Agent.builder()
-    .name("agent-name")           // Agent name
-    .description("agent purpose")  // Agent description
-    .llmProvider(provider)         // LLM provider
-    .systemPrompt(prompt)          // System prompt
-    .tools(toolList)               // Available tools
-    .memory(memorySystem)          // Memory system
-    .enableReflection(true)        // Reflection capability
+    .name("agent-name")           // Agent name (required)
+    .description("agent purpose") // Agent description (required)
+    .llmProvider(provider)        // LLM provider (required)
+    .systemPrompt(prompt)         // System prompt
+    .toolCalls(toolList)          // Available tools
     .build();
 ```
 
-## Creating Basic Agents
+### Agent Execution Flow
 
-### 1. The Simplest Agent
+```
++------------------------------------------------------------------+
+|                       Agent Execution Flow                        |
++------------------------------------------------------------------+
+|                                                                  |
+|  1. agent.run(query, context)                                    |
+|          |                                                       |
+|          v                                                       |
+|  2. Lifecycle: beforeAgentRun                                    |
+|          |                                                       |
+|          v                                                       |
+|  3. Build messages (system + history + user query)               |
+|          |                                                       |
+|          v                                                       |
+|  4. RAG retrieval (if enabled)                                   |
+|          |                                                       |
+|          v                                                       |
+|  5. LLM completion (with tool definitions)                       |
+|     |-- Lifecycle: beforeModel / afterModel                      |
+|          |                                                       |
+|          v                                                       |
+|  6. If tool calls returned:                                      |
+|     |-- Execute tools                                            |
+|     |-- Add results to messages                                  |
+|     |-- Loop back to step 5 (max turns limit)                    |
+|          |                                                       |
+|          v                                                       |
+|  7. Reflection (if enabled)                                      |
+|          |                                                       |
+|          v                                                       |
+|  8. Lifecycle: afterAgentRun                                     |
+|          |                                                       |
+|          v                                                       |
+|  9. Return output                                                |
+|                                                                  |
++------------------------------------------------------------------+
+```
+
+## Creating Agents
+
+### 1. Simple Agent
 
 ```java
 import ai.core.agent.Agent;
-import ai.core.agent.AgentOutput;
+import ai.core.agent.NodeStatus;
 import ai.core.llm.LLMProvider;
 
 public class BasicAgentExample {
@@ -55,15 +92,15 @@ public class BasicAgentExample {
             .build();
     }
 
-    public void useAgent() {
+    public void useAgent(LLMProvider llmProvider) {
         Agent agent = createSimpleAgent(llmProvider);
 
         // Execute query
-        AgentOutput output = agent.execute("Hello, please introduce yourself");
-        System.out.println(output.getOutput());
+        String output = agent.run("Hello, introduce yourself");
+        System.out.println(output);
 
         // Check status
-        if (output.getStatus() == NodeStatus.COMPLETED) {
+        if (agent.getNodeStatus() == NodeStatus.COMPLETED) {
             System.out.println("Execution successful");
         }
     }
@@ -73,6 +110,9 @@ public class BasicAgentExample {
 ### 2. Configured Agent
 
 ```java
+import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
+
 public class ConfiguredAgentExample {
 
     public Agent createConfiguredAgent(LLMProvider llmProvider) {
@@ -83,19 +123,64 @@ public class ConfiguredAgentExample {
 
             // Basic configuration
             .systemPrompt("You are a professional customer service representative...")
-            .maxTokens(2000)
             .temperature(0.7)
-            .topP(0.95)
+            .model("gpt-4")
 
-            // Advanced features
-            .streaming(true)           // Streaming output
-            .enableReflection(true)    // Enable reflection
-            .maxReflectionDepth(2)     // Reflection depth
+            // Tool configuration
+            .toolCalls(List.of(searchTool, orderTool))
 
-            // Retry strategy
-            .maxRetries(3)
-            .retryDelay(1000)          // milliseconds
+            // Turn limit
+            .maxTurn(20)  // Maximum conversation turns (default: 20)
 
+            // Reflection
+            .enableReflection(true)
+
+            .build();
+    }
+
+    public void runWithContext(Agent agent) {
+        // Create execution context
+        ExecutionContext context = ExecutionContext.builder()
+            .userId("user-123")
+            .sessionId("session-456")
+            .build();
+
+        // Run with context
+        String response = agent.run("I have a question about my order", context);
+        System.out.println(response);
+    }
+}
+```
+
+### 3. Streaming Agent
+
+```java
+import ai.core.agent.streaming.StreamingCallback;
+
+public class StreamingAgentExample {
+
+    public Agent createStreamingAgent(LLMProvider llmProvider) {
+        return Agent.builder()
+            .name("streaming-agent")
+            .description("Agent with streaming output")
+            .llmProvider(llmProvider)
+            .streaming(true)
+            .streamingCallback(new StreamingCallback() {
+                @Override
+                public void onToken(String token) {
+                    System.out.print(token);  // Print each token as received
+                }
+
+                @Override
+                public void onComplete(String fullResponse) {
+                    System.out.println("\n--- Complete ---");
+                }
+
+                @Override
+                public void onError(Throwable error) {
+                    System.err.println("Error: " + error.getMessage());
+                }
+            })
             .build();
     }
 }
@@ -103,246 +188,295 @@ public class ConfiguredAgentExample {
 
 ## System Prompts and Templates
 
-### 1. Static System Prompts
+### 1. Static System Prompt
 
 ```java
 Agent agent = Agent.builder()
     .name("technical-writer")
+    .description("Technical documentation expert")
     .llmProvider(llmProvider)
     .systemPrompt("""
         You are a professional technical documentation expert.
 
         Your responsibilities:
-        1. Write clear and accurate technical documentation
-        2. Explain complex concepts in simple language
+        1. Write clear, accurate technical documentation
+        2. Use concise language to explain complex concepts
         3. Provide practical code examples
 
         Writing style:
         - Use active voice
-        - Remain objective and neutral
+        - Stay objective and neutral
         - Structure content logically
+
+        Always respond in the user's language.
         """)
     .build();
 ```
 
 ### 2. Dynamic Templates (Mustache)
 
-```java
-import ai.core.prompt.PromptTemplate;
+Core-AI uses Mustache template engine for dynamic prompts:
 
+```java
 public class TemplatedAgentExample {
 
     public Agent createTemplatedAgent(LLMProvider llmProvider) {
-        // Create prompt template
-        String template = """
+        // Template with Mustache syntax
+        String systemPromptTemplate = """
             You are an AI assistant for {{company}}.
 
-            Company Information:
+            Company information:
             - Industry: {{industry}}
-            - Main Products: {{products}}
-            - Service Hours: {{serviceHours}}
+            - Main products: {{products}}
+            - Service hours: {{serviceHours}}
 
-            Current Time: {{currentTime}}
-            User Location: {{userLocation}}
+            Current time: {{currentTime}}
+            User location: {{userLocation}}
 
             Please provide personalized service based on the above information.
             """;
 
-        // Prepare template data
-        Map<String, Object> templateData = Map.of(
-            "company", "Tech Innovation Inc.",
+        return Agent.builder()
+            .name("templated-agent")
+            .description("Agent with dynamic prompts")
+            .llmProvider(llmProvider)
+            .systemPrompt(systemPromptTemplate)
+            .build();
+    }
+
+    public void runWithVariables(Agent agent) {
+        // Pass variables through ExecutionContext
+        Map<String, Object> variables = Map.of(
+            "company", "Tech Innovation Inc",
             "industry", "Artificial Intelligence",
             "products", "AI Solutions",
             "serviceHours", "9:00-18:00",
             "currentTime", LocalDateTime.now().toString(),
-            "userLocation", "New York"
+            "userLocation", "Beijing"
         );
 
-        // Render template
-        PromptTemplate promptTemplate = new PromptTemplate(template);
-        String renderedPrompt = promptTemplate.render(templateData);
-
-        return Agent.builder()
-            .name("templated-agent")
-            .llmProvider(llmProvider)
-            .systemPrompt(renderedPrompt)
+        ExecutionContext context = ExecutionContext.builder()
+            .customVariables(variables)
             .build();
+
+        agent.run("Hello, what services do you offer?", context);
     }
 }
 ```
 
-## Memory Systems
-
-### 1. Short-term Memory (Session Memory)
+### 3. Prompt Template for User Query
 
 ```java
-import ai.core.memory.NaiveMemory;
+public class PromptTemplateExample {
 
-public class MemoryAgentExample {
-
-    public void demonstrateShortTermMemory() {
-        // Agents maintain session history by default
-        Agent agent = Agent.builder()
-            .name("memory-agent")
-            .llmProvider(llmProvider)
-            .systemPrompt("You are an assistant with memory")
-            .build();
-
-        // First conversation
-        AgentOutput output1 = agent.execute("My name is John");
-        System.out.println(output1.getOutput());
-        // Output: Hello John! Nice to meet you.
-
-        // Second conversation (remembers the name)
-        AgentOutput output2 = agent.execute("Do you remember my name?");
-        System.out.println(output2.getOutput());
-        // Output: Of course, your name is John.
-
-        // Get conversation history
-        List<Message> history = agent.getMessages();
-        System.out.println("Conversation rounds: " + history.size());
-    }
-}
-```
-
-### 2. Long-term Memory
-
-```java
-import ai.core.memory.Memory;
-import ai.core.memory.NaiveMemory;
-
-public class LongTermMemoryExample {
-
-    public Agent createAgentWithLongTermMemory() {
-        // Create long-term memory system
-        Memory longTermMemory = new NaiveMemory();
-
-        // Preload memory
-        longTermMemory.save("user_preferences", Map.of(
-            "name", "John",
-            "role", "Software Engineer",
-            "project", "AI Platform",
-            "tech_stack", List.of("Java", "Python", "Docker")
-        ));
-
-        longTermMemory.save("project_context", Map.of(
-            "deadline", "2024-06-30",
-            "priority", "high",
-            "team_size", 5
-        ));
-
+    public Agent createAgentWithPromptTemplate(LLMProvider llmProvider) {
         return Agent.builder()
-            .name("memory-enhanced-agent")
+            .name("qa-agent")
+            .description("Q&A agent with template")
             .llmProvider(llmProvider)
-            .memory(longTermMemory)
-            .systemPrompt("""
-                You are a project assistant. Use your memory to provide personalized help.
+            .systemPrompt("You are a helpful Q&A assistant.")
+            // promptTemplate is prepended to user query
+            .promptTemplate("""
+                Context: {{context}}
 
-                When answering, please refer to:
-                - User's personal information and preferences
-                - Project context and constraints
-                - Previous conversation history
+                Please answer the following question:
                 """)
             .build();
     }
+
+    public void runWithTemplate(Agent agent) {
+        ExecutionContext context = ExecutionContext.builder()
+            .customVariable("context", "This is about Java programming")
+            .build();
+
+        // Final prompt = promptTemplate + user query
+        agent.run("How do I create a thread pool?", context);
+    }
 }
 ```
 
-## Reflection Mechanisms
+### 4. Langfuse Prompt Integration
+
+```java
+// Fetch prompts from Langfuse prompt management
+Agent agent = Agent.builder()
+    .name("langfuse-agent")
+    .description("Agent using Langfuse prompts")
+    .llmProvider(llmProvider)
+    .langfuseSystemPrompt("customer-service-prompt")  // Prompt name in Langfuse
+    .langfusePromptVersion(2)  // Optional: specific version
+    // Or use label
+    // .langfusePromptLabel("production")
+    .build();
+```
+
+## Reflection Mechanism
+
+Reflection allows agents to evaluate and improve their responses.
 
 ### 1. Basic Reflection
 
 ```java
+import ai.core.reflection.ReflectionConfig;
+
 public class ReflectionExample {
 
-    public Agent createReflectiveAgent() {
+    public Agent createReflectiveAgent(LLMProvider llmProvider) {
         return Agent.builder()
             .name("reflective-agent")
+            .description("Agent with reflection capability")
             .llmProvider(llmProvider)
-            .enableReflection(true)
-            .reflectionPrompt("""
-                Please reflect on your answer:
-                1. Is the answer accurate and complete?
-                2. Is there any important information missing?
-                3. Is the expression clear and understandable?
-                4. Does it need improvement?
-
-                If improvement is needed, please provide a better answer.
-                """)
-            .maxReflectionDepth(2)  // Reflect up to 2 times
+            .enableReflection(true)  // Use default reflection config
             .build();
-    }
-
-    public void demonstrateReflection() {
-        Agent agent = createReflectiveAgent();
-
-        // Execute query with reflection
-        AgentOutput output = agent.execute(
-            "Explain what dependency injection is and give an example"
-        );
-
-        // View reflection process
-        if (output.getReflections() != null) {
-            for (Reflection reflection : output.getReflections()) {
-                System.out.println("Reflection " + reflection.getDepth() + ":");
-                System.out.println("Original: " + reflection.getOriginalOutput());
-                System.out.println("Reflection: " + reflection.getReflectionContent());
-                System.out.println("Improved: " + reflection.getImprovedOutput());
-                System.out.println("---");
-            }
-        }
-
-        // Final output (improved through reflection)
-        System.out.println("Final answer: " + output.getOutput());
     }
 }
 ```
 
+### 2. Custom Reflection Configuration
+
+```java
+public class CustomReflectionExample {
+
+    public Agent createCustomReflectiveAgent(LLMProvider llmProvider) {
+        // Create custom reflection config
+        ReflectionConfig reflectionConfig = ReflectionConfig.builder()
+            .enabled(true)
+            .minRound(1)           // Minimum reflection rounds
+            .maxRound(3)           // Maximum reflection rounds
+            .evaluationCriteria("""
+                Evaluate the response based on:
+                1. Accuracy - Is the information correct?
+                2. Completeness - Are all aspects covered?
+                3. Clarity - Is the explanation clear?
+                4. Usefulness - Does it help the user?
+
+                Score from 1-10, where 8+ means pass.
+                """)
+            .build();
+
+        return Agent.builder()
+            .name("custom-reflective-agent")
+            .description("Agent with custom reflection")
+            .llmProvider(llmProvider)
+            .reflectionConfig(reflectionConfig)
+            .build();
+    }
+}
+```
+
+### 3. Reflection with Listener
+
+```java
+import ai.core.reflection.ReflectionListener;
+import ai.core.reflection.ReflectionHistory;
+import ai.core.reflection.ReflectionEvaluation;
+
+public class ReflectionListenerExample {
+
+    public Agent createAgentWithReflectionListener(LLMProvider llmProvider) {
+        ReflectionListener listener = new ReflectionListener() {
+            @Override
+            public void onReflectionStart(Agent agent, String input, String criteria) {
+                System.out.println("Starting reflection for: " + input);
+            }
+
+            @Override
+            public void onBeforeRound(Agent agent, int round, String solution) {
+                System.out.println("Round " + round + " - Evaluating solution");
+            }
+
+            @Override
+            public void onAfterRound(Agent agent, int round, String improved, ReflectionEvaluation eval) {
+                System.out.println("Round " + round + " - Score: " + eval.getScore());
+            }
+
+            @Override
+            public void onScoreAchieved(Agent agent, int score, int round) {
+                System.out.println("Target score achieved: " + score + " at round " + round);
+            }
+
+            @Override
+            public void onNoImprovement(Agent agent, int score, int round) {
+                System.out.println("No further improvement possible at round " + round);
+            }
+
+            @Override
+            public void onMaxRoundsReached(Agent agent, int finalScore) {
+                System.out.println("Max rounds reached. Final score: " + finalScore);
+            }
+
+            @Override
+            public void onError(Agent agent, int round, Exception e) {
+                System.err.println("Reflection error at round " + round + ": " + e.getMessage());
+            }
+
+            @Override
+            public void onReflectionComplete(Agent agent, ReflectionHistory history) {
+                System.out.println("Reflection complete. Total rounds: " + history.getRounds().size());
+            }
+        };
+
+        return Agent.builder()
+            .name("monitored-agent")
+            .description("Agent with reflection monitoring")
+            .llmProvider(llmProvider)
+            .enableReflection(true)
+            .reflectionListener(listener)
+            .build();
+    }
+}
+```
+
+### 4. Simple Reflection with Evaluation Criteria
+
+```java
+// Shorthand for simple reflection setup
+Agent agent = Agent.builder()
+    .name("simple-reflective")
+    .description("Simple reflective agent")
+    .llmProvider(llmProvider)
+    .reflectionEvaluationCriteria("""
+        Check if the code is correct and well-documented.
+        Score 8+ if code is functional and has comments.
+        """)
+    .build();
+```
+
 ## State Management
 
-### 1. Agent States
+### 1. Agent Status
 
 ```java
 import ai.core.agent.NodeStatus;
 
 public class StatusManagementExample {
 
-    public void handleAgentStatus() {
-        Agent agent = createAgent();
+    public void handleAgentStatus(Agent agent) {
+        String response = agent.run("Execute a task");
 
-        // Execute and check status
-        AgentOutput output = agent.execute("Execute a task");
-
-        switch (output.getStatus()) {
-            case PENDING:
-                System.out.println("Task pending");
+        switch (agent.getNodeStatus()) {
+            case INITED:
+                System.out.println("Agent initialized");
                 break;
 
             case RUNNING:
-                System.out.println("Task running");
+                System.out.println("Agent running");
                 break;
 
             case COMPLETED:
                 System.out.println("Task completed");
-                System.out.println("Result: " + output.getOutput());
+                System.out.println("Result: " + agent.getOutput());
                 break;
 
             case WAITING_FOR_USER_INPUT:
                 System.out.println("Waiting for user input");
-                System.out.println("Prompt: " + output.getWaitingMessage());
-                // Collect user input
-                String userInput = getUserInput();
-                // Continue execution
-                output = agent.continueWithInput(userInput);
+                // This happens when a tool requires authentication
+                // User needs to confirm with "yes"
+                agent.run("yes");  // Confirm and continue
                 break;
 
             case FAILED:
                 System.out.println("Task failed");
-                System.out.println("Error: " + output.getError());
-                // Optional: retry
-                if (shouldRetry()) {
-                    output = agent.retry();
-                }
                 break;
         }
     }
@@ -352,73 +486,119 @@ public class StatusManagementExample {
 ### 2. Persistence and Recovery
 
 ```java
-import ai.core.persistence.AgentPersistence;
+import ai.core.persistence.PersistenceProvider;
 
 public class PersistenceExample {
 
-    private final AgentPersistence persistence = new AgentPersistence();
-
-    public void saveAgentState() {
-        Agent agent = createConfiguredAgent();
+    public void setupPersistence(LLMProvider llmProvider, PersistenceProvider provider) {
+        Agent agent = Agent.builder()
+            .name("persistent-agent")
+            .description("Agent with persistence")
+            .llmProvider(llmProvider)
+            .persistenceProvider(provider)
+            .build();
 
         // Execute some tasks
-        agent.execute("Task 1");
-        agent.execute("Task 2");
+        agent.run("Task 1");
+        agent.run("Task 2");
 
         // Save state
-        String agentId = agent.getId();
-        persistence.saveAgent(agentId, agent);
-
+        String agentId = agent.save("my-agent-session");
         System.out.println("Agent state saved: " + agentId);
     }
 
-    public void restoreAgentState(String agentId) {
-        // Restore agent state
-        Agent restoredAgent = persistence.loadAgent(agentId);
+    public void restoreAgent(LLMProvider llmProvider, PersistenceProvider provider) {
+        Agent agent = Agent.builder()
+            .name("persistent-agent")
+            .description("Agent with persistence")
+            .llmProvider(llmProvider)
+            .persistenceProvider(provider)
+            .build();
 
-        if (restoredAgent != null) {
-            // Continue previous conversation
-            AgentOutput output = restoredAgent.execute("Continue our previous discussion");
-            System.out.println(output.getOutput());
+        // Load saved state
+        agent.load("my-agent-session");
 
-            // View restored history
-            List<Message> history = restoredAgent.getMessages();
-            System.out.println("Restored " + history.size() + " messages");
-        }
+        // Continue conversation with restored history
+        String response = agent.run("Continue our previous discussion");
+        System.out.println(response);
+
+        // Check restored message history
+        List<Message> history = agent.getMessages();
+        System.out.println("Restored " + history.size() + " messages");
+    }
+}
+```
+
+### 3. Reset Agent State
+
+```java
+public class ResetExample {
+
+    public void resetAgentState(Agent agent) {
+        // Execute some tasks
+        agent.run("Question 1");
+        agent.run("Question 2");
+
+        // Reset to initial state
+        agent.reset();
+
+        // Agent now has no history
+        System.out.println("Messages after reset: " + agent.getMessages().size());  // 0
+        System.out.println("Status: " + agent.getNodeStatus());  // INITED
+    }
+}
+```
+
+### 4. Token Usage Tracking
+
+```java
+import ai.core.llm.domain.Usage;
+
+public class TokenTrackingExample {
+
+    public void trackTokenUsage(Agent agent) {
+        agent.run("Analyze this complex problem...");
+
+        Usage usage = agent.getCurrentTokenUsage();
+        System.out.println("Prompt tokens: " + usage.getPromptTokens());
+        System.out.println("Completion tokens: " + usage.getCompletionTokens());
+        System.out.println("Total tokens: " + usage.getTotalTokens());
     }
 }
 ```
 
 ## Best Practices
 
-### 1. Agent Design Principles
+### 1. Single Responsibility Principle
 
 ```java
 public class BestPracticesExample {
 
-    // ✅ Good practice: Single responsibility
-    public Agent createSpecializedAgent() {
+    // GOOD: Single responsibility
+    public Agent createCodeReviewer(LLMProvider llmProvider) {
         return Agent.builder()
             .name("code-reviewer")
-            .description("Agent specialized in code review")
+            .description("Code review specialist")
+            .llmProvider(llmProvider)
             .systemPrompt("""
                 You are a code review expert.
-                Only responsible for:
-                1. Checking code quality
-                2. Finding potential issues
-                3. Providing improvement suggestions
+                Your only responsibilities:
+                1. Check code quality
+                2. Identify potential issues
+                3. Provide improvement suggestions
                 """)
             .build();
     }
 
-    // ❌ Bad practice: Too many responsibilities
-    public Agent createOverloadedAgent() {
+    // BAD: Too many responsibilities
+    public Agent createOverloadedAgent(LLMProvider llmProvider) {
         return Agent.builder()
             .name("do-everything")
-            .description("Agent that does everything")
+            .description("Agent that does everything")  // Too broad
+            .llmProvider(llmProvider)
             .systemPrompt("""
-                You do code review, write documentation,
-                manage projects, answer questions, deploy applications...
+                You do code review, write docs,
+                manage projects, answer questions, deploy apps...
                 """)
             .build();
     }
@@ -430,82 +610,106 @@ public class BestPracticesExample {
 ```java
 public class ErrorHandlingExample {
 
-    public AgentOutput executeWithErrorHandling(Agent agent, String query) {
+    public String executeWithErrorHandling(Agent agent, String query) {
         try {
-            // Set timeout
-            AgentOutput output = agent.execute(query, 30000); // 30 seconds timeout
+            String output = agent.run(query);
 
-            if (output.getStatus() == NodeStatus.FAILED) {
-                // Log error
-                logger.error("Agent execution failed: {}", output.getError());
-
-                // Try fallback strategy
-                return fallbackStrategy(query);
+            if (agent.getNodeStatus() == NodeStatus.FAILED) {
+                // Log error and use fallback
+                logger.error("Agent execution failed");
+                return fallbackResponse(query);
             }
 
             return output;
 
-        } catch (TimeoutException e) {
-            logger.error("Agent execution timeout", e);
-            return AgentOutput.failed("Execution timeout, please retry");
-
         } catch (Exception e) {
             logger.error("Unexpected error", e);
             // Graceful degradation
-            return AgentOutput.failed("System busy, please try again later");
+            return "System is busy, please try again later.";
         }
     }
 
-    private AgentOutput fallbackStrategy(String query) {
-        // Use simpler model or predefined response
-        return AgentOutput.success("Sorry, I cannot process this request at the moment.");
+    private String fallbackResponse(String query) {
+        return "Sorry, I cannot process this request at the moment.";
     }
 }
 ```
 
-### 3. Performance Optimization
+### 3. Proper Context Usage
 
 ```java
-public class PerformanceOptimizationExample {
+public class ContextExample {
 
-    // Use object pool to manage agents
-    private final ObjectPool<Agent> agentPool;
+    public void properContextUsage(Agent agent) {
+        // Create context with all necessary info
+        ExecutionContext context = ExecutionContext.builder()
+            .userId("user-123")          // For memory isolation
+            .sessionId("session-456")    // For session tracking
+            .customVariable("locale", "en-US")
+            .customVariable("timezone", "UTC")
+            .build();
 
-    public PerformanceOptimizationExample() {
-        // Create agent pool
-        this.agentPool = new GenericObjectPool<>(new AgentFactory());
-        agentPool.setMaxTotal(10);
-        agentPool.setMaxIdle(5);
+        // Always pass context for consistent behavior
+        agent.run("What time is it?", context);
     }
+}
+```
 
-    public AgentOutput processRequest(String query) throws Exception {
-        Agent agent = null;
-        try {
-            // Borrow agent from pool
-            agent = agentPool.borrowObject();
-            return agent.execute(query);
-        } finally {
-            if (agent != null) {
-                // Return agent to pool
-                agentPool.returnObject(agent);
-            }
-        }
+### 4. Observability with Tracing
+
+```java
+import ai.core.telemetry.AgentTracer;
+
+public class ObservabilityExample {
+
+    public Agent createObservableAgent(LLMProvider llmProvider, AgentTracer tracer) {
+        return Agent.builder()
+            .name("observable-agent")
+            .description("Agent with tracing")
+            .llmProvider(llmProvider)
+            .tracer(tracer)  // Enable distributed tracing
+            .build();
+    }
+}
+```
+
+### 5. Memory Integration
+
+```java
+import ai.core.memory.Memory;
+
+public class MemoryIntegrationExample {
+
+    public Agent createPersonalizedAgent(LLMProvider llmProvider, Memory memory) {
+        return Agent.builder()
+            .name("personalized-agent")
+            .description("Agent with long-term memory")
+            .llmProvider(llmProvider)
+            .enableCompression(true)      // Session context management
+            .unifiedMemory(memory)        // Cross-session memory
+            .systemPrompt("""
+                You are a personalized assistant.
+                Use the memory recall tool to remember user preferences.
+                """)
+            .build();
     }
 }
 ```
 
 ## Summary
 
-Through this tutorial, you've learned:
+This tutorial covered:
 
-1. ✅ How to create and configure intelligent agents
-2. ✅ How to use system prompts and templates
-3. ✅ How to implement memory systems
-4. ✅ How to enable reflection mechanisms
-5. ✅ How to manage agent states
-6. ✅ Best practices and performance optimization
+1. **Agent Basics**: Understanding Agent structure and execution flow
+2. **Creating Agents**: From simple to fully configured agents
+3. **System Prompts**: Static prompts, Mustache templates, Langfuse integration
+4. **Reflection**: Self-evaluation and improvement mechanism
+5. **State Management**: Status handling, persistence, token tracking
+6. **Best Practices**: Single responsibility, error handling, observability
 
 Next steps:
-- Learn [Tool Calling](tutorial-tool-calling.md) to enhance agent capabilities
-- Explore [Multi-Agent Systems](tutorial-multi-agent.md) to build complex applications
-- Understand [RAG Integration](tutorial-rag.md) for knowledge enhancement
+- Learn [Tool Calling](tutorial-tool-calling.md) to extend agent capabilities
+- Explore [Memory Systems](tutorial-memory.md) for persistent memory
+- Learn [Compression](tutorial-compression.md) for context management
+- Build [Multi-Agent Systems](tutorial-multi-agent.md) for complex applications
+- Understand [Flow Orchestration](tutorial-flow.md) for workflows

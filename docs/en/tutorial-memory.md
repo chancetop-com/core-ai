@@ -5,181 +5,41 @@ This tutorial covers Core-AI's memory systems for building agents that remember 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Short-term Memory](#short-term-memory)
-3. [Long-term Memory](#long-term-memory)
-4. [Agent Integration](#agent-integration)
-5. [Best Practices](#best-practices)
+2. [Long-term Memory](#long-term-memory)
+3. [Agent Integration](#agent-integration)
+4. [Best Practices](#best-practices)
 
 ## Overview
 
 Core-AI provides a two-tier memory architecture:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Agent Memory System                     │
-├─────────────────────────────┬───────────────────────────────┤
-│      Short-term Memory      │       Long-term Memory        │
-│  (Session/Conversation)     │    (Persistent/Cross-session) │
-├─────────────────────────────┼───────────────────────────────┤
-│ • Message history           │ • User preferences            │
-│ • Conversation summary      │ • Facts and knowledge         │
-│ • Auto-summarization        │ • Goals and intents           │
-│ • Token management          │ • Past interactions           │
-├─────────────────────────────┼───────────────────────────────┤
-│ Lifecycle: Within session   │ Lifecycle: Across sessions    │
-│ Storage: In-memory          │ Storage: User-defined (Vector DB, etc.) │
-└─────────────────────────────┴───────────────────────────────┘
++---------------------------------------------------------+
+|                   Agent Memory System                    |
++----------------------------+----------------------------+
+|        Compression         |      Long-term Memory      |
+|    (Session/Conversation)  |  (Persistent/Cross-session)|
++----------------------------+----------------------------+
+| - Message history          | - User preferences         |
+| - Conversation summary     | - Facts and knowledge      |
+| - Auto-summarization       | - Goals and intents        |
+| - Token management         | - Past interactions        |
++----------------------------+----------------------------+
+| Lifecycle: Within session  | Lifecycle: Across sessions |
+| Storage: In-memory         | Storage: User-defined      |
+|                            | (Vector DB, etc.)          |
++----------------------------+----------------------------+
 ```
 
 ### When to Use Each Type
 
-| Memory Type | Use Case |
-|-------------|----------|
-| **Short-term** | Maintaining conversation context within a session |
-| **Long-term** | Remembering user preferences across sessions |
-| **Both** | Personalized assistants that remember past interactions |
+| Memory Type | Use Case | Documentation |
+|-------------|----------|---------------|
+| **Compression** | Maintaining conversation context within a session | [Compression Tutorial](tutorial-compression.md) |
+| **Long-term Memory** | Remembering user preferences across sessions | This document |
+| **Both** | Personalized assistants that remember past interactions | Combine both |
 
-## Short-term Memory
-
-Short-term memory manages conversation context within a single session. It automatically summarizes long conversations to stay within token limits.
-
-### Basic Usage
-
-```java
-import ai.core.agent.Agent;
-
-// Short-term memory is enabled by default
-Agent agent = Agent.builder()
-    .name("assistant")
-    .llmProvider(llmProvider)
-    .enableShortTermMemory(true)  // Default: true
-    .build();
-
-// Agent remembers previous messages in the session
-agent.execute("My name is John");
-agent.execute("What's my name?");  // Remembers: "John"
-```
-
-### Configuration Options
-
-```java
-import ai.core.memory.ShortTermMemory;
-
-// Create with custom configuration
-ShortTermMemory memory = new ShortTermMemory(
-    0.8,         // triggerThreshold - ratio to trigger compression (default 0.8, i.e., 80%)
-    5,           // keepRecentTurns - number of recent turns to keep (default 5)
-    llmProvider, // LLM provider (for generating summaries)
-    "gpt-4"      // model name (for getting max token limit)
-);
-
-Agent agent = Agent.builder()
-    .name("agent")
-    .llmProvider(llmProvider)
-    .shortTermMemory(memory)
-    .build();
-```
-
-### How Compression Works
-
-Short-term memory compression triggers synchronously before each LLM call (in the `beforeModel` lifecycle):
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                   Compression Flow                        │
-├──────────────────────────────────────────────────────────┤
-│  1. Check if current token count exceeds threshold        │
-│     (threshold = model max context × triggerThreshold)    │
-│          ↓                                               │
-│  2. If exceeded, perform compression:                     │
-│     • Preserve system message                            │
-│     • Keep recent N turns (keepRecentTurns)              │
-│     • If N turns still exceed, keep only current chain   │
-│          ↓                                               │
-│  3. Call LLM to generate summary                         │
-│          ↓                                               │
-│  4. Summary injected as Tool Call message:               │
-│     [ASSISTANT] tool_call: memory_compress               │
-│     [TOOL] [Previous Conversation Summary]...            │
-└──────────────────────────────────────────────────────────┘
-```
-
-### Compression Algorithm Details
-
-**1. Trigger Condition**
-
-```java
-boolean shouldCompress = currentTokens >= maxContextTokens * triggerThreshold;
-// Example: max 128K, threshold 0.8, triggers when tokens >= 102400
-```
-
-**2. Message Splitting Strategy**
-
-```
-Original message list:
-┌─────────────────────────────────────────────────────────┐
-│ [SYSTEM] You are a helpful assistant...                 │  ← Always kept
-├─────────────────────────────────────────────────────────┤
-│ [USER] First question                                   │
-│ [ASSISTANT] First answer                                │
-│ [USER] Second question                                  │  ← Compressed to summary
-│ [ASSISTANT] Second answer                               │
-│ ...more history...                                      │
-├─────────────────────────────────────────────────────────┤
-│ [USER] Recent question 1                                │
-│ [ASSISTANT] Recent answer 1                             │  ← Keep recent N turns
-│ [USER] Recent question 2                                │
-│ [ASSISTANT] tool_call: get_weather                      │  ← Current chain
-│ [TOOL] Beijing 25°C                                     │
-└─────────────────────────────────────────────────────────┘
-```
-
-**3. Conversation Chain Protection**
-
-When the last message is not USER (executing Tool Call), compression protects the current conversation chain:
-
-```java
-// Find the position of last USER message
-boolean isCurrentChainActive = messages.getLast().role != RoleType.USER;
-if (isCurrentChainActive) {
-    // Protect entire chain starting from last USER
-    minKeepFromIndex = lastUserIndex;
-}
-```
-
-**4. Summary Generation**
-
-Summary is generated via LLM, target tokens: `min(4000, max(500, maxContext/10))`:
-
-```
-Summary format:
-[Previous Conversation Summary]
-User asked about weather, assistant retrieved Beijing weather info...
-[End of Summary]
-```
-
-**5. Final Message Structure**
-
-```
-Compressed message list:
-┌─────────────────────────────────────────────────────────┐
-│ [SYSTEM] You are a helpful assistant...                 │
-│ [ASSISTANT] tool_call: memory_compress                  │  ← Virtual Tool Call
-│ [TOOL] [Previous Conversation Summary]...               │  ← Summary content
-│ [USER] Recent question                                  │  ← Kept messages
-│ [ASSISTANT] ...                                         │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Disabling Short-term Memory
-
-```java
-Agent agent = Agent.builder()
-    .name("stateless-agent")
-    .llmProvider(llmProvider)
-    .enableShortTermMemory(false)  // Disable short-term memory
-    .build();
-```
+> **Note**: For detailed information about Compression (session-based context management), see [Compression Tutorial](tutorial-compression.md).
 
 ## Long-term Memory
 
@@ -188,33 +48,31 @@ Long-term memory persists user information across sessions using vector embeddin
 ### Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              Agent                                       │
-│                                │                                         │
-│     ┌──────────────────────────┴──────────────────────────┐             │
-│     │                                                      │             │
-│     ▼                                                      ▼             │
-│  MemoryRecallTool ◄────── LongTermMemory ──────► LongTermMemoryCoordinator
-│  (LLM proactively calls)       │                          │             │
-│                                │                          │             │
-│                    ┌───────────┴───────────┐              │             │
-│                    ▼                       ▼              ▼             │
-│              MemoryStore         ChatHistoryProvider  MemoryExtractor    │
-│              (Memory storage)    (Read from user store) (LLM extraction) │
-│                    │                       │              │             │
-│                    ▼                       ▼              ▼             │
-│            User implementation      User implementation  DefaultMemoryExtractor
-│           (Milvus/Redis/etc.)      (Read-only interface)                │
-└─────────────────────────────────────────────────────────────────────────┘
++----------------------------------------------------------------+
+|                         Memory System                           |
++----------------------------------------------------------------+
+|                                                                |
+|  +-----------+          +-------------+      +------------+    |
+|  | Extraction|--------->| MemoryStore |<-----| Memory     |    |
+|  | (extract) |   write  |  (storage)  | read | (retrieve) |    |
+|  +-----------+          +-------------+      +------------+    |
+|       |                                            |           |
+|       v                                            v           |
+|  ChatHistoryProvider                          LLMProvider      |
+|  (user implements)                            (vectorize)      |
+|                                                                |
++----------------------------------------------------------------+
 ```
 
 ### Core Concepts
 
-**User-Controlled Data Isolation**: The framework does not enforce isolation strategies. Users decide how to isolate data (by tenant, user, etc.) when implementing `MemoryStore` and `ChatHistoryProvider`.
+**Separation of Concerns**:
+- `Extraction`: Runs independently, extracts memories from chat history and stores them
+- `Memory`: Used only for retrieval, consumed by Agent
 
-**Read-Only History Access**: Users store messages in their own system. The framework only needs read access via `ChatHistoryProvider` to extract memories. No duplicate storage required.
+**User-Level Isolation**: All operations are isolated by `ExecutionContext.userId`.
 
-**LangMem Pattern**: LLM proactively decides when to query memories via Tool, rather than automatically injecting on every request. This is smarter and saves tokens.
+**LangMem Pattern**: LLM proactively decides when to query memories via Tool, rather than automatically injecting on every request.
 
 ### Memory Attributes
 
@@ -234,218 +92,153 @@ Each memory record has the following key attributes:
 - **0.5-0.6**: Nice to know (casual mentions, minor preferences)
 - **Below 0.5**: Not worth storing
 
-### Memory Extraction Mechanism
+### Setting Up Long-term Memory
 
-The core of long-term memory is extracting valuable information from conversations. Users trigger extraction when appropriate (e.g., after a conversation ends):
+```java
+import ai.core.memory.Memory;
+import ai.core.memory.MemoryStore;
+import ai.core.memory.Extraction;
+import ai.core.memory.InMemoryStore;
+import ai.core.memory.history.InMemoryChatHistoryProvider;
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Extraction Flow                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  1. User triggers extraction                                            │
-│     ┌───────────────────────────────────┐                               │
-│     │ memory.extractFromHistory(sessionId)│                             │
-│     └────────┬──────────────────────────┘                               │
-│              ↓                                                          │
-│  2. Load messages from user's storage                                   │
-│     ┌─────────────────────────────────────┐                             │
-│     │ historyProvider.load(sessionId)     │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  3. Filter unextracted messages (tracked internally)                    │
-│     ┌─────────────────────────────────────┐                             │
-│     │ messages.subList(lastExtracted + 1) │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  4. LLM extracts memories (async or sync)                               │
-│     ┌─────────────────────────────────────┐                             │
-│     │ extractor.extract(messages)         │                             │
-│     │                                     │                             │
-│     │ Input: "User: I'm John, a developer"│                             │
-│     │        "Assistant: Hi John!"        │                             │
-│     │                                     │                             │
-│     │ Output: [                           │                             │
-│     │   {content: "User name is John",    │                             │
-│     │    importance: 0.9},               │                             │
-│     │   {content: "User is a developer",  │                             │
-│     │    importance: 0.7}                │                             │
-│     │ ]                                  │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  5. Generate embedding vectors                                          │
-│     ┌─────────────────────────────────────┐                             │
-│     │ llmProvider.embeddings(contents)    │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  6. Save to MemoryStore                                                 │
-│     ┌─────────────────────────────────────┐                             │
-│     │ memoryStore.saveAll(records, embeds)│                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  7. Update extraction state (tracked internally)                        │
-│     ┌─────────────────────────────────────┐                             │
-│     │ extractedIndexMap.put(sessionId, n) │                             │
-│     └─────────────────────────────────────┘                             │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+String userId = "user-123";
+
+// 1. Create shared storage
+MemoryStore memoryStore = new InMemoryStore();
+// Note: Declare as InMemoryChatHistoryProvider to use addRecord methods
+InMemoryChatHistoryProvider historyProvider = new InMemoryChatHistoryProvider();
+
+// 2. Create Extraction (runs independently)
+Extraction extraction = new Extraction(memoryStore, historyProvider, llmProvider);
+// Or use Builder
+Extraction extraction = Extraction.builder()
+    .memoryStore(memoryStore)
+    .historyProvider(historyProvider)
+    .llmProvider(llmProvider)
+    .model("gpt-4")  // Optional
+    .build();
+
+// 3. Create Memory (retrieval only)
+Memory memory = Memory.builder()
+    .llmProvider(llmProvider)
+    .memoryStore(memoryStore)
+    .defaultTopK(5)  // Optional
+    .build();
+
+// 4. Create Agent
+Agent agent = Agent.builder()
+    .name("personalized-assistant")
+    .llmProvider(llmProvider)
+    .unifiedMemory(memory)  // Auto-registers MemoryRecallTool
+    .build();
 ```
 
-**Extraction Prompt Example**:
+### Memory Extraction
 
-```
-Extract important facts, preferences, and information about the user from
-the following conversation. Return a JSON array of memories.
+Users trigger extraction at appropriate times (e.g., at end of conversation):
 
-Conversation:
-User: I'm John, working as a developer in Beijing
-Assistant: Hi John! How's work going?
-User: Pretty good, I mainly write Java
+```java
+// Use InMemoryChatHistoryProvider to record chat history
+InMemoryChatHistoryProvider historyProvider = new InMemoryChatHistoryProvider();
+historyProvider.addRecord(userId, ChatRecord.user("I like dark mode", Instant.now()));
+historyProvider.addRecord(userId, ChatRecord.assistant("Got it!", Instant.now()));
 
-Output format:
-[
-  {"content": "User name is John", "importance": 0.9},
-  {"content": "User works in Beijing", "importance": 0.7},
-  {"content": "User is a developer", "importance": 0.8},
-  {"content": "User mainly uses Java", "importance": 0.7}
-]
+// Trigger extraction after session ends (synchronous execution)
+extraction.run(userId);
 ```
 
-### Memory Recall Mechanism
+**Extraction Flow:**
+
+```
++-----------------------------------------------------------------------+
+|                         Extraction Flow                                |
++-----------------------------------------------------------------------+
+|                                                                       |
+|  1. User triggers extraction                                          |
+|     extraction.run(userId)                                            |
+|          |                                                            |
+|          v                                                            |
+|  2. Load messages from historyProvider                                |
+|     historyProvider.load(userId)                                      |
+|          |                                                            |
+|          v                                                            |
+|  3. Filter unextracted messages (tracked internally)                  |
+|     messages.subList(lastExtracted + 1, size)                         |
+|          |                                                            |
+|          v                                                            |
+|  4. LLM extracts memories                                             |
+|     Input: "User: I'm John, a developer"                              |
+|            "Assistant: Hi John!"                                      |
+|                                                                       |
+|     Output: [                                                         |
+|       {content: "User name is John", importance: 0.9},                |
+|       {content: "User is a developer", importance: 0.7}               |
+|     ]                                                                 |
+|          |                                                            |
+|          v                                                            |
+|  5. Generate embedding vectors                                        |
+|     llmProvider.embeddings(contents)                                  |
+|          |                                                            |
+|          v                                                            |
+|  6. Save to MemoryStore                                               |
+|     memoryStore.saveAll(userId, records, embeddings)                  |
+|          |                                                            |
+|          v                                                            |
+|  7. Update extraction state (tracked internally)                      |
+|     extractedIndexMap.put(userId, lastIndex)                          |
+|                                                                       |
++-----------------------------------------------------------------------+
+```
+
+### Memory Recall
 
 When LLM needs to query user memories, it triggers recall via MemoryRecallTool:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Recall Flow                                    │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  1. LLM decides to query memories                                       │
-│     ┌─────────────────────────────────────────────────────────────────┐ │
-│     │ User: "Do you remember what I do for work?"                     │ │
-│     │ LLM: Need to look up user info... → call search_memory_tool     │ │
-│     └────────┬────────────────────────────────────────────────────────┘ │
-│              ↓                                                          │
-│  2. MemoryRecallTool receives query                                     │
-│     ┌─────────────────────────────────────┐                             │
-│     │ query = "user's job"                │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  3. Generate query vector                                               │
-│     ┌─────────────────────────────────────┐                             │
-│     │ queryEmbedding = embed(query)       │                             │
-│     │ [0.12, -0.34, 0.56, ...]           │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  4. Vector similarity search                                            │
-│     ┌─────────────────────────────────────┐                             │
-│     │ memoryStore.searchByVector(         │                             │
-│     │   queryEmbedding,                   │                             │
-│     │   topK = 5                          │                             │
-│     │ )                                   │                             │
-│     │                                     │                             │
-│     │ Calculate cosine similarity:        │                             │
-│     │ similarity = cosine(query, memory)  │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  5. Return relevant memories                                            │
-│     ┌─────────────────────────────────────┐                             │
-│     │ [User Memory]                       │                             │
-│     │ - User is a developer (sim: 0.89)   │                             │
-│     │ - User mainly uses Java (sim: 0.76) │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  6. LLM generates response based on memories                            │
-│     ┌─────────────────────────────────────────────────────────────────┐ │
-│     │ "I remember you're a developer who mainly works with Java."     │ │
-│     └─────────────────────────────────────────────────────────────────┘ │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+User: "Do you remember what I like?"
+     |
+     v
+Agent decides to query memory
+     |
+     v
+LLM calls search_memory_tool(query="what does user like")
+     |
+     v
+MemoryRecallTool.execute(args, context)
+     |
+     v
+userId = context.getUserId()  // Get from ExecutionContext
+memory.retrieve(userId, query)
+     |
+     v
+Returns: [User Memory]
+         - User likes dark mode
+     |
+     v
+LLM generates response: "I remember you like dark mode."
 ```
 
-### Setting Up Long-term Memory
+### userId Passing Mechanism
 
-```java
-import ai.core.memory.longterm.LongTermMemory;
-import ai.core.memory.longterm.LongTermMemoryConfig;
-import ai.core.memory.longterm.InMemoryStore;
-import ai.core.memory.history.ChatHistoryProvider;
+`userId` is passed through `ExecutionContext` throughout the execution chain:
 
-// Create memory store (users can provide custom implementations)
-MemoryStore memoryStore = new InMemoryStore();
-
-// User provides read access to their message storage
-ChatHistoryProvider historyProvider = sessionId -> myMessageService.getMessages(sessionId);
-
-// Build long-term memory
-LongTermMemory longTermMemory = LongTermMemory.builder()
-    .llmProvider(llmProvider)
-    .memoryStore(memoryStore)
-    .historyProvider(historyProvider)  // Required: read from user's storage
-    .config(LongTermMemoryConfig.builder()
-        .maxBufferTurns(5)           // Threshold for extractIfNeeded()
-        .asyncExtraction(true)        // Async extraction
-        .build())
-    .build();
 ```
-
-### Custom Storage Implementation
-
-Users control data isolation themselves:
-
-```java
-// Create separate store instance per user
-public class UserMemoryStoreFactory {
-    private final MilvusClient milvusClient;
-
-    public MemoryStore createForUser(String userId) {
-        return new MilvusMemoryStore(milvusClient, "memory_" + userId);
-    }
-}
-
-// Or handle isolation within the implementation
-public class MultiTenantMemoryStore implements MemoryStore {
-    private final String tenantId;
-    private final MilvusClient client;
-
-    public MultiTenantMemoryStore(String tenantId, MilvusClient client) {
-        this.tenantId = tenantId;
-        this.client = client;
-    }
-
-    @Override
-    public List<MemoryRecord> searchByVector(List<Double> embedding, int topK) {
-        // Decide which collection to query and how to filter
-        return client.search("memory_" + tenantId, embedding, topK);
-    }
-
-    // ... other method implementations
-}
-```
-
-### Triggering Extraction
-
-```java
-// Messages are stored in user's own system (e.g., database)
-// myMessageService.save(sessionId, userMessage);
-// myMessageService.save(sessionId, assistantMessage);
-
-// Extract memories from history (e.g., at end of conversation)
-longTermMemory.extractFromHistory("session-123");
-
-// Or check threshold and extract if needed
-longTermMemory.extractIfNeeded("session-123");
-
-// Wait for async extraction to complete
-longTermMemory.waitForExtraction();
-
-// Manually recall memories
-List<MemoryRecord> memories = longTermMemory.recall("What does the user like?", 5);
-
-// Format as context
-String context = longTermMemory.formatAsContext(memories);
-// Output: [User Memory]
-//         - User likes spicy food
+agent.run(query, context)
+       |
+       v
+Agent stores executionContext
+       |
+       v
+ToolExecutor.execute(functionCall, context)
+       |
+       v
+MemoryRecallTool.execute(args, context)
+       |
+       v
+String userId = context.getUserId()
+       |
+       v
+memory.retrieve(userId, query)
 ```
 
 ### Storage Interfaces
@@ -454,201 +247,303 @@ String context = longTermMemory.formatAsContext(memories);
 
 ```java
 public interface MemoryStore {
-    void save(MemoryRecord record, List<Double> embedding);
-    void saveAll(List<MemoryRecord> records, List<List<Double>> embeddings);
-    List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK);
-    List<MemoryRecord> searchByVector(List<Double> queryEmbedding, int topK, SearchFilter filter);
-    List<MemoryRecord> searchByKeyword(String keyword, int topK);
-    void delete(String id);
-    int count();
-    // ...
+    // Save memories
+    void save(String userId, MemoryRecord record);
+    void save(String userId, MemoryRecord record, List<Double> embedding);
+    void saveAll(String userId, List<MemoryRecord> records, List<List<Double>> embeddings);
+
+    // Query memories
+    Optional<MemoryRecord> findById(String userId, String id);
+    List<MemoryRecord> findAll(String userId);
+    List<MemoryRecord> searchByVector(String userId, List<Double> queryEmbedding, int topK);
+    List<MemoryRecord> searchByKeyword(String userId, String keyword, int topK);
+
+    // Delete memories
+    void delete(String userId, String id);
+    void deleteAll(String userId);
+
+    // Decay management
+    void recordAccess(String userId, List<String> ids);
+    void updateDecayFactor(String userId, String id, double decayFactor);
+    List<MemoryRecord> findDecayed(String userId, double threshold);
+    int deleteDecayed(String userId, double threshold);
+
+    int count(String userId);
 }
 ```
 
-**ChatHistoryProvider** - Read-only interface for accessing user's message storage:
+**ChatHistoryProvider** - Chat history provider interface (functional interface):
 
 ```java
 @FunctionalInterface
 public interface ChatHistoryProvider {
-    // Required: Load all messages for a session
-    List<Message> load(String sessionId);
-
-    // Optional: Load recent messages (default: loads all and takes last N)
-    default List<Message> loadRecent(String sessionId, int limit) { ... }
-
-    // Optional: Get message count (default: loads all and returns size)
-    default int count(String sessionId) { ... }
+    List<ChatRecord> load(String userId);
 }
 ```
 
-Users implement this interface to provide read access to their existing message storage:
+The framework provides built-in `InMemoryChatHistoryProvider` with `addRecord` methods:
 
 ```java
-// Simple lambda implementation
-ChatHistoryProvider provider = sessionId -> messageRepository.findBySessionId(sessionId);
+public class InMemoryChatHistoryProvider implements ChatHistoryProvider {
+    List<ChatRecord> load(String userId);
+    void addRecord(String userId, ChatRecord record);
+    void addRecords(String userId, List<ChatRecord> records);
+    void clear(String userId);
+}
+```
 
-// Or implement the interface
+### Custom Storage Implementation
+
+```java
+// Implement MemoryStore interface
+public class MilvusMemoryStore implements MemoryStore {
+    private final MilvusClient client;
+
+    @Override
+    public List<MemoryRecord> searchByVector(String userId, List<Double> embedding, int topK) {
+        // Query with userId isolation
+        return client.search("memory_collection",
+            "user_id == '" + userId + "'", embedding, topK);
+    }
+    // ... other methods
+}
+
+// Implement ChatHistoryProvider interface (functional interface, only needs load method)
 public class DatabaseHistoryProvider implements ChatHistoryProvider {
     private final MessageRepository repository;
 
     @Override
-    public List<Message> load(String sessionId) {
-        return repository.findBySessionId(sessionId);
+    public List<ChatRecord> load(String userId) {
+        return repository.findByUserId(userId);
     }
 }
+
+// Or use Lambda expression
+ChatHistoryProvider historyProvider = userId -> repository.findByUserId(userId);
 ```
 
 ## Agent Integration
+
+### ExecutionContext
+
+`ExecutionContext` is the context during Agent execution, containing:
+
+```java
+public final class ExecutionContext {
+    private final String sessionId;      // Session ID
+    private final String userId;         // User ID (for memory isolation)
+    private final Map<String, Object> customVariables;  // Custom variables
+}
+```
 
 ### Using unifiedMemory Configuration
 
 ```java
 import ai.core.memory.MemoryConfig;
+import ai.core.agent.ExecutionContext;
 
 // Recommended: Using Agent builder
 Agent agent = Agent.builder()
     .name("personalized-agent")
     .llmProvider(llmProvider)
-    .unifiedMemory(longTermMemory)  // Auto-registers Tool + Lifecycle
+    .unifiedMemory(memory)  // Auto-registers MemoryRecallTool
     .build();
 
+// Pass ExecutionContext at runtime
+ExecutionContext context = ExecutionContext.builder()
+    .userId("user-123")
+    .sessionId("session-456")
+    .build();
+
+agent.run("Hello", context);
+```
+
+```java
 // Or with custom configuration
 Agent agent = Agent.builder()
     .name("personalized-agent")
     .llmProvider(llmProvider)
     .unifiedMemory(memory, MemoryConfig.builder()
-        .maxRecallRecords(5)       // Return max 5 memories
+        .maxRecallRecords(10)      // Return max 10 memories
         .autoRecall(true)          // Auto-register MemoryRecallTool
         .build())
     .build();
 ```
 
-### LangMem Pattern Workflow
+### Complete Example
 
+```java
+import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
+import ai.core.memory.Memory;
+import ai.core.memory.Extraction;
+import ai.core.memory.InMemoryStore;
+import ai.core.memory.history.ChatRecord;
+import ai.core.memory.history.InMemoryChatHistoryProvider;
+
+public class MemoryExample {
+    public static void main(String[] args) {
+        String userId = "user-123";
+
+        // Shared storage
+        var memoryStore = new InMemoryStore();
+        var historyProvider = new InMemoryChatHistoryProvider();
+
+        // 1. Extraction - runs independently
+        Extraction extraction = new Extraction(memoryStore, historyProvider, llmProvider);
+
+        // 2. Memory - used by Agent
+        Memory memory = Memory.builder()
+            .llmProvider(llmProvider)
+            .memoryStore(memoryStore)
+            .build();
+
+        // 3. Agent
+        Agent agent = Agent.builder()
+            .name("assistant")
+            .systemPrompt("You are a personalized assistant, use memory tools to recall user preferences")
+            .llmProvider(llmProvider)
+            .unifiedMemory(memory)
+            .build();
+
+        // 4. Simulate conversation and record to historyProvider
+        historyProvider.addRecord(userId, ChatRecord.user("I like Vim editor", Instant.now()));
+        historyProvider.addRecord(userId, ChatRecord.assistant("Got it, recorded!", Instant.now()));
+
+        // 5. Extract memories after session ends
+        extraction.run(userId);
+
+        // 6. In next session, Agent can retrieve memories
+        ExecutionContext context = ExecutionContext.builder()
+            .userId(userId)
+            .build();
+        agent.run("Do you remember what editor I like?", context);
+    }
+}
 ```
-User: "Do you remember what food I like?"
-     ↓
-Agent decides to query memory
-     ↓
-LLM calls search_memory_tool(query="what food does user like")
-     ↓
-MemoryRecallTool.execute() → longTermMemory.recall()
-     ↓
-Returns: [User Memory]
-         - User likes spicy food
-     ↓
-LLM generates response: "I remember you like spicy food. Would you like me to recommend some Sichuan dishes?"
-```
-
-### Tool Description
-
-The `MemoryRecallTool` description tells LLM when to invoke it:
-
-> "Search and recall relevant memories about the user. Use this tool when you need to personalize your response based on user preferences, recall something the user mentioned before, or reference past interactions."
 
 ## Best Practices
 
 ### 1. Choose the Right Memory Type
 
 ```java
-// Stateless operations: disable short-term memory
+// Stateless operations: disable compression
 Agent statelessAgent = Agent.builder()
-    .enableShortTermMemory(false)
+    .name("stateless")
+    .llmProvider(llmProvider)
+    .enableCompression(false)
     .build();
 
-// Single session: short-term only (default)
+// Single session: compression only (default)
 Agent sessionAgent = Agent.builder()
-    .enableShortTermMemory(true)
+    .name("session")
+    .llmProvider(llmProvider)
+    .enableCompression(true)
     .build();
 
 // Personalized experience: use both memories
 Agent personalizedAgent = Agent.builder()
-    .enableShortTermMemory(true)
-    .unifiedMemory(longTermMemory)
+    .name("personalized")
+    .llmProvider(llmProvider)
+    .enableCompression(true)   // Within session
+    .unifiedMemory(memory)     // Across sessions
     .build();
 ```
 
-### 2. Production Storage Setup
+### 2. Proper Use of ExecutionContext
+
+```java
+// Create context with userId
+ExecutionContext context = ExecutionContext.builder()
+    .userId("user-123")
+    .sessionId("session-456")  // Optional
+    .customVariable("key", value)  // Optional: custom variables
+    .build();
+
+// Pass context on each agent.run call
+String response = agent.run("query content", context);
+```
+
+### 3. Production Storage Setup
 
 ```java
 // Development: in-memory stores
 MemoryStore devStore = new InMemoryStore();
 ChatHistoryProvider devHistory = new InMemoryChatHistoryProvider();
 
-// Production: connect to existing message storage
-public LongTermMemory createForUser(String userId) {
-    MemoryStore store = new MilvusMemoryStore(userId);
-    // Read from user's existing message storage
-    ChatHistoryProvider historyProvider = sessionId ->
-        messageService.getMessages(userId, sessionId);
+// Production: persistent storage
+MemoryStore prodStore = new MilvusMemoryStore(milvusClient);
+ChatHistoryProvider prodHistory = new DatabaseHistoryProvider(repository);
+// Or use Lambda
+ChatHistoryProvider prodHistory = userId -> repository.findByUserId(userId);
+```
 
-    return LongTermMemory.builder()
-        .llmProvider(llmProvider)
-        .memoryStore(store)
-        .historyProvider(historyProvider)
-        .config(LongTermMemoryConfig.builder()
-            .maxBufferTurns(5)
-            .asyncExtraction(true)
-            .build())
-        .build();
+### 4. Extraction Timing
+
+```java
+// Option 1: Extract at session end
+public void onSessionEnd(String userId) {
+    extraction.run(userId);
+    historyProvider.clear(userId);  // Optional: clear history
+}
+
+// Option 2: Scheduled batch extraction
+@Scheduled(cron = "0 0 * * * *")  // Every hour
+public void batchExtraction() {
+    for (String userId : activeUsers) {
+        extraction.run(userId);
+    }
 }
 ```
 
-### 3. Extraction Configuration Optimization
+### 5. Service Layer Encapsulation
 
 ```java
-LongTermMemoryConfig config = LongTermMemoryConfig.builder()
-    .maxBufferTurns(5)           // Threshold for extractIfNeeded()
-    .asyncExtraction(true)       // Async extraction, don't block response
-    .extractionTimeout(Duration.ofSeconds(30))  // Extraction timeout
-    .build();
+public class ChatService {
+    private final Agent agent;
+    private final Extraction extraction;
+    private final InMemoryChatHistoryProvider historyProvider;
 
-// Trigger extraction explicitly
-longTermMemory.extractFromHistory(sessionId);
+    public String chat(String userId, String message) {
+        // Record user message
+        historyProvider.addRecord(userId, ChatRecord.user(message, Instant.now()));
 
-// Or use threshold-based extraction
-longTermMemory.extractIfNeeded(sessionId);  // Only extracts if >= maxBufferTurns
-```
+        // Create context and execute
+        ExecutionContext context = ExecutionContext.builder()
+            .userId(userId)
+            .build();
+        String response = agent.run(message, context);
 
-### 4. Using SearchFilter
+        // Record assistant response
+        historyProvider.addRecord(userId, ChatRecord.assistant(response, Instant.now()));
 
-```java
-// Query only high-importance memories
-SearchFilter filter = SearchFilter.builder()
-    .minImportance(0.7)
-    .build();
+        return response;
+    }
 
-List<MemoryRecord> memories = store.searchByVector(embedding, 5, filter);
-
-// Filter by time
-SearchFilter recentFilter = SearchFilter.builder()
-    .createdAfter(Instant.now().minus(Duration.ofDays(30)))
-    .build();
+    public void endSession(String userId) {
+        extraction.run(userId);
+        historyProvider.clear(userId);
+    }
+}
 ```
 
 ## Summary
 
 Key concepts covered in this tutorial:
 
-1. **Short-term Memory**: Session-based conversation history with auto-summarization
-   - Trigger condition: token count exceeds threshold (default 80%)
-   - Compression strategy: keep system message + recent N turns + current chain
-   - Summary injection: via virtual Tool Call message
+1. **Long-term Memory**: Persistent user memories with vector semantic search
+   - `Extraction`: Independent extractor, extracts memories from chat history
+   - `Memory`: Retriever, used by Agent
 
-2. **Long-term Memory**: Persistent user memories with vector semantic search
-   - Extraction mechanism: LLM extracts important information from conversations
-   - Recall mechanism: vector similarity search
-   - User triggers extraction via `extractFromHistory()` or `extractIfNeeded()`
+2. **ExecutionContext**: Execution context, passes userId and other info
+   - User-level data isolation via `context.getUserId()`
 
 3. **LangMem Pattern**: LLM proactively queries memories via Tool
 
-4. **User-Controlled Isolation**: Framework doesn't enforce isolation; users implement custom storage
-
-5. **Read-Only History Access**: `ChatHistoryProvider` reads from user's existing message storage - no duplicate storage needed
-
-6. **Dual Storage Design**: `MemoryStore` (memories) + `ChatHistoryProvider` (read from user's messages)
+4. **Dual Storage Design**: `MemoryStore` (memories) + `ChatHistoryProvider` (read from user's messages)
 
 Next steps:
+- Learn [Compression](tutorial-compression.md) for session-based context management
 - Learn [Tool Calling](tutorial-tool-calling.md) to extend agent capabilities
 - Explore [RAG Integration](tutorial-rag.md) for knowledge enhancement
 - Build [Multi-Agent Systems](tutorial-multi-agent.md) for complex applications
