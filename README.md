@@ -99,10 +99,10 @@ System.out.println(output.getOutput());
 - [Quick Start Guide](./docs/en/quickstart.md) - Get up and running in 10 minutes
 
 **Tutorials**
+- [Architecture & Internals](./docs/en/tutorial-architecture.md) - Framework core mechanisms deep dive
 - [Building AI Agents](./docs/en/tutorial-basic-agent.md) - Create intelligent agents with memory and reflection
-- [Memory Systems](./docs/en/tutorial-memory.md) - Long-term memory with vector semantic search
+- [Memory Systems](./docs/en/tutorial-memory.md) - Memory with vector semantic search
 - [Compression](./docs/en/tutorial-compression.md) - Session-based context management
-- [Multi-Agent Systems](./docs/en/tutorial-multi-agent.md) - Orchestrate multiple agents with handoff strategies
 - [RAG Integration](./docs/en/tutorial-rag.md) - Implement retrieval-augmented generation
 - [Tool Calling](./docs/en/tutorial-tool-calling.md) - Extend agents with custom tools
 - [Flow Orchestration](./docs/en/tutorial-flow.md) - Build complex workflows
@@ -114,7 +114,7 @@ System.out.println(output.getOutput());
 │        Applications Layer           │
 ├─────────────────────────────────────┤
 │      Orchestration Layer            │
-│    Flow / AgentGroup / Planning     │
+│         Flow / Planning             │
 ├─────────────────────────────────────┤
 │         Agents Layer                │
 │   Agent / Memory / Reflection       │

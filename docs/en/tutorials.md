@@ -60,21 +60,7 @@ Master in-session context management for handling long conversations.
 
 ---
 
-#### 4. [Multi-Agent Systems](tutorial-multi-agent.md)
-Master the art of orchestrating multiple specialized agents working together.
-
-**Topics covered:**
-- Agent groups and coordination
-- Handoff strategies (Direct, Auto, Hybrid)
-- Planning and task distribution
-- Inter-agent communication
-- Collaborative protocols
-
-**Perfect for:** Building complex systems requiring specialized expertise
-
----
-
-#### 5. [RAG Integration](tutorial-rag.md)
+#### 4. [RAG Integration](tutorial-rag.md)
 Implement retrieval-augmented generation to enhance your agents with external knowledge.
 
 **Topics covered:**
@@ -88,7 +74,7 @@ Implement retrieval-augmented generation to enhance your agents with external kn
 
 ---
 
-#### 6. [Tool Calling](tutorial-tool-calling.md)
+#### 5. [Tool Calling](tutorial-tool-calling.md)
 Extend agent capabilities with custom tools and external integrations.
 
 **Topics covered:**
@@ -102,7 +88,7 @@ Extend agent capabilities with custom tools and external integrations.
 
 ---
 
-#### 7. [Flow Orchestration](tutorial-flow.md)
+#### 6. [Flow Orchestration](tutorial-flow.md)
 Build complex workflows and business processes with visual flow design.
 
 **Topics covered:**
@@ -122,7 +108,7 @@ Build complex workflows and business processes with visual flow design.
 1. [Quick Start](quickstart.md) → [Basic Agent](tutorial-basic-agent.md) → [Memory Systems](tutorial-memory.md)
 
 ### Intermediate Path
-1. [Tool Calling](tutorial-tool-calling.md) → [Multi-Agent Systems](tutorial-multi-agent.md) → [RAG Integration](tutorial-rag.md)
+1. [Tool Calling](tutorial-tool-calling.md) → [RAG Integration](tutorial-rag.md) → [Flow Orchestration](tutorial-flow.md)
 
 ### Advanced Path
 1. [Architecture & Internals](tutorial-architecture.md) → [Flow Orchestration](tutorial-flow.md) → [Compression](tutorial-compression.md) → Production deployment
@@ -172,7 +158,6 @@ Choose a tutorial based on your needs:
 | Understand framework internals | [Architecture & Internals](tutorial-architecture.md) |
 | Remember users across sessions | [Memory Systems](tutorial-memory.md) |
 | Handle long conversations | [Compression Mechanism](tutorial-compression.md) |
-| Build a multi-expert system | [Multi-Agent Systems](tutorial-multi-agent.md) |
 | Add knowledge retrieval | [RAG Integration](tutorial-rag.md) |
 | Integrate external APIs | [Tool Calling](tutorial-tool-calling.md) |
 | Automate workflows | [Flow Orchestration](tutorial-flow.md) |

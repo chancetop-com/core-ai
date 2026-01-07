@@ -944,5 +944,5 @@ Core-AI's Flow system provides powerful and flexible workflow orchestration capa
 
 Next steps:
 - Learn [Tool Calling](tutorial-tool-calling.md) to extend capabilities
-- Explore [Multi-Agent Systems](tutorial-multi-agent.md) for complex collaboration
+- Explore [Memory Systems](tutorial-memory.md) for context management
 - Read the [Architecture Deep Dive](tutorial-architecture.md) for core mechanisms

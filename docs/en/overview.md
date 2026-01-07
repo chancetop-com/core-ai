@@ -27,18 +27,13 @@ Core-AI is a powerful Java framework designed specifically for building intellig
 - **Intelligent Retrieval**: Support for query rewriting, similarity search, and reranking
 - **Document Processing**: Built-in document splitting and processing tools
 
-### 5. Multi-Agent Collaboration
-- **Agent Groups**: Manage multiple agents working together
-- **Handoff Strategies**: DirectHandoff, AutoHandoff, HybridAutoDirectHandoff
-- **Planning Strategies**: Support for complex multi-agent coordination and task planning
-
-### 6. Flow Orchestration
+### 5. Flow Orchestration
 - **Visual Workflows**: Orchestrate complex execution flows through directed graphs
 - **Node Types**: Support for Agent, LLM, RAG, Tool, Operator, and other node types
 - **Conditional Routing**: Support for condition-based dynamic routing
 - **State Management**: Complete flow state tracking and persistence
 
-### 7. Observability
+### 6. Observability
 - **Distributed Tracing**: Built-in OpenTelemetry support
 - **Performance Monitoring**: Detailed execution time and token usage statistics
 - **Integration Support**: Compatible with observability platforms like Langfuse and Jaeger
@@ -52,7 +47,7 @@ Core-AI is a powerful Java framework designed specifically for building intellig
 │        Applications Layer           │
 ├─────────────────────────────────────┤
 │      Orchestration Layer            │
-│    Flow / AgentGroup / Planning     │
+│         Flow / Planning             │
 ├─────────────────────────────────────┤
 │         Agents Layer                │
 │   Agent / Memory / Reflection       │
@@ -108,7 +103,6 @@ Core-AI is suitable for building various AI-driven applications:
 3. **Data Analytics Platforms**: Build analytics agents for data querying and report generation
 4. **Workflow Automation**: Implement complex business process automation through flow orchestration
 5. **Knowledge Management Systems**: Build enterprise knowledge bases and Q&A systems using RAG
-6. **Multi-Agent Collaboration**: Build multiple specialized agents working together to complete complex tasks
 
 ## Technology Stack
 
@@ -135,7 +129,6 @@ Core-AI actively embraces the open source ecosystem with excellent integration w
   - [Building AI Agents](tutorial-basic-agent.md) - Create intelligent agents
   - [Memory Systems](tutorial-memory.md) - Long-term memory with vector search
   - [Compression](tutorial-compression.md) - Session-based context management
-  - [Multi-Agent Systems](tutorial-multi-agent.md) - Agent coordination
   - [Tool Calling](tutorial-tool-calling.md) - Extend agents with tools
   - [RAG Integration](tutorial-rag.md) - Knowledge retrieval
   - [Flow Orchestration](tutorial-flow.md) - Visual workflows

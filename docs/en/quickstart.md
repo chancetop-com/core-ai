@@ -324,7 +324,7 @@ Agent agent = Agent.builder()
 Congratulations! You've successfully created your first AI agent. Next, you can:
 
 1. Read the [Detailed Tutorials](tutorial-basic-agent.md) to learn advanced features
-2. Explore [Multi-Agent Systems](tutorial-multi-agent.md) to build complex applications
+2. Explore [Flow Orchestration](tutorial-flow.md) to build complex applications
 3. Learn about [RAG Integration](tutorial-rag.md) to enhance knowledge retrieval
 4. Study [Flow Orchestration](tutorial-flow.md) to build workflows
 

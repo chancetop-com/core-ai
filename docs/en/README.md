@@ -13,7 +13,6 @@ Welcome to the English documentation for Core-AI!
 ### 🚧 In Progress
 The following tutorials need full English translation:
 - [Memory Systems](tutorial-memory.md)
-- [Multi-Agent Systems](tutorial-multi-agent.md)
 - [RAG Integration](tutorial-rag.md)
 - [Tool Calling](tutorial-tool-calling.md)
 - [Flow Orchestration](tutorial-flow.md)
@@ -42,7 +41,6 @@ The following tutorials need full English translation:
 ## 💡 Key Features
 
 - 🤖 **Intelligent Agents** - Autonomous agents with memory and reflection
-- 👥 **Multi-Agent Systems** - Orchestrate specialized agents
 - 🔧 **Tool Integration** - Extend capabilities with custom tools
 - 📚 **RAG Support** - Knowledge-enhanced generation
 - 🔄 **Flow Orchestration** - Visual workflow design
