@@ -3,9 +3,9 @@ package ai.core.memory.longterm.extraction;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
-import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
-import ai.core.memory.history.ChatHistoryStore;
+import ai.core.memory.history.ChatHistoryProvider;
+import ai.core.memory.history.ChatRecord;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryStore;
@@ -15,139 +15,157 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
+ * Coordinates memory extraction from chat history.
+ * Tracks extraction state internally and extracts from user-provided history.
+ *
  * @author xander
  */
 public class LongTermMemoryCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger(LongTermMemoryCoordinator.class);
 
     private final MemoryStore memoryStore;
-    private final ChatHistoryStore chatHistoryStore;
+    private final ChatHistoryProvider historyProvider;
     private final MemoryExtractor extractor;
     private final LLMProvider llmProvider;
     private final LongTermMemoryConfig config;
     private final Executor executor;
 
-    private final AtomicInteger currentTurnIndex = new AtomicInteger(0);
+    // Track last extracted message index per user
+    private final Map<String, Integer> extractedIndexMap = new ConcurrentHashMap<>();
     private volatile CompletableFuture<Void> currentExtraction;
-    private volatile String sessionId;
 
     public LongTermMemoryCoordinator(MemoryStore memoryStore,
-                                     ChatHistoryStore chatHistoryStore,
+                                     ChatHistoryProvider historyProvider,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
                                      LongTermMemoryConfig config) {
-        this(memoryStore, chatHistoryStore, extractor, llmProvider, config, ForkJoinPool.commonPool());
+        this(memoryStore, historyProvider, extractor, llmProvider, config, ForkJoinPool.commonPool());
     }
 
     public LongTermMemoryCoordinator(MemoryStore memoryStore,
-                                     ChatHistoryStore chatHistoryStore,
+                                     ChatHistoryProvider historyProvider,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
                                      LongTermMemoryConfig config,
                                      Executor executor) {
         this.memoryStore = memoryStore;
-        this.chatHistoryStore = chatHistoryStore;
+        this.historyProvider = historyProvider;
         this.extractor = extractor;
         this.llmProvider = llmProvider;
         this.config = config;
         this.executor = executor;
     }
 
-    public void initSession(String sessionId) {
-        this.sessionId = sessionId;
-        this.currentTurnIndex.set(0);
-    }
-
-    public void onMessage(Message message) {
-        if (message == null || message.role == RoleType.SYSTEM) {
+    /**
+     * Extract memories from unprocessed messages in the user's history.
+     * This is the main entry point for triggering extraction.
+     *
+     * @param userId the user to extract from
+     */
+    public void extractFromHistory(String userId) {
+        List<ChatRecord> unextracted = loadUnextracted(userId);
+        if (unextracted.isEmpty()) {
+            LOGGER.debug("No unextracted messages for user: {}", userId);
             return;
         }
 
-        if (message.role == RoleType.USER) {
-            currentTurnIndex.incrementAndGet();
-        }
-
-        chatHistoryStore.save(sessionId, message);
-
-        if (shouldTriggerExtraction()) {
-            triggerExtraction();
-        }
-    }
-
-    public void onSessionEnd() {
-        if (!config.isExtractOnSessionEnd()) {
-            return;
-        }
-
-        List<Message> unextracted = chatHistoryStore.loadUnextracted(sessionId);
-        if (!unextracted.isEmpty()) {
-            LOGGER.info("Session ending, extracting remaining {} messages", unextracted.size());
-            triggerExtraction();
-            waitForCompletion();
-        }
-    }
-
-    private void triggerExtraction() {
-        CompletableFuture<Void> current = currentExtraction;
-        if (current != null && !current.isDone()) {
-            return;
-        }
-
-        List<Message> toExtract = chatHistoryStore.loadUnextracted(sessionId);
-        if (toExtract.isEmpty()) {
-            return;
-        }
-
-        int messageCount = toExtract.size();
-        int currentIndex = chatHistoryStore.count(sessionId) - 1;
-
-        LOGGER.info("Triggering extraction: {} messages", messageCount);
+        int totalCount = historyProvider.count(userId);
+        LOGGER.info("Triggering extraction: {} unextracted messages", unextracted.size());
 
         if (config.isAsyncExtraction()) {
             currentExtraction = CompletableFuture.runAsync(
-                () -> performExtraction(toExtract, currentIndex), executor);
+                () -> performExtraction(userId, unextracted, totalCount - 1), executor);
         } else {
-            performExtraction(toExtract, currentIndex);
+            performExtraction(userId, unextracted, totalCount - 1);
         }
     }
 
-    private void performExtraction(List<Message> messages, int lastMessageIndex) {
+    /**
+     * Check if extraction should be triggered based on buffer size.
+     *
+     * @param userId the user to check
+     * @return true if extraction threshold is reached
+     */
+    public boolean shouldExtract(String userId) {
+        if (isExtractionInProgress()) {
+            return false;
+        }
+
+        List<ChatRecord> unextracted = loadUnextracted(userId);
+        int turnCount = countUserTurns(unextracted);
+        return turnCount >= config.getMaxBufferTurns();
+    }
+
+    /**
+     * Extract if threshold is reached, otherwise do nothing.
+     *
+     * @param userId the user to check and possibly extract from
+     */
+    public void extractIfNeeded(String userId) {
+        if (shouldExtract(userId)) {
+            extractFromHistory(userId);
+        }
+    }
+
+    private List<ChatRecord> loadUnextracted(String userId) {
+        List<ChatRecord> all = historyProvider.load(userId);
+        int lastExtracted = extractedIndexMap.getOrDefault(userId, -1);
+
+        if (lastExtracted < 0) {
+            return filterNonSystemRecords(all);
+        }
+
+        if (lastExtracted >= all.size() - 1) {
+            return List.of();
+        }
+
+        return filterNonSystemRecords(all.subList(lastExtracted + 1, all.size()));
+    }
+
+    private List<ChatRecord> filterNonSystemRecords(List<ChatRecord> records) {
+        return records.stream()
+            .filter(r -> r.role() != RoleType.SYSTEM)
+            .toList();
+    }
+
+    private void performExtraction(String userId, List<ChatRecord> records, int lastMessageIndex) {
         boolean success = false;
         try {
-            List<MemoryRecord> records = extractor.extract(messages);
-            if (records.isEmpty()) {
-                LOGGER.debug("No memories extracted from {} messages", messages.size());
+            List<MemoryRecord> memoryRecords = extractor.extract(records);
+            if (memoryRecords.isEmpty()) {
+                LOGGER.debug("No memories extracted from {} messages", records.size());
                 success = true;
                 return;
             }
 
-            List<List<Double>> embeddings = generateEmbeddings(records);
-            if (embeddings.size() != records.size()) {
+            List<List<Double>> embeddings = generateEmbeddings(memoryRecords);
+            if (embeddings.size() != memoryRecords.size()) {
                 LOGGER.error("Embedding count mismatch: {} records, {} embeddings",
-                    records.size(), embeddings.size());
+                    memoryRecords.size(), embeddings.size());
                 return;
             }
 
-            memoryStore.saveAll(records, embeddings);
+            memoryStore.saveAll(userId, memoryRecords, embeddings);
             success = true;
 
             LOGGER.info("Extracted and saved {} memories from {} messages",
-                records.size(), messages.size());
+                memoryRecords.size(), records.size());
 
         } catch (Exception e) {
             LOGGER.error("Failed to extract memories", e);
         } finally {
             if (success) {
-                chatHistoryStore.markExtracted(sessionId, lastMessageIndex);
+                extractedIndexMap.put(userId, lastMessageIndex);
             }
         }
     }
@@ -180,22 +198,10 @@ public class LongTermMemoryCoordinator {
         }
     }
 
-    private boolean shouldTriggerExtraction() {
-        CompletableFuture<Void> current = currentExtraction;
-        if (current != null && !current.isDone()) {
-            return false;
-        }
-
-        List<Message> unextracted = chatHistoryStore.loadUnextracted(sessionId);
-        int turnCount = countUserTurns(unextracted);
-
-        return turnCount >= config.getMaxBufferTurns();
-    }
-
-    private int countUserTurns(List<Message> messages) {
+    private int countUserTurns(List<ChatRecord> records) {
         int count = 0;
-        for (Message msg : messages) {
-            if (msg.role == RoleType.USER) {
+        for (ChatRecord record : records) {
+            if (record.role() == RoleType.USER) {
                 count++;
             }
         }
@@ -224,5 +230,24 @@ public class LongTermMemoryCoordinator {
     public boolean isExtractionInProgress() {
         CompletableFuture<Void> current = currentExtraction;
         return current != null && !current.isDone();
+    }
+
+    /**
+     * Get the last extracted message index for a user.
+     *
+     * @param userId the user identifier
+     * @return last extracted index, or -1 if nothing extracted yet
+     */
+    public int getLastExtractedIndex(String userId) {
+        return extractedIndexMap.getOrDefault(userId, -1);
+    }
+
+    /**
+     * Reset extraction state for a user.
+     *
+     * @param userId the user identifier
+     */
+    public void resetExtractionState(String userId) {
+        extractedIndexMap.remove(userId);
     }
 }

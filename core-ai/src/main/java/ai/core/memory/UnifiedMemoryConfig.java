@@ -25,16 +25,10 @@ public final class UnifiedMemoryConfig {
         this.maxRecallRecords = DEFAULT_MAX_RECALL_RECORDS;
     }
 
-    /**
-     * Check if MemoryRecallTool should be auto-registered to agent.
-     */
     public boolean isAutoRecall() {
         return autoRecall;
     }
 
-    /**
-     * Get maximum number of records to recall.
-     */
     public int getMaxRecallRecords() {
         return maxRecallRecords;
     }
@@ -46,17 +40,11 @@ public final class UnifiedMemoryConfig {
             this.config = new UnifiedMemoryConfig();
         }
 
-        /**
-         * Enable or disable auto-registration of MemoryRecallTool.
-         */
         public Builder autoRecall(boolean autoRecall) {
             config.autoRecall = autoRecall;
             return this;
         }
 
-        /**
-         * Set maximum number of records to recall.
-         */
         public Builder maxRecallRecords(int maxRecords) {
             config.maxRecallRecords = Math.max(1, Math.min(20, maxRecords));
             return this;

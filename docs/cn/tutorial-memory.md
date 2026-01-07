@@ -199,18 +199,20 @@ Agent agent = Agent.builder()
 │                                │                          │             │
 │                    ┌───────────┴───────────┐              │             │
 │                    ▼                       ▼              ▼             │
-│              MemoryStore          ChatHistoryStore   MemoryExtractor    │
-│              (记忆存储)            (对话历史存储)      (LLM提取记忆)      │
+│              MemoryStore         ChatHistoryProvider  MemoryExtractor    │
+│              (记忆存储)           (读取用户存储)       (LLM提取记忆)      │
 │                    │                       │              │             │
 │                    ▼                       ▼              ▼             │
 │            用户自定义实现           用户自定义实现    DefaultMemoryExtractor
-│           (Milvus/Redis等)        (MySQL/Redis等)                       │
+│           (Milvus/Redis等)        (只读接口)                            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 核心概念
 
-**用户控制数据隔离**：框架不强制隔离策略，用户在实现 `MemoryStore` 和 `ChatHistoryStore` 时自己决定如何隔离数据（按租户、用户等）。
+**用户控制数据隔离**：框架不强制隔离策略，用户在实现 `MemoryStore` 和 `ChatHistoryProvider` 时自己决定如何隔离数据（按租户、用户等）。
+
+**只读历史访问**：用户在自己的系统中存储消息。框架只需要通过 `ChatHistoryProvider` 读取消息来提取记忆，无需重复存储。
 
 **LangMem 模式**：LLM 通过 Tool 主动决定何时查询记忆，而不是每次请求都自动注入，更智能且节省 token。
 
@@ -234,34 +236,29 @@ Agent agent = Agent.builder()
 
 ### 记忆提取机制
 
-长期记忆的核心是从对话中自动提取有价值的信息：
+长期记忆的核心是从对话中提取有价值的信息。用户在适当的时机（如对话结束时）触发提取：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           提取流程                                       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  1. 消息进入                                                             │
-│     ┌─────────────────┐                                                 │
-│     │ onMessage(msg)  │                                                 │
-│     └────────┬────────┘                                                 │
+│  1. 用户触发提取                                                         │
+│     ┌───────────────────────────────────┐                               │
+│     │ memory.extractFromHistory(sessionId)│                             │
+│     └────────┬──────────────────────────┘                               │
 │              ↓                                                          │
-│  2. 持久化到 ChatHistoryStore                                            │
+│  2. 从用户存储加载消息                                                   │
 │     ┌─────────────────────────────────────┐                             │
-│     │ chatHistoryStore.save(sessionId, msg)│                            │
+│     │ historyProvider.load(sessionId)     │                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  3. 检查是否触发提取（用户消息数 >= maxBufferTurns）                       │
+│  3. 过滤未提取的消息（内部追踪）                                          │
 │     ┌─────────────────────────────────────┐                             │
-│     │ if (userTurnCount >= 5) trigger()   │                             │
+│     │ messages.subList(lastExtracted + 1) │                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  4. 获取未提取的消息                                                     │
-│     ┌─────────────────────────────────────┐                             │
-│     │ loadUnextracted(sessionId)          │                             │
-│     └────────┬────────────────────────────┘                             │
-│              ↓                                                          │
-│  5. LLM 提取记忆（异步或同步）                                            │
+│  4. LLM 提取记忆（异步或同步）                                            │
 │     ┌─────────────────────────────────────┐                             │
 │     │ extractor.extract(messages)         │                             │
 │     │                                     │                             │
@@ -276,19 +273,19 @@ Agent agent = Agent.builder()
 │     │ ]                                  │                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  6. 生成 Embedding 向量                                                  │
+│  5. 生成 Embedding 向量                                                  │
 │     ┌─────────────────────────────────────┐                             │
 │     │ llmProvider.embeddings(contents)    │                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  7. 保存到 MemoryStore                                                   │
+│  6. 保存到 MemoryStore                                                   │
 │     ┌─────────────────────────────────────┐                             │
 │     │ memoryStore.saveAll(records, embeds)│                             │
 │     └────────┬────────────────────────────┘                             │
 │              ↓                                                          │
-│  8. 标记已提取位置                                                        │
+│  7. 更新提取状态（内部追踪）                                               │
 │     ┌─────────────────────────────────────┐                             │
-│     │ markExtracted(sessionId, lastIndex) │                             │
+│     │ extractedIndexMap.put(sessionId, n) │                             │
 │     └─────────────────────────────────────┘                             │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -372,21 +369,22 @@ Output format:
 import ai.core.memory.longterm.LongTermMemory;
 import ai.core.memory.longterm.LongTermMemoryConfig;
 import ai.core.memory.longterm.InMemoryStore;
-import ai.core.memory.history.InMemoryChatHistoryStore;
+import ai.core.memory.history.ChatHistoryProvider;
 
-// 创建存储（用户可自定义实现）
+// 创建记忆存储（用户可自定义实现）
 MemoryStore memoryStore = new InMemoryStore();
-ChatHistoryStore chatHistoryStore = new InMemoryChatHistoryStore();
+
+// 用户提供读取消息的接口
+ChatHistoryProvider historyProvider = sessionId -> myMessageService.getMessages(sessionId);
 
 // 构建长期记忆
 LongTermMemory longTermMemory = LongTermMemory.builder()
     .llmProvider(llmProvider)
     .memoryStore(memoryStore)
-    .chatHistoryStore(chatHistoryStore)
+    .historyProvider(historyProvider)  // 必需：从用户存储读取
     .config(LongTermMemoryConfig.builder()
-        .maxBufferTurns(5)           // 每 5 轮触发一次提取
+        .maxBufferTurns(5)           // extractIfNeeded() 的阈值
         .asyncExtraction(true)        // 异步提取
-        .extractOnSessionEnd(true)    // 会话结束时提取剩余消息
         .build())
     .build();
 ```

@@ -4,10 +4,9 @@ import ai.core.document.Embedding;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
-import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
-import ai.core.memory.history.ChatHistoryStore;
-import ai.core.memory.history.InMemoryChatHistoryStore;
+import ai.core.memory.history.ChatRecord;
+import ai.core.memory.history.InMemoryChatHistoryProvider;
 import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,12 +32,13 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("PMD.SingularField")
 class LongTermMemoryTest {
 
-    private static final String SESSION_ID = "session-456";
+    private static final String USER_ID = "user-456";
     private static final int EMBEDDING_DIM = 8;
 
     private MemoryStore store;
     private MemoryExtractor extractor;
     private LLMProvider llmProvider;
+    private InMemoryChatHistoryProvider historyProvider;
     private LongTermMemoryCoordinator coordinator;
 
     @BeforeEach
@@ -51,10 +52,10 @@ class LongTermMemoryTest {
                 .build();
 
         store = new InMemoryStore();
-        ChatHistoryStore chatHistoryStore = new InMemoryChatHistoryStore();
+        historyProvider = new InMemoryChatHistoryProvider();
         extractor = createMockExtractor();
         llmProvider = createMockLLMProvider();
-        coordinator = new LongTermMemoryCoordinator(store, chatHistoryStore, extractor, llmProvider, config);
+        coordinator = new LongTermMemoryCoordinator(store, historyProvider, extractor, llmProvider, config);
     }
 
     @Test
@@ -65,27 +66,27 @@ class LongTermMemoryTest {
             .build();
 
         List<Double> embedding = randomEmbedding();
-        store.save(record, embedding);
+        store.save(USER_ID, record, embedding);
 
-        assertEquals(1, store.count());
+        assertEquals(1, store.count(USER_ID));
 
-        List<MemoryRecord> results = store.searchByVector(embedding, 5);
+        List<MemoryRecord> results = store.searchByVector(USER_ID, embedding, 5);
         assertFalse(results.isEmpty());
         assertEquals("User is a Java developer who prefers clean code", results.getFirst().getContent());
     }
 
     @Test
-    void testCoordinatorExtractionOnSessionEnd() {
-        coordinator.initSession(SESSION_ID);
+    void testCoordinatorExtraction() {
+        // Add records to history provider
+        historyProvider.addRecord(USER_ID, ChatRecord.user("Hello, I'm a senior Java developer", Instant.now()));
+        historyProvider.addRecord(USER_ID, ChatRecord.assistant("Nice to meet you!", Instant.now()));
 
-        coordinator.onMessage(Message.of(RoleType.USER, "Hello, I'm a senior Java developer"));
-        coordinator.onMessage(Message.of(RoleType.ASSISTANT, "Nice to meet you!"));
+        assertEquals(0, store.count(USER_ID));
 
-        assertEquals(0, store.count());
+        // Trigger extraction manually
+        coordinator.extractFromHistory(USER_ID);
 
-        coordinator.onSessionEnd();
-
-        assertTrue(store.count() > 0);
+        assertTrue(store.count(USER_ID) > 0);
     }
 
     @Test
@@ -96,19 +97,23 @@ class LongTermMemoryTest {
             .build();
 
         MemoryStore batchStore = new InMemoryStore();
-        ChatHistoryStore batchChatHistoryStore = new InMemoryChatHistoryStore();
+        InMemoryChatHistoryProvider batchHistoryProvider = new InMemoryChatHistoryProvider();
         LongTermMemoryCoordinator batchCoordinator = new LongTermMemoryCoordinator(
-            batchStore, batchChatHistoryStore, extractor, llmProvider, batchConfig);
+            batchStore, batchHistoryProvider, extractor, llmProvider, batchConfig);
 
-        batchCoordinator.initSession(SESSION_ID);
+        // Add records to history
+        batchHistoryProvider.addRecord(USER_ID, ChatRecord.user("I prefer using IntelliJ IDEA", Instant.now()));
+        batchHistoryProvider.addRecord(USER_ID, ChatRecord.assistant("Great choice!", Instant.now()));
+        batchHistoryProvider.addRecord(USER_ID, ChatRecord.user("I also like Spring Boot", Instant.now()));
+        batchHistoryProvider.addRecord(USER_ID, ChatRecord.assistant("Spring Boot is excellent!", Instant.now()));
 
-        batchCoordinator.onMessage(Message.of(RoleType.USER, "I prefer using IntelliJ IDEA"));
-        batchCoordinator.onMessage(Message.of(RoleType.ASSISTANT, "Great choice!"));
+        // Check if should extract (2 user turns >= maxBufferTurns of 2)
+        assertTrue(batchCoordinator.shouldExtract(USER_ID));
 
-        batchCoordinator.onMessage(Message.of(RoleType.USER, "I also like Spring Boot"));
-        batchCoordinator.onMessage(Message.of(RoleType.ASSISTANT, "Spring Boot is excellent!"));
+        // Trigger extraction
+        batchCoordinator.extractIfNeeded(USER_ID);
 
-        assertTrue(batchStore.count() > 0);
+        assertTrue(batchStore.count(USER_ID) > 0);
     }
 
     @Test
@@ -118,27 +123,27 @@ class LongTermMemoryTest {
             .importance(0.6)
             .build();
 
-        store.save(record, randomEmbedding());
+        store.save(USER_ID, record, randomEmbedding());
 
-        store.updateDecayFactor(record.getId(), 0.05);
+        store.updateDecayFactor(USER_ID, record.getId(), 0.05);
 
-        List<MemoryRecord> decayed = store.findDecayed(0.1);
+        List<MemoryRecord> decayed = store.findDecayed(USER_ID, 0.1);
         assertEquals(1, decayed.size());
     }
 
     @Test
     void testSearchWithImportanceFilter() {
-        store.save(MemoryRecord.builder()
+        store.save(USER_ID, MemoryRecord.builder()
             .content("High importance memory")
             .importance(0.9)
             .build(), randomEmbedding());
 
-        store.save(MemoryRecord.builder()
+        store.save(USER_ID, MemoryRecord.builder()
             .content("Medium importance memory")
             .importance(0.7)
             .build(), randomEmbedding());
 
-        store.save(MemoryRecord.builder()
+        store.save(USER_ID, MemoryRecord.builder()
             .content("Low importance memory")
             .importance(0.5)
             .build(), randomEmbedding());
@@ -147,7 +152,7 @@ class LongTermMemoryTest {
             .minImportance(0.8)
             .build();
 
-        List<MemoryRecord> results = store.searchByVector(randomEmbedding(), 10, highImportanceFilter);
+        List<MemoryRecord> results = store.searchByVector(USER_ID, randomEmbedding(), 10, highImportanceFilter);
         assertEquals(1, results.size());
         assertTrue(results.getFirst().getImportance() >= 0.8);
     }
@@ -172,20 +177,20 @@ class LongTermMemoryTest {
     // ==================== Helper Methods ====================
 
     private MemoryExtractor createMockExtractor() {
-        return messages -> {
-            List<MemoryRecord> records = new ArrayList<>();
+        return records -> {
+            List<MemoryRecord> memoryRecords = new ArrayList<>();
 
-            for (Message msg : messages) {
-                if (msg.role == RoleType.USER && msg.content != null) {
-                    MemoryRecord record = MemoryRecord.builder()
-                        .content("User said: " + msg.content)
+            for (ChatRecord record : records) {
+                if (record.role() == RoleType.USER && record.content() != null) {
+                    MemoryRecord memRecord = MemoryRecord.builder()
+                        .content("User said: " + record.content())
                         .importance(0.7)
                         .build();
-                    records.add(record);
+                    memoryRecords.add(memRecord);
                 }
             }
 
-            return records;
+            return memoryRecords;
         };
     }
 
@@ -230,6 +235,7 @@ class LongTermMemoryTest {
     class LongTermMemoryFacadeTests {
 
         private LongTermMemory memory;
+        private InMemoryChatHistoryProvider facadeHistoryProvider;
 
         @BeforeEach
         void setUpFacade() {
@@ -239,42 +245,39 @@ class LongTermMemoryTest {
                 .build();
 
             MemoryStore facadeStore = new InMemoryStore();
-            ChatHistoryStore facadeChatHistoryStore = new InMemoryChatHistoryStore();
+            facadeHistoryProvider = new InMemoryChatHistoryProvider();
 
-            memory = new LongTermMemory(facadeStore, facadeChatHistoryStore, extractor, llmProvider, facadeConfig);
+            memory = new LongTermMemory(facadeStore, facadeHistoryProvider, extractor, llmProvider, facadeConfig);
         }
 
         @Test
-        @DisplayName("Should work with session lifecycle")
-        void testSessionLifecycle() {
-            memory.startSession(SESSION_ID);
-            assertEquals(SESSION_ID, memory.getCurrentSessionId());
+        @DisplayName("Should extract memories from history")
+        void testExtractFromHistory() {
+            // Add records to history
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.user("I'm a Java developer", Instant.now()));
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.assistant("Nice!", Instant.now()));
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.user("I prefer IntelliJ", Instant.now()));
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.assistant("Great choice!", Instant.now()));
 
-            memory.onMessage(Message.of(RoleType.USER, "I'm a Java developer"));
-            memory.onMessage(Message.of(RoleType.ASSISTANT, "Nice!"));
-            memory.onMessage(Message.of(RoleType.USER, "I prefer IntelliJ"));
-            memory.onMessage(Message.of(RoleType.ASSISTANT, "Great choice!"));
+            // Extract memories
+            memory.extract(USER_ID);
 
-            memory.endSession();
-
-            assertTrue(memory.getMemoryCount() > 0);
+            assertTrue(memory.getMemoryCount(USER_ID) > 0);
         }
 
         @Test
-        @DisplayName("Should recall memories after extraction")
-        void testRecallAfterExtraction() {
-            memory.startSession(SESSION_ID);
+        @DisplayName("Should retrieve memories after extraction")
+        void testRetrieveAfterExtraction() {
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.user("I love Python programming", Instant.now()));
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.assistant("Python is great!", Instant.now()));
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.user("I also like machine learning", Instant.now()));
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.assistant("Interesting field!", Instant.now()));
 
-            memory.onMessage(Message.of(RoleType.USER, "I love Python programming"));
-            memory.onMessage(Message.of(RoleType.ASSISTANT, "Python is great!"));
-            memory.onMessage(Message.of(RoleType.USER, "I also like machine learning"));
-            memory.onMessage(Message.of(RoleType.ASSISTANT, "Interesting field!"));
+            memory.extract(USER_ID);
 
-            memory.endSession();
-
-            List<MemoryRecord> recalled = memory.recall("programming", 5);
-            assertNotNull(recalled);
-            assertTrue(memory.hasMemories());
+            List<MemoryRecord> retrieved = memory.retrieve(USER_ID, "programming", 5);
+            assertNotNull(retrieved);
+            assertTrue(memory.hasMemories(USER_ID));
         }
 
         @Test
@@ -284,9 +287,7 @@ class LongTermMemoryTest {
                 .content("User is a Java developer")
                 .importance(0.8)
                 .build();
-            memory.getStore().save(record, randomEmbedding());
-
-            memory.startSession(SESSION_ID);
+            memory.getStore().save(USER_ID, record, randomEmbedding());
 
             List<MemoryRecord> memories = List.of(record);
             String context = memory.formatAsContext(memories);
@@ -304,6 +305,23 @@ class LongTermMemoryTest {
 
             context = memory.formatAsContext(null);
             assertEquals("", context);
+        }
+
+        @Test
+        @DisplayName("Should track extraction state")
+        void testExtractionStateTracking() {
+            assertEquals(-1, memory.getLastExtractedIndex(USER_ID));
+
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.user("Hello", Instant.now()));
+            facadeHistoryProvider.addRecord(USER_ID, ChatRecord.assistant("Hi!", Instant.now()));
+
+            memory.extract(USER_ID);
+
+            assertTrue(memory.getLastExtractedIndex(USER_ID) >= 0);
+
+            // Reset and verify
+            memory.resetExtractionState(USER_ID);
+            assertEquals(-1, memory.getLastExtractedIndex(USER_ID));
         }
     }
 
@@ -337,17 +355,17 @@ class LongTermMemoryTest {
 
         @BeforeEach
         void setUpFilterTests() {
-            store.save(MemoryRecord.builder()
+            store.save(USER_ID, MemoryRecord.builder()
                 .content("User wants to learn Rust")
                 .importance(0.9)
                 .build(), randomEmbedding());
 
-            store.save(MemoryRecord.builder()
+            store.save(USER_ID, MemoryRecord.builder()
                 .content("User prefers vim editor")
                 .importance(0.7)
                 .build(), randomEmbedding());
 
-            store.save(MemoryRecord.builder()
+            store.save(USER_ID, MemoryRecord.builder()
                 .content("User is from Beijing")
                 .importance(0.5)
                 .build(), randomEmbedding());
@@ -360,7 +378,7 @@ class LongTermMemoryTest {
                 .minImportance(0.8)
                 .build();
 
-            List<MemoryRecord> results = store.searchByVector(randomEmbedding(), 10, filter);
+            List<MemoryRecord> results = store.searchByVector(USER_ID, randomEmbedding(), 10, filter);
             assertEquals(1, results.size());
             assertTrue(results.getFirst().getImportance() >= 0.8);
         }
@@ -372,7 +390,7 @@ class LongTermMemoryTest {
                 .minDecayFactor(0.5)
                 .build();
 
-            List<MemoryRecord> results = store.searchByVector(randomEmbedding(), 10, filter);
+            List<MemoryRecord> results = store.searchByVector(USER_ID, randomEmbedding(), 10, filter);
             assertEquals(3, results.size());
         }
     }
@@ -398,10 +416,10 @@ class LongTermMemoryTest {
                 .importance(0.7)
                 .build();
 
-            memStore.save(record, randomEmbedding());
-            assertEquals(1, memStore.count());
+            memStore.save(USER_ID, record, randomEmbedding());
+            assertEquals(1, memStore.count(USER_ID));
 
-            var found = memStore.findById(record.getId());
+            var found = memStore.findById(USER_ID, record.getId());
             assertTrue(found.isPresent());
             assertEquals("Test content", found.get().getContent());
         }
@@ -416,11 +434,11 @@ class LongTermMemoryTest {
                 .importance(0.7)
                 .build();
 
-            memStore.save(record, randomEmbedding());
-            assertEquals(1, memStore.count());
+            memStore.save(USER_ID, record, randomEmbedding());
+            assertEquals(1, memStore.count(USER_ID));
 
-            memStore.delete(record.getId());
-            assertEquals(0, memStore.count());
+            memStore.delete(USER_ID, record.getId());
+            assertEquals(0, memStore.count(USER_ID));
         }
     }
 }

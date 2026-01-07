@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * @author xander
@@ -28,13 +29,15 @@ public final class MemoryRecallTool extends ToolCall {
 
     private final LongTermMemory longTermMemory;
     private final int maxRecords;
+    private final Supplier<String> userIdSupplier;
 
-    public MemoryRecallTool(LongTermMemory longTermMemory) {
-        this(longTermMemory, 5);
+    public MemoryRecallTool(LongTermMemory longTermMemory, Supplier<String> userIdSupplier) {
+        this(longTermMemory, userIdSupplier, 5);
     }
 
-    public MemoryRecallTool(LongTermMemory longTermMemory, int maxRecords) {
+    public MemoryRecallTool(LongTermMemory longTermMemory, Supplier<String> userIdSupplier, int maxRecords) {
         this.longTermMemory = longTermMemory;
+        this.userIdSupplier = userIdSupplier;
         this.maxRecords = maxRecords;
         super.setName(TOOL_NAME);
         super.setDescription("Search and recall relevant memories about the user. "
@@ -55,12 +58,16 @@ public final class MemoryRecallTool extends ToolCall {
                     .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            // Recall memories - storage handles user isolation internally
-            List<MemoryRecord> memories = longTermMemory.recall(query, maxRecords);
+            String userId = userIdSupplier.get();
+            if (userId == null || userId.isEmpty()) {
+                return ToolCallResult.failed("Error: userId is not available")
+                    .withDuration(System.currentTimeMillis() - startTime);
+            }
 
-            // Format result
+            List<MemoryRecord> memories = longTermMemory.retrieve(userId, query, maxRecords);
+
             String result = formatMemories(memories);
-            LOGGER.debug("Recalled {} memories for query: {}", memories.size(), truncate(query, 50));
+            LOGGER.debug("Retrieved {} memories for user: {}, query: {}", memories.size(), userId, truncate(query, 50));
 
             return ToolCallResult.completed(result)
                 .withDuration(System.currentTimeMillis() - startTime)
@@ -68,8 +75,8 @@ public final class MemoryRecallTool extends ToolCall {
                 .withStats("memories_found", memories.size());
 
         } catch (Exception e) {
-            LOGGER.error("Failed to recall memories", e);
-            return ToolCallResult.failed("Error recalling memories: " + e.getMessage())
+            LOGGER.error("Failed to retrieve memories", e);
+            return ToolCallResult.failed("Error retrieving memories: " + e.getMessage())
                 .withDuration(System.currentTimeMillis() - startTime);
         }
     }
@@ -114,6 +121,7 @@ public final class MemoryRecallTool extends ToolCall {
 
     public static class Builder extends ToolCall.Builder<Builder, MemoryRecallTool> {
         private LongTermMemory longTermMemory;
+        private Supplier<String> userIdSupplier;
         private int maxRecords = 5;
 
         @Override
@@ -126,6 +134,11 @@ public final class MemoryRecallTool extends ToolCall {
             return this;
         }
 
+        public Builder userIdSupplier(Supplier<String> userIdSupplier) {
+            this.userIdSupplier = userIdSupplier;
+            return this;
+        }
+
         public Builder maxRecords(int maxRecords) {
             this.maxRecords = maxRecords;
             return this;
@@ -135,7 +148,10 @@ public final class MemoryRecallTool extends ToolCall {
             if (longTermMemory == null) {
                 throw new IllegalStateException("longTermMemory is required");
             }
-            return new MemoryRecallTool(longTermMemory, maxRecords);
+            if (userIdSupplier == null) {
+                throw new IllegalStateException("userIdSupplier is required");
+            }
+            return new MemoryRecallTool(longTermMemory, userIdSupplier, maxRecords);
         }
     }
 }

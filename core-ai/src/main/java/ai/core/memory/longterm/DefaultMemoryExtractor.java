@@ -5,12 +5,13 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Message;
+import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
+import ai.core.memory.history.ChatRecord;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import ai.core.prompt.Prompts;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import core.framework.api.json.Property;
+import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,9 +26,6 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultMemoryExtractor.class);
     private static final int DEFAULT_MAX_TURNS_PER_EXTRACTION = 5;
     private static final int DEFAULT_MAX_TOKENS_PER_MESSAGE = 1000;
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    private static final TypeReference<List<ExtractedMemory>> EXTRACTION_TYPE_REF = new TypeReference<>() { };
 
     private final LLMProvider llmProvider;
     private final String model;
@@ -60,25 +58,25 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
     }
 
     @Override
-    public List<MemoryRecord> extract(List<Message> messages) {
-        if (messages == null || messages.isEmpty()) {
+    public List<MemoryRecord> extract(List<ChatRecord> records) {
+        if (records == null || records.isEmpty()) {
             return List.of();
         }
 
-        List<List<Message>> chunks = splitByTurns(messages);
+        List<List<ChatRecord>> chunks = splitByTurns(records);
         List<MemoryRecord> allRecords = new ArrayList<>();
 
-        for (List<Message> chunk : chunks) {
-            List<Message> truncated = truncateLongMessages(chunk);
-            List<MemoryRecord> records = extractFromChunk(truncated);
-            allRecords.addAll(records);
+        for (List<ChatRecord> chunk : chunks) {
+            List<ChatRecord> truncated = truncateLongMessages(chunk);
+            List<MemoryRecord> memoryRecords = extractFromChunk(truncated);
+            allRecords.addAll(memoryRecords);
         }
 
         return allRecords;
     }
 
-    private List<MemoryRecord> extractFromChunk(List<Message> messages) {
-        String conversation = formatConversation(messages);
+    private List<MemoryRecord> extractFromChunk(List<ChatRecord> records) {
+        String conversation = formatConversation(records);
         if (conversation.isBlank()) {
             return List.of();
         }
@@ -86,21 +84,20 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
         String prompt = String.format(extractionPrompt, conversation);
 
         try {
-            String response = callLLM(prompt);
-            return parseResponse(response);
+            return callLLM(prompt);
         } catch (Exception e) {
             LOGGER.error("Failed to extract memories from chunk", e);
             return List.of();
         }
     }
 
-    private List<List<Message>> splitByTurns(List<Message> messages) {
-        List<List<Message>> chunks = new ArrayList<>();
-        List<Message> currentChunk = new ArrayList<>();
+    private List<List<ChatRecord>> splitByTurns(List<ChatRecord> records) {
+        List<List<ChatRecord>> chunks = new ArrayList<>();
+        List<ChatRecord> currentChunk = new ArrayList<>();
         int turnCount = 0;
 
-        for (Message msg : messages) {
-            if (msg.role == RoleType.USER) {
+        for (ChatRecord record : records) {
+            if (record.role() == RoleType.USER) {
                 if (turnCount >= maxTurnsPerExtraction && !currentChunk.isEmpty()) {
                     chunks.add(currentChunk);
                     currentChunk = new ArrayList<>();
@@ -108,7 +105,7 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
                 }
                 turnCount++;
             }
-            currentChunk.add(msg);
+            currentChunk.add(record);
         }
 
         if (!currentChunk.isEmpty()) {
@@ -117,29 +114,29 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
         return chunks;
     }
 
-    private List<Message> truncateLongMessages(List<Message> messages) {
-        return messages.stream()
+    private List<ChatRecord> truncateLongMessages(List<ChatRecord> records) {
+        return records.stream()
             .map(this::truncateIfNeeded)
             .collect(Collectors.toList());
     }
 
-    private Message truncateIfNeeded(Message msg) {
-        if (msg.content == null || Tokenizer.tokenCount(msg.content) <= maxTokensPerMessage) {
-            return msg;
+    private ChatRecord truncateIfNeeded(ChatRecord record) {
+        if (record.content() == null || Tokenizer.tokenCount(record.content()) <= maxTokensPerMessage) {
+            return record;
         }
-        String truncated = Tokenizer.truncate(msg.content, maxTokensPerMessage);
-        return Message.of(msg.role, truncated + "\n[truncated]");
+        String truncated = Tokenizer.truncate(record.content(), maxTokensPerMessage);
+        return new ChatRecord(record.role(), truncated + "\n[truncated]", record.timestamp());
     }
 
-    private String formatConversation(List<Message> messages) {
+    private String formatConversation(List<ChatRecord> records) {
         StringBuilder sb = new StringBuilder();
-        for (Message msg : messages) {
-            if (msg.role == RoleType.SYSTEM) {
+        for (ChatRecord record : records) {
+            if (record.role() == RoleType.SYSTEM) {
                 continue;
             }
-            String content = msg.content != null ? msg.content : "";
+            String content = record.content() != null ? record.content() : "";
             if (!content.isBlank()) {
-                String role = switch (msg.role) {
+                String role = switch (record.role()) {
                     case USER -> "User";
                     case ASSISTANT -> "Assistant";
                     case TOOL -> "Tool";
@@ -151,86 +148,54 @@ public class DefaultMemoryExtractor implements MemoryExtractor {
         return sb.toString();
     }
 
-    private String callLLM(String prompt) {
+    private List<MemoryRecord> callLLM(String prompt) {
         var messages = List.of(Message.of(RoleType.USER, prompt));
         var request = CompletionRequest.of(messages, null, 0.3, model, "memory-extractor");
+        request.responseFormat = ResponseFormat.of(ExtractionResponse.class);
         CompletionResponse response = llmProvider.completion(request);
 
-        if (response != null && response.choices != null && !response.choices.isEmpty()) {
-            var choice = response.choices.getFirst();
-            if (choice.message != null && choice.message.content != null) {
-                return choice.message.content.trim();
-            }
+        if (response == null || response.choices == null || response.choices.isEmpty()) {
+            return List.of();
         }
-        return "[]";
-    }
 
-    private List<MemoryRecord> parseResponse(String response) {
-        List<MemoryRecord> records = new ArrayList<>();
+        var choice = response.choices.getFirst();
+        if (choice.message == null || choice.message.content == null) {
+            return List.of();
+        }
+
         try {
-            String json = extractJson(response);
-            var extracted = OBJECT_MAPPER.readValue(json, EXTRACTION_TYPE_REF);
+            var extracted = JSON.fromJSON(ExtractionResponse.class, choice.message.content);
+            if (extracted.memories == null) {
+                return List.of();
+            }
 
-            for (ExtractedMemory mem : extracted) {
+            List<MemoryRecord> memoryRecords = new ArrayList<>();
+            for (ExtractedMemory mem : extracted.memories) {
                 if (mem.content == null || mem.content.isBlank()) {
                     continue;
                 }
-
                 double importance = mem.importance != null ? mem.importance : 0.5;
-
-                MemoryRecord record = MemoryRecord.builder()
+                memoryRecords.add(MemoryRecord.builder()
                     .content(mem.content)
                     .importance(importance)
-                    .build();
-
-                records.add(record);
+                    .build());
             }
+            return memoryRecords;
         } catch (Exception e) {
-            LOGGER.warn("Failed to parse extraction response: {}", response, e);
+            LOGGER.warn("Failed to parse extraction response: {}", choice.message.content, e);
+            return List.of();
         }
-
-        return records;
     }
 
-    private String extractJson(String response) {
-        if (response == null || response.isBlank()) {
-            return "[]";
-        }
-
-        String text = stripMarkdownCodeBlock(response.trim());
-
-        // Find JSON array boundaries
-        int start = text.indexOf('[');
-        int end = text.lastIndexOf(']');
-        if (start >= 0 && end > start) {
-            return text.substring(start, end + 1);
-        }
-
-        LOGGER.debug("No valid JSON array found in response: {}", truncateForLog(response));
-        return "[]";
-    }
-
-    private String stripMarkdownCodeBlock(String text) {
-        if (!text.contains("```")) {
-            return text;
-        }
-        int codeStart = text.indexOf("```");
-        int codeEnd = text.lastIndexOf("```");
-        if (codeEnd <= codeStart) {
-            return text;
-        }
-        String inner = text.substring(codeStart + 3, codeEnd).trim();
-        // Remove language identifier like "json"
-        return inner.startsWith("json") ? inner.substring(4).trim() : inner;
-    }
-
-    private String truncateForLog(String text) {
-        if (text == null) return "";
-        return text.length() > 100 ? text.substring(0, 100) + "..." : text;
+    public static class ExtractionResponse {
+        @Property(name = "memories")
+        public List<ExtractedMemory> memories;
     }
 
     public static class ExtractedMemory {
+        @Property(name = "content")
         public String content;
+        @Property(name = "importance")
         public Double importance;
     }
 }
