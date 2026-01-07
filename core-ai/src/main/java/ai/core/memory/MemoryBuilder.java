@@ -1,8 +1,8 @@
-package ai.core.memory.longterm;
+package ai.core.memory;
 
 import ai.core.llm.LLMProvider;
+import ai.core.memory.extraction.MemoryExtractor;
 import ai.core.memory.history.ChatHistoryProvider;
-import ai.core.memory.longterm.extraction.MemoryExtractor;
 
 /**
  * Builder for Memory.

@@ -1,7 +1,7 @@
-package ai.core.memory.longterm.extraction;
+package ai.core.memory.extraction;
 
+import ai.core.memory.MemoryRecord;
 import ai.core.memory.history.ChatRecord;
-import ai.core.memory.longterm.MemoryRecord;
 
 import java.util.List;
 

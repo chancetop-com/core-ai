@@ -1,4 +1,4 @@
-package ai.core.memory.longterm;
+package ai.core.memory;
 
 import ai.core.document.Tokenizer;
 import ai.core.llm.LLMProvider;
@@ -7,8 +7,8 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
+import ai.core.memory.extraction.MemoryExtractor;
 import ai.core.memory.history.ChatRecord;
-import ai.core.memory.longterm.extraction.MemoryExtractor;
 import ai.core.prompt.Prompts;
 import core.framework.api.json.Property;
 import core.framework.json.JSON;
