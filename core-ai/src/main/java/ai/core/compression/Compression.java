@@ -21,7 +21,6 @@ public class Compression {
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
     private static final int DEFAULT_KEEP_RECENT_TURNS = 5;
-    private static final int DEFAULT_MAX_CONTEXT_TOKENS = 128000;
     private static final int MIN_SUMMARY_TOKENS = 500;
     private static final int MAX_SUMMARY_TOKENS = 4000;
     private final double triggerThreshold;
@@ -39,12 +38,7 @@ public class Compression {
         this.keepRecentTurns = keepRecentTurns;
         this.llmProvider = llmProvider;
         this.model = model;
-        if (model != null) {
-            int modelMax = LLMModelContextRegistry.getInstance().getMaxInputTokens(model);
-            this.maxContextTokens = modelMax > 0 ? modelMax : DEFAULT_MAX_CONTEXT_TOKENS;
-        } else {
-            this.maxContextTokens = DEFAULT_MAX_CONTEXT_TOKENS;
-        }
+        this.maxContextTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(model);
     }
 
     public boolean shouldCompress(int currentTokens) {
