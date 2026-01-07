@@ -200,13 +200,13 @@ public class Compression {
 
         int targetTokens = Math.min(MAX_SUMMARY_TOKENS, Math.max(MIN_SUMMARY_TOKENS, maxContextTokens / 10));
         int targetWords = (int) (targetTokens * 0.75);
-        String prompt = String.format(Prompts.SHORT_TERM_MEMORY_COMPRESS_PROMPT, targetWords, content);
+        String prompt = String.format(Prompts.COMPRESSION_PROMPT, targetWords, content);
 
         String summary = callLLM(prompt);
         if (summary.isBlank()) {
             return "";
         }
-        return Prompts.SHORT_TERM_MEMORY_SUMMARY_PREFIX + summary + Prompts.SHORT_TERM_MEMORY_SUMMARY_SUFFIX;
+        return Prompts.COMPRESSION_SUMMARY_PREFIX + summary + Prompts.COMPRESSION_SUMMARY_SUFFIX;
     }
 
     private String callLLM(String prompt) {

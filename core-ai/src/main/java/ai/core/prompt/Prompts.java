@@ -34,9 +34,9 @@ public class Prompts {
 
               </system-reminder>
             """;
-    public static final String SHORT_TERM_MEMORY_SUMMARY_PREFIX = "[Previous Conversation Summary]\n";
-    public static final String SHORT_TERM_MEMORY_SUMMARY_SUFFIX = "\n[End Summary]";
-    public static final String SHORT_TERM_MEMORY_COMPRESS_PROMPT = """
+    public static final String COMPRESSION_SUMMARY_PREFIX = "[Previous Conversation Summary]\n";
+    public static final String COMPRESSION_SUMMARY_SUFFIX = "\n[End Summary]";
+    public static final String COMPRESSION_PROMPT = """
             Summarize the following conversation into a concise summary.
             Requirements:
             1. Preserve key facts, decisions, and context
