@@ -22,8 +22,8 @@ import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.history.ChatRecord;
 import ai.core.memory.history.InMemoryChatHistoryProvider;
 import ai.core.memory.longterm.InMemoryStore;
-import ai.core.memory.longterm.LongTermMemory;
-import ai.core.memory.longterm.LongTermMemoryConfig;
+import ai.core.memory.longterm.Memory;
+import ai.core.memory.longterm.MemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.junit.jupiter.api.Disabled;
@@ -66,7 +66,7 @@ class AgentMemoryBestPracticeTest {
             var historyProvider = new InMemoryChatHistoryProvider();
 
             // 2. Create long-term memory with default extractor
-            LongTermMemory longTermMemory = LongTermMemory.builder()
+            Memory longTermMemory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
                 .historyProvider(historyProvider)
@@ -91,11 +91,11 @@ class AgentMemoryBestPracticeTest {
             var memoryStore = new InMemoryStore();
             var historyProvider = new InMemoryChatHistoryProvider();
 
-            LongTermMemory longTermMemory = LongTermMemory.builder()
+            Memory longTermMemory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
                 .historyProvider(historyProvider)
-                .config(LongTermMemoryConfig.builder()
+                .config(MemoryConfig.builder()
                     .maxBufferTurns(3)            // Extract after every 3 user turns
                     .asyncExtraction(false)        // Sync extraction for testing
                     .extractOnSessionEnd(true)     // Extract remaining on session end
@@ -141,12 +141,12 @@ class AgentMemoryBestPracticeTest {
                 return memoryRecords;
             };
 
-            LongTermMemory longTermMemory = LongTermMemory.builder()
+            Memory longTermMemory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
                 .historyProvider(historyProvider)
                 .extractor(customExtractor)
-                .config(LongTermMemoryConfig.builder()
+                .config(MemoryConfig.builder()
                     .maxBufferTurns(2)
                     .asyncExtraction(false)
                     .build())
@@ -176,11 +176,11 @@ class AgentMemoryBestPracticeTest {
             var memoryStore = new InMemoryStore();
             var historyProvider = new InMemoryChatHistoryProvider();
 
-            LongTermMemory memory = LongTermMemory.builder()
+            Memory memory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
                 .historyProvider(historyProvider)
-                .config(LongTermMemoryConfig.builder()
+                .config(MemoryConfig.builder()
                     .maxBufferTurns(5)
                     .asyncExtraction(true)  // Use async in production
                     .extractOnSessionEnd(true)
@@ -211,7 +211,7 @@ class AgentMemoryBestPracticeTest {
             var memoryStore = new InMemoryStore();
             var historyProvider = new InMemoryChatHistoryProvider();
 
-            LongTermMemory longTermMemory = LongTermMemory.builder()
+            Memory longTermMemory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
                 .historyProvider(historyProvider)

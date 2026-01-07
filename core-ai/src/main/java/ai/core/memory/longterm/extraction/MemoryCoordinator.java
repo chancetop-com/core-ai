@@ -6,7 +6,7 @@ import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.history.ChatHistoryProvider;
 import ai.core.memory.history.ChatRecord;
-import ai.core.memory.longterm.LongTermMemoryConfig;
+import ai.core.memory.longterm.MemoryConfig;
 import ai.core.memory.longterm.MemoryRecord;
 import ai.core.memory.longterm.MemoryStore;
 import org.slf4j.Logger;
@@ -30,33 +30,33 @@ import java.util.concurrent.TimeoutException;
  *
  * @author xander
  */
-public class LongTermMemoryCoordinator {
-    private static final Logger LOGGER = LoggerFactory.getLogger(LongTermMemoryCoordinator.class);
+public class MemoryCoordinator {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MemoryCoordinator.class);
 
     private final MemoryStore memoryStore;
     private final ChatHistoryProvider historyProvider;
     private final MemoryExtractor extractor;
     private final LLMProvider llmProvider;
-    private final LongTermMemoryConfig config;
+    private final MemoryConfig config;
     private final Executor executor;
 
     // Track last extracted message index per user
     private final Map<String, Integer> extractedIndexMap = new ConcurrentHashMap<>();
     private volatile CompletableFuture<Void> currentExtraction;
 
-    public LongTermMemoryCoordinator(MemoryStore memoryStore,
+    public MemoryCoordinator(MemoryStore memoryStore,
                                      ChatHistoryProvider historyProvider,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
-                                     LongTermMemoryConfig config) {
+                                     MemoryConfig config) {
         this(memoryStore, historyProvider, extractor, llmProvider, config, ForkJoinPool.commonPool());
     }
 
-    public LongTermMemoryCoordinator(MemoryStore memoryStore,
+    public MemoryCoordinator(MemoryStore memoryStore,
                                      ChatHistoryProvider historyProvider,
                                      MemoryExtractor extractor,
                                      LLMProvider llmProvider,
-                                     LongTermMemoryConfig config,
+                                     MemoryConfig config,
                                      Executor executor) {
         this.memoryStore = memoryStore;
         this.historyProvider = historyProvider;

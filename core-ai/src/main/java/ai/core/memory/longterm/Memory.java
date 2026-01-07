@@ -4,7 +4,7 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.memory.history.ChatHistoryProvider;
-import ai.core.memory.longterm.extraction.LongTermMemoryCoordinator;
+import ai.core.memory.longterm.extraction.MemoryCoordinator;
 import ai.core.memory.longterm.extraction.MemoryExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,25 +18,25 @@ import java.util.List;
  *
  * @author xander
  */
-public class LongTermMemory {
-    private static final Logger LOGGER = LoggerFactory.getLogger(LongTermMemory.class);
+public class Memory {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Memory.class);
 
-    public static LongTermMemoryBuilder builder() {
-        return new LongTermMemoryBuilder();
+    public static MemoryBuilder builder() {
+        return new MemoryBuilder();
     }
 
     private final MemoryStore memoryStore;
-    private final LongTermMemoryCoordinator coordinator;
+    private final MemoryCoordinator coordinator;
     private final LLMProvider llmProvider;
-    private final LongTermMemoryConfig config;
+    private final MemoryConfig config;
 
-    public LongTermMemory(MemoryStore memoryStore,
+    public Memory(MemoryStore memoryStore,
                           ChatHistoryProvider historyProvider,
                           MemoryExtractor extractor,
                           LLMProvider llmProvider,
-                          LongTermMemoryConfig config) {
+                          MemoryConfig config) {
         this.memoryStore = memoryStore;
-        this.coordinator = new LongTermMemoryCoordinator(memoryStore, historyProvider, extractor, llmProvider, config);
+        this.coordinator = new MemoryCoordinator(memoryStore, historyProvider, extractor, llmProvider, config);
         this.llmProvider = llmProvider;
         this.config = config;
     }
@@ -173,7 +173,7 @@ public class LongTermMemory {
         return memoryStore;
     }
 
-    public LongTermMemoryConfig getConfig() {
+    public MemoryConfig getConfig() {
         return config;
     }
 }
