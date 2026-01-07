@@ -6,12 +6,6 @@ import core.framework.util.Maps;
 import java.util.Map;
 
 /**
- * Execution context for passing session_id, user_id, and custom variables to nodes
- * This context is passed through the execution chain and can be used for:
- * - Tracing and observability (session_id, user_id)
- * - Custom business logic variables
- * - Propagating context between agents/flows
- *
  * @author stephen
  */
 public final class ExecutionContext {
@@ -52,31 +46,19 @@ public final class ExecutionContext {
         return asyncTaskManager;
     }
 
-    /**
-     * Get a custom variable by key
-     */
     public Object getCustomVariable(String key) {
         return customVariables.get(key);
     }
 
-    /**
-     * Get a custom variable by key with type casting
-     */
     @SuppressWarnings("unchecked")
     public <T> T getCustomVariable(String key, Class<T> type) {
         return (T) customVariables.get(key);
     }
 
-    /**
-     * Check if a custom variable exists
-     */
     public boolean hasCustomVariable(String key) {
         return customVariables.containsKey(key);
     }
 
-    /**
-     * Create a new ExecutionContext with additional custom variables
-     */
     public ExecutionContext withCustomVariables(Map<String, Object> additionalVariables) {
         var builder = builder()
             .sessionId(this.sessionId)
@@ -91,9 +73,6 @@ public final class ExecutionContext {
         return builder.build();
     }
 
-    /**
-     * Create a new ExecutionContext with a single additional custom variable
-     */
     public ExecutionContext withCustomVariable(String key, Object value) {
         var builder = builder()
             .sessionId(this.sessionId)
@@ -106,9 +85,6 @@ public final class ExecutionContext {
         return builder.build();
     }
 
-    /**
-     * Create a new ExecutionContext with an async task manager
-     */
     public ExecutionContext withAsyncTaskManager(ToolCallAsyncTaskManager asyncTaskManager) {
         return builder()
             .sessionId(this.sessionId)

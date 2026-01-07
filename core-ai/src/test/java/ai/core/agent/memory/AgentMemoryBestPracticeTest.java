@@ -1,6 +1,7 @@
 package ai.core.agent.memory;
 
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.document.Embedding;
 import ai.core.llm.LLMProvider;
@@ -19,28 +20,33 @@ import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.memory.Extraction;
+import ai.core.memory.InMemoryStore;
+import ai.core.memory.Memory;
+import ai.core.memory.MemoryRecord;
 import ai.core.memory.UnifiedMemoryConfig;
 import ai.core.memory.history.ChatRecord;
 import ai.core.memory.history.InMemoryChatHistoryProvider;
-import ai.core.memory.InMemoryStore;
-import ai.core.memory.Memory;
-import org.junit.jupiter.api.Disabled;
+import ai.core.tool.ToolCallResult;
+import ai.core.tool.tools.MemoryRecallTool;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
+ * Best practice tests for Agent Memory system.
+ * Demonstrates proper usage patterns for Memory, Extraction, and ExecutionContext.
+ *
  * @author xander
  */
-@Disabled
 @DisplayName("Agent Memory Best Practices")
 class AgentMemoryBestPracticeTest {
 
@@ -51,14 +57,22 @@ class AgentMemoryBestPracticeTest {
         llmProvider = new MockLLMProvider();
     }
 
+    private List<Double> generateTestEmbedding() {
+        List<Double> embedding = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            embedding.add(Math.random());
+        }
+        return embedding;
+    }
+
     @Nested
-    @DisplayName("Basic Agent with Long-term Memory")
+    @DisplayName("Basic Agent with Memory")
     class BasicAgentWithMemory {
 
         @Test
-        @DisplayName("Create agent with long-term memory using default config")
+        @DisplayName("Create agent with memory using default config")
         void createAgentWithDefaultConfig() {
-            // 1. Create stores
+            // 1. Create memory store
             var memoryStore = new InMemoryStore();
 
             // 2. Create memory (only for retrieval)
@@ -105,47 +119,133 @@ class AgentMemoryBestPracticeTest {
     }
 
     @Nested
-    @DisplayName("Production-like Setup")
-    class ProductionSetup {
+    @DisplayName("ExecutionContext Usage")
+    class ExecutionContextUsage {
 
         @Test
-        @DisplayName("Extraction and Memory separation pattern")
-        void extractionAndMemorySeparation() {
+        @DisplayName("Create ExecutionContext with userId")
+        void createExecutionContextWithUserId() {
+            String userId = "user-123";
+            String sessionId = "session-456";
+
+            ExecutionContext context = ExecutionContext.builder()
+                .userId(userId)
+                .sessionId(sessionId)
+                .customVariable("preference", "dark_mode")
+                .build();
+
+            assertEquals(userId, context.getUserId());
+            assertEquals(sessionId, context.getSessionId());
+            assertEquals("dark_mode", context.getCustomVariable("preference"));
+        }
+
+        @Test
+        @DisplayName("MemoryRecallTool requires ExecutionContext with userId")
+        void memoryRecallToolRequiresContext() {
+            var memoryStore = new InMemoryStore();
+
+            Memory memory = Memory.builder()
+                .llmProvider(llmProvider)
+                .memoryStore(memoryStore)
+                .build();
+
+            MemoryRecallTool tool = MemoryRecallTool.builder()
+                .memory(memory)
+                .maxRecords(5)
+                .build();
+
+            // Without context - should fail
+            ToolCallResult resultWithoutContext = tool.execute("{\"query\": \"test\"}");
+            assertTrue(resultWithoutContext.isFailed());
+            assertTrue(resultWithoutContext.getResult().contains("ExecutionContext"));
+
+            // With context - should work (even if no memories found)
+            ExecutionContext context = ExecutionContext.builder()
+                .userId("user-123")
+                .build();
+            ToolCallResult resultWithContext = tool.execute("{\"query\": \"test\"}", context);
+            assertTrue(resultWithContext.isCompleted());
+        }
+
+        @Test
+        @DisplayName("MemoryRecallTool retrieves memories for specific user")
+        void memoryRecallToolRetrievesForUser() {
+            String userId = "user-123";
+            var memoryStore = new InMemoryStore();
+
+            // Pre-populate memory store with test data
+            MemoryRecord record = MemoryRecord.builder()
+                .content("User prefers dark mode")
+                .importance(0.8)
+                .build();
+            List<Double> embedding = generateTestEmbedding();
+            memoryStore.save(userId, record, embedding);
+
+            Memory memory = Memory.builder()
+                .llmProvider(llmProvider)
+                .memoryStore(memoryStore)
+                .build();
+
+            MemoryRecallTool tool = MemoryRecallTool.builder()
+                .memory(memory)
+                .maxRecords(5)
+                .build();
+
+            ExecutionContext context = ExecutionContext.builder()
+                .userId(userId)
+                .build();
+
+            ToolCallResult result = tool.execute("{\"query\": \"preferences\"}", context);
+            assertTrue(result.isCompleted());
+            assertTrue(result.getResult().contains("dark mode"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Extraction and Memory Separation")
+    class ExtractionAndMemorySeparation {
+
+        @Test
+        @DisplayName("Extraction and Memory use shared store")
+        void extractionAndMemoryShareStore() {
             String userId = "user-123";
 
             // Shared store and history provider
             var memoryStore = new InMemoryStore();
             var historyProvider = new InMemoryChatHistoryProvider();
 
-            // 1. Extraction - run separately (e.g., end of session, scheduled task)
+            // 1. Extraction - runs separately
             Extraction extraction = new Extraction(memoryStore, historyProvider, llmProvider);
 
-            // 2. Memory - only for retrieval, used by Agent
+            // 2. Memory - only for retrieval
             Memory memory = Memory.builder()
                 .llmProvider(llmProvider)
                 .memoryStore(memoryStore)
                 .build();
 
-            // 3. Agent only uses Memory
+            // 3. Agent uses Memory
             Agent agent = Agent.builder()
                 .name("personalized-assistant")
-                .systemPrompt("You are a personalized assistant. Use the memory tool to recall user preferences.")
+                .systemPrompt("You are a personalized assistant.")
                 .llmProvider(llmProvider)
                 .unifiedMemory(memory)
                 .build();
 
             assertNotNull(agent);
 
-            // Simulate conversation - user's system stores chat history
+            // Simulate conversation
             historyProvider.addRecord(userId, ChatRecord.user("I prefer dark mode", Instant.now()));
             historyProvider.addRecord(userId, ChatRecord.assistant("Noted!", Instant.now()));
 
-            // Trigger extraction separately (e.g., at end of session)
+            // Verify history is recorded
+            assertEquals(2, historyProvider.load(userId).size());
+
+            // Trigger extraction (in real usage, this runs at session end)
             extraction.run(userId);
         }
 
         @Test
-        @DisplayName("Agent with both compression and long-term memory")
+        @DisplayName("Agent with both compression and memory")
         void agentWithBothMemories() {
             var memoryStore = new InMemoryStore();
 
@@ -158,14 +258,98 @@ class AgentMemoryBestPracticeTest {
             Agent agent = Agent.builder()
                 .name("full-memory-assistant")
                 .llmProvider(llmProvider)
-                .enableCompression(true)   // Conversation compression (within session)
-                .unifiedMemory(memory)     // Cross-session memory
+                .enableCompression(true)   // Within session
+                .unifiedMemory(memory)     // Cross-session
                 .build();
-//            agent.run()
 
             assertNotNull(agent);
-            // Compression: handles conversation context within session
-            // Memory: remembers user preferences across sessions
+        }
+    }
+
+    @Nested
+    @DisplayName("User Isolation")
+    class UserIsolation {
+
+        @Test
+        @DisplayName("Different users have isolated memories")
+        void differentUsersHaveIsolatedMemories() {
+            var memoryStore = new InMemoryStore();
+            String user1 = "user-1";
+            String user2 = "user-2";
+
+            // Save memories for different users
+            MemoryRecord record1 = MemoryRecord.builder()
+                .content("User 1 prefers light mode")
+                .importance(0.8)
+                .build();
+            MemoryRecord record2 = MemoryRecord.builder()
+                .content("User 2 prefers dark mode")
+                .importance(0.8)
+                .build();
+
+            memoryStore.save(user1, record1, generateTestEmbedding());
+            memoryStore.save(user2, record2, generateTestEmbedding());
+
+            // Verify isolation
+            assertEquals(1, memoryStore.count(user1));
+            assertEquals(1, memoryStore.count(user2));
+
+            List<MemoryRecord> user1Memories = memoryStore.findAll(user1);
+            List<MemoryRecord> user2Memories = memoryStore.findAll(user2);
+
+            assertTrue(user1Memories.getFirst().getContent().contains("light mode"));
+            assertTrue(user2Memories.getFirst().getContent().contains("dark mode"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Best Practice Patterns")
+    class BestPracticePatterns {
+
+        @Test
+        @DisplayName("Stateless agent pattern")
+        void statelessAgentPattern() {
+            Agent agent = Agent.builder()
+                .name("stateless")
+                .llmProvider(llmProvider)
+                .enableCompression(false)  // Disable compression for stateless
+                .build();
+
+            assertNotNull(agent);
+        }
+
+        @Test
+        @DisplayName("Session-only agent pattern")
+        void sessionOnlyAgentPattern() {
+            Agent agent = Agent.builder()
+                .name("session-only")
+                .llmProvider(llmProvider)
+                .enableCompression(true)  // Only compression, no long-term memory
+                .build();
+
+            assertNotNull(agent);
+        }
+
+        @Test
+        @DisplayName("Personalized agent pattern")
+        void personalizedAgentPattern() {
+            var memoryStore = new InMemoryStore();
+
+            Memory memory = Memory.builder()
+                .llmProvider(llmProvider)
+                .memoryStore(memoryStore)
+                .build();
+
+            Agent agent = Agent.builder()
+                .name("personalized")
+                .llmProvider(llmProvider)
+                .enableCompression(true)   // Within session
+                .unifiedMemory(memory)     // Cross-session
+                .build();
+
+            assertNotNull(agent);
+            assertTrue(agent.getToolCalls().stream()
+                .anyMatch(t -> t.getName().contains("memory")));
         }
     }
 

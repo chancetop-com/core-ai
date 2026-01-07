@@ -28,8 +28,8 @@ import java.util.stream.Collectors;
  */
 public class Extraction {
     private static final Logger LOGGER = LoggerFactory.getLogger(Extraction.class);
-    private static final int MAX_TURNS_PER_EXTRACTION = 5;
-    private static final int MAX_TOKENS_PER_MESSAGE = 1000;
+    private static final int MAX_TURNS_PER_EXTRACTION = 50;
+    private static final int MAX_TOKENS_PER_MESSAGE = 5000;
 
     public static Builder builder() {
         return new Builder();

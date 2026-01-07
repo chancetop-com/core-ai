@@ -1,8 +1,6 @@
 package ai.core.memory;
 
 /**
- * Configuration for unified memory lifecycle.
- *
  * @author xander
  */
 public final class UnifiedMemoryConfig {
