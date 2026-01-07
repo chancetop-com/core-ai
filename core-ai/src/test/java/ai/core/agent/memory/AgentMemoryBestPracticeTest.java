@@ -161,6 +161,7 @@ class AgentMemoryBestPracticeTest {
                 .enableCompression(true)   // Conversation compression (within session)
                 .unifiedMemory(memory)     // Cross-session memory
                 .build();
+//            agent.run()
 
             assertNotNull(agent);
             // Compression: handles conversation context within session

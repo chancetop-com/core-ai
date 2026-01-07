@@ -1,6 +1,6 @@
-package ai.core.agent.lifecycle;
+package ai.core.agent;
 
-import ai.core.agent.Agent;
+import ai.core.agent.lifecycle.FakerLifecycle;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;

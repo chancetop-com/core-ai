@@ -43,8 +43,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Compression compression;
     private boolean compressionEnabled = true;
 
-    // Long-term memory (unified memory) configuration
-    private Memory longTermMemory;
+    // Unified memory configuration
+    private Memory memory;
     private UnifiedMemoryConfig unifiedMemoryConfig;
 
     // Langfuse prompt integration (simplified - just names needed)
@@ -74,13 +74,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
-    public AgentBuilder unifiedMemory(Memory longTermMemory) {
-        this.longTermMemory = longTermMemory;
+    public AgentBuilder unifiedMemory(Memory memory) {
+        this.memory = memory;
         return this;
     }
 
-    public AgentBuilder unifiedMemory(Memory longTermMemory, UnifiedMemoryConfig config) {
-        this.longTermMemory = longTermMemory;
+    public AgentBuilder unifiedMemory(Memory memory, UnifiedMemoryConfig config) {
+        this.memory = memory;
         this.unifiedMemoryConfig = config;
         return this;
     }
@@ -244,14 +244,14 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     private void configureUnifiedMemory(Agent agent) {
-        if (this.longTermMemory == null) {
+        if (this.memory == null) {
             return;
         }
         var config = this.unifiedMemoryConfig != null
             ? this.unifiedMemoryConfig
             : UnifiedMemoryConfig.defaultConfig();
 
-        var lifecycle = new UnifiedMemoryLifecycle(this.longTermMemory, config.getMaxRecallRecords());
+        var lifecycle = new UnifiedMemoryLifecycle(this.memory, config.getMaxRecallRecords());
         agent.agentLifecycles.add(lifecycle);
 
         // Only auto-register MemoryRecallTool if autoRecall is enabled
