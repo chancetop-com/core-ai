@@ -141,7 +141,7 @@ public class BFCLDatasetLoader {
         return files.entrySet().stream()
                 .filter(entry -> {
                     var name = entry.getKey();
-                    return category.getTypes().stream().anyMatch(name::contains);
+                    return category.getTypes().stream().anyMatch(partName->name.startsWith("BFCL_v4_"+partName));
                 })
                 .peek(entry -> LOGGER.info("Reading file: {}", entry.getKey()))
                 .map(entry -> {
