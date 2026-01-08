@@ -25,7 +25,7 @@ public class Compression {
     private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
-    private static final double DEFAULT_TOOL_RESULT_THRESHOLD = 0.7;
+    private static final int MAX_TOOL_RESULT_TOKENS = 30000;
     private static final int HEAD_TOKENS = 500;
     private static final int TAIL_TOKENS = 500;
     private static final String TEMP_DIR_NAME = "core-ai";
@@ -258,25 +258,14 @@ public class Compression {
         return sb.toString();
     }
 
-    // ==================== Tool Result Compression ====================
-
-    /**
-     * Compress a long tool result by saving to file and returning a summary with head/tail.
-     *
-     * @param toolName  the tool name
-     * @param result    the tool result content
-     * @param sessionId the session id for file organization
-     * @return compressed result with file path, or original result if not exceeding threshold
-     */
     public String compressToolResult(String toolName, String result, String sessionId) {
         if (result == null || result.isEmpty()) {
             return result;
         }
 
         int tokenCount = Tokenizer.tokenCount(result);
-        int threshold = (int) (maxContextTokens * DEFAULT_TOOL_RESULT_THRESHOLD);
 
-        if (tokenCount <= threshold) {
+        if (tokenCount <= MAX_TOOL_RESULT_TOKENS) {
             return result;
         }
 
@@ -284,8 +273,8 @@ public class Compression {
             Path filePath = writeToolResultToFile(toolName, result, sessionId);
             String summary = buildToolResultSummary(toolName, result, tokenCount, filePath);
 
-            LOGGER.info("Long tool result from {} saved to file: {} ({} tokens, threshold: {})",
-                toolName, filePath, tokenCount, threshold);
+            LOGGER.info("Long tool result from {} saved to file: {} ({} tokens, max: {})",
+                toolName, filePath, tokenCount, MAX_TOOL_RESULT_TOKENS);
 
             return summary;
         } catch (IOException e) {
@@ -294,16 +283,12 @@ public class Compression {
         }
     }
 
-    /**
-     * Check if tool result should be compressed.
-     */
     public boolean shouldCompressToolResult(String result) {
         if (result == null || result.isEmpty()) {
             return false;
         }
         int tokenCount = Tokenizer.tokenCount(result);
-        int threshold = (int) (maxContextTokens * DEFAULT_TOOL_RESULT_THRESHOLD);
-        return tokenCount > threshold;
+        return tokenCount > MAX_TOOL_RESULT_TOKENS;
     }
 
     private Path writeToolResultToFile(String toolName, String content, String sessionId) throws IOException {

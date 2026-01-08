@@ -260,8 +260,8 @@ class CompressionTest {
     @Test
     void testCompressToolResultLongContent() throws Exception {
         Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
-        // Create content that exceeds 70% of 128000 tokens (~89600 tokens)
-        // Each "word " is about 1 token, so we need ~90000 words
+        // Create content that exceeds MAX_TOOL_RESULT_TOKENS (30000 tokens)
+        // Each "word " is about 1 token, so we need >30000 words
         String longResult = "word ".repeat(100000);
 
         String compressed = compressionWithProvider.compressToolResult("search_tool", longResult, "session-123");
@@ -317,7 +317,7 @@ class CompressionTest {
         // Short content
         assertFalse(compressionWithProvider.shouldCompressToolResult("short"));
 
-        // Long content (>70% of 128000 = 89600 tokens)
+        // Long content (>30000 tokens)
         String longContent = "word ".repeat(100000);
         assertTrue(compressionWithProvider.shouldCompressToolResult(longContent));
 
