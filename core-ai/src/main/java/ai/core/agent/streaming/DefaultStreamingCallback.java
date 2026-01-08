@@ -10,11 +10,6 @@ public class DefaultStreamingCallback implements StreamingCallback {
     }
 
     @Override
-    public void onComplete() {
-
-    }
-
-    @Override
     public void onError(Throwable error) {
         throw new RuntimeException(error);
     }
