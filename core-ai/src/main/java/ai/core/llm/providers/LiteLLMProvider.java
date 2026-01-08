@@ -36,6 +36,7 @@ import com.openai.models.chat.completions.ChatCompletionStreamOptions;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
+import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.util.function.Tuples;
@@ -138,15 +139,15 @@ public class LiteLLMProvider extends LLMProvider {
         List<FunctionCall> result = new ArrayList<>();
         FunctionCall current = null;
         for (FunctionCall fc : fcs) {
-            if (Objects.nonNull(fc.id)) {
+            if (!Strings.isBlank(fc.id)) {
                 current = FunctionCall.of(fc.id, fc.type, fc.function.name, fc.function.arguments);
                 result.add(current);
                 continue;
             }
-            if (Objects.nonNull(current) && Objects.nonNull(fc.function.name)) {
+            if (Objects.nonNull(current) && !Strings.isBlank(fc.function.name)) {
                 current.function.name += fc.function.name;
             }
-            if (Objects.nonNull(current) && Objects.nonNull(fc.function.arguments)) {
+            if (Objects.nonNull(current) && !Strings.isBlank(fc.function.arguments)) {
                 current.function.arguments += fc.function.arguments;
             }
         }
