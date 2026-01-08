@@ -1,5 +1,6 @@
 package ai.core.compression;
 
+import ai.core.document.Tokenizer;
 import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
@@ -10,6 +11,10 @@ import ai.core.prompt.Prompts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,6 +25,10 @@ public class Compression {
     private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
+    private static final double DEFAULT_TOOL_RESULT_THRESHOLD = 0.7;
+    private static final int HEAD_TOKENS = 500;
+    private static final int TAIL_TOKENS = 500;
+    private static final String TEMP_DIR_NAME = "core-ai";
     private static final int DEFAULT_KEEP_RECENT_TURNS = 5;
     private static final int MIN_SUMMARY_TOKENS = 500;
     private static final int MAX_SUMMARY_TOKENS = 4000;
@@ -247,5 +256,118 @@ public class Compression {
             }
         }
         return sb.toString();
+    }
+
+    // ==================== Tool Result Compression ====================
+
+    /**
+     * Compress a long tool result by saving to file and returning a summary with head/tail.
+     *
+     * @param toolName  the tool name
+     * @param result    the tool result content
+     * @param sessionId the session id for file organization
+     * @return compressed result with file path, or original result if not exceeding threshold
+     */
+    public String compressToolResult(String toolName, String result, String sessionId) {
+        if (result == null || result.isEmpty()) {
+            return result;
+        }
+
+        int tokenCount = Tokenizer.tokenCount(result);
+        int threshold = (int) (maxContextTokens * DEFAULT_TOOL_RESULT_THRESHOLD);
+
+        if (tokenCount <= threshold) {
+            return result;
+        }
+
+        try {
+            Path filePath = writeToolResultToFile(toolName, result, sessionId);
+            String summary = buildToolResultSummary(toolName, result, tokenCount, filePath);
+
+            LOGGER.info("Long tool result from {} saved to file: {} ({} tokens, threshold: {})",
+                toolName, filePath, tokenCount, threshold);
+
+            return summary;
+        } catch (IOException e) {
+            LOGGER.error("Failed to write long tool result to file, keeping original", e);
+            return result;
+        }
+    }
+
+    /**
+     * Check if tool result should be compressed.
+     */
+    public boolean shouldCompressToolResult(String result) {
+        if (result == null || result.isEmpty()) {
+            return false;
+        }
+        int tokenCount = Tokenizer.tokenCount(result);
+        int threshold = (int) (maxContextTokens * DEFAULT_TOOL_RESULT_THRESHOLD);
+        return tokenCount > threshold;
+    }
+
+    private Path writeToolResultToFile(String toolName, String content, String sessionId) throws IOException {
+        String sid = sessionId != null ? sessionId : "default";
+        Path baseTempDir = Path.of(System.getProperty("java.io.tmpdir"), TEMP_DIR_NAME);
+        Path sessionDir = baseTempDir.resolve(sid);
+
+        if (!Files.exists(sessionDir)) {
+            Files.createDirectories(sessionDir);
+        }
+
+        String fileName = String.format("%s_%d.txt", sanitizeFileName(toolName), Instant.now().toEpochMilli());
+        Path filePath = sessionDir.resolve(fileName);
+        Files.writeString(filePath, content);
+        return filePath;
+    }
+
+    private String buildToolResultSummary(String toolName, String content, int tokenCount, Path filePath) {
+        String headContent = truncateToTokens(content, HEAD_TOKENS);
+        String tailContent = extractTailTokens(content, TAIL_TOKENS);
+
+        return String.format("""
+            [Tool result truncated - full content saved to file]
+            Tool: %s
+            File: %s
+            Total: %d tokens
+
+            === HEAD (first %d tokens) ===
+            %s
+
+            === ... truncated ... ===
+
+            === TAIL (last %d tokens) ===
+            %s
+
+            [Use read_file tool with file_path="%s" to view full content]""",
+            toolName, filePath, tokenCount,
+            HEAD_TOKENS, headContent,
+            TAIL_TOKENS, tailContent,
+            filePath);
+    }
+
+    private String truncateToTokens(String content, int maxTokens) {
+        List<Integer> tokens = Tokenizer.encode(content);
+        if (tokens.size() <= maxTokens) {
+            return content;
+        }
+        return Tokenizer.decode(tokens.subList(0, maxTokens));
+    }
+
+    private String extractTailTokens(String content, int tailTokens) {
+        List<Integer> tokens = Tokenizer.encode(content);
+        if (tokens.size() <= tailTokens) {
+            return content;
+        }
+        int startIndex = tokens.size() - tailTokens;
+        return Tokenizer.decode(tokens.subList(startIndex, tokens.size()));
+    }
+
+    private String sanitizeFileName(String name) {
+        return name.replaceAll("[^a-zA-Z0-9_-]", "_");
+    }
+
+    public int getMaxContextTokens() {
+        return maxContextTokens;
     }
 }

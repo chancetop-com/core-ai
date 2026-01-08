@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -239,5 +241,115 @@ class CompressionTest {
         public String name() {
             return "mock";
         }
+    }
+
+    // ==================== Tool Result Compression Tests ====================
+
+    @Test
+    void testCompressToolResultShortContent() {
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
+        String shortResult = "This is a short result";
+
+        String compressed = compressionWithProvider.compressToolResult("test_tool", shortResult, "session-1");
+
+        // Short content should not be compressed
+        assertEquals(shortResult, compressed);
+        LOGGER.info("Compress tool result short content test passed");
+    }
+
+    @Test
+    void testCompressToolResultLongContent() throws Exception {
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
+        // Create content that exceeds 70% of 128000 tokens (~89600 tokens)
+        // Each "word " is about 1 token, so we need ~90000 words
+        String longResult = "word ".repeat(100000);
+
+        String compressed = compressionWithProvider.compressToolResult("search_tool", longResult, "session-123");
+
+        // Should be compressed
+        assertFalse(compressed.equals(longResult));
+        assertTrue(compressed.contains("[Tool result truncated"));
+        assertTrue(compressed.contains("search_tool"));
+        assertTrue(compressed.contains("HEAD (first 500 tokens)"));
+        assertTrue(compressed.contains("TAIL (last 500 tokens)"));
+        assertTrue(compressed.contains("read_file"));
+        assertTrue(compressed.contains("session-123"));
+
+        // Verify file was created
+        String filePath = extractFilePath(compressed);
+        assertNotNull(filePath);
+        assertTrue(Files.exists(Path.of(filePath)));
+
+        // Verify file content
+        String fileContent = Files.readString(Path.of(filePath));
+        assertEquals(longResult, fileContent);
+
+        // Cleanup
+        Files.deleteIfExists(Path.of(filePath));
+
+        LOGGER.info("Compress tool result long content test passed");
+    }
+
+    @Test
+    void testCompressToolResultNullContent() {
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
+
+        String compressed = compressionWithProvider.compressToolResult("test_tool", null, "session-1");
+
+        assertSame(null, compressed);
+        LOGGER.info("Compress tool result null content test passed");
+    }
+
+    @Test
+    void testCompressToolResultEmptyContent() {
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
+
+        String compressed = compressionWithProvider.compressToolResult("test_tool", "", "session-1");
+
+        assertEquals("", compressed);
+        LOGGER.info("Compress tool result empty content test passed");
+    }
+
+    @Test
+    void testShouldCompressToolResult() {
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
+
+        // Short content
+        assertFalse(compressionWithProvider.shouldCompressToolResult("short"));
+
+        // Long content (>70% of 128000 = 89600 tokens)
+        String longContent = "word ".repeat(100000);
+        assertTrue(compressionWithProvider.shouldCompressToolResult(longContent));
+
+        LOGGER.info("Should compress tool result test passed");
+    }
+
+    @Test
+    void testCompressToolResultDefaultSession() throws Exception {
+        Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
+        String longResult = "word ".repeat(100000);
+
+        String compressed = compressionWithProvider.compressToolResult("test_tool", longResult, null);
+
+        // Should use "default" as session id
+        assertTrue(compressed.contains("default"));
+
+        // Cleanup
+        String filePath = extractFilePath(compressed);
+        if (filePath != null) {
+            Files.deleteIfExists(Path.of(filePath));
+        }
+
+        LOGGER.info("Compress tool result default session test passed");
+    }
+
+    private String extractFilePath(String summary) {
+        for (String line : summary.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("File:")) {
+                return trimmed.substring(5).trim();
+            }
+        }
+        return null;
     }
 }
