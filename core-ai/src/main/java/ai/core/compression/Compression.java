@@ -314,7 +314,7 @@ public class Compression {
             [Tool result truncated - full content saved to file]
             Tool: %s
             File: %s
-            Total: %d tokens
+            Total: %d tokens (exceeds %d token limit)
 
             === HEAD (first %d tokens) ===
             %s
@@ -324,8 +324,10 @@ public class Compression {
             === TAIL (last %d tokens) ===
             %s
 
-            [Use read_file tool with file_path="%s" to view full content]""",
-            toolName, filePath, tokenCount,
+            [WARNING: This is a large file. Do NOT read the full file directly as it will be truncated again.
+            Use read_file with offset and limit parameters to read specific sections, e.g.:
+            read_file(file_path="%s", offset=<line_number>, limit=<num_lines>)]""",
+            toolName, filePath, tokenCount, MAX_TOOL_RESULT_TOKENS,
             HEAD_TOKENS, headContent,
             TAIL_TOKENS, tailContent,
             filePath);
