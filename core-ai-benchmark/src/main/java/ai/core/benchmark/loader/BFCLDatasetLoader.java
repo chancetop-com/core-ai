@@ -62,6 +62,7 @@ public class BFCLDatasetLoader implements
 
     @Override
     public List<BFCLFileInfo> loadUncompleted(BFCLCategory category) {
+        LOGGER.info("Loading uncompleted items for category: {}", category);
         var allFiles = load(category);
         var completedIds = getCompletedItemIds(category);
 
@@ -83,10 +84,6 @@ public class BFCLDatasetLoader implements
         return BFCLFileInfo.of(fileInfo.name, fileInfo.category, fileInfo.path, uncompletedItems);
     }
 
-    public void writeResultToFile(BFCLFileInfo fileInfo, BFCLItemEvalResult result) {
-        var path = createTargetFile(fileInfo);
-        writeResultToFile(path, result);
-    }
 
     public List<String> getCompletedItemIds(BFCLCategory category) {
         var resultDir = Paths.get(this.workDir)
@@ -130,14 +127,14 @@ public class BFCLDatasetLoader implements
         return ids;
     }
 
-    private Path createTargetFile(BFCLFileInfo fileInfo) {
+    public Path getTargetFilePath(String fileName, String category) {
         var path = Paths.get(this.workDir)
                 .resolve("result")
                 .resolve(this.resultDirName)
-                .resolve(fileInfo.category);
+                .resolve(category);
         try {
             Files.createDirectories(path);
-            var fileNameSplit = fileInfo.name.split("\\.");
+            var fileNameSplit = fileName.split("\\.");
             var targetFileName = fileNameSplit[0] + "_result." + fileNameSplit[1];
             var targetFilePath = path.resolve(targetFileName);
             if (!Files.exists(targetFilePath)) {
@@ -168,6 +165,11 @@ public class BFCLDatasetLoader implements
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void writeResultToFile(String fileName, String category, BFCLItemEvalResult result) {
+        var filePath = getTargetFilePath(fileName, category);
+        writeResultToFile(filePath, result);
     }
 
     private boolean isDatasetExist() {
