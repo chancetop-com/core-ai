@@ -15,15 +15,6 @@ import java.util.Map;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class BFCLItem {
-    @JsonProperty("id")
-    public String id;
-    @JsonProperty("question")
-    public List<List<Message>> question;
-    @JsonProperty("function")
-    public List<FunctionDefinition> function;
-
-
-
     public static BFCLItem fromJson(String json) {
         ObjectMapper mapper = new ObjectMapper();
         try {
@@ -34,6 +25,13 @@ public class BFCLItem {
 
     }
 
+    @JsonProperty("id")
+    public String id;
+    @JsonProperty("question")
+    public List<List<Message>> question;
+    @JsonProperty("function")
+    public List<FunctionDefinition> function;
+
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Message {
@@ -41,13 +39,6 @@ public class BFCLItem {
         public String role;
         @JsonProperty("content")
         public String content;
-
-        public static Message of(String role, String content) {
-            Message message = new Message();
-            message.role = role;
-            message.content = content;
-            return message;
-        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -58,14 +49,6 @@ public class BFCLItem {
         public String description;
         @JsonProperty("parameters")
         public Parameters parameters;
-
-        public static FunctionDefinition of(String name, String description, Parameters parameters) {
-            FunctionDefinition functionDefinition = new FunctionDefinition();
-            functionDefinition.name = name;
-            functionDefinition.description = description;
-            functionDefinition.parameters = parameters;
-            return functionDefinition;
-        }
     }
 
 
@@ -78,13 +61,6 @@ public class BFCLItem {
         @JsonProperty("properties")
         public Map<String, JsonPropertyInfo> properties;
 
-        public static Parameters of(String type, List<String> required, Map<String, JsonPropertyInfo> properties) {
-            Parameters parameters = new Parameters();
-            parameters.type = type;
-            parameters.required = required;
-            parameters.properties = properties;
-            return parameters;
-        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -102,15 +78,5 @@ public class BFCLItem {
         @JsonProperty("items")
         public JsonPropertyInfo items;
 
-        public static JsonPropertyInfo of(String type, String description, Object defaultValue,
-                                          List<String> enumValues, Map<String, JsonPropertyInfo> properties) {
-            JsonPropertyInfo JsonPropertyInfo = new JsonPropertyInfo();
-            JsonPropertyInfo.type = type;
-            JsonPropertyInfo.description = description;
-            JsonPropertyInfo.defaultValue = defaultValue;
-            JsonPropertyInfo.enumValues = enumValues;
-            JsonPropertyInfo.properties = properties;
-            return JsonPropertyInfo;
-        }
     }
 }

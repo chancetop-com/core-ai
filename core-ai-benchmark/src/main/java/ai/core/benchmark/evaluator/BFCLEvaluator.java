@@ -36,12 +36,6 @@ public class BFCLEvaluator {
         );
     }
 
-    /**
-     * Context for processing an item with its file metadata
-     */
-    private record ItemContext(String fileName, String category, BFCLItem item) {
-    }
-
 
     private List<BFCLFileInfo> loadDataset(BFCLCategory category, List<String> filterIds, boolean skipCompleted) {
         var loadResult = skipCompleted ? datasetLoader.loadUncompleted(category) : datasetLoader.load(category);
@@ -101,6 +95,12 @@ public class BFCLEvaluator {
     private void writeResult(ItemContext context, BFCLItemEvalResult result) {
         LOGGER.debug("[{}] Writing result for item: {}", context.fileName, context.item.id);
         datasetLoader.writeResultToFile(context.fileName, context.category, result);
+    }
+
+    /**
+     * Context for processing an item with its file metadata
+     */
+    private record ItemContext(String fileName, String category, BFCLItem item) {
     }
 
 }

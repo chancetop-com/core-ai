@@ -5,7 +5,7 @@ package ai.core.benchmark.inference;
  * date: 2025/12/22
  * description:
  */
-public interface InferenceHandle<T,R> {
+public interface InferenceHandle<T, R> {
 
     R handle(T item);
 }

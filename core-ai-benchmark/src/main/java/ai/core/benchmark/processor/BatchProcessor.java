@@ -110,11 +110,16 @@ public class BatchProcessor<T, R> {
         int filled = (int) (barLength * percentage / 100);
         int empty = barLength - filled;
 
-        return "[" +
-                "=".repeat(Math.max(0, filled)) +
-                ">".repeat(filled > 0 && empty > 0 ? 1 : 0) +
-                " ".repeat(Math.max(0, empty - (filled > 0 && empty > 0 ? 1 : 0))) +
-                "]" +
+        return "["
+                +
+                "=".repeat(Math.max(0, filled))
+                +
+                ">".repeat(filled > 0 && empty > 0 ? 1 : 0)
+                +
+                " ".repeat(Math.max(0, empty - (filled > 0 && empty > 0 ? 1 : 0)))
+                +
+                "]"
+                +
                 String.format(" %.1f%%", percentage);
     }
 }

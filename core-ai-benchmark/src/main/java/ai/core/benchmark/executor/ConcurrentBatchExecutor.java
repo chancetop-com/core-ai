@@ -17,6 +17,14 @@ import java.util.concurrent.TimeUnit;
 public class ConcurrentBatchExecutor {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConcurrentBatchExecutor.class);
 
+    public static ConcurrentBatchExecutor create() {
+        return new ConcurrentBatchExecutor(Runtime.getRuntime().availableProcessors());
+    }
+
+    public static ConcurrentBatchExecutor create(int threadPoolSize) {
+        return new ConcurrentBatchExecutor(threadPoolSize);
+    }
+
     private final int threadPoolSize;
     private final ExecutorService executorService;
 
@@ -24,6 +32,8 @@ public class ConcurrentBatchExecutor {
         this.threadPoolSize = threadPoolSize;
         this.executorService = Executors.newFixedThreadPool(threadPoolSize);
     }
+
+
 
     /**
      * Execute a list of tasks concurrently and wait for all to complete
@@ -37,7 +47,7 @@ public class ConcurrentBatchExecutor {
                 .toList();
 
         // Wait for all tasks to complete
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
 
         LOGGER.info("All {} tasks completed", tasks.size());
     }
@@ -60,17 +70,5 @@ public class ConcurrentBatchExecutor {
         }
     }
 
-    /**
-     * Create a new executor with the number of available processors
-     */
-    public static ConcurrentBatchExecutor create() {
-        return new ConcurrentBatchExecutor(Runtime.getRuntime().availableProcessors());
-    }
 
-    /**
-     * Create a new executor with specified thread pool size
-     */
-    public static ConcurrentBatchExecutor create(int threadPoolSize) {
-        return new ConcurrentBatchExecutor(threadPoolSize);
-    }
 }

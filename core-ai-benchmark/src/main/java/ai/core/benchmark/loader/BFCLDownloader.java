@@ -31,19 +31,23 @@ public class BFCLDownloader {
             cloneRepository(tempDir);
 
             Path sourceDir = tempDir.resolve(EVAL_PATH);
-            if (!Files.exists(sourceDir)) {
-                throw new IOException("data directory not found: " + sourceDir);
-            }
+            validateSourceDirectory(sourceDir);
 
             copyDirectory(sourceDir, bfDir);
 
             LOGGER.info("BFCL dataset downloaded to: {}", bfDir);
 
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Download interrupted", e);
         } finally {
             cleanup(tempDir);
+        }
+    }
+
+    private void validateSourceDirectory(Path sourceDir) {
+        if (!Files.exists(sourceDir)) {
+            throw new RuntimeException("data directory not found: " + sourceDir);
         }
     }
 

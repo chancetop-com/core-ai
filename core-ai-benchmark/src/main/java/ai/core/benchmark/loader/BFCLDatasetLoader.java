@@ -20,6 +20,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -89,7 +90,7 @@ public class BFCLDatasetLoader implements
         var resultDir = Paths.get(this.workDir)
                 .resolve("result")
                 .resolve(this.resultDirName)
-                .resolve(category.name().toLowerCase());
+                .resolve(category.name().toLowerCase(Locale.ROOT));
 
         if (!Files.exists(resultDir)) {
             LOGGER.info("No result directory found, starting from scratch");
@@ -221,7 +222,7 @@ public class BFCLDatasetLoader implements
                     var path = entry.getValue();
                     var name = entry.getKey();
                     var items = readFile(path);
-                    return BFCLFileInfo.of(name, category.name().toLowerCase(), path.toString(), items);
+                    return BFCLFileInfo.of(name, category.name().toLowerCase(Locale.ROOT), path.toString(), items);
 
                 }).toList();
 

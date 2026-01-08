@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.util.Strings;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -40,7 +41,7 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
                 .map(this::toJson)
                 .map(this::readFunctionDefValue)
                 .peek(function -> function.name = function.name.replaceAll("\\.", "_"))
-                .peek(function -> wrapDesc(itemId,function))
+                .peek(function -> wrapDesc(itemId, function))
                 .map(function -> {
                     var tool = new Tool();
                     tool.type = ToolType.FUNCTION;
@@ -51,14 +52,14 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
                 }).toList();
     }
 
-    private void wrapDesc(String itemId,BFCLItem.FunctionDefinition definition) {
-       if(isJava(itemId)){
-           definition.description +=" Note that the provided function is in Java 8 SDK syntax.";
-       } else if(isJs(itemId)){
-           definition.description +=" Note that the provided function is in JavaScript syntax.";
-       }else {
-           definition.description +=" Note that the provided function is in Python 3 syntax.";
-       }
+    private void wrapDesc(String itemId, BFCLItem.FunctionDefinition definition) {
+        if (isJava(itemId)) {
+            definition.description += " Note that the provided function is in Java 8 SDK syntax.";
+        } else if (isJs(itemId)) {
+            definition.description += " Note that the provided function is in JavaScript syntax.";
+        } else {
+            definition.description += " Note that the provided function is in Python 3 syntax.";
+        }
 
     }
 
@@ -89,7 +90,7 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
     }
 
     private String convertType(String type) {
-        var tempType = type.toLowerCase();
+        var tempType = type.toLowerCase(Locale.ROOT);
         if (Strings.isBlank(tempType)) {
             return "object";
         }
@@ -148,21 +149,19 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
     private String mappingPropJAVADesc(String type, BFCLItem.JsonPropertyInfo propertyInfo) {
         String desc = propertyInfo.description;
         if (Objects.equals(type, "any")) {
-            desc += " This parameter can be of any type of Java object in string representation.";
+            return desc + " This parameter can be of any type of Java object in string representation.";
         } else {
-            desc += " This is Java %s type parameter in string representation.".formatted(type);
+            return desc + " This is Java %s type parameter in string representation.".formatted(type);
         }
-        return desc;
     }
 
     private String mappingPropJSDesc(String type, BFCLItem.JsonPropertyInfo propertyInfo) {
         String desc = propertyInfo.description;
         if (Objects.equals(type, "any")) {
-            desc += " This parameter can be of any type of JavaScript object in string representation.";
+            return desc + " This parameter can be of any type of JavaScript object in string representation.";
         } else {
-            desc += " This is JavaScript %s type parameter in string representation.".formatted(type);
+            return desc + " This is JavaScript %s type parameter in string representation.".formatted(type);
         }
-        return desc;
     }
 
     private String mappingDelPropJavaList(String type, BFCLItem.JsonPropertyInfo propertyInfo) {
@@ -175,19 +174,17 @@ public abstract class BFCLInferenceHandle implements InferenceHandle<BFCLItem, B
     }
 
     private String mappingDelPropJSList(String type, BFCLItem.JsonPropertyInfo propertyInfo) {
-        String desc = propertyInfo.description;
+        StringBuilder desc = new StringBuilder(propertyInfo.description);
         if (Objects.equals(type, "array")) {
-            desc += "The list elements are of type %s; they are not in string representation.".formatted(propertyInfo.items.type);
+            desc.append("The list elements are of type %s; they are not in string representation.".formatted(propertyInfo.items.type));
             propertyInfo.items = null;
         }
 
-        if (Objects.equals(type, "dict")) {
-            if (propertyInfo.properties != null && !propertyInfo.properties.isEmpty()) {
-                desc += "The dictionary entries have the following schema; they are not in string representation. %s".formatted(toJson(propertyInfo.properties));
-                propertyInfo.properties = null;
-            }
+        if (Objects.equals(type, "dict") && propertyInfo.properties != null && !propertyInfo.properties.isEmpty()) {
+            desc.append("The dictionary entries have the following schema; they are not in string representation. %s".formatted(toJson(propertyInfo.properties)));
+            propertyInfo.properties = null;
         }
-        return desc;
+        return desc.toString();
     }
 
     private List<Message> completeMessages(BFCLItem item) {

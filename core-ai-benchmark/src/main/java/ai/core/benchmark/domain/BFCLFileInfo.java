@@ -8,17 +8,18 @@ import java.util.List;
  * description:
  */
 public class BFCLFileInfo {
+    public static BFCLFileInfo of(String name, String category, String path, List<BFCLItem> items) {
+        var info = new BFCLFileInfo();
+        info.name = name;
+        info.path = path;
+        info.items = items;
+        info.category = category;
+        return info;
+    }
+
     public String name;
     public String path;
     public String category;
     public List<BFCLItem> items;
 
-    public static BFCLFileInfo of(String name, String category,String path, List<BFCLItem> items) {
-        var info = new BFCLFileInfo();
-        info.name = name;
-        info.path = path;
-        info.items = items;
-        info.category=category;
-        return info;
-    }
 }
