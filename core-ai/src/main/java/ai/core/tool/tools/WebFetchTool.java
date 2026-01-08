@@ -3,21 +3,21 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.http.ContentType;
-import core.framework.http.HTTPClient;
-import core.framework.http.HTTPHeaders;
-import core.framework.http.HTTPMethod;
-import core.framework.http.HTTPRequest;
-import core.framework.http.HTTPResponse;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author stephen
@@ -26,7 +26,7 @@ public class WebFetchTool extends ToolCall {
     public static final String TOOL_NAME = "web_fetch";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WebFetchTool.class);
-    private static final String BROWSER_DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0";
+    private static final Set<String> SUPPORTED_METHODS = Set.of("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS");
 
     private static final String TOOL_DESC = """
             - Fetches content from a specified URL and processes it using HTTP requests
@@ -35,9 +35,9 @@ public class WebFetchTool extends ToolCall {
             - Optional content type and request body for POST/PUT/PATCH requests
             - Returns the response body as string, or error message if request fails
             - Use this tool when you need to retrieve content from web URLs
-            
+
             Usage notes:
-            
+
             - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
             - HTTP URLs will be automatically upgraded to HTTPS
             - The prompt should describe what information you want to extract from the page
@@ -51,7 +51,10 @@ public class WebFetchTool extends ToolCall {
         return new Builder();
     }
 
-    private final HTTPClient client = HTTPClient.builder().build();
+    private final HttpClient client = HttpClient.newBuilder()
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .connectTimeout(Duration.ofSeconds(30))
+        .build();
 
     @Override
     public ToolCallResult execute(String text) {
@@ -76,17 +79,7 @@ public class WebFetchTool extends ToolCall {
         }
     }
 
-    /**
-     * Execute HTTP request
-     *
-     * @param url the URL to request
-     * @param method the HTTP method (GET, POST, PUT, DELETE, etc.)
-     * @param contentType the content type header
-     * @param body the request body (optional, can be null)
-     * @return the response body as string, or error message if request fails
-     */
     private String executeRequest(String url, String method, String contentType, String body) {
-        // Validate parameters
         if (Strings.isBlank(url)) {
             return "Error: URL parameter is required";
         }
@@ -94,50 +87,16 @@ public class WebFetchTool extends ToolCall {
             return "Error: HTTP method parameter is required";
         }
 
-        // Parse and validate HTTP method
-        HTTPMethod httpMethod;
-        try {
-            httpMethod = HTTPMethod.valueOf(method.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
+        String httpMethod = method.toUpperCase(Locale.ROOT);
+        if (!SUPPORTED_METHODS.contains(httpMethod)) {
             return "Error: Invalid HTTP method '" + method + "'. Supported methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS";
         }
 
         try {
             LOGGER.info("Executing HTTP {} request to: {}", httpMethod, url);
-
-            // Create request
-            var request = new HTTPRequest(httpMethod, url);
-            request.headers.put(HTTPHeaders.USER_AGENT, BROWSER_DEFAULT_USER_AGENT);
-
-            // Set content type if provided
-            if (!Strings.isBlank(contentType)) {
-                request.headers.put(HTTPHeaders.CONTENT_TYPE, contentType);
-            }
-
-            // Set body if provided
-            if (!Strings.isBlank(body)) {
-                ContentType ct = parseContentType(contentType);
-                request.body(body.getBytes(StandardCharsets.UTF_8), ct);
-                LOGGER.debug("Request body length: {} bytes", body.length());
-            }
-
-            // Execute request
-            HTTPResponse response = client.execute(request);
-            int statusCode = response.statusCode;
-            String responseText = response.text();
-
-            LOGGER.info("HTTP request completed with status code: {}, response length: {} bytes",
-                statusCode, responseText.length());
-
-            // Check status code
-            if (statusCode >= 400) {
-                String error = "HTTP request failed with status " + statusCode + ": " + responseText;
-                LOGGER.warn(error);
-                return error;
-            }
-
-            return responseText;
-
+            HttpRequest request = buildRequest(url, httpMethod, contentType, body);
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            return handleResponse(response);
         } catch (Exception e) {
             String error = "HTTP request failed: " + e.getClass().getSimpleName() + " - " + e.getMessage();
             LOGGER.error(error, e);
@@ -145,29 +104,45 @@ public class WebFetchTool extends ToolCall {
         }
     }
 
-    /**
-     * Parse content type string to ContentType enum
-     */
-    private ContentType parseContentType(String contentType) {
-        if (Strings.isBlank(contentType)) {
-            return ContentType.APPLICATION_JSON;
+    private HttpRequest buildRequest(String url, String httpMethod, String contentType, String body) {
+        var requestBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("User-Agent", "core-ai/1.0")
+            .header("Accept", "*/*")
+            .timeout(Duration.ofSeconds(60));
+
+        if (!Strings.isBlank(contentType)) {
+            requestBuilder.header("Content-Type", contentType);
         }
 
-        String ct = contentType.toLowerCase(Locale.ROOT);
-        if (ct.contains("json")) {
-            return ContentType.APPLICATION_JSON;
-        } else if (ct.contains("xml")) {
-            return ContentType.TEXT_XML;
-        } else if (ct.contains("html")) {
-            return ContentType.TEXT_HTML;
-        } else if (ct.contains("plain")) {
-            return ContentType.TEXT_PLAIN;
-        } else if (ct.contains("form-urlencoded")) {
-            return ContentType.APPLICATION_FORM_URLENCODED;
-        }
+        HttpRequest.BodyPublisher bodyPublisher = Strings.isBlank(body)
+            ? HttpRequest.BodyPublishers.noBody()
+            : HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8);
 
-        // Default to JSON
-        return ContentType.APPLICATION_JSON;
+        switch (httpMethod) {
+            case "GET" -> requestBuilder.GET();
+            case "POST" -> requestBuilder.POST(bodyPublisher);
+            case "PUT" -> requestBuilder.PUT(bodyPublisher);
+            case "DELETE" -> requestBuilder.DELETE();
+            case "PATCH" -> requestBuilder.method("PATCH", bodyPublisher);
+            case "HEAD" -> requestBuilder.method("HEAD", HttpRequest.BodyPublishers.noBody());
+            case "OPTIONS" -> requestBuilder.method("OPTIONS", HttpRequest.BodyPublishers.noBody());
+            default -> requestBuilder.GET();
+        }
+        return requestBuilder.build();
+    }
+
+    private String handleResponse(HttpResponse<String> response) {
+        int statusCode = response.statusCode();
+        String responseText = response.body();
+        LOGGER.info("HTTP request completed with status code: {}, response length: {} bytes", statusCode, responseText.length());
+
+        if (statusCode >= 400) {
+            String error = "HTTP request failed with status " + statusCode + ": " + responseText;
+            LOGGER.warn(error);
+            return error;
+        }
+        return responseText;
     }
 
     public static class Builder extends ToolCall.Builder<Builder, WebFetchTool> {
