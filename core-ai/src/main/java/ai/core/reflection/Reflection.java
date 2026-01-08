@@ -56,12 +56,7 @@ public class Reflection {
               "confidence": <float 0.0-1.0, how confident you are in this evaluation>,
               "strengths": ["list of specific strengths"],
               "weaknesses": ["list of specific issues"],
-              "suggestions": ["actionable recommendations for improvement"],
-              "dimensions": {
-                "correctness": <1-10>,
-                "completeness": <1-10>,
-                "quality": <1-10>
-              }
+              "suggestions": ["actionable recommendations for improvement"]
             }
             ```
 

@@ -3,7 +3,6 @@ package ai.core.reflection;
 import core.framework.api.json.Property;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -33,9 +32,6 @@ public final class ReflectionEvaluation {
     @Property(name = "suggestions")
     public List<String> suggestions;
 
-    @Property(name = "dimensions")
-    public Map<String, Integer> dimensionScores;
-
     @Property(name = "confidence")
     public Double confidence;
 
@@ -45,7 +41,6 @@ public final class ReflectionEvaluation {
     @Property(name = "should_continue")
     public Boolean shouldContinue;
 
-    // Getters for backward compatibility and convenience
     public int getScore() {
         return score;
     }
@@ -66,10 +61,6 @@ public final class ReflectionEvaluation {
         return suggestions != null ? suggestions : List.of();
     }
 
-    public Map<String, Integer> getDimensionScores() {
-        return dimensionScores != null ? dimensionScores : Map.of();
-    }
-
     public double getConfidence() {
         return confidence;
     }
@@ -82,11 +73,6 @@ public final class ReflectionEvaluation {
         return shouldContinue;
     }
 
-    /**
-     * Check if this evaluation is valid.
-     *
-     * @return true if the evaluation has valid data
-     */
     public boolean isValid() {
         return score >= 1
                 && score <= 10
@@ -132,7 +118,6 @@ public final class ReflectionEvaluation {
         private List<String> strengths;
         private List<String> weaknesses;
         private List<String> suggestions;
-        private Map<String, Integer> dimensionScores;
         private double confidence;
         private String improvedSolution;
         private boolean shouldContinue = true;
@@ -165,11 +150,6 @@ public final class ReflectionEvaluation {
             return this;
         }
 
-        public Builder dimensionScores(Map<String, Integer> dimensionScores) {
-            this.dimensionScores = dimensionScores;
-            return this;
-        }
-
         public Builder confidence(double confidence) {
             this.confidence = confidence;
             return this;
@@ -192,7 +172,6 @@ public final class ReflectionEvaluation {
             evaluation.strengths = strengths;
             evaluation.weaknesses = weaknesses;
             evaluation.suggestions = suggestions;
-            evaluation.dimensionScores = dimensionScores;
             evaluation.confidence = confidence;
             evaluation.improvedSolution = improvedSolution;
             evaluation.shouldContinue = shouldContinue;
