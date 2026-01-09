@@ -44,15 +44,11 @@ public class BFCLDatasetLoader implements
     }
 
     private String initWorkDir() {
-        var resourceUrl = Paths.get("").toAbsolutePath()
-                .getParent()
-                .resolve("build")
+        var workDir = Paths.get(System.getProperty("user.home"))
+                .resolve(".cache")
                 .resolve("core-ai-benchmark")
-                .resolve("resources")
-                .resolve("main")
-                .resolve("dataset")
                 .resolve("BFCL");
-        return resourceUrl.toString();
+        return workDir.toString();
     }
 
     @Override

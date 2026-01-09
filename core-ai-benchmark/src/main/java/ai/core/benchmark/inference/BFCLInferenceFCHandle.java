@@ -18,7 +18,7 @@ import java.util.Map;
  * description: base function call
  */
 public class BFCLInferenceFCHandle extends BFCLInferenceHandle {
-    private final LLMProvider llmProvider;
+    final LLMProvider llmProvider;
 
     public BFCLInferenceFCHandle(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
