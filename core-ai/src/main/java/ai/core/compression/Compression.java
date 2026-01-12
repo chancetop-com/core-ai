@@ -307,8 +307,8 @@ public class Compression {
     }
 
     private String buildToolResultSummary(String toolName, String content, int tokenCount, Path filePath) {
-        String headContent = truncateToTokens(content, HEAD_TOKENS);
-        String tailContent = extractTailTokens(content, TAIL_TOKENS);
+        String headContent = truncateToTokens(content);
+        String tailContent = extractTailTokens(content);
 
         return String.format("""
             [Tool result truncated - full content saved to file]
@@ -333,20 +333,20 @@ public class Compression {
             filePath);
     }
 
-    private String truncateToTokens(String content, int maxTokens) {
+    private String truncateToTokens(String content) {
         List<Integer> tokens = Tokenizer.encode(content);
-        if (tokens.size() <= maxTokens) {
+        if (tokens.size() <= Compression.HEAD_TOKENS) {
             return content;
         }
-        return Tokenizer.decode(tokens.subList(0, maxTokens));
+        return Tokenizer.decode(tokens.subList(0, Compression.HEAD_TOKENS));
     }
 
-    private String extractTailTokens(String content, int tailTokens) {
+    private String extractTailTokens(String content) {
         List<Integer> tokens = Tokenizer.encode(content);
-        if (tokens.size() <= tailTokens) {
+        if (tokens.size() <= Compression.TAIL_TOKENS) {
             return content;
         }
-        int startIndex = tokens.size() - tailTokens;
+        int startIndex = tokens.size() - Compression.TAIL_TOKENS;
         return Tokenizer.decode(tokens.subList(startIndex, tokens.size()));
     }
 
