@@ -15,6 +15,7 @@ import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodosTool;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +25,7 @@ import java.util.List;
 /**
  * @author Xander
  */
-//@Disabled
+@Disabled
 class DeepResearchTest extends IntegrationTest {
 
     private final Logger logger = LoggerFactory.getLogger(DeepResearchTest.class);

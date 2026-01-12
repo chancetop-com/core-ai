@@ -28,6 +28,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -198,51 +199,6 @@ class CompressionTest {
         return new MockLLMProvider(summary);
     }
 
-    static class MockLLMProvider extends LLMProvider {
-        private final String summaryResponse;
-
-        MockLLMProvider(String summaryResponse) {
-            super(new LLMProviderConfig("test-model", 0.7, null));
-            this.summaryResponse = summaryResponse;
-        }
-
-        @Override
-        protected CompletionResponse doCompletion(CompletionRequest request) {
-            if (summaryResponse != null) {
-                var response = new CompletionResponse();
-                response.choices = List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, summaryResponse)));
-                response.usage = new Usage();
-                return response;
-            }
-            return null;
-        }
-
-        @Override
-        protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
-            return doCompletion(request);
-        }
-
-        @Override
-        public EmbeddingResponse embeddings(EmbeddingRequest request) {
-            return null;
-        }
-
-        @Override
-        public RerankingResponse rerankings(RerankingRequest request) {
-            return null;
-        }
-
-        @Override
-        public CaptionImageResponse captionImage(CaptionImageRequest request) {
-            return null;
-        }
-
-        @Override
-        public String name() {
-            return "mock";
-        }
-    }
-
     // ==================== Tool Result Compression Tests ====================
 
     @Test
@@ -267,7 +223,7 @@ class CompressionTest {
         String compressed = compressionWithProvider.compressToolResult("search_tool", longResult, "session-123");
 
         // Should be compressed
-        assertFalse(compressed.equals(longResult));
+        assertNotEquals(longResult, compressed);
         assertTrue(compressed.contains("[Tool result truncated"));
         assertTrue(compressed.contains("search_tool"));
         assertTrue(compressed.contains("HEAD (first 500 tokens)"));
@@ -351,5 +307,50 @@ class CompressionTest {
             }
         }
         return null;
+    }
+
+    static class MockLLMProvider extends LLMProvider {
+        private final String summaryResponse;
+
+        MockLLMProvider(String summaryResponse) {
+            super(new LLMProviderConfig("test-model", 0.7, null));
+            this.summaryResponse = summaryResponse;
+        }
+
+        @Override
+        protected CompletionResponse doCompletion(CompletionRequest request) {
+            if (summaryResponse != null) {
+                var response = new CompletionResponse();
+                response.choices = List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, summaryResponse)));
+                response.usage = new Usage();
+                return response;
+            }
+            return null;
+        }
+
+        @Override
+        protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
+            return doCompletion(request);
+        }
+
+        @Override
+        public EmbeddingResponse embeddings(EmbeddingRequest request) {
+            return null;
+        }
+
+        @Override
+        public RerankingResponse rerankings(RerankingRequest request) {
+            return null;
+        }
+
+        @Override
+        public CaptionImageResponse captionImage(CaptionImageRequest request) {
+            return null;
+        }
+
+        @Override
+        public String name() {
+            return "mock";
+        }
     }
 }
