@@ -7,8 +7,8 @@ import ai.core.flow.FlowNode;
 import ai.core.flow.FlowNodeResult;
 import ai.core.flow.FlowNodeType;
 import ai.core.llm.LLMProvider;
+import ai.core.prompt.Prompts;
 import ai.core.rag.RagConfig;
-import ai.core.reflection.Reflection;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.tool.ToolCall;
 import core.framework.api.json.Property;
@@ -194,7 +194,7 @@ public class AgentFlowNode extends FlowNode<AgentFlowNode> {
             reflectionMinRound = 1;
         }
         if (reflectionPrompt == null) {
-            reflectionPrompt = Reflection.DEFAULT_REFLECTION_CONTINUE_TEMPLATE;
+            reflectionPrompt = Prompts.DEFAULT_REFLECTION_CONTINUE_TEMPLATE;
         }
     }
 

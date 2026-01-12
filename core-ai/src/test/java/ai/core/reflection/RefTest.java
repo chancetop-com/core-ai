@@ -1,6 +1,7 @@
 package ai.core.reflection;
 
 import ai.core.agent.Agent;
+import ai.core.prompt.Prompts;
 import ai.core.agent.ExecutionContext;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
@@ -238,7 +239,7 @@ class RefTest {
                 .llmProvider(mockLLMProvider)
                 .systemPrompt("You are a professional writer.")
                 .reflectionConfig(new ReflectionConfig(true, 3, 1,
-                    Reflection.DEFAULT_REFLECTION_WITH_CRITERIA_TEMPLATE, criteria))
+                    Prompts.DEFAULT_REFLECTION_WITH_CRITERIA_TEMPLATE, criteria))
                 .reflectionListener(listener)
                 .build();
 
@@ -352,7 +353,7 @@ class RefTest {
                 .llmProvider(lowScoreMock)
                 .systemPrompt("You are a helpful assistant.")
                 .reflectionConfig(new ReflectionConfig(true, 2, 1,
-                    Reflection.DEFAULT_REFLECTION_WITH_CRITERIA_TEMPLATE, criteria))
+                    Prompts.DEFAULT_REFLECTION_WITH_CRITERIA_TEMPLATE, criteria))
                 .reflectionListener(listener)
                 .build();
 
