@@ -15,5 +15,7 @@ public interface StreamingCallback {
     default void onComplete() {
     }
 
-    void onError(Throwable error);
+    default void onError(Throwable error) {
+
+    }
 }
