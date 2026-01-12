@@ -335,18 +335,18 @@ public class Compression {
 
     private String truncateToTokens(String content) {
         List<Integer> tokens = Tokenizer.encode(content);
-        if (tokens.size() <= Compression.HEAD_TOKENS) {
+        if (tokens.size() <= HEAD_TOKENS) {
             return content;
         }
-        return Tokenizer.decode(tokens.subList(0, Compression.HEAD_TOKENS));
+        return Tokenizer.decode(tokens.subList(0, HEAD_TOKENS));
     }
 
     private String extractTailTokens(String content) {
         List<Integer> tokens = Tokenizer.encode(content);
-        if (tokens.size() <= Compression.TAIL_TOKENS) {
+        if (tokens.size() <= TAIL_TOKENS) {
             return content;
         }
-        int startIndex = tokens.size() - Compression.TAIL_TOKENS;
+        int startIndex = tokens.size() - TAIL_TOKENS;
         return Tokenizer.decode(tokens.subList(startIndex, tokens.size()));
     }
 
