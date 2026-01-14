@@ -36,18 +36,18 @@ public class Compression {
     private final int keepRecentTurns;
     private final int maxContextTokens;
     private final LLMProvider llmProvider;
-    private final String model;
+    private final String summaryModel;
 
-    public Compression(LLMProvider llmProvider, String model) {
-        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, llmProvider, model);
+    public Compression(LLMProvider llmProvider, String agentModel) {
+        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, llmProvider, agentModel, agentModel);
     }
 
-    public Compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String model) {
+    public Compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String agentModel, String summaryModel) {
         this.triggerThreshold = triggerThreshold;
         this.keepRecentTurns = keepRecentTurns;
         this.llmProvider = llmProvider;
-        this.model = model;
-        this.maxContextTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(model);
+        this.summaryModel = summaryModel;
+        this.maxContextTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(agentModel);
     }
 
     public boolean shouldCompress(int currentTokens) {
@@ -215,7 +215,7 @@ public class Compression {
     private String callLLM(String prompt) {
         try {
             var msgs = List.of(Message.of(RoleType.USER, prompt));
-            var request = CompletionRequest.of(msgs, null, 0.3, model, "memory-compressor");
+            var request = CompletionRequest.of(msgs, null, 0.3, summaryModel, "memory-compressor");
             var response = llmProvider.completion(request);
 
             if (response != null && response.choices != null && !response.choices.isEmpty()) {

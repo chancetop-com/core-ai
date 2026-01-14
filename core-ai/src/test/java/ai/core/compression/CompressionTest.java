@@ -42,7 +42,7 @@ class CompressionTest {
 
     @BeforeEach
     void setUp() {
-        compression = new Compression(0.7, 5, null, null);
+        compression = new Compression(0.7, 5, null, null, null);
     }
 
     @Test
@@ -55,7 +55,7 @@ class CompressionTest {
 
     @Test
     void testCustomConstructor() {
-        Compression customCompression = new Compression(0.8, 3, createMockProvider(), "test-model");
+        Compression customCompression = new Compression(0.8, 3, createMockProvider(), "test-model", "test-model");
         assertEquals(0.8, customCompression.getTriggerThreshold());
         assertEquals(3, customCompression.getKeepRecentTurns());
         LOGGER.info("Custom constructor test passed");
@@ -69,7 +69,7 @@ class CompressionTest {
 
     @Test
     void testShouldCompressWithProvider() {
-        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model");
+        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model", "test-model");
 
         // Below threshold (70% of 128000 = 89600)
         assertFalse(compressionWithProvider.shouldCompress(50000));
@@ -102,7 +102,7 @@ class CompressionTest {
 
     @Test
     void testCompressNotEnoughMessages() {
-        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model");
+        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model", "test-model");
         // keepRecentTurns=5, so need more than 5*2=10 messages to compress
         List<Message> messages = createTestMessages(3);
         List<Message> result = compressionWithProvider.compress(messages);
@@ -114,7 +114,7 @@ class CompressionTest {
 
     @Test
     void testCompressBelowThreshold() {
-        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model");
+        Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model", "test-model");
         // Create messages but tokens won't exceed threshold
         List<Message> messages = createTestMessages(15);
         List<Message> result = compressionWithProvider.compress(messages);
@@ -128,7 +128,7 @@ class CompressionTest {
     void testCompressSuccessful() {
         // Create a compression with low threshold for testing
         Compression testCompression = new Compression(0.0001, 2,
-            createMockProviderWithSummary("Test summary"), "test-model");
+            createMockProviderWithSummary("Test summary"), "test-model", "test-model");
 
         List<Message> messages = new ArrayList<>();
         messages.add(Message.of(RoleType.SYSTEM, "You are helpful"));
@@ -161,7 +161,7 @@ class CompressionTest {
     @Test
     void testSystemMessagePreserved() {
         Compression testCompression = new Compression(0.0001, 1,
-            createMockProviderWithSummary("Summary"), "test-model");
+            createMockProviderWithSummary("Summary"), "test-model", "test-model");
 
         List<Message> messages = new ArrayList<>();
         messages.add(Message.of(RoleType.SYSTEM, "System prompt"));

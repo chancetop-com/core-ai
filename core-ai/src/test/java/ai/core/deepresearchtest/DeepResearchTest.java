@@ -3,7 +3,6 @@ package ai.core.deepresearchtest;
 import ai.core.IntegrationTest;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
-import ai.core.compression.Compression;
 import ai.core.llm.LLMProviders;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.tool.tools.EditFileTool;
@@ -35,8 +34,6 @@ class DeepResearchTest extends IntegrationTest {
 
     @Test
     void test() {
-        Compression customCompression = new Compression(0.8, 3, llmProviders.getProvider(), "gpt-5-mini");
-
         // Reflection criteria for deep research quality
         var reflectionCriteria = """
                 Evaluate the deep research output against these criteria:
@@ -209,24 +206,15 @@ class DeepResearchTest extends IntegrationTest {
                         **Remember**: Your ultimate goal is to transform the menu into a strategic business tool that drives measurable improvements in revenue, profitability, and customer satisfaction. Every recommendation should be actionable, evidence-based, and aligned with the restaurant's unique context and goals.
                         # Task Management
 
-                        Use write_todos to track progress:
-                        - Phase 1: Primary source analysis [STATUS]
-                        - Phase 2: Competitive research [STATUS]
-                        - Phase 3: Industry analysis [STATUS]
-                        - Phase 4: Customer insights [STATUS]
-                        - Phase 5: Report writing [STATUS]
-
                         {{system.agent.write.todos.system.prompt}}
 
                         # Quality Requirements
-
-                        - **Minimum 15 searches** across all phases
-                        - **ALL target URLs** must be fetched and analyzed
-                        - **3+ competitors** must be researched with pricing data
                         - **Every recommendation** must cite specific evidence
-                        - **Report must be 5000+ words** of substantive content
                         - **All data tables** must be complete with real data
                         - **Must save** final report to workspace
+
+                        # Knowledge Resources
+                        Explore the workspace files first for relevant documents and data to inform your research.
 
                         # Environment
 
@@ -244,151 +232,18 @@ class DeepResearchTest extends IntegrationTest {
                 .mcpServers(List.of("web-search", "chrome-devtools"), null, null)
                 .llmProvider(llmProviders.getProvider())
                 .maxTurn(150)
-                .model("gpt-5-mini")
+                .model("deepseek-reasoner")
                 .reflectionConfig(ReflectionConfig.withEvaluationCriteria(reflectionCriteria))
-                .compression(customCompression)
+                .compression(0.8, 3)
                 .build();
 
         logger.info("setup agent: {}", agent);
 
         var researchTopic = """
-                # Deep Research Request: Restaurant Menu Optimization
-
-                ## Target
-                **Restaurant:** Nocca (specialty gnocchi concept)
-                **Location:** Nolita, NYC
-                **Cuisine:** Fast-casual Italian
-
-                ## Primary Sources to Analyze (USE BROWSER)
-
-                **IMPORTANT:** These are dynamic websites. You MUST use chrome-devtools browser tools to access them:
-
-                ### 1. Brand Website: https://www.nocca.co/
-                **Browser steps:**
-                1. `devtools_navigate` to https://www.nocca.co/
-                2. `devtools_scroll` to load all content
-                3. `devtools_get_page_content` to extract text
-                4. `devtools_screenshot` to capture layout
-                5. Navigate to any sub-pages (shop, about, etc.)
-
-                **Extract:**
-                - Brand positioning and messaging
-                - Product offerings (retail gnocchi products)
-                - Pricing for retail items
-                - Any recipes or usage suggestions
-
-                ### 2. Online Ordering Menu: https://www.getsauce.com/order/nocca/menu/gnocchi-bowls-028e
-                **Browser steps:**
-                1. `devtools_navigate` to the menu URL
-                2. `devtools_scroll` through entire menu to load all items
-                3. `devtools_get_page_content` to extract all menu data
-                4. `devtools_screenshot` to capture menu layout
-                5. Click into individual items to see details, add-ons, modifiers
-
-                **Extract:**
-                - ALL menu categories
-                - ALL menu items with EXACT prices
-                - Item descriptions
-                - Available add-ons and modifiers with prices
-                - Any combos or deals
-                - Family/group size options
-
-                ## Research Requirements
-
-                ### Phase 1: Menu Deep Dive (Use Browser)
-                - Navigate to BOTH URLs using browser tools
-                - Document EVERY menu item with exact prices
-                - Capture screenshots of menu layout
-                - Note all add-ons, modifiers, upsell options
-                - Identify menu structure and categories
-
-                ### Phase 2: Competitive Research (Use Tavily Search)
-                Search for and analyze 3-5 competitors:
-                - Other gnocchi/pasta restaurants in NYC
-                - Fast-casual Italian restaurants in Nolita/SoHo
-                - Similar specialty concept restaurants
-
-                Suggested searches:
-                - "gnocchi restaurant NYC menu prices 2024"
-                - "fast casual Italian Nolita SoHo menu prices"
-                - "pasta bowl restaurant NYC competitors"
-                - "Lilia pasta NYC menu" (high-end competitor)
-                - "Pasta Flyer NYC menu prices"
-                - "Italian fast casual NYC best"
-
-                ### Phase 3: Industry Benchmarks (Use Tavily Search)
-                Search for data and benchmarks:
-                - "fast casual Italian restaurant average check size 2024"
-                - "restaurant menu engineering best practices"
-                - "menu pricing psychology research studies"
-                - "restaurant upsell strategies increase revenue"
-                - "menu description words increase sales"
-
-                ### Phase 4: Customer Insights (Use Tavily Search)
-                Search for reviews and feedback:
-                - "Nocca NYC reviews Yelp"
-                - "Nocca Nolita restaurant reviews"
-                - "Nocca gnocchi NYC customer feedback"
-                - "getsauce nocca reviews"
-
-                ## Analysis Focus Areas
-
-                1. **Pricing Strategy**
-                   - Compare Nocca prices to competitors
-                   - Identify psychological pricing opportunities
-                   - Find price anchoring options
-                   - Assess value perception
-
-                2. **Menu Structure**
-                   - Items per category (optimal: 5-7)
-                   - Decision fatigue analysis
-                   - Category flow and organization
-                   - Visual hierarchy
-
-                3. **Revenue Optimization**
-                   - Missing add-on opportunities
-                   - Bundle/combo potential
-                   - Upsell strategies
-                   - Premium tier opportunities
-
-                4. **Description Optimization**
-                   - Sensory language analysis
-                   - Appetite appeal improvements
-                   - Story/origin opportunities
-                   - Dietary callouts
-
-                ## Deliverable Requirements
-
-                Save report as: `{{workspace}}/Nocca_Menu_Deep_Analysis.md`
-
-                **Report MUST include:**
-                1. Research Overview (searches conducted, sources analyzed)
-                2. Executive Summary (5 key findings with data)
-                3. Complete menu inventory table (ALL items with prices)
-                4. Competitor pricing comparison matrix (3+ competitors)
-                5. Industry benchmark data table
-                6. TOP 5 priority recommendations, each with:
-                   - Specific problem identified
-                   - Evidence from research (with citations)
-                   - Detailed implementation steps (5+ steps)
-                   - Quantified expected impact (% and $ estimates)
-                   - Cost and effort required
-                   - Timeline
-                7. Quick Wins table (10+ specific actions)
-                8. Implementation roadmap (Week 1, Month 1, Month 2-3)
-                9. Expected results summary (30/90 day projections)
-                10. Complete source references with URLs
-
-                ## Success Criteria
-                - Use browser to fetch BOTH target URLs
-                - Conduct at least 15 searches
-                - Include 3+ competitors with pricing data
-                - Report at least 5000 words
-                - Every recommendation backed by specific evidence
-                - Quantified impact for all suggestions
+                analysis menu of https://www.nocca.co/, https://www.getsauce.com/order/nocca/menu/gnocchi-bowls-028e
                 """;
 
-        agent.run(researchTopic, ExecutionContext.builder().customVariable("workspace", "/Users/xander/Desktop").build());
+        agent.run(researchTopic, ExecutionContext.builder().customVariable("workspace", "d:\\deep-research-output").build());
 
         logger.info(Strings.format("agent token cost: total={}, input={}, output={}",
                 agent.getCurrentTokenUsage().getTotalTokens(),

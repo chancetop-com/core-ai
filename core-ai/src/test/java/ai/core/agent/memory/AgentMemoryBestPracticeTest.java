@@ -258,7 +258,7 @@ class AgentMemoryBestPracticeTest {
             Agent agent = Agent.builder()
                 .name("full-memory-assistant")
                 .llmProvider(llmProvider)
-                .enableCompression(true)   // Within session
+                .compression(true)   // Within session
                 .unifiedMemory(memory)     // Cross-session
                 .build();
 
@@ -312,7 +312,7 @@ class AgentMemoryBestPracticeTest {
             Agent agent = Agent.builder()
                 .name("stateless")
                 .llmProvider(llmProvider)
-                .enableCompression(false)  // Disable compression for stateless
+                .compression(false)  // Disable compression for stateless
                 .build();
 
             assertNotNull(agent);
@@ -324,7 +324,7 @@ class AgentMemoryBestPracticeTest {
             Agent agent = Agent.builder()
                 .name("session-only")
                 .llmProvider(llmProvider)
-                .enableCompression(true)  // Only compression, no long-term memory
+                .compression(true)  // Only compression, no long-term memory
                 .build();
 
             assertNotNull(agent);
@@ -343,7 +343,7 @@ class AgentMemoryBestPracticeTest {
             Agent agent = Agent.builder()
                 .name("personalized")
                 .llmProvider(llmProvider)
-                .enableCompression(true)   // Within session
+                .compression(true)   // Within session
                 .unifiedMemory(memory)     // Cross-session
                 .build();
 
