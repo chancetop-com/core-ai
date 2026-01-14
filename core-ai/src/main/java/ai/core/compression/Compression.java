@@ -324,9 +324,9 @@ public class Compression {
             === TAIL (last %d tokens) ===
             %s
 
-            [WARNING: This is a large file. Do NOT read the full file directly as it will be truncated again.
-            Use read_file with offset and limit parameters to read specific sections, e.g.:
-            read_file(file_path="%s", offset=<line_number>, limit=<num_lines>)]""",
+            [WARNING: This is a large file. Do NOT read the full file directly as it will be truncated again.Use file related tools to read specific parts of the file as needed.],
+            File path: %s
+            """,
             toolName, filePath, tokenCount, MAX_TOOL_RESULT_TOKENS,
             HEAD_TOKENS, headContent,
             TAIL_TOKENS, tailContent,
