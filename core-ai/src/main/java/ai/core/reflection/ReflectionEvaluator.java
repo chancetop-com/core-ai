@@ -41,7 +41,7 @@ public final class ReflectionEvaluator {
                 request.model(),
                 request.agentName() + "-evaluator"
         );
-        evalRequest.responseFormat = ResponseFormat.of(ReflectionEvaluation.class);
+        evalRequest.responseFormat = ResponseFormat.jsonObject();
 
         CompletionResponse evalResponse = request.llmProvider().completion(evalRequest);
 
