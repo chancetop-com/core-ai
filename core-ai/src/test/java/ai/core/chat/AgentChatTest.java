@@ -12,7 +12,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
-import ai.core.llm.providers.AzureOpenAIProvider;
+import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.tool.function.Functions;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +42,7 @@ class AgentChatTest {
 
     @BeforeEach
     void setUp() {
-        llmProvider = Mockito.mock(AzureOpenAIProvider.class);
+        llmProvider = Mockito.mock(LiteLLMProvider.class);
     }
 
     @Test

@@ -6,7 +6,6 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
-import ai.core.llm.providers.AzureOpenAIProvider;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
@@ -30,7 +29,6 @@ import ai.core.vectorstore.vectorstores.hnswlib.HnswConfig;
 import ai.core.vectorstore.vectorstores.hnswlib.HnswLibVectorStore;
 import ai.core.vectorstore.vectorstores.milvus.MilvusConfig;
 import ai.core.vectorstore.vectorstores.milvus.MilvusVectorStore;
-import com.azure.ai.openai.OpenAIServiceVersion;
 import core.framework.json.JSON;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -40,7 +38,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author stephen
@@ -101,15 +98,12 @@ public class MultiAgentModule extends Module {
 
     private void configAzureOpenAI(LLMProviders providers, LLMProviderConfig config) {
         property("azure.api.key").ifPresent(key -> property("azure.api.base").ifPresent(base -> {
-            AtomicReference<AzureOpenAIProvider> provider = new AtomicReference<>();
-            property("azure.api.version").ifPresentOrElse(version -> provider.set(new AzureOpenAIProvider(config, key, base, OpenAIServiceVersion.valueOf(version))), () -> provider.set(new AzureOpenAIProvider(config, key, base)));
-            injectTracerIfAvailable(provider.get());
-            bind(provider.get());
-            providers.addProvider(LLMProviderType.AZURE, provider.get());
+            var provider = new LiteLLMProvider(config, property("azure.api.base").orElseThrow(), key);
+            injectTracerIfAvailable(provider);
+            bind(LiteLLMProvider.class, "azure", provider);
+            providers.addProvider(LLMProviderType.AZURE, provider);
         }));
     }
-
-
 
     private void configDeepSeek(LLMProviders providers, LLMProviderConfig config) {
         property("deepseek.api.key").ifPresent(key -> {

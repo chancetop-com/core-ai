@@ -4,7 +4,7 @@ import ai.core.agent.lifecycle.FakerLifecycle;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.providers.AzureOpenAIProvider;
+import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.tool.function.Functions;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,12 +28,12 @@ import static org.mockito.Mockito.when;
  * description: Unit tests for AbstractLifecycle and its implementations
  */
 class AgentLifecycleTest {
-    AzureOpenAIProvider llmProvider;
+    LiteLLMProvider llmProvider;
 
 
     @BeforeEach
     void setUp() {
-        llmProvider = mock(AzureOpenAIProvider.class);
+        llmProvider = mock(LiteLLMProvider.class);
     }
 
 

@@ -3,7 +3,7 @@ package ai.core.agent.lifecycle;
 import ai.core.agent.Agent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.providers.AzureOpenAIProvider;
+import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.tool.function.Functions;
 import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.JsonUtil;
@@ -28,7 +28,7 @@ class WriteTodosTest {
 
     @BeforeEach
     void setUp() {
-        llmProvider = Mockito.mock(AzureOpenAIProvider.class);
+        llmProvider = Mockito.mock(LiteLLMProvider.class);
     }
 
     @Test
