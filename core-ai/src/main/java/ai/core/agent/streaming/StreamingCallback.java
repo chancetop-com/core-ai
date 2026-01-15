@@ -12,6 +12,14 @@ public interface StreamingCallback {
 
     void onChunk(String chunk);
 
+    default void onReasoningChunk(String chunk) {
+
+    }
+
+    default void onReasoningComplete(String reasoning) {
+
+    }
+
     default void onComplete() {
     }
 

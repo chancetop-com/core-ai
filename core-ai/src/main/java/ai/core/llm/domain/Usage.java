@@ -13,6 +13,8 @@ public class Usage {
     private int completionTokens;
     @Property(name = "total_tokens")
     private int totalTokens;
+    @Property(name = "completion_tokens_details")
+    private CompletionTokensDetails completionTokensDetails;
 
     public Usage(int promptTokens, int completionTokens, int totalTokens) {
         this.promptTokens = promptTokens;
@@ -51,5 +53,10 @@ public class Usage {
         this.promptTokens += usage.promptTokens;
         this.completionTokens += usage.completionTokens;
         this.totalTokens += usage.totalTokens;
+    }
+
+    public static class CompletionTokensDetails {
+        @Property(name = "reasoning_tokens")
+        public int reasoningTokens;
     }
 }

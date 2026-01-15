@@ -4,6 +4,7 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.compression.Compression;
 import ai.core.compression.CompressionLifecycle;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryLifecycle;
 import ai.core.memory.Memory;
@@ -42,6 +43,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Integer maxTurnNumber;
     private Compression compression;
     private boolean compressionEnabled = true;
+    private ReasoningEffort reasoningEffort;
 
     // Memory configuration
     private Memory memory;
@@ -184,6 +186,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder reasoningEffort(ReasoningEffort reasoningEffort) {
+        this.reasoningEffort = reasoningEffort;
+        return this;
+    }
+
     public Agent build() {
         beforeAgentBuildLifecycle();
         var agent = new Agent();
@@ -231,6 +238,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.useGroupContext = this.useGroupContext;
         agent.setPersistence(new AgentPersistence());
         agent.agentLifecycles = new ArrayList<>(agentLifecycles);
+        agent.reasoningEffort = this.reasoningEffort;
         if (this.enableReflection && this.reflectionConfig == null) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
         }

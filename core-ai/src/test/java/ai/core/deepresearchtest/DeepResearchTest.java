@@ -3,7 +3,9 @@ package ai.core.deepresearchtest;
 import ai.core.IntegrationTest;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProviders;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.tool.tools.EditFileTool;
 import ai.core.tool.tools.GlobFileTool;
@@ -232,9 +234,21 @@ class DeepResearchTest extends IntegrationTest {
                 .mcpServers(List.of("web-search", "chrome-devtools"), null, null)
                 .llmProvider(llmProviders.getProvider())
                 .maxTurn(150)
-                .model("deepseek-reasoner")
+                .model("azure/responses/gpt-5-mini")
+//                .model("DeepSeek-V3.2")
                 .reflectionConfig(ReflectionConfig.withEvaluationCriteria(reflectionCriteria))
-                .compression(0.8, 3)
+                .compression(0.9, 3)
+                .reasoningEffort(ReasoningEffort.HIGH)
+                .streamingCallback(new StreamingCallback() {
+                    @Override
+                    public void onChunk(String chunk) {
+
+                    }
+                    @Override
+                    public void onReasoningComplete(String reasoning) {
+                        logger.info("reasoning: {}", reasoning);
+                    }
+                })
                 .build();
 
         logger.info("setup agent: {}", agent);

@@ -41,6 +41,8 @@ public class Message {
     @NotNull
     @Property(name = "content")
     public String content;
+    @Property(name = "reasoning_content")
+    public String reasoningContent;
     @Property(name = "name")
     public String name;
     @Property(name = "tool_call_id")
@@ -51,7 +53,6 @@ public class Message {
     public List<FunctionCall> toolCalls;
 
     private String agentName;
-    private String groupName;
 
     public String getName() {
         return name;
@@ -61,15 +62,7 @@ public class Message {
         return agentName;
     }
 
-    public String getGroupName() {
-        return groupName;
-    }
-
     public void setAgentName(String agentName) {
         this.agentName = agentName;
-    }
-
-    public void setGroupName(String groupName) {
-        this.groupName = groupName;
     }
 }
