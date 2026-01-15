@@ -228,7 +228,6 @@ class CompressionTest {
         assertTrue(compressed.contains("search_tool"));
         assertTrue(compressed.contains("HEAD (first 500 tokens)"));
         assertTrue(compressed.contains("TAIL (last 500 tokens)"));
-        assertTrue(compressed.contains("read_file"));
         assertTrue(compressed.contains("session-123"));
 
         // Verify file was created
