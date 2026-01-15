@@ -85,7 +85,7 @@ public abstract class LLMProvider {
         if (request.reasoningEffort != null && !m.toolCalls.isEmpty()) {
             response.choices.getFirst().finishReason = FinishReason.TOOL_CALLS;
         }
-        if (!Strings.isBlank(m.reasoningContent)) {
+        if (request.model.contains("gpt-5") && !Strings.isBlank(m.reasoningContent)) {
             m.content = Strings.format("<think>{}</think>\n{}", m.reasoningContent, m.content);
         }
     }
