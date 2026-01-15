@@ -84,7 +84,6 @@ public class LiteLLMProvider extends LLMProvider {
         return executeSSERequest(client, req, callback);
     }
 
-    // todo: parallel tools
     private CompletionResponse executeSSERequest(HTTPClient client, HTTPRequest req, StreamingCallback callback) {
         // Execute the request
         var rsp = client.execute(req);
@@ -212,31 +211,32 @@ public class LiteLLMProvider extends LLMProvider {
 
         for (var deltaToolCall : chunkChoice.delta.toolCalls) {
             if (deltaToolCall.index == null) {
-                // If index is not provided, we cannot merge this tool call
                 continue;
             }
 
-            // Ensure list is large enough
             while (finalChoice.message.toolCalls.size() <= deltaToolCall.index) {
                 finalChoice.message.toolCalls.add(null);
             }
 
             var existingToolCall = finalChoice.message.toolCalls.get(deltaToolCall.index);
             if (existingToolCall == null) {
-                // Create new tool call
                 existingToolCall = new FunctionCall();
-                existingToolCall.id = deltaToolCall.id;
-                existingToolCall.type = deltaToolCall.type;
                 existingToolCall.function = new FunctionCall.Function();
-                existingToolCall.function.name = deltaToolCall.function != null ? deltaToolCall.function.name : "";
-                existingToolCall.function.arguments = deltaToolCall.function != null ? deltaToolCall.function.arguments : "";
+                existingToolCall.function.arguments = "";
                 finalChoice.message.toolCalls.set(deltaToolCall.index, existingToolCall);
-            } else {
-                // Merge arguments incrementally
-                if (deltaToolCall.function != null && deltaToolCall.function.arguments != null) {
-                    if (existingToolCall.function.arguments == null) {
-                        existingToolCall.function.arguments = "";
-                    }
+            }
+
+            if (deltaToolCall.id != null) {
+                existingToolCall.id = deltaToolCall.id;
+            }
+            if (deltaToolCall.type != null) {
+                existingToolCall.type = deltaToolCall.type;
+            }
+            if (deltaToolCall.function != null) {
+                if (deltaToolCall.function.name != null) {
+                    existingToolCall.function.name = deltaToolCall.function.name;
+                }
+                if (deltaToolCall.function.arguments != null) {
                     existingToolCall.function.arguments += deltaToolCall.function.arguments;
                 }
             }
