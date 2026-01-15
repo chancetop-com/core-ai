@@ -67,12 +67,22 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String summaryModel) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, llmProvider, this.model, summaryModel);
+        this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, llmProvider, this.model, summaryModel);
+        return this;
+    }
+
+    public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, LLMProvider llmProvider, String summaryModel) {
+        this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, llmProvider, this.model, summaryModel);
         return this;
     }
 
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns) {
-        this.compression = new Compression(triggerThreshold, keepRecentTurns, this.llmProvider, this.model, this.model);
+        this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, this.llmProvider, this.model, this.model);
+        return this;
+    }
+
+    public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens) {
+        this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, this.llmProvider, this.model, this.model);
         return this;
     }
 
