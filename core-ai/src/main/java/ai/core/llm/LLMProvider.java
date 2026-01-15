@@ -50,7 +50,7 @@ public abstract class LLMProvider {
         request.streamOptions = new StreamOptions();
         CompletionResponse response;
         if (tracer != null) {
-             response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, callback));
+            response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, callback));
         } else {
             response = doCompletionStream(request, callback);
         }
