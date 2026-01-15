@@ -8,11 +8,12 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
+import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.StreamOptions;
 import ai.core.telemetry.LLMTracer;
-import ai.core.telemetry.Tracer;
 import core.framework.util.Strings;
 
 /**
@@ -38,30 +39,23 @@ public abstract class LLMProvider {
         return tracer;
     }
 
-    /**
-     * Get tracer as base Tracer type for fallback scenarios
-     */
-    public Tracer getBaseTracer() {
-        return tracer;
-    }
-
-    /**
-     * Public completion method with tracing support
-     */
     public final CompletionResponse completion(CompletionRequest request) {
         return completionStream(request, new DefaultStreamingCallback());
     }
 
-    /**
-     * Public streaming completion method with tracing support
-     */
     public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback) {
         request.model = getModel(request);
         preprocess(request);
+        request.stream = true;
+        request.streamOptions = new StreamOptions();
+        CompletionResponse response;
         if (tracer != null) {
-            return tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, callback));
+             response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, callback));
+        } else {
+            response = doCompletionStream(request, callback);
         }
-        return doCompletionStream(request, callback);
+        postprocess(request, response);
+        return response;
     }
 
     public void preprocess(CompletionRequest dto) {
@@ -69,7 +63,7 @@ public abstract class LLMProvider {
         if (dto.model.startsWith("o1") || dto.model.startsWith("o3")) {
             dto.temperature = null;
         }
-        if (dto.model.startsWith("gpt-5")) {
+        if (dto.model.contains("gpt-5")) {
             dto.temperature = 1.0;
         }
         dto.messages.forEach(message -> {
@@ -85,14 +79,19 @@ public abstract class LLMProvider {
         });
     }
 
-    /**
-     * Subclasses implement this method for actual completion logic
-     */
+    private void postprocess(CompletionRequest request, CompletionResponse response) {
+        // todo: reasoning effort finish reason handling can be more generic
+        var m = response.choices.getFirst().message;
+        if (request.reasoningEffort != null && !m.toolCalls.isEmpty()) {
+            response.choices.getFirst().finishReason = FinishReason.TOOL_CALLS;
+        }
+        if (!Strings.isBlank(m.reasoningContent)) {
+            m.content = Strings.format("<think>{}</think>\n{}", m.reasoningContent, m.content);
+        }
+    }
+
     protected abstract CompletionResponse doCompletion(CompletionRequest request);
 
-    /**
-     * Subclasses implement this method for actual streaming completion logic
-     */
     protected abstract CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback);
 
     public abstract EmbeddingResponse embeddings(EmbeddingRequest request);
@@ -104,21 +103,7 @@ public abstract class LLMProvider {
         return LLMModelContextRegistry.getInstance().getMaxInputTokens(config.getModel());
     }
 
-    public int maxTokens(String modelName) {
-        return LLMModelContextRegistry.getInstance().getMaxInputTokens(modelName);
-    }
-
-    public int maxOutputTokens() {
-        return LLMModelContextRegistry.getInstance().getMaxOutputTokens(config.getModel());
-    }
-
-    public int maxOutputTokens(String modelName) {
-        return LLMModelContextRegistry.getInstance().getMaxOutputTokens(modelName);
-    }
-
     public abstract String name();
-
-
 
     public String getModel(CompletionRequest request) {
         return Strings.isBlank(request.model) ? config.getModel() : request.model;

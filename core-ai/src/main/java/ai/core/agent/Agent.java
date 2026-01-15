@@ -12,6 +12,7 @@ import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
@@ -71,6 +72,7 @@ public class Agent extends Node<Agent> {
     Boolean authenticated = false;
     ToolExecutor toolExecutor;
     Compression compression;
+    ReasoningEffort reasoningEffort;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -286,9 +288,6 @@ public class Agent extends Node<Agent> {
         var choice = constructionAssistantMsg.apply(messages, tools);
         resultMsg.add(choice.message);
         if (choice.finishReason == FinishReason.TOOL_CALLS) {
-            if (!Strings.isBlank(choice.message.content)) {
-                logger.info(choice.message.content);
-            }
             var funcMsg = handleFunc(choice.message);
             resultMsg.addAll(funcMsg);
         }
@@ -301,7 +300,7 @@ public class Agent extends Node<Agent> {
     }
 
     private Choice handLLM(List<Message> messages, List<Tool> tools) {
-        var req = CompletionRequest.of(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), model, this.getName());
+        var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), model, this.getName(), null, null, reasoningEffort));
         return aroundLLM(r -> llmProvider.completionStream(r, elseDefaultCallback()), req);
     }
 
