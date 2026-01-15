@@ -42,7 +42,7 @@ class CompressionTest {
 
     @BeforeEach
     void setUp() {
-        compression = new Compression(0.7, 5, null, null, null);
+        compression = new Compression(0.7, 5, 10000, null, null, null);
     }
 
     @Test

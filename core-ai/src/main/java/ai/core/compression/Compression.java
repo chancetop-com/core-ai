@@ -30,21 +30,28 @@ public class Compression {
     private static final int TAIL_TOKENS = 500;
     private static final String TEMP_DIR_NAME = "core-ai";
     private static final int DEFAULT_KEEP_RECENT_TURNS = 5;
+    private static final int DEFAULT_KEEP_TOKENS = 15000;
     private static final int MIN_SUMMARY_TOKENS = 500;
     private static final int MAX_SUMMARY_TOKENS = 4000;
     private final double triggerThreshold;
     private final int keepRecentTurns;
+    private final int keepTokens;
     private final int maxContextTokens;
     private final LLMProvider llmProvider;
     private final String summaryModel;
 
     public Compression(LLMProvider llmProvider, String agentModel) {
-        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, llmProvider, agentModel, agentModel);
+        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, DEFAULT_KEEP_TOKENS, llmProvider, agentModel, agentModel);
     }
 
     public Compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String agentModel, String summaryModel) {
+        this(triggerThreshold, keepRecentTurns, DEFAULT_KEEP_TOKENS, llmProvider, agentModel, summaryModel);
+    }
+
+    public Compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, LLMProvider llmProvider, String agentModel, String summaryModel) {
         this.triggerThreshold = triggerThreshold;
         this.keepRecentTurns = keepRecentTurns;
+        this.keepTokens = keepMinTokens;
         this.llmProvider = llmProvider;
         this.summaryModel = summaryModel;
         this.maxContextTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(agentModel);
@@ -81,14 +88,34 @@ public class Compression {
             return messages;
         }
 
-        int keepFromIndex = calculateKeepFromIndex(conversationMsgs);
+        int lastUserIndex = findLastUserIndex(conversationMsgs);
+        if (lastUserIndex < 0) {
+            LOGGER.debug("No USER message found, skip compression");
+            return messages;
+        }
+
+        int keepFromIndex = calculateKeepFromIndex(conversationMsgs, lastUserIndex);
         if (keepFromIndex <= 0) {
             LOGGER.warn("No messages to compress after calculation");
             return messages;
         }
 
-        var toCompress = new ArrayList<>(conversationMsgs.subList(0, keepFromIndex));
-        var toKeep = new ArrayList<>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
+        Message preservedUserMsg = null;
+        List<Message> toCompress;
+        List<Message> toKeep;
+
+        if (keepFromIndex > lastUserIndex) {
+            preservedUserMsg = conversationMsgs.get(lastUserIndex);
+            toCompress = new ArrayList<>();
+            for (int i = 0; i < keepFromIndex; i++) {
+                if (i != lastUserIndex) {
+                    toCompress.add(conversationMsgs.get(i));
+                }
+            }
+        } else {
+            toCompress = new ArrayList<>(conversationMsgs.subList(0, keepFromIndex));
+        }
+        toKeep = new ArrayList<>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
 
         if (toCompress.isEmpty()) {
             LOGGER.debug("Nothing to compress, keeping all messages");
@@ -101,7 +128,7 @@ public class Compression {
             return messages;
         }
 
-        List<Message> result = buildCompressedResult(systemMsg, summary, toKeep);
+        List<Message> result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
         int newTokens = MessageTokenCounter.count(result);
         LOGGER.info("Compression complete: {} -> {} tokens, {} -> {} messages",
             MessageTokenCounter.count(messages), newTokens, messages.size(), result.size());
@@ -109,7 +136,7 @@ public class Compression {
         return result;
     }
 
-    private List<Message> buildCompressedResult(Message systemMsg, String summary, List<Message> toKeep) {
+    private List<Message> buildCompressedResult(Message systemMsg, String summary, Message preservedUserMsg, List<Message> toKeep) {
         var toolCallId = "memory_compress_" + System.currentTimeMillis();
         FunctionCall compressCall = FunctionCall.of(toolCallId, "function", "memory_compress", "{}");
         var toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(compressCall));
@@ -121,6 +148,9 @@ public class Compression {
         }
         result.add(toolCallMsg);
         result.add(toolResultMsg);
+        if (preservedUserMsg != null) {
+            result.add(preservedUserMsg);
+        }
         result.addAll(toKeep);
         return result;
     }
@@ -146,27 +176,16 @@ public class Compression {
             .toList();
     }
 
-    private int calculateKeepFromIndex(List<Message> conversationMsgs) {
-        var lastUserIndex = findLastUserIndex(conversationMsgs);
-        if (lastUserIndex < 0) {
-            LOGGER.debug("No USER message found, skip compression");
-            return conversationMsgs.size();
-        }
-
-        boolean isCurrentChainActive = conversationMsgs.getLast().role != RoleType.USER;
-
-        var minKeepFromIndex = isCurrentChainActive ? lastUserIndex : conversationMsgs.size() - 1;
-        var keepFromIndex = findKeepFromIndexByTurns(conversationMsgs, lastUserIndex);
-
-        keepFromIndex = Math.min(keepFromIndex, minKeepFromIndex);
+    private int calculateKeepFromIndex(List<Message> conversationMsgs, int lastUserIndex) {
+        var keepFromIndex = findKeepFromIndexByTurnsAndTokens(conversationMsgs, lastUserIndex);
 
         var keepTokens = MessageTokenCounter.countFrom(conversationMsgs, keepFromIndex);
         var threshold = (int) (maxContextTokens * triggerThreshold);
 
         if (keepTokens >= threshold) {
-            LOGGER.info("Recent turns exceed threshold ({} >= {}), keeping only current conversation chain",
+            LOGGER.info("Recent turns exceed threshold ({} >= {}), use max keepFromIndex",
                 keepTokens, threshold);
-            return minKeepFromIndex;
+            return Math.max(keepFromIndex, conversationMsgs.size() - 1);
         }
 
         return keepFromIndex;
@@ -181,18 +200,33 @@ public class Compression {
         return -1;
     }
 
-    private Integer findKeepFromIndexByTurns(List<Message> conversationMsgs, Integer lastUserIndex) {
-        var keepFromIndex = lastUserIndex;
-        var turnCount = 0;
+    private int findKeepFromIndexByTurnsAndTokens(List<Message> conversationMsgs, int lastUserIndex) {
+        int turnCount = 0;
+        int accumulatedTokens = 0;
+        int indexByTurns = lastUserIndex;
+        int indexByTokens = 0;
+        boolean tokenBudgetExceeded = false;
 
-        for (int i = lastUserIndex - 1; i >= 0 && turnCount < keepRecentTurns; i--) {
-            keepFromIndex = i;
-            if (conversationMsgs.get(i).role == RoleType.USER) {
-                turnCount++;
+        for (int i = conversationMsgs.size() - 1; i >= 0; i--) {
+            Message msg = conversationMsgs.get(i);
+
+            if (!tokenBudgetExceeded) {
+                accumulatedTokens += MessageTokenCounter.count(msg);
+                if (accumulatedTokens > keepTokens) {
+                    indexByTokens = i + 1;
+                    tokenBudgetExceeded = true;
+                }
+            }
+
+            if (i < lastUserIndex && turnCount < keepRecentTurns) {
+                indexByTurns = i;
+                if (msg.role == RoleType.USER) {
+                    turnCount++;
+                }
             }
         }
 
-        return keepFromIndex;
+        return Math.max(indexByTurns, indexByTokens);
     }
 
     private String summarize(List<Message> messagesToSummarize) {
