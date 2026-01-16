@@ -50,10 +50,13 @@ public class CompletionRequest {
     public ReasoningEffort reasoningEffort;
 
     private String name;
-    //todo other params(advanced)
+    private Object extraBody;
 
     public String getName() {
         return name;
+    }
+    public Object getExtraBody() {
+        return extraBody;
     }
 
     public record CompletionRequestOptions(List<Message> messages,

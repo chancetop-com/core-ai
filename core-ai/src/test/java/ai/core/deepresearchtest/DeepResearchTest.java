@@ -26,7 +26,7 @@ import java.util.List;
 /**
  * @author Xander
  */
-@Disabled
+//@Disabled
 class DeepResearchTest extends IntegrationTest {
 
     private final Logger logger = LoggerFactory.getLogger(DeepResearchTest.class);
@@ -234,11 +234,10 @@ class DeepResearchTest extends IntegrationTest {
                 .mcpServers(List.of("web-search", "chrome-devtools"), null, null)
                 .llmProvider(llmProviders.getProvider())
                 .maxTurn(150)
-                .model("azure/responses/gpt-5-mini")
-//                .model("DeepSeek-V3.2")
+//                .model("azure/responses/gpt-5-mini")
+                .model("qwen-plus")
                 .reflectionConfig(ReflectionConfig.withEvaluationCriteria(reflectionCriteria))
                 .compression(0.9, 3)
-                .reasoningEffort(ReasoningEffort.HIGH)
                 .streamingCallback(new StreamingCallback() {
                     @Override
                     public void onChunk(String chunk) {

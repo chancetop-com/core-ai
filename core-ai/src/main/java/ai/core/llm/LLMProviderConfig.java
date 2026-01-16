@@ -1,5 +1,7 @@
 package ai.core.llm;
 
+import ai.core.utils.JsonUtil;
+
 import java.time.Duration;
 
 /**
@@ -9,6 +11,7 @@ public class LLMProviderConfig {
     private String model;
     private Double temperature;
     private String embeddingModel;
+    private Object requestExtraBody;
     private Duration timeout = Duration.ofSeconds(60);
     private Duration connectTimeout = Duration.ofSeconds(3);
 
@@ -22,12 +25,12 @@ public class LLMProviderConfig {
         return connectTimeout;
     }
 
-    public void setConnectTimeout(Duration connectTimeout) {
-        this.connectTimeout = connectTimeout;
+    public void setConnectTimeout(Long connectTimeout) {
+        this.connectTimeout = Duration.ofSeconds(connectTimeout);
     }
 
-    public void setTimeout(Duration timeout) {
-        this.timeout = timeout;
+    public void setTimeout(Long timeout) {
+        this.timeout = Duration.ofSeconds(timeout);
     }
 
     public void setModel(String model) {
@@ -56,5 +59,13 @@ public class LLMProviderConfig {
 
     public String getEmbeddingModel() {
         return embeddingModel;
+    }
+
+    public Object getRequestExtraBody() {
+        return requestExtraBody;
+    }
+
+    public void setRequestExtraBody(String requestExtraBody) {
+        this.requestExtraBody = JsonUtil.fromJson(Object.class, requestExtraBody);
     }
 }

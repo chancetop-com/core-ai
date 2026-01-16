@@ -3,6 +3,7 @@ package ai.core.codegentest;
 import ai.core.IntegrationTest;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProviders;
 import ai.core.tool.tools.AsyncTaskOutputTool;
 import ai.core.tool.tools.EditFileTool;
@@ -153,7 +154,17 @@ class CodeGenTest extends IntegrationTest {
                 .mcpServers(List.of("playwright"), null)
                 .llmProvider(llmProviders.getProvider())
                 .maxTurn(60)
-                .model("gpt-5-mini")
+                .streamingCallback(new StreamingCallback() {
+                    @Override
+                    public void onChunk(String chunk) {
+
+                    }
+                    @Override
+                    public void onReasoningComplete(String reasoning) {
+                        logger.info(Strings.format("Reasoning: {}", reasoning));
+                    }
+                })
+                .model("qwen-plus")
                 .build();
         logger.info("setup agent: {}", agent);
         // todo: thinking how to rewrite testcase query for better agent understanding and performance

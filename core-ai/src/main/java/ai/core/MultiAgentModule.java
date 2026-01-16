@@ -35,7 +35,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
 
@@ -81,10 +80,11 @@ public class MultiAgentModule extends Module {
     private void configLLMProvider() {
         var providers = new LLMProviders();
         bind(providers);
-        configLiteLLM(providers, setupLLMProperties(LLMProviderType.LITELLM));
-        configDeepSeek(providers, setupLLMProperties(LLMProviderType.DEEPSEEK));
-        configAzureOpenAI(providers, setupLLMProperties(LLMProviderType.AZURE));
-        configOpenAI(providers, setupLLMProperties(LLMProviderType.OPENAI));
+        var config = setupLLMProperties();
+        configLiteLLM(providers, config);
+        configDeepSeek(providers, config);
+        configAzureOpenAI(providers, config);
+        configOpenAI(providers, config);
     }
 
     private void configOpenAI(LLMProviders providers, LLMProviderConfig config) {
@@ -124,13 +124,14 @@ public class MultiAgentModule extends Module {
         });
     }
 
-    private LLMProviderConfig setupLLMProperties(LLMProviderType type) {
-        var config = new LLMProviderConfig(LLMProviders.getProviderDefaultChatModel(type), 0.7d, "text-embedding-3-large");
+    private LLMProviderConfig setupLLMProperties() {
+        var config = new LLMProviderConfig(null, 0.7d, "text-embedding-3-large");
         property("llm.temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
         property("llm.model").ifPresent(config::setModel);
+        property("llm.request.extra_body").ifPresent(config::setRequestExtraBody);
         property("llm.embeddings.model").ifPresent(config::setEmbeddingModel);
-        property("llm.timeout.seconds").ifPresent(v -> config.setTimeout(Duration.ofSeconds(Long.parseLong(v))));
-        property("llm.connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Duration.ofSeconds(Long.parseLong(v))));
+        property("llm.timeout.seconds").ifPresent(v -> config.setTimeout(Long.parseLong(v)));
+        property("llm.connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.parseLong(v)));
         return config;
     }
 
