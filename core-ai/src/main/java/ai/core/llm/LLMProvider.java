@@ -15,13 +15,16 @@ import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.StreamOptions;
 import ai.core.telemetry.LLMTracer;
 import core.framework.util.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author stephen
  */
 public abstract class LLMProvider {
-    public LLMProviderConfig config;
+    private static final Logger LOGGER = LoggerFactory.getLogger(LLMProvider.class);
     protected LLMTracer tracer;
+    public LLMProviderConfig config;
 
     public LLMProvider(LLMProviderConfig config) {
         this.config = config;
@@ -48,6 +51,9 @@ public abstract class LLMProvider {
         preprocess(request);
         request.stream = true;
         request.streamOptions = new StreamOptions();
+        if (request.getExtraBody() != null && config.getRequestExtraBody() != null) {
+            LOGGER.warn("both request and provider config set extra body, provider config extra body will be ignored, request extra body={}, config extra body={}", request.getExtraBody(), config.getRequestExtraBody());
+        }
         CompletionResponse response;
         if (tracer != null) {
             response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, callback));

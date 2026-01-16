@@ -1,5 +1,6 @@
 package ai.core.llm.providers;
 
+import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.CaptionImageRequest;
@@ -25,6 +26,7 @@ import core.framework.util.Strings;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -42,7 +44,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     protected CompletionResponse doCompletion(CompletionRequest dto) {
-        return chatCompletion(dto);
+        return doCompletionStream(dto, new DefaultStreamingCallback());
     }
 
     @Override
@@ -70,12 +72,24 @@ public class LiteLLMProvider extends LLMProvider {
         return "litellm";
     }
 
+    @SuppressWarnings("unchecked")
     public CompletionResponse chatCompletionStream(CompletionRequest request, StreamingCallback callback) {
-        var client = HTTPClient.builder().timeout(Duration.ofSeconds(300)).maxRetries(3).retryWaitTime(Duration.ofSeconds(3)).trustAll().build();
+        var client = HTTPClient.builder()
+                .connectTimeout(config.getConnectTimeout())
+                .timeout(config.getTimeout())
+                .maxRetries(3)
+                .retryWaitTime(Duration.ofSeconds(3))
+                .trustAll()
+                .build();
+        var extraBody = request.getExtraBody() == null ? config.getRequestExtraBody() : request.getExtraBody();
         var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
         req.headers.put("Accept", "text/event-stream");
-        var body = JsonUtil.toJson(request).getBytes(StandardCharsets.UTF_8);
+        var bodyMap = (Map<String, Object>) JsonUtil.toMap(request);
+        if (extraBody instanceof Map<?, ?> extraMap) {
+            bodyMap.putAll((Map<String, Object>) extraMap);
+        }
+        var body = JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8);
         req.body(body, ContentType.APPLICATION_JSON);
         if (!Strings.isBlank(token)) {
             req.headers.put("Authorization", "Bearer " + token);
@@ -241,27 +255,5 @@ public class LiteLLMProvider extends LLMProvider {
                 }
             }
         }
-    }
-
-    public CompletionResponse chatCompletion(CompletionRequest request) {
-        var client = HTTPClient.builder().connectTimeout(this.config.getConnectTimeout()).timeout(this.config.getTimeout()).trustAll().build();
-        var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
-        req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
-        var body = JsonUtil.toJson(request).getBytes(StandardCharsets.UTF_8);
-        req.body(body, ContentType.APPLICATION_JSON);
-        if (!Strings.isBlank(token)) {
-            req.headers.put("Authorization", "Bearer " + token);
-        }
-        var rsp = client.execute(req);
-        if (rsp.statusCode != 200) {
-            throw new RuntimeException(rsp.text());
-        }
-        var rst = JSON.fromJSON(CompletionResponse.class, rsp.text());
-        rst.choices.forEach(v -> {
-            if (v.message.content == null) {
-                v.message.content = "";
-            }
-        });
-        return rst;
     }
 }
