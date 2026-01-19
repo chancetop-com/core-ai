@@ -127,8 +127,12 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder mcpServers(List<String> serverNames) {
+        return mcpServers(serverNames, null, null);
+    }
+
     public AgentBuilder mcpServers(List<String> serverNames, List<String> includes) {
-        return mcpServers(serverNames, includes, List.of());
+        return mcpServers(serverNames, includes, null);
     }
 
     public AgentBuilder mcpServers(List<String> serverNames, List<String> includes, List<String> excludes) {
