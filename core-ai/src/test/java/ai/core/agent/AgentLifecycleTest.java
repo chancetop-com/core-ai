@@ -123,7 +123,7 @@ class AgentLifecycleTest {
         // before tool
         assertTrue(nameCaptor.getValue().contains("mock_name"));
         // after tool
-        assertEquals("mock_name_mock_tool_result", agentSpy.getMessages().getLast().content);
+        assertEquals("mock_name_mock_tool_result", agentSpy.getMessages().getLast().getTextContent());
     }
 
     @Test

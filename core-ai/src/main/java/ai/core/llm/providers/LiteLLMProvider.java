@@ -3,6 +3,7 @@ package ai.core.llm.providers;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.domain.AssistantMessage;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.Choice;
@@ -12,7 +13,6 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.FunctionCall;
-import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.utils.JsonUtil;
@@ -162,7 +162,7 @@ public class LiteLLMProvider extends LLMProvider {
             return;
         }
 
-        finalChoice.message = new Message();
+        finalChoice.message = new AssistantMessage();
         finalChoice.message.role = finalChoice.delta.role;
         finalChoice.message.content = finalChoice.delta.content != null ? finalChoice.delta.content : "";
         finalChoice.message.reasoningContent = finalChoice.delta.reasoningContent != null ? finalChoice.delta.reasoningContent : "";
@@ -193,7 +193,7 @@ public class LiteLLMProvider extends LLMProvider {
     private void copyDeltaToFinalChoice(Choice finalChoice, Choice chunkChoice) {
         // Ensure message exists
         if (finalChoice.message == null) {
-            finalChoice.message = new Message();
+            finalChoice.message = new AssistantMessage();
             finalChoice.message.content = "";
             finalChoice.message.reasoningContent = "";
             finalChoice.message.toolCalls = new ArrayList<>();

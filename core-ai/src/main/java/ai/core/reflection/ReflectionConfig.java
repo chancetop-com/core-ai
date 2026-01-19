@@ -3,6 +3,7 @@ package ai.core.reflection;
 import ai.core.prompt.Prompts;
 
 public record ReflectionConfig(boolean enabled, int maxRound, int minRound, String prompt, String evaluationCriteria) {
+    public static final int DEFAULT_REFLECTION_CONTINUE_SCORE = 8;
 
     public static ReflectionConfig defaultReflectionConfig() {
         return new ReflectionConfig(true, 3, 1, Prompts.DEFAULT_REFLECTION_CONTINUE_TEMPLATE, null);

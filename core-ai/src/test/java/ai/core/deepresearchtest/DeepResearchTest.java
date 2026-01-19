@@ -5,7 +5,6 @@ import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProviders;
-import ai.core.llm.domain.ReasoningEffort;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.tool.tools.EditFileTool;
 import ai.core.tool.tools.GlobFileTool;
@@ -26,7 +25,7 @@ import java.util.List;
 /**
  * @author Xander
  */
-//@Disabled
+@Disabled
 class DeepResearchTest extends IntegrationTest {
 
     private final Logger logger = LoggerFactory.getLogger(DeepResearchTest.class);

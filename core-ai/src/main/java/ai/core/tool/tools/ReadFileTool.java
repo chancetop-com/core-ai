@@ -12,7 +12,10 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Base64;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author stephen
@@ -23,6 +26,7 @@ public class ReadFileTool extends ToolCall {
     private static final Logger LOGGER = LoggerFactory.getLogger(ReadFileTool.class);
     private static final int DEFAULT_LINE_LIMIT = 2000;
     private static final int MAX_LINE_LENGTH = 2000;
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
     private static final String TOOL_DESC = """
             Reads a file from the local filesystem. You can access any file directly by
@@ -82,12 +86,63 @@ public class ReadFileTool extends ToolCall {
             var offset = argsMap.get("offset") != null ? ((Number) argsMap.get("offset")).intValue() : null;
             var limit = argsMap.get("limit") != null ? ((Number) argsMap.get("limit")).intValue() : null;
 
+            if (isImageFile(filePath)) {
+                return readImageFile(filePath, startTime);
+            }
+
             var result = readFile(filePath, offset, limit);
             return ToolCallResult.completed(result)
                 .withDuration(System.currentTimeMillis() - startTime)
                 .withStats("filePath", filePath);
         } catch (Exception e) {
             var error = "Failed to parse read file arguments: " + e.getMessage();
+            LOGGER.error(error, e);
+            return ToolCallResult.failed(error)
+                .withDuration(System.currentTimeMillis() - startTime);
+        }
+    }
+
+    private boolean isImageFile(String filePath) {
+        if (Strings.isBlank(filePath)) return false;
+        var lowerPath = filePath.toLowerCase(Locale.getDefault());
+        var dotIndex = lowerPath.lastIndexOf('.');
+        if (dotIndex < 0) return false;
+        var ext = lowerPath.substring(dotIndex + 1);
+        return IMAGE_EXTENSIONS.contains(ext);
+    }
+
+    private String getImageFormat(String filePath) {
+        var lowerPath = filePath.toLowerCase(Locale.getDefault());
+        var dotIndex = lowerPath.lastIndexOf('.');
+        var ext = lowerPath.substring(dotIndex + 1);
+        if ("jpg".equals(ext)) ext = "jpeg";
+        return "image/" + ext;
+    }
+
+    private ToolCallResult readImageFile(String filePath, long startTime) {
+        var file = new File(filePath);
+        if (!file.exists()) {
+            return ToolCallResult.failed("Error: File does not exist: " + filePath)
+                .withDuration(System.currentTimeMillis() - startTime);
+        }
+        if (!file.isFile()) {
+            return ToolCallResult.failed("Error: Path is not a file: " + filePath)
+                .withDuration(System.currentTimeMillis() - startTime);
+        }
+
+        try {
+            var bytes = Files.readAllBytes(file.toPath());
+            var base64 = Base64.getEncoder().encodeToString(bytes);
+            var format = getImageFormat(filePath);
+            LOGGER.info("Successfully read image file: {}, format: {}, size: {} bytes", filePath, format, bytes.length);
+
+            return ToolCallResult.completed("Image file read successfully: " + filePath)
+                .withImage(base64, format)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("filePath", filePath)
+                .withStats("imageSize", bytes.length);
+        } catch (IOException e) {
+            var error = "Error reading image file: " + e.getMessage();
             LOGGER.error(error, e);
             return ToolCallResult.failed(error)
                 .withDuration(System.currentTimeMillis() - startTime);

@@ -53,7 +53,7 @@ class SlashCommandExecutorTest {
         // Verify USER message
         var userMsg = result.getMessages().getFirst();
         assertEquals(RoleType.USER, userMsg.role);
-        assertEquals("/slash_command:echo_tool:{\"text\": \"hello\"}", userMsg.content);
+        assertEquals("/slash_command:echo_tool:{\"text\": \"hello\"}", userMsg.getTextContent());
 
         // Verify ASSISTANT message with toolCalls
         var assistantMsg = result.getMessages().get(1);
@@ -66,7 +66,7 @@ class SlashCommandExecutorTest {
         // Verify TOOL message
         var toolMsg = result.getMessages().get(2);
         assertEquals(RoleType.TOOL, toolMsg.role);
-        assertTrue(toolMsg.content.contains("hello"));
+        assertTrue(toolMsg.getTextContent().contains("hello"));
         assertEquals(assistantMsg.toolCalls.getFirst().id, toolMsg.toolCallId);
     }
 
@@ -104,7 +104,7 @@ class SlashCommandExecutorTest {
         // Verify error in TOOL message
         var toolMsg = result.getMessages().get(2);
         assertEquals(RoleType.TOOL, toolMsg.role);
-        assertTrue(toolMsg.content.contains("Tool not found"));
+        assertTrue(toolMsg.getTextContent().contains("Tool not found"));
     }
 
     @Test
@@ -117,7 +117,7 @@ class SlashCommandExecutorTest {
         assertEquals(3, result.getMessages().size());
 
         var toolMsg = result.getMessages().get(2);
-        assertTrue(toolMsg.content.contains("Invalid slash command format"));
+        assertTrue(toolMsg.getTextContent().contains("Invalid slash command format"));
     }
 
     @Test
@@ -154,7 +154,7 @@ class SlashCommandExecutorTest {
         assertEquals(3, result.getMessages().size());
 
         var toolMsg = result.getMessages().get(2);
-        assertTrue(toolMsg.content.contains("Tool execution failed"));
+        assertTrue(toolMsg.getTextContent().contains("Tool execution failed"));
     }
 
     @Test

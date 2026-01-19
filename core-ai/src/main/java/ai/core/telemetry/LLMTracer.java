@@ -136,7 +136,7 @@ public class LLMTracer extends Tracer {
     /**
      * Serialize message to JSON with fallback to plain content
      */
-    private String serializeMessageToJson(ai.core.llm.domain.Message message) {
+    private String serializeMessageToJson(ai.core.llm.domain.AssistantMessage message) {
         try {
             return JsonUtil.toJson(message);
         } catch (Exception e) {
