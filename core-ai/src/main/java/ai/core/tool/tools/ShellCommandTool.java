@@ -93,9 +93,8 @@ public class ShellCommandTool extends ToolCall {
             parallel:
              - Add relevant untracked files to the staging area.
              - Create the commit with a message ending with:
-             🤖 Generated with [Claude Code](https://claude.ai/code)
             
-             Co-Authored-By: Claude <noreply@anthropic.com>
+             Co-Authored-By: CoreAI <noreply@chancetop.com>
              - Run git status to make sure the commit succeeded.
             4. If the commit fails due to pre-commit hook changes, retry the commit ONCE
             to include these automated changes. If it fails again, it usually means a
@@ -130,9 +129,7 @@ public class ShellCommandTool extends ToolCall {
             git commit -m "$(cat <<'EOF'
              Commit message here.
             
-             🤖 Generated with [Claude Code](https://claude.ai/code)
-            
-             Co-Authored-By: Claude <noreply@anthropic.com>
+             Co-Authored-By: CoreAI <noreply@chancetop.com>
              EOF
              )"
             </example>
@@ -182,9 +179,6 @@ public class ShellCommandTool extends ToolCall {
             ## Test plan
             
             [Checklist of TODOs for testing the pull request...]
-            
-            
-            🤖 Generated with [Claude Code](https://claude.ai/code)
             
             EOF
             
