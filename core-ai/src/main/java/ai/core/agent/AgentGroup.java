@@ -147,7 +147,7 @@ public class AgentGroup extends Node<AgentGroup> {
     }
 
     private String getPreviousQuery() {
-        return currentAgent == null ? currentQuery : getMessages().getLast().content;
+        return currentAgent == null ? currentQuery : getMessages().getLast().getTextContent();
     }
 
     private void roundCompleted() {

@@ -30,7 +30,7 @@ public final class ReflectionEvaluator {
         String evaluationUserMessage = buildEvaluationUserMessage(request.currentOutput());
 
         List<Message> evaluationMessages = List.of(
-                Message.of(RoleType.SYSTEM, evaluatorSystemPrompt, request.agentName() + "-evaluator"),
+                Message.of(RoleType.SYSTEM, evaluatorSystemPrompt),
                 Message.of(RoleType.USER, evaluationUserMessage, null, null, null, null)
         );
 

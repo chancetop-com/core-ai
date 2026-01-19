@@ -14,7 +14,10 @@ public final class MessageTokenCounter {
     public static int count(Message message) {
         int tokens = 0;
         if (message.content != null) {
-            tokens += Tokenizer.tokenCount(message.content);
+            tokens += Tokenizer.tokenCount(message.getTextContent());
+        }
+        if (message.reasoningContent != null) {
+            tokens += Tokenizer.tokenCount(message.reasoningContent);
         }
         if (message.toolCalls != null) {
             for (var call : message.toolCalls) {

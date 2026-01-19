@@ -75,7 +75,7 @@ class RefTest {
     private CompletionResponse createAgentResponse(int round) {
         String content = String.format("This is solution from round %d. Improved implementation with better code quality.", round);
         return CompletionResponse.of(
-            List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, content, null))),
+            List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, content))),
             new Usage(100, 200, 300)
         );
     }
@@ -131,7 +131,7 @@ class RefTest {
         }
 
         return CompletionResponse.of(
-            List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, evaluationJson, null))),
+            List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, evaluationJson))),
             new Usage(50, 100, 150)
         );
     }
@@ -307,7 +307,7 @@ class RefTest {
                     }
                     """;
                 return CompletionResponse.of(
-                    List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, json, null))),
+                    List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, json))),
                     new Usage(50, 100, 150)
                 );
             } else {
@@ -332,7 +332,7 @@ class RefTest {
                     }
                     """;
                 return CompletionResponse.of(
-                    List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, json, null))),
+                    List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, json))),
                     new Usage(50, 100, 150)
                 );
             } else {

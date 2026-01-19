@@ -164,7 +164,7 @@ class CodeGenTest extends IntegrationTest {
                         logger.info(Strings.format("Reasoning: {}", reasoning));
                     }
                 })
-                .model("qwen-plus")
+                .model("gpt-5-mini")
                 .build();
         logger.info("setup agent: {}", agent);
         // todo: thinking how to rewrite testcase query for better agent understanding and performance

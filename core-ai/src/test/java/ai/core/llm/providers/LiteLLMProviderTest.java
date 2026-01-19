@@ -1,8 +1,8 @@
 package ai.core.llm.providers;
 
+import ai.core.llm.domain.AssistantMessage;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.FunctionCall;
-import ai.core.llm.domain.Message;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -87,7 +87,7 @@ class LiteLLMProviderTest {
 
         // Chunk with null index should be skipped
         var chunk = new Choice();
-        chunk.delta = new Message();
+        chunk.delta = new AssistantMessage();
         chunk.delta.toolCalls = new ArrayList<>();
         var tc = new FunctionCall();
         tc.index = null;  // null index
@@ -121,14 +121,14 @@ class LiteLLMProviderTest {
 
     private Choice createFinalChoice() {
         var choice = new Choice();
-        choice.message = new Message();
+        choice.message = new AssistantMessage();
         choice.message.toolCalls = new ArrayList<>();
         return choice;
     }
 
     private Choice createChunkChoice(int index, String id, String type, String name, String arguments) {
         var choice = new Choice();
-        choice.delta = new Message();
+        choice.delta = new AssistantMessage();
         choice.delta.toolCalls = new ArrayList<>();
 
         var tc = new FunctionCall();
@@ -147,7 +147,7 @@ class LiteLLMProviderTest {
 
     private Choice createChunkChoiceMultiple(ToolCallDelta... deltas) {
         var choice = new Choice();
-        choice.delta = new Message();
+        choice.delta = new AssistantMessage();
         choice.delta.toolCalls = new ArrayList<>();
 
         for (var d : deltas) {

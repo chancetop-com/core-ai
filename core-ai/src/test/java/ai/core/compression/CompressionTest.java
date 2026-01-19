@@ -151,9 +151,9 @@ class CompressionTest {
         assertEquals("memory_compress", result.get(1).toolCalls.getFirst().function.name);
         // Should have tool result message (TOOL with formatted summary)
         assertEquals(RoleType.TOOL, result.get(2).role);
-        assertTrue(result.get(2).content.contains("[Previous Conversation Summary]"));
-        assertTrue(result.get(2).content.contains("Test summary"));
-        assertTrue(result.get(2).content.contains("[End Summary]"));
+        assertTrue(result.get(2).getTextContent().contains("[Previous Conversation Summary]"));
+        assertTrue(result.get(2).getTextContent().contains("Test summary"));
+        assertTrue(result.get(2).getTextContent().contains("[End Summary]"));
 
         LOGGER.info("Compress successful test passed: {} -> {} messages", messages.size(), result.size());
     }
@@ -175,8 +175,8 @@ class CompressionTest {
         List<Message> result = testCompression.compress(messages);
 
         // System message should be first
-        assertEquals(RoleType.SYSTEM, result.get(0).role);
-        assertEquals("System prompt", result.get(0).content);
+        assertEquals(RoleType.SYSTEM, result.getFirst().role);
+        assertEquals("System prompt", result.getFirst().getTextContent());
 
         LOGGER.info("System message preserved test passed");
     }

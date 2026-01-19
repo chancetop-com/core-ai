@@ -9,7 +9,15 @@ import core.framework.api.validate.NotNull;
 public class Choice {
     public static Choice of(FinishReason finishReason, Message message) {
         var choice = new Choice();
-        choice.message = message;
+        var msg = new AssistantMessage();
+        msg.role = message.role;
+        msg.content = message.content.getFirst().text;
+        msg.reasoningContent = message.reasoningContent;
+        msg.name = message.name;
+        msg.toolCallId = message.toolCallId;
+        msg.toolCalls = message.toolCalls;
+        msg.functionCall = message.functionCall;
+        choice.message = msg;
         choice.finishReason = finishReason;
         return choice;
     }
@@ -18,9 +26,9 @@ public class Choice {
     @Property(name = "finish_reason")
     public FinishReason finishReason;
     @Property(name = "message")
-    public Message message;
+    public AssistantMessage message;
     @Property(name = "delta")
-    public Message delta;
+    public AssistantMessage delta;
     @Property(name = "index")
     public Integer index;
 }

@@ -12,26 +12,36 @@ public class Message {
     public static Message of(RoleType role, String content) {
         var message = new Message();
         message.role = role;
-        message.content = content == null ? "" : content;
+        message.content = List.of(Content.of(content));
         return message;
     }
 
-    public static Message of(RoleType role, String content, String name) {
+    public static Message of(RoleType role, Content content) {
         var message = new Message();
         message.role = role;
-        message.content = content == null ? "" : content;
-        message.name = name;
+        message.content = List.of(content);
         return message;
     }
 
     public static Message of(RoleType role, String content, String name, String toolCallId, FunctionCall functionCall, List<FunctionCall> toolCalls) {
         var message = new Message();
         message.role = role;
-        message.content = content == null ? "" : content;
+        message.content = List.of(Content.of(content));
         message.name = name;
         message.toolCallId = toolCallId;
         message.functionCall = functionCall;
         message.toolCalls = toolCalls;
+        return message;
+    }
+
+    public static Message of(MessageRecord record) {
+        var message = new Message();
+        message.role = record.role;
+        message.content = record.content;
+        message.name = record.name;
+        message.toolCallId = record.toolCallId;
+        message.functionCall = record.functionCall;
+        message.toolCalls = record.toolCalls;
         return message;
     }
 
@@ -40,7 +50,7 @@ public class Message {
     public RoleType role;
     @NotNull
     @Property(name = "content")
-    public String content;
+    public List<Content> content;
     @Property(name = "reasoning_content")
     public String reasoningContent;
     @Property(name = "name")
@@ -52,17 +62,21 @@ public class Message {
     @Property(name = "tool_calls")
     public List<FunctionCall> toolCalls;
 
-    private String agentName;
-
     public String getName() {
         return name;
     }
 
-    public String getAgentName() {
-        return agentName;
+    public String getTextContent() {
+        if (content == null || content.isEmpty()) return null;
+        return content.getFirst().text;
     }
 
-    public void setAgentName(String agentName) {
-        this.agentName = agentName;
+    public record MessageRecord(RoleType role,
+                                List<Content> content,
+                                String reasoningContent,
+                                String name,
+                                String toolCallId,
+                                FunctionCall functionCall,
+                                List<FunctionCall> toolCalls) {
     }
 }

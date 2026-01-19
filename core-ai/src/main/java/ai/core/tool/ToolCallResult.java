@@ -43,6 +43,10 @@ public final class ToolCallResult {
     private Boolean directReturn;
     private RuntimeException runtimeException;
 
+    private ContentType type = ContentType.TEXT;
+    private String imageBase64;
+    private String imageFormat;
+
     private ToolCallResult() {
         this.stats = new HashMap<>();
     }
@@ -142,6 +146,29 @@ public final class ToolCallResult {
         return this;
     }
 
+    public ContentType getType() {
+        return type;
+    }
+
+    public String getImageBase64() {
+        return imageBase64;
+    }
+
+    public String getImageFormat() {
+        return imageFormat;
+    }
+
+    public boolean hasImage() {
+        return type == ContentType.IMAGE && imageBase64 != null && !imageBase64.isEmpty();
+    }
+
+    public ToolCallResult withImage(String base64, String format) {
+        this.type = ContentType.IMAGE;
+        this.imageBase64 = base64;
+        this.imageFormat = format;
+        return this;
+    }
+
     public String toResultForLLM() {
         return switch (status) {
             case COMPLETED -> result;
@@ -177,5 +204,10 @@ public final class ToolCallResult {
         PENDING,
         WAITING_FOR_INPUT,
         FAILED
+    }
+
+    public enum ContentType {
+        TEXT,
+        IMAGE
     }
 }
