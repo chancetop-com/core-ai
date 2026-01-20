@@ -123,7 +123,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     public AgentBuilder toolCalls(List<? extends ToolCall> toolCalls) {
-        this.toolCalls = new ArrayList<>(toolCalls);
+        this.toolCalls.addAll(toolCalls);
         return this;
     }
 
