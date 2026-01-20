@@ -2,6 +2,7 @@ package ai.core.mcp.client;
 
 import ai.core.api.jsonschema.JsonSchema;
 import ai.core.api.mcp.schema.tool.Tool;
+import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import ai.core.utils.SystemUtil;
 import io.modelcontextprotocol.client.McpClient;
@@ -62,19 +63,19 @@ public class McpClientService implements AutoCloseable {
         return listTools(null);
     }
 
-    public String callTool(String name, String text) {
-        return callTool(name, JsonUtil.toMap(text));
+    public ToolCallResult callToolWithResult(String name, String text) {
+        return callToolWithResult(name, JsonUtil.toMap(text));
     }
 
-    public String callTool(String name, Map<String, Object> arguments) {
+    public ToolCallResult callToolWithResult(String name, Map<String, Object> arguments) {
         var request = new McpSchema.CallToolRequest(getRealName(serverName, name), arguments);
         var result = client.callTool(request);
 
         if (result.isError() != null && result.isError()) {
-            return extractErrorMessage(result);
+            return ToolCallResult.failed(extractErrorMessage(result));
         }
 
-        return extractResultContent(result);
+        return extractToolCallResult(result);
     }
 
     private String getRealName(String serverName, String name) {
@@ -417,12 +418,15 @@ public class McpClientService implements AutoCloseable {
         return prop;
     }
 
-    private String extractResultContent(McpSchema.CallToolResult result) {
+    private ToolCallResult extractToolCallResult(McpSchema.CallToolResult result) {
         if (result.content() == null || result.content().isEmpty()) {
-            return "Call tool completed with no content";
+            return ToolCallResult.completed("Call tool completed with no content");
         }
 
         var sb = new StringBuilder(256);
+        String imageBase64 = null;
+        String imageMimeType = null;
+
         for (var content : result.content()) {
             if (content instanceof McpSchema.TextContent textContent) {
                 if (!sb.isEmpty()) {
@@ -430,6 +434,11 @@ public class McpClientService implements AutoCloseable {
                 }
                 sb.append(textContent.text());
             } else if (content instanceof McpSchema.ImageContent imageContent) {
+                // capture the first image content
+                if (imageBase64 == null && imageContent.data() != null) {
+                    imageBase64 = imageContent.data();
+                    imageMimeType = imageContent.mimeType();
+                }
                 if (!sb.isEmpty()) {
                     sb.append('\n');
                 }
@@ -441,7 +450,15 @@ public class McpClientService implements AutoCloseable {
                 sb.append("[Resource: ").append(embeddedResource.resource().uri()).append(']');
             }
         }
-        return sb.isEmpty() ? "Call tool completed with unknown content type" : sb.toString();
+
+        var textResult = sb.isEmpty() ? "Call tool completed" : sb.toString();
+        var toolResult = ToolCallResult.completed(textResult);
+
+        if (imageBase64 != null) {
+            toolResult.withImage(imageBase64, imageMimeType);
+        }
+
+        return toolResult;
     }
 
     private String extractErrorMessage(McpSchema.CallToolResult result) {
