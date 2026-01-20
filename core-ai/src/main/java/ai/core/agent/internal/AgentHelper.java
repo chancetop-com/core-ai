@@ -76,7 +76,7 @@ public class AgentHelper {
     }
 
     private static List<Content> buildImageContent(ToolCallResult result) {
-        return List.of(Content.of(Prompts.DEFAULT_REFLECTION_CONTINUE_TEMPLATE), Content.of(Content.ImageUrl.of(buildImageUrl(result), result.getImageFormat())));
+        return List.of(Content.of(Prompts.IMAGE_CAPTIONING_PROMPT), Content.of(Content.ImageUrl.of(buildImageUrl(result), result.getImageFormat())));
     }
 
     private static String buildImageUrl(ToolCallResult result) {

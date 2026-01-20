@@ -19,9 +19,8 @@ public class McpToolCall extends ToolCall {
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var result = mcpClientService.callTool(this.getName(), text);
-            return ToolCallResult.completed(result)
-                    .withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
+            var result = mcpClientService.callToolWithResult(this.getName(), text);
+            return result.withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         } catch (Exception e) {
             return ToolCallResult.failed("MCP call failed: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());

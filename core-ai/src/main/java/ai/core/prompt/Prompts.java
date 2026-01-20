@@ -8,7 +8,7 @@ public class Prompts {
             Provide a detailed and vivid description of the image, capturing its key elements, context, and mood.
             Focus on the most prominent features and any notable details that stand out.
             Use descriptive language to convey the scene effectively.
-            Keep the caption concise, ideally within 50 words.
+            Keep the caption concise.
             """;
     public static final String ROLE_PLAY_SYSTEM_PROMPT_TEMPLATE = "You are {} in a role play game.";
     public static final String REALISM_PHOTO_STYLE_IMAGE_PROMPT_SUFFIX = "Realistic style, photorealistic, raw photo, sigma 85mm f/1.4.";
