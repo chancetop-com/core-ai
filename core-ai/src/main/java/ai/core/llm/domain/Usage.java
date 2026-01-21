@@ -27,12 +27,12 @@ public class Usage {
 
     @Override
     public String toString() {
-        return "Usage{" +
-                "promptTokens=" + promptTokens +
-                ", completionTokens=" + completionTokens +
-                ", completionTokensDetails=" + completionTokensDetails +
-                ", totalTokens=" + totalTokens +
-                '}';
+        return "Usage{"
+                + "promptTokens=" + promptTokens
+                + ", completionTokens=" + completionTokens
+                + ", completionTokensDetails=" + completionTokensDetails
+                + ", totalTokens=" + totalTokens
+                + '}';
     }
 
     public int getPromptTokens() {

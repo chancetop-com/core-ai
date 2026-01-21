@@ -1,24 +1,18 @@
 package ai.core.tool.function;
 
 import ai.core.agent.ExecutionContext;
-import ai.core.tool.ToolCallParameter;
-import ai.core.tool.ToolCallParameterUtil;
-import ai.core.tool.ToolCallResult;
-import ai.core.api.tool.function.CoreAiMethod;
-import ai.core.api.tool.function.CoreAiParameter;
-import ai.core.tool.function.converter.ResponseConverter;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
+import ai.core.tool.function.converter.ResponseConverter;
 import ai.core.tool.function.converter.response.DefaultJsonResponseConverter;
 import ai.core.utils.JsonUtil;
 import core.framework.log.Markers;
 import core.framework.util.Strings;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -73,7 +67,7 @@ public class Function extends ToolCall {
         logger.info("func text is {}", text);
         long startTime = System.currentTimeMillis();
         try {
-            String result = executeSupport(text, context);
+            var result = executeSupport(text, context);
             return ToolCallResult.completed(result).withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         } catch (IllegalAccessException | InvocationTargetException e) {
             logger.error(Markers.errorCode("FUNCTION_EXECUTE_FAILED"), "function<{}.{}> execute failed, params: {}", object.toString(), getName(), text, e);
@@ -87,50 +81,7 @@ public class Function extends ToolCall {
         return execute(text, null);
     }
 
-    public void setMethod(Method method) {
-        this.method = method;
-
-        var functionDef = method.getAnnotation(CoreAiMethod.class);
-        this.setName(functionDef.name());
-        this.setDescription(functionDef.description());
-        this.setNeedAuth(functionDef.needAuth());
-        this.setDirectReturn(functionDef.directReturn());
-        this.setLlmVisible(functionDef.llmVisible());
-
-        var parameterList = new ArrayList<ToolCallParameter>();
-        var methodParameters = method.getParameters();
-        for (var methodParameter : methodParameters) {
-            // skip ExecutionContext type, not included in tool parameter definition
-            if (methodParameter.getType() == ExecutionContext.class) {
-                continue;
-            }
-            var parameter = getParameter(methodParameter);
-            parameterList.add(parameter);
-        }
-        this.setParameters(parameterList);
-    }
-
-    @NotNull
-    private ToolCallParameter getParameter(java.lang.reflect.Parameter methodParameter) {
-        var functionParam = methodParameter.getAnnotation(CoreAiParameter.class);
-        var parameter = new ToolCallParameter();
-        parameter.setName(functionParam.name());
-        parameter.setDescription(functionParam.description());
-        parameter.setClassType(methodParameter.getType());
-
-        // Extract generic type for collections/arrays (e.g., List<TodoEntity> -> TodoEntity.class)
-        extractGenericItemType(methodParameter.getParameterizedType(), parameter);
-
-        parameter.setRequired(functionParam.required());
-        parameter.setEnums(List.of(functionParam.enums()));
-        return parameter;
-    }
-
-    private void extractGenericItemType(java.lang.reflect.Type parameterizedType, ToolCallParameter parameter) {
-        ToolCallParameterUtil.extractGenericItemType(parameterizedType, parameter);
-    }
-
-    // keep if dev cannot add annotation in the method
+    // Builder for manual Function creation (when annotations cannot be used)
     public static class Builder extends ToolCall.Builder<Builder, Function> {
         private Object object;
         private Method method;

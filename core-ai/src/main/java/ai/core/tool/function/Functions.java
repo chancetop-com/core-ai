@@ -1,10 +1,15 @@
 package ai.core.tool.function;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.api.tool.function.CoreAiMethod;
+import ai.core.api.tool.function.CoreAiParameter;
+import ai.core.tool.ToolCallParameter;
+import ai.core.tool.ToolCallParameterUtil;
 
 import java.io.Serial;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -41,16 +46,65 @@ public class Functions extends ArrayList<Function> {
 
         var functions = new Functions();
         for (var method : methodList) {
-            var function = new Function();
-            function.setMethod(method);
-
-            if (!Modifier.isStatic(method.getModifiers())) {
-                function.object = object;
-            }
+            var function = buildFunction(method, object);
             functions.add(function);
         }
 
         return functions;
+    }
+
+    private static Function buildFunction(Method method, Object object) {
+        var functionDef = method.getAnnotation(CoreAiMethod.class);
+        var builder = Function.builder()
+                .method(method)
+                .name(functionDef.name())
+                .description(functionDef.description())
+                .needAuth(functionDef.needAuth())
+                .directReturn(functionDef.directReturn())
+                .llmVisible(functionDef.llmVisible())
+                .parameters(buildParameters(method));
+
+        // Set timeout if specified
+        if (functionDef.timeoutMs() > 0) {
+            builder.timeoutMs(functionDef.timeoutMs());
+        }
+
+        var function = builder.build();
+
+        if (!Modifier.isStatic(method.getModifiers())) {
+            function.object = object;
+        }
+
+        return function;
+    }
+
+    private static List<ToolCallParameter> buildParameters(Method method) {
+        var parameterList = new ArrayList<ToolCallParameter>();
+        var methodParameters = method.getParameters();
+        for (var methodParameter : methodParameters) {
+            // skip ExecutionContext type, not included in tool parameter definition
+            if (methodParameter.getType() == ExecutionContext.class) {
+                continue;
+            }
+            var parameter = buildParameter(methodParameter);
+            parameterList.add(parameter);
+        }
+        return parameterList;
+    }
+
+    private static ToolCallParameter buildParameter(Parameter methodParameter) {
+        var functionParam = methodParameter.getAnnotation(CoreAiParameter.class);
+        var parameter = new ToolCallParameter();
+        parameter.setName(functionParam.name());
+        parameter.setDescription(functionParam.description());
+        parameter.setClassType(methodParameter.getType());
+
+        // Extract generic type for collections/arrays (e.g., List<TodoEntity> -> TodoEntity.class)
+        ToolCallParameterUtil.extractGenericItemType(methodParameter.getParameterizedType(), parameter);
+
+        parameter.setRequired(functionParam.required());
+        parameter.setEnums(List.of(functionParam.enums()));
+        return parameter;
     }
 
     public static List<Method> getAllMethods(Class<?> clazz, Predicate<Method> predicate) {
