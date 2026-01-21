@@ -14,6 +14,8 @@ import java.util.List;
  * @author stephen
  */
 public abstract class ToolCall {
+    public static final long DEFAULT_TIMEOUT_MS = 60 * 1000L;
+
     String namespace;
     String name;
     String description;
@@ -21,6 +23,7 @@ public abstract class ToolCall {
     Boolean needAuth;
     Boolean directReturn;
     Boolean llmVisible;
+    protected Long timeoutMs;
 
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         return execute(arguments);
@@ -93,6 +96,18 @@ public abstract class ToolCall {
         this.llmVisible = llmVisible;
     }
 
+    public long getTimeoutMs() {
+        return timeoutMs != null ? timeoutMs : DEFAULT_TIMEOUT_MS;
+    }
+
+    public void setTimeoutMs(Long timeoutMs) {
+        this.timeoutMs = timeoutMs;
+    }
+
+    public boolean isSubAgent() {
+        return false;
+    }
+
     @Override
     public String toString() {
         return JsonUtil.toJson(toTool());
@@ -129,6 +144,7 @@ public abstract class ToolCall {
         Boolean continueAfterSlash;
         Boolean directReturn;
         Boolean llmVisible;
+        Long timeoutMs;
 
         protected abstract B self();
 
@@ -162,8 +178,18 @@ public abstract class ToolCall {
             return self();
         }
 
+        public B directReturn(Boolean directReturn) {
+            this.directReturn = directReturn;
+            return self();
+        }
+
         public B llmVisible(Boolean llmVisible) {
             this.llmVisible = llmVisible;
+            return self();
+        }
+
+        public B timeoutMs(Long timeoutMs) {
+            this.timeoutMs = timeoutMs;
             return self();
         }
 
@@ -184,6 +210,7 @@ public abstract class ToolCall {
             toolCall.needAuth = needAuth != null && needAuth;
             toolCall.directReturn = directReturn != null && directReturn;
             toolCall.llmVisible = llmVisible == null || llmVisible;
+            toolCall.timeoutMs = timeoutMs;
         }
     }
 }

@@ -12,13 +12,6 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
     @Serial
     private static final long serialVersionUID = -8523451400454678078L;
 
-    /**
-     * Convenient static method to create ParamSpec (for static import)
-     * @param type Parameter type class
-     * @param name Parameter name
-     * @param description Parameter description
-     * @return ParamSpec instance
-     */
     public static ParamSpec param(Class<?> type, String name, String description) {
         return ParamSpec.of(type, name, description);
     }
@@ -40,11 +33,6 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
         return parameters;
     }
 
-    /**
-     * Create parameters from parameter specifications
-     * @param specs Variable arguments of ParamSpec
-     * @return List of ToolCallParameter
-     */
     public static List<ToolCallParameter> of(ParamSpec... specs) {
         var parameters = new ArrayList<ToolCallParameter>();
         for (var spec : specs) {
@@ -62,17 +50,7 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
     }
 
 
-    /**
-     * Parameter specification for building tool parameters
-     */
     public static final class ParamSpec {
-        /**
-         * Create a parameter specification
-         * @param type Parameter type class
-         * @param name Parameter name
-         * @param description Parameter description
-         * @return ParamSpec instance
-         */
         public static ParamSpec of(Class<?> type, String name, String description) {
             return new ParamSpec(type, name, description);
         }
@@ -89,37 +67,19 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
             this.description = description;
         }
 
-        /**
-         * Set whether this parameter is required
-         * @param required true if required, false if optional
-         * @return this ParamSpec for chaining
-         */
         public ParamSpec required(boolean required) {
             this.required = required;
             return this;
         }
 
-        /**
-         * Mark this parameter as required
-         * @return this ParamSpec for chaining
-         */
         public ParamSpec required() {
             return required(true);
         }
 
-        /**
-         * Mark this parameter as optional
-         * @return this ParamSpec for chaining
-         */
         public ParamSpec optional() {
             return required(false);
         }
 
-        /**
-         * Set allowed enum values for this parameter
-         * @param enums List of allowed string values
-         * @return this ParamSpec for chaining
-         */
         public ParamSpec enums(List<String> enums) {
             this.enums = enums;
             return this;

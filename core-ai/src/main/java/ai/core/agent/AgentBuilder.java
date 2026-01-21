@@ -19,6 +19,7 @@ import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.util.Lists;
 
 import java.util.ArrayList;
@@ -32,7 +33,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private String systemPrompt;
     private String promptTemplate;
     private LLMProvider llmProvider;
-    private List<ToolCall> toolCalls = Lists.newArrayList();
+    private final List<ToolCall> toolCalls = Lists.newArrayList();
     private RagConfig ragConfig;
     private Double temperature;
     private String model;
@@ -48,6 +49,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     // Memory configuration
     private Memory memory;
     private MemoryConfig memoryConfig;
+
+    // SubAgent configuration
+    private List<SubAgentToolCall> subAgents = Lists.newArrayList();
 
     // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
@@ -200,6 +204,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder subAgents(List<SubAgentToolCall> subAgents) {
+        this.subAgents = new ArrayList<>(subAgents);
+        return this;
+    }
+
     public AgentBuilder reasoningEffort(ReasoningEffort reasoningEffort) {
         this.reasoningEffort = reasoningEffort;
         return this;
@@ -246,6 +255,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             throw new Error("llmProvider is required for agent, please set it with llmProvider() method");
         }
         agent.toolCalls = this.toolCalls;
+
+        // Process subAgents: convert to SubAgentToolCall and add to toolCalls
+        if (this.subAgents != null && !this.subAgents.isEmpty()) {
+            agent.setSubAgents(this.subAgents);
+            for (var subAgent : this.subAgents) {
+                subAgent.getSubAgent().setParentNode(agent);
+                agent.toolCalls.add(subAgent);
+            }
+        }
+
         agent.ragConfig = this.ragConfig;
         agent.reflectionConfig = this.reflectionConfig;
         agent.reflectionListener = this.reflectionListener;
