@@ -25,6 +25,16 @@ public class Usage {
     public Usage() {
     }
 
+    @Override
+    public String toString() {
+        return "Usage{" +
+                "promptTokens=" + promptTokens +
+                ", completionTokens=" + completionTokens +
+                ", completionTokensDetails=" + completionTokensDetails +
+                ", totalTokens=" + totalTokens +
+                '}';
+    }
+
     public int getPromptTokens() {
         return promptTokens;
     }
