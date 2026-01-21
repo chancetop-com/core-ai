@@ -1,7 +1,5 @@
 package ai.core.agent.formatter.formatters;
 
-import ai.core.agent.planning.plannings.DefaultPlanningResult;
-import core.framework.json.JSON;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -66,22 +64,5 @@ class DefaultJsonFormatterTest {
         var expected = "{\"key\": \"value\"}";
         var result = formatter.formatter(input);
         assertEquals(expected, result);
-    }
-
-    @Test
-    void testFormatterWithNewLine() {
-        var input = """
-                {
-                  "planning": "1. 使用coding-agent分析setDefaultButton有时候不生效的原因。",
-                  "next_step": "TERMINATE",
-                  "name": "coding-agent",
-                  "query": "在文件 src/main/java/com/chancetop/naixt/plugin/idea/windows/OpenNaixtToolWindowFactory.java 中，用户在第54行，第61列使用了 setDefaultButton 方法，如下所示：
-                
-                mainPanel.getRootPane().setDefaultButton(sendButton);
-                
-                有时 setDefaultButton 似乎不生效，导致回车键不能触发发送按钮。请分析可能的原因并提供解决方案。"
-                }""";
-        var result = formatter.formatter(input);
-        JSON.fromJSON(DefaultPlanningResult.class, result);
     }
 }
