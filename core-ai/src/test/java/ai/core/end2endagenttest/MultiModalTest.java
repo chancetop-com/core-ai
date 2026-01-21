@@ -1,4 +1,4 @@
-package ai.core.multimoduletest;
+package ai.core.end2endagenttest;
 
 import ai.core.IntegrationTest;
 import ai.core.agent.Agent;

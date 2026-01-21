@@ -18,4 +18,5 @@ public @interface CoreAiMethod {
     boolean needAuth() default false;
     boolean directReturn() default false;
     boolean llmVisible() default true;
+    long timeoutMs() default -1;
 }

@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author stephen
@@ -41,6 +42,7 @@ public class GrepFileTool extends ToolCall {
     @Override
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
+        Process process = null;
         try {
             // Parse input parameters
             var params = JsonUtil.OBJECT_MAPPER.readTree(text);
@@ -55,12 +57,23 @@ public class GrepFileTool extends ToolCall {
             var pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
 
-            var process = pb.start();
+            process = pb.start();
 
-            // Read output
+            // Read output with interruption check
             var output = readProcessOutput(process);
 
-            int exitCode = process.waitFor();
+            // Wait for process with timeout (use tool timeout minus elapsed time)
+            long elapsed = System.currentTimeMillis() - startTime;
+            long remainingTimeout = Math.max(1000, getTimeoutMs() - elapsed);
+            boolean finished = process.waitFor(remainingTimeout, TimeUnit.MILLISECONDS);
+
+            if (!finished) {
+                process.destroyForcibly();
+                return ToolCallResult.failed("Ripgrep process timed out")
+                    .withDuration(System.currentTimeMillis() - startTime);
+            }
+
+            int exitCode = process.exitValue();
 
             // Exit code 0 = matches found, 1 = no matches, 2+ = error
             if (exitCode > 1) {
@@ -78,17 +91,28 @@ public class GrepFileTool extends ToolCall {
                 .withDuration(System.currentTimeMillis() - startTime)
                 .withStats("pattern", params.path("pattern").asText());
 
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            process.destroyForcibly();
+            return ToolCallResult.failed("Grep interrupted")
+                .withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
             return ToolCallResult.failed("Error executing grep: " + e.getMessage())
                 .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
-    private String readProcessOutput(Process process) throws IOException {
+    private String readProcessOutput(Process process) throws IOException, InterruptedException {
         var output = new StringBuilder();
         try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line = reader.readLine();
             while (line != null) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedException("Read interrupted");
+                }
                 output.append(line).append('\n');
                 line = reader.readLine();
             }

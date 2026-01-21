@@ -30,6 +30,7 @@ import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolExecutor;
+import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
 import core.framework.util.Maps;
@@ -56,6 +57,7 @@ public class Agent extends Node<Agent> {
     }
 
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
+
     String systemPrompt;
     String promptTemplate;
     LLMProvider llmProvider;
@@ -71,6 +73,7 @@ public class Agent extends Node<Agent> {
     ToolExecutor toolExecutor;
     Compression compression;
     ReasoningEffort reasoningEffort;
+    List<SubAgentToolCall> subAgents = new ArrayList<>();
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -227,7 +230,7 @@ public class Agent extends Node<Agent> {
         var agentOut = new StringBuilder();
         do {
             var turnMsgList = turn(getMessages(), AgentHelper.toReqTools(toolCalls), constructionAssistantMsg);
-            logger.info("Agent turn {}: received {} messages", currentIteCount + 1, turnMsgList.size());
+            logger.info("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
             currentIteCount++;
@@ -388,5 +391,25 @@ public class Agent extends Node<Agent> {
 
     private AgentTracer getActiveTracer() {
         return getTracer();
+    }
+
+    public List<SubAgentToolCall> getSubAgents() {
+        return subAgents;
+    }
+
+    void setSubAgents(List<SubAgentToolCall> subAgents) {
+        this.subAgents = subAgents;
+    }
+
+    public boolean hasSubAgents() {
+        return subAgents != null && !subAgents.isEmpty();
+    }
+
+    public SubAgentToolCall toSubAgentToolCall() {
+        return SubAgentToolCall.builder().subAgent(this).build();
+    }
+
+    public SubAgentToolCall toSubAgentToolCall(Class<?>... classes) {
+        return SubAgentToolCall.builder().subAgent(this, classes).build();
     }
 }
