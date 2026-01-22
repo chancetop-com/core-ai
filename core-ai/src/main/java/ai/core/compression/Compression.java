@@ -179,12 +179,12 @@ public class Compression {
     private int calculateKeepFromIndex(List<Message> conversationMsgs, int lastUserIndex) {
         var keepFromIndex = findKeepFromIndexByTurnsAndTokens(conversationMsgs, lastUserIndex);
 
-        var keepTokens = MessageTokenCounter.countFrom(conversationMsgs, keepFromIndex);
+        var tokensFromKeep = MessageTokenCounter.countFrom(conversationMsgs, keepFromIndex);
         var threshold = (int) (maxContextTokens * triggerThreshold);
 
-        if (keepTokens >= threshold) {
+        if (tokensFromKeep >= threshold) {
             LOGGER.info("Recent turns exceed threshold ({} >= {}), use max keepFromIndex",
-                keepTokens, threshold);
+                tokensFromKeep, threshold);
             return Math.max(keepFromIndex, conversationMsgs.size() - 1);
         }
 
@@ -206,23 +206,31 @@ public class Compression {
         int indexByTurns = lastUserIndex;
         int indexByTokens = 0;
         boolean tokenBudgetExceeded = false;
+        boolean pendingTokenSplit = false;
 
         for (int i = conversationMsgs.size() - 1; i >= 0; i--) {
             Message msg = conversationMsgs.get(i);
+            boolean isAssistantWithTools = msg.role == RoleType.ASSISTANT
+                && msg.toolCalls != null && !msg.toolCalls.isEmpty();
 
             if (!tokenBudgetExceeded) {
                 accumulatedTokens += MessageTokenCounter.count(msg);
-                if (accumulatedTokens > keepTokens) {
-                    indexByTokens = i + 1;
-                    tokenBudgetExceeded = true;
-                }
+            }
+            if (!tokenBudgetExceeded && accumulatedTokens > keepTokens) {
+                pendingTokenSplit = msg.role == RoleType.TOOL;
+                tokenBudgetExceeded = !pendingTokenSplit;
+                indexByTokens = pendingTokenSplit ? indexByTokens : i;
+            }
+
+            if (pendingTokenSplit && isAssistantWithTools) {
+                indexByTokens = i;
+                tokenBudgetExceeded = true;
+                pendingTokenSplit = false;
             }
 
             if (i < lastUserIndex && turnCount < keepRecentTurns) {
                 indexByTurns = i;
-                if (msg.role == RoleType.USER) {
-                    turnCount++;
-                }
+                turnCount += msg.role == RoleType.USER ? 1 : 0;
             }
         }
 

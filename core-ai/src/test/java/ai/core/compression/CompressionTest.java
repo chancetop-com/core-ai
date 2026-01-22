@@ -11,6 +11,7 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
@@ -179,6 +180,67 @@ class CompressionTest {
         assertEquals("System prompt", result.getFirst().getTextContent());
 
         LOGGER.info("System message preserved test passed");
+    }
+
+    @Test
+    void testToolCallsAndToolResponsePairPreserved() {
+        // test that tool_calls and their corresponding tool responses are kept together
+        Compression testCompression = new Compression(0.0001, 1, 100,
+            createMockProviderWithSummary("Summary"), "test-model", "test-model");
+
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.of(RoleType.SYSTEM, "System prompt"));
+
+        // add some early messages that will be compressed
+        for (int i = 0; i < 5; i++) {
+            messages.add(Message.of(RoleType.USER, "User " + i));
+            messages.add(Message.of(RoleType.ASSISTANT, "Assistant " + i));
+        }
+
+        // add ASSISTANT with tool_calls
+        String toolCallId = "call_123";
+        FunctionCall toolCall = FunctionCall.of(toolCallId, "function", "search", "{\"query\":\"test\"}");
+        Message assistantWithToolCall = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(toolCall));
+        messages.add(assistantWithToolCall);
+
+        // add TOOL response
+        Message toolResponse = Message.of(RoleType.TOOL, "Search result", "search", toolCallId, null, null);
+        messages.add(toolResponse);
+
+        // add final USER message
+        messages.add(Message.of(RoleType.USER, "Final user message"));
+
+        List<Message> result = testCompression.compress(messages);
+
+        // verify that we have valid message structure: every TOOL has matching ASSISTANT
+        verifyToolPairsIntact(result);
+
+        LOGGER.info("Tool calls and tool response pair preserved test passed: {} -> {} messages", messages.size(), result.size());
+    }
+
+    private void verifyToolPairsIntact(List<Message> messages) {
+        for (int i = 0; i < messages.size(); i++) {
+            Message msg = messages.get(i);
+            if (msg.role != RoleType.TOOL || msg.toolCallId == null) {
+                continue;
+            }
+            boolean found = hasMatchingAssistant(messages, i, msg.toolCallId);
+            assertTrue(found, "TOOL message with toolCallId=" + msg.toolCallId + " should have preceding ASSISTANT");
+        }
+    }
+
+    private boolean hasMatchingAssistant(List<Message> messages, int toolIndex, String toolCallId) {
+        for (int j = toolIndex - 1; j >= 0; j--) {
+            Message prevMsg = messages.get(j);
+            if (prevMsg.role != RoleType.ASSISTANT || prevMsg.toolCalls == null) {
+                continue;
+            }
+            boolean matches = prevMsg.toolCalls.stream().anyMatch(tc -> tc.id != null && tc.id.equals(toolCallId));
+            if (matches) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Message> createTestMessages(int turns) {
