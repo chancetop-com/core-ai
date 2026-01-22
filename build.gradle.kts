@@ -98,11 +98,7 @@ val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() 
 project(":core-ai") {
     version = "1.2.0-SNAPSHOT"
     dependencies {
-        if (useLocalProjects) {
-            implementation(project(":core-ai-api"))
-        } else {
-            implementation("com.chancetop:core-ai-api:1.2.0-SNAPSHOT")
-        }
+        implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
