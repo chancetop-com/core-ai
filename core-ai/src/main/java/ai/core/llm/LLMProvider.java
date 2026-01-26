@@ -88,7 +88,8 @@ public abstract class LLMProvider {
     private void postprocess(CompletionRequest request, CompletionResponse response) {
         // todo: reasoning effort finish reason handling can be more generic
         var m = response.choices.getFirst().message;
-        if (request.reasoningEffort != null && !m.toolCalls.isEmpty()) {
+        // gpt-5.1 also tool call return finish reason stop
+        if (!m.toolCalls.isEmpty()) {
             response.choices.getFirst().finishReason = FinishReason.TOOL_CALLS;
         }
         if (request.model.contains("gpt-5") && !Strings.isBlank(m.reasoningContent)) {
