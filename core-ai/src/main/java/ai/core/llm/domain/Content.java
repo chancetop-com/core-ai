@@ -53,6 +53,7 @@ public class Content {
         @Property(name = "url")
         public String url;
 
+        // can be null if not base64 encoded
         @Property(name = "format")
         public String format;
     }

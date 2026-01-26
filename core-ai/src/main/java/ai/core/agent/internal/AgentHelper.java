@@ -1,5 +1,6 @@
 package ai.core.agent.internal;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.domain.Content;
@@ -81,5 +82,26 @@ public class AgentHelper {
 
     private static String buildImageUrl(ToolCallResult result) {
         return Strings.format("data:{};base64,{}", result.getImageFormat(), result.getImageBase64());
+    }
+
+    public static Message buildUserMessage(String query, ExecutionContext context) {
+        if (context.getAttachedContent() == null) {
+            return Message.of(RoleType.USER, query, buildRequestName(false), null, null, null);
+        }
+        return Message.of(new Message.MessageRecord(
+            RoleType.USER,
+            List.of(Content.of(query), buildAttachedContent(context)),
+            null,
+            buildRequestName(false),
+            null,
+            null,
+            null));
+    }
+
+    public static Content buildAttachedContent(ExecutionContext context) {
+        return switch (context.getAttachedContent().type) {
+            case IMAGE -> Content.of(Content.ImageUrl.of(context.getAttachedContent().url, null));
+            case PDF -> throw new IllegalArgumentException("PDF content type not supported yet");
+        };
     }
 }

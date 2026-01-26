@@ -25,7 +25,7 @@ public class Compression {
     private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
-    private static final int MAX_TOOL_RESULT_TOKENS = 640000;
+    private static final int MAX_TOOL_RESULT_TOKENS = 64000;
     private static final int HEAD_TOKENS = 500;
     private static final int TAIL_TOKENS = 500;
     private static final String TEMP_DIR_NAME = "core-ai";
