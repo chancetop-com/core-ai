@@ -1,5 +1,6 @@
 package ai.core.llm.domain;
 
+import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
@@ -69,6 +70,11 @@ public class Message {
     public String getTextContent() {
         if (content == null || content.isEmpty()) return null;
         return content.getFirst().text;
+    }
+
+    @Override
+    public String toString() {
+        return JsonUtil.toJson(this);
     }
 
     public record MessageRecord(RoleType role,
