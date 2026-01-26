@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.llm.LLMProvider;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import core.framework.util.Maps;
 
@@ -21,10 +22,13 @@ public final class ExecutionContext {
     private final String userId;
     private final Map<String, Object> customVariables;
     private final ToolCallAsyncTaskManager asyncTaskManager;
+    private final AttachedContent attachedContent;
+    private LLMProvider llmProvider;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
         this.userId = builder.userId;
+        this.attachedContent = builder.attachedContent;
         this.customVariables = Maps.newHashMap();
         this.customVariables.putAll(builder.customVariables);
         this.asyncTaskManager = builder.asyncTaskManager;
@@ -59,46 +63,24 @@ public final class ExecutionContext {
         return customVariables.containsKey(key);
     }
 
-    public ExecutionContext withCustomVariables(Map<String, Object> additionalVariables) {
-        var builder = builder()
-            .sessionId(this.sessionId)
-            .userId(this.userId)
-            .customVariables(this.customVariables)
-            .asyncTaskManager(this.asyncTaskManager);
-
-        if (additionalVariables != null) {
-            builder.customVariables.putAll(additionalVariables);
-        }
-
-        return builder.build();
+    public LLMProvider getLlmProvider() {
+        return llmProvider;
     }
 
-    public ExecutionContext withCustomVariable(String key, Object value) {
-        var builder = builder()
-            .sessionId(this.sessionId)
-            .userId(this.userId)
-            .customVariables(this.customVariables)
-            .asyncTaskManager(this.asyncTaskManager);
-
-        builder.customVariables.put(key, value);
-
-        return builder.build();
+    public AttachedContent getAttachedContent() {
+        return attachedContent;
     }
 
-    public ExecutionContext withAsyncTaskManager(ToolCallAsyncTaskManager asyncTaskManager) {
-        return builder()
-            .sessionId(this.sessionId)
-            .userId(this.userId)
-            .customVariables(this.customVariables)
-            .asyncTaskManager(asyncTaskManager)
-            .build();
+    public void setLlmProvider(LLMProvider llmProvider) {
+        this.llmProvider = llmProvider;
     }
 
     public static class Builder {
         private String sessionId;
         private String userId;
-        private final Map<String, Object> customVariables = Maps.newHashMap();
         private ToolCallAsyncTaskManager asyncTaskManager;
+        private AttachedContent attachedContent;
+        private final Map<String, Object> customVariables = Maps.newHashMap();
 
         public Builder sessionId(String sessionId) {
             this.sessionId = sessionId;
@@ -127,8 +109,30 @@ public final class ExecutionContext {
             return this;
         }
 
+        public Builder attachedContent(AttachedContent attachedContent) {
+            this.attachedContent = attachedContent;
+            return this;
+        }
+
         public ExecutionContext build() {
             return new ExecutionContext(this);
+        }
+    }
+
+    public static class AttachedContent {
+        public static AttachedContent of(String url, AttachedContentType type) {
+            var content = new AttachedContent();
+            content.url = url;
+            content.type = type;
+            return content;
+        }
+
+        public String url;
+        public AttachedContentType type;
+
+        public enum AttachedContentType {
+            IMAGE,
+            PDF
         }
     }
 }

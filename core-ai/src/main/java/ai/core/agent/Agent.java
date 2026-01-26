@@ -310,7 +310,7 @@ public class Agent extends Node<Agent> {
             addMessages(getParentNode().getMessages());
         }
 
-        var reqMsg = Message.of(RoleType.USER, query, AgentHelper.buildRequestName(false), null, null, null);
+        var reqMsg = AgentHelper.buildUserMessage(query, getExecutionContext());
         removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
     }
@@ -411,5 +411,12 @@ public class Agent extends Node<Agent> {
 
     public SubAgentToolCall toSubAgentToolCall(Class<?>... classes) {
         return SubAgentToolCall.builder().subAgent(this, classes).build();
+    }
+
+    @Override
+    public ExecutionContext getExecutionContext() {
+        var context = super.getExecutionContext();
+        context.setLlmProvider(llmProvider);
+        return context;
     }
 }
