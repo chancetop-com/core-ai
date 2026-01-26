@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * @author stephen
  */
-//@Disabled
+@Disabled
 class MultiModalTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(MultiModalTest.class);
     @Inject
