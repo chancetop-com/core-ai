@@ -99,9 +99,26 @@ public class AgentHelper {
     }
 
     public static Content buildAttachedContent(ExecutionContext context) {
-        return switch (context.getAttachedContent().type) {
-            case IMAGE -> Content.of(Content.ImageUrl.of(context.getAttachedContent().url, null));
-            case PDF -> throw new IllegalArgumentException("PDF content type not supported yet");
+        var attachedContent = context.getAttachedContent();
+        return switch (attachedContent.type) {
+            case IMAGE -> buildImageAttachedContent(attachedContent);
+            case PDF -> buildPdfAttachedContent(attachedContent);
         };
+    }
+
+    private static Content buildImageAttachedContent(ExecutionContext.AttachedContent attachedContent) {
+        if (attachedContent.isBase64()) {
+            var dataUri = Strings.format("data:{};base64,{}", attachedContent.mediaType, attachedContent.data);
+            return Content.of(Content.ImageUrl.of(dataUri, attachedContent.mediaType));
+        }
+        return Content.of(Content.ImageUrl.of(attachedContent.url, null));
+    }
+
+    private static Content buildPdfAttachedContent(ExecutionContext.AttachedContent attachedContent) {
+        if (attachedContent.isBase64()) {
+            var filename = attachedContent.filename != null ? attachedContent.filename : "document.pdf";
+            return Content.ofFileBase64(attachedContent.data, attachedContent.mediaType, filename);
+        }
+        return Content.ofFileUrl(attachedContent.url);
     }
 }

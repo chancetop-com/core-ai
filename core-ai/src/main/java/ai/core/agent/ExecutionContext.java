@@ -24,6 +24,7 @@ public final class ExecutionContext {
     private final ToolCallAsyncTaskManager asyncTaskManager;
     private final AttachedContent attachedContent;
     private LLMProvider llmProvider;
+    private String model;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
@@ -75,6 +76,14 @@ public final class ExecutionContext {
         this.llmProvider = llmProvider;
     }
 
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
     public static class Builder {
         private String sessionId;
         private String userId;
@@ -120,15 +129,35 @@ public final class ExecutionContext {
     }
 
     public static class AttachedContent {
-        public static AttachedContent of(String url, AttachedContentType type) {
+        public static AttachedContent ofUrl(String url, AttachedContentType type) {
             var content = new AttachedContent();
             content.url = url;
             content.type = type;
             return content;
         }
 
+        public static AttachedContent ofBase64(String data, String mediaType, AttachedContentType type) {
+            return ofBase64(data, mediaType, type, null);
+        }
+
+        public static AttachedContent ofBase64(String data, String mediaType, AttachedContentType type, String filename) {
+            var content = new AttachedContent();
+            content.data = data;
+            content.mediaType = mediaType;
+            content.type = type;
+            content.filename = filename;
+            return content;
+        }
+
         public String url;
+        public String data;
+        public String mediaType;
+        public String filename;
         public AttachedContentType type;
+
+        public boolean isBase64() {
+            return data != null;
+        }
 
         public enum AttachedContentType {
             IMAGE,
