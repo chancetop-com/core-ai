@@ -417,6 +417,7 @@ public class Agent extends Node<Agent> {
     public ExecutionContext getExecutionContext() {
         var context = super.getExecutionContext();
         context.setLlmProvider(llmProvider);
+        context.setModel(model);
         return context;
     }
 }

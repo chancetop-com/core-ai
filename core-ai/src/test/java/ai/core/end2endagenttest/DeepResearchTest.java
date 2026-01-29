@@ -234,7 +234,7 @@ class DeepResearchTest extends IntegrationTest {
                 .llmProvider(llmProviders.getProvider())
                 .maxTurn(150)
 //                .model("azure/responses/gpt-5-mini")
-                .model("qwen-plus")
+                .model("gpt-4.1")
                 .reflectionConfig(ReflectionConfig.withEvaluationCriteria(reflectionCriteria))
                 .compression(0.9, 3)
                 .streamingCallback(new StreamingCallback() {
