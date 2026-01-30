@@ -56,6 +56,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     private static List<ToolCallParameter> buildParameters(JsonSchema inputSchema) {
         var parameters = new ArrayList<ToolCallParameter>();
         var properties = inputSchema.properties;
+        if (properties == null || properties.isEmpty()) return parameters;
 
         for (var entry : properties.entrySet()) {
             parameters.addAll(buildParameters(entry.getKey(), entry.getValue(), inputSchema));
