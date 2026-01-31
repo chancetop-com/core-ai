@@ -20,18 +20,18 @@ import java.util.List;
  */
 @Disabled
 class ExtractStructureReportTest extends IntegrationTest {
-    private static final Logger log = LoggerFactory.getLogger(ExtractStructureReportTest.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ExtractStructureReportTest.class);
     @Inject
     LLMProviders llmProviders;
 
     @Test
-    void test()  {
+    void test() {
         var report = ClasspathResources.text("reports/zandy_final_workflow_report_2026-01-30.md");
         var rst = llmProviders.getProvider().completionFormat("""
                 Extract the structure information from the following report in JSON format.
                 Do not edit any content, just extract the structure.
                 """, report, "gpt-5.1", ReportGeneratedMessage.class);
-        log.info(JsonUtil.toJson(rst));
+        LOGGER.info(JsonUtil.toJson(rst));
     }
 
     public static class RecommendationAction {

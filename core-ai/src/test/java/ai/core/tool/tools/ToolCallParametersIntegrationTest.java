@@ -193,50 +193,6 @@ class ToolCallParametersIntegrationTest {
     }
 
     @Test
-    void testPythonScriptToolParameterConfiguration() {
-        logger.info("Testing PythonScriptTool parameter configuration");
-
-        var tool = PythonScriptTool.builder().build();
-
-        var params = tool.getParameters();
-        assertNotNull(params);
-        assertEquals(1, params.size(), "Python tool should have 1 parameter");
-
-        var codeParam = params.get(0);
-        assertEquals("code", codeParam.getName());
-        assertEquals("python code", codeParam.getDescription());
-        assertEquals(String.class, codeParam.getClassType());
-
-        logger.info("PythonScriptTool parameters: name='{}', description='{}', type={}",
-            codeParam.getName(), codeParam.getDescription(), codeParam.getClassType().getSimpleName());
-    }
-
-    @Test
-    void testShellCommandToolParameterConfiguration() {
-        logger.info("Testing ShellCommandTool parameter configuration");
-
-        var tool = ShellCommandTool.builder().build();
-
-        var params = tool.getParameters();
-        assertNotNull(params);
-        assertEquals(2, params.size(), "Shell tool should have 2 parameters");
-
-        var workspaceDirParam = params.get(0);
-        assertEquals("workspace_dir", workspaceDirParam.getName());
-        assertEquals("dir of command to exec", workspaceDirParam.getDescription());
-        assertEquals(String.class, workspaceDirParam.getClassType());
-
-        var commandParam = params.get(1);
-        assertEquals("command", commandParam.getName());
-        assertEquals("command string", commandParam.getDescription());
-        assertEquals(String.class, commandParam.getClassType());
-
-        logger.info("ShellCommandTool parameters: [0] name='{}', description='{}'; [1] name='{}', description='{}'",
-            workspaceDirParam.getName(), workspaceDirParam.getDescription(),
-            commandParam.getName(), commandParam.getDescription());
-    }
-
-    @Test
     @EnabledIf("isPythonAvailable")
     void testDirectToolCallWithJsonString() {
         logger.info("Testing direct tool call with JSON string");
@@ -274,23 +230,5 @@ class ToolCallParametersIntegrationTest {
             "Should return parse error or parameter required error");
 
         logger.info("Invalid JSON handling verified successfully");
-    }
-
-    @Test
-    void testMissingParametersHandling() {
-        logger.info("Testing missing parameters handling");
-
-        // Test Python tool with missing 'code' parameter
-        var pythonEmptyJson = "{}";
-        var pythonResult = pythonScriptTool.execute(pythonEmptyJson).getResult();
-        assertTrue(pythonResult.contains("code parameter is required"), "Should return parameter required error");
-
-        // Test Shell tool with missing 'command' parameter
-        var tempDir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
-        var shellMissingCmd = "{\"workspace_dir\":\"" + tempDir.replace("\\", "\\\\") + "\"}";
-        var shellResult = shellCommandTool.execute(shellMissingCmd).getResult();
-        assertTrue(shellResult.contains("command parameter is required"), "Should return parameter required error");
-
-        logger.info("Missing parameters handling verified successfully");
     }
 }

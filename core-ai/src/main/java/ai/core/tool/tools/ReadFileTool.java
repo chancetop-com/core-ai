@@ -79,6 +79,10 @@ public class ReadFileTool extends ToolCall {
         return new Builder();
     }
 
+    public static boolean shouldCompress(int sizeBytes) {
+        return sizeBytes > DEFAULT_MAX_IMAGE_SIZE_BYTES;
+    }
+
     @Override
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
@@ -221,10 +225,6 @@ public class ReadFileTool extends ToolCall {
             LOGGER.error(error, e);
             return error;
         }
-    }
-
-    public static boolean shouldCompress(int sizeBytes) {
-        return sizeBytes > DEFAULT_MAX_IMAGE_SIZE_BYTES;
     }
 
     public static class Builder extends ToolCall.Builder<Builder, ReadFileTool> {
