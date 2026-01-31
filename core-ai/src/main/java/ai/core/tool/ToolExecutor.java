@@ -5,6 +5,7 @@ import ai.core.agent.NodeStatus;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.telemetry.AgentTracer;
+import ai.core.tool.async.AsyncToolTaskExecutor;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
@@ -13,8 +14,6 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -24,11 +23,6 @@ import java.util.function.Consumer;
  */
 public class ToolExecutor {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolExecutor.class);
-    private static final ExecutorService TOOL_EXECUTOR = Executors.newCachedThreadPool(r -> {
-        Thread t = new Thread(r, "tool-executor");
-        t.setDaemon(true);
-        return t;
-    });
 
     private final List<ToolCall> toolCalls;
     private final List<AbstractLifecycle> lifecycles;
@@ -105,7 +99,7 @@ public class ToolExecutor {
             } else {
                 return tool.execute(functionCall.function.arguments, context);
             }
-        }, TOOL_EXECUTOR);
+        }, AsyncToolTaskExecutor.getInstance().getExecutor());
 
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);

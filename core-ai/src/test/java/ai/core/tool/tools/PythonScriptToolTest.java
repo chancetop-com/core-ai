@@ -10,14 +10,20 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.MockLLMProvider;
+import ai.core.tool.ToolCallResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -217,5 +223,113 @@ class PythonScriptToolTest {
         // Empty script should return empty string, not error
         assertTrue(result.isEmpty() || result.isBlank(),
             "Empty script should return empty output");
+    }
+
+    @Test
+    @EnabledIf("isPythonAvailable")
+    void testScriptPathExecution(@TempDir Path tempDir) throws IOException {
+        Path scriptFile = tempDir.resolve("test_script.py");
+        Files.writeString(scriptFile, "print('Hello from script file')");
+
+        String jsonArgs = String.format("{\"script_path\":\"%s\"}", scriptFile.toAbsolutePath().toString().replace("\\", "\\\\"));
+
+        logger.info("Testing script path execution: {}", jsonArgs);
+        var toolResult = pythonScriptTool.execute(jsonArgs);
+        String result = toolResult.getResult();
+        logger.info("Result: {}", result);
+
+        assertNotNull(result, "Result should not be null");
+        assertTrue(result.contains("Hello from script file"), "Result should contain output from script file");
+    }
+
+    @Test
+    void testScriptPathNotExists() {
+        String jsonArgs = "{\"script_path\":\"/nonexistent/path/to/script.py\"}";
+
+        logger.info("Testing script path not exists: {}", jsonArgs);
+        var toolResult = pythonScriptTool.execute(jsonArgs);
+        String result = toolResult.getResult();
+        logger.info("Result: {}", result);
+
+        assertNotNull(result, "Result should not be null");
+        assertTrue(result.contains("Error") && result.contains("does not exist"), "Result should indicate file does not exist");
+    }
+
+    @Test
+    @EnabledIf("isPythonAvailable")
+    void testAsyncExecution() throws InterruptedException {
+        String pythonCode = "import time\\ntime.sleep(0.1)\\nprint('Async done')";
+        String jsonArgs = String.format("{\"code\":\"%s\",\"async\":true}", pythonCode);
+
+        logger.info("Testing async execution: {}", jsonArgs);
+        var toolResult = pythonScriptTool.execute(jsonArgs, ExecutionContext.empty());
+        logger.info("Initial result: {}", toolResult);
+
+        assertEquals(ToolCallResult.Status.PENDING, toolResult.getStatus(), "Async execution should return PENDING status");
+        assertNotNull(toolResult.getTaskId(), "Task ID should not be null");
+
+        String taskId = toolResult.getTaskId();
+        logger.info("Task ID: {}", taskId);
+
+        Thread.sleep(500);
+
+        var pollResult = pythonScriptTool.poll(taskId);
+        logger.info("Poll result: {}", pollResult);
+
+        assertTrue(pollResult.isCompleted() || pollResult.isPending(), "Poll result should be COMPLETED or PENDING");
+
+        if (pollResult.isCompleted()) {
+            assertTrue(pollResult.getResult().contains("Async done"), "Result should contain async output");
+        }
+    }
+
+    @Test
+    @EnabledIf("isPythonAvailable")
+    void testAsyncCancellation() {
+        String pythonCode = "import time\\ntime.sleep(10)\\nprint('This should not print')";
+        String jsonArgs = String.format("{\"code\":\"%s\",\"async\":true}", pythonCode);
+
+        logger.info("Testing async cancellation: {}", jsonArgs);
+        var toolResult = pythonScriptTool.execute(jsonArgs, ExecutionContext.empty());
+
+        assertEquals(ToolCallResult.Status.PENDING, toolResult.getStatus(), "Async execution should return PENDING status");
+        String taskId = toolResult.getTaskId();
+
+        var cancelResult = pythonScriptTool.cancel(taskId);
+        logger.info("Cancel result: {}", cancelResult);
+
+        assertTrue(cancelResult.isCompleted(), "Cancel should return COMPLETED status");
+        assertTrue(cancelResult.getResult().contains("cancelled"), "Cancel result should indicate task was cancelled");
+
+        var pollAfterCancel = pythonScriptTool.poll(taskId);
+        assertTrue(pollAfterCancel.isFailed(), "Poll after cancel should return FAILED (task not found)");
+    }
+
+    @Test
+    void testPollNonexistentTask() {
+        var pollResult = pythonScriptTool.poll("nonexistent-task-id");
+        logger.info("Poll nonexistent task result: {}", pollResult);
+
+        assertTrue(pollResult.isFailed(), "Poll should fail for nonexistent task");
+        assertTrue(pollResult.getResult().contains("not found"), "Result should indicate task not found");
+    }
+
+    @Test
+    @EnabledIf("isPythonAvailable")
+    void testCodeTakesPrecedenceOverScriptPath(@TempDir Path tempDir) throws IOException {
+        Path scriptFile = tempDir.resolve("test_script.py");
+        Files.writeString(scriptFile, "print('From script file')");
+
+        String code = "print('From code parameter')";
+        String jsonArgs = String.format("{\"code\":\"%s\",\"script_path\":\"%s\"}",
+            code, scriptFile.toAbsolutePath().toString().replace("\\", "\\\\"));
+
+        logger.info("Testing code takes precedence: {}", jsonArgs);
+        var toolResult = pythonScriptTool.execute(jsonArgs);
+        String result = toolResult.getResult();
+        logger.info("Result: {}", result);
+
+        assertNotNull(result, "Result should not be null");
+        assertTrue(result.contains("From code parameter"), "Code parameter should take precedence over script_path");
     }
 }

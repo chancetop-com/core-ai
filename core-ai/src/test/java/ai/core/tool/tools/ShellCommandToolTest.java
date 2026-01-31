@@ -10,6 +10,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.MockLLMProvider;
+import ai.core.tool.ToolCallResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -270,5 +272,141 @@ class ShellCommandToolTest {
         assertNotNull(result, "Result should not be null");
         assertTrue(result.contains("Error") && result.contains("required"),
             "Result should indicate command parameter is required");
+    }
+
+    @Test
+    void testScriptPathExecution() throws IOException {
+        String scriptContent = isWindows()
+            ? "@echo off\necho HelloFromScriptFile"
+            : "#!/bin/bash\necho 'HelloFromScriptFile'";
+        String scriptExt = isWindows() ? ".bat" : ".sh";
+        Path scriptFile = tempDir.resolve("test_script" + scriptExt);
+        Files.writeString(scriptFile, scriptContent);
+
+        if (!isWindows()) {
+            scriptFile.toFile().setExecutable(true);
+        }
+
+        String jsonArgs = String.format("{\"script_path\":\"%s\"}",
+            scriptFile.toAbsolutePath().toString().replace("\\", "\\\\"));
+
+        logger.info("Testing script path execution: {}", jsonArgs);
+        var toolResult = shellCommandTool.execute(jsonArgs, ExecutionContext.empty());
+        String result = toolResult.getResult();
+        logger.info("Result: {}", result);
+
+        assertNotNull(result, "Result should not be null");
+        assertTrue(result.contains("HelloFromScriptFile"), "Result should contain output from script file");
+    }
+
+    @Test
+    void testScriptPathNotExists() {
+        String jsonArgs = "{\"script_path\":\"/nonexistent/path/to/script.sh\"}";
+
+        logger.info("Testing script path not exists: {}", jsonArgs);
+        var toolResult = shellCommandTool.execute(jsonArgs, ExecutionContext.empty());
+        String result = toolResult.getResult();
+        logger.info("Result: {}", result);
+
+        assertNotNull(result, "Result should not be null");
+        assertTrue(result.contains("Error") && result.contains("does not exist"), "Result should indicate file does not exist");
+    }
+
+    @Test
+    void testAsyncExecution() throws InterruptedException {
+        String command = isWindows() ? "echo Async done" : "echo 'Async done'";
+        String workspaceDir = tempDir.toAbsolutePath().toString();
+        String jsonArgs = String.format("{\"workspace_dir\":\"%s\",\"command\":\"%s\",\"async\":true}",
+            workspaceDir.replace("\\", "\\\\"), command);
+
+        logger.info("Testing async execution: {}", jsonArgs);
+        var toolResult = shellCommandTool.execute(jsonArgs, ExecutionContext.empty());
+        logger.info("Initial result: {}", toolResult);
+
+        assertEquals(ToolCallResult.Status.PENDING, toolResult.getStatus(), "Async execution should return PENDING status");
+        assertNotNull(toolResult.getTaskId(), "Task ID should not be null");
+
+        String taskId = toolResult.getTaskId();
+        logger.info("Task ID: {}", taskId);
+
+        // Wait for task to complete
+        ToolCallResult pollResult = null;
+        for (int i = 0; i < 10; i++) {
+            Thread.sleep(500);
+            pollResult = shellCommandTool.poll(taskId);
+            logger.info("Poll result (attempt {}): {}", i + 1, pollResult);
+            if (pollResult.isCompleted() || pollResult.isFailed()) {
+                break;
+            }
+        }
+
+        assertNotNull(pollResult, "Poll result should not be null");
+        assertTrue(pollResult.isCompleted(), "Poll result should be COMPLETED");
+        assertTrue(pollResult.getResult().contains("Async") || pollResult.getResult().contains("done"), "Result should contain async output");
+    }
+
+    @Test
+    void testAsyncCancellation() {
+        String command = isWindows() ? "ping -n 100 127.0.0.1" : "sleep 100";
+        String workspaceDir = tempDir.toAbsolutePath().toString();
+        String jsonArgs = String.format("{\"workspace_dir\":\"%s\",\"command\":\"%s\",\"async\":true}",
+            workspaceDir.replace("\\", "\\\\"), command);
+
+        logger.info("Testing async cancellation: {}", jsonArgs);
+        var toolResult = shellCommandTool.execute(jsonArgs, ExecutionContext.empty());
+
+        assertEquals(ToolCallResult.Status.PENDING, toolResult.getStatus(), "Async execution should return PENDING status");
+        String taskId = toolResult.getTaskId();
+
+        var cancelResult = shellCommandTool.cancel(taskId);
+        logger.info("Cancel result: {}", cancelResult);
+
+        assertTrue(cancelResult.isCompleted(), "Cancel should return COMPLETED status");
+        assertTrue(cancelResult.getResult().contains("cancelled"), "Cancel result should indicate task was cancelled");
+
+        var pollAfterCancel = shellCommandTool.poll(taskId);
+        assertTrue(pollAfterCancel.isFailed(), "Poll after cancel should return FAILED (task not found)");
+    }
+
+    @Test
+    void testPollNonexistentTask() {
+        var pollResult = shellCommandTool.poll("nonexistent-task-id");
+        logger.info("Poll nonexistent task result: {}", pollResult);
+
+        assertTrue(pollResult.isFailed(), "Poll should fail for nonexistent task");
+        assertTrue(pollResult.getResult().contains("not found"), "Result should indicate task not found");
+    }
+
+    @Test
+    void testCommandTakesPrecedenceOverScriptPath() throws IOException {
+        String scriptContent = isWindows()
+            ? "@echo off\necho FromScriptFile"
+            : "#!/bin/bash\necho 'FromScriptFile'";
+        String scriptExt = isWindows() ? ".bat" : ".sh";
+        Path scriptFile = tempDir.resolve("precedence_test" + scriptExt);
+        Files.writeString(scriptFile, scriptContent);
+
+        if (!isWindows()) {
+            scriptFile.toFile().setExecutable(true);
+        }
+
+        String command = isWindows() ? "echo FromCommandParameter" : "echo 'FromCommandParameter'";
+        String workspaceDir = tempDir.toAbsolutePath().toString();
+        String jsonArgs = String.format("{\"workspace_dir\":\"%s\",\"command\":\"%s\",\"script_path\":\"%s\"}",
+            workspaceDir.replace("\\", "\\\\"),
+            command,
+            scriptFile.toAbsolutePath().toString().replace("\\", "\\\\"));
+
+        logger.info("Testing command takes precedence: {}", jsonArgs);
+        var toolResult = shellCommandTool.execute(jsonArgs, ExecutionContext.empty());
+        String result = toolResult.getResult();
+        logger.info("Result: {}", result);
+
+        assertNotNull(result, "Result should not be null");
+        assertTrue(result.contains("FromCommandParameter"), "Command parameter should take precedence over script_path");
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase(Locale.getDefault()).contains("win");
     }
 }

@@ -41,6 +41,14 @@ public final class ToolCallResult {
         return r;
     }
 
+    public static ToolCallResult pending(String taskId, String message) {
+        var r = new ToolCallResult();
+        r.status = Status.PENDING;
+        r.taskId = taskId;
+        r.result = message;
+        return r;
+    }
+
     private Status status;
     private String taskId;
     private String result;
