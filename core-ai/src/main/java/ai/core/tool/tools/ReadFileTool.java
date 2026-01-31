@@ -3,6 +3,7 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.ImageUtil;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
@@ -26,6 +27,7 @@ public class ReadFileTool extends ToolCall {
     private static final Logger LOGGER = LoggerFactory.getLogger(ReadFileTool.class);
     private static final int DEFAULT_LINE_LIMIT = 2000;
     private static final int MAX_LINE_LENGTH = 2000;
+    public static final int DEFAULT_MAX_IMAGE_SIZE_BYTES = 500_000;
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
     private static final String TOOL_DESC = """
@@ -111,7 +113,7 @@ public class ReadFileTool extends ToolCall {
         return IMAGE_EXTENSIONS.contains(ext);
     }
 
-    private String getImageFormat(String filePath) {
+    private String getImageMimeType(String filePath) {
         var lowerPath = filePath.toLowerCase(Locale.getDefault());
         var dotIndex = lowerPath.lastIndexOf('.');
         var ext = lowerPath.substring(dotIndex + 1);
@@ -132,15 +134,26 @@ public class ReadFileTool extends ToolCall {
 
         try {
             var bytes = Files.readAllBytes(file.toPath());
+            var originalSize = bytes.length;
+            var mimeType = getImageMimeType(filePath);
+
+            if (shouldCompress(bytes.length)) {
+                var compressed = ImageUtil.compressImage(file, bytes, mimeType);
+                bytes = compressed.data();
+                mimeType = compressed.mimeType();
+                LOGGER.info("Compressed image: {}, original: {} bytes, compressed: {} bytes",
+                    filePath, originalSize, bytes.length);
+            }
+
             var base64 = Base64.getEncoder().encodeToString(bytes);
-            var format = getImageFormat(filePath);
-            LOGGER.info("Successfully read image file: {}, format: {}, size: {} bytes", filePath, format, bytes.length);
+            LOGGER.info("Successfully read image file: {}, mimeType: {}, size: {} bytes", filePath, mimeType, bytes.length);
 
             return ToolCallResult.completed("Image file read successfully: " + filePath)
-                .withImage(base64, format)
+                .withImage(base64, mimeType)
                 .withDuration(System.currentTimeMillis() - startTime)
                 .withStats("filePath", filePath)
-                .withStats("imageSize", bytes.length);
+                .withStats("imageSize", bytes.length)
+                .withStats("originalSize", originalSize);
         } catch (IOException e) {
             var error = "Error reading image file: " + e.getMessage();
             LOGGER.error(error, e);
@@ -150,24 +163,20 @@ public class ReadFileTool extends ToolCall {
     }
 
     private String readFile(String filePath, Integer offset, Integer limit) {
-        // Validate file path
         if (Strings.isBlank(filePath)) {
             return "Error: file_path parameter is required";
         }
 
         var file = new File(filePath);
 
-        // Check if file exists
         if (!file.exists()) {
             return "Error: File does not exist: " + filePath;
         }
 
-        // Check if it's a file (not a directory)
         if (!file.isFile()) {
             return "Error: Path is not a file: " + filePath;
         }
 
-        // Set default values for offset and limit
         var startLine = (offset != null && offset > 0) ? offset : 1;
         var maxLines = (limit != null && limit > 0) ? limit : DEFAULT_LINE_LIMIT;
 
@@ -178,30 +187,25 @@ public class ReadFileTool extends ToolCall {
 
             LOGGER.info("Reading file: {}, startLine: {}, maxLines: {}", filePath, startLine, maxLines);
 
-            // Skip lines until we reach the offset
             while (currentLine < startLine) {
                 String skipLine = reader.readLine();
                 if (skipLine == null) break;
                 currentLine++;
             }
 
-            // Read lines from offset up to limit
             while (linesRead < maxLines) {
                 String line = reader.readLine();
                 if (line == null) break;
 
-                // Truncate long lines
                 if (line.length() > MAX_LINE_LENGTH) {
                     line = line.substring(0, MAX_LINE_LENGTH) + "... [line truncated]";
                 }
 
-                // Format as "line_number → content" (cat -n format with arrow)
                 result.append(String.format("%6d→%s%n", currentLine, line));
                 currentLine++;
                 linesRead++;
             }
 
-            // Check if file is empty
             if (result.isEmpty()) {
                 String warning = startLine == 1 ? "Warning: File exists but is empty"
                         : "Warning: File has fewer lines than the specified offset: " + startLine;
@@ -217,6 +221,10 @@ public class ReadFileTool extends ToolCall {
             LOGGER.error(error, e);
             return error;
         }
+    }
+
+    public static boolean shouldCompress(int sizeBytes) {
+        return sizeBytes > DEFAULT_MAX_IMAGE_SIZE_BYTES;
     }
 
     public static class Builder extends ToolCall.Builder<Builder, ReadFileTool> {
