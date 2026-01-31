@@ -11,7 +11,7 @@ import java.util.List;
 public class AssistantMessage {
     @NotNull
     @Property(name = "role")
-    public RoleType role;
+    public RoleType role = RoleType.ASSISTANT;
     @NotNull
     @Property(name = "content")
     public String content;
