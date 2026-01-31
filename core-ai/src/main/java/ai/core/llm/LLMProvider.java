@@ -9,14 +9,19 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
+import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.StreamOptions;
 import ai.core.telemetry.LLMTracer;
+import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 /**
  * @author stephen
@@ -40,6 +45,23 @@ public abstract class LLMProvider {
 
     public LLMTracer getTracer() {
         return tracer;
+    }
+
+    public final <T> T completionFormat(String systemPrompt, String userPrompt, String model, Class<T> clazz) {
+        var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
+                List.of(Message.of(RoleType.SYSTEM, systemPrompt),
+                        Message.of(RoleType.USER, userPrompt)),
+                null,
+                null,
+                model,
+                null,
+                false,
+                ResponseFormat.of(clazz),
+                null
+        ));
+        var response = completion(request);
+        var content = response.choices.getFirst().message.content;
+        return JsonUtil.fromJson(clazz, content);
     }
 
     public final CompletionResponse completion(CompletionRequest request) {
