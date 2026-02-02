@@ -2,10 +2,16 @@ package ai.core.llm.providers;
 
 import ai.core.llm.domain.AssistantMessage;
 import ai.core.llm.domain.Choice;
+import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FunctionCall;
+import ai.core.document.Embedding;
+import ai.core.llm.domain.Usage;
+import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -14,6 +20,65 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * @author stephen
  */
 class LiteLLMProviderTest {
+
+    @Test
+    void testParseEmbeddingResponse() {
+        var queries = List.of("Hello world", "How are you");
+
+        // mock OpenAI embedding API response
+        String mockResponse = """
+                {
+                    "model": "text-embedding-ada-002",
+                    "data": [
+                        {"index": 0, "embedding": [0.1, 0.2, 0.3]},
+                        {"index": 1, "embedding": [0.4, 0.5, 0.6]}
+                    ],
+                    "usage": {"prompt_tokens": 5, "total_tokens": 5}
+                }
+                """;
+
+        var response = parseEmbeddingResponse(queries, mockResponse);
+
+        assertNotNull(response);
+        assertNotNull(response.embeddings);
+        assertEquals(2, response.embeddings.size());
+
+        assertEquals("Hello world", response.embeddings.get(0).text);
+        assertEquals(List.of(0.1, 0.2, 0.3), response.embeddings.get(0).embedding.vectors());
+
+        assertEquals("How are you", response.embeddings.get(1).text);
+        assertEquals(List.of(0.4, 0.5, 0.6), response.embeddings.get(1).embedding.vectors());
+
+        assertNotNull(response.usage);
+        assertEquals(5, response.usage.getPromptTokens());
+        assertEquals(5, response.usage.getTotalTokens());
+    }
+
+    @SuppressWarnings("unchecked")
+    private EmbeddingResponse parseEmbeddingResponse(List<String> queries, String responseText) {
+        var responseMap = (Map<String, Object>) JsonUtil.fromJson(Map.class, responseText);
+        var dataList = (List<Map<String, Object>>) responseMap.get("data");
+        var usageMap = (Map<String, Object>) responseMap.get("usage");
+
+        var embeddings = new ArrayList<EmbeddingResponse.EmbeddingData>();
+        for (var data : dataList) {
+            int index = ((Number) data.get("index")).intValue();
+            var embeddingList = (List<Number>) data.get("embedding");
+            var vectors = embeddingList.stream()
+                    .map(Number::doubleValue)
+                    .toList();
+            var embedding = new Embedding(vectors);
+            embeddings.add(EmbeddingResponse.EmbeddingData.of(queries.get(index), embedding));
+        }
+
+        var usage = new Usage(
+                ((Number) usageMap.get("prompt_tokens")).intValue(),
+                0,
+                ((Number) usageMap.get("total_tokens")).intValue()
+        );
+
+        return EmbeddingResponse.of(embeddings, usage);
+    }
 
     @Test
     void testParallelToolCallsMerge() {

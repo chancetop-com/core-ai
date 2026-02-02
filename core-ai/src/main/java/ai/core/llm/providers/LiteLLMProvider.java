@@ -15,6 +15,8 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
+import ai.core.llm.domain.Usage;
+import ai.core.document.Embedding;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
@@ -26,6 +28,7 @@ import core.framework.util.Strings;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -33,13 +36,24 @@ import java.util.Objects;
  * @author stephen
  */
 public class LiteLLMProvider extends LLMProvider {
+    private static final int MAX_RETRIES = 3;
+    private static final Duration RETRY_WAIT_TIME = Duration.ofSeconds(3);
+
     private final String url;
     private final String token;
+    private final HTTPClient client;
 
     public LiteLLMProvider(LLMProviderConfig config, String url, String token) {
         super(config);
         this.url = url;
         this.token = token;
+        this.client = HTTPClient.builder()
+                .connectTimeout(config.getConnectTimeout())
+                .timeout(config.getTimeout())
+                .maxRetries(MAX_RETRIES)
+                .retryWaitTime(RETRY_WAIT_TIME)
+                .trustAll()
+                .build();
     }
 
     @Override
@@ -54,7 +68,50 @@ public class LiteLLMProvider extends LLMProvider {
 
     @Override
     public EmbeddingResponse embeddings(EmbeddingRequest dto) {
-        return null;
+        var req = new HTTPRequest(HTTPMethod.POST, url + "/embeddings");
+        req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
+        if (!Strings.isBlank(token)) {
+            req.headers.put("Authorization", "Bearer " + token);
+        }
+
+        var bodyMap = Map.of(
+                "model", config.getEmbeddingModel(),
+                "input", dto.query()
+        );
+        req.body(JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8), ContentType.APPLICATION_JSON);
+
+        var rsp = client.execute(req);
+        if (rsp.statusCode != 200) {
+            throw new RuntimeException("Embedding request failed: " + rsp.text());
+        }
+
+        return parseEmbeddingResponse(dto.query(), rsp.text());
+    }
+
+    @SuppressWarnings("unchecked")
+    private EmbeddingResponse parseEmbeddingResponse(List<String> queries, String responseText) {
+        var responseMap = (Map<String, Object>) JsonUtil.fromJson(Map.class, responseText);
+        var dataList = (List<Map<String, Object>>) responseMap.get("data");
+        var usageMap = (Map<String, Object>) responseMap.get("usage");
+
+        var embeddings = new ArrayList<EmbeddingResponse.EmbeddingData>();
+        for (var data : dataList) {
+            int index = ((Number) data.get("index")).intValue();
+            var embeddingList = (List<Number>) data.get("embedding");
+            var vectors = embeddingList.stream()
+                    .map(Number::doubleValue)
+                    .toList();
+            var embedding = new Embedding(vectors);
+            embeddings.add(EmbeddingResponse.EmbeddingData.of(queries.get(index), embedding));
+        }
+
+        var usage = new Usage(
+                ((Number) usageMap.get("prompt_tokens")).intValue(),
+                0,
+                ((Number) usageMap.get("total_tokens")).intValue()
+        );
+
+        return EmbeddingResponse.of(embeddings, usage);
     }
 
     @Override
@@ -74,32 +131,24 @@ public class LiteLLMProvider extends LLMProvider {
 
     @SuppressWarnings("unchecked")
     public CompletionResponse chatCompletionStream(CompletionRequest request, StreamingCallback callback) {
-        var client = HTTPClient.builder()
-                .connectTimeout(config.getConnectTimeout())
-                .timeout(config.getTimeout())
-                .maxRetries(3)
-                .retryWaitTime(Duration.ofSeconds(3))
-                .trustAll()
-                .build();
         var extraBody = request.getExtraBody() == null ? config.getRequestExtraBody() : request.getExtraBody();
         var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
         req.headers.put("Accept", "text/event-stream");
-        var bodyMap = (Map<String, Object>) JsonUtil.toMap(request);
-        if (extraBody instanceof Map<?, ?> extraMap) {
-            bodyMap.putAll((Map<String, Object>) extraMap);
-        }
-        var body = JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8);
-        req.body(body, ContentType.APPLICATION_JSON);
         if (!Strings.isBlank(token)) {
             req.headers.put("Authorization", "Bearer " + token);
         }
 
-        return executeSSERequest(client, req, callback);
+        var bodyMap = (Map<String, Object>) JsonUtil.toMap(request);
+        if (extraBody instanceof Map<?, ?> extraMap) {
+            bodyMap.putAll((Map<String, Object>) extraMap);
+        }
+        req.body(JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8), ContentType.APPLICATION_JSON);
+
+        return executeSSERequest(req, callback);
     }
 
-    private CompletionResponse executeSSERequest(HTTPClient client, HTTPRequest req, StreamingCallback callback) {
-        // Execute the request
+    private CompletionResponse executeSSERequest(HTTPRequest req, StreamingCallback callback) {
         var rsp = client.execute(req);
 
         if (rsp.statusCode != 200) {
