@@ -1,9 +1,12 @@
 package ai.core.utils;
 
 import ai.core.api.jsonschema.JsonSchema;
+import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import core.framework.api.json.Property;
+
+import java.util.Arrays;
 
 import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
@@ -82,10 +85,30 @@ public class JsonSchemaUtil {
 
             var parameter = ToolCallParameter.builder();
 
-            // Get field name from @Property annotation or use field name
+            // Prioritize @CoreAiParameter annotation, fallback to @Property annotation
+            var coreAiAnnotation = field.getAnnotation(CoreAiParameter.class);
             var propertyAnnotation = field.getAnnotation(Property.class);
-            var fieldName = propertyAnnotation != null ? propertyAnnotation.name() : field.getName();
+
+            // Get field name
+            String fieldName;
+            if (coreAiAnnotation != null) {
+                fieldName = coreAiAnnotation.name();
+            } else if (propertyAnnotation != null) {
+                fieldName = propertyAnnotation.name();
+            } else {
+                fieldName = field.getName();
+            }
             parameter.name(fieldName);
+
+            // Set description from @CoreAiParameter if present
+            if (coreAiAnnotation != null && !coreAiAnnotation.description().isEmpty()) {
+                parameter.description(coreAiAnnotation.description());
+            }
+
+            // Set enums from @CoreAiParameter if present
+            if (coreAiAnnotation != null && coreAiAnnotation.enums().length > 0) {
+                parameter.enums(Arrays.asList(coreAiAnnotation.enums()));
+            }
 
             // Set class type
             var fieldType = field.getType();
@@ -103,9 +126,12 @@ public class JsonSchemaUtil {
                 parameter.itemType(valueType);
             }
 
-            // All fields are considered required by default
-            // You can add logic here to check for annotations like @Nullable
-            parameter.required(true);
+            // Set required: prioritize @CoreAiParameter, default to true
+            if (coreAiAnnotation != null) {
+                parameter.required(coreAiAnnotation.required());
+            } else {
+                parameter.required(true);
+            }
 
             parameters.add(parameter.build());
         }

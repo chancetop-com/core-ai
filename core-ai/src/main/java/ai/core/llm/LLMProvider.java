@@ -79,7 +79,7 @@ public abstract class LLMProvider {
         return completionFormat(request, clazz);
     }
 
-    public  <T> T completionFormat(CompletionRequest request, Class<T> clazz) {
+    public <T> T completionFormat(CompletionRequest request, Class<T> clazz) {
         var response = completion(request);
         var content = response.choices.getFirst().message.content;
         return JsonUtil.fromJson(clazz, content);
