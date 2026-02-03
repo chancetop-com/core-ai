@@ -85,12 +85,16 @@ public class AgentHelper {
     }
 
     public static Message buildUserMessage(String query, ExecutionContext context) {
-        if (context.getAttachedContent() == null) {
+        return buildUserMessage(query, context.getAttachedContent());
+    }
+
+    public static Message buildUserMessage(String query, ExecutionContext.AttachedContent attachedContent) {
+        if (attachedContent == null) {
             return Message.of(RoleType.USER, query, buildRequestName(false), null, null, null);
         }
         return Message.of(new Message.MessageRecord(
             RoleType.USER,
-            List.of(Content.of(query), buildAttachedContent(context)),
+            List.of(Content.of(query), buildAttachedContent(attachedContent)),
             null,
             buildRequestName(false),
             null,
@@ -98,8 +102,7 @@ public class AgentHelper {
             null));
     }
 
-    public static Content buildAttachedContent(ExecutionContext context) {
-        var attachedContent = context.getAttachedContent();
+    public static Content buildAttachedContent(ExecutionContext.AttachedContent attachedContent) {
         return switch (attachedContent.type) {
             case IMAGE -> buildImageAttachedContent(attachedContent);
             case PDF -> buildPdfAttachedContent(attachedContent);
