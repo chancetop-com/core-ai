@@ -1,5 +1,7 @@
 package ai.core.llm;
 
+import ai.core.agent.ExecutionContext;
+import ai.core.agent.internal.AgentHelper;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.domain.CaptionImageRequest;
@@ -47,6 +49,21 @@ public abstract class LLMProvider {
         return tracer;
     }
 
+    public final <T> T completionFormatAttachedContent(String systemPrompt, String query, ExecutionContext.AttachedContent attachedContent, String model, Class<T> clazz) {
+        var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
+                List.of(Message.of(RoleType.SYSTEM, systemPrompt),
+                        AgentHelper.buildUserMessage(query, attachedContent)),
+                null,
+                null,
+                model,
+                null,
+                false,
+                ResponseFormat.of(clazz),
+                null
+        ));
+        return completionFormat(request, clazz);
+    }
+
     public final <T> T completionFormat(String systemPrompt, String userPrompt, String model, Class<T> clazz) {
         var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
                 List.of(Message.of(RoleType.SYSTEM, systemPrompt),
@@ -59,6 +76,10 @@ public abstract class LLMProvider {
                 ResponseFormat.of(clazz),
                 null
         ));
+        return completionFormat(request, clazz);
+    }
+
+    public  <T> T completionFormat(CompletionRequest request, Class<T> clazz) {
         var response = completion(request);
         var content = response.choices.getFirst().message.content;
         return JsonUtil.fromJson(clazz, content);
