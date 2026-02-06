@@ -1,10 +1,12 @@
 package ai.core.utils;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.introspect.VisibilityChecker;
 import core.framework.internal.json.JSONAnnotationIntrospector;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,7 +15,6 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Type;
 import java.util.Map;
 
-import com.fasterxml.jackson.databind.introspect.VisibilityChecker;
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.PUBLIC_ONLY;
 
@@ -61,6 +62,19 @@ public class JsonUtil {
             throw new UncheckedIOException(e);
         }
     }
+
+    public static <T> T fromJson(TypeReference<T> valueTypeRef, String json) {
+        try {
+            JavaType javaType = OBJECT_MAPPER.getTypeFactory().constructType(valueTypeRef);
+            T result = OBJECT_MAPPER.readValue(json, javaType);
+            if (result == null)
+                throw new Error("invalid json value, value=" + json);   // not allow passing "null" as json value
+            return result;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     public static <T> T fromJson(Class<T> instanceClass, String json) {
         try {
             T result = OBJECT_MAPPER.readValue(json, instanceClass);
