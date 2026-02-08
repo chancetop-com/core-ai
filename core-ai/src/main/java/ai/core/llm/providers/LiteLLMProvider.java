@@ -22,7 +22,6 @@ import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 
 import java.nio.charset.StandardCharsets;
@@ -134,7 +133,6 @@ public class LiteLLMProvider extends LLMProvider {
         var extraBody = request.getExtraBody() == null ? config.getRequestExtraBody() : request.getExtraBody();
         var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
-        req.headers.put("Accept", "text/event-stream");
         if (!Strings.isBlank(token)) {
             req.headers.put("Authorization", "Bearer " + token);
         }
@@ -149,56 +147,48 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     private CompletionResponse executeSSERequest(HTTPRequest req, StreamingCallback callback) {
-        var rsp = client.execute(req);
+        try (var eventSource = client.sse(req)) {
+            CompletionResponse finalResponse = null;
 
-        if (rsp.statusCode != 200) {
-            throw new RuntimeException(rsp.text());
+            for (var event : eventSource) {
+                var data = event.data();
+                if ("[DONE]".equals(data)) {
+                    break;
+                }
+
+                var chunk = JsonUtil.fromJson(CompletionResponse.class, data);
+                if (chunk.choices == null || chunk.choices.isEmpty()) {
+                    // Skip chunks without choices
+                    continue;
+                }
+
+                var choice = chunk.choices.getFirst();
+                if (choice.delta != null && choice.delta.content != null) {
+                    // Call the streaming callback with the content delta
+                    callback.onChunk(choice.delta.content);
+                }
+                if (choice.delta != null && choice.delta.reasoningContent != null) {
+                    // Call the streaming callback with the content delta
+                    callback.onReasoningChunk(choice.delta.reasoningContent);
+                }
+
+                // Initialize final response with first chunk
+                if (finalResponse == null) {
+                    finalResponse = chunk;
+                    // Initialize message from delta
+                    initializeFinalChoiceMessage(finalResponse);
+                } else {
+                    // Merge streaming chunks into final response
+                    mergeChunkIntoFinalResponse(finalResponse, chunk);
+                }
+            }
+
+            callback.onComplete();
+            if (!Objects.requireNonNull(finalResponse).choices.getFirst().message.reasoningContent.isEmpty()) {
+                callback.onReasoningComplete(finalResponse.choices.getFirst().message.reasoningContent);
+            }
+            return finalResponse;
         }
-
-        // Process SSE stream
-        CompletionResponse finalResponse = null;
-        var lines = rsp.text().split("\n");
-        for (var line : lines) {
-            // Skip empty lines and lines that do not start with "data: "
-            if (!line.startsWith("data: ")) continue;
-
-            var data = line.substring(6).trim();
-            if ("[DONE]".equals(data)) {
-                break;
-            }
-
-            var chunk = JSON.fromJSON(CompletionResponse.class, data);
-            if (chunk.choices == null || chunk.choices.isEmpty()) {
-                // Skip chunks without choices
-                continue;
-            }
-
-            var choice = chunk.choices.getFirst();
-            if (choice.delta != null && choice.delta.content != null) {
-                // Call the streaming callback with the content delta
-                callback.onChunk(choice.delta.content);
-            }
-            if (choice.delta != null && choice.delta.reasoningContent != null) {
-                // Call the streaming callback with the content delta
-                callback.onReasoningChunk(choice.delta.reasoningContent);
-            }
-
-            // Initialize final response with first chunk
-            if (finalResponse == null) {
-                finalResponse = chunk;
-                // Initialize message from delta
-                initializeFinalChoiceMessage(finalResponse);
-            } else {
-                // Merge streaming chunks into final response
-                mergeChunkIntoFinalResponse(finalResponse, chunk);
-            }
-        }
-
-        callback.onComplete();
-        if (!Objects.requireNonNull(finalResponse).choices.getFirst().message.reasoningContent.isEmpty()) {
-            callback.onReasoningComplete(finalResponse.choices.getFirst().message.reasoningContent);
-        }
-        return finalResponse;
     }
 
     private void initializeFinalChoiceMessage(CompletionResponse finalResponse) {
