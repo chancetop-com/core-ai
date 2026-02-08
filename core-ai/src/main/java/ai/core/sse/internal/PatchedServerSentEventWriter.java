@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.introspect.VisibilityChecker;
-import core.framework.internal.json.JSONAnnotationIntrospector;
+import ai.core.internal.json.CoreAiAnnotationIntrospector;
 
 import java.io.UncheckedIOException;
 
@@ -18,7 +18,7 @@ class PatchedServerSentEventWriter<T> {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
             .setVisibility(new VisibilityChecker.Std(NONE, NONE, NONE, NONE, PUBLIC_ONLY))
-            .setAnnotationIntrospector(new JSONAnnotationIntrospector());
+            .setAnnotationIntrospector(new CoreAiAnnotationIntrospector());
 
     String toMessage(String id, T event) {
         //validator.validate(event, false);
