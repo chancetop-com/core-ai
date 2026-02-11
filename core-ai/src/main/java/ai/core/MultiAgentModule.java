@@ -89,7 +89,8 @@ public class MultiAgentModule extends Module {
 
     private void configOpenAI(LLMProviders providers, LLMProviderConfig config) {
         property("openai.api.key").ifPresent(key -> {
-            var provider = new LiteLLMProvider(config, property("openai.api.base").orElseThrow(), key);
+            var providerConfig = createProviderConfig(config, "openai");
+            var provider = new LiteLLMProvider(providerConfig, property("openai.api.base").orElseThrow(), key);
             injectTracerIfAvailable(provider);
             bind(LiteLLMProvider.class, "openai", provider);
             providers.addProvider(LLMProviderType.OPENAI, provider);
@@ -98,7 +99,8 @@ public class MultiAgentModule extends Module {
 
     private void configAzureOpenAI(LLMProviders providers, LLMProviderConfig config) {
         property("azure.api.key").ifPresent(key -> property("azure.api.base").ifPresent(base -> {
-            var provider = new LiteLLMProvider(config, property("azure.api.base").orElseThrow(), key);
+            var providerConfig = createProviderConfig(config, "azure");
+            var provider = new LiteLLMProvider(providerConfig, property("azure.api.base").orElseThrow(), key);
             injectTracerIfAvailable(provider);
             bind(LiteLLMProvider.class, "azure", provider);
             providers.addProvider(LLMProviderType.AZURE, provider);
@@ -107,7 +109,8 @@ public class MultiAgentModule extends Module {
 
     private void configDeepSeek(LLMProviders providers, LLMProviderConfig config) {
         property("deepseek.api.key").ifPresent(key -> {
-            var provider = new LiteLLMProvider(config, "https://api.deepseek.com/v1", key);
+            var providerConfig = createProviderConfig(config, "deepseek");
+            var provider = new LiteLLMProvider(providerConfig, "https://api.deepseek.com/v1", key);
             injectTracerIfAvailable(provider);
             bind(LiteLLMProvider.class, "deepseek", provider);
             providers.addProvider(LLMProviderType.DEEPSEEK, provider);
@@ -116,7 +119,8 @@ public class MultiAgentModule extends Module {
 
     private void configLiteLLM(LLMProviders providers, LLMProviderConfig config) {
         property("litellm.api.base").ifPresent(base -> {
-            var provider = new LiteLLMProvider(config, requiredProperty("litellm.api.base"), property("litellm.api.key").orElse(""));
+            var providerConfig = createProviderConfig(config, "litellm");
+            var provider = new LiteLLMProvider(providerConfig, requiredProperty("litellm.api.base"), property("litellm.api.key").orElse(""));
             injectTracerIfAvailable(provider);
             bind(provider);
             bind(LiteLLMImageProvider.class);
@@ -126,13 +130,23 @@ public class MultiAgentModule extends Module {
 
     private LLMProviderConfig setupLLMProperties() {
         var config = new LLMProviderConfig(null, 0.7d, "text-embedding-3-large");
-        property("llm.temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
-        property("llm.model").ifPresent(config::setModel);
-        property("llm.request.extra_body").ifPresent(config::setRequestExtraBody);
-        property("llm.embeddings.model").ifPresent(config::setEmbeddingModel);
-        property("llm.timeout.seconds").ifPresent(v -> config.setTimeout(Long.parseLong(v)));
-        property("llm.connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.parseLong(v)));
+        applyConfigProperties(config, "llm");
         return config;
+    }
+
+    private LLMProviderConfig createProviderConfig(LLMProviderConfig baseConfig, String prefix) {
+        var config = new LLMProviderConfig(baseConfig);
+        applyConfigProperties(config, prefix);
+        return config;
+    }
+
+    private void applyConfigProperties(LLMProviderConfig config, String prefix) {
+        property(prefix + ".model").ifPresent(config::setModel);
+        property(prefix + ".temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
+        property(prefix + ".embeddings.model").ifPresent(config::setEmbeddingModel);
+        property(prefix + ".request.extra_body").ifPresent(config::setRequestExtraBody);
+        property(prefix + ".timeout.seconds").ifPresent(v -> config.setTimeout(Long.parseLong(v)));
+        property(prefix + ".connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.parseLong(v)));
     }
 
     private void configRedisPersistenceProvider(PersistenceProviders providers) {
