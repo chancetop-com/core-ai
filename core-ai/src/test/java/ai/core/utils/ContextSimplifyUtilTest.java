@@ -40,7 +40,7 @@ class ContextSimplifyUtilTest {
 
         assertEquals("uuid-aaa", ctx.toOriginal("1"));
         assertEquals("uuid-bbb", ctx.toOriginal("2"));
-        assertNull(ctx.toOriginal("999"));
+        assertEquals("999", ctx.toOriginal("999"));
 
         ctx.restore();
     }

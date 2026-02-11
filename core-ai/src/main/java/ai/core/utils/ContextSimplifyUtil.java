@@ -76,8 +76,8 @@ public final class ContextSimplifyUtil<T> {
     }
 
     public String toOriginal(String simpleId) {
-        if (simpleToOriginal == null) return null;
-        return simpleToOriginal.get(simpleId);
+        if (simpleToOriginal == null) return simpleId;
+        return simpleToOriginal.getOrDefault(simpleId, simpleId);
     }
 
     public <R> R apply(Supplier<R> action) {
