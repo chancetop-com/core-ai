@@ -21,6 +21,15 @@ public class LLMProviderConfig {
         this.embeddingModel = embeddingModel;
     }
 
+    public LLMProviderConfig(LLMProviderConfig other) {
+        this.model = other.model;
+        this.temperature = other.temperature;
+        this.embeddingModel = other.embeddingModel;
+        this.requestExtraBody = other.requestExtraBody;
+        this.timeout = other.timeout;
+        this.connectTimeout = other.connectTimeout;
+    }
+
     public Duration getConnectTimeout() {
         return connectTimeout;
     }
