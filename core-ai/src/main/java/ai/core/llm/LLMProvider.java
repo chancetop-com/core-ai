@@ -50,6 +50,10 @@ public abstract class LLMProvider {
     }
 
     public final <T> T completionFormatAttachedContent(String systemPrompt, String query, ExecutionContext.AttachedContent attachedContent, String model, Class<T> clazz) {
+        return completionFormatAttachedContent(systemPrompt, query, attachedContent, model, clazz, null);
+    }
+
+    public final <T> T completionFormatAttachedContent(String systemPrompt, String query, ExecutionContext.AttachedContent attachedContent, String model, Class<T> clazz, Integer timeoutSeconds) {
         var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
                 List.of(Message.of(RoleType.SYSTEM, systemPrompt),
                         AgentHelper.buildUserMessage(query, attachedContent)),
@@ -61,6 +65,7 @@ public abstract class LLMProvider {
                 ResponseFormat.of(clazz),
                 null
         ));
+        request.setTimeoutSeconds(timeoutSeconds);
         return completionFormat(request, clazz);
     }
 
