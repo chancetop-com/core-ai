@@ -65,6 +65,10 @@ public abstract class LLMProvider {
     }
 
     public final <T> T completionFormat(String systemPrompt, String userPrompt, String model, Class<T> clazz) {
+        return completionFormat(systemPrompt, userPrompt, model, clazz, null);
+    }
+
+    public final <T> T completionFormat(String systemPrompt, String userPrompt, String model, Class<T> clazz, Integer timeoutSeconds) {
         var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
                 List.of(Message.of(RoleType.SYSTEM, systemPrompt),
                         Message.of(RoleType.USER, userPrompt)),
@@ -76,6 +80,7 @@ public abstract class LLMProvider {
                 ResponseFormat.of(clazz),
                 null
         ));
+        request.setTimeoutSeconds(timeoutSeconds);
         return completionFormat(request, clazz);
     }
 

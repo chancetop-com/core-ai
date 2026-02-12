@@ -51,12 +51,19 @@ public class CompletionRequest {
 
     private String name;
     private Object extraBody;
+    private Integer timeoutSeconds;
 
     public String getName() {
         return name;
     }
     public Object getExtraBody() {
         return extraBody;
+    }
+    public Integer getTimeoutSeconds() {
+        return timeoutSeconds;
+    }
+    public void setTimeoutSeconds(Integer timeoutSeconds) {
+        this.timeoutSeconds = timeoutSeconds;
     }
 
     public record CompletionRequestOptions(List<Message> messages,
