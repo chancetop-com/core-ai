@@ -132,7 +132,7 @@ public class LiteLLMProvider extends LLMProvider {
     public CompletionResponse chatCompletionStream(CompletionRequest request, StreamingCallback callback) {
         var extraBody = request.getExtraBody() == null ? config.getRequestExtraBody() : request.getExtraBody();
         var req = new HTTPRequest(HTTPMethod.POST, url + "/chat/completions");
-        if (req.timeout != null) {
+        if (request.getTimeoutSeconds() != null) {
             req.timeout = Duration.ofSeconds(request.getTimeoutSeconds());
         }
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
