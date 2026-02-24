@@ -166,6 +166,26 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder mcpServersDiscoverable(List<String> serverNames) {
+        return mcpServersDiscoverable(serverNames, null, null);
+    }
+
+    public AgentBuilder mcpServersDiscoverable(List<String> serverNames, List<String> includes) {
+        return mcpServersDiscoverable(serverNames, includes, null);
+    }
+
+    public AgentBuilder mcpServersDiscoverable(List<String> serverNames, List<String> includes, List<String> excludes) {
+        var manager = McpClientManagerRegistry.getManager();
+        if (manager == null) {
+            throw new IllegalStateException("MCP servers requested but McpClientManager is not configured. "
+                    + "Please configure mcp.servers in your properties file.");
+        }
+        var tools = McpToolCalls.from(manager, serverNames, includes, excludes);
+        tools.forEach(t -> t.setDiscoverable(true));
+        this.toolCalls.addAll(tools);
+        return this;
+    }
+
     public AgentBuilder ragConfig(RagConfig ragConfig) {
         this.ragConfig = ragConfig;
         return this;
