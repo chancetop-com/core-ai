@@ -4,6 +4,8 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.compression.Compression;
 import ai.core.compression.CompressionLifecycle;
+import ai.core.compression.ToolCallPruning;
+import ai.core.compression.ToolCallPruningLifecycle;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryLifecycle;
@@ -24,6 +26,7 @@ import core.framework.util.Lists;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -44,6 +47,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Integer maxTurnNumber;
     private Compression compression;
     private boolean compressionEnabled = true;
+    private boolean toolCallPruningEnabled = true;
+    private ToolCallPruning.Config toolCallPruningConfig;
     private ReasoningEffort reasoningEffort;
 
     // Memory configuration
@@ -92,6 +97,17 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder compression(boolean enabled) {
         this.compressionEnabled = enabled;
+        return this;
+    }
+
+    public AgentBuilder toolCallPruning(boolean enabled) {
+        this.toolCallPruningEnabled = enabled;
+        return this;
+    }
+
+    public AgentBuilder toolCallPruning(int keepRecentSegments, Set<String> excludeToolNames) {
+        this.toolCallPruningConfig = new ToolCallPruning.Config(keepRecentSegments, excludeToolNames);
+        this.toolCallPruningEnabled = true;
         return this;
     }
 
@@ -282,6 +298,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
+        }
+
+        if (this.toolCallPruningEnabled) {
+            var pruningCfg = this.toolCallPruningConfig != null ? this.toolCallPruningConfig : ToolCallPruning.Config.defaultConfig();
+            agent.agentLifecycles.addFirst(new ToolCallPruningLifecycle(new ToolCallPruning(pruningCfg.keepRecentSegments(), pruningCfg.excludeToolNames())));
         }
 
         if (this.compressionEnabled) {
