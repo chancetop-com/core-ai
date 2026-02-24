@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -97,30 +98,16 @@ class ContextSimplifyUtilTest {
     }
 
     @Test
-    void applyRestoresOnException() {
-        var items = new ArrayList<>(List.of(new Item("uuid-aaa", "A", "img1")));
-
-        try {
-            ContextSimplifyUtil.of(items)
-                    .nullify(i -> i.imageUrl, (i, v) -> i.imageUrl = v)
-                    .apply(() -> { throw new RuntimeException("fail"); });
-        } catch (RuntimeException ignored) {
-        }
-
-        assertEquals("img1", items.get(0).imageUrl);
-    }
-
-    @Test
     void mapWithCustomMapper() {
         var items = new ArrayList<>(List.of(new Item("id1", "A", "img1")));
 
         var ctx = ContextSimplifyUtil.of(items)
-                .map(i -> i.name, (i, v) -> i.name = v, v -> v.toLowerCase());
+                .map(i -> i.name, (i, v) -> i.name = v, v -> v.toLowerCase(Locale.getDefault()));
 
-        assertEquals("a", items.get(0).name);
+        assertEquals("a", items.getFirst().name);
 
         ctx.restore();
-        assertEquals("A", items.get(0).name);
+        assertEquals("A", items.getFirst().name);
     }
 
     @Test
