@@ -23,6 +23,7 @@ import java.util.List;
  * @author xander
  */
 public class Compression {
+    public static final String COMPRESSION_TOOL_NAME = "memory_compress";
     private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
@@ -123,27 +124,26 @@ public class Compression {
             return messages;
         }
 
-        String summary = summarize(toCompress);
+        var summary = summarize(toCompress);
         if (summary.isBlank()) {
             LOGGER.warn("Summarization returned empty result, keeping original messages");
             return messages;
         }
 
-        List<Message> result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
-        int newTokens = MessageTokenCounterUtil.count(result);
-        LOGGER.info("Compression complete: {} -> {} tokens, {} -> {} messages",
-            MessageTokenCounterUtil.count(messages), newTokens, messages.size(), result.size());
+        var result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
+        var newTokens = MessageTokenCounterUtil.count(result);
+        LOGGER.info("Compression complete: {} -> {} tokens, {} -> {} messages", MessageTokenCounterUtil.count(messages), newTokens, messages.size(), result.size());
 
         return result;
     }
 
     private List<Message> buildCompressedResult(Message systemMsg, String summary, Message preservedUserMsg, List<Message> toKeep) {
-        var toolCallId = "memory_compress_" + System.currentTimeMillis();
-        FunctionCall compressCall = FunctionCall.of(toolCallId, "function", "memory_compress", "{}");
+        var toolCallId = COMPRESSION_TOOL_NAME + "_" + System.currentTimeMillis();
+        var compressCall = FunctionCall.of(toolCallId, "function", COMPRESSION_TOOL_NAME, "{}");
         var toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(compressCall));
-        Message toolResultMsg = Message.of(RoleType.TOOL, summary, "memory_compress", toolCallId, null, null);
+        var toolResultMsg = Message.of(RoleType.TOOL, summary, COMPRESSION_TOOL_NAME, toolCallId, null, null);
 
-        List<Message> result = new ArrayList<>();
+        var result = new ArrayList<Message>();
         if (systemMsg != null) {
             result.add(systemMsg);
         }
