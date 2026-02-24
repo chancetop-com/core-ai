@@ -308,8 +308,8 @@ public abstract class Node<T extends Node<T>> {
 
     private String getFailedMessage() {
         var content = getRawOutput() == null ? getOutput() : getRawOutput();
-        if (Strings.isBlank(content) && getMessages().getLast().functionCall != null && getMessages().getLast().functionCall.function != null) {
-            content = getMessages().getLast().functionCall.function.name;
+        if (Strings.isBlank(content) && getMessages().getLast().toolCalls != null && !getMessages().getLast().toolCalls.isEmpty()) {
+            content = getMessages().getLast().toolCalls.getLast().function.name;
         }
         return content;
     }
