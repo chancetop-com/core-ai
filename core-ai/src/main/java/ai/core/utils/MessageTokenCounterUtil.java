@@ -1,4 +1,4 @@
-package ai.core.compression;
+package ai.core.utils;
 
 import ai.core.document.Tokenizer;
 import ai.core.llm.domain.Message;
@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * @author xander
  */
-public final class MessageTokenCounter {
+public final class MessageTokenCounterUtil {
 
     public static int count(Message message) {
         int tokens = 0;
@@ -49,6 +49,6 @@ public final class MessageTokenCounter {
         return total;
     }
 
-    private MessageTokenCounter() {
+    private MessageTokenCounterUtil() {
     }
 }

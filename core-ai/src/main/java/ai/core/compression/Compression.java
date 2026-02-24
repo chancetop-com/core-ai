@@ -8,6 +8,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.prompt.Prompts;
+import ai.core.utils.MessageTokenCounterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,7 +70,7 @@ public class Compression {
             return messages;
         }
 
-        int currentTokens = MessageTokenCounter.count(messages);
+        int currentTokens = MessageTokenCounterUtil.count(messages);
         if (!shouldCompress(currentTokens)) {
             return messages;
         }
@@ -129,9 +130,9 @@ public class Compression {
         }
 
         List<Message> result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
-        int newTokens = MessageTokenCounter.count(result);
+        int newTokens = MessageTokenCounterUtil.count(result);
         LOGGER.info("Compression complete: {} -> {} tokens, {} -> {} messages",
-            MessageTokenCounter.count(messages), newTokens, messages.size(), result.size());
+            MessageTokenCounterUtil.count(messages), newTokens, messages.size(), result.size());
 
         return result;
     }
@@ -179,7 +180,7 @@ public class Compression {
     private int calculateKeepFromIndex(List<Message> conversationMsgs, int lastUserIndex) {
         var keepFromIndex = findKeepFromIndexByTurnsAndTokens(conversationMsgs, lastUserIndex);
 
-        var tokensFromKeep = MessageTokenCounter.countFrom(conversationMsgs, keepFromIndex);
+        var tokensFromKeep = MessageTokenCounterUtil.countFrom(conversationMsgs, keepFromIndex);
         var threshold = (int) (maxContextTokens * triggerThreshold);
 
         if (tokensFromKeep >= threshold) {
@@ -214,7 +215,7 @@ public class Compression {
                 && msg.toolCalls != null && !msg.toolCalls.isEmpty();
 
             if (!tokenBudgetExceeded) {
-                accumulatedTokens += MessageTokenCounter.count(msg);
+                accumulatedTokens += MessageTokenCounterUtil.count(msg);
             }
             if (!tokenBudgetExceeded && accumulatedTokens > keepTokens) {
                 pendingTokenSplit = msg.role == RoleType.TOOL;
