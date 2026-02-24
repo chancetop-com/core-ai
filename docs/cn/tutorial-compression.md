@@ -116,21 +116,21 @@ Agent agent = Agent.builder()
 ### 自定义配置
 
 ```java
-import ai.core.compression.Compression;
+import ai.core.context.Compression;
 
 // 使用自定义设置创建压缩
 Compression compression = new Compression(
-    0.8,         // triggerThreshold: 在最大上下文的 80% 时压缩（默认）
-    5,           // keepRecentTurns: 保留最近 5 轮对话（默认）
-    llmProvider, // 用于生成摘要的 LLM 提供者
-    "gpt-4"      // 用于 token 计数的模型名称
+        0.8,         // triggerThreshold: 在最大上下文的 80% 时压缩（默认）
+        5,           // keepRecentTurns: 保留最近 5 轮对话（默认）
+        llmProvider, // 用于生成摘要的 LLM 提供者
+        "gpt-4"      // 用于 token 计数的模型名称
 );
 
-Agent agent = Agent.builder()
-    .name("agent")
-    .llmProvider(llmProvider)
-    .compression(compression)
-    .build();
+        Agent agent = Agent.builder()
+                .name("agent")
+                .llmProvider(llmProvider)
+                .compression(compression)
+                .build();
 ```
 
 ### 配置参数
@@ -363,9 +363,9 @@ if (userMessage.length() > MAX_MESSAGE_LENGTH) {
 
 | 类 | 位置 | 描述 |
 |----|------|------|
-| `Compression` | `ai.core.compression` | 主要压缩逻辑 |
-| `CompressionLifecycle` | `ai.core.compression` | Agent 生命周期集成 |
-| `MessageTokenCounter` | `ai.core.compression` | Token 计数工具 |
+| `Compression` | `ai.core.context` | 主要压缩逻辑 |
+| `CompressionLifecycle` | `ai.core.context` | Agent 生命周期集成 |
+| `MessageTokenCounter` | `ai.core.context` | Token 计数工具 |
 
 ### 生命周期集成
 

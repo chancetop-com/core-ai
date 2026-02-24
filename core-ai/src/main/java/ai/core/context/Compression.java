@@ -1,4 +1,4 @@
-package ai.core.compression;
+package ai.core.context;
 
 import ai.core.document.Tokenizer;
 import ai.core.llm.LLMModelContextRegistry;

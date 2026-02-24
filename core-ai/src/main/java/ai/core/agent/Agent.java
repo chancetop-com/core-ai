@@ -15,7 +15,7 @@ import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
-import ai.core.compression.Compression;
+import ai.core.context.Compression;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;

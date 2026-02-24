@@ -2,10 +2,10 @@ package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
-import ai.core.compression.Compression;
-import ai.core.compression.CompressionLifecycle;
-import ai.core.compression.ToolCallPruning;
-import ai.core.compression.ToolCallPruningLifecycle;
+import ai.core.context.Compression;
+import ai.core.context.CompressionLifecycle;
+import ai.core.context.ToolCallPruning;
+import ai.core.context.ToolCallPruningLifecycle;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryLifecycle;

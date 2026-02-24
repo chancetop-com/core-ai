@@ -1,4 +1,4 @@
-package ai.core.compression;
+package ai.core.context;
 
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;

@@ -1,4 +1,4 @@
-package ai.core.compression;
+package ai.core.context;
 
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;

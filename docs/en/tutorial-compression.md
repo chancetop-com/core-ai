@@ -116,21 +116,21 @@ Agent agent = Agent.builder()
 ### Custom Configuration
 
 ```java
-import ai.core.compression.Compression;
+import ai.core.context.Compression;
 
 // Create compression with custom settings
 Compression compression = new Compression(
-    0.8,         // triggerThreshold: compress at 80% of max context (default)
-    5,           // keepRecentTurns: keep last 5 conversation turns (default)
-    llmProvider, // LLM provider for generating summaries
-    "gpt-4"      // model name for token counting
+        0.8,         // triggerThreshold: compress at 80% of max context (default)
+        5,           // keepRecentTurns: keep last 5 conversation turns (default)
+        llmProvider, // LLM provider for generating summaries
+        "gpt-4"      // model name for token counting
 );
 
-Agent agent = Agent.builder()
-    .name("agent")
-    .llmProvider(llmProvider)
-    .compression(compression)
-    .build();
+        Agent agent = Agent.builder()
+                .name("agent")
+                .llmProvider(llmProvider)
+                .compression(compression)
+                .build();
 ```
 
 ### Configuration Parameters
@@ -363,9 +363,9 @@ if (userMessage.length() > MAX_MESSAGE_LENGTH) {
 
 | Class | Location | Description |
 |-------|----------|-------------|
-| `Compression` | `ai.core.compression` | Main compression logic |
-| `CompressionLifecycle` | `ai.core.compression` | Agent lifecycle integration |
-| `MessageTokenCounter` | `ai.core.compression` | Token counting utility |
+| `Compression` | `ai.core.context` | Main compression logic |
+| `CompressionLifecycle` | `ai.core.context` | Agent lifecycle integration |
+| `MessageTokenCounter` | `ai.core.context` | Token counting utility |
 
 ### Lifecycle Integration
 
