@@ -69,14 +69,14 @@ public final class SlashCommandExecutor {
 
     private static List<Message> buildMessages(String originalQuery, String toolName, String arguments, String toolCallId, ToolCallResult result) {
         // 1. USER message - the original slash command query
-        var userMessage = Message.of(RoleType.USER, originalQuery, "user", null, null, null);
+        var userMessage = Message.of(RoleType.USER, originalQuery, "user", null, null);
 
         // 2. ASSISTANT message - fake tool call message
         var functionCall = FunctionCall.of(toolCallId, "function", toolName, arguments);
-        var assistantMessage = Message.of(RoleType.ASSISTANT, "", "assistant", null, null, List.of(functionCall));
+        var assistantMessage = Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall));
 
         // 3. TOOL message - tool execution result
-        var toolMessage = Message.of(RoleType.TOOL, result.toResultForLLM(), toolName, toolCallId, null, null);
+        var toolMessage = Message.of(RoleType.TOOL, result.toResultForLLM(), toolName, toolCallId, null);
 
         return List.of(userMessage, assistantMessage, toolMessage);
     }
@@ -86,14 +86,14 @@ public final class SlashCommandExecutor {
         var toolName = "slash_command_error";
 
         // 1. USER message
-        var userMessage = Message.of(RoleType.USER, originalQuery, "user", null, null, null);
+        var userMessage = Message.of(RoleType.USER, originalQuery, "user", null, null);
 
         // 2. ASSISTANT message - fake error tool call
         var functionCall = FunctionCall.of(toolCallId, "function", toolName, "{}");
-        var assistantMessage = Message.of(RoleType.ASSISTANT, "", "assistant", null, null, List.of(functionCall));
+        var assistantMessage = Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall));
 
         // 3. TOOL message - error result
-        var toolMessage = Message.of(RoleType.TOOL, "Error: " + error, toolName, toolCallId, null, null);
+        var toolMessage = Message.of(RoleType.TOOL, "Error: " + error, toolName, toolCallId, null);
 
         return ExecutionResult.failure(List.of(userMessage, assistantMessage, toolMessage), error);
     }

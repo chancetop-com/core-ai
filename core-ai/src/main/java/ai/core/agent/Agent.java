@@ -250,7 +250,7 @@ public class Agent extends Node<Agent> {
             return Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "Error: Invalid slash command format. Expected: /slash_command:tool_name:arguments"));
         } else {
             var functionCall = FunctionCall.of(AgentHelper.generateToolCallId(), "function", command.getToolName(), command.hasArguments() ? command.getArguments() : "{}");
-            return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, null, List.of(functionCall)));
+            return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall)));
         }
     }
 

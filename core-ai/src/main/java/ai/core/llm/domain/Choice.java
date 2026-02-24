@@ -16,7 +16,6 @@ public class Choice {
         msg.name = message.name;
         msg.toolCallId = message.toolCallId;
         msg.toolCalls = message.toolCalls;
-        msg.functionCall = message.functionCall;
         choice.message = msg;
         choice.finishReason = finishReason;
         return choice;

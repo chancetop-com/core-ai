@@ -75,7 +75,6 @@ class ToolCallParametersIntegrationTest {
             "",
             null,
             null,
-            null,
             List.of(toolCall)
         );
 
@@ -134,7 +133,6 @@ class ToolCallParametersIntegrationTest {
         var toolCallMessage = Message.of(
             RoleType.ASSISTANT,
             "",
-            null,
             null,
             null,
             List.of(toolCall)

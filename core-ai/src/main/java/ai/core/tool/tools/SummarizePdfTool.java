@@ -40,7 +40,7 @@ public class SummarizePdfTool extends ToolCall {
         var messages = List.of(Message.of(new Message.MessageRecord(
                 RoleType.USER,
                 List.of(Content.of(params.query), Content.ofFileUrl(params.url)),
-                null, null, null, null, null)));
+                null, null, null, null)));
         var targetModel = model != null ? model : context.getModel();
         var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, targetModel, null));
         return ToolCallResult.completed(rsp.choices.getFirst().message.content);

@@ -63,8 +63,8 @@ public class AgentHelper {
 
     public static Message buildToolMessage(FunctionCall tool, ToolCallResult result, boolean isDirectReturn) {
         return switch (result.getType()) {
-            case TEXT -> Message.of(RoleType.TOOL, buildTextContent(result, isDirectReturn), tool.function.name, tool.id, null, null);
-            case IMAGE -> Message.of(new Message.MessageRecord(RoleType.TOOL, buildImageContent(result), "", tool.function.name, tool.id, null, null));
+            case TEXT -> Message.of(RoleType.TOOL, buildTextContent(result, isDirectReturn), tool.function.name, tool.id, null);
+            case IMAGE -> Message.of(new Message.MessageRecord(RoleType.TOOL, buildImageContent(result), "", tool.function.name, tool.id, null));
         };
     }
 
@@ -90,14 +90,13 @@ public class AgentHelper {
 
     public static Message buildUserMessage(String query, ExecutionContext.AttachedContent attachedContent) {
         if (attachedContent == null) {
-            return Message.of(RoleType.USER, query, buildRequestName(false), null, null, null);
+            return Message.of(RoleType.USER, query, buildRequestName(false), null, null);
         }
         return Message.of(new Message.MessageRecord(
             RoleType.USER,
             List.of(Content.of(query), buildAttachedContent(attachedContent)),
             null,
             buildRequestName(false),
-            null,
             null,
             null));
     }

@@ -71,7 +71,6 @@ class ShellCommandToolTest {
             "",
             null,
             null,
-            null,
             List.of(toolCall)
         );
 
@@ -132,7 +131,6 @@ class ShellCommandToolTest {
         Message toolCallMessage = Message.of(
             RoleType.ASSISTANT,
             "",
-            null,
             null,
             null,
             List.of(toolCall)

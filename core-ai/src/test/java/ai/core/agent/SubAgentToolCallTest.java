@@ -148,7 +148,7 @@ class SubAgentToolCallTest {
         var coordinatorToolCallResponse = CompletionResponse.of(
                 List.of(Choice.of(
                         FinishReason.TOOL_CALLS,
-                        Message.of(RoleType.ASSISTANT, "", null, null, null,
+                        Message.of(RoleType.ASSISTANT, "", null, null,
                                 List.of(FunctionCall.of("call_1", "function", "researcher",
                                         "{\"query\": \"Research climate change effects\"}")))
                 )),

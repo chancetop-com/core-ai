@@ -57,7 +57,6 @@ class WeatherFunctionCallTest {
             "",
             null,
             null,
-            null,
             List.of(toolCall)
         );
 
@@ -114,7 +113,6 @@ class WeatherFunctionCallTest {
         Message toolCallMessage = Message.of(
             RoleType.ASSISTANT,
             "",
-            null,
             null,
             null,
             List.of(toolCall)
@@ -177,7 +175,6 @@ class WeatherFunctionCallTest {
         Message toolCallMessage = Message.of(
             RoleType.ASSISTANT,
             "",
-            null,
             null,
             null,
             List.of(toolCall1, toolCall2)

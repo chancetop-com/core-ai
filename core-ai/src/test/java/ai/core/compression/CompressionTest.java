@@ -200,11 +200,11 @@ class CompressionTest {
         // add ASSISTANT with tool_calls
         String toolCallId = "call_123";
         FunctionCall toolCall = FunctionCall.of(toolCallId, "function", "search", "{\"query\":\"test\"}");
-        Message assistantWithToolCall = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(toolCall));
+        Message assistantWithToolCall = Message.of(RoleType.ASSISTANT, null, null, null, List.of(toolCall));
         messages.add(assistantWithToolCall);
 
         // add TOOL response
-        Message toolResponse = Message.of(RoleType.TOOL, "Search result", "search", toolCallId, null, null);
+        Message toolResponse = Message.of(RoleType.TOOL, "Search result", "search", toolCallId, null);
         messages.add(toolResponse);
 
         // add final USER message

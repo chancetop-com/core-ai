@@ -31,7 +31,7 @@ public final class ReflectionEvaluator {
 
         List<Message> evaluationMessages = List.of(
                 Message.of(RoleType.SYSTEM, evaluatorSystemPrompt),
-                Message.of(RoleType.USER, evaluationUserMessage, null, null, null, null)
+                Message.of(RoleType.USER, evaluationUserMessage, null, null, null)
         );
 
         CompletionRequest evalRequest = CompletionRequest.of(

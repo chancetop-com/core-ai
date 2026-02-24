@@ -140,7 +140,6 @@ class RagToolTest {
             "",
             null,
             null,
-            null,
             List.of(ragToolCall)
         );
 
@@ -261,7 +260,6 @@ class RagToolTest {
         Message toolCallMessage = Message.of(
             RoleType.ASSISTANT,
             "",
-            null,
             null,
             null,
             List.of(ragToolCall)

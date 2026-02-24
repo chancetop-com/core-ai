@@ -21,12 +21,10 @@ public class AssistantMessage {
     public String name;
     @Property(name = "tool_call_id")
     public String toolCallId;
-    @Property(name = "function_call")
-    public FunctionCall functionCall;
     @Property(name = "tool_calls")
     public List<FunctionCall> toolCalls;
 
     public Message toMessage() {
-        return Message.of(role, content, name, toolCallId, functionCall, toolCalls);
+        return Message.of(role, content, name, toolCallId, toolCalls);
     }
 }

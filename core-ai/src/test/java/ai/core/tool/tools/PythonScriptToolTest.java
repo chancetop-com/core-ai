@@ -81,7 +81,6 @@ class PythonScriptToolTest {
             "",
             null,
             null,
-            null,
             List.of(toolCall)
         );
 

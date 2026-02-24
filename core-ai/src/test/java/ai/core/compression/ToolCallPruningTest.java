@@ -73,7 +73,7 @@ class ToolCallPruningTest {
     void pruneParallelToolCallsSegment() {
         FunctionCall call1 = FunctionCall.of("call_1", "function", "getWeather", "{\"city\":\"Beijing\"}");
         FunctionCall call2 = FunctionCall.of("call_2", "function", "getWeather", "{\"city\":\"Shanghai\"}");
-        Message parallelAssistant = Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(call1, call2));
+        Message parallelAssistant = Message.of(RoleType.ASSISTANT, null, null, null, List.of(call1, call2));
 
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "compare weather"),
@@ -364,10 +364,10 @@ class ToolCallPruningTest {
 
     private Message assistantWithToolCall(String callId, String toolName) {
         FunctionCall call = FunctionCall.of(callId, "function", toolName, "{}");
-        return Message.of(RoleType.ASSISTANT, null, null, null, null, List.of(call));
+        return Message.of(RoleType.ASSISTANT, null, null, null, List.of(call));
     }
 
     private Message toolResult(String callId, String content) {
-        return Message.of(RoleType.TOOL, content, null, callId, null, null);
+        return Message.of(RoleType.TOOL, content, null, callId, null);
     }
 }
