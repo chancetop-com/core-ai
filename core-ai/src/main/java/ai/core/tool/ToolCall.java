@@ -23,6 +23,7 @@ public abstract class ToolCall {
     Boolean needAuth;
     Boolean directReturn;
     Boolean llmVisible;
+    Boolean discoverable;
     protected Long timeoutMs;
 
     public ToolCallResult execute(String arguments, ExecutionContext context) {
@@ -96,6 +97,14 @@ public abstract class ToolCall {
         this.llmVisible = llmVisible;
     }
 
+    public boolean isDiscoverable() {
+        return discoverable != null && discoverable;
+    }
+
+    public void setDiscoverable(Boolean discoverable) {
+        this.discoverable = discoverable;
+    }
+
     public long getTimeoutMs() {
         return timeoutMs != null ? timeoutMs : DEFAULT_TIMEOUT_MS;
     }
@@ -125,7 +134,7 @@ public abstract class ToolCall {
                 func.name = func.name.substring(func.name.indexOf('_') + 1);
             }
         }
-        func.description = description;
+        func.description = getDescription();
         func.parameters = toJsonSchema();
         tool.function = func;
         return tool;
@@ -144,6 +153,7 @@ public abstract class ToolCall {
         Boolean continueAfterSlash;
         Boolean directReturn;
         Boolean llmVisible;
+        Boolean discoverable;
         Long timeoutMs;
 
         protected abstract B self();
@@ -188,6 +198,11 @@ public abstract class ToolCall {
             return self();
         }
 
+        public B discoverable(Boolean discoverable) {
+            this.discoverable = discoverable;
+            return self();
+        }
+
         public B timeoutMs(Long timeoutMs) {
             this.timeoutMs = timeoutMs;
             return self();
@@ -210,6 +225,7 @@ public abstract class ToolCall {
             toolCall.needAuth = needAuth != null && needAuth;
             toolCall.directReturn = directReturn != null && directReturn;
             toolCall.llmVisible = llmVisible == null || llmVisible;
+            toolCall.discoverable = discoverable != null && discoverable;
             toolCall.timeoutMs = timeoutMs;
         }
     }

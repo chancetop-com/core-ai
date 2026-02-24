@@ -22,6 +22,7 @@ import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.SubAgentToolCall;
+import ai.core.tool.tools.ToolActivationTool;
 import core.framework.util.Lists;
 
 import java.util.ArrayList;
@@ -281,6 +282,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             }
         }
 
+        configureToolDiscovery(agent);
+
         agent.ragConfig = this.ragConfig;
         agent.reflectionConfig = this.reflectionConfig;
         agent.reflectionListener = this.reflectionListener;
@@ -312,6 +315,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agent.agentLifecycles.add(new CompressionLifecycle(agent.compression));
         }
         configureMemory(agent);
+    }
+
+    private void configureToolDiscovery(Agent agent) {
+        var discoverableTools = agent.toolCalls.stream().filter(ToolCall::isDiscoverable).toList();
+        if (!discoverableTools.isEmpty()) {
+            for (var tool : discoverableTools) {
+                tool.setLlmVisible(false);
+            }
+            agent.toolCalls.add(ToolActivationTool.builder().allToolCalls(agent.toolCalls).build());
+        }
     }
 
     private void configureMemory(Agent agent) {
