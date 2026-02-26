@@ -96,7 +96,7 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
 
 val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
-    version = "1.2.0-SNAPSHOT"
+    version = "1.2.1-SNAPSHOT"
     dependencies {
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -125,7 +125,7 @@ project(":core-ai") {
 
 
 project(":core-ai-api") {
-    version = "1.2.0-SNAPSHOT"
+    version = "1.2.1-SNAPSHOT"
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }
