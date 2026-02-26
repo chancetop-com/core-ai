@@ -10,7 +10,7 @@ import java.lang.reflect.InvocationTargetException;
 public class ClassUtil {
     public static void checkNoArgConstructor(Class<?> type) {
         try {
-            type.getDeclaredConstructor();
+            var _ = type.getDeclaredConstructor();
         } catch (NoSuchMethodException e) {
             throw new IllegalStateException(Strings.format("Class {}'s must has no arg constructor", type.getName()), e);
         }

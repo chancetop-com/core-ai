@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -107,7 +108,7 @@ public class GrepFileTool extends ToolCall {
 
     private String readProcessOutput(Process process) throws IOException, InterruptedException {
         var output = new StringBuilder();
-        try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+        try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line = reader.readLine();
             while (line != null) {
                 if (Thread.currentThread().isInterrupted()) {

@@ -66,7 +66,7 @@ public abstract class Tracer {
      * Trace an operation with a custom span
      * Subclasses can override to add domain-specific attributes
      */
-    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    @SuppressWarnings("try")
     protected <T> T trace(String spanName, SpanKind spanKind, Supplier<T> operation) {
         if (!enabled) {
             return operation.get();

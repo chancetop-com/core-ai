@@ -11,6 +11,7 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -93,7 +94,7 @@ public class SystemUtil {
 
     private static String readProcessError(Process process) throws IOException {
         try (InputStream errorStream = process.getInputStream()) {
-            return new String(errorStream.readAllBytes());
+            return new String(errorStream.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
