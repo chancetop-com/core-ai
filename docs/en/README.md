@@ -9,6 +9,7 @@ Welcome to the English documentation for Core-AI!
 - [Quick Start Guide](quickstart.md) - Get started in 10 minutes
 - [Tutorials Index](tutorials.md) - Overview of all tutorials
 - [Basic Agent Tutorial](tutorial-basic-agent.md) - Building intelligent agents
+- [Skills System](tutorial-skills.md) - Modular domain knowledge packages
 
 ### 🚧 In Progress
 The following tutorials need full English translation:
@@ -42,6 +43,7 @@ The following tutorials need full English translation:
 
 - 🤖 **Intelligent Agents** - Autonomous agents with memory and reflection
 - 🔧 **Tool Integration** - Extend capabilities with custom tools
+- 🎯 **Skills System** - Modular domain knowledge packages
 - 📚 **RAG Support** - Knowledge-enhanced generation
 - 🔄 **Flow Orchestration** - Visual workflow design
 - 🔍 **Observability** - Built-in tracing and monitoring

@@ -13,4 +13,5 @@ object Versions {
     const val OPENAI_JAVA_CLIENT_VERSION = "4.8.0"
     const val MCP_SDK_VERSION = "0.17.0"
     const val SQLITE_JDBC_VERSION = "3.47.2.0"
+    const val SNAKEYAML_VERSION = "2.2"
 }

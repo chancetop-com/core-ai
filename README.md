@@ -24,6 +24,7 @@ Core-AI is a powerful Java framework designed for building AI agents and multi-a
 - **🔧 Tool Integration** - Extensive tool system with JSON Schema and MCP protocol support
 - **📚 RAG Support** - Built-in RAG with vector stores (Milvus, HNSWLib) integration
 - **🔄 Flow Orchestration** - Visual workflow design with conditional routing and parallel execution
+- **🎯 Skills System** - Modular domain knowledge packages with progressive disclosure
 - **🔍 Observability** - OpenTelemetry tracing compatible with Langfuse, Jaeger, etc.
 - **☁️ LLM Providers** - Support for Azure OpenAI, Azure AI Inference, and more
 
@@ -105,6 +106,7 @@ System.out.println(output.getOutput());
 - [Compression](./docs/en/tutorial-compression.md) - Session-based context management
 - [RAG Integration](./docs/en/tutorial-rag.md) - Implement retrieval-augmented generation
 - [Tool Calling](./docs/en/tutorial-tool-calling.md) - Extend agents with custom tools
+- [Skills System](./docs/en/tutorial-skills.md) - Modular domain knowledge packages
 - [Flow Orchestration](./docs/en/tutorial-flow.md) - Build complex workflows
 
 ### 🏗️ Architecture

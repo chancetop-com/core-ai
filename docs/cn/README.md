@@ -20,13 +20,14 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 
 - **[Overview](../en/overview.md)** - Understand Core-AI's core concepts and architecture
 - **[Quick Start](../en/quickstart.md)** - Get started in 10 minutes
-- **[Architecture & Internals](../en/tutorial-architecture.md)** - Framework core mechanisms deep dive ⭐ NEW
+- **[Architecture & Internals](../en/tutorial-architecture.md)** - Framework core mechanisms deep dive
 - **[Tutorials](../en/tutorials.md)** - In-depth learning guides
   - [Building AI Agents](../en/tutorial-basic-agent.md)
   - [Memory Systems](../en/tutorial-memory.md)
   - [Compression Mechanism](../en/tutorial-compression.md)
   - [RAG Integration](../en/tutorial-rag.md)
   - [Tool Calling](../en/tutorial-tool-calling.md)
+  - [Skills System](../en/tutorial-skills.md)
   - [Flow Orchestration](../en/tutorial-flow.md)
 
 ### 🚀 Quick Navigation
@@ -40,6 +41,7 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | **Compression** | Context compression and token management | [Compression Tutorial](../en/tutorial-compression.md) |
 | **RAG & Vector Search** | Implement retrieval-augmented generation | [RAG Tutorial](../en/tutorial-rag.md) |
 | **Tool Integration** | Extend agents with custom tools | [Tool Tutorial](../en/tutorial-tool-calling.md) |
+| **Skills System** | Modular domain knowledge packages | [Skills Tutorial](../en/tutorial-skills.md) |
 | **Workflow Design** | Build complex execution flows | [Flow Tutorial](../en/tutorial-flow.md) |
 
 ---
@@ -52,13 +54,14 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 
 - **[概述](overview.md)** - 了解 Core-AI 的核心概念和架构
 - **[快速开始](quickstart.md)** - 10分钟快速上手
-- **[架构与原理](tutorial-architecture.md)** - 框架核心机制深度解析 ⭐ NEW
+- **[架构与原理](tutorial-architecture.md)** - 框架核心机制深度解析
 - **[教程系列](tutorials.md)** - 深入学习指南
   - [构建智能代理](tutorial-basic-agent.md)
   - [记忆系统](tutorial-memory.md)
   - [压缩机制](tutorial-compression.md)
   - [RAG 集成](tutorial-rag.md)
   - [工具调用](tutorial-tool-calling.md)
+  - [Skills 系统](tutorial-skills.md)
   - [流程编排](tutorial-flow.md)
 
 ### 🚀 快速导航
@@ -72,6 +75,7 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | **压缩机制** | 上下文压缩与管理 | [压缩教程](tutorial-compression.md) |
 | **RAG 与向量搜索** | 实现检索增强生成 | [RAG 教程](tutorial-rag.md) |
 | **工具集成** | 使用自定义工具扩展代理 | [工具教程](tutorial-tool-calling.md) |
+| **Skills 系统** | 模块化领域知识包 | [Skills 教程](tutorial-skills.md) |
 | **工作流设计** | 构建复杂的执行流程 | [流程教程](tutorial-flow.md) |
 
 ---
@@ -100,6 +104,7 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | [Compression](../en/tutorial-compression.md) | [压缩机制](tutorial-compression.md) | Context compression, token management |
 | [RAG Integration](../en/tutorial-rag.md) | [RAG 集成](tutorial-rag.md) | Vector stores, retrieval, reranking |
 | [Tool Calling](../en/tutorial-tool-calling.md) | [工具调用](tutorial-tool-calling.md) | Custom tools, MCP protocol |
+| [Skills System](../en/tutorial-skills.md) | [Skills 系统](tutorial-skills.md) | Domain knowledge packages, progressive disclosure |
 | [Flow Orchestration](../en/tutorial-flow.md) | [流程编排](tutorial-flow.md) | Workflows, routing, state management |
 
 ### API Reference / API 参考
