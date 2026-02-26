@@ -158,7 +158,7 @@ public class ToolCallPruning {
                 return false;
             }
         }
-        return true;
+        return pendingToolCallIds.isEmpty();
     }
 
     public record Config(int keepRecentSegments, Set<String> excludeToolNames) {
