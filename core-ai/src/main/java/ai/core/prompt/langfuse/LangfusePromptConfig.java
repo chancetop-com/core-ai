@@ -1,5 +1,6 @@
 package ai.core.prompt.langfuse;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -28,7 +29,7 @@ public final class LangfusePromptConfig {
         // Add Basic Auth header if credentials are provided
         if (publicKey != null && secretKey != null) {
             String credentials = publicKey + ":" + secretKey;
-            String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
+            String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
             this.headers.put("Authorization", "Basic " + encodedCredentials);
         }
     }

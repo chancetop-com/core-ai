@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -68,7 +69,7 @@ class VendorManagementTest {
         assertEquals(0, exitCode, "Ripgrep should execute successfully");
 
         // Read version output
-        String output = new String(process.getInputStream().readAllBytes());
+        String output = new String(process.getInputStream().readAllBytes(), Charset.defaultCharset());
         assertTrue(output.contains("ripgrep"), "Output should contain 'ripgrep'");
         logger.info("Ripgrep version: " + output.trim());
     }

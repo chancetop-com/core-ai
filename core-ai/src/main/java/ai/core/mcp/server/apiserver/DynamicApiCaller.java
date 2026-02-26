@@ -12,6 +12,7 @@ import core.framework.json.JSON;
 import core.framework.log.ActionLogContext;
 import core.framework.util.Strings;
 
+import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.HashMap;
 import java.util.List;
@@ -101,7 +102,7 @@ public class DynamicApiCaller {
             ActionLogContext.put("mcp-call-api-rsp", JSON.toJSON(rsp));
             return rsp;
         } catch (Exception e) {
-            return new HTTPResponse(500, new HashMap<>(), Strings.format("Call api[{}, {}] failed: {}", url, JSON.toJSON(req), e.getMessage()).getBytes());
+            return new HTTPResponse(500, new HashMap<>(), Strings.format("Call api[{}, {}] failed: {}", url, JSON.toJSON(req), e.getMessage()).getBytes(StandardCharsets.UTF_8));
         }
     }
 

@@ -14,13 +14,13 @@ subprojects {
 
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
+            languageVersion = JavaLanguageVersion.of(25)
         }
     }
 
     tasks.withType<JavaCompile> {
         options.encoding = "UTF-8"
-        options.compilerArgs.addAll(listOf("-Xlint:all"))
+        options.compilerArgs.addAll(listOf("-Xlint:all", "-proc:none", "-Werror"))
     }
 
     repositories {
@@ -35,7 +35,11 @@ subprojects {
         failFast = true
         testLogging.showStandardStreams = true
         testLogging.exceptionFormat = TestExceptionFormat.FULL
-        jvmArgs("-XX:+EnableDynamicAgentLoading")
+
+        var mockitoAgent: File? = configurations.testRuntimeClasspath.get().resolve().find { it.name.startsWith("mockito-core-") }
+        if (mockitoAgent != null) {
+            jvmArgs("-javaagent:${mockitoAgent}")
+        }
     }
 
     tasks.register("mkdir") {
@@ -71,9 +75,9 @@ subprojects {
             }
         }
     }
-}
 
-apply(plugin = "check")
+    apply(plugin = "check")
+}
 
 allprojects {
     apply(plugin = "idea")
@@ -81,6 +85,7 @@ allprojects {
         module {
             outputDir = file("${rootDir}/build/${rootDir.toPath().relativize(projectDir.toPath())}/idea/production")
             testOutputDir = file("${rootDir}/build/${rootDir.toPath().relativize(projectDir.toPath())}/idea/test")
+            isDownloadSources = true
         }
     }
 }

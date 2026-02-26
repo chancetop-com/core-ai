@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 /**
  * @author stephen
@@ -33,7 +34,7 @@ public class McpStreamableHttpController implements Controller {
             return Response.text("Bad Request: empty body").status(HTTPStatus.BAD_REQUEST);
         }
 
-        var jsonBody = new String(body);
+        var jsonBody = new String(body, StandardCharsets.UTF_8);
         ActionLogContext.put("mcp_request", jsonBody);
 
         try {
@@ -46,7 +47,7 @@ public class McpStreamableHttpController implements Controller {
                 var response = this.serverHolder.getTransportProvider().handleRequest(mcpRequest);
                 var responseJson = toMcpJson(response);
                 ActionLogContext.put("mcp_response", responseJson);
-                return Response.bytes(responseJson.getBytes()).contentType(APPLICATION_JSON).header("Access-Control-Allow-Origin", "*");
+                return Response.bytes(responseJson.getBytes(StandardCharsets.UTF_8)).contentType(APPLICATION_JSON).header("Access-Control-Allow-Origin", "*");
             } else {
                 var notification = JsonUtil.fromJson(McpSchema.JSONRPCNotification.class, jsonBody);
                 this.serverHolder.getTransportProvider().handleNotification(notification);
@@ -55,7 +56,7 @@ public class McpStreamableHttpController implements Controller {
         } catch (Exception e) {
             LOGGER.error("Error handling MCP request", e);
             var errorResponse = this.createErrorResponse(e.getMessage());
-            return Response.bytes(errorResponse.getBytes()).contentType(APPLICATION_JSON).status(HTTPStatus.INTERNAL_SERVER_ERROR);
+            return Response.bytes(errorResponse.getBytes(StandardCharsets.UTF_8)).contentType(APPLICATION_JSON).status(HTTPStatus.INTERNAL_SERVER_ERROR);
         }
 
     }

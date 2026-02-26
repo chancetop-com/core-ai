@@ -34,8 +34,6 @@ tasks.named<CreateStartScripts>("startScripts") {
 
     doLast {
         App.replaceText(property("windowsScript") as File, "APP_HOME_VAR", "%APP_HOME%")
-        // windows cannot run script when the classpath jar files are too much
-        App.replaceTextEx(property("windowsScript") as File, Regex("^set CLASSPATH=.*", RegexOption.MULTILINE), "set CLASSPATH=%APP_HOME%\\\\lib\\\\*")
         App.replaceText(property("unixScript") as File, "APP_HOME_VAR/web", "'\$APP_HOME/web'")
     }
 }
@@ -55,34 +53,43 @@ tasks.named("mkdir") {
     }
 }
 
+interface Context {
+    @get:Inject
+    val fs: FileSystemOperations
+}
+
 afterEvaluate {
+    val context = project.objects.newInstance<Context>()
+    val rootGroup = if (parent!!.depth > 0) parent!!.group else project.group
+    val dockerDir = file("docker")
+    val installDistDir = tasks.named<Sync>("installDist").get().destinationDir
+    val dockerDestDir = layout.buildDirectory.dir("docker").get()
+
     // split dependencies lib and app classes/bin/web to support layered docker image
     // to cache/reuse dependencies layer
     tasks.register("docker") {
         group = "distribution"
         dependsOn("installDist")
         doLast {
-            val rootGroup = if (parent!!.depth > 0) parent!!.group else project.group
-            project.sync {
-                val destinationDir = tasks.named<Sync>("installDist").get().destinationDir
-                from(destinationDir) {
+            context.fs.sync {
+                from(installDistDir) {
                     exclude("lib/${rootGroup}.*.jar")
                     exclude("bin")
                     exclude("web")
                     into("dependency")
                 }
-                from(destinationDir) {
+                from(installDistDir) {
                     include("lib/${rootGroup}.*.jar")
                     include("bin/**")
                     include("web/**")
                     into("app")
                 }
-                into(layout.buildDirectory.dir("docker/package").get())
+                into(dockerDestDir.dir("package"))
             }
-            if (file("docker/Dockerfile").exists()) {
-                project.sync {
-                    from(file("docker"))
-                    into(layout.buildDirectory.dir("docker").get())
+            if (dockerDir.resolve("Dockerfile").exists()) {
+                context.fs.sync {
+                    from(dockerDir)
+                    into(dockerDestDir)
                     preserve {
                         include("package/**")
                     }

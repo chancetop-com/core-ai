@@ -26,7 +26,6 @@ import static org.mockito.Mockito.when;
 /**
  * @author xander
  */
-@SuppressWarnings("PMD.SingularField")
 class MemoryTest {
 
     private static final String USER_ID = "user-456";

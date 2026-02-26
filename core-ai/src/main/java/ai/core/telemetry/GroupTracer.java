@@ -39,7 +39,7 @@ public class GroupTracer extends Tracer {
     /**
      * Trace group execution with context
      */
-    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    @SuppressWarnings("try")
     public <T> T traceGroupExecution(GroupTraceContext context, Supplier<T> operation) {
         if (!enabled) {
             return operation.get();

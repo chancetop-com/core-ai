@@ -9,10 +9,4 @@ object App {
         val updatedContent = content.replace(oldString, newString)
         file.writeText(updatedContent)
     }
-
-    fun replaceTextEx(file: File, regexPattern: Regex, newString: String) {
-        val content = file.readText()
-        val updatedContent = regexPattern.replace(content, newString)
-        file.writeText(updatedContent)
-    }
 }

@@ -14,12 +14,6 @@ subprojects {
 
     repositories {
         maven {
-            url = uri("https://maven.codelibs.org/")
-            content {
-                includeGroup("org.codelibs.elasticsearch.module")
-            }
-        }
-        maven {
             url = uri("https://neowu.github.io/maven-repo/")
             content {
                 includeGroupByRegex("core\\.framework.*")
@@ -42,12 +36,6 @@ subprojects {
 
     if (!plugins.hasPlugin("java")) {
         return@subprojects
-    }
-
-    configurations.all {
-        resolutionStrategy {
-            force("com.squareup.okio:okio:3.2.0")
-        }
     }
 
     if (project.name.startsWith("core-ai") || project.name.endsWith("library") || project.name.endsWith("api")) {
@@ -96,13 +84,12 @@ configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches
 
 val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
-    version = "1.2.1-SNAPSHOT"
+    version = "1.3.0-SNAPSHOT"
     dependencies {
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
-        implementation("com.azure:azure-ai-openai:${Versions.AZURE_OPENAI_JAVA_VERSION}")
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")
         implementation("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
         implementation("com.github.jelmerk:hnswlib-core:${Versions.HNSWLIB_JAVA_VERSION}")
@@ -110,6 +97,7 @@ project(":core-ai") {
         implementation("com.knuddels:jtokkit:${Versions.JTOKKIT_VERSION}")
         // tricky part: self-defined sse module
         implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
+        implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.JACKSON_VERSION}")
         implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
         // OpenTelemetry for tracing
         implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")

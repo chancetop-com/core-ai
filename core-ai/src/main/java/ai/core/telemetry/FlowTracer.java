@@ -32,7 +32,7 @@ public class FlowTracer extends Tracer {
     /**
      * Trace flow execution with context
      */
-    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    @SuppressWarnings("try")
     public <T> T traceFlowExecution(FlowTraceContext context, Supplier<T> operation) {
         if (!enabled) {
             return operation.get();
