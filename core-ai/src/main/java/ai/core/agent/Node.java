@@ -216,24 +216,19 @@ public abstract class Node<T extends Node<T>> {
 
     @SuppressWarnings("unchecked")
     public void load(String id) {
-        if (persistenceProvider == null) {
-            throw new RuntimeException("PersistenceProvider is not set");
-        }
-        if (persistenceProvider.load(id).isPresent()) {
-            persistence.deserialization((T) this, persistenceProvider.load(id).get());
+        if (persistenceProvider == null) throw new RuntimeException("PersistenceProvider is not set");
+        persistenceProvider.load(id).ifPresent(data -> {
+            persistence.deserialization((T) this, data);
             this.id = id;
-        }
+        });
     }
 
     @SuppressWarnings("unchecked")
     public String save(String id) {
-        if (persistenceProvider == null) {
-            throw new RuntimeException("PersistenceProvider is not set");
-        }
+        if (persistenceProvider == null) throw new RuntimeException("PersistenceProvider is not set");
         persistenceProvider.save(id, persistence.serialization((T) this));
         return id;
     }
-
 
     private String aroundExecute(BiFunction<String, Map<String, Object>, String> exec, String query) {
         try {
@@ -249,7 +244,6 @@ public abstract class Node<T extends Node<T>> {
             agentLifecycles.forEach(alc -> alc.afterAgentFailed(query, getExecutionContext(), e));
             throw e;
         }
-
     }
 
     public final String run(String query, ExecutionContext context) {
@@ -257,9 +251,7 @@ public abstract class Node<T extends Node<T>> {
         return run(query);
     }
 
-
     public final String run(String query, Map<String, Object> variables) {
-        // Compatible with legacy method calls
         return run(query, ExecutionContext.builder().customVariables(variables).build());
     }
 
@@ -271,14 +263,8 @@ public abstract class Node<T extends Node<T>> {
             }, query);
         } catch (Exception e) {
             updateNodeStatus(NodeStatus.FAILED);
-            throw new RuntimeException(
-                    Strings.format("Run node {}<{}> failed: {}, raw request/response: {}, {}",
-                            this.name,
-                            this.id,
-                            e.getMessage(),
-                            getInput(),
-                            getFailedMessage()),
-                    e);
+            throw new RuntimeException(Strings.format("Run node {}<{}> failed: {}, raw request/response: {}, {}",
+                this.name, this.id, e.getMessage(), getInput(), getFailedMessage()), e);
         }
     }
 
@@ -294,11 +280,7 @@ public abstract class Node<T extends Node<T>> {
         var rst = run(lastMessage.getTextPart().getText());
         task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
         task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
-        if (nodeStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
-            task.setStatus(TaskStatus.INPUT_REQUIRED);
-        } else {
-            task.setStatus(TaskStatus.COMPLETED);
-        }
+        task.setStatus(nodeStatus == NodeStatus.WAITING_FOR_USER_INPUT ? TaskStatus.INPUT_REQUIRED : TaskStatus.COMPLETED);
     }
 
     public final void run(Task task, ExecutionContext context) {
@@ -308,9 +290,8 @@ public abstract class Node<T extends Node<T>> {
 
     private String getFailedMessage() {
         var content = getRawOutput() == null ? getOutput() : getRawOutput();
-        if (Strings.isBlank(content) && getMessages().getLast().toolCalls != null && !getMessages().getLast().toolCalls.isEmpty()) {
-            content = getMessages().getLast().toolCalls.getLast().function.name;
-        }
+        var lastToolCalls = getMessages().getLast().toolCalls;
+        if (Strings.isBlank(content) && lastToolCalls != null && !lastToolCalls.isEmpty()) content = lastToolCalls.getLast().function.name;
         return content;
     }
 
@@ -325,18 +306,10 @@ public abstract class Node<T extends Node<T>> {
     abstract void setChildrenParentNode();
 
     void setName(String name) {
-        if (!validateString(name)) {
+        if (name == null || !compiledPattern.matcher(name).matches()) {
             throw new IllegalArgumentException("Invalid name: " + name + ", it must match the pattern: " + NAME_REGEX_PATTERN);
         }
         this.name = name;
-    }
-
-    private boolean validateString(String input) {
-        if (input == null) {
-            return false;
-        }
-        var matcher = compiledPattern.matcher(input);
-        return matcher.matches();
     }
 
     void setDescription(String description) {
@@ -416,18 +389,9 @@ public abstract class Node<T extends Node<T>> {
         var histories = this.task.getHistory();
         if (histories.size() <= 1) return;
         var subHistories = histories.subList(0, histories.size() - 1);
-        addMessages(subHistories.stream().map(this::toLLMMessage).toList());
-    }
-
-    private Message toLLMMessage(TaskMessage message) {
-        return Message.of(toRoleType(message.getRole()), message.getTextPart().getText());
-    }
-
-    private RoleType toRoleType(TaskRoleType role) {
-        return switch (role) {
-            case USER -> RoleType.USER;
-            case AGENT -> RoleType.ASSISTANT;
-        };
+        addMessages(subHistories.stream().map(m -> Message.of(
+            m.getRole() == TaskRoleType.USER ? RoleType.USER : RoleType.ASSISTANT,
+            m.getTextPart().getText())).toList());
     }
 
     void clearMessages() {
@@ -443,9 +407,7 @@ public abstract class Node<T extends Node<T>> {
         this.currentTokenUsage.setCompletionTokens(this.currentTokenUsage.getCompletionTokens() + cost.getCompletionTokens());
         this.currentTokenUsage.setPromptTokens(this.currentTokenUsage.getPromptTokens() + cost.getPromptTokens());
         this.currentTokenUsage.setTotalTokens(this.currentTokenUsage.getTotalTokens() + cost.getTotalTokens());
-        if (this.parent != null) {
-            this.parent.addTokenCost(cost);
-        }
+        if (this.parent != null) this.parent.addTokenCost(cost);
     }
 
     public void setParentNode(Node<?> parent) {
@@ -466,10 +428,8 @@ public abstract class Node<T extends Node<T>> {
     }
 
     String handleToShortQuery(String currentQuery, String question) {
-        if (getLongQueryHandler() == null) {
-            return "The result text is too long for LLM, please re-planning to ensure the task can proceed.";
-        }
-        var rst = getLongQueryHandler().handler(question, currentQuery);
+        if (longQueryHandler == null) return "The result text is too long for LLM, please re-planning to ensure the task can proceed.";
+        var rst = longQueryHandler.handler(question, currentQuery);
         addTokenCost(rst.usage());
         return rst.shorterQuery();
     }
@@ -483,8 +443,6 @@ public abstract class Node<T extends Node<T>> {
     void addAssistantOrToolMessage(Message message) {
         this.messages.add(message);
         this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, message));
-        if (this.parent != null) {
-            this.parent.addAssistantOrToolMessage(message);
-        }
+        if (this.parent != null) this.parent.addAssistantOrToolMessage(message);
     }
 }

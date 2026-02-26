@@ -102,16 +102,8 @@ public class McpClientService implements AutoCloseable {
         return config;
     }
 
-    /**
-     * Ping the MCP server to check if connection is alive.
-     * Uses the ping method if supported by the server, otherwise tries listTools.
-     *
-     * @param timeout the timeout duration for the ping operation
-     * @return true if the server responds within timeout, false otherwise
-     */
     public boolean ping(Duration timeout) {
         try {
-            // MCP protocol supports ping method for connection health check
             var pingResult = reactor.core.publisher.Mono
                 .fromCallable(this::doPing)
                 .timeout(timeout)
@@ -124,11 +116,6 @@ public class McpClientService implements AutoCloseable {
         }
     }
 
-    /**
-     * Ping the MCP server with default timeout from config.
-     *
-     * @return true if the server responds within timeout, false otherwise
-     */
     public boolean ping() {
         return ping(config.getHeartbeatTimeout());
     }
@@ -138,7 +125,6 @@ public class McpClientService implements AutoCloseable {
             client.ping();
             return true;
         } catch (Exception e) {
-            // If ping is not supported, try listTools as fallback
             LOGGER.debug("Ping not supported, trying listTools as fallback: {}", serverName);
             client.listTools();
             return true;
@@ -148,8 +134,6 @@ public class McpClientService implements AutoCloseable {
     @Override
     public void close() {
         LOGGER.info("Closing MCP client: {}", serverName);
-
-        // First, try to close gracefully
         if (client != null) {
             try {
                 client.closeGracefully();
@@ -165,7 +149,6 @@ public class McpClientService implements AutoCloseable {
             }
         }
 
-        // Force destroy the subprocess and all descendants if still alive
         if (stdioProcess != null) {
             forceDestroyProcessTree(stdioProcess);
         } else {
@@ -183,21 +166,17 @@ public class McpClientService implements AutoCloseable {
         long pid = process.pid();
         LOGGER.info("Force destroying MCP subprocess tree: server={}, pid={}", serverName, pid);
 
-        // First destroy all descendants
         process.descendants().forEach(ph -> {
             LOGGER.debug("Destroying descendant process: pid={}", ph.pid());
             ph.destroyForcibly();
         });
 
-        // Then destroy the main process
         process.destroyForcibly();
 
-        // Wait a bit for the process to terminate
         try {
             boolean terminated = process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS);
             if (!terminated) {
                 LOGGER.warn("Process did not terminate within timeout: server={}, pid={}", serverName, pid);
-                // On Windows, use taskkill as fallback
                 if (SystemUtil.detectPlatform().isWindows()) {
                     killProcessTreeOnWindows(pid);
                 }
@@ -225,7 +204,6 @@ public class McpClientService implements AutoCloseable {
             .requestTimeout(config.getRequestTimeout())
             .build();
         syncClient.initialize();
-        // Extract process reference after initialization for proper cleanup
         if (transport instanceof StdioClientTransport stdioTransport) {
             extractProcessFromTransport(stdioTransport);
         }
@@ -266,7 +244,6 @@ public class McpClientService implements AutoCloseable {
         var command = config.getCommand();
         var args = config.getArgs() != null ? new ArrayList<>(config.getArgs()) : new ArrayList<String>();
 
-        // On Windows, commands like npx, npm need to be executed via cmd.exe
         if (SystemUtil.detectPlatform().isWindows() && isWindowsScriptCommand(command)) {
             args.addFirst(command);
             args.addFirst("/c");
@@ -332,9 +309,7 @@ public class McpClientService implements AutoCloseable {
     }
 
     private List<Tool> convertTools(List<McpSchema.Tool> mcpTools) {
-        if (mcpTools == null) {
-            return List.of();
-        }
+        if (mcpTools == null) return List.of();
         return mcpTools.stream()
             .map(this::convertTool)
             .toList();
@@ -434,7 +409,6 @@ public class McpClientService implements AutoCloseable {
                 }
                 sb.append(textContent.text());
             } else if (content instanceof McpSchema.ImageContent imageContent) {
-                // capture the first image content
                 if (imageBase64 == null && imageContent.data() != null) {
                     imageBase64 = imageContent.data();
                     imageMimeType = imageContent.mimeType();

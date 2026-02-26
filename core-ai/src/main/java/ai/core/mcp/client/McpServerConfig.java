@@ -10,23 +10,14 @@ import java.util.Map;
  * @author stephen
  */
 public class McpServerConfig {
-    /**
-     * Create a builder for STDIO transport configuration.
-     */
     public static StdioBuilder stdio(String command) {
         return new StdioBuilder(command);
     }
 
-    /**
-     * Create a builder for HTTP transport configuration.
-     */
     public static HttpBuilder http(String url) {
         return new HttpBuilder(url);
     }
 
-    /**
-     * Parse configuration from a map (compatible with Claude Desktop format).
-     */
     public static McpServerConfig fromMap(String serverName, Map<String, Object> config) {
         if (config.containsKey("command")) {
             return parseStdioConfig(serverName, config);
@@ -36,9 +27,6 @@ public class McpServerConfig {
         throw new IllegalArgumentException("Invalid config: must have 'command' (STDIO) or 'url' (HTTP)");
     }
 
-    /**
-     * Parse multiple server configurations from Claude Desktop format.
-     */
     @SuppressWarnings("unchecked")
     public static Map<String, McpServerConfig> parseServers(Map<String, Object> mcpServersConfig) {
         var result = new HashMap<String, McpServerConfig>();
@@ -89,10 +77,6 @@ public class McpServerConfig {
         return builder.build();
     }
 
-    /**
-     * Parse common configuration options (heartbeat, timeout, reconnect) from config map.
-     * Supports both StdioBuilder and HttpBuilder through the CommonConfigBuilder interface.
-     */
     private static void parseCommonConfig(CommonConfigBuilder<?> builder, Map<String, Object> config) {
         // Heartbeat configuration: "heartbeat": 30 means enable heartbeat with 30s interval
         if (config.containsKey("heartbeat")) {
