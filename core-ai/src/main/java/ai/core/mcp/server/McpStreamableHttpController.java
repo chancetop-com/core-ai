@@ -10,6 +10,7 @@ import core.framework.web.Request;
 import core.framework.web.Response;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +28,7 @@ public class McpStreamableHttpController implements Controller {
     @Inject
     McpServerService serverHolder;
 
+    @NotNull
     @Override
     public Response execute(Request request) {
         var body = request.body().orElse(new byte[0]);
