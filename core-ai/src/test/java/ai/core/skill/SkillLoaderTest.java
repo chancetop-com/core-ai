@@ -183,6 +183,10 @@ class SkillLoaderTest {
     private String getTestResourcePath(String path) {
         var resource = Thread.currentThread().getContextClassLoader().getResource(path);
         if (resource == null) throw new RuntimeException("Test resource not found: " + path);
-        return resource.getPath();
+        try {
+            return Path.of(resource.toURI()).toString();
+        } catch (java.net.URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
