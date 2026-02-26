@@ -100,7 +100,7 @@ public class GrepFileTool extends ToolCall {
             if (process != null) {
                 process.destroyForcibly();
             }
-            return ToolCallResult.failed("Error executing grep: " + e.getMessage())
+            return ToolCallResult.failed("Error executing grep: " + e.getMessage(), e)
                 .withDuration(System.currentTimeMillis() - startTime);
         }
     }

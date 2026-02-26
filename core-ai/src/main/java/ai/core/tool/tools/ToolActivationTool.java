@@ -24,11 +24,11 @@ public class ToolActivationTool extends ToolCall {
     private static final int MAX_SEARCH_RESULTS = 20;
     private static final String SEARCH_MODE_DESC = """
             Search and activate additional tools. A large number of tools are available but not shown.
-
+            
             Usage:
             1. Search: activate_tools(query="database connection") — find tools by keyword
             2. Activate: activate_tools(tool_names=["tool_a", "tool_b"]) — make tools available
-
+            
             Search first, then activate the tools you need from the search results.""";
 
     public static Builder builder() {
@@ -84,7 +84,7 @@ public class ToolActivationTool extends ToolCall {
             }
             return ToolCallResult.failed("Provide either 'query' to search or 'tool_names' to activate");
         } catch (Exception e) {
-            return ToolCallResult.failed("Failed: " + e.getMessage());
+            return ToolCallResult.failed("Failed: " + e.getMessage(), e);
         }
     }
 

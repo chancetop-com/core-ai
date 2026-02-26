@@ -34,15 +34,15 @@ public class ShellCommandTool extends ToolCall {
     private static final String TOOL_DESC = """
             Executes a given bash command or shell script in a persistent shell session with optional
             timeout, ensuring proper handling and security measures.
-
-
+            
+            
             Before executing the command, please follow these steps:
-
-
+            
+            
             1. Directory Verification:
              - If the command will create new directories or files, first use the LS tool to verify the parent directory exists and is the correct location
              - For example, before running "mkdir foo/bar", first use LS to check that "foo" exists and is the intended parent directory
-
+            
             2. Command Execution:
              - Provide a command string via 'command' parameter OR a script file path via 'script_path' parameter.
              - If both 'command' and 'script_path' are provided, 'command' takes precedence.
@@ -54,7 +54,7 @@ public class ShellCommandTool extends ToolCall {
                - python /path/with spaces/script.py (incorrect - will fail)
              - After ensuring proper quoting, execute the command.
              - Capture the output of the command.
-
+            
             Usage notes:
             - Either 'command' or 'script_path' parameter is required.
             - You can specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). If not specified, commands will timeout after 30 seconds.
@@ -71,17 +71,17 @@ public class ShellCommandTool extends ToolCall {
               <bad-example>
               cd /foo/bar && pytest tests
               </bad-example>
-
-
-
-
+            
+            
+            
+            
             # Committing changes with git
-
-
+            
+            
             When the user asks you to create a new git commit, follow these steps
             carefully:
-
-
+            
+            
             1. You have the capability to call multiple tools in a single response. When
             multiple independent pieces of information are requested, batch your tool
             calls together for optimal performance. ALWAYS run the following bash commands
@@ -101,7 +101,7 @@ public class ShellCommandTool extends ToolCall {
             parallel:
              - Add relevant untracked files to the staging area.
              - Create the commit with a message ending with:
-
+            
              Co-Authored-By: CoreAI <noreply@chancetop.com>
              - Run git status to make sure the commit succeeded.
             4. If the commit fails due to pre-commit hook changes, retry the commit ONCE
@@ -109,51 +109,51 @@ public class ShellCommandTool extends ToolCall {
             pre-commit hook is preventing the commit. If the commit succeeds but you
             notice that files were modified by the pre-commit hook, you MUST amend your
             commit to include them.
-
-
+            
+            
             Important notes:
-
+            
             - NEVER update the git config
-
+            
             - NEVER run additional commands to read or explore code, besides git bash
             commands
-
+            
             - NEVER use the TodoWrite or Task tools
-
+            
             - DO NOT push to the remote repository unless the user explicitly asks you to
             do so
-
+            
             - IMPORTANT: Never use git commands with the -i flag (like git rebase -i or
             git add -i) since they require interactive input which is not supported.
-
+            
             - If there are no changes to commit (i.e., no untracked files and no
             modifications), do not create an empty commit
-
+            
             - In order to ensure good formatting, ALWAYS pass the commit message via a
             HEREDOC, a la this example:
-
+            
             <example>
-
+            
             git commit -m "$(cat <<'EOF'
              Commit message here.
-
+            
              Co-Authored-By: CoreAI <noreply@chancetop.com>
              EOF
              )"
             </example>
-
-
+            
+            
             # Creating pull requests
-
+            
             Use the gh command via the Bash tool for ALL GitHub-related tasks including
             working with issues, pull requests, checks, and releases. If given a Github
             URL use the gh command to get the information needed.
-
-
+            
+            
             IMPORTANT: When the user asks you to create a pull request, follow these steps
             carefully:
-
-
+            
+            
             1. You have the capability to call multiple tools in a single response. When
             multiple independent pieces of information are requested, batch your tool
             calls together for optimal performance. ALWAYS run the following bash commands
@@ -167,7 +167,7 @@ public class ShellCommandTool extends ToolCall {
             to look at all relevant commits (NOT just the latest commit, but ALL commits
             that will be included in the pull request!!!), and draft a pull request
             summary
-
+            
             3. You have the capability to call multiple tools in a single response. When
             multiple independent pieces of information are requested, batch your tool
             calls together for optimal performance. ALWAYS run the following commands in
@@ -176,36 +176,36 @@ public class ShellCommandTool extends ToolCall {
              - Push to remote with -u flag if needed
              - Create PR using gh pr create with the format below. Use a HEREDOC to pass the body to ensure correct formatting.
             <example>
-
+            
             gh pr create --title "the pr title" --body "$(cat <<'EOF'
-
+            
             ## Summary
-
+            
             <1-3 bullet points>
-
-
+            
+            
             ## Test plan
-
+            
             [Checklist of TODOs for testing the pull request...]
-
+            
             EOF
-
+            
             )"
-
+            
             </example>
-
-
+            
+            
             Important:
-
+            
             - NEVER update the git config
-
+            
             - DO NOT use the TodoWrite or Task tools
-
+            
             - Return the PR URL when you're done, so the user can see it
-
-
+            
+            
             # Other common operations
-
+            
             - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
             """;
 
@@ -360,8 +360,7 @@ public class ShellCommandTool extends ToolCall {
                     .withStats("scriptPath", scriptPathStr);
         } catch (Exception e) {
             var error = "Failed to parse shell command arguments: " + e.getMessage();
-            LOGGER.error(error, e);
-            return ToolCallResult.failed(error)
+            return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }

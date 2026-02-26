@@ -35,9 +35,9 @@ public class WebFetchTool extends ToolCall {
             - Optional content type and request body for POST/PUT/PATCH requests
             - Returns the response body as string, or error message if request fails
             - Use this tool when you need to retrieve content from web URLs
-
+            
             Usage notes:
-
+            
             - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
             - HTTP URLs will be automatically upgraded to HTTPS
             - The prompt should describe what information you want to extract from the page
@@ -52,9 +52,9 @@ public class WebFetchTool extends ToolCall {
     }
 
     private final HttpClient client = HttpClient.newBuilder()
-        .followRedirects(HttpClient.Redirect.NORMAL)
-        .connectTimeout(Duration.ofSeconds(30))
-        .build();
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
 
     @Override
     public ToolCallResult execute(String text) {
@@ -68,14 +68,13 @@ public class WebFetchTool extends ToolCall {
 
             var result = executeRequest(url, method, contentType, body);
             return ToolCallResult.completed(result)
-                .withDuration(System.currentTimeMillis() - startTime)
-                .withStats("url", url)
-                .withStats("method", method);
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("url", url)
+                    .withStats("method", method);
         } catch (Exception e) {
             var error = "Failed to parse web fetch arguments: " + e.getMessage();
-            LOGGER.error(error, e);
-            return ToolCallResult.failed(error)
-                .withDuration(System.currentTimeMillis() - startTime);
+            return ToolCallResult.failed(error, e)
+                    .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -99,25 +98,24 @@ public class WebFetchTool extends ToolCall {
             return handleResponse(response);
         } catch (Exception e) {
             String error = "HTTP request failed: " + e.getClass().getSimpleName() + " - " + e.getMessage();
-            LOGGER.error(error, e);
-            return error;
+            throw new RuntimeException(error, e);
         }
     }
 
     private HttpRequest buildRequest(String url, String httpMethod, String contentType, String body) {
         var requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .header("User-Agent", "core-ai/1.0")
-            .header("Accept", "*/*")
-            .timeout(Duration.ofSeconds(60));
+                .uri(URI.create(url))
+                .header("User-Agent", "core-ai/1.0")
+                .header("Accept", "*/*")
+                .timeout(Duration.ofSeconds(60));
 
         if (!Strings.isBlank(contentType)) {
             requestBuilder.header("Content-Type", contentType);
         }
 
         HttpRequest.BodyPublisher bodyPublisher = Strings.isBlank(body)
-            ? HttpRequest.BodyPublishers.noBody()
-            : HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8);
+                ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8);
 
         switch (httpMethod) {
             case "GET" -> requestBuilder.GET();

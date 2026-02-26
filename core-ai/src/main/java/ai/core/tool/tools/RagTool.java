@@ -88,7 +88,7 @@ public class RagTool extends ToolCall {
                 .withStats("topK", topK);
 
         } catch (Exception e) {
-            return ToolCallResult.failed("Error executing RAG query: " + e.getMessage())
+            return ToolCallResult.failed("Error executing RAG query: " + e.getMessage(), e)
                 .withDuration(System.currentTimeMillis() - startTime);
         }
     }

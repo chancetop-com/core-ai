@@ -33,44 +33,44 @@ public class ReadFileTool extends ToolCall {
     private static final String TOOL_DESC = """
             Reads a file from the local filesystem. You can access any file directly by
             using this tool.
-
+            
             Assume this tool is able to read all files on the machine. If the User
             provides a path to a file assume that path is valid. It is okay to read a file
             that does not exist; an error will be returned.
-
-
+            
+            
             Usage:
-
+            
             - The file_path parameter must be an absolute path, not a relative path
-
+            
             - By default, it reads up to 2000 lines starting from the beginning of the
             file
-
+            
             - You can optionally specify a line offset and limit (especially handy for
             long files), but it's recommended to read the whole file by not providing
             these parameters
-
+            
             - Any lines longer than 2000 characters will be truncated
-
+            
             - Results are returned using cat -n format, with line numbers starting at 1
-
+            
             - This tool allows agent to read images (eg PNG, JPG, etc). When reading
             an image file the contents are presented visually.
-
+            
             - This tool can read PDF files (.pdf). PDFs are processed page by page,
             extracting both text and visual content for analysis.
-
+            
             - For Jupyter notebooks (.ipynb files), use the NotebookRead instead
-
+            
             - You have the capability to call multiple tools in a single response. It is
             always better to speculatively read multiple files as a batch that are
             potentially useful.
-
+            
             - You will regularly be asked to read screenshots. If the user provides a path
             to a screenshot ALWAYS use this tool to view the file at the path. This tool
             will work with all temporary file paths like
             /var/folders/123/abc/T/TemporaryItems/NSIRD_ScreenCaptureUI_ZfB1tD/Screenshot.png
-
+            
             - If you read a file that exists but has empty contents you will receive a
             system reminder warning in place of file contents.
             """;
@@ -98,13 +98,12 @@ public class ReadFileTool extends ToolCall {
 
             var result = readFile(filePath, offset, limit);
             return ToolCallResult.completed(result)
-                .withDuration(System.currentTimeMillis() - startTime)
-                .withStats("filePath", filePath);
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("filePath", filePath);
         } catch (Exception e) {
             var error = "Failed to parse read file arguments: " + e.getMessage();
-            LOGGER.error(error, e);
-            return ToolCallResult.failed(error)
-                .withDuration(System.currentTimeMillis() - startTime);
+            return ToolCallResult.failed(error, e)
+                    .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -129,11 +128,11 @@ public class ReadFileTool extends ToolCall {
         var file = new File(filePath);
         if (!file.exists()) {
             return ToolCallResult.failed("Error: File does not exist: " + filePath)
-                .withDuration(System.currentTimeMillis() - startTime);
+                    .withDuration(System.currentTimeMillis() - startTime);
         }
         if (!file.isFile()) {
             return ToolCallResult.failed("Error: Path is not a file: " + filePath)
-                .withDuration(System.currentTimeMillis() - startTime);
+                    .withDuration(System.currentTimeMillis() - startTime);
         }
 
         try {
@@ -146,23 +145,23 @@ public class ReadFileTool extends ToolCall {
                 bytes = compressed.data();
                 mimeType = compressed.mimeType();
                 LOGGER.info("Compressed image: {}, original: {} bytes, compressed: {} bytes",
-                    filePath, originalSize, bytes.length);
+                        filePath, originalSize, bytes.length);
             }
 
             var base64 = Base64.getEncoder().encodeToString(bytes);
             LOGGER.info("Successfully read image file: {}, mimeType: {}, size: {} bytes", filePath, mimeType, bytes.length);
 
             return ToolCallResult.completed("Image file read successfully: " + filePath)
-                .withImage(base64, mimeType)
-                .withDuration(System.currentTimeMillis() - startTime)
-                .withStats("filePath", filePath)
-                .withStats("imageSize", bytes.length)
-                .withStats("originalSize", originalSize);
+                    .withImage(base64, mimeType)
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("filePath", filePath)
+                    .withStats("imageSize", bytes.length)
+                    .withStats("originalSize", originalSize);
         } catch (IOException e) {
             var error = "Error reading image file: " + e.getMessage();
             LOGGER.error(error, e);
             return ToolCallResult.failed(error)
-                .withDuration(System.currentTimeMillis() - startTime);
+                    .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 

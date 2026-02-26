@@ -72,8 +72,7 @@ public class EditFileTool extends ToolCall {
                 .withStats("replaceAll", replaceAll);
         } catch (Exception e) {
             var error = "Failed to parse edit file arguments: " + e.getMessage();
-            LOGGER.error(error, e);
-            return ToolCallResult.failed(error)
+            return ToolCallResult.failed(error, e)
                 .withDuration(System.currentTimeMillis() - startTime);
         }
     }

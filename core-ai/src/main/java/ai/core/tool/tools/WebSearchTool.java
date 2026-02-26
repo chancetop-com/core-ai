@@ -34,22 +34,22 @@ public class WebSearchTool extends ToolCall {
             - Returns search result information formatted as search result blocks, including links as markdown hyperlinks
             - Use this tool for accessing information beyond LLM model's knowledge cutoff
             - Searches are performed automatically within a single API call
-
+            
             CRITICAL REQUIREMENT - You MUST follow this:
               - After answering the user's question, you MUST include a "Sources:" section at the end of your response
               - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
               - This is MANDATORY - never skip including sources in your response
               - Example format:
-
+            
                 [Your answer here]
-
+            
                 Sources:
                 - [Source Title 1](https://example.com/1)
                 - [Source Title 2](https://example.com/2)
-
+            
             Usage notes:
               - Domain filtering is supported to include or block specific websites
-
+            
             IMPORTANT - Use the correct year in search queries:
               - Today's date is {}. You MUST use this year when searching for recent information, documentation, or current events.
               - Example: If today is 2025-07-15 and the user asks for "latest React docs", search for "React documentation 2025", NOT "React documentation 2024"
@@ -76,18 +76,17 @@ public class WebSearchTool extends ToolCall {
 
             if (Strings.isBlank(query)) {
                 return ToolCallResult.failed("Error: query parameter is required")
-                    .withDuration(System.currentTimeMillis() - startTime);
+                        .withDuration(System.currentTimeMillis() - startTime);
             }
 
             var result = executeSearch(query, allowedDomains, blockedDomains);
             return ToolCallResult.completed(result)
-                .withDuration(System.currentTimeMillis() - startTime)
-                .withStats("query", query);
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("query", query);
         } catch (Exception e) {
             var error = "Failed to execute web search: " + e.getMessage();
-            LOGGER.error(error, e);
-            return ToolCallResult.failed(error)
-                .withDuration(System.currentTimeMillis() - startTime);
+            return ToolCallResult.failed(error, e)
+                    .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -112,7 +111,7 @@ public class WebSearchTool extends ToolCall {
             var responseText = response.text();
 
             LOGGER.info("Web search completed with status code: {}, response length: {} bytes",
-                statusCode, responseText.length());
+                    statusCode, responseText.length());
 
             if (statusCode >= 400) {
                 String error = "Web search failed with status " + statusCode + ": " + responseText;
@@ -228,26 +227,26 @@ public class WebSearchTool extends ToolCall {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
             this.parameters(List.of(
-                ToolCallParameter.builder()
-                    .name("query")
-                    .description("The search query to use")
-                    .classType(String.class)
-                    .required(true)
-                    .build(),
-                ToolCallParameter.builder()
-                    .name("allowed_domains")
-                    .description("Only include search results from these domains")
-                    .classType(List.class)
-                    .itemType(String.class)
-                    .required(false)
-                    .build(),
-                ToolCallParameter.builder()
-                    .name("blocked_domains")
-                    .description("Never include search results from these domains")
-                    .classType(List.class)
-                    .itemType(String.class)
-                    .required(false)
-                    .build()
+                    ToolCallParameter.builder()
+                            .name("query")
+                            .description("The search query to use")
+                            .classType(String.class)
+                            .required(true)
+                            .build(),
+                    ToolCallParameter.builder()
+                            .name("allowed_domains")
+                            .description("Only include search results from these domains")
+                            .classType(List.class)
+                            .itemType(String.class)
+                            .required(false)
+                            .build(),
+                    ToolCallParameter.builder()
+                            .name("blocked_domains")
+                            .description("Never include search results from these domains")
+                            .classType(List.class)
+                            .itemType(String.class)
+                            .required(false)
+                            .build()
             ));
             var tool = new WebSearchTool();
             tool.searchApiEndpoint = this.searchApiEndpoint;

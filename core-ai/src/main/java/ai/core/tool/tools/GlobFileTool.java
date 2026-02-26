@@ -72,8 +72,7 @@ public class GlobFileTool extends ToolCall {
                 .withStats("pattern", pattern);
         } catch (Exception e) {
             var error = "Failed to parse glob file arguments: " + e.getMessage();
-            LOGGER.error(error, e);
-            return ToolCallResult.failed(error)
+            return ToolCallResult.failed(error, e)
                 .withDuration(System.currentTimeMillis() - startTime);
         }
     }

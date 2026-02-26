@@ -214,8 +214,7 @@ public class PythonScriptTool extends ToolCall {
                     .withStats("scriptPath", scriptPathStr);
         } catch (Exception e) {
             var error = "Failed to parse Python script arguments: " + e.getMessage();
-            LOGGER.error(error, e);
-            return ToolCallResult.failed(error)
+            return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }

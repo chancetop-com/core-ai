@@ -96,7 +96,7 @@ public class JsonSchemaUtil {
             } else if (propertyAnnotation != null) {
                 fieldName = propertyAnnotation.name();
             } else {
-                fieldName = field.getName();
+                continue;
             }
             parameter.name(fieldName);
 

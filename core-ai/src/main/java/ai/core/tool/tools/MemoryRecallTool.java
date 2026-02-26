@@ -73,8 +73,7 @@ public final class MemoryRecallTool extends ToolCall {
                 .withStats("memories_found", memories.size());
 
         } catch (Exception e) {
-            LOGGER.error("Failed to retrieve memories", e);
-            return ToolCallResult.failed("Error retrieving memories: " + e.getMessage())
+            return ToolCallResult.failed("Error retrieving memories: " + e.getMessage(), e)
                 .withDuration(System.currentTimeMillis() - startTime);
         }
     }
