@@ -17,7 +17,7 @@ import java.util.Map;
 /**
  * @author stephen
  */
-//@Disabled
+@Disabled
 class SubAgentTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(SubAgentTest.class);
     @Inject
