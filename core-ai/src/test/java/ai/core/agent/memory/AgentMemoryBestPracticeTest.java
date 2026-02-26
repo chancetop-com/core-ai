@@ -366,9 +366,19 @@ class AgentMemoryBestPracticeTest {
         @Override
         protected CompletionResponse doCompletion(CompletionRequest request) {
             var response = new CompletionResponse();
+
+            // If response format is set with JSON schema, return appropriate JSON
+            String content;
+            if (request.responseFormat != null && request.responseFormat.jsonSchema != null) {
+                // Return JSON with empty memories for extraction requests
+                content = "{\"memories\": []}";
+            } else {
+                content = "I understand. How can I help you?";
+            }
+
             response.choices = List.of(Choice.of(
                 FinishReason.STOP,
-                Message.of(RoleType.ASSISTANT, "I understand. How can I help you?")
+                Message.of(RoleType.ASSISTANT, content)
             ));
             response.usage = new Usage();
             return response;

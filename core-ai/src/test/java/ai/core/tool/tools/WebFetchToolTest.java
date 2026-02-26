@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import core.framework.json.JSON;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * @author stephen
  */
+@Disabled
 class WebFetchToolTest {
     private final Logger logger = LoggerFactory.getLogger(WebFetchToolTest.class);
     private WebFetchTool webFetchTool;

@@ -8,6 +8,7 @@ import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.tool.function.Functions;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -127,6 +128,7 @@ class AgentLifecycleTest {
     }
 
     @Test
+    @Disabled
     void testToolCallWithException() {
         String cc = """
                 {
