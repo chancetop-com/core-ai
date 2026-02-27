@@ -51,3 +51,6 @@ dist/
 .claude
 
 **/reports/
+
+# Qwen Code context file
+QWEN.md
