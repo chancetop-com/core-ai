@@ -30,7 +30,7 @@ public class Usage {
         return "Usage{"
                 + "promptTokens=" + promptTokens
                 + ", completionTokens=" + completionTokens
-                + ", completionTokensDetails=" + completionTokensDetails
+                + ", completionTokensDetails=" + completionTokensDetails.reasoningTokens
                 + ", totalTokens=" + totalTokens
                 + '}';
     }
