@@ -1,6 +1,7 @@
 package ai.core.skill;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * @author xander
@@ -28,6 +29,7 @@ public class SkillPromptFormatter {
         """;
 
     private static final String SKILL_ENTRY_FORMAT = "- **%s**: %s\n  → Read `%s` for full instructions\n";
+    private static final String SKILL_RESOURCES_LINE = "  → Available resources: %s\n";
     private static final int ESTIMATED_SIZE_PER_SKILL = 200;
 
     public String format(List<SkillMetadata> skills) {
@@ -45,6 +47,14 @@ public class SkillPromptFormatter {
     }
 
     private String formatSkillEntry(SkillMetadata skill) {
-        return String.format(SKILL_ENTRY_FORMAT, skill.getName(), skill.getDescription(), skill.getPath());
+        String base = String.format(SKILL_ENTRY_FORMAT, skill.getName(), skill.getDescription(), skill.getPath());
+        List<String> resources = skill.getResources();
+        if (resources == null || resources.isEmpty()) {
+            return base;
+        }
+        String resourceList = resources.stream()
+                .map(r -> "`" + r + "`")
+                .collect(Collectors.joining(", "));
+        return base + String.format(SKILL_RESOURCES_LINE, resourceList);
     }
 }

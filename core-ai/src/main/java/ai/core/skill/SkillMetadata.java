@@ -17,19 +17,23 @@ public final class SkillMetadata {
     private final String name;
     private final String description;
     private final String path;
+    private final String skillDir;
     private final String license;
     private final String compatibility;
     private final Map<String, String> metadata;
     private final List<String> allowedTools;
+    private final List<String> resources;
 
     private SkillMetadata(Builder builder) {
         this.name = builder.name;
         this.description = builder.description;
         this.path = builder.path;
+        this.skillDir = builder.skillDir;
         this.license = builder.license;
         this.compatibility = builder.compatibility;
         this.metadata = Collections.unmodifiableMap(new LinkedHashMap<>(builder.metadata));
         this.allowedTools = Collections.unmodifiableList(new ArrayList<>(builder.allowedTools));
+        this.resources = Collections.unmodifiableList(new ArrayList<>(builder.resources));
     }
 
     public String getName() {
@@ -42,6 +46,14 @@ public final class SkillMetadata {
 
     public String getPath() {
         return path;
+    }
+
+    public String getSkillDir() {
+        return skillDir;
+    }
+
+    public List<String> getResources() {
+        return resources;
     }
 
     public String getLicense() {
@@ -64,15 +76,27 @@ public final class SkillMetadata {
         private final String name;
         private final String description;
         private final String path;
+        private String skillDir;
         private String license;
         private String compatibility;
         private Map<String, String> metadata = Collections.emptyMap();
         private List<String> allowedTools = Collections.emptyList();
+        private List<String> resources = Collections.emptyList();
 
         private Builder(String name, String description, String path) {
             this.name = name;
             this.description = description;
             this.path = path;
+        }
+
+        public Builder skillDir(String skillDir) {
+            this.skillDir = skillDir;
+            return this;
+        }
+
+        public Builder resources(List<String> resources) {
+            this.resources = resources != null ? resources : Collections.emptyList();
+            return this;
         }
 
         public Builder license(String license) {

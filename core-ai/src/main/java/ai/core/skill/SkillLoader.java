@@ -106,11 +106,42 @@ public class SkillLoader {
                 return null;
             }
             String content = new String(bytes, StandardCharsets.UTF_8);
-            return parseSkillMd(content, skillFile.toAbsolutePath().toString(), directoryName);
+            Path skillDir = skillFile.getParent();
+            List<String> resources = scanResources(skillDir);
+            SkillMetadata base = parseSkillMd(content, skillFile.toAbsolutePath().toString(), directoryName);
+            if (base == null) return null;
+            return SkillMetadata.builder(base.getName(), base.getDescription(), base.getPath())
+                    .skillDir(skillDir.toAbsolutePath().toString())
+                    .resources(resources)
+                    .license(base.getLicense())
+                    .compatibility(base.getCompatibility())
+                    .metadata(base.getMetadata())
+                    .allowedTools(base.getAllowedTools())
+                    .build();
         } catch (IOException e) {
             LOGGER.warn("Failed to read skill file: {}", skillFile, e);
             return null;
         }
+    }
+
+    List<String> scanResources(Path skillDir) {
+        String[] subDirs = {"scripts", "references"};
+        List<String> result = new ArrayList<>();
+        for (String sub : subDirs) {
+            Path subDir = skillDir.resolve(sub);
+            if (!Files.isDirectory(subDir)) continue;
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(subDir)) {
+                for (Path entry : stream) {
+                    if (Files.isRegularFile(entry)) {
+                        result.add(sub + "/" + entry.getFileName().toString());
+                    }
+                }
+            } catch (IOException e) {
+                LOGGER.warn("Failed to scan resources in {}: {}", subDir, e.getMessage());
+            }
+        }
+        Collections.sort(result);
+        return result;
     }
 
     SkillMetadata parseSkillMd(String content, String filePath, String directoryName) {

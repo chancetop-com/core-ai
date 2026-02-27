@@ -61,6 +61,12 @@ public final class SkillConfig {
             return this;
         }
 
+        public Builder workspace() {
+            String cwd = System.getProperty("user.dir");
+            sources.add(new SkillSource("workspace", cwd + "/.core-ai/skills", 100));
+            return this;
+        }
+
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;
             return this;

@@ -180,6 +180,69 @@ class SkillLoaderTest {
         assertNull(loader.parseSkillMd("---\n---\n", "/path/SKILL.md", "test"));
     }
 
+    @Test
+    void scanResourcesIncludesScriptsAndReferences(@TempDir Path tempDir) throws IOException {
+        var skillDir = tempDir.resolve("my-skill");
+        var scriptsDir = skillDir.resolve("scripts");
+        var referencesDir = skillDir.resolve("references");
+        Files.createDirectories(scriptsDir);
+        Files.createDirectories(referencesDir);
+        Files.writeString(scriptsDir.resolve("run.sh"), "#!/bin/sh");
+        Files.writeString(referencesDir.resolve("guide.md"), "# Guide");
+        Files.writeString(skillDir.resolve("SKILL.md"), """
+                ---
+                name: my-skill
+                description: A skill with resources
+                ---
+                """);
+
+        var skills = loader.loadFromSource(tempDir.toString());
+        assertEquals(1, skills.size());
+        var skill = skills.getFirst();
+        var resources = skill.getResources();
+        assertTrue(resources.contains("scripts/run.sh"));
+        assertTrue(resources.contains("references/guide.md"));
+        assertEquals(2, resources.size());
+    }
+
+    @Test
+    void scanResourcesIgnoresOtherFiles(@TempDir Path tempDir) throws IOException {
+        var skillDir = tempDir.resolve("my-skill");
+        var assetsDir = skillDir.resolve("assets");
+        Files.createDirectories(assetsDir);
+        Files.writeString(assetsDir.resolve("logo.png"), "fake png");
+        Files.writeString(skillDir.resolve("extra.txt"), "extra");
+        Files.writeString(skillDir.resolve("SKILL.md"), """
+                ---
+                name: my-skill
+                description: A skill without tracked resources
+                ---
+                """);
+
+        var skills = loader.loadFromSource(tempDir.toString());
+        assertEquals(1, skills.size());
+        assertTrue(skills.getFirst().getResources().isEmpty());
+    }
+
+    @Test
+    void skillDirIsSetCorrectly(@TempDir Path tempDir) throws IOException {
+        var skillDir = tempDir.resolve("my-skill");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"), """
+                ---
+                name: my-skill
+                description: Test skill dir
+                ---
+                """);
+
+        var skills = loader.loadFromSource(tempDir.toString());
+        assertEquals(1, skills.size());
+        var skill = skills.getFirst();
+        assertNotNull(skill.getSkillDir());
+        assertTrue(skill.getSkillDir().endsWith("my-skill"));
+        assertTrue(skill.getPath().endsWith("SKILL.md"));
+    }
+
     private String getTestResourcePath(String path) {
         var resource = Thread.currentThread().getContextClassLoader().getResource(path);
         if (resource == null) throw new RuntimeException("Test resource not found: " + path);

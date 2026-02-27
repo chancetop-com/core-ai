@@ -103,6 +103,52 @@ class SkillLifecycleTest {
         assertTrue(skill.getPath().endsWith("SKILL.md"));
     }
 
+    @Test
+    void promptIncludesResourcesWhenPresent(@TempDir Path tempDir) throws IOException {
+        var skillDir = tempDir.resolve("my-skill");
+        var scriptsDir = skillDir.resolve("scripts");
+        Files.createDirectories(scriptsDir);
+        Files.writeString(scriptsDir.resolve("collect.sh"), "#!/bin/sh");
+        Files.writeString(skillDir.resolve("SKILL.md"), """
+                ---
+                name: my-skill
+                description: Skill with scripts
+                ---
+                """);
+
+        var config = SkillConfig.of(tempDir.toString());
+        var lifecycle = new SkillLifecycle(config);
+        lifecycle.afterAgentBuild(null);
+
+        var systemMsg = Message.of(RoleType.SYSTEM, "You are an assistant");
+        var request = new CompletionRequest();
+        request.messages = new ArrayList<>(List.of(systemMsg));
+
+        lifecycle.beforeModel(request, ExecutionContext.builder().build());
+
+        String systemText = request.messages.getFirst().getTextContent();
+        assertTrue(systemText.contains("Available resources"));
+        assertTrue(systemText.contains("scripts/collect.sh"));
+    }
+
+    @Test
+    void promptOmitsResourcesWhenAbsent(@TempDir Path tempDir) throws IOException {
+        createSkillFixture(tempDir, "plain-skill", "Skill without resources");
+
+        var config = SkillConfig.of(tempDir.toString());
+        var lifecycle = new SkillLifecycle(config);
+        lifecycle.afterAgentBuild(null);
+
+        var systemMsg = Message.of(RoleType.SYSTEM, "You are an assistant");
+        var request = new CompletionRequest();
+        request.messages = new ArrayList<>(List.of(systemMsg));
+
+        lifecycle.beforeModel(request, ExecutionContext.builder().build());
+
+        String systemText = request.messages.getFirst().getTextContent();
+        assertFalse(systemText.contains("Available resources"));
+    }
+
     private void createSkillFixture(Path baseDir, String name, String description) throws IOException {
         var skillDir = baseDir.resolve(name);
         Files.createDirectories(skillDir);
