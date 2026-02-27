@@ -163,7 +163,7 @@ public class Agent extends Node<Agent> {
             setRound(currentRound);
             Instant roundStart = Instant.now();
             String solutionToEvaluate = getOutput();
-            logger.info("Reflection round: {}/{}, agent: {}", currentRound, reflectionConfig.maxRound(), getName());
+            logger.debug("Reflection round: {}/{}, agent: {}", currentRound, reflectionConfig.maxRound(), getName());
 
             if (reflectionListener != null) reflectionListener.onBeforeRound(this, currentRound, solutionToEvaluate);
 
@@ -183,14 +183,14 @@ public class Agent extends Node<Agent> {
                 return;
             }
 
-            logger.info("Round {} evaluation: score={}, pass={}, continue={}",
+            logger.debug("Round {} evaluation: score={}, pass={}, continue={}",
                     currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
 
             history.addRound(new ReflectionHistory.ReflectionRound(currentRound, solutionToEvaluate, evaluationJson,
                     evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
 
             if (AgentHelper.shouldTerminateReflection(reflectionConfig, evaluation, currentRound)) {
-                logger.info("Reflection terminating: score={}, pass={}", evaluation.getScore(), evaluation.isPass());
+                logger.debug("Reflection terminating: score={}, pass={}", evaluation.getScore(), evaluation.isPass());
                 notifyTerminationReason(evaluation, currentRound);
                 break;
             }
@@ -230,7 +230,7 @@ public class Agent extends Node<Agent> {
         var agentOut = new StringBuilder();
         do {
             var turnMsgList = turn(getMessages(), AgentHelper.toReqTools(toolCalls), constructionAssistantMsg);
-            logger.info("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
+            logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
             currentIteCount++;
