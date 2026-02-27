@@ -68,7 +68,7 @@ public class McpClientService implements AutoCloseable {
     }
 
     public ToolCallResult callToolWithResult(String name, Map<String, Object> arguments) {
-        var request = new McpSchema.CallToolRequest(getRealName(serverName, name), arguments);
+        var request = new McpSchema.CallToolRequest(name, arguments);
         var result = client.callTool(request);
 
         if (result.isError() != null && result.isError()) {
@@ -76,10 +76,6 @@ public class McpClientService implements AutoCloseable {
         }
 
         return extractToolCallResult(result);
-    }
-
-    private String getRealName(String serverName, String name) {
-        return name.startsWith(serverName) ? name.substring(serverName.length() + 1) : name;
     }
 
     public McpSyncClient getMcpClient() {

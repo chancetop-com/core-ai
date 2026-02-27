@@ -195,26 +195,6 @@ public class McpClientManager implements AutoCloseable {
         return result;
     }
 
-    public List<Tool> listAllToolsFlattened() {
-        var result = new ArrayList<Tool>();
-        for (var entry : clients.entrySet()) {
-            String serverName = entry.getKey();
-            try {
-                var tools = entry.getValue().listTools();
-                for (var tool : tools) {
-                    var prefixedTool = new Tool();
-                    prefixedTool.name = serverName + "/" + tool.name;
-                    prefixedTool.description = "[" + serverName + "] " + tool.description;
-                    prefixedTool.inputSchema = tool.inputSchema;
-                    result.add(prefixedTool);
-                }
-            } catch (Exception e) {
-                LOGGER.error("Failed to list tools from server: {}", serverName, e);
-            }
-        }
-        return result;
-    }
-
     public void addListener(ConnectionStateListener listener) {
         listeners.add(listener);
     }
