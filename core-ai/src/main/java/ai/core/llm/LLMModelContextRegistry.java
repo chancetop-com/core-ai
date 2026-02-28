@@ -65,7 +65,7 @@ public final class LLMModelContextRegistry {
                 modelInfoMap.put(modelName, new ModelInfo(maxInputTokens, maxOutputTokens, provider, mode));
             }
 
-            LOGGER.info("Loaded {} model entries from context registry", modelInfoMap.size());
+            LOGGER.debug("Loaded {} model entries from context registry", modelInfoMap.size());
         } catch (IOException e) {
             LOGGER.error("Failed to load model context registry", e);
         }

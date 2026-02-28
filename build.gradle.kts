@@ -120,3 +120,30 @@ project(":core-ai-api") {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }
 }
+
+
+project(":core-ai-cli") {
+    version = "1.0.0-SNAPSHOT"
+    apply(plugin = "application")
+    apply(plugin = "native-app")
+    the<JavaApplication>().mainClass.set("Main")
+    dependencies {
+        implementation(project(":core-ai"))
+        implementation(project(":core-ai-api"))
+        implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
+        // JLine 3 for modern CLI experience
+        implementation("org.jline:jline-terminal:${Versions.JLINE_VERSION}")
+        implementation("org.jline:jline-reader:${Versions.JLINE_VERSION}")
+        implementation("org.jline:jline-style:${Versions.JLINE_VERSION}")
+        // picocli for CLI arg parsing (GraalVM native-image friendly)
+        implementation("info.picocli:picocli:${Versions.PICOCLI_VERSION}")
+        annotationProcessor("info.picocli:picocli-codegen:${Versions.PICOCLI_VERSION}")
+        // GraalVM SDK for native-image Feature (compile-time only)
+        compileOnly("org.graalvm.sdk:nativeimage:${Versions.GRAALVM_SDK_VERSION}")
+    }
+    tasks.withType<JavaExec> {
+        standardInput = System.`in`
+        jvmArgs("--enable-native-access=ALL-UNNAMED")
+        systemProperty("org.jline.terminal.type", "xterm-256color")
+    }
+}

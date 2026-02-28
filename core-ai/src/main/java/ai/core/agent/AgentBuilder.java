@@ -256,6 +256,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder addAgentLifecycle(AbstractLifecycle lifecycle) {
+        this.agentLifecycles.add(lifecycle);
+        return this;
+    }
+
     public AgentBuilder subAgents(List<SubAgentToolCall> subAgents) {
         this.subAgents = new ArrayList<>(subAgents);
         return this;

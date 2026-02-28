@@ -18,4 +18,5 @@ dependencies {
     implementation("org.flywaydb:flyway-gradle-plugin:11.13.2")
     runtimeOnly("org.flywaydb:flyway-mysql:11.13.2")
     runtimeOnly("org.flywaydb:flyway-database-postgresql:11.13.2")
+    implementation("org.graalvm.buildtools:native-gradle-plugin:0.10.5")
 }

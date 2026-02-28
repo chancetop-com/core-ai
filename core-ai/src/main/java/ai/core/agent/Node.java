@@ -324,8 +324,12 @@ public abstract class Node<T extends Node<T>> {
         this.streaming = streaming;
     }
 
-    void setStreamingCallback(StreamingCallback streamingCallback) {
+    public void setStreamingCallback(StreamingCallback streamingCallback) {
         this.streamingCallback = streamingCallback;
+    }
+
+    public void addLifecycle(AbstractLifecycle lifecycle) {
+        this.agentLifecycles.add(lifecycle);
     }
 
     void setTracer(Tracer tracer) {
