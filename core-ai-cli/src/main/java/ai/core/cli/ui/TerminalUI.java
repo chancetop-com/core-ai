@@ -88,8 +88,30 @@ public class TerminalUI {
     }
 
     public void showError(String message) {
-        writer.println(AnsiTheme.ERROR + "\n[Error] " + AnsiTheme.RESET + message);
+        String hint = parseErrorHint(message);
+        writer.println("\n  " + AnsiTheme.ERROR + "✗ " + hint + AnsiTheme.RESET);
+        if (!hint.equals(message)) {
+            writer.println(AnsiTheme.MUTED + "    " + truncateError(message) + AnsiTheme.RESET);
+        }
         writer.flush();
+    }
+
+    private String parseErrorHint(String message) {
+        if (message == null) return "Oops, something went wrong.";
+        if (message.contains("statusCode=401")) return "API key is invalid or expired. Please check your config with /help.";
+        if (message.contains("statusCode=402")) return "API quota used up. Top up your account or switch model with /model.";
+        if (message.contains("statusCode=403")) return "No permission to access this model. Try a different one with /model.";
+        if (message.contains("statusCode=404")) return "Model not found. Check spelling or try /model to switch.";
+        if (message.contains("statusCode=429")) return "Too many requests. Wait a moment and try again.";
+        if (message.contains("statusCode=500")) return "API server error. This is not your fault — try again shortly.";
+        if (message.contains("statusCode=503")) return "API service is temporarily down. Please try again later.";
+        if (message.contains("timeout") || message.contains("Timeout")) return "Request timed out. Check your network or try again.";
+        if (message.contains("Connection refused")) return "Cannot connect to API. Check your network and config.";
+        return message.length() > 80 ? message.substring(0, 77) + "..." : message;
+    }
+
+    private String truncateError(String message) {
+        return message.length() > 200 ? message.substring(0, 197) + "..." : message;
     }
 
     public void printInputFrame() {
