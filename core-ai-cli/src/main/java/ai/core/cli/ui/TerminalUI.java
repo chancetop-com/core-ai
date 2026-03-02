@@ -92,14 +92,38 @@ public class TerminalUI {
         writer.flush();
     }
 
+    public void printInputFrame() {
+        int width = getTerminalWidth();
+        String border = AnsiTheme.SEPARATOR + "─".repeat(width) + AnsiTheme.RESET;
+        String hint = AnsiTheme.MUTED + "  /help for commands | Ctrl+C to cancel" + AnsiTheme.RESET;
+        // top border → prompt placeholder → bottom border → status hint
+        writer.println(border);
+        writer.println();
+        writer.println(border);
+        writer.println(hint);
+        // move cursor back up to the prompt line (up 3 lines)
+        writer.print("\u001B[3A\r");
+        writer.flush();
+    }
+
     public String readInput() {
-        printInputFrame();
         setBlockCursor();
         try {
-            return doReadInput();
+            String input = doReadInput();
+            clearInputFrameBelow();
+            return input;
         } finally {
             restoreCursor();
         }
+    }
+
+    private void clearInputFrameBelow() {
+        // after readLine, cursor is on the line below prompt (bottom border)
+        // clear bottom border + status hint lines
+        writer.print("\u001B[2K");
+        writer.print("\n\u001B[2K");
+        writer.print("\u001B[1A\r");
+        writer.flush();
     }
 
     private String doReadInput() {
@@ -119,16 +143,6 @@ public class TerminalUI {
         } catch (IOException e) {
             return null;
         }
-    }
-
-    private void printInputFrame() {
-        int width = getTerminalWidth();
-        String border = "─".repeat(width);
-        String hint = "  /help for commands | Ctrl+C to cancel";
-        writer.println(AnsiTheme.SEPARATOR + border + AnsiTheme.RESET);
-        writer.println(AnsiTheme.MUTED + hint + AnsiTheme.RESET);
-        writer.println(AnsiTheme.SEPARATOR + border + AnsiTheme.RESET);
-        writer.flush();
     }
 
     private void setBlockCursor() {

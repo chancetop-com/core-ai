@@ -88,22 +88,29 @@ public class AgentSessionRunner {
     }
 
     private void readInputLoop(ReplCommandHandler commands, BlockingQueue<String> queue, Semaphore readyForInput) {
+        boolean showFrame = true;
         while (true) {
             waitForReady(readyForInput);
+            if (showFrame) {
+                ui.printInputFrame();
+            }
             var input = ui.readInput();
             if (input == null || "/exit".equalsIgnoreCase(input.trim())) {
                 queue.offer(POISON_PILL);
                 break;
             }
             if (input.isBlank()) {
+                showFrame = false;
                 readyForInput.release();
                 continue;
             }
             if (input.trim().startsWith("/")) {
                 commands.handle(input);
+                showFrame = false;
                 readyForInput.release();
                 continue;
             }
+            showFrame = true;
             queue.offer(input);
         }
     }
