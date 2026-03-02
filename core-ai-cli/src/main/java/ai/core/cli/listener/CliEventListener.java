@@ -41,7 +41,7 @@ public class CliEventListener implements AgentEventListener {
     public CliEventListener(TerminalUI ui, AgentSession session) {
         this.ui = ui;
         this.session = session;
-        this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported());
+        this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui.getTerminalWidth());
         installSignalHandler();
     }
 
@@ -100,7 +100,6 @@ public class CliEventListener implements AgentEventListener {
             ui.getWriter().flush();
         }
         ui.endStreaming();
-        ui.printSeparator();
         if (turnFuture != null) turnFuture.complete(null);
     }
 

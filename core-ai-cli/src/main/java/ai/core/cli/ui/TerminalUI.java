@@ -93,17 +93,26 @@ public class TerminalUI {
     }
 
     public String readInput() {
-        printInputBorder();
+        printInputFrame();
+        setBlockCursor();
+        try {
+            return doReadInput();
+        } finally {
+            restoreCursor();
+        }
+    }
+
+    private String doReadInput() {
         if (jlineReader != null) {
             try {
-                return jlineReader.readLine(AnsiTheme.PROMPT + ">  " + AnsiTheme.RESET);
+                return jlineReader.readLine(AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET);
             } catch (org.jline.reader.UserInterruptException e) {
                 return "/exit";
             } catch (org.jline.reader.EndOfFileException e) {
                 return null;
             }
         }
-        writer.print(AnsiTheme.PROMPT + ">  " + AnsiTheme.RESET);
+        writer.print(AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET);
         writer.flush();
         try {
             return simpleReader.readLine();
@@ -112,9 +121,23 @@ public class TerminalUI {
         }
     }
 
-    private void printInputBorder() {
-        String line = "─".repeat(getTerminalWidth());
-        writer.println(AnsiTheme.SEPARATOR + line + AnsiTheme.RESET);
+    private void printInputFrame() {
+        int width = getTerminalWidth();
+        String border = "─".repeat(width);
+        String hint = "  /help for commands | Ctrl+C to cancel";
+        writer.println(AnsiTheme.SEPARATOR + border + AnsiTheme.RESET);
+        writer.println(AnsiTheme.MUTED + hint + AnsiTheme.RESET);
+        writer.println(AnsiTheme.SEPARATOR + border + AnsiTheme.RESET);
+        writer.flush();
+    }
+
+    private void setBlockCursor() {
+        writer.print("\u001B[2 q");
+        writer.flush();
+    }
+
+    private void restoreCursor() {
+        writer.print("\u001B[5 q");
         writer.flush();
     }
 

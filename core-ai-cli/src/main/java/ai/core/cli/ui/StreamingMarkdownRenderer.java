@@ -10,18 +10,36 @@ import java.util.List;
 public class StreamingMarkdownRenderer {
 
     private static final String FENCE = "```";
-    private static final String ANSI_CLEAR_LINE = "\u001B[2K\r";
+    private static final String ANSI_CLEAR_LINE = "\u001B[2K";
+    private static final String ANSI_CURSOR_UP = "\u001B[1A";
+
+    private static int displayWidth(String text) {
+        int width = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= 0x4E00 && c <= 0x9FFF || c >= 0x3000 && c <= 0x303F
+                    || c >= 0xFF00 && c <= 0xFFEF) {
+                width += 2;
+            } else {
+                width++;
+            }
+        }
+        return width;
+    }
 
     private final PrintWriter writer;
     private final boolean smartTerminal;
+    private final int terminalWidth;
     private final StringBuilder buffer = new StringBuilder();
     private final List<String> tableBuffer = new ArrayList<>();
     private boolean inCodeBlock;
     private int printedLength;
+    private int printedDisplayWidth;
 
-    public StreamingMarkdownRenderer(PrintWriter writer, boolean smartTerminal) {
+    public StreamingMarkdownRenderer(PrintWriter writer, boolean smartTerminal, int terminalWidth) {
         this.writer = writer;
         this.smartTerminal = smartTerminal;
+        this.terminalWidth = terminalWidth;
     }
 
     public void processChunk(String chunk) {
@@ -48,6 +66,7 @@ public class StreamingMarkdownRenderer {
         tableBuffer.clear();
         inCodeBlock = false;
         printedLength = 0;
+        printedDisplayWidth = 0;
     }
 
     private void completeLine() {
@@ -56,8 +75,7 @@ public class StreamingMarkdownRenderer {
 
         if (!inCodeBlock && smartTerminal && TableRenderer.isTableRow(line)) {
             tableBuffer.add(line);
-            buffer.setLength(0);
-            printedLength = 0;
+            resetBufferState();
             return;
         }
 
@@ -69,16 +87,26 @@ public class StreamingMarkdownRenderer {
             printDumbDelta(line);
             updateCodeBlockState(line);
         }
-        buffer.setLength(0);
-        printedLength = 0;
+        resetBufferState();
         writer.println();
         writer.flush();
     }
 
+    private void resetBufferState() {
+        buffer.setLength(0);
+        printedLength = 0;
+        printedDisplayWidth = 0;
+    }
+
     private void clearPartialOutput() {
-        if (smartTerminal && printedLength > 0) {
-            writer.print(ANSI_CLEAR_LINE);
+        if (!smartTerminal || printedDisplayWidth <= 0) {
+            return;
         }
+        int extraLines = printedDisplayWidth / terminalWidth;
+        for (int i = 0; i < extraLines; i++) {
+            writer.print(ANSI_CLEAR_LINE + ANSI_CURSOR_UP);
+        }
+        writer.print(ANSI_CLEAR_LINE + "\r");
     }
 
     private void flushTable() {
@@ -99,6 +127,7 @@ public class StreamingMarkdownRenderer {
                     ? AnsiTheme.MD_CODE_BLOCK + delta + AnsiTheme.RESET
                     : delta);
             writer.flush();
+            printedDisplayWidth += displayWidth(delta);
             printedLength = buffer.length();
         }
     }
