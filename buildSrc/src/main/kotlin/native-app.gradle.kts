@@ -3,8 +3,12 @@ plugins {
 }
 
 graalvmNative {
+    toolchainDetection.set(false)
     binaries {
         named("main") {
+            javaLauncher.set(project.extensions.getByType<JavaToolchainService>().launcherFor {
+                languageVersion.set(JavaLanguageVersion.of(25))
+            })
             mainClass.set("Main")
             buildArgs.add("--no-fallback")
             buildArgs.add("--enable-native-access=ALL-UNNAMED")

@@ -96,10 +96,12 @@ public class AgentSessionRunner {
                 break;
             }
             if (input.isBlank()) {
+                readyForInput.release();
                 continue;
             }
             if (input.trim().startsWith("/")) {
                 commands.handle(input);
+                readyForInput.release();
                 continue;
             }
             queue.offer(input);
