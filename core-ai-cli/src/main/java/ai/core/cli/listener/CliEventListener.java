@@ -37,28 +37,33 @@ public class CliEventListener implements AgentEventListener {
 
     @Override
     public void onTextChunk(TextChunkEvent event) {
+        DebugLog.log("text chunk: length=" + event.chunk.length());
         ui.printStreamingChunk(event.chunk);
     }
 
     @Override
     public void onReasoningChunk(ReasoningChunkEvent event) {
+        DebugLog.log("reasoning chunk: length=" + event.chunk.length());
         ui.printStreamingChunk("\u001B[2m" + event.chunk + "\u001B[0m");
     }
 
     @Override
     public void onToolStart(ToolStartEvent event) {
-        DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId);
+        DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId + " args=" + truncate(event.arguments, 200));
     }
 
     @Override
     public void onToolResult(ToolResultEvent event) {
-        DebugLog.log("tool result: " + event.toolName + " status=" + event.status);
+        DebugLog.log("tool result: " + event.toolName + " callId=" + event.callId + " status=" + event.status + " result=" + truncate(event.result, 200));
     }
 
     @Override
     public void onToolApprovalRequest(ToolApprovalRequestEvent event) {
+        DebugLog.log("tool approval request: " + event.toolName + " callId=" + event.callId);
         var decision = ui.askPermission(event.toolName, event.arguments);
+        DebugLog.log("tool approval decision: " + event.toolName + " callId=" + event.callId + " decision=" + decision);
         session.approveToolCall(event.callId, decision);
+        DebugLog.log("tool approval sent: " + event.toolName + " callId=" + event.callId);
     }
 
     @Override
@@ -80,5 +85,10 @@ public class CliEventListener implements AgentEventListener {
     public void onStatusChange(StatusChangeEvent event) {
         DebugLog.log("status change: " + event.status);
         ui.showStatus(event.status);
+    }
+
+    private static String truncate(String text, int maxLength) {
+        if (text == null) return "null";
+        return text.length() <= maxLength ? text : text.substring(0, maxLength) + "...(" + text.length() + " chars)";
     }
 }
