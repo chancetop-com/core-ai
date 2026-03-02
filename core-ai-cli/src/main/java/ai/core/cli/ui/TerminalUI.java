@@ -123,6 +123,18 @@ public class TerminalUI {
         writer.flush();
     }
 
+    public int getTerminalWidth() {
+        if (terminal != null) {
+            int width = terminal.getWidth();
+            if (width > 0) return width;
+        }
+        return 80;
+    }
+
+    public PrintWriter getWriter() {
+        return writer;
+    }
+
     public void close() throws IOException {
         if (terminal != null) terminal.close();
     }

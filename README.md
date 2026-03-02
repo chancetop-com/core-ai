@@ -138,6 +138,30 @@ System.out.println(output.getOutput());
 - **📚 Knowledge Management** - Enterprise knowledge bases with Q&A systems
 - **👥 Collaborative AI** - Multiple specialized agents working together
 
+### 💻 CLI Tool
+
+Core-AI provides a terminal-based CLI tool (`core-ai-cli`) for interactive AI conversations.
+
+**Build Native Image:**
+```bash
+./gradlew :core-ai-cli:nativeCompile
+```
+
+**Install:**
+```bash
+cp core-ai-cli/build/native/nativeCompile/core-ai-cli /usr/local/bin/
+```
+
+**Run:**
+```bash
+core-ai-cli
+```
+
+On first run, if no configuration is found at `~/.core-ai-cli/agent.properties`, the CLI will interactively prompt you to set up:
+- **API Base URL** (default: `https://openrouter.ai/api/v1`)
+- **API Key** (required)
+- **Default Model** (default: `anthropic/claude-sonnet-4.6`)
+
 ### 🛠️ Development
 
 **Requirements:**

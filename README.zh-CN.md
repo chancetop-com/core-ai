@@ -138,6 +138,30 @@ System.out.println(output.getOutput());
 - **📚 知识管理** - 企业知识库和问答系统
 - **👥 协作 AI** - 多个专业代理协同工作
 
+### 💻 CLI 工具
+
+Core-AI 提供了一个终端交互式 CLI 工具（`core-ai-cli`），用于 AI 对话。
+
+**构建 Native Image：**
+```bash
+./gradlew :core-ai-cli:nativeCompile
+```
+
+**安装：**
+```bash
+cp core-ai-cli/build/native/nativeCompile/core-ai-cli /usr/local/bin/
+```
+
+**运行：**
+```bash
+core-ai-cli
+```
+
+首次运行时，如果未找到配置文件 `~/.core-ai-cli/agent.properties`，CLI 会交互式引导你完成配置：
+- **API Base URL**（默认：`https://openrouter.ai/api/v1`）
+- **API Key**（必填）
+- **Default Model**（默认：`anthropic/claude-sonnet-4.6`）
+
 ### 🛠️ 开发环境
 
 **环境要求：**

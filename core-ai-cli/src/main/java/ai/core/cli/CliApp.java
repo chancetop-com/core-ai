@@ -4,6 +4,7 @@ import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.agent.AgentSessionRunner;
+import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.ui.TerminalUI;
 
 import java.nio.file.Path;
@@ -23,6 +24,7 @@ public class CliApp {
     }
 
     public void start() {
+        InteractiveConfigSetup.setupIfNeeded();
         DebugLog.log("loading config from " + configFile);
         var props = PropertiesFileSource.fromFile(configFile);
         var bootstrap = new AgentBootstrap(props);

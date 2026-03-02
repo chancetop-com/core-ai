@@ -13,9 +13,9 @@ public class ReplCommandHandler {
         this.ui = ui;
     }
 
-    public boolean handle(String input) {
+    public void handle(String input) {
         var trimmed = input.trim();
-        if (!trimmed.startsWith("/")) return false;
+        if (!trimmed.startsWith("/")) return;
 
         var parts = trimmed.split("\\s+", 2);
         var command = parts[0];
@@ -25,11 +25,9 @@ public class ReplCommandHandler {
             case "/debug" -> toggleDebug();
             case "/clear" -> clearScreen();
             case "/exit" -> {
-                return false;
             }
             default -> ui.printStreamingChunk("Unknown command: " + command + ". Type /help for available commands.\n");
         }
-        return true;
     }
 
     private void printHelp() {
