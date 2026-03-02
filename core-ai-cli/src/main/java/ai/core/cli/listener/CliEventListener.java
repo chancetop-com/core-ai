@@ -50,11 +50,13 @@ public class CliEventListener implements AgentEventListener {
     @Override
     public void onToolStart(ToolStartEvent event) {
         DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId + " args=" + truncate(event.arguments, 200));
+        ui.showToolStart(event.toolName, event.arguments);
     }
 
     @Override
     public void onToolResult(ToolResultEvent event) {
         DebugLog.log("tool result: " + event.toolName + " callId=" + event.callId + " status=" + event.status + " result=" + truncate(event.result, 200));
+        ui.showToolResult(event.toolName, event.status);
     }
 
     @Override

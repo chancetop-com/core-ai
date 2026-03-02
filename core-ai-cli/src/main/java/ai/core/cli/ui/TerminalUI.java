@@ -118,6 +118,21 @@ public class TerminalUI {
         };
     }
 
+    public void showToolStart(String toolName, String arguments) {
+        writer.println("\u001B[33m\n> " + toolName + "\u001B[0m");
+        if (arguments != null && !arguments.isBlank() && !"{}".equals(arguments.trim())) {
+            String display = arguments.length() > 200 ? arguments.substring(0, 200) + "..." : arguments;
+            writer.println("\u001B[2m  " + display + "\u001B[0m");
+        }
+        writer.flush();
+    }
+
+    public void showToolResult(String toolName, String status) {
+        String icon = "success".equals(status) ? "\u001B[32m+" : "\u001B[31m!";
+        writer.println(icon + " " + toolName + "\u001B[0m");
+        writer.flush();
+    }
+
     public void endStreaming() {
         writer.println();
         writer.flush();
