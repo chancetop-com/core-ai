@@ -81,10 +81,7 @@ public class TerminalUI {
     }
 
     public void showStatus(SessionStatus status) {
-        if (status == SessionStatus.RUNNING) {
-            writer.println("\n  " + AnsiTheme.PROMPT + "✦ " + AnsiTheme.MUTED + "Thinking..." + AnsiTheme.RESET);
-            writer.flush();
-        }
+        // spinner is now handled by ThinkingSpinner in CliEventListener
     }
 
     public void showError(String message) {

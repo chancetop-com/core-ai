@@ -45,7 +45,7 @@ public class AgentSessionRunner {
 
     public String run() {
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll);
-        var listener = new CliEventListener(ui, session);
+        var listener = new CliEventListener(ui, session, agent);
         session.onEvent(listener);
 
         var commands = new ReplCommandHandler(ui);
