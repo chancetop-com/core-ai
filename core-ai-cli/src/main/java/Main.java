@@ -40,13 +40,16 @@ public class Main implements Callable<Integer> {
     @Option(names = "--resume", description = "Pick a recent session to resume")
     boolean resume;
 
+    @Option(names = "--workspace", description = "Set the working directory for the agent session")
+    Path workspace;
+
     @Override
     public Integer call() {
         if (debug) {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
-        new CliApp(configFile, model, skipPermissions, continueSession, resume).start();
+        new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace).start();
         return 0;
     }
 }

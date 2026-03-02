@@ -34,13 +34,15 @@ public class CliApp {
     private final boolean autoApproveAll;
     private final boolean continueSession;
     private final boolean resume;
+    private final Path workspace;
 
-    public CliApp(Path configFile, String modelOverride, boolean autoApproveAll, boolean continueSession, boolean resume) {
+    public CliApp(Path configFile, String modelOverride, boolean autoApproveAll, boolean continueSession, boolean resume, Path workspace) {
         this.configFile = configFile != null ? configFile : DEFAULT_CONFIG;
         this.modelOverride = modelOverride;
         this.autoApproveAll = autoApproveAll;
         this.continueSession = continueSession;
         this.resume = resume;
+        this.workspace = workspace != null ? workspace.toAbsolutePath() : Paths.get("").toAbsolutePath();
     }
 
     public void start() {
@@ -71,7 +73,7 @@ public class CliApp {
 
         try {
             while (true) {
-                var agent = CliAgent.of(result.llmProviders, modelOverride, maxTurn, persistenceProvider);
+                var agent = CliAgent.of(result.llmProviders, modelOverride, maxTurn, persistenceProvider, workspace);
                 var runner = new AgentSessionRunner(ui, agent, modelName, autoApproveAll, currentSessionId, persistenceProvider);
                 String nextSessionId = runner.run();
                 if (nextSessionId == null) break;
