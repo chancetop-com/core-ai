@@ -75,13 +75,14 @@ public class TerminalUI {
     }
 
     public void printSeparator() {
-        writer.println("\n" + AnsiTheme.SEPARATOR + "------------------------------------------------" + AnsiTheme.RESET);
+        String line = "─".repeat(getTerminalWidth());
+        writer.println("\n" + AnsiTheme.SEPARATOR + line + AnsiTheme.RESET);
         writer.flush();
     }
 
     public void showStatus(SessionStatus status) {
         if (status == SessionStatus.RUNNING) {
-            writer.println(AnsiTheme.SEPARATOR + "\n[Agent is thinking...]" + AnsiTheme.RESET);
+            writer.println("\n  " + AnsiTheme.PROMPT + "✦ " + AnsiTheme.MUTED + "Thinking..." + AnsiTheme.RESET);
             writer.flush();
         }
     }
@@ -92,22 +93,29 @@ public class TerminalUI {
     }
 
     public String readInput() {
+        printInputBorder();
         if (jlineReader != null) {
             try {
-                return jlineReader.readLine(AnsiTheme.PROMPT + "\nUser > " + AnsiTheme.RESET);
+                return jlineReader.readLine(AnsiTheme.PROMPT + ">  " + AnsiTheme.RESET);
             } catch (org.jline.reader.UserInterruptException e) {
                 return "/exit";
             } catch (org.jline.reader.EndOfFileException e) {
                 return null;
             }
         }
-        writer.print("\nUser > ");
+        writer.print(AnsiTheme.PROMPT + ">  " + AnsiTheme.RESET);
         writer.flush();
         try {
             return simpleReader.readLine();
         } catch (IOException e) {
             return null;
         }
+    }
+
+    private void printInputBorder() {
+        String line = "─".repeat(getTerminalWidth());
+        writer.println(AnsiTheme.SEPARATOR + line + AnsiTheme.RESET);
+        writer.flush();
     }
 
     public ApprovalDecision askPermission(String toolName, String arguments) {

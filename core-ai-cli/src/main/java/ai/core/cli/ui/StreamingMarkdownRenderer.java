@@ -1,6 +1,8 @@
 package ai.core.cli.ui;
 
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author xander
@@ -13,6 +15,7 @@ public class StreamingMarkdownRenderer {
     private final PrintWriter writer;
     private final boolean smartTerminal;
     private final StringBuilder buffer = new StringBuilder();
+    private final List<String> tableBuffer = new ArrayList<>();
     private boolean inCodeBlock;
     private int printedLength;
 
@@ -34,6 +37,7 @@ public class StreamingMarkdownRenderer {
     }
 
     public void flush() {
+        flushTable();
         if (!buffer.isEmpty()) {
             completeLine();
         }
@@ -41,16 +45,25 @@ public class StreamingMarkdownRenderer {
 
     public void reset() {
         buffer.setLength(0);
+        tableBuffer.clear();
         inCodeBlock = false;
         printedLength = 0;
     }
 
     private void completeLine() {
         String line = buffer.toString();
+        clearPartialOutput();
+
+        if (!inCodeBlock && smartTerminal && TableRenderer.isTableRow(line)) {
+            tableBuffer.add(line);
+            buffer.setLength(0);
+            printedLength = 0;
+            return;
+        }
+
+        flushTable();
+
         if (smartTerminal) {
-            if (printedLength > 0) {
-                writer.print(ANSI_CLEAR_LINE);
-            }
             renderSmartLine(line);
         } else {
             printDumbDelta(line);
@@ -60,6 +73,23 @@ public class StreamingMarkdownRenderer {
         printedLength = 0;
         writer.println();
         writer.flush();
+    }
+
+    private void clearPartialOutput() {
+        if (smartTerminal && printedLength > 0) {
+            writer.print(ANSI_CLEAR_LINE);
+        }
+    }
+
+    private void flushTable() {
+        if (tableBuffer.isEmpty()) {
+            return;
+        }
+        String rendered = TableRenderer.render(tableBuffer);
+        writer.print(rendered);
+        writer.println();
+        writer.flush();
+        tableBuffer.clear();
     }
 
     private void flushPartial() {

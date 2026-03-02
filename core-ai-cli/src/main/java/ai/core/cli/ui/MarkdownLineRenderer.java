@@ -46,11 +46,6 @@ public final class MarkdownLineRenderer {
             return AnsiTheme.MUTED + "> " + R + renderInline(content);
         }
 
-        // Table row: | col1 | col2 |
-        if (line.contains("|")) {
-            return renderTableRow(line);
-        }
-
         return renderInline(line);
     }
 
@@ -100,40 +95,6 @@ public final class MarkdownLineRenderer {
 
             sb.append(c);
             i++;
-        }
-        return sb.toString();
-    }
-
-    private static boolean isTableSeparator(String line) {
-        String trimmed = line.trim();
-        if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) {
-            return false;
-        }
-        for (int i = 0; i < trimmed.length(); i++) {
-            char c = trimmed.charAt(i);
-            if (c != '|' && c != '-' && c != ':' && c != ' ') {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static String renderTableRow(String line) {
-        if (isTableSeparator(line)) {
-            return AnsiTheme.MUTED + line + R;
-        }
-        var sb = new StringBuilder();
-        String[] parts = line.split("\\|", -1);
-        for (int i = 0; i < parts.length; i++) {
-            if (i > 0) {
-                sb.append(AnsiTheme.MUTED).append("|").append(R);
-            }
-            String cell = parts[i];
-            if (!cell.isBlank()) {
-                sb.append(renderInline(cell));
-            } else {
-                sb.append(cell);
-            }
         }
         return sb.toString();
     }

@@ -46,6 +46,9 @@ public final class AnsiTheme {
     // List bullet
     public static final String MD_BULLET = "\u001B[38;5;67m";
 
+    // Table border (box-drawing chars)
+    public static final String MD_TABLE_BORDER = "\u001B[38;5;240m";
+
     // Reasoning (dim)
     public static final String REASONING = "\u001B[2m";
 
