@@ -12,5 +12,7 @@ public interface AgentSession {
 
     void approveToolCall(String callId, ApprovalDecision decision);
 
+    void cancelTurn();
+
     void close();
 }

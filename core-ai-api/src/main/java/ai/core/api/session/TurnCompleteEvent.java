@@ -16,6 +16,15 @@ public class TurnCompleteEvent implements AgentEvent {
         var event = new TurnCompleteEvent();
         event.sessionId = sessionId;
         event.output = output;
+        event.cancelled = false;
+        return event;
+    }
+
+    public static TurnCompleteEvent cancelled(String sessionId) {
+        var event = new TurnCompleteEvent();
+        event.sessionId = sessionId;
+        event.output = "";
+        event.cancelled = true;
         return event;
     }
 
@@ -25,4 +34,8 @@ public class TurnCompleteEvent implements AgentEvent {
 
     @Property(name = "output")
     public String output;
+
+    @NotNull
+    @Property(name = "cancelled")
+    public Boolean cancelled;
 }

@@ -1,5 +1,6 @@
 package ai.core.cli.config;
 
+import ai.core.cli.ui.AnsiTheme;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -41,11 +42,11 @@ public class InteractiveConfigSetup {
 
     private static void runInteractiveSetup() {
         var out = System.out;
-        var reader = new BufferedReader(new InputStreamReader(System.in));
+        var reader = new BufferedReader(new InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
 
         out.println();
-        out.println("\u001B[36m  Welcome to Core-AI CLI!\u001B[0m");
-        out.println("\u001B[90m  No configuration found. Let's set it up.\u001B[0m");
+        out.println(AnsiTheme.SEPARATOR + "  Welcome to Core-AI CLI!" + AnsiTheme.RESET);
+        out.println(AnsiTheme.MUTED + "  No configuration found. Let's set it up." + AnsiTheme.RESET);
         out.println();
 
         String apiBase = promptWithDefault(reader, out, "API Base URL", DEFAULT_API_BASE);
@@ -55,12 +56,12 @@ public class InteractiveConfigSetup {
         writeConfig(apiBase, apiKey, model);
 
         out.println();
-        out.println("\u001B[32m  Configuration saved to " + CONFIG_FILE + "\u001B[0m");
+        out.println(AnsiTheme.SUCCESS + "  Configuration saved to " + CONFIG_FILE + AnsiTheme.RESET);
         out.println();
     }
 
     private static String promptWithDefault(BufferedReader reader, PrintStream out, String label, String defaultValue) {
-        out.print("  " + label + " [\u001B[90m" + defaultValue + "\u001B[0m]: ");
+        out.print("  " + label + " [" + AnsiTheme.MUTED + defaultValue + AnsiTheme.RESET + "]: ");
         out.flush();
         try {
             String line = reader.readLine();
@@ -82,7 +83,7 @@ public class InteractiveConfigSetup {
                 if (line != null && !line.isBlank()) {
                     return line.trim();
                 }
-                out.println("\u001B[31m  " + label + " is required.\u001B[0m");
+                out.println(AnsiTheme.ERROR + "  " + label + " is required." + AnsiTheme.RESET);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to read input", e);
             }

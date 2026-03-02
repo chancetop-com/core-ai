@@ -145,5 +145,7 @@ project(":core-ai-cli") {
         standardInput = System.`in`
         jvmArgs("--enable-native-access=ALL-UNNAMED")
         systemProperty("org.jline.terminal.type", "xterm-256color")
+        System.getProperty("core.ai.debug")?.let { systemProperty("core.ai.debug", it) }
+        outputs.upToDateWhen { false }
     }
 }

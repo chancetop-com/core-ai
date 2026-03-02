@@ -4,13 +4,20 @@ import ai.core.api.session.ApprovalDecision;
 import ai.core.api.session.SessionStatus;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.Reference;
+import org.jline.reader.impl.LineReaderImpl;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+
+import org.jline.terminal.Attributes;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -19,6 +26,11 @@ import java.util.logging.Logger;
  * @author stephen
  */
 public class TerminalUI {
+
+    private static boolean isDumbTerminal(Terminal t) {
+        return t == null || Terminal.TYPE_DUMB.equals(t.getType()) || Terminal.TYPE_DUMB_COLOR.equals(t.getType());
+    }
+
     private final PrintWriter writer;
     private final LineReader jlineReader;
     private final BufferedReader simpleReader;
@@ -29,20 +41,32 @@ public class TerminalUI {
         boolean isDumb;
         try {
             this.terminal = TerminalBuilder.builder().system(true).build();
-            isDumb = Terminal.TYPE_DUMB.equals(terminal.getType()) || Terminal.TYPE_DUMB_COLOR.equals(terminal.getType());
+            isDumb = isDumbTerminal(terminal);
         } catch (IOException e) {
             isDumb = true;
         }
 
+        // when running as subprocess (e.g. Gradle), stdin/stdout are pipes so JLine
+        // detects dumb terminal; try /dev/tty to get a real terminal on macOS/Linux
         if (isDumb) {
-            // dumb terminal: JLine's NonBlockingReader is unreliable in GraalVM native-image,
-            // bypass LineReader and read stdin directly
-            this.writer = terminal != null ? terminal.writer() : new PrintWriter(System.out, true);
+            isDumb = !tryTtyTerminal();
+        }
+
+        if (isDumb) {
+            this.writer = terminal != null ? terminal.writer() : new PrintWriter(System.out, true, StandardCharsets.UTF_8);
             this.jlineReader = null;
-            this.simpleReader = new BufferedReader(new InputStreamReader(System.in));
+            this.simpleReader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         } else {
             this.writer = terminal.writer();
-            this.jlineReader = LineReaderBuilder.builder().terminal(terminal).appName("core-ai").build();
+            this.jlineReader = LineReaderBuilder.builder()
+                    .terminal(terminal)
+                    .appName("core-ai")
+                    .completer(new SlashCommandCompleter())
+                    .build();
+            this.jlineReader.setOpt(LineReader.Option.AUTO_LIST);
+            this.jlineReader.setOpt(LineReader.Option.AUTO_MENU);
+            this.jlineReader.setOpt(LineReader.Option.LIST_PACKED);
+            registerSlashWidget();
             this.simpleReader = null;
         }
     }
@@ -53,26 +77,26 @@ public class TerminalUI {
     }
 
     public void printSeparator() {
-        writer.println("\n\u001B[36m------------------------------------------------\u001B[0m");
+        writer.println("\n" + AnsiTheme.SEPARATOR + "------------------------------------------------" + AnsiTheme.RESET);
         writer.flush();
     }
 
     public void showStatus(SessionStatus status) {
         if (status == SessionStatus.RUNNING) {
-            writer.println("\u001B[36m\n[Agent is thinking...]\u001B[0m");
+            writer.println(AnsiTheme.SEPARATOR + "\n[Agent is thinking...]" + AnsiTheme.RESET);
             writer.flush();
         }
     }
 
     public void showError(String message) {
-        writer.println("\u001B[31m\n[Error] \u001B[0m" + message);
+        writer.println(AnsiTheme.ERROR + "\n[Error] " + AnsiTheme.RESET + message);
         writer.flush();
     }
 
     public String readInput() {
         if (jlineReader != null) {
             try {
-                return jlineReader.readLine("\u001B[32m\nUser > \u001B[0m");
+                return jlineReader.readLine(AnsiTheme.PROMPT + "\nUser > " + AnsiTheme.RESET);
             } catch (org.jline.reader.UserInterruptException e) {
                 return "/exit";
             } catch (org.jline.reader.EndOfFileException e) {
@@ -89,7 +113,7 @@ public class TerminalUI {
     }
 
     public ApprovalDecision askPermission(String toolName, String arguments) {
-        writer.println("\u001B[33m\n[Tool Approval Required]\u001B[0m");
+        writer.println(AnsiTheme.WARNING + "\n[Tool Approval Required]" + AnsiTheme.RESET);
         writer.println("Tool: " + toolName);
         writer.println("Args: " + arguments);
         writer.flush();
@@ -146,11 +170,90 @@ public class TerminalUI {
         return 80;
     }
 
+    public String getTerminalType() {
+        return terminal != null ? terminal.getType() : "null";
+    }
+
+    public boolean isJLineEnabled() {
+        return jlineReader != null;
+    }
+
+    public boolean isAnsiSupported() {
+        String term = System.getenv("TERM");
+        if (term != null && (term.contains("color") || term.contains("xterm") || term.contains("screen"))) {
+            return true;
+        }
+        if (terminal != null && !Terminal.TYPE_DUMB.equals(terminal.getType())) {
+            return true;
+        }
+        return System.console() != null;
+    }
+
     public PrintWriter getWriter() {
         return writer;
     }
 
+    public Terminal getTerminal() {
+        return terminal;
+    }
+
+    /**
+     * Read a single raw key from the terminal (bypasses line editing).
+     * Returns -1 if terminal is not available or read fails.
+     */
+    public int readRawKey() {
+        if (terminal == null) {
+            return -1;
+        }
+        Attributes saved = terminal.enterRawMode();
+        try {
+            return terminal.reader().read(100);
+        } catch (IOException e) {
+            return -1;
+        } finally {
+            terminal.setAttributes(saved);
+        }
+    }
+
     public void close() throws IOException {
         if (terminal != null) terminal.close();
+    }
+
+    private boolean tryTtyTerminal() {
+        var ttyPath = Path.of("/dev/tty");
+        if (!Files.exists(ttyPath)) {
+            return false;
+        }
+        try {
+            Terminal oldTerminal = this.terminal;
+            this.terminal = TerminalBuilder.builder()
+                    .system(false)
+                    .streams(Files.newInputStream(ttyPath), Files.newOutputStream(ttyPath))
+                    .type("xterm-256color")
+                    .name("core-ai")
+                    .build();
+            if (oldTerminal != null) {
+                oldTerminal.close();
+            }
+            return !isDumbTerminal(this.terminal);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private void registerSlashWidget() {
+        if (!(jlineReader instanceof LineReaderImpl reader)) {
+            return;
+        }
+        String widgetName = "slash-auto-complete";
+        reader.getWidgets().put(widgetName, () -> {
+            reader.callWidget(LineReader.SELF_INSERT);
+            if ("/".equals(reader.getBuffer().toString())) {
+                reader.callWidget(LineReader.COMPLETE_WORD);
+            }
+            return true;
+        });
+        reader.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference(widgetName), "/");
     }
 }

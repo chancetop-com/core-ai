@@ -1,6 +1,7 @@
 package ai.core.cli.command;
 
 import ai.core.cli.DebugLog;
+import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 
 /**
@@ -17,6 +18,11 @@ public class ReplCommandHandler {
         var trimmed = input.trim();
         if (!trimmed.startsWith("/")) return;
 
+        if ("/".equals(trimmed)) {
+            printHelp();
+            return;
+        }
+
         var parts = trimmed.split("\\s+", 2);
         var command = parts[0];
 
@@ -26,18 +32,18 @@ public class ReplCommandHandler {
             case "/clear" -> clearScreen();
             case "/exit" -> {
             }
-            default -> ui.printStreamingChunk("Unknown command: " + command + ". Type /help for available commands.\n");
+            default -> ui.printStreamingChunk(AnsiTheme.WARNING + "Unknown command: " + command + ". Type /help for available commands." + AnsiTheme.RESET + "\n");
         }
     }
 
     private void printHelp() {
-        ui.printStreamingChunk("""
-                Available commands:
-                  /help            Show this help
-                  /debug           Toggle debug mode
-                  /clear           Clear screen
-                  /exit            Quit
-                """);
+        var sb = new StringBuilder("Available commands:\n");
+        for (SlashCommand cmd : SlashCommandRegistry.all()) {
+            sb.append(String.format("  %s%-16s %s%s%n",
+                    AnsiTheme.CMD_NAME, cmd.name(),
+                    AnsiTheme.CMD_DESC + cmd.description(), AnsiTheme.RESET));
+        }
+        ui.printStreamingChunk(sb.toString());
     }
 
     private void toggleDebug() {

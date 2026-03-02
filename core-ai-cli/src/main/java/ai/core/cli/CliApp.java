@@ -34,7 +34,7 @@ public class CliApp {
         // suppress framework INFO logs before LoggerImpl class loads,
         // so its static STDOUT field captures the no-op stream
         var originalOut = System.out;
-        System.setOut(new PrintStream(OutputStream.nullOutputStream()));
+        System.setOut(new PrintStream(OutputStream.nullOutputStream(), false, java.nio.charset.StandardCharsets.UTF_8));
 
         var props = PropertiesFileSource.fromFile(configFile);
         var bootstrap = new AgentBootstrap(props);

@@ -13,25 +13,29 @@ import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.jar.JarFile;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * @author stephen
  */
 public class NativeReflectionFeature implements Feature {
+    private static final Logger LOGGER = Logger.getLogger(NativeReflectionFeature.class.getName());
+
     private static final String[] PACKAGES = {
-            "ai/core/llm/domain",
-            "ai/core/api/jsonschema",
+        "ai/core/llm/domain",
+        "ai/core/api/jsonschema"
     };
 
     private static final String[] EXTRA_CLASSES = {
-            "core.framework.api.json.Property",
-            "ai.core.api.tool.function.CoreAiParameter",
-            "ai.core.api.tool.function.CoreAiMethod",
+        "core.framework.api.json.Property",
+        "ai.core.api.tool.function.CoreAiParameter",
+        "ai.core.api.tool.function.CoreAiMethod"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
     private static final String[] TOOL_SCAN_PACKAGES = {
-            "ai/core",
+        "ai/core"
     };
 
     private final Set<Class<?>> registered = new HashSet<>();
@@ -62,7 +66,7 @@ public class NativeReflectionFeature implements Feature {
                 }
             }
         } catch (IOException e) {
-            System.err.println("[NativeReflectionFeature] failed to scan package: " + pkg.replace('/', '.'));
+            LOGGER.log(Level.WARNING, "failed to scan package: {0}", pkg.replace('/', '.'));
         }
     }
 
@@ -112,7 +116,7 @@ public class NativeReflectionFeature implements Feature {
                 }
             }
         } catch (IOException e) {
-            System.err.println("[NativeReflectionFeature] failed to scan tool package: " + basePkg.replace('/', '.'));
+            LOGGER.log(Level.WARNING, "failed to scan tool package: {0}", basePkg.replace('/', '.'));
         }
     }
 
@@ -162,6 +166,7 @@ public class NativeReflectionFeature implements Feature {
                 }
             }
         } catch (Throwable ignored) {
+            // class introspection may fail for some classes, safe to skip
         }
 
         if (hasCoreAiMethod) {

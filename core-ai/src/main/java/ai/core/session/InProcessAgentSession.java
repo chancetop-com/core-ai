@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author stephen
@@ -34,6 +36,7 @@ public class InProcessAgentSession implements AgentSession {
     private final PermissionGate permissionGate;
     private final ExecutorService executor;
     private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
+    private final AtomicReference<Future<?>> currentTask = new AtomicReference<>();
 
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll) {
         this.sessionId = sessionId;
@@ -57,7 +60,7 @@ public class InProcessAgentSession implements AgentSession {
     @Override
     public void sendMessage(String message) {
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
-        executor.submit(() -> {
+        Future<?> future = executor.submit(() -> {
             try {
                 debug("agent run starting");
                 agent.run(message);
@@ -65,12 +68,30 @@ public class InProcessAgentSession implements AgentSession {
                 dispatch(TurnCompleteEvent.of(sessionId, ""));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             } catch (Throwable e) {
+                if (Thread.currentThread().isInterrupted()) {
+                    debug("agent run cancelled");
+                    dispatch(TurnCompleteEvent.cancelled(sessionId));
+                    dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+                    return;
+                }
                 debug("agent run failed: " + e);
                 logger.error("agent session run failed, sessionId={}", sessionId, e);
                 dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
+            } finally {
+                currentTask.set(null);
             }
         });
+        currentTask.set(future);
+    }
+
+    @Override
+    public void cancelTurn() {
+        Future<?> task = currentTask.getAndSet(null);
+        if (task != null && !task.isDone()) {
+            debug("cancelling current turn");
+            task.cancel(true);
+        }
     }
 
     @Override
