@@ -50,7 +50,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Integer maxTurnNumber;
     private Compression compression;
     private boolean compressionEnabled = true;
-    private boolean toolCallPruningEnabled = true;
+    private boolean toolCallPruningEnabled = false;
     private ToolCallPruning.Config toolCallPruningConfig;
     private ReasoningEffort reasoningEffort;
 
