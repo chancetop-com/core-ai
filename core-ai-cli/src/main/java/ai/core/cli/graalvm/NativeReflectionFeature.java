@@ -30,7 +30,9 @@ public class NativeReflectionFeature implements Feature {
     private static final String[] EXTRA_CLASSES = {
         "core.framework.api.json.Property",
         "ai.core.api.tool.function.CoreAiParameter",
-        "ai.core.api.tool.function.CoreAiMethod"
+        "ai.core.api.tool.function.CoreAiMethod",
+        "ai.core.agent.AgentPersistence$AgentPersistenceDomain",
+        "ai.core.agent.NodeStatus"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
