@@ -23,10 +23,10 @@ public final class AnsiTheme {
     public static final String MUTED = "\u001B[38;5;245m";
 
     // Command name (/help etc)
-    public static final String CMD_NAME = "\u001B[38;5;75m";
+    public static final String CMD_NAME = "\u001B[1;38;5;75m";
 
     // Command description
-    public static final String CMD_DESC = "\u001B[38;5;245m";
+    public static final String CMD_DESC = "\u001B[38;5;252m";
 
     // Markdown header (bold + blue)
     public static final String MD_HEADER = "\u001B[1;38;5;75m";
