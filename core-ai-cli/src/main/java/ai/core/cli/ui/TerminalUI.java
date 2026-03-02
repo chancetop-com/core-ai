@@ -149,17 +149,25 @@ public class TerminalUI {
     }
 
     public void showToolStart(String toolName, String arguments) {
-        writer.println("\u001B[33m\n> " + toolName + "\u001B[0m");
+        writer.println("\n  " + AnsiTheme.WARNING + "⟳ " + AnsiTheme.RESET + toolName);
         if (arguments != null && !arguments.isBlank() && !"{}".equals(arguments.trim())) {
             String display = arguments.length() > 200 ? arguments.substring(0, 200) + "..." : arguments;
-            writer.println("\u001B[2m  " + display + "\u001B[0m");
+            writer.println(AnsiTheme.MUTED + "    " + display + AnsiTheme.RESET);
         }
         writer.flush();
     }
 
-    public void showToolResult(String toolName, String status) {
-        String icon = "success".equals(status) ? "\u001B[32m+" : "\u001B[31m!";
-        writer.println(icon + " " + toolName + "\u001B[0m");
+    public void showToolResult(String toolName, String status, String result) {
+        String icon = "success".equals(status)
+                ? AnsiTheme.SUCCESS + "  ✓ "
+                : AnsiTheme.ERROR + "  ✗ ";
+        writer.println(icon + AnsiTheme.RESET + toolName);
+        if (result != null && !result.isBlank()) {
+            String display = result.length() > 300 ? result.substring(0, 300) + "..." : result;
+            for (String line : display.split("\n", 5)) {
+                writer.println(AnsiTheme.MUTED + "    " + line + AnsiTheme.RESET);
+            }
+        }
         writer.flush();
     }
 
