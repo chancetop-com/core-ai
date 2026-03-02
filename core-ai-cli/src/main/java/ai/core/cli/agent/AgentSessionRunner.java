@@ -123,7 +123,7 @@ public class AgentSessionRunner {
             }
             if (trimmed.startsWith("/")) {
                 commands.handle(input);
-                showFrame = false;
+                showFrame = true;
                 readyForInput.release();
                 continue;
             }
