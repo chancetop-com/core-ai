@@ -134,6 +134,8 @@ public class AgentSessionRunner {
             handleCopy();
         } else if ("/compact".equals(lower)) {
             handleCompact();
+        } else if (lower.startsWith("/export")) {
+            handleExport(trimmed);
         } else if ("/resume".equals(lower)) {
             String picked = showSessionPicker();
             if (picked != null) {
@@ -186,6 +188,32 @@ public class AgentSessionRunner {
             ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + tool.getName() + AnsiTheme.RESET + summary + "\n");
         }
         ui.printStreamingChunk("\n");
+    }
+
+    private void handleExport(String trimmed) {
+        String[] parts = trimmed.split("\\s+", 2);
+        String filePath = parts.length > 1 ? parts[1].trim() : "session-" + sessionId + ".md";
+        var messages = agent.getMessages();
+        try (var writer = java.nio.file.Files.newBufferedWriter(java.nio.file.Path.of(filePath))) {
+            writer.write("# Session: " + sessionId);
+            writer.newLine();
+            writer.newLine();
+            for (var msg : messages) {
+                String role = msg.role.name();
+                String text = msg.getTextContent();
+                if (text == null) continue;
+                writer.write("## " + role);
+                writer.newLine();
+                writer.newLine();
+                writer.write(text);
+                writer.newLine();
+                writer.newLine();
+            }
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
+                    + " Exported to " + filePath + "\n\n");
+        } catch (java.io.IOException e) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
+        }
     }
 
     private String formatToolSummary(String desc) {

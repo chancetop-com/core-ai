@@ -293,15 +293,18 @@ public class TerminalUI {
         if (!(jlineReader instanceof LineReaderImpl reader)) {
             return;
         }
-        String widgetName = "slash-auto-complete";
+        // show completion menu when Tab is pressed after "/"
+        String widgetName = "slash-tab-complete";
         reader.getWidgets().put(widgetName, () -> {
-            reader.callWidget(LineReader.SELF_INSERT);
-            if ("/".equals(reader.getBuffer().toString())) {
+            String buf = reader.getBuffer().toString();
+            if (buf.startsWith("/")) {
                 reader.callWidget(LineReader.COMPLETE_WORD);
+            } else {
+                reader.callWidget(LineReader.SELF_INSERT);
             }
             return true;
         });
         reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference(widgetName), "/");
+                .bind(new Reference(widgetName), "\t");
     }
 }
