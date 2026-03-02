@@ -122,6 +122,17 @@ project(":core-ai-api") {
 }
 
 
+project(":core-ai-server") {
+    version = "1.0.0-SNAPSHOT"
+    apply(plugin = "app")
+    dependencies {
+        implementation(project(":core-ai"))
+        implementation(project(":core-ai-api"))
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+    }
+}
+
 project(":core-ai-cli") {
     version = "1.0.0-SNAPSHOT"
     apply(plugin = "application")
