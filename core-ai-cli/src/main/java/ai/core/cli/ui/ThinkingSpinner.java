@@ -32,6 +32,7 @@ public class ThinkingSpinner {
     }
 
     public void start() {
+        stop();
         startTime = System.currentTimeMillis();
         Thread spinnerThread = new Thread(() -> {
             int frame = 0;
@@ -71,6 +72,6 @@ public class ThinkingSpinner {
     }
 
     public long getElapsedMs() {
-        return System.currentTimeMillis() - startTime;
+        return startTime > 0 ? System.currentTimeMillis() - startTime : 0;
     }
 }

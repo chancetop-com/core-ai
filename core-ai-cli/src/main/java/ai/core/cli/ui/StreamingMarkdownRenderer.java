@@ -13,20 +13,6 @@ public class StreamingMarkdownRenderer {
     private static final String ANSI_CLEAR_LINE = "\u001B[2K";
     private static final String ANSI_CURSOR_UP = "\u001B[1A";
 
-    private static int displayWidth(String text) {
-        int width = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= 0x4E00 && c <= 0x9FFF || c >= 0x3000 && c <= 0x303F
-                    || c >= 0xFF00 && c <= 0xFFEF) {
-                width += 2;
-            } else {
-                width++;
-            }
-        }
-        return width;
-    }
-
     private final PrintWriter writer;
     private final boolean smartTerminal;
     private final int terminalWidth;
@@ -127,7 +113,7 @@ public class StreamingMarkdownRenderer {
                     ? AnsiTheme.MD_CODE_BLOCK + delta + AnsiTheme.RESET
                     : delta);
             writer.flush();
-            printedDisplayWidth += displayWidth(delta);
+            printedDisplayWidth += AnsiTheme.displayWidth(delta);
             printedLength = buffer.length();
         }
     }

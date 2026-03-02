@@ -7,11 +7,19 @@ import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.llm.domain.RoleType;
 import ai.core.persistence.providers.FilePersistenceProvider;
 import ai.core.session.InProcessAgentSession;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
@@ -62,10 +70,8 @@ public class AgentSessionRunner {
 
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), ui.getTerminalWidth(), modelName);
-        // TODO: temporary diagnostic, remove after confirming terminal type
-        ui.getWriter().println("[diag] terminal: type=" + ui.getTerminalType()
+        DebugLog.log("terminal: type=" + ui.getTerminalType()
                 + ", jline=" + ui.isJLineEnabled() + ", ansi=" + ui.isAnsiSupported());
-        ui.getWriter().flush();
     }
 
     private void startSenderThread(BlockingQueue<String> queue, CliEventListener listener,
@@ -112,8 +118,9 @@ public class AgentSessionRunner {
             }
             var trimmed = input.trim();
             if (trimmed.startsWith("/")) {
-                showFrame = dispatchCommand(trimmed, commands, queue);
-                if (showFrame && switchSessionId.get() != null) break;
+                dispatchCommand(trimmed, commands, queue);
+                showFrame = true;
+                if (switchSessionId.get() != null) break;
                 readyForInput.release();
                 continue;
             }
@@ -122,8 +129,8 @@ public class AgentSessionRunner {
         }
     }
 
-    private boolean dispatchCommand(String trimmed, ReplCommandHandler commands, BlockingQueue<String> queue) {
-        var lower = trimmed.toLowerCase(java.util.Locale.ROOT);
+    private void dispatchCommand(String trimmed, ReplCommandHandler commands, BlockingQueue<String> queue) {
+        var lower = trimmed.toLowerCase(Locale.ROOT);
         if (lower.startsWith("/model")) {
             handleModelCommand(trimmed);
         } else if ("/stats".equals(lower)) {
@@ -145,7 +152,6 @@ public class AgentSessionRunner {
         } else {
             commands.handle(trimmed);
         }
-        return true;
     }
 
     private void handleModelCommand(String trimmed) {
@@ -172,7 +178,7 @@ public class AgentSessionRunner {
                 ? agent.getModel()
                 : agent.getLLMProvider().config.getModel();
         int turns = (int) agent.getMessages().stream()
-                .filter(m -> m.role == ai.core.llm.domain.RoleType.USER).count();
+                .filter(m -> m.role == RoleType.USER).count();
         String tokens = String.format("%,d (prompt: %,d, completion: %,d)",
                 (long) usage.getTotalTokens(), (long) usage.getPromptTokens(), (long) usage.getCompletionTokens());
         ui.printStreamingChunk(String.format("%n  %sSession Stats%s%n  Model:       %s%n  Session:     %s%n  Turns:       %d%n  Tokens:      %s%n  Tools:       %d available%n%n",
@@ -194,7 +200,7 @@ public class AgentSessionRunner {
         String[] parts = trimmed.split("\\s+", 2);
         String filePath = parts.length > 1 ? parts[1].trim() : "session-" + sessionId + ".md";
         var messages = agent.getMessages();
-        try (var writer = java.nio.file.Files.newBufferedWriter(java.nio.file.Path.of(filePath))) {
+        try (var writer = Files.newBufferedWriter(Path.of(filePath))) {
             writer.write("# Session: " + sessionId);
             writer.newLine();
             writer.newLine();
@@ -211,7 +217,7 @@ public class AgentSessionRunner {
             }
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                     + " Exported to " + filePath + "\n\n");
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
@@ -232,7 +238,7 @@ public class AgentSessionRunner {
         String lastAssistant = null;
         for (int i = messages.size() - 1; i >= 0; i--) {
             var msg = messages.get(i);
-            if (msg.role == ai.core.llm.domain.RoleType.ASSISTANT && msg.getTextContent() != null) {
+            if (msg.role == RoleType.ASSISTANT && msg.getTextContent() != null) {
                 lastAssistant = msg.getTextContent();
                 break;
             }
@@ -253,18 +259,15 @@ public class AgentSessionRunner {
 
     private void handleCompact() {
         var messages = agent.getMessages();
-        int before = messages.size();
-        if (before <= 2) {
+        int total = messages.size();
+        if (total <= 4) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
             return;
         }
-        // keep system prompt (first) + last 2 user-assistant pairs
-        int keep = Math.min(4, before - 1);
-        int removed = 0;
-        while (messages.size() > keep + 1) {
-            messages.remove(1);
-            removed++;
-        }
+        // keep system prompt (index 0) + last 4 messages (2 user-assistant pairs)
+        int removeEnd = total - 4;
+        int removed = removeEnd - 1;
+        messages.subList(1, removeEnd).clear();
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Compacted: removed " + removed + " messages, kept " + messages.size() + "\n\n");
     }
@@ -313,11 +316,11 @@ public class AgentSessionRunner {
         }
     }
 
-    private String formatFileTime(java.nio.file.Path path) {
+    private String formatFileTime(Path path) {
         try {
-            var modified = java.nio.file.Files.getLastModifiedTime(path).toInstant();
-            var local = java.time.LocalDateTime.ofInstant(modified, java.time.ZoneId.systemDefault());
-            return local.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+            var modified = Files.getLastModifiedTime(path).toInstant();
+            var local = LocalDateTime.ofInstant(modified, ZoneId.systemDefault());
+            return local.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
         } catch (Exception e) {
             return "unknown";
         }

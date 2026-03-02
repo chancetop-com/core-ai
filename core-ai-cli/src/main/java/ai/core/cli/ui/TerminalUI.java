@@ -2,6 +2,7 @@ package ai.core.cli.ui;
 
 import ai.core.api.session.ApprovalDecision;
 import ai.core.api.session.SessionStatus;
+import ai.core.cli.DebugLog;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.Reference;
@@ -82,7 +83,8 @@ public class TerminalUI {
     }
 
     public void showStatus(SessionStatus status) {
-        // spinner is now handled by ThinkingSpinner in CliEventListener
+        // handled by ThinkingSpinner in CliEventListener
+        DebugLog.log("status: " + status);
     }
 
     public void showError(String message) {

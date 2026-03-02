@@ -86,10 +86,10 @@ public class InProcessAgentSession implements AgentSession {
                 dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
             } finally {
-                currentTask.set(null);
+                currentTask.compareAndSet(currentTask.get(), null);
             }
         });
-        currentTask.set(future);
+        currentTask.set(future);  // safe: single-thread executor ensures task hasn't started yet
     }
 
     @Override

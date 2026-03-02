@@ -31,7 +31,7 @@ public final class TableRenderer {
         sb.append(topBorder(widths)).append('\n');
         for (int i = 0; i < parsed.size(); i++) {
             sb.append(dataRow(parsed.get(i), widths, cols)).append('\n');
-            if (i == 0 && headerIndex > 0) {
+            if (i == 0 && headerIndex >= 0) {
                 sb.append(middleBorder(widths)).append('\n');
             }
         }
@@ -77,7 +77,7 @@ public final class TableRenderer {
         int[] widths = new int[cols];
         for (String[] row : parsed) {
             for (int i = 0; i < row.length && i < cols; i++) {
-                widths[i] = Math.max(widths[i], displayWidth(row[i]));
+                widths[i] = Math.max(widths[i], AnsiTheme.displayWidth(row[i]));
             }
         }
         for (int i = 0; i < cols; i++) {
@@ -86,22 +86,8 @@ public final class TableRenderer {
         return widths;
     }
 
-    private static int displayWidth(String text) {
-        int width = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= 0x4E00 && c <= 0x9FFF || c >= 0x3000 && c <= 0x303F
-                    || c >= 0xFF00 && c <= 0xFFEF) {
-                width += 2;
-            } else {
-                width++;
-            }
-        }
-        return width;
-    }
-
     private static String pad(String text, int targetWidth) {
-        int current = displayWidth(text);
+        int current = AnsiTheme.displayWidth(text);
         int needed = targetWidth - current;
         if (needed <= 0) return text;
         return text + " ".repeat(needed);
