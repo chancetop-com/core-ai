@@ -14,15 +14,16 @@ import ai.core.cli.DebugLog;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
+import org.jline.terminal.Terminal;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author stephen
  */
 public class CliEventListener implements AgentEventListener {
 
-    private static final int ESC_KEY = 0x1B;
-    private static final long ESC_WINDOW_MS = 3000;
+    private static final long CANCEL_WINDOW_MS = 3000;
 
     private static String truncate(String text, int maxLength) {
         if (text == null) return "null";
@@ -33,22 +34,26 @@ public class CliEventListener implements AgentEventListener {
     private final AgentSession session;
     private final StreamingMarkdownRenderer markdownRenderer;
     private volatile CompletableFuture<Void> turnFuture;
-    private volatile Thread escThread;
+    private final AtomicBoolean turnRunning = new AtomicBoolean(false);
+    private volatile long firstInterrupt;
+    private Terminal.SignalHandler previousIntHandler;
 
     public CliEventListener(TerminalUI ui, AgentSession session) {
         this.ui = ui;
         this.session = session;
         this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported());
+        installSignalHandler();
     }
 
     public void prepareTurn() {
         turnFuture = new CompletableFuture<>();
-        startEscMonitor();
+        turnRunning.set(true);
+        firstInterrupt = 0;
     }
 
     public void waitForTurn() {
         if (turnFuture != null) turnFuture.join();
-        stopEscMonitor();
+        turnRunning.set(false);
     }
 
     @Override
@@ -113,44 +118,30 @@ public class CliEventListener implements AgentEventListener {
         ui.showStatus(event.status);
     }
 
-    private void startEscMonitor() {
-        if (!ui.isJLineEnabled()) {
+    private void installSignalHandler() {
+        Terminal terminal = ui.getTerminal();
+        if (terminal == null) {
             return;
         }
-        Thread thread = new Thread(() -> {
-            DebugLog.log("ESC monitor started");
-            long firstEsc = 0;
-            while (!Thread.currentThread().isInterrupted()) {
-                int key = ui.readRawKey();
-                if (key == ESC_KEY) {
-                    long now = System.currentTimeMillis();
-                    if (now - firstEsc <= ESC_WINDOW_MS) {
-                        DebugLog.log("double ESC, cancelling turn");
-                        session.cancelTurn();
-                        break;
-                    }
-                    firstEsc = now;
-                    ui.getWriter().print(AnsiTheme.MUTED + " [Press ESC again to cancel]" + AnsiTheme.RESET);
-                    ui.getWriter().flush();
-                }
+        previousIntHandler = terminal.handle(Terminal.Signal.INT, signal -> {
+            if (turnRunning.get()) {
+                handleInterruptDuringTurn();
+            } else if (previousIntHandler != null) {
+                previousIntHandler.handle(signal);
             }
-            DebugLog.log("ESC monitor stopped");
-        }, "esc-monitor");
-        thread.setDaemon(true);
-        escThread = thread;
-        thread.start();
+        });
     }
 
-    private void stopEscMonitor() {
-        Thread thread = escThread;
-        escThread = null;
-        if (thread != null) {
-            thread.interrupt();
-            try {
-                thread.join(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+    private void handleInterruptDuringTurn() {
+        long now = System.currentTimeMillis();
+        if (now - firstInterrupt <= CANCEL_WINDOW_MS && firstInterrupt > 0) {
+            DebugLog.log("double Ctrl+C, cancelling turn");
+            session.cancelTurn();
+            firstInterrupt = 0;
+        } else {
+            firstInterrupt = now;
+            ui.getWriter().println("\n" + AnsiTheme.MUTED + "[Press Ctrl+C again to cancel]" + AnsiTheme.RESET);
+            ui.getWriter().flush();
         }
     }
 }

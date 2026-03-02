@@ -9,8 +9,6 @@ import org.jline.reader.impl.LineReaderImpl;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
-import org.jline.terminal.Attributes;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -195,24 +193,6 @@ public class TerminalUI {
 
     public Terminal getTerminal() {
         return terminal;
-    }
-
-    /**
-     * Read a single raw key from the terminal (bypasses line editing).
-     * Returns -1 if terminal is not available or read fails.
-     */
-    public int readRawKey() {
-        if (terminal == null) {
-            return -1;
-        }
-        Attributes saved = terminal.enterRawMode();
-        try {
-            return terminal.reader().read(100);
-        } catch (IOException e) {
-            return -1;
-        } finally {
-            terminal.setAttributes(saved);
-        }
     }
 
     public void close() throws IOException {
