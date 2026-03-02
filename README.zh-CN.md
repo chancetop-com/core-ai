@@ -142,17 +142,47 @@ System.out.println(output.getOutput());
 
 Core-AI 提供了一个终端交互式 CLI 工具（`core-ai-cli`），用于 AI 对话。
 
-**构建 Native Image：**
+#### 前置条件
+
+- GraalVM JDK 21+（编译 native image 所需）
+
+#### 构建
+
 ```bash
+git clone https://github.com/chancetop-com/core-ai.git
+cd core-ai
 ./gradlew :core-ai-cli:nativeCompile
 ```
 
-**安装：**
+编译完成后，native 二进制文件位于 `core-ai-cli/build/native/nativeCompile/core-ai-cli`（Windows 下为 `core-ai-cli.exe`）。
+
+#### 安装
+
+**macOS：**
 ```bash
-cp core-ai-cli/build/native/nativeCompile/core-ai-cli /usr/local/bin/
+sudo cp core-ai-cli/build/native/nativeCompile/core-ai-cli /usr/local/bin/
 ```
 
-**运行：**
+**Linux：**
+```bash
+sudo cp core-ai-cli/build/native/nativeCompile/core-ai-cli /usr/local/bin/
+# 或安装到用户目录（无需 sudo）
+mkdir -p ~/.local/bin
+cp core-ai-cli/build/native/nativeCompile/core-ai-cli ~/.local/bin/
+# 确保 ~/.local/bin 在 PATH 中
+```
+
+**Windows（以管理员身份运行 PowerShell）：**
+```powershell
+Copy-Item core-ai-cli\build\native\nativeCompile\core-ai-cli.exe C:\Windows\System32\
+# 或复制到自定义目录并加入 PATH
+mkdir "$env:USERPROFILE\bin" -Force
+Copy-Item core-ai-cli\build\native\nativeCompile\core-ai-cli.exe "$env:USERPROFILE\bin\"
+# 添加到 PATH: [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\bin", "User")
+```
+
+#### 运行
+
 ```bash
 core-ai-cli
 ```

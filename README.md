@@ -142,17 +142,47 @@ System.out.println(output.getOutput());
 
 Core-AI provides a terminal-based CLI tool (`core-ai-cli`) for interactive AI conversations.
 
-**Build Native Image:**
+#### Prerequisites
+
+- GraalVM JDK 21+ (required for native image compilation)
+
+#### Build
+
 ```bash
+git clone https://github.com/chancetop-com/core-ai.git
+cd core-ai
 ./gradlew :core-ai-cli:nativeCompile
 ```
 
-**Install:**
+The native binary will be generated at `core-ai-cli/build/native/nativeCompile/core-ai-cli` (or `core-ai-cli.exe` on Windows).
+
+#### Install
+
+**macOS:**
 ```bash
-cp core-ai-cli/build/native/nativeCompile/core-ai-cli /usr/local/bin/
+sudo cp core-ai-cli/build/native/nativeCompile/core-ai-cli /usr/local/bin/
 ```
 
-**Run:**
+**Linux:**
+```bash
+sudo cp core-ai-cli/build/native/nativeCompile/core-ai-cli /usr/local/bin/
+# or install to user directory (no sudo required)
+mkdir -p ~/.local/bin
+cp core-ai-cli/build/native/nativeCompile/core-ai-cli ~/.local/bin/
+# make sure ~/.local/bin is in your PATH
+```
+
+**Windows (PowerShell as Administrator):**
+```powershell
+Copy-Item core-ai-cli\build\native\nativeCompile\core-ai-cli.exe C:\Windows\System32\
+# or add to a custom directory in your PATH
+mkdir "$env:USERPROFILE\bin" -Force
+Copy-Item core-ai-cli\build\native\nativeCompile\core-ai-cli.exe "$env:USERPROFILE\bin\"
+# add to PATH: [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\bin", "User")
+```
+
+#### Run
+
 ```bash
 core-ai-cli
 ```
