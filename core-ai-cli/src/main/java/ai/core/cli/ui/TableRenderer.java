@@ -119,6 +119,7 @@ public final class TableRenderer {
         return border("└", "┴", "┘", widths);
     }
 
+    @SuppressWarnings("PMD.ConsecutiveAppendsShouldReuse")
     private static String border(String left, String mid, String right, int[] widths) {
         var sb = new StringBuilder();
         sb.append(TC).append(left);
@@ -130,13 +131,14 @@ public final class TableRenderer {
         return sb.toString();
     }
 
+    @SuppressWarnings("PMD.ConsecutiveAppendsShouldReuse")
     private static String dataRow(String[] cells, int[] widths, int cols) {
         var sb = new StringBuilder();
-        sb.append(TC).append("│").append(R);
+        sb.append(TC).append('│').append(R);
         for (int i = 0; i < cols; i++) {
             String cell = i < cells.length ? cells[i] : "";
             sb.append(' ').append(MarkdownLineRenderer.renderInline(pad(cell, widths[i]))).append(' ');
-            sb.append(TC).append("│").append(R);
+            sb.append(TC).append('│').append(R);
         }
         return sb.toString();
     }
