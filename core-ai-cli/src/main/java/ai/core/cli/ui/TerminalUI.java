@@ -64,6 +64,7 @@ public class TerminalUI {
             this.jlineReader.setOpt(LineReader.Option.AUTO_LIST);
             this.jlineReader.setOpt(LineReader.Option.AUTO_MENU);
             this.jlineReader.setOpt(LineReader.Option.LIST_PACKED);
+            this.jlineReader.setOpt(LineReader.Option.AUTO_MENU_LIST);
             registerSlashWidget();
             this.simpleReader = null;
         }
@@ -290,18 +291,15 @@ public class TerminalUI {
         if (!(jlineReader instanceof LineReaderImpl reader)) {
             return;
         }
-        // show completion menu when Tab is pressed after "/"
-        String widgetName = "slash-tab-complete";
+        String widgetName = "slash-auto-complete";
         reader.getWidgets().put(widgetName, () -> {
-            String buf = reader.getBuffer().toString();
-            if (buf.startsWith("/")) {
-                reader.callWidget(LineReader.COMPLETE_WORD);
-            } else {
-                reader.callWidget(LineReader.SELF_INSERT);
+            reader.callWidget(LineReader.SELF_INSERT);
+            if ("/".equals(reader.getBuffer().toString())) {
+                reader.callWidget(LineReader.MENU_COMPLETE);
             }
             return true;
         });
         reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference(widgetName), "\t");
+                .bind(new Reference(widgetName), "/");
     }
 }
