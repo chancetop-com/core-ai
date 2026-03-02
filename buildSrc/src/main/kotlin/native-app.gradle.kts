@@ -5,7 +5,6 @@ plugins {
 graalvmNative {
     binaries {
         named("main") {
-            imageName.set("cai")
             mainClass.set("Main")
             buildArgs.add("--no-fallback")
             buildArgs.add("--enable-native-access=ALL-UNNAMED")
