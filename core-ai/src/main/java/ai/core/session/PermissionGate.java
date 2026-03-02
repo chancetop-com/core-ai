@@ -17,10 +17,20 @@ public class PermissionGate {
     private final Logger logger = LoggerFactory.getLogger(PermissionGate.class);
     private final ConcurrentMap<String, CompletableFuture<ApprovalDecision>> pending = new ConcurrentHashMap<>();
 
+    // Called by Agent thread BEFORE dispatching the approval event,
+    // so that respond() can find the future even if dispatch is synchronous
+    public void prepare(String callId) {
+        logger.debug("preparing approval future, callId={}", callId);
+        pending.put(callId, new CompletableFuture<>());
+    }
+
     // Called by Agent thread - blocks until client responds or timeout
     public ApprovalDecision waitForApproval(String callId, long timeoutMs) {
-        var future = new CompletableFuture<ApprovalDecision>();
-        pending.put(callId, future);
+        var future = pending.get(callId);
+        if (future == null) {
+            logger.error("no prepared future for callId={}, this should not happen", callId);
+            return ApprovalDecision.DENY;
+        }
         logger.info("waiting for tool approval, callId={}", callId);
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);

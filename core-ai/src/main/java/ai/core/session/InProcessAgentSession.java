@@ -62,6 +62,7 @@ public class InProcessAgentSession implements AgentSession {
                 debug("agent run starting");
                 agent.run(message);
                 debug("agent run completed");
+                dispatch(TurnCompleteEvent.of(sessionId, ""));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             } catch (Throwable e) {
                 debug("agent run failed: " + e);
@@ -79,6 +80,7 @@ public class InProcessAgentSession implements AgentSession {
 
     @Override
     public void approveToolCall(String callId, ApprovalDecision decision) {
+        logger.debug("approveToolCall: callId={}, decision={}, sessionId={}", callId, decision, sessionId);
         permissionGate.respond(callId, decision);
     }
 
@@ -89,6 +91,7 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     private void dispatch(AgentEvent event) {
+        logger.debug("dispatching event: {}, sessionId={}, thread={}", event.getClass().getSimpleName(), sessionId, Thread.currentThread().getName());
         for (AgentEventListener listener : listeners) {
             try {
                 if (event instanceof TextChunkEvent e) listener.onTextChunk(e);

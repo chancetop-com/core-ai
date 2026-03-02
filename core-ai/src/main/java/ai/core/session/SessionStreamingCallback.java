@@ -6,7 +6,6 @@ import ai.core.api.session.ErrorEvent;
 import ai.core.api.session.ReasoningChunkEvent;
 import ai.core.api.session.ReasoningCompleteEvent;
 import ai.core.api.session.TextChunkEvent;
-import ai.core.api.session.TurnCompleteEvent;
 
 import java.util.function.Consumer;
 
@@ -50,7 +49,10 @@ public class SessionStreamingCallback implements StreamingCallback {
 
     @Override
     public void onComplete() {
-        dispatcher.accept(TurnCompleteEvent.of(sessionId, ""));
+        // TurnCompleteEvent is dispatched by InProcessAgentSession after the entire agent run
+        // (including all tool calls) is complete, not after each LLM streaming response.
+        // Dispatching here would prematurely unblock the REPL loop, causing stdin race conditions
+        // between readInput() and askPermission().
     }
 
     @Override
