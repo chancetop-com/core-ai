@@ -8,12 +8,12 @@ import ai.core.tool.BuiltinTools;
  * @author stephen
  */
 public class CliAgent {
-    public static Agent of(LLMProviders providers, String modelOverride) {
+    public static Agent of(LLMProviders providers, String modelOverride, int maxTurn) {
 
         var builder = Agent.builder()
                 .llmProvider(providers.getProvider())
                 .systemPrompt("You are a helpful AI coding assistant.")
-                .maxTurn(100)
+                .maxTurn(maxTurn)
                 .toolCalls(BuiltinTools.ALL)
                 .temperature(0.8);
 

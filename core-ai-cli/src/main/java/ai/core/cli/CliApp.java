@@ -19,10 +19,12 @@ public class CliApp {
 
     private final Path configFile;
     private final String modelOverride;
+    private final boolean autoApproveAll;
 
-    public CliApp(Path configFile, String modelOverride) {
+    public CliApp(Path configFile, String modelOverride, boolean autoApproveAll) {
         this.configFile = configFile != null ? configFile : DEFAULT_CONFIG;
         this.modelOverride = modelOverride;
+        this.autoApproveAll = autoApproveAll;
     }
 
     public void start() {
@@ -41,8 +43,10 @@ public class CliApp {
         System.setOut(originalOut);
         DebugLog.log("bootstrap initialized");
 
+        int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
+
         var ui = new TerminalUI();
-        var runner = new AgentSessionRunner(ui, result.llmProviders, modelOverride);
+        var runner = new AgentSessionRunner(ui, result.llmProviders, modelOverride, autoApproveAll, maxTurn);
 
         try {
             runner.run();

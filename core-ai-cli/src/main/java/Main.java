@@ -31,13 +31,16 @@ public class Main implements Callable<Integer> {
     @Option(names = "--config", description = "Config file path")
     Path configFile;
 
+    @Option(names = "--dangerously-skip-permissions", description = "Skip all tool approval prompts")
+    boolean skipPermissions;
+
     @Override
     public Integer call() {
         if (debug) {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
-        new CliApp(configFile, model).start();
+        new CliApp(configFile, model, skipPermissions).start();
         return 0;
     }
 }

@@ -31,7 +31,7 @@ public class PermissionGate {
             logger.error("no prepared future for callId={}, this should not happen", callId);
             return ApprovalDecision.DENY;
         }
-        logger.info("waiting for tool approval, callId={}", callId);
+        logger.debug("waiting for tool approval, callId={}", callId);
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
@@ -49,7 +49,7 @@ public class PermissionGate {
     public void respond(String callId, ApprovalDecision decision) {
         var future = pending.get(callId);
         if (future != null) {
-            logger.info("received tool approval response, callId={}, decision={}", callId, decision);
+            logger.debug("received tool approval response, callId={}, decision={}", callId, decision);
             future.complete(decision);
         } else {
             logger.warn("received response for unknown or expired callId, callId={}", callId);

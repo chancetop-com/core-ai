@@ -17,17 +17,21 @@ public class AgentSessionRunner {
     private final TerminalUI ui;
     private final LLMProviders providers;
     private final String modelOverride;
+    private final boolean autoApproveAll;
+    private final int maxTurn;
 
-    public AgentSessionRunner(TerminalUI ui, LLMProviders providers, String modelOverride) {
+    public AgentSessionRunner(TerminalUI ui, LLMProviders providers, String modelOverride, boolean autoApproveAll, int maxTurn) {
         this.ui = ui;
         this.providers = providers;
         this.modelOverride = modelOverride;
+        this.autoApproveAll = autoApproveAll;
+        this.maxTurn = maxTurn;
     }
 
     public void run() {
         var sessionId = UUID.randomUUID().toString();
-        var agent = CliAgent.of(providers, modelOverride);
-        var session = new InProcessAgentSession(sessionId, agent, false);
+        var agent = CliAgent.of(providers, modelOverride, maxTurn);
+        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll);
         var listener = new CliEventListener(ui, session);
         session.onEvent(listener);
 
