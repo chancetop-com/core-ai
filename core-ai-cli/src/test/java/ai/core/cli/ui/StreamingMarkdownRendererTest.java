@@ -19,7 +19,7 @@ public class StreamingMarkdownRendererTest {
 
     private static void testDumbTerminalNoDuplicate() {
         var sw = new StringWriter();
-        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), false);
+        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), false, 80);
 
         renderer.processChunk("Hel");
         renderer.processChunk("lo W");
@@ -34,7 +34,7 @@ public class StreamingMarkdownRendererTest {
 
     private static void testDumbTerminalMultiLine() {
         var sw = new StringWriter();
-        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), false);
+        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), false, 80);
 
         renderer.processChunk("Line 1\nLine 2\n");
 
@@ -46,7 +46,7 @@ public class StreamingMarkdownRendererTest {
 
     private static void testSmartTerminalRendering() {
         var sw = new StringWriter();
-        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), true);
+        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), true, 80);
 
         renderer.processChunk("# Hello\n");
 
@@ -58,7 +58,7 @@ public class StreamingMarkdownRendererTest {
 
     private static void testCodeBlockStreaming() {
         var sw = new StringWriter();
-        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), false);
+        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), false, 80);
 
         renderer.processChunk("```java\nint x");
         renderer.processChunk(" = 1;\n```\n");
@@ -71,7 +71,7 @@ public class StreamingMarkdownRendererTest {
 
     private static void testPartialFlushDelta() {
         var sw = new StringWriter();
-        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), false);
+        var renderer = new StreamingMarkdownRenderer(new PrintWriter(sw), false, 80);
 
         renderer.processChunk("AB");
         String afterFirst = sw.toString();
