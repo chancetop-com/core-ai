@@ -208,6 +208,21 @@ public class TerminalUI {
         writer.flush();
     }
 
+    public String readRawLine() {
+        if (jlineReader != null) {
+            try {
+                return jlineReader.readLine();
+            } catch (org.jline.reader.UserInterruptException | org.jline.reader.EndOfFileException e) {
+                return null;
+            }
+        }
+        try {
+            return simpleReader.readLine();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
     public void endStreaming() {
         writer.println();
         writer.flush();

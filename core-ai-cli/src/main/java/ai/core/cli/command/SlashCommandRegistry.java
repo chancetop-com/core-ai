@@ -9,6 +9,7 @@ public final class SlashCommandRegistry {
 
     private static final List<SlashCommand> COMMANDS = List.of(
             new SlashCommand("/help", "Show available commands"),
+            new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/debug", "Toggle debug mode"),
             new SlashCommand("/clear", "Clear screen"),
             new SlashCommand("/exit", "Quit")

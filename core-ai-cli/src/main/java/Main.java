@@ -34,13 +34,19 @@ public class Main implements Callable<Integer> {
     @Option(names = "--dangerously-skip-permissions", description = "Skip all tool approval prompts")
     boolean skipPermissions;
 
+    @Option(names = {"-c", "--continue"}, description = "Resume the most recent session")
+    boolean continueSession;
+
+    @Option(names = "--resume", description = "Pick a recent session to resume")
+    boolean resume;
+
     @Override
     public Integer call() {
         if (debug) {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
-        new CliApp(configFile, model, skipPermissions).start();
+        new CliApp(configFile, model, skipPermissions, continueSession, resume).start();
         return 0;
     }
 }

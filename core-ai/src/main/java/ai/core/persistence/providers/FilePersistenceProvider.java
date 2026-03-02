@@ -3,9 +3,11 @@ package ai.core.persistence.providers;
 import ai.core.persistence.PersistenceProvider;
 import core.framework.util.Files;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,7 +48,22 @@ public class FilePersistenceProvider implements PersistenceProvider {
 
     @Override
     public Optional<String> load(String id) {
-        return Optional.of(Files.text(Paths.get(path(id))));
+        var path = Paths.get(path(id));
+        if (!java.nio.file.Files.exists(path)) return Optional.empty();
+        return Optional.of(Files.text(path));
+    }
+
+    public List<String> listSessions() {
+        var dir = new File(directory);
+        var files = dir.listFiles((d, name) -> name.endsWith(".data"));
+        if (files == null || files.length == 0) return List.of();
+        Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+        return Arrays.stream(files)
+            .map(f -> {
+                var name = f.getName();
+                return name.substring(0, name.length() - ".data".length());
+            })
+            .toList();
     }
 
     public String path(String id) {

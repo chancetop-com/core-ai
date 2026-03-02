@@ -50,6 +50,10 @@ public class InProcessAgentSession implements AgentSession {
 
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
         agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll));
+
+        if (agent.hasPersistenceProvider()) {
+            agent.load(sessionId);
+        }
     }
 
     @Override
@@ -63,9 +67,12 @@ public class InProcessAgentSession implements AgentSession {
         Future<?> future = executor.submit(() -> {
             try {
                 debug("agent run starting");
-                agent.run(message);
+                var result = agent.run(message);
+                if (agent.hasPersistenceProvider()) {
+                    agent.save(sessionId);
+                }
                 debug("agent run completed");
-                dispatch(TurnCompleteEvent.of(sessionId, ""));
+                dispatch(TurnCompleteEvent.of(sessionId, result != null ? result : ""));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             } catch (Throwable e) {
                 if (Thread.currentThread().isInterrupted()) {

@@ -214,6 +214,10 @@ public abstract class Node<T extends Node<T>> {
         this.next = node;
     }
 
+    public boolean hasPersistenceProvider() {
+        return persistenceProvider != null;
+    }
+
     @SuppressWarnings("unchecked")
     public void load(String id) {
         if (persistenceProvider == null) throw new RuntimeException("PersistenceProvider is not set");
@@ -367,11 +371,9 @@ public abstract class Node<T extends Node<T>> {
     void setPersistence(Persistence<T> persistence) {
         this.persistence = persistence;
     }
-
     void setPersistenceProvider(PersistenceProvider persistenceProvider) {
         this.persistenceProvider = persistenceProvider;
     }
-
     void addMessage(Message message) {
         if (message.role == RoleType.ASSISTANT || message.role == RoleType.TOOL) {
             addAssistantOrToolMessage(message);
@@ -379,15 +381,12 @@ public abstract class Node<T extends Node<T>> {
             this.messages.add(message);
         }
     }
-
     void addMessages(List<Message> messages) {
         this.messages.addAll(messages);
     }
-
     void removeMessage(Message message) {
         this.messages.remove(message);
     }
-
     void addTaskHistoriesToMessages() {
         if (this.task == null) return;
         var histories = this.task.getHistory();
@@ -401,7 +400,6 @@ public abstract class Node<T extends Node<T>> {
     void clearMessages() {
         this.messages.clear();
     }
-
     Map<String, Object> getSystemVariables() {
         return this.systemVariables;
     }

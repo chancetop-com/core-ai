@@ -4,27 +4,43 @@ import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.agent.AgentSessionRunner;
+import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
+import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.persistence.providers.FilePersistenceProvider;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * @author stephen
  */
 public class CliApp {
     private static final Path DEFAULT_CONFIG = Path.of(System.getProperty("user.home"), ".core-ai-cli", "agent.properties");
+    private static final String SESSIONS_DIR = Path.of(System.getProperty("user.home"), ".core-ai-cli", "sessions").toString();
+    private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final Path configFile;
     private final String modelOverride;
     private final boolean autoApproveAll;
+    private final boolean continueSession;
+    private final boolean resume;
 
-    public CliApp(Path configFile, String modelOverride, boolean autoApproveAll) {
+    public CliApp(Path configFile, String modelOverride, boolean autoApproveAll, boolean continueSession, boolean resume) {
         this.configFile = configFile != null ? configFile : DEFAULT_CONFIG;
         this.modelOverride = modelOverride;
         this.autoApproveAll = autoApproveAll;
+        this.continueSession = continueSession;
+        this.resume = resume;
     }
 
     public void start() {
@@ -45,14 +61,91 @@ public class CliApp {
 
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
 
+        var persistenceProvider = new FilePersistenceProvider(SESSIONS_DIR);
         var ui = new TerminalUI();
-        var runner = new AgentSessionRunner(ui, result.llmProviders, modelOverride, autoApproveAll, maxTurn);
+        var modelName = modelOverride != null ? modelOverride : result.llmProviders.getProvider().config.getModel();
+        String currentSessionId = resolveSessionId(persistenceProvider, ui);
+        if (currentSessionId == null) {
+            currentSessionId = "cli-" + LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        }
 
         try {
-            runner.run();
+            while (true) {
+                var agent = CliAgent.of(result.llmProviders, modelOverride, maxTurn, persistenceProvider);
+                var runner = new AgentSessionRunner(ui, agent, modelName, autoApproveAll, currentSessionId, persistenceProvider);
+                String nextSessionId = runner.run();
+                if (nextSessionId == null) break;
+                currentSessionId = nextSessionId;
+            }
+            ui.printStreamingChunk("Goodbye!\n");
         } finally {
             closeQuietly(ui);
             closeShutdownResources(result);
+        }
+    }
+
+    private String resolveSessionId(FilePersistenceProvider provider, TerminalUI ui) {
+        if (continueSession) {
+            var sessions = provider.listSessions();
+            if (sessions.isEmpty()) {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "No previous sessions found. Starting new session." + AnsiTheme.RESET + "\n");
+                return null;
+            }
+            var sessionId = sessions.getFirst();
+            ui.printStreamingChunk(AnsiTheme.MUTED + "Resuming session: " + sessionId + AnsiTheme.RESET + "\n");
+            return sessionId;
+        }
+        if (resume) {
+            var sessions = provider.listSessions();
+            if (sessions.isEmpty()) {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "No previous sessions found. Starting new session." + AnsiTheme.RESET + "\n");
+                return null;
+            }
+            return pickSession(sessions, provider, ui);
+        }
+        return null;
+    }
+
+    private String pickSession(List<String> sessions, FilePersistenceProvider provider, TerminalUI ui) {
+        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions:" + AnsiTheme.RESET + "\n\n");
+        int limit = Math.min(sessions.size(), 10);
+        for (int i = 0; i < limit; i++) {
+            var id = sessions.get(i);
+            var filePath = Paths.get(provider.path(id));
+            String timeStr = formatFileTime(filePath);
+            ui.printStreamingChunk(String.format("  %s%2d)%s %s %s(%s)%s%n",
+                AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET,
+                id,
+                AnsiTheme.MUTED, timeStr, AnsiTheme.RESET));
+        }
+        ui.printStreamingChunk("\n");
+
+        while (true) {
+            ui.printStreamingChunk(AnsiTheme.PROMPT + "Select session (1-" + limit + "), or 'n' for new: " + AnsiTheme.RESET);
+            var input = ui.readRawLine();
+            if (input == null || "n".equalsIgnoreCase(input.trim())) {
+                return null;
+            }
+            try {
+                int choice = Integer.parseInt(input.trim());
+                if (choice >= 1 && choice <= limit) {
+                    var sessionId = sessions.get(choice - 1);
+                    ui.printStreamingChunk(AnsiTheme.MUTED + "Resuming session: " + sessionId + AnsiTheme.RESET + "\n");
+                    return sessionId;
+                }
+            } catch (NumberFormatException ignored) {
+                // fall through to re-prompt
+            }
+            ui.printStreamingChunk(AnsiTheme.WARNING + "Invalid selection." + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    private String formatFileTime(Path path) {
+        try {
+            var modified = Files.getLastModifiedTime(path).toInstant();
+            return LocalDateTime.ofInstant(modified, ZoneId.systemDefault()).format(DISPLAY_FORMAT);
+        } catch (Exception e) {
+            return "unknown";
         }
     }
 
