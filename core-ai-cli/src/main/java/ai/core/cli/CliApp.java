@@ -7,6 +7,8 @@ import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.ui.TerminalUI;
 
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.file.Path;
 
 /**
@@ -26,9 +28,17 @@ public class CliApp {
     public void start() {
         InteractiveConfigSetup.setupIfNeeded();
         DebugLog.log("loading config from " + configFile);
+
+        // suppress framework INFO logs before LoggerImpl class loads,
+        // so its static STDOUT field captures the no-op stream
+        var originalOut = System.out;
+        System.setOut(new PrintStream(OutputStream.nullOutputStream()));
+
         var props = PropertiesFileSource.fromFile(configFile);
         var bootstrap = new AgentBootstrap(props);
         var result = bootstrap.initialize();
+
+        System.setOut(originalOut);
         DebugLog.log("bootstrap initialized");
 
         var ui = new TerminalUI();
