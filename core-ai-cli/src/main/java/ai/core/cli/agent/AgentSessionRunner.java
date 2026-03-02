@@ -111,6 +111,12 @@ public class AgentSessionRunner {
                 continue;
             }
             var trimmed = input.trim();
+            if (trimmed.toLowerCase(java.util.Locale.ROOT).startsWith("/model")) {
+                handleModelCommand(trimmed);
+                showFrame = true;
+                readyForInput.release();
+                continue;
+            }
             if ("/resume".equalsIgnoreCase(trimmed)) {
                 String picked = showSessionPicker();
                 if (picked != null) {
@@ -130,6 +136,24 @@ public class AgentSessionRunner {
             showFrame = true;
             queue.offer(input);
         }
+    }
+
+    private void handleModelCommand(String trimmed) {
+        String currentModel = agent.getModel() != null
+                ? agent.getModel()
+                : agent.getLLMProvider().config.getModel();
+        String[] parts = trimmed.split("\\s+", 2);
+        if (parts.length < 2) {
+            ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Current model: " + AnsiTheme.RESET + currentModel + "\n");
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Usage: /model <model-name>" + AnsiTheme.RESET + "\n");
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Example: /model anthropic/claude-sonnet-4.6" + AnsiTheme.RESET + "\n\n");
+            return;
+        }
+        String newModel = parts[1].trim();
+        agent.setModel(newModel);
+        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
+                + " Model switched: " + currentModel + " → "
+                + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
     }
 
     private String showSessionPicker() {
