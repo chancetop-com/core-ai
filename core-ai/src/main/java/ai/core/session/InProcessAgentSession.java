@@ -82,7 +82,7 @@ public class InProcessAgentSession implements AgentSession {
                     return;
                 }
                 debug("agent run failed: " + e);
-                logger.error("agent session run failed, sessionId={}", sessionId, e);
+                logger.warn("agent session run failed, sessionId={}, error={}", sessionId, e.getMessage());
                 dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
             } finally {
