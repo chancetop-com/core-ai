@@ -111,31 +111,39 @@ public class AgentSessionRunner {
                 continue;
             }
             var trimmed = input.trim();
-            if (trimmed.toLowerCase(java.util.Locale.ROOT).startsWith("/model")) {
-                handleModelCommand(trimmed);
-                showFrame = true;
-                readyForInput.release();
-                continue;
-            }
-            if ("/resume".equalsIgnoreCase(trimmed)) {
-                String picked = showSessionPicker();
-                if (picked != null) {
-                    switchSessionId.set(picked);
-                    queue.offer(POISON_PILL);
-                    break;
-                }
-                readyForInput.release();
-                continue;
-            }
             if (trimmed.startsWith("/")) {
-                commands.handle(input);
-                showFrame = true;
+                showFrame = dispatchCommand(trimmed, commands, queue);
+                if (showFrame && switchSessionId.get() != null) break;
                 readyForInput.release();
                 continue;
             }
             showFrame = true;
             queue.offer(input);
         }
+    }
+
+    private boolean dispatchCommand(String trimmed, ReplCommandHandler commands, BlockingQueue<String> queue) {
+        var lower = trimmed.toLowerCase(java.util.Locale.ROOT);
+        if (lower.startsWith("/model")) {
+            handleModelCommand(trimmed);
+        } else if ("/stats".equals(lower)) {
+            handleStats();
+        } else if ("/tools".equals(lower)) {
+            handleTools();
+        } else if ("/copy".equals(lower)) {
+            handleCopy();
+        } else if ("/compact".equals(lower)) {
+            handleCompact();
+        } else if ("/resume".equals(lower)) {
+            String picked = showSessionPicker();
+            if (picked != null) {
+                switchSessionId.set(picked);
+                queue.offer(POISON_PILL);
+            }
+        } else {
+            commands.handle(trimmed);
+        }
+        return true;
     }
 
     private void handleModelCommand(String trimmed) {
@@ -154,6 +162,83 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Model switched: " + currentModel + " → "
                 + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
+    }
+
+    private void handleStats() {
+        var usage = agent.getCurrentTokenUsage();
+        String currentModel = agent.getModel() != null
+                ? agent.getModel()
+                : agent.getLLMProvider().config.getModel();
+        int turns = (int) agent.getMessages().stream()
+                .filter(m -> m.role == ai.core.llm.domain.RoleType.USER).count();
+        String tokens = String.format("%,d (prompt: %,d, completion: %,d)",
+                (long) usage.getTotalTokens(), (long) usage.getPromptTokens(), (long) usage.getCompletionTokens());
+        ui.printStreamingChunk(String.format("%n  %sSession Stats%s%n  Model:       %s%n  Session:     %s%n  Turns:       %d%n  Tokens:      %s%n  Tools:       %d available%n%n",
+                AnsiTheme.PROMPT, AnsiTheme.RESET, currentModel, sessionId, turns, tokens, agent.getToolCalls().size()));
+    }
+
+    private void handleTools() {
+        var tools = agent.getToolCalls();
+        ui.printStreamingChunk(String.format("%n  %sAvailable Tools (%d)%s%n", AnsiTheme.PROMPT, tools.size(), AnsiTheme.RESET));
+        for (var tool : tools) {
+            String desc = tool.getDescription();
+            String summary = formatToolSummary(desc);
+            ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + tool.getName() + AnsiTheme.RESET + summary + "\n");
+        }
+        ui.printStreamingChunk("\n");
+    }
+
+    private String formatToolSummary(String desc) {
+        if (desc == null || desc.isBlank()) {
+            return "";
+        }
+        String firstLine = desc.lines().findFirst().orElse("").trim();
+        if (firstLine.length() > 60) {
+            firstLine = firstLine.substring(0, 57) + "...";
+        }
+        return AnsiTheme.MUTED + " - " + firstLine + AnsiTheme.RESET;
+    }
+
+    private void handleCopy() {
+        var messages = agent.getMessages();
+        String lastAssistant = null;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            var msg = messages.get(i);
+            if (msg.role == ai.core.llm.domain.RoleType.ASSISTANT && msg.getTextContent() != null) {
+                lastAssistant = msg.getTextContent();
+                break;
+            }
+        }
+        if (lastAssistant == null) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  No assistant response to copy.\n" + AnsiTheme.RESET);
+            return;
+        }
+        try {
+            var selection = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+            selection.setContents(new java.awt.datatransfer.StringSelection(lastAssistant), null);
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Copied to clipboard ("
+                    + lastAssistant.length() + " chars)\n\n");
+        } catch (Exception e) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to copy: " + e.getMessage() + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    private void handleCompact() {
+        var messages = agent.getMessages();
+        int before = messages.size();
+        if (before <= 2) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
+            return;
+        }
+        // keep system prompt (first) + last 2 user-assistant pairs
+        int keep = Math.min(4, before - 1);
+        int removed = 0;
+        while (messages.size() > keep + 1) {
+            messages.remove(1);
+            removed++;
+        }
+        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
+                + " Compacted: removed " + removed + " messages, kept " + messages.size() + "\n\n");
     }
 
     private String showSessionPicker() {
