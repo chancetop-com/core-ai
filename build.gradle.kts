@@ -115,7 +115,7 @@ project(":core-ai") {
 
 
 project(":core-ai-api") {
-    version = "1.2.1-SNAPSHOT"
+    version = "1.3.0-SNAPSHOT"
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }
