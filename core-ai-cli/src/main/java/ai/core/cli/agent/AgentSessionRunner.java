@@ -7,6 +7,7 @@ import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.cli.config.ProviderConfigurator;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.persistence.providers.FilePersistenceProvider;
@@ -174,10 +175,14 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(String.format("  %s%2d)%s %s%s%n",
                     AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, entry, marker));
         }
-        ui.printStreamingChunk("\n");
-        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + models.size() + "), type model name, or 'q' to cancel: " + AnsiTheme.RESET);
+        ui.printStreamingChunk("\n  " + AnsiTheme.CMD_NAME + " a)" + AnsiTheme.RESET + " Add new provider\n\n");
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + models.size() + "), 'a' to add, model name, or 'q' to cancel: " + AnsiTheme.RESET);
         var line = ui.readRawLine();
         if (line == null || "q".equalsIgnoreCase(line.trim())) return;
+        if ("a".equalsIgnoreCase(line.trim())) {
+            configureProvider();
+            return;
+        }
         String choice = resolveModelChoice(line.trim(), models);
         if (choice != null) {
             switchModel(currentModel, choice);
@@ -270,6 +275,14 @@ public class AgentSessionRunner {
                     + " Exported to " + filePath + "\n\n");
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    private void configureProvider() {
+        var configurator = new ProviderConfigurator(ui, llmProviders);
+        String model = configurator.configure();
+        if (model != null) {
+            agent.setModel(model);
         }
     }
 
