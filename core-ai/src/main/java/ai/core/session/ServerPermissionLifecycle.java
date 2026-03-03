@@ -23,12 +23,14 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     private final Consumer<AgentEvent> dispatcher;
     private final PermissionGate permissionGate;
     private final boolean autoApproveAll;
+    private final ToolPermissionStore permissionStore;
 
-    public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, boolean autoApproveAll) {
+    public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
         this.dispatcher = dispatcher;
         this.permissionGate = permissionGate;
         this.autoApproveAll = autoApproveAll;
+        this.permissionStore = permissionStore;
     }
 
     @Override
@@ -47,6 +49,10 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
             logger.debug("auto-approve enabled, skipping approval for tool={}, callId={}", toolName, callId);
             return;
         }
+        if (permissionStore != null && permissionStore.isApproved(toolName)) {
+            logger.debug("tool already approved, skipping approval for tool={}, callId={}", toolName, callId);
+            return;
+        }
 
         // Pre-register future BEFORE dispatching, because dispatch may be synchronous
         // and the listener may call respond() before waitForApproval() creates the future
@@ -63,6 +69,9 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         if (decision == ApprovalDecision.DENY) {
             throw new ToolCallDeniedException(toolName);
+        }
+        if (decision == ApprovalDecision.APPROVE_ALWAYS && permissionStore != null) {
+            permissionStore.approve(toolName);
         }
     }
 

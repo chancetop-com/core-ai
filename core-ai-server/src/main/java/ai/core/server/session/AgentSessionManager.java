@@ -28,7 +28,7 @@ public class AgentSessionManager {
         var sessionId = UUID.randomUUID().toString();
         var agent = buildAgent(config);
         var autoApproveAll = Boolean.TRUE.equals(config.autoApproveAll);
-        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll);
+        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, null);
         sessions.put(sessionId, session);
         return sessionId;
     }

@@ -11,6 +11,7 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence.SessionInfo;
+import ai.core.session.ToolPermissionStore;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -79,6 +80,8 @@ public class CliApp {
             currentSessionId = "cli-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
         }
 
+        var permissionStore = new ToolPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.txt"));
+
         try {
             while (true) {
                 var agent = CliAgent.of(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
@@ -86,7 +89,7 @@ public class CliApp {
                     ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
                     return ui.readRawLine();
                 });
-                var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager);
+                var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore);
                 var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
                 String nextSessionId = runner.run();
                 if (nextSessionId == null) break;

@@ -38,7 +38,7 @@ public class InProcessAgentSession implements AgentSession {
     private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicReference<Future<?>> currentTask = new AtomicReference<>();
 
-    public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll) {
+    public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
         this.agent = agent;
         this.permissionGate = new PermissionGate();
@@ -49,7 +49,7 @@ public class InProcessAgentSession implements AgentSession {
         });
 
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
-        agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll));
+        agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
 
         if (agent.hasPersistenceProvider()) {
             agent.load(sessionId);

@@ -14,6 +14,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
+import ai.core.session.ToolPermissionStore;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -42,6 +43,7 @@ public class AgentSessionRunner {
     private final boolean autoApproveAll;
     private final String sessionId;
     private final SessionManager sessionManager;
+    private final ToolPermissionStore permissionStore;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
 
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
@@ -52,10 +54,11 @@ public class AgentSessionRunner {
         this.autoApproveAll = config.autoApproveAll;
         this.sessionId = config.sessionId;
         this.sessionManager = config.sessionManager;
+        this.permissionStore = config.permissionStore;
     }
 
     public String run() {
-        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll);
+        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
         var listener = new CliEventListener(ui, session, agent);
         session.onEvent(listener);
 
@@ -225,6 +228,14 @@ public class AgentSessionRunner {
     }
 
     private void switchModel(String currentModel, String newModel) {
+        // find and switch to the provider that owns this model
+        for (var type : llmProviders.getProviderTypes()) {
+            var provider = llmProviders.getProvider(type);
+            if (newModel.equals(provider.config.getModel())) {
+                agent.setLlmProvider(provider);
+                break;
+            }
+        }
         agent.setModel(newModel);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Model switched: " + currentModel + " → "
@@ -309,9 +320,10 @@ public class AgentSessionRunner {
 
     private void configureProvider() {
         var configurator = new ProviderConfigurator(ui, llmProviders);
-        String model = configurator.configure();
-        if (model != null) {
-            agent.setModel(model);
+        var result = configurator.configure();
+        if (result != null) {
+            agent.setLlmProvider(llmProviders.getProvider(result.type()));
+            agent.setModel(result.model());
         }
     }
 
@@ -423,6 +435,6 @@ public class AgentSessionRunner {
     }
 
     public record Config(String modelName, boolean autoApproveAll, String sessionId,
-                         SessionManager sessionManager) {
+                         SessionManager sessionManager, ToolPermissionStore permissionStore) {
     }
 }

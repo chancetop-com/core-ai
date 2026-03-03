@@ -31,13 +31,18 @@ public class ProviderConfigurator {
         this.llmProviders = llmProviders;
     }
 
-    public String configure() {
+    public Result configure() {
         ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Add Provider" + AnsiTheme.RESET + "\n\n");
         LLMProviderType[] types = LLMProviderType.values();
         printProviderTypes(types);
         LLMProviderType selectedType = readProviderType(types);
         if (selectedType == null) return null;
-        return configureProvider(selectedType);
+        String model = configureProvider(selectedType);
+        if (model == null) return null;
+        return new Result(selectedType, model);
+    }
+
+    public record Result(LLMProviderType type, String model) {
     }
 
     private void printProviderTypes(LLMProviderType[] types) {
@@ -84,7 +89,7 @@ public class ProviderConfigurator {
         llmProviders.addProvider(type, provider);
         saveToFile(type, apiBase, keyLine.trim(), model);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Provider "
-                + type.getName() + " configured. Restart to activate new API key.\n\n");
+                + type.getName() + " configured.\n\n");
         return model;
     }
 
