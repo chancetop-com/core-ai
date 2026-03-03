@@ -64,7 +64,7 @@ public class Function extends ToolCall {
 
     @Override
     public ToolCallResult execute(String text, ExecutionContext context) {
-        logger.info("func text is {}", text);
+        logger.debug("func text is {}", text);
         long startTime = System.currentTimeMillis();
         try {
             var result = executeSupport(text, context);

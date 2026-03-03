@@ -76,7 +76,7 @@ public class McpConnectionMonitor implements AutoCloseable {
             TimeUnit.MILLISECONDS
         );
 
-        LOGGER.info("Heartbeat monitoring started with interval: {}s", minInterval.toSeconds());
+        LOGGER.debug("Heartbeat monitoring started with interval: {}s", minInterval.toSeconds());
     }
 
     /**
