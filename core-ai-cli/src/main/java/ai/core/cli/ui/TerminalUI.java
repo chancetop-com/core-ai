@@ -146,8 +146,8 @@ public class TerminalUI {
         // after readLine, cursor is on the line below prompt (bottom border)
         // clear bottom border + status hint lines
         writer.print("\u001B[2K");
-        writer.print("\n\u001B[2K");
-        writer.print("\u001B[1A\r");
+        writer.print("\u001B[J");
+        writer.print("\r");
         writer.flush();
     }
 
