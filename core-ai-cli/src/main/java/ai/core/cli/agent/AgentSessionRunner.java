@@ -145,6 +145,8 @@ public class AgentSessionRunner {
             handleCompact();
         } else if (lower.startsWith("/export")) {
             handleExport(trimmed);
+        } else if ("/memory".equals(lower)) {
+            handleMemory();
         } else if ("/resume".equals(lower)) {
             String picked = showSessionPicker();
             if (picked != null) {
@@ -276,6 +278,28 @@ public class AgentSessionRunner {
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
+    }
+
+    private void handleMemory() {
+        var messages = agent.getMessages();
+        int total = messages.size();
+        int userCount = (int) messages.stream().filter(m -> m.role == RoleType.USER).count();
+        int assistantCount = (int) messages.stream().filter(m -> m.role == RoleType.ASSISTANT).count();
+        int toolCount = (int) messages.stream().filter(m -> m.role == RoleType.TOOL).count();
+        ui.printStreamingChunk(String.format("%n  %sConversation Memory%s%n  Total messages: %d (user: %d, assistant: %d, tool: %d)%n",
+                AnsiTheme.PROMPT, AnsiTheme.RESET, total, userCount, assistantCount, toolCount));
+        // show last few user messages as context preview
+        var userMsgs = messages.stream().filter(m -> m.role == RoleType.USER && m.getTextContent() != null).toList();
+        int show = Math.min(userMsgs.size(), 5);
+        if (show > 0) {
+            ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Recent topics:" + AnsiTheme.RESET + "\n");
+            for (int i = userMsgs.size() - show; i < userMsgs.size(); i++) {
+                String text = userMsgs.get(i).getTextContent();
+                String preview = text.length() > 60 ? text.substring(0, 57) + "..." : text;
+                ui.printStreamingChunk("    " + AnsiTheme.MUTED + "- " + preview + AnsiTheme.RESET + "\n");
+            }
+        }
+        ui.printStreamingChunk("\n");
     }
 
     private void configureProvider() {

@@ -73,7 +73,11 @@ public class CliApp {
 
         try {
             while (true) {
-                var agent = CliAgent.of(result.llmProviders, modelOverride, maxTurn, persistenceProvider, workspace);
+                var agent = CliAgent.of(result.llmProviders, modelOverride, maxTurn, persistenceProvider, workspace, question -> {
+                    ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
+                    ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
+                    return ui.readRawLine();
+                });
                 var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, persistenceProvider);
                 var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
                 String nextSessionId = runner.run();

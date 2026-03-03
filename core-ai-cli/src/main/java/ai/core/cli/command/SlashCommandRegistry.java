@@ -15,6 +15,8 @@ public final class SlashCommandRegistry {
             new SlashCommand("/copy", "Copy last response to clipboard"),
             new SlashCommand("/compact", "Remove old messages to free context"),
             new SlashCommand("/export", "Export session to markdown (/export [file])"),
+            new SlashCommand("/memory", "Show conversation memory summary"),
+            new SlashCommand("/init", "Create .core-ai.md project config"),
             new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/debug", "Toggle debug mode"),
             new SlashCommand("/clear", "Clear screen"),

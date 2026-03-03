@@ -4,10 +4,15 @@ import ai.core.agent.Agent;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.tool.BuiltinTools;
+import ai.core.tool.ToolCall;
+import ai.core.tool.tools.AskUserTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -15,7 +20,8 @@ import java.util.stream.Collectors;
  */
 public class CliAgent {
     public static Agent of(LLMProviders providers, String modelOverride, int maxTurn,
-                           PersistenceProvider persistenceProvider, Path workspace) {
+                           PersistenceProvider persistenceProvider, Path workspace,
+                           Function<String, String> askUserHandler) {
 
         var workspaceInfo = buildWorkspaceInfo(workspace);
         var systemPrompt = """
@@ -28,11 +34,14 @@ public class CliAgent {
                 Always use the workspace directory as the working directory when executing shell commands or scripts.
                 """.formatted(workspaceInfo);
 
+        List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
+        tools.add(AskUserTool.builder().questionHandler(askUserHandler).build());
+
         var builder = Agent.builder()
                 .llmProvider(providers.getProvider())
                 .systemPrompt(systemPrompt)
                 .maxTurn(maxTurn)
-                .toolCalls(BuiltinTools.ALL)
+                .toolCalls(tools)
                 .temperature(0.8);
 
         if (persistenceProvider != null) {

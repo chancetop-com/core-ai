@@ -4,6 +4,10 @@ import ai.core.cli.DebugLog;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 /**
  * @author stephen
  */
@@ -28,6 +32,7 @@ public class ReplCommandHandler {
 
         switch (command) {
             case "/help" -> printHelp();
+            case "/init" -> initProject();
             case "/debug" -> toggleDebug();
             case "/clear" -> clearScreen();
             case "/exit" -> {
@@ -55,6 +60,34 @@ public class ReplCommandHandler {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
             ui.printStreamingChunk("Debug mode: ON\n");
+        }
+    }
+
+    private void initProject() {
+        Path coreAiMd = Path.of(".core-ai.md");
+        if (Files.exists(coreAiMd)) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  .core-ai.md already exists.\n" + AnsiTheme.RESET);
+            return;
+        }
+        String template = """
+                # Project Instructions
+
+                ## Guidelines
+                - Code comments in English
+                - Prefer self-descriptive code over comments
+
+                ## Project Structure
+                <!-- Describe your project structure here -->
+
+                ## Conventions
+                <!-- Add project-specific conventions -->
+                """;
+        try {
+            Files.writeString(coreAiMd, template);
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
+                    + " Created .core-ai.md — edit it to customize agent behavior.\n\n");
+        } catch (IOException e) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to create .core-ai.md: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
 
