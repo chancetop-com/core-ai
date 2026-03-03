@@ -71,7 +71,7 @@ public class ToolExecutor {
             return ToolCallResult.failed("This tool call requires user authentication, please ask user to confirm it.");
         }
 
-        LOGGER.info("tool {}: {}", functionCall.function.name, functionCall.function.arguments);
+        LOGGER.debug("tool {}: {}", functionCall.function.name, functionCall.function.arguments);
         var startTime = System.currentTimeMillis();
 
         var result = executeWithTimeout(tool, functionCall, context);
@@ -82,7 +82,7 @@ public class ToolExecutor {
         handleAsyncResult(result, tool, functionCall, context);
 
         // Log stats
-        LOGGER.info("tool {} completed in {}ms, stats: {}", result.getToolName(), result.getDurationMs(), result.getStats());
+        LOGGER.debug("tool {} completed in {}ms, stats: {}", result.getToolName(), result.getDurationMs(), result.getStats());
         return result;
     }
 

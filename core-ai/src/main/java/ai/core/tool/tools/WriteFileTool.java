@@ -84,7 +84,7 @@ public class WriteFileTool extends ToolCall {
         // Create parent directories if they don't exist
         var parentDir = file.getParentFile();
         if (parentDir != null && !parentDir.exists()) {
-            LOGGER.info("Creating parent directories: {}", parentDir.getAbsolutePath());
+            LOGGER.debug("Creating parent directories: {}", parentDir.getAbsolutePath());
             if (!parentDir.mkdirs()) {
                 String error = "Error: Failed to create parent directories: " + parentDir.getAbsolutePath();
                 LOGGER.error(error);
@@ -95,9 +95,9 @@ public class WriteFileTool extends ToolCall {
         // Check if file exists (for logging purposes)
         boolean fileExists = file.exists();
         if (fileExists) {
-            LOGGER.info("Overwriting existing file: {}", filePath);
+            LOGGER.debug("Overwriting existing file: {}", filePath);
         } else {
-            LOGGER.info("Creating new file: {}", filePath);
+            LOGGER.debug("Creating new file: {}", filePath);
         }
 
         // Write content to file
@@ -109,7 +109,7 @@ public class WriteFileTool extends ToolCall {
                     ? "Successfully overwrote file: " + filePath + " (" + content.length() + " characters)"
                     : "Successfully created file: " + filePath + " (" + content.length() + " characters)";
 
-            LOGGER.info(successMsg);
+            LOGGER.debug(successMsg);
             return successMsg;
 
         } catch (IOException e) {

@@ -42,7 +42,7 @@ public final class AsyncToolTaskExecutor {
         var future = executor.submit(() -> executeWithLogging(taskId, toolName, task));
 
         tasks.put(taskId, new TaskState<>(future, toolName, System.currentTimeMillis()));
-        LOGGER.info("Submitted async task: taskId={}, tool={}", taskId, toolName);
+        LOGGER.debug("Submitted async task: taskId={}, tool={}", taskId, toolName);
         return taskId;
     }
 
@@ -59,7 +59,7 @@ public final class AsyncToolTaskExecutor {
         try {
             var result = state.future.get();
             tasks.remove(taskId);
-            LOGGER.info("Task completed: taskId={}, tool={}, durationMs={}", taskId, state.toolName, System.currentTimeMillis() - state.startTimeMs);
+            LOGGER.debug("Task completed: taskId={}, tool={}, durationMs={}", taskId, state.toolName, System.currentTimeMillis() - state.startTimeMs);
 
             if (result instanceof String s) {
                 return ToolCallResult.completed(s);
@@ -82,7 +82,7 @@ public final class AsyncToolTaskExecutor {
         }
 
         state.future.cancel(true);
-        LOGGER.info("Task cancelled: taskId={}, tool={}", taskId, state.toolName);
+        LOGGER.debug("Task cancelled: taskId={}, tool={}", taskId, state.toolName);
         return ToolCallResult.completed("Task cancelled: " + taskId);
     }
 
@@ -105,12 +105,12 @@ public final class AsyncToolTaskExecutor {
     }
 
     private <T> T executeWithLogging(String taskId, String toolName, Callable<T> task) throws Exception {
-        LOGGER.info("Starting async task execution: taskId={}, tool={}", taskId, toolName);
+        LOGGER.debug("Starting async task execution: taskId={}, tool={}", taskId, toolName);
         var startTime = System.currentTimeMillis();
         try {
             return task.call();
         } finally {
-            LOGGER.info("Async task execution finished: taskId={}, tool={}, durationMs={}", taskId, toolName, System.currentTimeMillis() - startTime);
+            LOGGER.debug("Async task execution finished: taskId={}, tool={}, durationMs={}", taskId, toolName, System.currentTimeMillis() - startTime);
         }
     }
 

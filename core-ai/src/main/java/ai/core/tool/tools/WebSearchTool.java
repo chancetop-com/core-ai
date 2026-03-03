@@ -93,7 +93,7 @@ public class WebSearchTool extends ToolCall {
     private String executeSearch(String query, List<String> allowedDomains, List<String> blockedDomains) {
         var modifiedQuery = buildQueryWithDomainFilters(query, allowedDomains, blockedDomains);
 
-        LOGGER.info("Executing web search: {}", modifiedQuery);
+        LOGGER.debug("Executing web search: {}", modifiedQuery);
 
         try {
             var encodedQuery = URLEncoder.encode(modifiedQuery, StandardCharsets.UTF_8);
@@ -110,7 +110,7 @@ public class WebSearchTool extends ToolCall {
             var statusCode = response.statusCode;
             var responseText = response.text();
 
-            LOGGER.info("Web search completed with status code: {}, response length: {} bytes",
+            LOGGER.debug("Web search completed with status code: {}, response length: {} bytes",
                     statusCode, responseText.length());
 
             if (statusCode >= 400) {

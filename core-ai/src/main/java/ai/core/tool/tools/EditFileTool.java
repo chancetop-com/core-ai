@@ -137,7 +137,7 @@ public class EditFileTool extends ToolCall {
 
         // Count occurrences
         int occurrences = countOccurrences(content, oldString);
-        LOGGER.info("Found {} occurrence(s) of old_string in file: {}", occurrences, filePath);
+        LOGGER.debug("Found {} occurrence(s) of old_string in file: {}", occurrences, filePath);
 
         // If not replace_all and more than one occurrence, fail
         if (!replaceAll && occurrences > 1) {
@@ -148,10 +148,10 @@ public class EditFileTool extends ToolCall {
         String newContent;
         if (replaceAll) {
             newContent = content.replace(oldString, newString);
-            LOGGER.info("Replacing all {} occurrence(s) in file", occurrences);
+            LOGGER.debug("Replacing all {} occurrence(s) in file", occurrences);
         } else {
             newContent = content.replace(oldString, newString);
-            LOGGER.info("Replacing single occurrence in file");
+            LOGGER.debug("Replacing single occurrence in file");
         }
 
         // Write back to file
@@ -163,7 +163,7 @@ public class EditFileTool extends ToolCall {
                     ? String.format("Successfully replaced %d occurrence(s) in file: %s", occurrences, filePath)
                     : String.format("Successfully replaced 1 occurrence in file: %s", filePath);
 
-            LOGGER.info(successMsg);
+            LOGGER.debug(successMsg);
             return successMsg;
 
         } catch (IOException e) {

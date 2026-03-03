@@ -101,7 +101,7 @@ public class GlobFileTool extends ToolCall {
     private Path validateAndGetBasePath(String searchPath) {
         if (Strings.isBlank(searchPath)) {
             Path basePath = Paths.get(System.getProperty("user.dir"));
-            LOGGER.info("Using current working directory: {}", basePath);
+            LOGGER.debug("Using current working directory: {}", basePath);
             return basePath;
         }
 
@@ -109,13 +109,13 @@ public class GlobFileTool extends ToolCall {
         if (!Files.exists(basePath) || !Files.isDirectory(basePath)) {
             return null;
         }
-        LOGGER.info("Searching in directory: {}", basePath);
+        LOGGER.debug("Searching in directory: {}", basePath);
         return basePath;
     }
 
     private String formatResults(String pattern, List<FileMatch> matches) {
         if (matches.isEmpty()) {
-            LOGGER.info("No files found matching pattern: {}", pattern);
+            LOGGER.debug("No files found matching pattern: {}", pattern);
             return "No files found matching pattern: " + pattern;
         }
 
@@ -127,7 +127,7 @@ public class GlobFileTool extends ToolCall {
             result.append(match.path()).append('\n');
         }
 
-        LOGGER.info("Found {} file(s) matching pattern: {}", matches.size(), pattern);
+        LOGGER.debug("Found {} file(s) matching pattern: {}", matches.size(), pattern);
         return result.toString().trim();
     }
 

@@ -92,7 +92,7 @@ public class WebFetchTool extends ToolCall {
         }
 
         try {
-            LOGGER.info("Executing HTTP {} request to: {}", httpMethod, url);
+            LOGGER.debug("Executing HTTP {} request to: {}", httpMethod, url);
             HttpRequest request = buildRequest(url, httpMethod, contentType, body);
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             return handleResponse(response);
@@ -133,7 +133,7 @@ public class WebFetchTool extends ToolCall {
     private String handleResponse(HttpResponse<String> response) {
         int statusCode = response.statusCode();
         String responseText = response.body();
-        LOGGER.info("HTTP request completed with status code: {}, response length: {} bytes", statusCode, responseText.length());
+        LOGGER.debug("HTTP request completed with status code: {}, response length: {} bytes", statusCode, responseText.length());
 
         if (statusCode >= 400) {
             String error = "HTTP request failed with status " + statusCode + ": " + responseText;

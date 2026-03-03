@@ -144,12 +144,12 @@ public class ReadFileTool extends ToolCall {
                 var compressed = ImageUtil.compressImage(file, bytes, mimeType);
                 bytes = compressed.data();
                 mimeType = compressed.mimeType();
-                LOGGER.info("Compressed image: {}, original: {} bytes, compressed: {} bytes",
+                LOGGER.debug("Compressed image: {}, original: {} bytes, compressed: {} bytes",
                         filePath, originalSize, bytes.length);
             }
 
             var base64 = Base64.getEncoder().encodeToString(bytes);
-            LOGGER.info("Successfully read image file: {}, mimeType: {}, size: {} bytes", filePath, mimeType, bytes.length);
+            LOGGER.debug("Successfully read image file: {}, mimeType: {}, size: {} bytes", filePath, mimeType, bytes.length);
 
             return ToolCallResult.completed("Image file read successfully: " + filePath)
                     .withImage(base64, mimeType)
@@ -188,7 +188,7 @@ public class ReadFileTool extends ToolCall {
             var currentLine = 1;
             var linesRead = 0;
 
-            LOGGER.info("Reading file: {}, startLine: {}, maxLines: {}", filePath, startLine, maxLines);
+            LOGGER.debug("Reading file: {}, startLine: {}, maxLines: {}", filePath, startLine, maxLines);
 
             while (currentLine < startLine) {
                 String skipLine = reader.readLine();
@@ -216,7 +216,7 @@ public class ReadFileTool extends ToolCall {
                 return warning;
             }
 
-            LOGGER.info("Successfully read {} lines from file", linesRead);
+            LOGGER.debug("Successfully read {} lines from file", linesRead);
             return result.toString();
 
         } catch (IOException e) {

@@ -84,7 +84,7 @@ public class PythonScriptTool extends ToolCall {
         if (code != null && !code.isBlank()) {
             var tmp = core.framework.util.Files.tempFile();
             Files.writeString(tmp, code);
-            LOGGER.info("Python script written to temp file: {}", tmp.toAbsolutePath());
+            LOGGER.debug("Python script written to temp file: {}", tmp.toAbsolutePath());
             return new ScriptInfo(tmp, tmp, true, null);
         } else if (scriptPath != null) {
             if (!Files.exists(scriptPath)) {
@@ -93,7 +93,7 @@ public class PythonScriptTool extends ToolCall {
             if (!Files.isReadable(scriptPath)) {
                 return new ScriptInfo(null, null, false, "Error: Script file is not readable: " + scriptPath);
             }
-            LOGGER.info("Executing Python script from path: {}", scriptPath.toAbsolutePath());
+            LOGGER.debug("Executing Python script from path: {}", scriptPath.toAbsolutePath());
             return new ScriptInfo(null, scriptPath, false, null);
         } else {
             return new ScriptInfo(null, null, false, "Error: Either 'code' or 'script_path' parameter is required");
@@ -111,7 +111,7 @@ public class PythonScriptTool extends ToolCall {
         pb.directory(new File(dir));
         pb.redirectErrorStream(true);
 
-        LOGGER.info("Executing Python script with timeout {} seconds", timeout);
+        LOGGER.debug("Executing Python script with timeout {} seconds", timeout);
         var process = pb.start();
 
         return handleProcessResult(process, timeout);
@@ -138,7 +138,7 @@ public class PythonScriptTool extends ToolCall {
             return error;
         }
 
-        LOGGER.info("Python script executed successfully, output: {} lines", outputLines.size());
+        LOGGER.debug("Python script executed successfully, output: {} lines", outputLines.size());
         return outputLines.isEmpty() ? "" : String.join("\n", outputLines);
     }
 

@@ -234,7 +234,7 @@ public class ShellCommandTool extends ToolCall {
         pb.redirectErrorStream(true);
 
         try {
-            LOGGER.info("Executing shell command in directory {}: {}", dir, String.join(" ", commands));
+            LOGGER.debug("Executing shell command in directory {}: {}", dir, String.join(" ", commands));
             var process = pb.start();
 
             var timedOut = waitFor(process, timeout);
@@ -257,7 +257,7 @@ public class ShellCommandTool extends ToolCall {
                 return error;
             }
 
-            LOGGER.info("Shell command executed successfully, output: {} lines", outputLines.size());
+            LOGGER.debug("Shell command executed successfully, output: {} lines", outputLines.size());
             if (!outputLines.isEmpty()) {
                 LOGGER.debug("Command output:\n{}", String.join("\n", outputLines));
             }
@@ -284,7 +284,7 @@ public class ShellCommandTool extends ToolCall {
                     : core.framework.util.Files.tempDir().toAbsolutePath().toString();
         }
 
-        LOGGER.info("Executing shell script from path: {}", scriptPath.toAbsolutePath());
+        LOGGER.debug("Executing shell script from path: {}", scriptPath.toAbsolutePath());
 
         var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(SystemUtil.detectPlatform()).trim();
         var prefixParts = shellPrefix.split(" ");

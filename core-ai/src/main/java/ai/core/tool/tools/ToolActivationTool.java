@@ -107,7 +107,7 @@ public class ToolActivationTool extends ToolCall {
         }
         sb.append("\nCall activate_tools with tool_names to activate the ones you need.");
 
-        LOGGER.info("activate_tools search query='{}', found={}", query, matches.size());
+        LOGGER.debug("activate_tools search query='{}', found={}", query, matches.size());
         return ToolCallResult.completed(sb.toString());
     }
 
@@ -149,7 +149,7 @@ public class ToolActivationTool extends ToolCall {
             sb.append("Tools not found: ").append(String.join(", ", notFound));
         }
 
-        LOGGER.info("activate_tools activated={}, notFound={}", activated, notFound);
+        LOGGER.debug("activate_tools activated={}, notFound={}", activated, notFound);
         return ToolCallResult.completed(sb.toString());
     }
 
