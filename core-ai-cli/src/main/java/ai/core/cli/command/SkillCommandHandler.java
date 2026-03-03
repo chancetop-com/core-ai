@@ -18,7 +18,7 @@ public class SkillCommandHandler {
 
     private static final String[] SKILL_DIRS = {
         ".core-ai/skills",
-        System.getProperty("user.home") + "/.core-ai-cli/skills"
+        System.getProperty("user.home") + "/.core-ai/skills"
     };
 
     private final TerminalUI ui;

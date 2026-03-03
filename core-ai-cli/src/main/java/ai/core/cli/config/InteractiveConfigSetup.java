@@ -13,7 +13,7 @@ import java.util.Properties;
  * @author stephen
  */
 public class InteractiveConfigSetup {
-    private static final Path CONFIG_DIR = Path.of(System.getProperty("user.home"), ".core-ai-cli");
+    private static final Path CONFIG_DIR = Path.of(System.getProperty("user.home"), ".core-ai");
     private static final Path CONFIG_FILE = CONFIG_DIR.resolve("agent.properties");
 
     private static final String DEFAULT_API_BASE = "https://openrouter.ai/api/v1";

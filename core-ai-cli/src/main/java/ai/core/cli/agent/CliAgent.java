@@ -54,7 +54,7 @@ public class CliAgent {
         // Skills: load from workspace and user home
         var skillConfig = SkillConfig.builder()
                 .source("workspace", workspace.resolve(".core-ai/skills").toString(), 100)
-                .source("user", Path.of(System.getProperty("user.home"), ".core-ai-cli", "skills").toString(), 50)
+                .source("user", Path.of(System.getProperty("user.home"), ".core-ai", "skills").toString(), 50)
                 .build();
         builder.skills(skillConfig);
 

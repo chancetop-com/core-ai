@@ -26,8 +26,8 @@ import java.util.List;
  * @author stephen
  */
 public class CliApp {
-    private static final Path DEFAULT_CONFIG = Path.of(System.getProperty("user.home"), ".core-ai-cli", "agent.properties");
-    private static final String SESSIONS_DIR = Path.of(System.getProperty("user.home"), ".core-ai-cli", "sessions").toString();
+    private static final Path DEFAULT_CONFIG = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
+    private static final String SESSIONS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "sessions").toString();
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final Path configFile;

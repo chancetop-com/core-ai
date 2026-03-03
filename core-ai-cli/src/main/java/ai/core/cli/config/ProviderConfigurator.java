@@ -21,7 +21,7 @@ import java.util.Properties;
  */
 public class ProviderConfigurator {
 
-    private static final Path CONFIG_FILE = Path.of(System.getProperty("user.home"), ".core-ai-cli", "agent.properties");
+    private static final Path CONFIG_FILE = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
 
     private final TerminalUI ui;
     private final LLMProviders llmProviders;
