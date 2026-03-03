@@ -7,6 +7,7 @@ import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.persistence.providers.FilePersistenceProvider;
 import ai.core.session.InProcessAgentSession;
@@ -34,21 +35,21 @@ public class AgentSessionRunner {
 
     private final TerminalUI ui;
     private final Agent agent;
+    private final LLMProviders llmProviders;
     private final String modelName;
     private final boolean autoApproveAll;
     private final String sessionId;
     private final FilePersistenceProvider persistenceProvider;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
 
-    public AgentSessionRunner(TerminalUI ui, Agent agent, String modelName,
-                              boolean autoApproveAll, String sessionId,
-                              FilePersistenceProvider persistenceProvider) {
+    public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
         this.ui = ui;
         this.agent = agent;
-        this.modelName = modelName;
-        this.autoApproveAll = autoApproveAll;
-        this.sessionId = sessionId;
-        this.persistenceProvider = persistenceProvider;
+        this.llmProviders = llmProviders;
+        this.modelName = config.modelName;
+        this.autoApproveAll = config.autoApproveAll;
+        this.sessionId = config.sessionId;
+        this.persistenceProvider = config.persistenceProvider;
     }
 
     public String run() {
@@ -155,28 +156,78 @@ public class AgentSessionRunner {
     }
 
     private void handleModelCommand(String trimmed) {
-        String currentModel = agent.getModel() != null
-                ? agent.getModel()
-                : agent.getLLMProvider().config.getModel();
+        String currentModel = getCurrentModelName();
         String[] parts = trimmed.split("\\s+", 2);
-        if (parts.length < 2) {
-            ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Current model: " + AnsiTheme.RESET + currentModel + "\n");
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  Usage: /model <model-name>" + AnsiTheme.RESET + "\n");
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  Example: /model anthropic/claude-sonnet-4.6" + AnsiTheme.RESET + "\n\n");
+        if (parts.length >= 2) {
+            switchModel(currentModel, parts[1].trim());
             return;
         }
-        String newModel = parts[1].trim();
+        showModelPicker(currentModel);
+    }
+
+    private void showModelPicker(String currentModel) {
+        ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Current model: " + AnsiTheme.RESET + currentModel + "\n\n");
+        var models = buildModelList(currentModel);
+        for (int i = 0; i < models.size(); i++) {
+            var entry = models.get(i);
+            String marker = entry.equals(currentModel) ? AnsiTheme.SUCCESS + " (active)" + AnsiTheme.RESET : "";
+            ui.printStreamingChunk(String.format("  %s%2d)%s %s%s%n",
+                    AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, entry, marker));
+        }
+        ui.printStreamingChunk("\n");
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + models.size() + "), type model name, or 'q' to cancel: " + AnsiTheme.RESET);
+        var line = ui.readRawLine();
+        if (line == null || "q".equalsIgnoreCase(line.trim())) return;
+        String choice = resolveModelChoice(line.trim(), models);
+        if (choice != null) {
+            switchModel(currentModel, choice);
+        }
+    }
+
+    private List<String> buildModelList(String currentModel) {
+        var models = new java.util.ArrayList<String>();
+        for (var type : llmProviders.getProviderTypes()) {
+            var provider = llmProviders.getProvider(type);
+            String model = provider.config.getModel();
+            if (model != null && !models.contains(model)) {
+                models.add(model);
+            }
+        }
+        if (!models.contains(currentModel)) {
+            models.addFirst(currentModel);
+        }
+        return models;
+    }
+
+    private String resolveModelChoice(String input, List<String> models) {
+        try {
+            int idx = Integer.parseInt(input);
+            if (idx >= 1 && idx <= models.size()) {
+                return models.get(idx - 1);
+            }
+        } catch (NumberFormatException ignored) {
+            // treat as model name
+        }
+        if (!input.isBlank()) return input;
+        return null;
+    }
+
+    private void switchModel(String currentModel, String newModel) {
         agent.setModel(newModel);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Model switched: " + currentModel + " → "
                 + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
     }
 
-    private void handleStats() {
-        var usage = agent.getCurrentTokenUsage();
-        String currentModel = agent.getModel() != null
+    private String getCurrentModelName() {
+        return agent.getModel() != null
                 ? agent.getModel()
                 : agent.getLLMProvider().config.getModel();
+    }
+
+    private void handleStats() {
+        var usage = agent.getCurrentTokenUsage();
+        String currentModel = getCurrentModelName();
         int turns = (int) agent.getMessages().stream()
                 .filter(m -> m.role == RoleType.USER).count();
         String tokens = String.format("%,d (prompt: %,d, completion: %,d)",
@@ -332,5 +383,9 @@ public class AgentSessionRunner {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    public record Config(String modelName, boolean autoApproveAll, String sessionId,
+                         FilePersistenceProvider persistenceProvider) {
     }
 }

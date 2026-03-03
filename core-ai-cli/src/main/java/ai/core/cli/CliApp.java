@@ -74,7 +74,8 @@ public class CliApp {
         try {
             while (true) {
                 var agent = CliAgent.of(result.llmProviders, modelOverride, maxTurn, persistenceProvider, workspace);
-                var runner = new AgentSessionRunner(ui, agent, modelName, autoApproveAll, currentSessionId, persistenceProvider);
+                var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, persistenceProvider);
+                var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
                 String nextSessionId = runner.run();
                 if (nextSessionId == null) break;
                 currentSessionId = nextSessionId;
