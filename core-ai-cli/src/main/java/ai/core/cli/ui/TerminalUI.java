@@ -10,6 +10,8 @@ import org.jline.reader.impl.LineReaderImpl;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
+import ai.core.utils.JsonUtil;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -18,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -178,20 +181,16 @@ public class TerminalUI {
     }
 
     public ApprovalDecision askPermission(String toolName, String arguments) {
-        writer.println(AnsiTheme.WARNING + "\n[Tool Approval Required]" + AnsiTheme.RESET);
-        writer.println("Tool: " + toolName);
-        writer.println("Args: " + arguments);
-        writer.flush();
-
+        String prompt = "  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + "Allow? (y/n/always): ";
         String input;
         if (jlineReader != null) {
             try {
-                input = jlineReader.readLine("Allow this action? (y/n/always): ").trim().toLowerCase(Locale.ROOT);
+                input = jlineReader.readLine(prompt).trim().toLowerCase(Locale.ROOT);
             } catch (org.jline.reader.UserInterruptException | org.jline.reader.EndOfFileException e) {
                 input = "n";
             }
         } else {
-            writer.print("Allow this action? (y/n/always): ");
+            writer.print(prompt);
             writer.flush();
             try {
                 input = simpleReader.readLine();
@@ -210,8 +209,18 @@ public class TerminalUI {
     public void showToolStart(String toolName, String arguments) {
         writer.println("\n  " + AnsiTheme.WARNING + "⟳ " + AnsiTheme.RESET + toolName);
         if (arguments != null && !arguments.isBlank() && !"{}".equals(arguments.trim())) {
-            String display = arguments.length() > 200 ? arguments.substring(0, 200) + "..." : arguments;
-            writer.println(AnsiTheme.MUTED + "    " + display + AnsiTheme.RESET);
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
+                for (var entry : argsMap.entrySet()) {
+                    String value = String.valueOf(entry.getValue());
+                    if (value.length() > 100) value = value.substring(0, 100) + "...";
+                    writer.println(AnsiTheme.MUTED + "    " + entry.getKey() + ": " + value + AnsiTheme.RESET);
+                }
+            } catch (Exception e) {
+                String display = arguments.length() > 200 ? arguments.substring(0, 200) + "..." : arguments;
+                writer.println(AnsiTheme.MUTED + "    " + display + AnsiTheme.RESET);
+            }
         }
         writer.flush();
     }
@@ -222,8 +231,8 @@ public class TerminalUI {
                 : AnsiTheme.ERROR + "  ✗ ";
         writer.println(icon + AnsiTheme.RESET + toolName);
         if (result != null && !result.isBlank()) {
-            String display = result.length() > 300 ? result.substring(0, 300) + "..." : result;
-            for (String line : display.split("\n", 5)) {
+            String display = result.length() > 200 ? result.substring(0, 200) + "..." : result;
+            for (String line : display.split("\n", 3)) {
                 writer.println(AnsiTheme.MUTED + "    " + line + AnsiTheme.RESET);
             }
         }

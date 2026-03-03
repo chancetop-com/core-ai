@@ -142,6 +142,7 @@ project(":core-ai-cli") {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
         // JLine 3 for modern CLI experience
         implementation("org.jline:jline-terminal:${Versions.JLINE_VERSION}")
         implementation("org.jline:jline-reader:${Versions.JLINE_VERSION}")
