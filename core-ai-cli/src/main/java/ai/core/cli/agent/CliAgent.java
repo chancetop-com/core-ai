@@ -8,7 +8,9 @@ import ai.core.skill.SkillConfig;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
+import ai.core.tool.tools.ManageSkillTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -39,6 +41,8 @@ public class CliAgent {
 
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
         tools.add(AskUserTool.builder().questionHandler(askUserHandler).build());
+        tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
+        tools.add(ManageSkillTool.builder().skillsDir(workspace.resolve(".core-ai/skills")).build());
 
         var builder = Agent.builder()
                 .llmProvider(providers.getProvider())
