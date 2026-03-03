@@ -17,6 +17,8 @@ public final class SlashCommandRegistry {
             new SlashCommand("/export", "Export session to markdown (/export [file])"),
             new SlashCommand("/memory", "Show conversation memory summary"),
             new SlashCommand("/init", "Create .core-ai.md project config"),
+            new SlashCommand("/skill", "List loaded skills"),
+            new SlashCommand("/mcp", "Show MCP server status"),
             new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/debug", "Toggle debug mode"),
             new SlashCommand("/clear", "Clear screen"),

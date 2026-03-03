@@ -2,7 +2,9 @@ package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
 import ai.core.cli.DebugLog;
+import ai.core.cli.command.McpCommandHandler;
 import ai.core.cli.command.ReplCommandHandler;
+import ai.core.cli.command.SkillCommandHandler;
 import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
@@ -147,6 +149,10 @@ public class AgentSessionRunner {
             handleExport(trimmed);
         } else if ("/memory".equals(lower)) {
             handleMemory();
+        } else if ("/skill".equals(lower) || "/skills".equals(lower)) {
+            new SkillCommandHandler(ui).handle();
+        } else if ("/mcp".equals(lower)) {
+            new McpCommandHandler(ui).handle();
         } else if ("/resume".equals(lower)) {
             String picked = showSessionPicker();
             if (picked != null) {

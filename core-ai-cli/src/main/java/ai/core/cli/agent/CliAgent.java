@@ -2,9 +2,12 @@ package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
 import ai.core.llm.LLMProviders;
+import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.persistence.PersistenceProvider;
+import ai.core.skill.SkillConfig;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
+import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AskUserTool;
 
 import java.io.IOException;
@@ -44,6 +47,16 @@ public class CliAgent {
                 .toolCalls(tools)
                 .temperature(0.8);
 
+        // Skills: load from workspace and user home
+        var skillConfig = SkillConfig.builder()
+                .source("workspace", workspace.resolve(".core-ai/skills").toString(), 100)
+                .source("user", Path.of(System.getProperty("user.home"), ".core-ai-cli", "skills").toString(), 50)
+                .build();
+        builder.skills(skillConfig);
+
+        // MCP: connect to configured servers if available
+        configureMcp(builder);
+
         if (persistenceProvider != null) {
             builder.persistenceProvider(persistenceProvider);
         }
@@ -54,9 +67,19 @@ public class CliAgent {
         return builder.build();
     }
 
+    private static void configureMcp(ai.core.agent.AgentBuilder builder) {
+        var manager = McpClientManagerRegistry.getManager();
+        if (manager == null) return;
+        var serverNames = manager.getServerNames();
+        if (serverNames != null && !serverNames.isEmpty()) {
+            var mcpTools = McpToolCalls.from(manager, new ArrayList<>(serverNames), null);
+            builder.toolCalls(new ArrayList<>(mcpTools));
+        }
+    }
+
     private static String buildWorkspaceInfo(Path workspace) {
-        var sb = new StringBuilder();
-        sb.append("Working directory: ").append(workspace.toAbsolutePath()).append("\n");
+        var sb = new StringBuilder(256);
+        sb.append("Working directory: ").append(workspace.toAbsolutePath()).append('\n');
 
         try {
             var entries = Files.list(workspace)
