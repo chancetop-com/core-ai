@@ -46,12 +46,19 @@ public class CliApp {
     }
 
     public void start() {
-        InteractiveConfigSetup.setupIfNeeded();
-        DebugLog.log("loading config from " + configFile);
+        // set core.appName before any core-ng class loads to suppress LogManager warning
+        System.setProperty("core.appName", "core-ai-cli");
 
         // suppress framework INFO logs before LoggerImpl class loads,
         // so its static STDOUT field captures the no-op stream
         var originalOut = System.out;
+        System.setOut(new PrintStream(OutputStream.nullOutputStream(), false, java.nio.charset.StandardCharsets.UTF_8));
+
+        InteractiveConfigSetup.setupIfNeeded();
+
+        System.setOut(originalOut);
+        DebugLog.log("loading config from " + configFile);
+
         System.setOut(new PrintStream(OutputStream.nullOutputStream(), false, java.nio.charset.StandardCharsets.UTF_8));
 
         var props = PropertiesFileSource.fromFile(configFile);
