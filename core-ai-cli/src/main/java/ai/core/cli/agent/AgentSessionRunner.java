@@ -12,13 +12,12 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.config.ProviderConfigurator;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
-import ai.core.persistence.providers.FilePersistenceProvider;
 import ai.core.session.InProcessAgentSession;
+import ai.core.session.SessionManager;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -42,7 +41,7 @@ public class AgentSessionRunner {
     private final String modelName;
     private final boolean autoApproveAll;
     private final String sessionId;
-    private final FilePersistenceProvider persistenceProvider;
+    private final SessionManager sessionManager;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
 
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
@@ -52,7 +51,7 @@ public class AgentSessionRunner {
         this.modelName = config.modelName;
         this.autoApproveAll = config.autoApproveAll;
         this.sessionId = config.sessionId;
-        this.persistenceProvider = config.persistenceProvider;
+        this.sessionManager = config.sessionManager;
     }
 
     public String run() {
@@ -366,8 +365,10 @@ public class AgentSessionRunner {
                 + " Compacted: removed " + removed + " messages, kept " + messages.size() + "\n\n");
     }
 
+    private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
     private String showSessionPicker() {
-        List<String> sessions = persistenceProvider.listSessions();
+        var sessions = sessionManager.listSessions();
         if (sessions.isEmpty()) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "No saved sessions found." + AnsiTheme.RESET + "\n");
             return null;
@@ -375,13 +376,16 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions:" + AnsiTheme.RESET + "\n\n");
         int limit = Math.min(sessions.size(), 10);
         for (int i = 0; i < limit; i++) {
-            var id = sessions.get(i);
-            var marker = id.equals(sessionId) ? " (current)" : "";
-            var filePath = Paths.get(persistenceProvider.path(id));
-            String timeStr = formatFileTime(filePath);
+            var session = sessions.get(i);
+            var marker = session.id().equals(sessionId) ? " (current)" : "";
+            String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
+            String title = sessionManager.firstUserMessage(session.id());
+            String display = title != null && !title.isBlank()
+                ? (title.length() > 50 ? title.substring(0, 50) + "..." : title).replaceAll("[\\r\\n]+", " ")
+                : session.id();
             ui.printStreamingChunk(String.format("  %s%2d)%s %s %s(%s)%s%s%n",
                 AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET,
-                id,
+                display,
                 AnsiTheme.MUTED, timeStr, marker, AnsiTheme.RESET));
         }
         ui.printStreamingChunk("\n");
@@ -395,7 +399,7 @@ public class AgentSessionRunner {
             try {
                 int choice = Integer.parseInt(line.trim());
                 if (choice >= 1 && choice <= limit) {
-                    var picked = sessions.get(choice - 1);
+                    var picked = sessions.get(choice - 1).id();
                     if (picked.equals(sessionId)) {
                         ui.printStreamingChunk(AnsiTheme.MUTED + "Already in this session." + AnsiTheme.RESET + "\n");
                         return null;
@@ -410,16 +414,6 @@ public class AgentSessionRunner {
         }
     }
 
-    private String formatFileTime(Path path) {
-        try {
-            var modified = Files.getLastModifiedTime(path).toInstant();
-            var local = LocalDateTime.ofInstant(modified, ZoneId.systemDefault());
-            return local.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
-        } catch (Exception e) {
-            return "unknown";
-        }
-    }
-
     private void waitForReady(Semaphore readyForInput) {
         try {
             readyForInput.acquire();
@@ -429,6 +423,6 @@ public class AgentSessionRunner {
     }
 
     public record Config(String modelName, boolean autoApproveAll, String sessionId,
-                         FilePersistenceProvider persistenceProvider) {
+                         SessionManager sessionManager) {
     }
 }

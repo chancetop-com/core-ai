@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RoleType;
 import ai.core.persistence.Persistence;
 import core.framework.api.json.Property;
 import core.framework.json.JSON;
@@ -21,6 +22,15 @@ public class AgentPersistence implements Persistence<Agent> {
         var domain = JSON.fromJSON(AgentPersistenceDomain.class, context);
         agent.addMessages(domain.messages);
         agent.setNodeStatus(domain.status);
+    }
+
+    public static String firstUserMessage(String data) {
+        var domain = JSON.fromJSON(AgentPersistenceDomain.class, data);
+        if (domain.messages == null) return null;
+        for (var message : domain.messages) {
+            if (message.role == RoleType.USER) return message.getTextContent();
+        }
+        return null;
     }
 
     public static class AgentPersistenceDomain {
