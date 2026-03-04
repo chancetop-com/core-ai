@@ -50,8 +50,6 @@ public class LiteLLMProvider extends LLMProvider {
         this.client = HTTPClient.builder()
                 .connectTimeout(config.getConnectTimeout())
                 .timeout(config.getTimeout())
-                .maxRetries(MAX_RETRIES)
-                .retryWaitTime(RETRY_WAIT_TIME)
                 .trustAll()
                 .build();
     }
@@ -152,15 +150,27 @@ public class LiteLLMProvider extends LLMProvider {
 
     private CompletionResponse executeSSERequest(HTTPRequest req, StreamingCallback callback) {
         var holder = new CompletionResponse[]{null};
-        try {
-            holder[0] = consumeSSEStream(req, callback, holder);
-        } catch (Exception e) {
-            if (callback.isCancelled() && hasPartialContent(holder[0])) {
+        Exception lastError = null;
+        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            if (callback.isCancelled()) break;
+            try {
+                holder[0] = consumeSSEStream(req, callback, holder);
+                break;
+            } catch (Exception e) {
+                if (callback.isCancelled()) break;
+                lastError = e;
+                if (attempt < MAX_RETRIES && !retrySleep()) break;
+            }
+        }
+        if (callback.isCancelled()) {
+            if (hasPartialContent(holder[0])) {
                 holder[0].choices.getFirst().message.content += "\n\n[interrupted]";
                 holder[0].choices.getFirst().finishReason = FinishReason.STOP;
-                return holder[0];
             }
-            throw e;
+            return holder[0];
+        }
+        if (holder[0] == null && lastError != null) {
+            throw lastError instanceof RuntimeException re ? re : new RuntimeException(lastError);
         }
         callback.onComplete();
         if (!Objects.requireNonNull(holder[0]).choices.getFirst().message.reasoningContent.isEmpty()) {
@@ -174,6 +184,7 @@ public class LiteLLMProvider extends LLMProvider {
             callback.setActiveConnection(eventSource);
 
             for (var event : eventSource) {
+                if (callback.isCancelled()) break;
                 var data = event.data();
                 if ("[DONE]".equals(data)) {
                     break;
@@ -203,6 +214,16 @@ public class LiteLLMProvider extends LLMProvider {
                 }
             }
             return holder[0];
+        }
+    }
+
+    private boolean retrySleep() {
+        try {
+            Thread.sleep(RETRY_WAIT_TIME.toMillis());
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 
