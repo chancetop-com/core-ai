@@ -5,20 +5,18 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Registry of available models across all configured providers.
- * Reads optional {prefix}.models property for multi-model support per provider.
+ * Supports same model name in different providers.
  * Not thread-safe — all access must be from the input thread.
  *
  * @author xander
  */
 public class ModelRegistry {
 
-    private final Map<String, LLMProviderType> modelProviderMap = new LinkedHashMap<>();
+    private final List<ModelEntry> entries = new ArrayList<>();
 
     public ModelRegistry(LLMProviders providers, PropertySource props) {
         for (var type : providers.getProviderTypes()) {
@@ -27,26 +25,43 @@ public class ModelRegistry {
                 for (String m : models.split(",")) {
                     String trimmed = m.trim();
                     if (!trimmed.isEmpty()) {
-                        modelProviderMap.putIfAbsent(trimmed, type);
+                        appendIfAbsent(entries, trimmed, type);
                     }
                 }
             });
             var provider = providers.getProvider(type);
             if (provider != null && provider.config.getModel() != null) {
-                modelProviderMap.putIfAbsent(provider.config.getModel(), type);
+                appendIfAbsent(entries, provider.config.getModel(), type);
             }
         }
     }
 
+    private static void appendIfAbsent(List<ModelEntry> list, String model, LLMProviderType type) {
+        boolean exists = list.stream().anyMatch(e -> e.model.equals(model) && e.providerType == type);
+        if (!exists) {
+            list.add(new ModelEntry(model, type));
+        }
+    }
+
+    public List<ModelEntry> getAllEntries() {
+        return List.copyOf(entries);
+    }
+
     public List<String> getAllModels() {
-        return new ArrayList<>(modelProviderMap.keySet());
+        return entries.stream().map(ModelEntry::model).distinct().toList();
     }
 
     public LLMProviderType getProviderType(String model) {
-        return modelProviderMap.get(model);
+        for (var entry : entries) {
+            if (entry.model.equals(model)) return entry.providerType;
+        }
+        return null;
     }
 
     public void addModel(String model, LLMProviderType type) {
-        modelProviderMap.putIfAbsent(model, type);
+        appendIfAbsent(entries, model, type);
+    }
+
+    public record ModelEntry(String model, LLMProviderType providerType) {
     }
 }

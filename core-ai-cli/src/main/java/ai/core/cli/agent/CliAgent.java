@@ -40,6 +40,14 @@ public class CliAgent {
                 """.formatted(workspaceInfo);
 
         if (config.memory != null) {
+            systemPrompt += """
+
+                You have access to persistent memory that survives across sessions.
+                - Existing memories are shown in <memory> tags below
+                - Use memory_tool to save when the user shares preferences, project conventions, or explicitly asks to remember
+                - Do NOT save session-specific context, duplicate existing memories, or unverified information
+                - Reference existing memories naturally without announcing them
+                """;
             var memoryContent = config.memory.load();
             if (!memoryContent.isBlank()) {
                 systemPrompt += "\n<memory>\n" + memoryContent + "</memory>\n";

@@ -12,6 +12,7 @@ import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.config.ProviderConfigurator;
+import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.memory.MemoryProvider;
@@ -178,7 +179,7 @@ public class AgentSessionRunner {
         String currentModel = getCurrentModelName();
         String[] parts = trimmed.split("\\s+", 2);
         if (parts.length >= 2) {
-            switchModel(currentModel, parts[1].trim());
+            switchModel(currentModel, parts[1].trim(), null);
             return;
         }
         showModelPicker(currentModel);
@@ -186,16 +187,17 @@ public class AgentSessionRunner {
 
     private void showModelPicker(String currentModel) {
         ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Current model: " + AnsiTheme.RESET + currentModel + "\n\n");
-        var models = buildModelList(currentModel);
-        for (int i = 0; i < models.size(); i++) {
-            var entry = models.get(i);
-            String marker = entry.equals(currentModel) ? AnsiTheme.SUCCESS + " (active)" + AnsiTheme.RESET : "";
-            ui.printStreamingChunk(String.format("  %s%2d)%s %s%s%n",
-                    AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, entry, marker));
+        var entries = buildModelEntryList(currentModel);
+        for (int i = 0; i < entries.size(); i++) {
+            var entry = entries.get(i);
+            String providerTag = AnsiTheme.MUTED + " [" + entry.providerType().getName() + "]" + AnsiTheme.RESET;
+            String marker = entry.model().equals(currentModel) ? AnsiTheme.SUCCESS + " (active)" + AnsiTheme.RESET : "";
+            ui.printStreamingChunk(String.format("  %s%2d)%s %s%s%s%n",
+                    AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, entry.model(), providerTag, marker));
         }
         ui.printStreamingChunk("\n  " + AnsiTheme.CMD_NAME + " a)" + AnsiTheme.RESET + " Add model to provider\n");
         ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + " b)" + AnsiTheme.RESET + " Configure new provider\n\n");
-        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + models.size() + "), a/b, model name, or 'q' to cancel: " + AnsiTheme.RESET);
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + entries.size() + "), a/b, model name, or 'q' to cancel: " + AnsiTheme.RESET);
         var line = ui.readRawLine();
         if (line == null || "q".equalsIgnoreCase(line.trim())) return;
         String input = line.trim();
@@ -207,39 +209,37 @@ public class AgentSessionRunner {
             configureProvider();
             return;
         }
-        String choice = resolveModelChoice(input, models);
-        if (choice != null) {
-            switchModel(currentModel, choice);
-        }
-    }
-
-    private List<String> buildModelList(String currentModel) {
-        var models = new java.util.ArrayList<>(modelRegistry.getAllModels());
-        if (!models.contains(currentModel)) {
-            models.addFirst(currentModel);
-        }
-        return models;
-    }
-
-    private String resolveModelChoice(String input, List<String> models) {
         try {
             int idx = Integer.parseInt(input);
-            if (idx >= 1 && idx <= models.size()) {
-                return models.get(idx - 1);
+            if (idx >= 1 && idx <= entries.size()) {
+                var picked = entries.get(idx - 1);
+                switchModel(currentModel, picked.model(), picked.providerType());
+                return;
             }
         } catch (NumberFormatException ignored) {
             // treat as model name
         }
-        if (!input.isBlank()) return input;
-        return null;
+        if (!input.isBlank()) {
+            switchModel(currentModel, input, null);
+        }
     }
 
-    private void switchModel(String currentModel, String newModel) {
+    private List<ModelRegistry.ModelEntry> buildModelEntryList(String currentModel) {
+        var entries = new java.util.ArrayList<>(modelRegistry.getAllEntries());
+        if (entries.stream().noneMatch(e -> e.model().equals(currentModel))) {
+            entries.addFirst(new ModelRegistry.ModelEntry(currentModel, modelRegistry.getProviderType(currentModel)));
+        }
+        return entries;
+    }
+
+    private void switchModel(String currentModel, String newModel, LLMProviderType providerType) {
         if (currentModel.equals(newModel)) {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Already using " + newModel + AnsiTheme.RESET + "\n\n");
             return;
         }
-        var providerType = modelRegistry.getProviderType(newModel);
+        if (providerType == null) {
+            providerType = modelRegistry.getProviderType(newModel);
+        }
         if (providerType != null) {
             agent.setLlmProvider(llmProviders.getProvider(providerType));
             new ProviderConfigurator(ui, llmProviders, modelRegistry).saveActiveModel(providerType, newModel);

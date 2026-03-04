@@ -389,6 +389,10 @@ public class Agent extends Node<Agent> {
         return llmProvider;
     }
 
+    public void setAuthenticated(boolean authenticated) {
+        this.authenticated = authenticated;
+    }
+
     public void setLlmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
     }

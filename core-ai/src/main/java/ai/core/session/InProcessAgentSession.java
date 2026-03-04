@@ -50,6 +50,7 @@ public class InProcessAgentSession implements AgentSession {
 
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
         agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
+        agent.setAuthenticated(true);
 
         if (agent.hasPersistenceProvider()) {
             agent.load(sessionId);
