@@ -53,7 +53,7 @@ public class LLMProviders {
 
     public LLMProviderType getProviderType(LLMProvider provider) {
         for (var entry : providers.entrySet()) {
-            if (entry.getValue() == provider) return entry.getKey();
+            if (entry.getValue().equals(provider)) return entry.getKey();
         }
         return null;
     }

@@ -26,4 +26,17 @@ public interface StreamingCallback {
     default void onError(Throwable error) {
 
     }
+
+    default void setActiveConnection(AutoCloseable connection) {
+    }
+
+    default void cancelConnection() {
+    }
+
+    default boolean isCancelled() {
+        return false;
+    }
+
+    default void reset() {
+    }
 }

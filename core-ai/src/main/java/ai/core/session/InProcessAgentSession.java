@@ -65,10 +65,17 @@ public class InProcessAgentSession implements AgentSession {
     @Override
     public void sendMessage(String message) {
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
+        agent.resetCancellation();
         Future<?> future = executor.submit(() -> {
             try {
                 debug("agent run starting");
                 var result = agent.run(message);
+                if (agent.isCancelled()) {
+                    debug("agent run cancelled");
+                    dispatch(TurnCompleteEvent.cancelled(sessionId));
+                    dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+                    return;
+                }
                 if (agent.hasPersistenceProvider()) {
                     agent.save(sessionId);
                 }
@@ -76,7 +83,7 @@ public class InProcessAgentSession implements AgentSession {
                 dispatch(TurnCompleteEvent.of(sessionId, result != null ? result : ""));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             } catch (Throwable e) {
-                if (Thread.currentThread().isInterrupted()) {
+                if (agent.isCancelled()) {
                     debug("agent run cancelled");
                     dispatch(TurnCompleteEvent.cancelled(sessionId));
                     dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
@@ -90,16 +97,13 @@ public class InProcessAgentSession implements AgentSession {
                 currentTask.compareAndSet(currentTask.get(), null);
             }
         });
-        currentTask.set(future);  // safe: single-thread executor ensures task hasn't started yet
+        currentTask.set(future);
     }
 
     @Override
     public void cancelTurn() {
-        Future<?> task = currentTask.getAndSet(null);
-        if (task != null && !task.isDone()) {
-            debug("cancelling current turn");
-            task.cancel(true);
-        }
+        debug("cancelling current turn");
+        agent.cancel();
     }
 
     @Override

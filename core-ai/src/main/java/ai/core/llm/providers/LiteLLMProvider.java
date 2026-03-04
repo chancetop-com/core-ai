@@ -12,6 +12,7 @@ import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
@@ -150,8 +151,27 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     private CompletionResponse executeSSERequest(HTTPRequest req, StreamingCallback callback) {
+        var holder = new CompletionResponse[]{null};
+        try {
+            holder[0] = consumeSSEStream(req, callback, holder);
+        } catch (Exception e) {
+            if (callback.isCancelled() && hasPartialContent(holder[0])) {
+                holder[0].choices.getFirst().message.content += "\n\n[interrupted]";
+                holder[0].choices.getFirst().finishReason = FinishReason.STOP;
+                return holder[0];
+            }
+            throw e;
+        }
+        callback.onComplete();
+        if (!Objects.requireNonNull(holder[0]).choices.getFirst().message.reasoningContent.isEmpty()) {
+            callback.onReasoningComplete(holder[0].choices.getFirst().message.reasoningContent);
+        }
+        return holder[0];
+    }
+
+    private CompletionResponse consumeSSEStream(HTTPRequest req, StreamingCallback callback, CompletionResponse[] holder) {
         try (var eventSource = client.sse(req)) {
-            CompletionResponse finalResponse = null;
+            callback.setActiveConnection(eventSource);
 
             for (var event : eventSource) {
                 var data = event.data();
@@ -160,8 +180,8 @@ public class LiteLLMProvider extends LLMProvider {
                 }
 
                 var chunk = JsonUtil.fromJson(CompletionResponse.class, data);
-                if (chunk.usage != null && finalResponse != null) {
-                    finalResponse.usage = chunk.usage;
+                if (chunk.usage != null && holder[0] != null) {
+                    holder[0].usage = chunk.usage;
                 }
                 if (chunk.choices == null || chunk.choices.isEmpty()) {
                     continue;
@@ -169,31 +189,26 @@ public class LiteLLMProvider extends LLMProvider {
 
                 var choice = chunk.choices.getFirst();
                 if (choice.delta != null && choice.delta.content != null) {
-                    // Call the streaming callback with the content delta
                     callback.onChunk(choice.delta.content);
                 }
                 if (choice.delta != null && choice.delta.reasoningContent != null) {
-                    // Call the streaming callback with the content delta
                     callback.onReasoningChunk(choice.delta.reasoningContent);
                 }
 
-                // Initialize final response with first chunk
-                if (finalResponse == null) {
-                    finalResponse = chunk;
-                    // Initialize message from delta
-                    initializeFinalChoiceMessage(finalResponse);
+                if (holder[0] == null) {
+                    holder[0] = chunk;
+                    initializeFinalChoiceMessage(holder[0]);
                 } else {
-                    // Merge streaming chunks into final response
-                    mergeChunkIntoFinalResponse(finalResponse, chunk);
+                    mergeChunkIntoFinalResponse(holder[0], chunk);
                 }
             }
-
-            callback.onComplete();
-            if (!Objects.requireNonNull(finalResponse).choices.getFirst().message.reasoningContent.isEmpty()) {
-                callback.onReasoningComplete(finalResponse.choices.getFirst().message.reasoningContent);
-            }
-            return finalResponse;
+            return holder[0];
         }
+    }
+
+    private boolean hasPartialContent(CompletionResponse response) {
+        return response != null && response.choices != null && !response.choices.isEmpty()
+                && response.choices.getFirst().message != null;
     }
 
     private void initializeFinalChoiceMessage(CompletionResponse finalResponse) {

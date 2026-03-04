@@ -57,6 +57,7 @@ public class Agent extends Node<Agent> {
     }
 
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
+    private volatile boolean cancelled = false;
 
     String systemPrompt;
     String promptTemplate;
@@ -229,6 +230,7 @@ public class Agent extends Node<Agent> {
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
+            if (cancelled) break;
             var turnMsgList = turn(getMessages(), AgentHelper.toReqTools(toolCalls), constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
@@ -419,6 +421,22 @@ public class Agent extends Node<Agent> {
 
     public SubAgentToolCall toSubAgentToolCall(Class<?>... classes) {
         return SubAgentToolCall.builder().subAgent(this, classes).build();
+    }
+
+    public void cancel() {
+        this.cancelled = true;
+        var cb = getStreamingCallback();
+        if (cb != null) cb.cancelConnection();
+    }
+
+    public void resetCancellation() {
+        this.cancelled = false;
+        var cb = getStreamingCallback();
+        if (cb != null) cb.reset();
+    }
+
+    public boolean isCancelled() {
+        return cancelled;
     }
 
     @Override
