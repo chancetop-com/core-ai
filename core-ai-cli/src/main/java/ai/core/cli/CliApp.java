@@ -56,10 +56,9 @@ public class CliApp {
         // so its static STDOUT field captures the no-op stream
         var originalOut = System.out;
         System.setOut(new PrintStream(OutputStream.nullOutputStream(), false, java.nio.charset.StandardCharsets.UTF_8));
+        System.setOut(originalOut);
 
         InteractiveConfigSetup.setupIfNeeded();
-
-        System.setOut(originalOut);
         DebugLog.log("loading config from " + configFile);
 
         System.setOut(new PrintStream(OutputStream.nullOutputStream(), false, java.nio.charset.StandardCharsets.UTF_8));
