@@ -160,8 +160,10 @@ public class LiteLLMProvider extends LLMProvider {
                 }
 
                 var chunk = JsonUtil.fromJson(CompletionResponse.class, data);
+                if (chunk.usage != null && finalResponse != null) {
+                    finalResponse.usage = chunk.usage;
+                }
                 if (chunk.choices == null || chunk.choices.isEmpty()) {
-                    // Skip chunks without choices
                     continue;
                 }
 
