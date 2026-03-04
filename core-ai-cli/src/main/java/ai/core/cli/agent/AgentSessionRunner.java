@@ -193,15 +193,21 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(String.format("  %s%2d)%s %s%s%n",
                     AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, entry, marker));
         }
-        ui.printStreamingChunk("\n  " + AnsiTheme.CMD_NAME + " a)" + AnsiTheme.RESET + " Add new provider\n\n");
-        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + models.size() + "), 'a' to add, model name, or 'q' to cancel: " + AnsiTheme.RESET);
+        ui.printStreamingChunk("\n  " + AnsiTheme.CMD_NAME + " a)" + AnsiTheme.RESET + " Add model to provider\n");
+        ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + " b)" + AnsiTheme.RESET + " Configure new provider\n\n");
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + models.size() + "), a/b, model name, or 'q' to cancel: " + AnsiTheme.RESET);
         var line = ui.readRawLine();
         if (line == null || "q".equalsIgnoreCase(line.trim())) return;
-        if ("a".equalsIgnoreCase(line.trim())) {
+        String input = line.trim();
+        if ("a".equalsIgnoreCase(input)) {
+            addModelToProvider();
+            return;
+        }
+        if ("b".equalsIgnoreCase(input)) {
             configureProvider();
             return;
         }
-        String choice = resolveModelChoice(line.trim(), models);
+        String choice = resolveModelChoice(input, models);
         if (choice != null) {
             switchModel(currentModel, choice);
         }
@@ -232,6 +238,7 @@ public class AgentSessionRunner {
         var providerType = modelRegistry.getProviderType(newModel);
         if (providerType != null) {
             agent.setLlmProvider(llmProviders.getProvider(providerType));
+            new ProviderConfigurator(ui, llmProviders, modelRegistry).saveActiveModel(providerType, newModel);
         } else {
             ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET
                     + " Model not in registry, using current provider.\n");
@@ -294,6 +301,11 @@ public class AgentSessionRunner {
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
+    }
+
+    private void addModelToProvider() {
+        var configurator = new ProviderConfigurator(ui, llmProviders, modelRegistry);
+        configurator.addModelToProvider();
     }
 
     private void configureProvider() {

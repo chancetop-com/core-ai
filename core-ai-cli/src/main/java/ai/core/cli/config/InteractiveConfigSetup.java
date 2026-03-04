@@ -36,8 +36,11 @@ public class InteractiveConfigSetup {
         } catch (IOException e) {
             return false;
         }
-        String apiKey = props.getProperty("litellm.api.key");
-        return apiKey != null && !apiKey.isBlank();
+        for (String prefix : new String[]{"openrouter", "litellm", "openai", "deepseek", "azure"}) {
+            String key = props.getProperty(prefix + ".api.key");
+            if (key != null && !key.isBlank()) return true;
+        }
+        return false;
     }
 
     private static void runInteractiveSetup() {
@@ -49,11 +52,12 @@ public class InteractiveConfigSetup {
         out.println(AnsiTheme.MUTED + "  No configuration found. Let's set it up." + AnsiTheme.RESET);
         out.println();
 
-        String apiBase = promptWithDefault(reader, out, "API Base URL", DEFAULT_API_BASE);
+        out.println("  " + AnsiTheme.MUTED + "Provider: OpenRouter (" + DEFAULT_API_BASE + ")" + AnsiTheme.RESET);
+        out.println();
         String apiKey = promptRequired(reader, out, "API Key");
         String model = promptWithDefault(reader, out, "Default Model", DEFAULT_MODEL);
 
-        writeConfig(apiBase, apiKey, model);
+        writeConfig(apiKey, model);
 
         out.println();
         out.println(AnsiTheme.SUCCESS + "  Configuration saved to " + CONFIG_FILE + AnsiTheme.RESET);
@@ -90,13 +94,13 @@ public class InteractiveConfigSetup {
         }
     }
 
-    private static void writeConfig(String apiBase, String apiKey, String model) {
+    private static void writeConfig(String apiKey, String model) {
         try {
             Files.createDirectories(CONFIG_DIR);
             String content = "core.appName=core-ai-cli\n"
-                    + "litellm.api.base=" + apiBase + "\n"
-                    + "litellm.api.key=" + apiKey + "\n"
-                    + "llm.model=" + model + "\n";
+                    + "openrouter.api.key=" + apiKey + "\n"
+                    + "openrouter.model=" + model + "\n"
+                    + "openrouter.models=" + model + "\n";
             Files.writeString(CONFIG_FILE, content);
         } catch (IOException e) {
             throw new RuntimeException("Failed to write config to " + CONFIG_FILE, e);

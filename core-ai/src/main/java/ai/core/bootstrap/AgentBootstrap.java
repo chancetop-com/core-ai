@@ -216,6 +216,15 @@ public class AgentBootstrap {
             providers.addProvider(LLMProviderType.LITELLM, provider);
         });
 
+        // OpenRouter
+        props.property("openrouter.api.key").ifPresent(key -> {
+            var providerConfig = createProviderConfig(config, "openrouter");
+            var provider = new LiteLLMProvider(providerConfig, "https://openrouter.ai/api/v1", key);
+            injectTracerIfAvailable(provider);
+            result.openRouterProvider = provider;
+            providers.addProvider(LLMProviderType.OPENROUTER, provider);
+        });
+
         // DeepSeek
         props.property("deepseek.api.key").ifPresent(key -> {
             var providerConfig = createProviderConfig(config, "deepseek");

@@ -35,6 +35,7 @@ public class BootstrapResult {
     public LiteLLMProvider openAIProvider;
     public LiteLLMProvider azureProvider;
     public LiteLLMProvider deepSeekProvider;
+    public LiteLLMProvider openRouterProvider;
 
     public TemporaryPersistenceProvider temporaryPersistenceProvider;
     public RedisPersistenceProvider redisPersistenceProvider;

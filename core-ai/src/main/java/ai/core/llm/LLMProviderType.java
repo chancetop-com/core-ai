@@ -8,6 +8,7 @@ public enum LLMProviderType {
     OPENAI("openai"),
     AZURE("azure"),
     AZURE_INFERENCE("azure-inference"),
+    OPENROUTER("openrouter"),
     LITELLM("litellm");
 
     private final String name;

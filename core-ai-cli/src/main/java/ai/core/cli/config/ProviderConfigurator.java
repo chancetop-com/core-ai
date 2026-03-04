@@ -12,6 +12,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -65,11 +67,86 @@ public class ProviderConfigurator {
         return null;
     }
 
+    public void saveActiveModel(LLMProviderType type, String model) {
+        try {
+            var props = loadProperties();
+            props.setProperty(type.getName() + ".model", model);
+            storeProperties(props);
+        } catch (IOException e) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save model: " + e.getMessage() + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    public Result addModelToProvider() {
+        List<LLMProviderType> configured = llmProviders.getProviderTypes();
+        if (configured.isEmpty()) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  No providers configured.\n" + AnsiTheme.RESET);
+            return null;
+        }
+        LLMProviderType type;
+        if (configured.size() == 1) {
+            type = configured.getFirst();
+            ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Add Model to " + type.getName() + AnsiTheme.RESET + "\n\n");
+        } else {
+            ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Add Model to Provider" + AnsiTheme.RESET + "\n\n");
+            for (int i = 0; i < configured.size(); i++) {
+                ui.printStreamingChunk(String.format("  %s%d)%s %s%n", AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, configured.get(i).getName()));
+            }
+            ui.printStreamingChunk("\n" + AnsiTheme.MUTED + "  Select provider (1-" + configured.size() + "): " + AnsiTheme.RESET);
+            var line = ui.readRawLine();
+            if (line == null) return null;
+            int idx;
+            try {
+                idx = Integer.parseInt(line.trim());
+                if (idx < 1 || idx > configured.size()) return null;
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            type = configured.get(idx - 1);
+        }
+        String defaultModel = LLMProviders.getProviderDefaultChatModel(type);
+        ui.printStreamingChunk("  Model [" + AnsiTheme.MUTED + defaultModel + AnsiTheme.RESET + "]: ");
+        var modelLine = ui.readRawLine();
+        String model = isBlank(modelLine) ? defaultModel : modelLine.trim();
+        modelRegistry.addModel(model, type);
+        saveModelToFile(type, model);
+        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model "
+                + model + " added to " + type.getName() + ".\n\n");
+        return new Result(type, model);
+    }
+
+    private void saveModelToFile(LLMProviderType type, String model) {
+        try {
+            var props = loadProperties();
+            String prefix = type.getName();
+            String existing = props.getProperty(prefix + ".models", "");
+            boolean alreadyPresent = !existing.isBlank()
+                    && Arrays.stream(existing.split(",")).map(String::trim).anyMatch(m -> m.equals(model));
+            if (!alreadyPresent) {
+                String updated = existing.isBlank() ? model : existing + "," + model;
+                props.setProperty(prefix + ".models", updated);
+                storeProperties(props);
+            }
+        } catch (IOException e) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save config: " + e.getMessage() + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    private boolean hasFixedApiBase(LLMProviderType type) {
+        return type == LLMProviderType.DEEPSEEK || type == LLMProviderType.OPENROUTER;
+    }
+
     private String configureProvider(LLMProviderType type) {
         String defaultBase = getDefaultApiBase(type);
-        ui.printStreamingChunk("  API Base [" + AnsiTheme.MUTED + defaultBase + AnsiTheme.RESET + "]: ");
-        var baseLine = ui.readRawLine();
-        String apiBase = isBlank(baseLine) ? defaultBase : baseLine.trim();
+        String apiBase;
+        if (hasFixedApiBase(type)) {
+            ui.printStreamingChunk("  API Base: " + AnsiTheme.MUTED + defaultBase + AnsiTheme.RESET + "\n");
+            apiBase = defaultBase;
+        } else {
+            ui.printStreamingChunk("  API Base [" + AnsiTheme.MUTED + defaultBase + AnsiTheme.RESET + "]: ");
+            var baseLine = ui.readRawLine();
+            apiBase = isBlank(baseLine) ? defaultBase : baseLine.trim();
+        }
 
         ui.printStreamingChunk("  API Key: ");
         var keyLine = ui.readRawLine();
@@ -97,12 +174,14 @@ public class ProviderConfigurator {
         try {
             var props = loadProperties();
             String prefix = type.getName();
-            props.setProperty(prefix + ".api.base", apiBase);
+            if (!hasFixedApiBase(type)) {
+                props.setProperty(prefix + ".api.base", apiBase);
+            }
             props.setProperty(prefix + ".api.key", apiKey);
             props.setProperty(prefix + ".model", model);
             String existing = props.getProperty(prefix + ".models", "");
             boolean alreadyPresent = !existing.isBlank()
-                    && java.util.Arrays.stream(existing.split(",")).map(String::trim).anyMatch(m -> m.equals(model));
+                    && Arrays.stream(existing.split(",")).map(String::trim).anyMatch(m -> m.equals(model));
             if (!alreadyPresent) {
                 String updated = existing.isBlank() ? model : existing + "," + model;
                 props.setProperty(prefix + ".models", updated);
@@ -132,8 +211,9 @@ public class ProviderConfigurator {
     private String getDefaultApiBase(LLMProviderType type) {
         return switch (type) {
             case DEEPSEEK -> "https://api.deepseek.com/v1";
+            case OPENROUTER -> "https://openrouter.ai/api/v1";
             case OPENAI -> "https://api.openai.com/v1";
-            case LITELLM -> "https://openrouter.ai/api/v1";
+            case LITELLM -> "http://localhost:4000";
             default -> "https://api.openai.com/v1";
         };
     }

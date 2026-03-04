@@ -13,6 +13,7 @@ public class LLMProviders {
         return switch (type) {
             case AZURE_INFERENCE -> "gpt-5-mini";
             case DEEPSEEK -> "deepseek-chat";
+            case OPENROUTER -> "anthropic/claude-sonnet-4.6";
             default -> "gpt-4o";
         };
     }
