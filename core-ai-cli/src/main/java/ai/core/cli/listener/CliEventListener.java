@@ -17,11 +17,8 @@ import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
-import org.jline.terminal.Attributes;
-import org.jline.terminal.Terminal;
-import org.jline.utils.NonBlockingReader;
-
-import java.io.IOException;
+import java.io.File;
+import java.io.FileInputStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -31,7 +28,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class CliEventListener implements AgentEventListener {
 
     private static final int ESC = 27;
-    private static final long ESC_SEQUENCE_TIMEOUT_MS = 50;
 
     private static String truncate(String text, int maxLength) {
         if (text == null) return "null";
@@ -48,7 +44,6 @@ public class CliEventListener implements AgentEventListener {
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
     private volatile long turnTokensBefore;
     private Thread escReaderThread;
-    private Attributes savedAttributes;
 
     public CliEventListener(TerminalUI ui, AgentSession session, Agent agent) {
         this.ui = ui;
@@ -166,38 +161,37 @@ public class CliEventListener implements AgentEventListener {
     }
 
     private void startEscReader() {
-        Terminal terminal = ui.getTerminal();
-        if (terminal == null) return;
-        savedAttributes = terminal.enterRawMode();
+        var ttyFile = new File("/dev/tty");
+        if (!ttyFile.exists()) return;
         escReaderThread = new Thread(() -> {
-            try {
-                NonBlockingReader reader = terminal.reader();
-                while (turnRunning.get() && !Thread.currentThread().isInterrupted()) {
-                    int c = reader.read(100);
-                    if (c == ESC && isStandaloneEsc(reader)) {
-                        DebugLog.log("ESC pressed, cancelling turn");
-                        session.cancelTurn();
-                        break;
-                    }
-                }
-            } catch (IOException e) {
-                DebugLog.log("esc reader error: " + e.getMessage());
-            }
+            stty("raw", "-echo");
+            pollEscKey(ttyFile);
+            stty("sane");
         }, "esc-reader");
         escReaderThread.setDaemon(true);
         escReaderThread.start();
     }
 
-    private boolean isStandaloneEsc(NonBlockingReader reader) throws IOException {
-        int next = reader.peek(ESC_SEQUENCE_TIMEOUT_MS);
-        if (next == NonBlockingReader.READ_EXPIRED || next == -1) {
-            return true;
+    private void pollEscKey(File ttyFile) {
+        try (var ttyIn = new FileInputStream(ttyFile)) {
+            byte[] buf = new byte[8];
+            while (turnRunning.get() && !Thread.currentThread().isInterrupted()) {
+                if (ttyIn.available() > 0) {
+                    int n = ttyIn.read(buf);
+                    if (n > 0 && buf[0] == ESC && n == 1) {
+                        DebugLog.log("ESC pressed, cancelling turn");
+                        session.cancelTurn();
+                        break;
+                    }
+                } else {
+                    Thread.sleep(50);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            DebugLog.log("esc reader error: " + e.getMessage());
         }
-        // consume the rest of escape sequence (e.g. arrow keys: ESC [ A)
-        while (reader.peek(10) >= 0) {
-            reader.read();
-        }
-        return false;
     }
 
     private void stopEscReader() {
@@ -205,10 +199,21 @@ public class CliEventListener implements AgentEventListener {
             escReaderThread.interrupt();
             escReaderThread = null;
         }
-        Terminal terminal = ui.getTerminal();
-        if (terminal != null && savedAttributes != null) {
-            terminal.setAttributes(savedAttributes);
-            savedAttributes = null;
+        stty("sane");
+    }
+
+    private void stty(String... args) {
+        try {
+            var cmd = new String[args.length + 1];
+            cmd[0] = "stty";
+            System.arraycopy(args, 0, cmd, 1, args.length);
+            new ProcessBuilder(cmd)
+                    .redirectInput(new File("/dev/tty"))
+                    .redirectOutput(new File("/dev/tty"))
+                    .start()
+                    .waitFor();
+        } catch (Exception e) {
+            DebugLog.log("stty failed: " + e.getMessage());
         }
     }
 }

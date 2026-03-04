@@ -104,6 +104,11 @@ public class InProcessAgentSession implements AgentSession {
     public void cancelTurn() {
         debug("cancelling current turn");
         agent.cancel();
+        // interrupt thread as fallback for when SSE connection hasn't been established yet (thinking phase)
+        Future<?> task = currentTask.get();
+        if (task != null && !task.isDone()) {
+            task.cancel(true);
+        }
     }
 
     @Override
