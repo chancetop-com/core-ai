@@ -231,7 +231,7 @@ public class TerminalUI {
                 : AnsiTheme.ERROR + "  ✗ ";
         writer.println(icon + AnsiTheme.RESET + toolName);
         if (result != null && !result.isBlank()) {
-            String display = result.length() > 200 ? result.substring(0, 200) + "..." : result;
+            String display = result.length() > 100 ? result.substring(0, 100) + "..." : result;
             for (String line : display.split("\n", 3)) {
                 writer.println(AnsiTheme.MUTED + "    " + line + AnsiTheme.RESET);
             }
