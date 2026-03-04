@@ -66,7 +66,7 @@ public class CliAgent {
 
     private static String buildSystemPrompt(Config config) {
         var workspaceInfo = buildWorkspaceInfo(config.workspace);
-        var prompt = """
+        var sb = new StringBuilder("""
                 You are a helpful AI coding assistant.
 
                 <workspace>
@@ -74,23 +74,23 @@ public class CliAgent {
                 </workspace>
 
                 Always use the workspace directory as the working directory when executing shell commands or scripts.
-                """.formatted(workspaceInfo);
+                """.formatted(workspaceInfo));
 
         if (config.memory != null) {
-            prompt += """
+            sb.append("""
 
                 You have access to persistent memory that survives across sessions.
                 - Existing memories are shown in <memory> tags below
                 - Use memory_tool to save when the user shares preferences, project conventions, or explicitly asks to remember
                 - Do NOT save session-specific context, duplicate existing memories, or unverified information
                 - Reference existing memories naturally without announcing them
-                """;
+                """);
             var memoryContent = config.memory.load();
             if (!memoryContent.isBlank()) {
-                prompt += "\n<memory>\n" + memoryContent + "</memory>\n";
+                sb.append("\n<memory>\n").append(memoryContent).append("</memory>\n");
             }
         }
-        return prompt;
+        return sb.toString();
     }
 
     private static void configureMcp(ai.core.agent.AgentBuilder builder) {

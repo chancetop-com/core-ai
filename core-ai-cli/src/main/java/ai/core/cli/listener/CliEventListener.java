@@ -18,7 +18,7 @@ import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
 import java.io.File;
-import java.io.FileInputStream;
+import java.nio.file.Files;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -165,23 +165,25 @@ public class CliEventListener implements AgentEventListener {
         if (!ttyFile.exists()) return;
         escReaderThread = new Thread(() -> {
             stty("raw", "-echo");
-            pollEscKey(ttyFile);
+            boolean escPressed = pollEscKey(ttyFile);
             stty("sane");
+            if (escPressed) {
+                DebugLog.log("ESC pressed, cancelling turn");
+                session.cancelTurn();
+            }
         }, "esc-reader");
         escReaderThread.setDaemon(true);
         escReaderThread.start();
     }
 
-    private void pollEscKey(File ttyFile) {
-        try (var ttyIn = new FileInputStream(ttyFile)) {
+    private boolean pollEscKey(File ttyFile) {
+        try (var ttyIn = Files.newInputStream(ttyFile.toPath())) {
             byte[] buf = new byte[8];
             while (turnRunning.get() && !Thread.currentThread().isInterrupted()) {
                 if (ttyIn.available() > 0) {
                     int n = ttyIn.read(buf);
                     if (n > 0 && buf[0] == ESC && n == 1) {
-                        DebugLog.log("ESC pressed, cancelling turn");
-                        session.cancelTurn();
-                        break;
+                        return true;
                     }
                 } else {
                     Thread.sleep(50);
@@ -192,6 +194,7 @@ public class CliEventListener implements AgentEventListener {
         } catch (Exception e) {
             DebugLog.log("esc reader error: " + e.getMessage());
         }
+        return false;
     }
 
     private void stopEscReader() {
