@@ -1,13 +1,13 @@
 package ai.core.server.web;
 
-import ai.core.api.session.AgentSessionWebService;
-import ai.core.api.session.ApproveToolCallRequest;
-import ai.core.api.session.CreateSessionRequest;
-import ai.core.api.session.CreateSessionResponse;
-import ai.core.api.session.SendMessageRequest;
-import ai.core.api.session.SessionHistoryResponse;
-import ai.core.api.session.SessionStatusResponse;
-import ai.core.api.session.SessionStatus;
+import ai.core.api.server.AgentSessionWebService;
+import ai.core.api.server.session.ApproveToolCallRequest;
+import ai.core.api.server.session.CreateSessionRequest;
+import ai.core.api.server.session.CreateSessionResponse;
+import ai.core.api.server.session.SendMessageRequest;
+import ai.core.api.server.session.SessionHistoryResponse;
+import ai.core.api.server.session.SessionStatusResponse;
+import ai.core.api.server.session.SessionStatus;
 import ai.core.server.session.AgentSessionManager;
 import core.framework.inject.Inject;
 

@@ -2,9 +2,9 @@ package ai.core.session;
 
 import ai.core.agent.Agent;
 import ai.core.agent.streaming.StreamingCallback;
-import ai.core.api.session.AgentEvent;
-import ai.core.api.session.AgentEventListener;
-import ai.core.api.session.TurnCompleteEvent;
+import ai.core.api.server.session.AgentEvent;
+import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;

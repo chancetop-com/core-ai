@@ -1,16 +1,18 @@
 package ai.core.server.web;
 
-import ai.core.api.session.AgentEventListener;
-import ai.core.api.session.ErrorEvent;
-import ai.core.api.session.EventType;
-import ai.core.api.session.ReasoningChunkEvent;
-import ai.core.api.session.ReasoningCompleteEvent;
-import ai.core.api.session.StatusChangeEvent;
-import ai.core.api.session.TextChunkEvent;
-import ai.core.api.session.ToolApprovalRequestEvent;
-import ai.core.api.session.ToolResultEvent;
-import ai.core.api.session.ToolStartEvent;
-import ai.core.api.session.TurnCompleteEvent;
+import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.EventType;
+import ai.core.api.server.session.ReasoningChunkEvent;
+import ai.core.api.server.session.ReasoningCompleteEvent;
+import ai.core.api.server.session.sse.SseBaseEvent;
+import ai.core.api.server.session.StatusChangeEvent;
+import ai.core.api.server.session.TextChunkEvent;
+import ai.core.api.server.session.ToolApprovalRequestEvent;
+import ai.core.api.server.session.ToolResultEvent;
+import ai.core.api.server.session.ToolStartEvent;
+import ai.core.api.server.session.TurnCompleteEvent;
+import ai.core.api.server.session.sse.SseStartEvent;
 import core.framework.json.JSON;
 import core.framework.web.sse.Channel;
 
@@ -18,9 +20,9 @@ import core.framework.web.sse.Channel;
  * @author stephen
  */
 public class SseEventBridge implements AgentEventListener {
-    private final Channel<SseAgentEvent> channel;
+    private final Channel<SseBaseEvent> channel;
 
-    public SseEventBridge(Channel<SseAgentEvent> channel) {
+    public SseEventBridge(Channel<SseBaseEvent> channel) {
         this.channel = channel;
     }
 
@@ -70,7 +72,7 @@ public class SseEventBridge implements AgentEventListener {
     }
 
     private void send(EventType type, String sessionId, String data) {
-        var sse = new SseAgentEvent();
+        var sse = new SseStartEvent();
         sse.type = type;
         sse.sessionId = sessionId;
         sse.data = data;

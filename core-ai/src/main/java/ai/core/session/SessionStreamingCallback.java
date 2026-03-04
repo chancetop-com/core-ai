@@ -1,11 +1,11 @@
 package ai.core.session;
 
 import ai.core.agent.streaming.StreamingCallback;
-import ai.core.api.session.AgentEvent;
-import ai.core.api.session.ErrorEvent;
-import ai.core.api.session.ReasoningChunkEvent;
-import ai.core.api.session.ReasoningCompleteEvent;
-import ai.core.api.session.TextChunkEvent;
+import ai.core.api.server.session.AgentEvent;
+import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.ReasoningChunkEvent;
+import ai.core.api.server.session.ReasoningCompleteEvent;
+import ai.core.api.server.session.TextChunkEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

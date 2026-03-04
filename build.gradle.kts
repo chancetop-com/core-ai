@@ -27,13 +27,6 @@ subprojects {
         }
     }
 
-    configure(subprojects.filter { (it.name.endsWith("-interface") || it.name.endsWith("-interface-v2")) }) {
-        java {
-            sourceCompatibility = JavaVersion.VERSION_17
-            targetCompatibility = JavaVersion.VERSION_17
-        }
-    }
-
     if (!plugins.hasPlugin("java")) {
         return@subprojects
     }
@@ -60,6 +53,7 @@ subprojects {
 configure(
     subprojects.filter {
         it.name.endsWith("-service") ||
+                it.name.endsWith("-server") ||
                 it.name.matches(Regex("(-|\\w)+-service-v\\d+$")) ||
                 it.name.endsWith("-site") ||
                 it.name.matches(Regex("(-|\\w)+-site-v\\d+$")) ||
@@ -71,13 +65,6 @@ configure(
     dependencies {
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
-    }
-}
-
-configure(subprojects.filter { it.name.endsWith("-interface") || it.name.matches(Regex("(-|\\w)+-interface-v\\d+$")) }) {
-    apply(plugin = "lib")
-    dependencies {
-        implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }
 }
 
@@ -129,6 +116,7 @@ project(":core-ai-server") {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("core.framework:core-ng-mongo:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<Test> {

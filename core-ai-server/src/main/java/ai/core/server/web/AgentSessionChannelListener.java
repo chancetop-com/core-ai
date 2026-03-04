@@ -1,5 +1,6 @@
 package ai.core.server.web;
 
+import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.session.AgentSessionManager;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
@@ -11,7 +12,7 @@ import org.slf4j.LoggerFactory;
 /**
  * @author stephen
  */
-public class AgentSessionChannelListener implements ChannelListener<SseAgentEvent> {
+public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent> {
     private static final String SESSION_ID_KEY = "sessionId";
     private final Logger logger = LoggerFactory.getLogger(AgentSessionChannelListener.class);
 
@@ -19,7 +20,7 @@ public class AgentSessionChannelListener implements ChannelListener<SseAgentEven
     AgentSessionManager sessionManager;
 
     @Override
-    public void onConnect(Request request, Channel<SseAgentEvent> channel, String lastEventId) {
+    public void onConnect(Request request, Channel<SseBaseEvent> channel, String lastEventId) {
         var sessionId = request.queryParams().get(SESSION_ID_KEY);
         if (sessionId == null || sessionId.isBlank()) {
             channel.close();
@@ -34,7 +35,7 @@ public class AgentSessionChannelListener implements ChannelListener<SseAgentEven
     }
 
     @Override
-    public void onClose(Channel<SseAgentEvent> channel) {
+    public void onClose(Channel<SseBaseEvent> channel) {
         var sessionId = (String) channel.context().get(SESSION_ID_KEY);
         logger.info("SSE client disconnected, sessionId={}", sessionId);
     }

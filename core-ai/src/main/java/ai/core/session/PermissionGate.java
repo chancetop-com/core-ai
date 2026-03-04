@@ -1,6 +1,6 @@
 package ai.core.session;
 
-import ai.core.api.session.ApprovalDecision;
+import ai.core.api.server.session.ApprovalDecision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

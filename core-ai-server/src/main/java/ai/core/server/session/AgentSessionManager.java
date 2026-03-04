@@ -1,7 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.agent.Agent;
-import ai.core.api.session.SessionConfig;
+import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.session.InProcessAgentSession;

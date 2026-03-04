@@ -1,20 +1,20 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
-import ai.core.api.session.AgentEvent;
-import ai.core.api.session.AgentEventListener;
-import ai.core.api.session.AgentSession;
-import ai.core.api.session.ApprovalDecision;
-import ai.core.api.session.ErrorEvent;
-import ai.core.api.session.ReasoningChunkEvent;
-import ai.core.api.session.ReasoningCompleteEvent;
-import ai.core.api.session.SessionStatus;
-import ai.core.api.session.StatusChangeEvent;
-import ai.core.api.session.TextChunkEvent;
-import ai.core.api.session.ToolApprovalRequestEvent;
-import ai.core.api.session.ToolResultEvent;
-import ai.core.api.session.ToolStartEvent;
-import ai.core.api.session.TurnCompleteEvent;
+import ai.core.api.server.session.AgentEvent;
+import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.AgentSession;
+import ai.core.api.server.session.ApprovalDecision;
+import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.ReasoningChunkEvent;
+import ai.core.api.server.session.ReasoningCompleteEvent;
+import ai.core.api.server.session.SessionStatus;
+import ai.core.api.server.session.StatusChangeEvent;
+import ai.core.api.server.session.TextChunkEvent;
+import ai.core.api.server.session.ToolApprovalRequestEvent;
+import ai.core.api.server.session.ToolResultEvent;
+import ai.core.api.server.session.ToolStartEvent;
+import ai.core.api.server.session.TurnCompleteEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

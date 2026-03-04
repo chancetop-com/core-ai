@@ -1,7 +1,7 @@
 package ai.core.cli.ui;
 
-import ai.core.api.session.ApprovalDecision;
-import ai.core.api.session.SessionStatus;
+import ai.core.api.server.session.ApprovalDecision;
+import ai.core.api.server.session.SessionStatus;
 import ai.core.cli.DebugLog;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
