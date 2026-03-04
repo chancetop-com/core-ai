@@ -240,12 +240,10 @@ public class AgentSessionRunner {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Already using " + newModel + AnsiTheme.RESET + "\n\n");
             return;
         }
-        if (providerType == null) {
-            providerType = modelRegistry.getProviderType(newModel);
-        }
-        if (providerType != null) {
-            agent.setLlmProvider(llmProviders.getProvider(providerType));
-            new ProviderConfigurator(ui, llmProviders, modelRegistry).saveActiveModel(providerType, newModel);
+        var resolvedType = providerType != null ? providerType : modelRegistry.getProviderType(newModel);
+        if (resolvedType != null) {
+            agent.setLlmProvider(llmProviders.getProvider(resolvedType));
+            new ProviderConfigurator(ui, llmProviders, modelRegistry).saveActiveModel(resolvedType, newModel);
         } else {
             ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET
                     + " Model not in registry, using current provider.\n");

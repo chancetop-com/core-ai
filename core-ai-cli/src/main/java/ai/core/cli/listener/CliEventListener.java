@@ -17,7 +17,11 @@ import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
+import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
+import org.jline.utils.NonBlockingReader;
+
+import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -26,7 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class CliEventListener implements AgentEventListener {
 
-    private static final long CANCEL_WINDOW_MS = 3000;
+    private static final int ESC = 27;
+    private static final long ESC_SEQUENCE_TIMEOUT_MS = 50;
 
     private static String truncate(String text, int maxLength) {
         if (text == null) return "null";
@@ -41,9 +46,9 @@ public class CliEventListener implements AgentEventListener {
     private volatile CompletableFuture<Void> turnFuture;
     private final AtomicBoolean turnRunning = new AtomicBoolean(false);
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
-    private volatile long firstInterrupt;
     private volatile long turnTokensBefore;
-    private Terminal.SignalHandler previousIntHandler;
+    private Thread escReaderThread;
+    private Attributes savedAttributes;
 
     public CliEventListener(TerminalUI ui, AgentSession session, Agent agent) {
         this.ui = ui;
@@ -51,19 +56,19 @@ public class CliEventListener implements AgentEventListener {
         this.agent = agent;
         this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui.getTerminalWidth());
         this.spinner = new ThinkingSpinner(ui.getWriter());
-        installSignalHandler();
     }
 
     public void prepareTurn() {
         turnFuture = new CompletableFuture<>();
         turnRunning.set(true);
-        firstInterrupt = 0;
         turnTokensBefore = agent.getCurrentTokenUsage().getTotalTokens();
+        startEscReader();
     }
 
     public void waitForTurn() {
         if (turnFuture != null) turnFuture.join();
         turnRunning.set(false);
+        stopEscReader();
     }
 
     @Override
@@ -160,30 +165,50 @@ public class CliEventListener implements AgentEventListener {
         ui.getWriter().flush();
     }
 
-    private void installSignalHandler() {
+    private void startEscReader() {
         Terminal terminal = ui.getTerminal();
-        if (terminal == null) {
-            return;
-        }
-        previousIntHandler = terminal.handle(Terminal.Signal.INT, signal -> {
-            if (turnRunning.get()) {
-                handleInterruptDuringTurn();
-            } else if (previousIntHandler != null) {
-                previousIntHandler.handle(signal);
+        if (terminal == null) return;
+        savedAttributes = terminal.enterRawMode();
+        escReaderThread = new Thread(() -> {
+            try {
+                NonBlockingReader reader = terminal.reader();
+                while (turnRunning.get() && !Thread.currentThread().isInterrupted()) {
+                    int c = reader.read(100);
+                    if (c == ESC && isStandaloneEsc(reader)) {
+                        DebugLog.log("ESC pressed, cancelling turn");
+                        session.cancelTurn();
+                        break;
+                    }
+                }
+            } catch (IOException e) {
+                DebugLog.log("esc reader error: " + e.getMessage());
             }
-        });
+        }, "esc-reader");
+        escReaderThread.setDaemon(true);
+        escReaderThread.start();
     }
 
-    private void handleInterruptDuringTurn() {
-        long now = System.currentTimeMillis();
-        if (now - firstInterrupt <= CANCEL_WINDOW_MS && firstInterrupt > 0) {
-            DebugLog.log("double Ctrl+C, cancelling turn");
-            session.cancelTurn();
-            firstInterrupt = 0;
-        } else {
-            firstInterrupt = now;
-            ui.getWriter().println("\n" + AnsiTheme.MUTED + "[Press Ctrl+C again to cancel]" + AnsiTheme.RESET);
-            ui.getWriter().flush();
+    private boolean isStandaloneEsc(NonBlockingReader reader) throws IOException {
+        int next = reader.peek(ESC_SEQUENCE_TIMEOUT_MS);
+        if (next == NonBlockingReader.READ_EXPIRED || next == -1) {
+            return true;
+        }
+        // consume the rest of escape sequence (e.g. arrow keys: ESC [ A)
+        while (reader.peek(10) >= 0) {
+            reader.read();
+        }
+        return false;
+    }
+
+    private void stopEscReader() {
+        if (escReaderThread != null) {
+            escReaderThread.interrupt();
+            escReaderThread = null;
+        }
+        Terminal terminal = ui.getTerminal();
+        if (terminal != null && savedAttributes != null) {
+            terminal.setAttributes(savedAttributes);
+            savedAttributes = null;
         }
     }
 }

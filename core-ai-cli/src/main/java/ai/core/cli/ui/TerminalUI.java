@@ -120,7 +120,7 @@ public class TerminalUI {
     public void printInputFrame() {
         int width = getTerminalWidth();
         String border = AnsiTheme.SEPARATOR + "─".repeat(width) + AnsiTheme.RESET;
-        String hint = AnsiTheme.MUTED + "  /help for commands | Ctrl+C to cancel" + AnsiTheme.RESET;
+        String hint = AnsiTheme.MUTED + "  /help for commands | Esc to interrupt" + AnsiTheme.RESET;
         // top border → prompt placeholder → bottom border → status hint
         writer.println(border);
         writer.println();

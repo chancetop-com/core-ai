@@ -36,13 +36,6 @@ public class ModelRegistry {
         }
     }
 
-    private static void appendIfAbsent(List<ModelEntry> list, String model, LLMProviderType type) {
-        boolean exists = list.stream().anyMatch(e -> e.model.equals(model) && e.providerType == type);
-        if (!exists) {
-            list.add(new ModelEntry(model, type));
-        }
-    }
-
     public List<ModelEntry> getAllEntries() {
         return List.copyOf(entries);
     }
@@ -60,6 +53,13 @@ public class ModelRegistry {
 
     public void addModel(String model, LLMProviderType type) {
         appendIfAbsent(entries, model, type);
+    }
+
+    private void appendIfAbsent(List<ModelEntry> list, String model, LLMProviderType type) {
+        boolean exists = list.stream().anyMatch(e -> e.model.equals(model) && e.providerType == type);
+        if (!exists) {
+            list.add(new ModelEntry(model, type));
+        }
     }
 
     public record ModelEntry(String model, LLMProviderType providerType) {

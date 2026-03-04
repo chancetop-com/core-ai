@@ -15,8 +15,6 @@ import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence.SessionInfo;
 import ai.core.session.ToolPermissionStore;
 
-import java.io.OutputStream;
-import java.io.PrintStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;

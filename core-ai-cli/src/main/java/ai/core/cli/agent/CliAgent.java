@@ -28,32 +28,7 @@ import java.util.stream.Collectors;
 public class CliAgent {
 
     public static Agent of(Config config) {
-        var workspaceInfo = buildWorkspaceInfo(config.workspace);
-        var systemPrompt = """
-                You are a helpful AI coding assistant.
-
-                <workspace>
-                %s
-                </workspace>
-
-                Always use the workspace directory as the working directory when executing shell commands or scripts.
-                """.formatted(workspaceInfo);
-
-        if (config.memory != null) {
-            systemPrompt += """
-
-                You have access to persistent memory that survives across sessions.
-                - Existing memories are shown in <memory> tags below
-                - Use memory_tool to save when the user shares preferences, project conventions, or explicitly asks to remember
-                - Do NOT save session-specific context, duplicate existing memories, or unverified information
-                - Reference existing memories naturally without announcing them
-                """;
-            var memoryContent = config.memory.load();
-            if (!memoryContent.isBlank()) {
-                systemPrompt += "\n<memory>\n" + memoryContent + "</memory>\n";
-            }
-        }
-
+        var systemPrompt = buildSystemPrompt(config);
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
@@ -87,6 +62,35 @@ public class CliAgent {
         }
 
         return builder.build();
+    }
+
+    private static String buildSystemPrompt(Config config) {
+        var workspaceInfo = buildWorkspaceInfo(config.workspace);
+        var prompt = """
+                You are a helpful AI coding assistant.
+
+                <workspace>
+                %s
+                </workspace>
+
+                Always use the workspace directory as the working directory when executing shell commands or scripts.
+                """.formatted(workspaceInfo);
+
+        if (config.memory != null) {
+            prompt += """
+
+                You have access to persistent memory that survives across sessions.
+                - Existing memories are shown in <memory> tags below
+                - Use memory_tool to save when the user shares preferences, project conventions, or explicitly asks to remember
+                - Do NOT save session-specific context, duplicate existing memories, or unverified information
+                - Reference existing memories naturally without announcing them
+                """;
+            var memoryContent = config.memory.load();
+            if (!memoryContent.isBlank()) {
+                prompt += "\n<memory>\n" + memoryContent + "</memory>\n";
+            }
+        }
+        return prompt;
     }
 
     private static void configureMcp(ai.core.agent.AgentBuilder builder) {
