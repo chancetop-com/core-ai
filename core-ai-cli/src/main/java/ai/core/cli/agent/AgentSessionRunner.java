@@ -186,12 +186,14 @@ public class AgentSessionRunner {
     }
 
     private void showModelPicker(String currentModel) {
+        var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
         ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Current model: " + AnsiTheme.RESET + currentModel + "\n\n");
         var entries = buildModelEntryList(currentModel);
         for (int i = 0; i < entries.size(); i++) {
             var entry = entries.get(i);
             String providerTag = AnsiTheme.MUTED + " [" + entry.providerType().getName() + "]" + AnsiTheme.RESET;
-            String marker = entry.model().equals(currentModel) ? AnsiTheme.SUCCESS + " (active)" + AnsiTheme.RESET : "";
+            boolean isActive = entry.model().equals(currentModel) && entry.providerType() == currentProviderType;
+            String marker = isActive ? AnsiTheme.SUCCESS + " (active)" + AnsiTheme.RESET : "";
             ui.printStreamingChunk(String.format("  %s%2d)%s %s%s%s%n",
                     AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, entry.model(), providerTag, marker));
         }
@@ -233,7 +235,8 @@ public class AgentSessionRunner {
     }
 
     private void switchModel(String currentModel, String newModel, LLMProviderType providerType) {
-        if (currentModel.equals(newModel)) {
+        var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
+        if (currentModel.equals(newModel) && (providerType == null || providerType == currentProviderType)) {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Already using " + newModel + AnsiTheme.RESET + "\n\n");
             return;
         }

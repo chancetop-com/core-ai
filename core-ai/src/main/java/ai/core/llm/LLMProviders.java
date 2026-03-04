@@ -51,6 +51,13 @@ public class LLMProviders {
         return List.copyOf(providers.keySet());
     }
 
+    public LLMProviderType getProviderType(LLMProvider provider) {
+        for (var entry : providers.entrySet()) {
+            if (entry.getValue() == provider) return entry.getKey();
+        }
+        return null;
+    }
+
     public LLMProvider getDefaultProvider() {
         if (defaultProviderType == null) return getProvider();
         return providers.get(defaultProviderType);

@@ -54,17 +54,10 @@ public class CliApp {
 
         InteractiveConfigSetup.setupIfNeeded();
 
-        // suppress framework INFO logs before LoggerImpl class loads,
-        // so its static STDOUT field captures the no-op stream
-        var originalOut = System.out;
-        System.setOut(new PrintStream(OutputStream.nullOutputStream(), false, java.nio.charset.StandardCharsets.UTF_8));
-
         DebugLog.log("loading config from " + configFile);
         var props = PropertiesFileSource.fromFile(configFile);
         var bootstrap = new AgentBootstrap(props);
         var result = bootstrap.initialize();
-
-        System.setOut(originalOut);
         DebugLog.log("bootstrap initialized");
 
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
@@ -183,4 +176,5 @@ public class CliApp {
             }
         }
     }
+
 }
