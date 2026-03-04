@@ -186,7 +186,12 @@ public class JsonSchemaUtil {
         var itemSchema = new JsonSchema();
         itemSchema.type = toPropertyType(p.getItemType());
         itemSchema.enums = p.getItemEnums();
-        if (itemSchema.type == JsonSchema.PropertyType.OBJECT && p.getItemType() != null && isCustomObjectType(p.getItemType())) {
+        if (p.getItemType() != null && p.getItemType().isEnum()) {
+            itemSchema.type = JsonSchema.PropertyType.STRING;
+            if (itemSchema.enums == null || itemSchema.enums.isEmpty()) {
+                itemSchema.enums = getEnumValues(p.getItemType());
+            }
+        } else if (itemSchema.type == JsonSchema.PropertyType.OBJECT && p.getItemType() != null && isCustomObjectType(p.getItemType())) {
             var nestedSchema = toJsonSchema(p.getItemType());
             itemSchema.properties = nestedSchema.properties;
             itemSchema.required = nestedSchema.required;
