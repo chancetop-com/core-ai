@@ -328,7 +328,7 @@ public class TerminalUI {
         reader.getWidgets().put(widgetName, () -> {
             reader.callWidget(LineReader.SELF_INSERT);
             if ("/".equals(reader.getBuffer().toString())) {
-                reader.callWidget(LineReader.MENU_COMPLETE);
+                reader.callWidget(LineReader.LIST_CHOICES);
             }
             return true;
         });

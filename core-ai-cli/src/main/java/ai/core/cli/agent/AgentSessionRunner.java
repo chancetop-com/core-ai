@@ -235,6 +235,10 @@ public class AgentSessionRunner {
     }
 
     private void switchModel(String currentModel, String newModel) {
+        if (currentModel.equals(newModel)) {
+            ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Already using " + newModel + AnsiTheme.RESET + "\n\n");
+            return;
+        }
         var providerType = modelRegistry.getProviderType(newModel);
         if (providerType != null) {
             agent.setLlmProvider(llmProviders.getProvider(providerType));

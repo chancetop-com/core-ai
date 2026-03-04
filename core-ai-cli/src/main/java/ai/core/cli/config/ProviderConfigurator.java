@@ -77,11 +77,11 @@ public class ProviderConfigurator {
         }
     }
 
-    public Result addModelToProvider() {
+    public void addModelToProvider() {
         List<LLMProviderType> configured = llmProviders.getProviderTypes();
         if (configured.isEmpty()) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  No providers configured.\n" + AnsiTheme.RESET);
-            return null;
+            return;
         }
         LLMProviderType type;
         if (configured.size() == 1) {
@@ -94,13 +94,13 @@ public class ProviderConfigurator {
             }
             ui.printStreamingChunk("\n" + AnsiTheme.MUTED + "  Select provider (1-" + configured.size() + "): " + AnsiTheme.RESET);
             var line = ui.readRawLine();
-            if (line == null) return null;
+            if (line == null) return;
             int idx;
             try {
                 idx = Integer.parseInt(line.trim());
-                if (idx < 1 || idx > configured.size()) return null;
+                if (idx < 1 || idx > configured.size()) return;
             } catch (NumberFormatException e) {
-                return null;
+                return;
             }
             type = configured.get(idx - 1);
         }
@@ -112,7 +112,7 @@ public class ProviderConfigurator {
         saveModelToFile(type, model);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model "
                 + model + " added to " + type.getName() + ".\n\n");
-        return new Result(type, model);
+        new Result(type, model);
     }
 
     private void saveModelToFile(LLMProviderType type, String model) {
@@ -212,7 +212,6 @@ public class ProviderConfigurator {
         return switch (type) {
             case DEEPSEEK -> "https://api.deepseek.com/v1";
             case OPENROUTER -> "https://openrouter.ai/api/v1";
-            case OPENAI -> "https://api.openai.com/v1";
             case LITELLM -> "http://localhost:4000";
             default -> "https://api.openai.com/v1";
         };
