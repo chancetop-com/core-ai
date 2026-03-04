@@ -32,7 +32,13 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.api.tool.function.CoreAiParameter",
         "ai.core.api.tool.function.CoreAiMethod",
         "ai.core.agent.AgentPersistence$AgentPersistenceDomain",
-        "ai.core.agent.NodeStatus"
+        "ai.core.agent.NodeStatus",
+        // Vendor management classes for GraalVM reflection
+        "ai.core.vender.Vendor",
+        "ai.core.vender.VendorConfig",
+        "ai.core.vender.VendorManagement",
+        "ai.core.vender.VendorException",
+        "ai.core.vender.vendors.RipgrepVendor"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
