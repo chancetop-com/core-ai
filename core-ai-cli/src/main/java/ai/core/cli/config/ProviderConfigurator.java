@@ -25,10 +25,12 @@ public class ProviderConfigurator {
 
     private final TerminalUI ui;
     private final LLMProviders llmProviders;
+    private final ModelRegistry modelRegistry;
 
-    public ProviderConfigurator(TerminalUI ui, LLMProviders llmProviders) {
+    public ProviderConfigurator(TerminalUI ui, LLMProviders llmProviders, ModelRegistry modelRegistry) {
         this.ui = ui;
         this.llmProviders = llmProviders;
+        this.modelRegistry = modelRegistry;
     }
 
     public Result configure() {
@@ -84,6 +86,7 @@ public class ProviderConfigurator {
         var config = new LLMProviderConfig(model, 0.7d, null);
         var provider = new LiteLLMProvider(config, apiBase, keyLine.trim());
         llmProviders.addProvider(type, provider);
+        modelRegistry.addModel(model, type);
         saveToFile(type, apiBase, keyLine.trim(), model);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Provider "
                 + type.getName() + " configured.\n\n");
@@ -97,6 +100,13 @@ public class ProviderConfigurator {
             props.setProperty(prefix + ".api.base", apiBase);
             props.setProperty(prefix + ".api.key", apiKey);
             props.setProperty(prefix + ".model", model);
+            String existing = props.getProperty(prefix + ".models", "");
+            boolean alreadyPresent = !existing.isBlank()
+                    && java.util.Arrays.stream(existing.split(",")).map(String::trim).anyMatch(m -> m.equals(model));
+            if (!alreadyPresent) {
+                String updated = existing.isBlank() ? model : existing + "," + model;
+                props.setProperty(prefix + ".models", updated);
+            }
             storeProperties(props);
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save config: " + e.getMessage() + AnsiTheme.RESET + "\n");

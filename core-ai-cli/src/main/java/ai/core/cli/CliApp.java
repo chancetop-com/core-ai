@@ -6,6 +6,7 @@ import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
+import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.memory.LocalFileMemoryProvider;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
@@ -83,6 +84,7 @@ public class CliApp {
 
         var permissionStore = new ToolPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.txt"));
         var noteMemory = new LocalFileMemoryProvider(workspace);
+        var modelRegistry = new ModelRegistry(result.llmProviders, props);
 
         try {
             while (true) {
@@ -92,7 +94,7 @@ public class CliApp {
                     return ui.readRawLine();
                 }, noteMemory);
                 var agent = CliAgent.of(agentConfig);
-                var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory);
+                var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory, modelRegistry);
                 var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
                 String nextSessionId = runner.run();
                 if (nextSessionId == null) break;

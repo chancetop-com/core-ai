@@ -10,6 +10,7 @@ import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.config.ProviderConfigurator;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
@@ -47,6 +48,7 @@ public class AgentSessionRunner {
     private final String sessionId;
     private final SessionManager sessionManager;
     private final ToolPermissionStore permissionStore;
+    private final ModelRegistry modelRegistry;
     private final MemoryCommandHandler memoryCommand;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
 
@@ -59,6 +61,7 @@ public class AgentSessionRunner {
         this.sessionId = config.sessionId;
         this.sessionManager = config.sessionManager;
         this.permissionStore = config.permissionStore;
+        this.modelRegistry = config.modelRegistry;
         this.memoryCommand = new MemoryCommandHandler(ui, config.memory);
     }
 
@@ -205,14 +208,7 @@ public class AgentSessionRunner {
     }
 
     private List<String> buildModelList(String currentModel) {
-        var models = new java.util.ArrayList<String>();
-        for (var type : llmProviders.getProviderTypes()) {
-            var provider = llmProviders.getProvider(type);
-            String model = provider.config.getModel();
-            if (model != null && !models.contains(model)) {
-                models.add(model);
-            }
-        }
+        var models = new java.util.ArrayList<>(modelRegistry.getAllModels());
         if (!models.contains(currentModel)) {
             models.addFirst(currentModel);
         }
@@ -233,13 +229,12 @@ public class AgentSessionRunner {
     }
 
     private void switchModel(String currentModel, String newModel) {
-        // find and switch to the provider that owns this model
-        for (var type : llmProviders.getProviderTypes()) {
-            var provider = llmProviders.getProvider(type);
-            if (newModel.equals(provider.config.getModel())) {
-                agent.setLlmProvider(provider);
-                break;
-            }
+        var providerType = modelRegistry.getProviderType(newModel);
+        if (providerType != null) {
+            agent.setLlmProvider(llmProviders.getProvider(providerType));
+        } else {
+            ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET
+                    + " Model not in registry, using current provider.\n");
         }
         agent.setModel(newModel);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
@@ -302,7 +297,7 @@ public class AgentSessionRunner {
     }
 
     private void configureProvider() {
-        var configurator = new ProviderConfigurator(ui, llmProviders);
+        var configurator = new ProviderConfigurator(ui, llmProviders, modelRegistry);
         var result = configurator.configure();
         if (result != null) {
             agent.setLlmProvider(llmProviders.getProvider(result.type()));
@@ -417,6 +412,6 @@ public class AgentSessionRunner {
 
     public record Config(String modelName, boolean autoApproveAll, String sessionId,
                          SessionManager sessionManager, ToolPermissionStore permissionStore,
-                         MemoryProvider memory) {
+                         MemoryProvider memory, ModelRegistry modelRegistry) {
     }
 }
