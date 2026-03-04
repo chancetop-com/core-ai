@@ -3,6 +3,7 @@ package ai.core.cli.agent;
 import ai.core.agent.Agent;
 import ai.core.cli.DebugLog;
 import ai.core.cli.command.McpCommandHandler;
+import ai.core.cli.command.MemoryCommandHandler;
 import ai.core.cli.command.ReplCommandHandler;
 import ai.core.cli.command.SkillCommandHandler;
 import ai.core.cli.listener.CliEventListener;
@@ -12,7 +13,6 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.config.ProviderConfigurator;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
-import ai.core.cli.memory.LocalFileMemoryProvider;
 import ai.core.memory.MemoryProvider;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class AgentSessionRunner {
 
     private static final String POISON_PILL = "\0__EXIT__";
+    private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final TerminalUI ui;
     private final Agent agent;
@@ -46,7 +47,7 @@ public class AgentSessionRunner {
     private final String sessionId;
     private final SessionManager sessionManager;
     private final ToolPermissionStore permissionStore;
-    private final MemoryProvider memory;
+    private final MemoryCommandHandler memoryCommand;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
 
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
@@ -58,7 +59,7 @@ public class AgentSessionRunner {
         this.sessionId = config.sessionId;
         this.sessionManager = config.sessionManager;
         this.permissionStore = config.permissionStore;
-        this.memory = config.memory;
+        this.memoryCommand = new MemoryCommandHandler(ui, config.memory);
     }
 
     public String run() {
@@ -154,7 +155,7 @@ public class AgentSessionRunner {
         } else if (lower.startsWith("/export")) {
             handleExport(trimmed);
         } else if (lower.startsWith("/memory")) {
-            handleMemory(trimmed);
+            memoryCommand.handle(trimmed);
         } else if ("/skill".equals(lower) || "/skills".equals(lower)) {
             new SkillCommandHandler(ui).handle();
         } else if ("/mcp".equals(lower)) {
@@ -300,85 +301,6 @@ public class AgentSessionRunner {
         }
     }
 
-    private void handleMemory(String trimmed) {
-        if (memory == null) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory not available.\n" + AnsiTheme.RESET);
-            return;
-        }
-        String args = trimmed.length() > "/memory".length()
-                ? trimmed.substring("/memory".length()).trim()
-                : "";
-        if (args.isEmpty()) {
-            showMemory();
-        } else if (args.startsWith("add ")) {
-            String rest = args.substring(4).trim();
-            if (rest.startsWith("--global ") && memory instanceof LocalFileMemoryProvider local) {
-                local.saveToScope("global", rest.substring(9).trim());
-                ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                        + " Added to global memory: " + rest.substring(9).trim() + "\n\n");
-            } else {
-                addMemory(rest.startsWith("--global ") ? rest.substring(9).trim() : rest);
-            }
-        } else if (args.startsWith("forget ")) {
-            forgetMemory(args.substring(7).trim());
-        } else {
-            ui.printStreamingChunk(String.format("%n  %sUsage:%s%n"
-                            + "  /memory                       Show all memories%n"
-                            + "  /memory add <text>            Add project memory%n"
-                            + "  /memory add --global <text>   Add global memory%n"
-                            + "  /memory forget <keyword>      Remove matching entries%n%n",
-                    AnsiTheme.PROMPT, AnsiTheme.RESET));
-        }
-    }
-
-    private void showMemory() {
-        var content = memory.load();
-        if (content.isBlank()) {
-            ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "No memories saved yet." + AnsiTheme.RESET + "\n\n");
-            return;
-        }
-        ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Saved Memories" + AnsiTheme.RESET + "\n\n");
-        for (String line : content.split("\n")) {
-            ui.printStreamingChunk("  " + line + "\n");
-        }
-        if (memory instanceof LocalFileMemoryProvider local) {
-            long globalSize = local.sizeInBytes("global");
-            long projectSize = local.sizeInBytes("project");
-            ui.printStreamingChunk(String.format("%n  %sSize: global %d bytes / 5KB, project %d bytes / 10KB%s%n%n",
-                    AnsiTheme.MUTED, globalSize, projectSize, AnsiTheme.RESET));
-        } else {
-            ui.printStreamingChunk("\n");
-        }
-    }
-
-    private void addMemory(String text) {
-        if (text.isBlank()) {
-            ui.printStreamingChunk(AnsiTheme.WARNING + "  Nothing to add.\n" + AnsiTheme.RESET);
-            return;
-        }
-        try {
-            memory.save(text);
-            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                    + " Added to project memory: " + text + "\n\n");
-        } catch (Exception e) {
-            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
-        }
-    }
-
-    private void forgetMemory(String keyword) {
-        if (keyword.isBlank()) {
-            ui.printStreamingChunk(AnsiTheme.WARNING + "  Keyword required.\n" + AnsiTheme.RESET);
-            return;
-        }
-        int total = memory.remove(keyword);
-        if (total > 0) {
-            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                    + " Removed " + total + " matching entries.\n\n");
-        } else {
-            ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "No entries matched '" + keyword + "'." + AnsiTheme.RESET + "\n\n");
-        }
-    }
-
     private void configureProvider() {
         var configurator = new ProviderConfigurator(ui, llmProviders);
         var result = configurator.configure();
@@ -437,8 +359,6 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Compacted: removed " + removed + " messages, kept " + messages.size() + "\n\n");
     }
-
-    private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private String showSessionPicker() {
         var sessions = sessionManager.listSessions();

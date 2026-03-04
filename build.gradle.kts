@@ -131,6 +131,9 @@ project(":core-ai-server") {
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
+    tasks.withType<Test> {
+        setProperty("failOnNoDiscoveredTests", false)
+    }
 }
 
 project(":core-ai-cli") {

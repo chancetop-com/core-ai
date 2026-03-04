@@ -7,11 +7,6 @@ import core.framework.api.validate.NotNull;
  * @author stephen
  */
 public class ReasoningCompleteEvent implements AgentEvent {
-    @Override
-    public String sessionId() {
-        return sessionId;
-    }
-
     public static ReasoningCompleteEvent of(String sessionId, String reasoning) {
         var event = new ReasoningCompleteEvent();
         event.sessionId = sessionId;
@@ -26,4 +21,9 @@ public class ReasoningCompleteEvent implements AgentEvent {
     @NotNull
     @Property(name = "reasoning")
     public String reasoning;
+
+    @Override
+    public String sessionId() {
+        return sessionId;
+    }
 }

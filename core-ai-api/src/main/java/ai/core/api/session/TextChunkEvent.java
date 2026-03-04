@@ -7,11 +7,6 @@ import core.framework.api.validate.NotNull;
  * @author stephen
  */
 public class TextChunkEvent implements AgentEvent {
-    @Override
-    public String sessionId() {
-        return sessionId;
-    }
-
     public static TextChunkEvent of(String sessionId, String chunk) {
         var event = new TextChunkEvent();
         event.sessionId = sessionId;
@@ -26,4 +21,9 @@ public class TextChunkEvent implements AgentEvent {
     @NotNull
     @Property(name = "chunk")
     public String chunk;
+
+    @Override
+    public String sessionId() {
+        return sessionId;
+    }
 }

@@ -26,12 +26,9 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class CliAgent {
-    public static Agent of(LLMProviders providers, String modelOverride, int maxTurn,
-                           PersistenceProvider persistenceProvider, Path workspace,
-                           Function<String, String> askUserHandler,
-                           MemoryProvider memory) {
 
-        var workspaceInfo = buildWorkspaceInfo(workspace);
+    public static Agent of(Config config) {
+        var workspaceInfo = buildWorkspaceInfo(config.workspace);
         var systemPrompt = """
                 You are a helpful AI coding assistant.
 
@@ -42,31 +39,31 @@ public class CliAgent {
                 Always use the workspace directory as the working directory when executing shell commands or scripts.
                 """.formatted(workspaceInfo);
 
-        if (memory != null) {
-            var memoryContent = memory.load();
+        if (config.memory != null) {
+            var memoryContent = config.memory.load();
             if (!memoryContent.isBlank()) {
                 systemPrompt += "\n<memory>\n" + memoryContent + "</memory>\n";
             }
         }
 
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
-        tools.add(AskUserTool.builder().questionHandler(askUserHandler).build());
+        tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
-        tools.add(ManageSkillTool.builder().skillsDir(workspace.resolve(".core-ai/skills")).build());
-        if (memory != null) {
-            tools.add(MemoryTool.builder().provider(memory).build());
+        tools.add(ManageSkillTool.builder().skillsDir(config.workspace.resolve(".core-ai/skills")).build());
+        if (config.memory != null) {
+            tools.add(MemoryTool.builder().provider(config.memory).build());
         }
 
         var builder = Agent.builder()
-                .llmProvider(providers.getProvider())
+                .llmProvider(config.providers.getProvider())
                 .systemPrompt(systemPrompt)
-                .maxTurn(maxTurn)
+                .maxTurn(config.maxTurn)
                 .toolCalls(tools)
                 .temperature(0.8);
 
         // Skills: load from workspace and user home
         var skillConfig = SkillConfig.builder()
-                .source("workspace", workspace.resolve(".core-ai/skills").toString(), 100)
+                .source("workspace", config.workspace.resolve(".core-ai/skills").toString(), 100)
                 .source("user", Path.of(System.getProperty("user.home"), ".core-ai", "skills").toString(), 50)
                 .build();
         builder.skills(skillConfig);
@@ -74,11 +71,11 @@ public class CliAgent {
         // MCP: connect to configured servers if available
         configureMcp(builder);
 
-        if (persistenceProvider != null) {
-            builder.persistenceProvider(persistenceProvider);
+        if (config.persistenceProvider != null) {
+            builder.persistenceProvider(config.persistenceProvider);
         }
-        if (modelOverride != null) {
-            builder.model(modelOverride);
+        if (config.modelOverride != null) {
+            builder.model(config.modelOverride);
         }
 
         return builder.build();
@@ -114,5 +111,10 @@ public class CliAgent {
         }
 
         return sb.toString();
+    }
+
+    public record Config(LLMProviders providers, String modelOverride, int maxTurn,
+                         PersistenceProvider persistenceProvider, Path workspace,
+                         Function<String, String> askUserHandler, MemoryProvider memory) {
     }
 }

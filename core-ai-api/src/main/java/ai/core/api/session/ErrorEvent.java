@@ -7,11 +7,6 @@ import core.framework.api.validate.NotNull;
  * @author stephen
  */
 public class ErrorEvent implements AgentEvent {
-    @Override
-    public String sessionId() {
-        return sessionId;
-    }
-
     public static ErrorEvent of(String sessionId, String message, String detail) {
         var event = new ErrorEvent();
         event.sessionId = sessionId;
@@ -30,4 +25,9 @@ public class ErrorEvent implements AgentEvent {
 
     @Property(name = "detail")
     public String detail;
+
+    @Override
+    public String sessionId() {
+        return sessionId;
+    }
 }

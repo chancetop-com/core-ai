@@ -12,6 +12,15 @@ import java.util.List;
  * @author stephen
  */
 public class AgentPersistence implements Persistence<Agent> {
+    public static String firstUserMessage(String data) {
+        var domain = JSON.fromJSON(AgentPersistenceDomain.class, data);
+        if (domain.messages == null) return null;
+        for (var message : domain.messages) {
+            if (message.role == RoleType.USER) return message.getTextContent();
+        }
+        return null;
+    }
+
     @Override
     public String serialization(Agent agent) {
         return JSON.toJSON(AgentPersistenceDomain.of(agent.getMessages(), agent.getNodeStatus()));
@@ -22,15 +31,6 @@ public class AgentPersistence implements Persistence<Agent> {
         var domain = JSON.fromJSON(AgentPersistenceDomain.class, context);
         agent.addMessages(domain.messages);
         agent.setNodeStatus(domain.status);
-    }
-
-    public static String firstUserMessage(String data) {
-        var domain = JSON.fromJSON(AgentPersistenceDomain.class, data);
-        if (domain.messages == null) return null;
-        for (var message : domain.messages) {
-            if (message.role == RoleType.USER) return message.getTextContent();
-        }
-        return null;
     }
 
     public static class AgentPersistenceDomain {

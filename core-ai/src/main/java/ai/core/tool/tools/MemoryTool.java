@@ -21,6 +21,30 @@ public final class MemoryTool extends ToolCall {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     public static final String TOOL_NAME = "memory_tool";
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    private static List<ToolCallParameter> buildParameters() {
+        return List.of(
+                ToolCallParameter.builder()
+                        .name("action")
+                        .description("The action to perform: 'save' to remember a fact, 'forget' to remove entries matching a keyword")
+                        .type(ToolCallParameterType.STRING)
+                        .classType(String.class)
+                        .required(true)
+                        .enums(List.of("save", "forget"))
+                        .build(),
+                ToolCallParameter.builder()
+                        .name("content")
+                        .description("For save: the fact or preference to remember. For forget: keyword to match and remove entries.")
+                        .type(ToolCallParameterType.STRING)
+                        .classType(String.class)
+                        .required(true)
+                        .build()
+        );
+    }
+
     private final MemoryProvider provider;
 
     private MemoryTool(MemoryProvider provider) {
@@ -39,10 +63,6 @@ public final class MemoryTool extends ToolCall {
                 - Wants to remove outdated or incorrect information
                 Do NOT use this tool for transient or session-specific information.""");
         setParameters(buildParameters());
-    }
-
-    public static Builder builder() {
-        return new Builder();
     }
 
     @Override
@@ -92,26 +112,6 @@ public final class MemoryTool extends ToolCall {
                 .withStats("action", "forget")
                 .withStats("keyword", keyword)
                 .withStats("removed", removed);
-    }
-
-    private static List<ToolCallParameter> buildParameters() {
-        return List.of(
-                ToolCallParameter.builder()
-                        .name("action")
-                        .description("The action to perform: 'save' to remember a fact, 'forget' to remove entries matching a keyword")
-                        .type(ToolCallParameterType.STRING)
-                        .classType(String.class)
-                        .required(true)
-                        .enums(List.of("save", "forget"))
-                        .build(),
-                ToolCallParameter.builder()
-                        .name("content")
-                        .description("For save: the fact or preference to remember. For forget: keyword to match and remove entries.")
-                        .type(ToolCallParameterType.STRING)
-                        .classType(String.class)
-                        .required(true)
-                        .build()
-        );
     }
 
     public static class Builder extends ToolCall.Builder<Builder, MemoryTool> {

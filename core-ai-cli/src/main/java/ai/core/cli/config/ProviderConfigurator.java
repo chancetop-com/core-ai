@@ -42,9 +42,6 @@ public class ProviderConfigurator {
         return new Result(selectedType, model);
     }
 
-    public record Result(LLMProviderType type, String model) {
-    }
-
     private void printProviderTypes(LLMProviderType[] types) {
         for (int i = 0; i < types.length; i++) {
             String mark = llmProviders.getProvider(types[i]) != null ? AnsiTheme.SUCCESS + " ✓" + AnsiTheme.RESET : "";
@@ -133,5 +130,8 @@ public class ProviderConfigurator {
 
     private boolean isBlank(String s) {
         return s == null || s.isBlank();
+    }
+
+    public record Result(LLMProviderType type, String model) {
     }
 }

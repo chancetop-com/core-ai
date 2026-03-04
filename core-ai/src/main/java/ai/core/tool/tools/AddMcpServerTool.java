@@ -91,8 +91,8 @@ public class AddMcpServerTool extends ToolCall {
         }
         var client = manager.getClient(name);
         var tools = client.listTools();
-        var mcpToolCalls = McpToolCalls.from(manager, List.of(name), null);
         if (toolRegistrar != null) {
+            var mcpToolCalls = McpToolCalls.from(manager, List.of(name), null);
             toolRegistrar.accept(new ArrayList<>(mcpToolCalls));
         }
         return ToolCallResult.completed("Connected to MCP server '" + name + "'. "

@@ -86,11 +86,12 @@ public class CliApp {
 
         try {
             while (true) {
-                var agent = CliAgent.of(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
+                var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
                     ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
                     ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
                     return ui.readRawLine();
                 }, noteMemory);
+                var agent = CliAgent.of(agentConfig);
                 var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory);
                 var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
                 String nextSessionId = runner.run();
@@ -162,9 +163,9 @@ public class CliApp {
 
     private String truncate(String text, int maxLength) {
         if (text == null || text.isBlank()) return "(empty)";
-        text = text.replaceAll("[\\r\\n]+", " ").strip();
-        if (text.length() <= maxLength) return text;
-        return text.substring(0, maxLength) + "...";
+        String cleaned = text.replaceAll("[\\r\\n]+", " ").strip();
+        if (cleaned.length() <= maxLength) return cleaned;
+        return cleaned.substring(0, maxLength) + "...";
     }
 
     private void closeQuietly(TerminalUI ui) {

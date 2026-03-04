@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * @author xander
@@ -27,7 +28,7 @@ public class LocalFileMemoryProvider implements MemoryProvider {
 
     @Override
     public String load() {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(128);
         String global = readFileQuietly(globalPath);
         String project = readFileQuietly(projectPath);
 
@@ -90,9 +91,9 @@ public class LocalFileMemoryProvider implements MemoryProvider {
         if (!Files.exists(path)) return 0;
         try {
             List<String> lines = Files.readAllLines(path);
-            String lowerKeyword = keyword.toLowerCase();
+            String lowerKeyword = keyword.toLowerCase(Locale.ROOT);
             List<String> remaining = lines.stream()
-                    .filter(line -> !line.toLowerCase().contains(lowerKeyword))
+                    .filter(line -> !line.toLowerCase(Locale.ROOT).contains(lowerKeyword))
                     .toList();
             int removed = lines.size() - remaining.size();
             if (removed > 0) {

@@ -7,11 +7,6 @@ import core.framework.api.validate.NotNull;
  * @author stephen
  */
 public class StatusChangeEvent implements AgentEvent {
-    @Override
-    public String sessionId() {
-        return sessionId;
-    }
-
     public static StatusChangeEvent of(String sessionId, SessionStatus status) {
         var event = new StatusChangeEvent();
         event.sessionId = sessionId;
@@ -26,4 +21,9 @@ public class StatusChangeEvent implements AgentEvent {
     @NotNull
     @Property(name = "status")
     public SessionStatus status;
+
+    @Override
+    public String sessionId() {
+        return sessionId;
+    }
 }

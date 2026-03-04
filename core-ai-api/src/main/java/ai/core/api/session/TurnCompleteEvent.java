@@ -7,11 +7,6 @@ import core.framework.api.validate.NotNull;
  * @author stephen
  */
 public class TurnCompleteEvent implements AgentEvent {
-    @Override
-    public String sessionId() {
-        return sessionId;
-    }
-
     public static TurnCompleteEvent of(String sessionId, String output) {
         var event = new TurnCompleteEvent();
         event.sessionId = sessionId;
@@ -38,4 +33,9 @@ public class TurnCompleteEvent implements AgentEvent {
     @NotNull
     @Property(name = "cancelled")
     public Boolean cancelled;
+
+    @Override
+    public String sessionId() {
+        return sessionId;
+    }
 }

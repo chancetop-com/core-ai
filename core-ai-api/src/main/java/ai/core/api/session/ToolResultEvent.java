@@ -7,11 +7,6 @@ import core.framework.api.validate.NotNull;
  * @author stephen
  */
 public class ToolResultEvent implements AgentEvent {
-    @Override
-    public String sessionId() {
-        return sessionId;
-    }
-
     public static ToolResultEvent of(String sessionId, String callId, String toolName, String status, String result) {
         var event = new ToolResultEvent();
         event.sessionId = sessionId;
@@ -40,4 +35,9 @@ public class ToolResultEvent implements AgentEvent {
 
     @Property(name = "result")
     public String result;
+
+    @Override
+    public String sessionId() {
+        return sessionId;
+    }
 }

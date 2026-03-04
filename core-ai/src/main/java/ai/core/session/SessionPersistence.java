@@ -9,7 +9,7 @@ import java.util.List;
  * @author stephen
  */
 public interface SessionPersistence extends PersistenceProvider {
-    record SessionInfo(String id, Instant lastModified) {}
-
     List<SessionInfo> listSessions();
+
+    record SessionInfo(String id, Instant lastModified) { }
 }
