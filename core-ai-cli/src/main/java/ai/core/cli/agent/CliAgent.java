@@ -3,6 +3,7 @@ package ai.core.cli.agent;
 import ai.core.agent.Agent;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.memory.MemoryProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.skill.SkillConfig;
 import ai.core.tool.BuiltinTools;
@@ -11,6 +12,7 @@ import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.ManageSkillTool;
+import ai.core.tool.tools.MemoryTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,7 +28,8 @@ import java.util.stream.Collectors;
 public class CliAgent {
     public static Agent of(LLMProviders providers, String modelOverride, int maxTurn,
                            PersistenceProvider persistenceProvider, Path workspace,
-                           Function<String, String> askUserHandler) {
+                           Function<String, String> askUserHandler,
+                           MemoryProvider memory) {
 
         var workspaceInfo = buildWorkspaceInfo(workspace);
         var systemPrompt = """
@@ -39,10 +42,20 @@ public class CliAgent {
                 Always use the workspace directory as the working directory when executing shell commands or scripts.
                 """.formatted(workspaceInfo);
 
+        if (memory != null) {
+            var memoryContent = memory.load();
+            if (!memoryContent.isBlank()) {
+                systemPrompt += "\n<memory>\n" + memoryContent + "</memory>\n";
+            }
+        }
+
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
         tools.add(AskUserTool.builder().questionHandler(askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
         tools.add(ManageSkillTool.builder().skillsDir(workspace.resolve(".core-ai/skills")).build());
+        if (memory != null) {
+            tools.add(MemoryTool.builder().provider(memory).build());
+        }
 
         var builder = Agent.builder()
                 .llmProvider(providers.getProvider())
