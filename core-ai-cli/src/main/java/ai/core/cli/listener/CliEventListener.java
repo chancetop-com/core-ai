@@ -18,7 +18,7 @@ import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
 import java.io.File;
-import java.nio.file.Files;
+import java.io.FileInputStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -164,7 +164,7 @@ public class CliEventListener implements AgentEventListener {
         var ttyFile = new File("/dev/tty");
         if (!ttyFile.exists()) return;
         escReaderThread = new Thread(() -> {
-            stty("raw", "-echo");
+            stty("-icanon", "-echo");
             boolean escPressed = pollEscKey(ttyFile);
             stty("sane");
             if (escPressed) {
@@ -176,8 +176,9 @@ public class CliEventListener implements AgentEventListener {
         escReaderThread.start();
     }
 
+    @SuppressWarnings("PMD.AvoidFileStream")
     private boolean pollEscKey(File ttyFile) {
-        try (var ttyIn = Files.newInputStream(ttyFile.toPath())) {
+        try (var ttyIn = new FileInputStream(ttyFile)) {
             byte[] buf = new byte[8];
             while (turnRunning.get() && !Thread.currentThread().isInterrupted()) {
                 if (ttyIn.available() > 0) {
