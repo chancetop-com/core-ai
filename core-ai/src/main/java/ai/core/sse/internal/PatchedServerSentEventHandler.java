@@ -80,6 +80,7 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
 
     @Override
     public void handleRequest(HttpServerExchange exchange) {
+        // todo: add options support
         // CORS headers
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Origin"), "*");
         exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Methods"), "GET, POST, OPTIONS");
