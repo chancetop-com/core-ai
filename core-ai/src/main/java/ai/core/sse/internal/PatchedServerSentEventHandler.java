@@ -80,6 +80,19 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
 
     @Override
     public void handleRequest(HttpServerExchange exchange) {
+        // CORS headers
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Origin"), "*");
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Methods"), "GET, POST, OPTIONS");
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Headers"), "Content-Type, x-trace-id, Last-Event-ID");
+        exchange.getResponseHeaders().put(new HttpString("Access-Control-Allow-Credentials"), "true");
+
+        // Handle OPTIONS preflight request (Safari CORS)
+        if (exchange.getRequestMethod().toString().equals("OPTIONS")) {
+            exchange.setStatusCode(200);
+            exchange.endExchange();
+            return;
+        }
+
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/event-stream");
         exchange.setPersistent(false);
         StreamSinkChannel sink = exchange.getResponseChannel();
