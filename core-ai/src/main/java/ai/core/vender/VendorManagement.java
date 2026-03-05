@@ -22,7 +22,7 @@ public final class VendorManagement {
                 if (instance == null) {
                     VendorConfig config = loadConfigFromSystemProperty();
                     instance = new VendorManagement(config);
-                    LOGGER.info("VendorManagement lazily initialized with vendor home: {}", config.getVendorHome());
+                    LOGGER.debug("VendorManagement lazily initialized with vendor home: {}", config.getVendorHome());
                 }
             }
         }
@@ -36,19 +36,19 @@ public final class VendorManagement {
                 return;
             }
             instance = new VendorManagement(config);
-            LOGGER.info("VendorManagement initialized with custom vendor home: {}", config.getVendorHome());
+            LOGGER.debug("VendorManagement initialized with custom vendor home: {}", config.getVendorHome());
         }
     }
 
     private static VendorConfig loadConfigFromSystemProperty() {
         var vendorHome = System.getProperty("sys.vendor.home");
         if (vendorHome != null && !vendorHome.isEmpty()) {
-            LOGGER.info("Loading vendor home from system property: {}", vendorHome);
+            LOGGER.debug("Loading vendor home from system property: {}", vendorHome);
             return VendorConfig.builder()
                 .vendorHome(vendorHome)
                 .build();
         }
-        LOGGER.info("No sys.vendor.home property set, using default: ~/.core-ai/vendors");
+        LOGGER.debug("No sys.vendor.home property set, using default: ~/.core-ai/vendors");
         return VendorConfig.defaultConfig();
     }
 
@@ -69,7 +69,7 @@ public final class VendorManagement {
     public <T extends Vendor> T registerVendor(Class<T> vendorClass) {
         var vendor = vendors.computeIfAbsent(vendorClass, clazz -> {
             try {
-                LOGGER.info("Registering vendor: {}", clazz.getSimpleName());
+                LOGGER.debug("Registering vendor: {}", clazz.getSimpleName());
                 Vendor v = createVendorInstance(clazz);
                 v.initialize();
                 return v;
@@ -122,13 +122,13 @@ public final class VendorManagement {
     public void unregisterVendor(Class<? extends Vendor> vendorClass) {
         var vendor = vendors.remove(vendorClass);
         if (vendor != null) {
-            LOGGER.info("Unregistering vendor: {}", vendorClass.getSimpleName());
+            LOGGER.debug("Unregistering vendor: {}", vendorClass.getSimpleName());
             vendor.cleanup();
         }
     }
 
     public void cleanupAll() {
-        LOGGER.info("Cleaning up all vendors");
+        LOGGER.debug("Cleaning up all vendors");
         for (var entry : vendors.entrySet()) {
             try {
                 entry.getValue().cleanup();

@@ -51,13 +51,13 @@ public class RipgrepVendor extends Vendor {
         downloadedArchive = vendorHome.resolve(fileName);
 
         var file = SystemUtil.download(downloadUrl, downloadedArchive.toString());
-        logger.info("Downloaded ripgrep archive to: {}", file.getAbsolutePath());
+        logger.debug("Downloaded ripgrep archive to: {}", file.getAbsolutePath());
     }
 
     @Override
     protected void install() throws Exception {
         var platform = SystemUtil.detectPlatform();
-        logger.info("Installing ripgrep from: {}", downloadedArchive);
+        logger.debug("Installing ripgrep from: {}", downloadedArchive);
 
         if (platform.isWindows()) {
             SystemUtil.extractZip(downloadedArchive, vendorHome);
@@ -71,7 +71,7 @@ public class RipgrepVendor extends Vendor {
             SystemUtil.setExecutablePermissions(execPath);
         }
 
-        logger.info("Ripgrep installed successfully to: {}", vendorHome);
+        logger.debug("Ripgrep installed successfully to: {}", vendorHome);
     }
 
     @Override
@@ -97,7 +97,7 @@ public class RipgrepVendor extends Vendor {
                 throw new VendorException("Ripgrep verification failed with exit code: " + exitCode);
             }
 
-            logger.info("Ripgrep verification successful");
+            logger.debug("Ripgrep verification successful");
         } catch (IOException | InterruptedException e) {
             throw new VendorException("Failed to verify ripgrep installation", e);
         }
