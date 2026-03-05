@@ -55,6 +55,16 @@ public final class AnsiTheme {
     // Success
     public static final String SUCCESS = "\u001B[38;5;114m";
 
+    // Syntax highlighting
+    public static final String SYN_KEYWORD = "\u001B[38;5;177m";
+    public static final String SYN_STRING = "\u001B[38;5;149m";
+    public static final String SYN_COMMENT = "\u001B[38;5;244m";
+    public static final String SYN_NUMBER = "\u001B[38;5;216m";
+    public static final String SYN_TYPE = "\u001B[38;5;81m";
+    public static final String SYN_ANNOTATION = "\u001B[38;5;214m";
+    public static final String SYN_DIFF_ADD = "\u001B[38;5;114m";
+    public static final String SYN_DIFF_DEL = "\u001B[38;5;203m";
+
     public static String prompt(String text) {
         return PROMPT + text + RESET;
     }

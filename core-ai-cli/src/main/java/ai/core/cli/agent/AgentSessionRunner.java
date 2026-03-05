@@ -9,6 +9,7 @@ import ai.core.cli.command.SkillCommandHandler;
 import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
+import ai.core.cli.ui.FileReferenceExpander;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.config.ProviderConfigurator;
@@ -140,7 +141,7 @@ public class AgentSessionRunner {
                 continue;
             }
             showFrame = true;
-            queue.offer(input);
+            queue.offer(FileReferenceExpander.expand(input));
         }
     }
 
@@ -154,6 +155,8 @@ public class AgentSessionRunner {
             handleTools();
         } else if ("/copy".equals(lower)) {
             handleCopy();
+        } else if ("/undo".equals(lower)) {
+            handleUndo();
         } else if ("/compact".equals(lower)) {
             handleCompact();
         } else if (lower.startsWith("/export")) {
@@ -370,6 +373,32 @@ public class AgentSessionRunner {
         messages.subList(1, removeEnd).clear();
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Compacted: removed " + removed + " messages, kept " + messages.size() + "\n\n");
+    }
+
+    private void handleUndo() {
+        var messages = agent.getMessages();
+        int lastUserIndex = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i).role == RoleType.USER) {
+                lastUserIndex = i;
+                break;
+            }
+        }
+        if (lastUserIndex < 0) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to undo.\n" + AnsiTheme.RESET);
+            return;
+        }
+        String preview = messages.get(lastUserIndex).getTextContent();
+        if (preview != null && preview.length() > 60) {
+            preview = preview.substring(0, 57) + "...";
+        }
+        int removed = messages.size() - lastUserIndex;
+        messages.subList(lastUserIndex, messages.size()).clear();
+        if (agent.hasPersistenceProvider()) {
+            agent.save(sessionId);
+        }
+        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
+                + " Undone " + removed + " message(s): " + AnsiTheme.MUTED + preview + AnsiTheme.RESET + "\n\n");
     }
 
     private String showSessionPicker() {
