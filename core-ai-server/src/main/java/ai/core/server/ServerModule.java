@@ -69,6 +69,6 @@ public class ServerModule extends Module {
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
 
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
-        sseConfig.listen(HTTPMethod.GET, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
+        sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
     }
 }

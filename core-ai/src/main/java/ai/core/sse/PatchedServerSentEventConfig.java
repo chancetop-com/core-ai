@@ -39,7 +39,7 @@ public class PatchedServerSentEventConfig extends Config {
             throw new Error("listener class must not be anonymous class or lambda, please create static class, listenerClass=" + listener.getClass().getCanonicalName());
         new InjectValidator(listener).validate();
 
-        logger.debug("sse, method={}, path={}, eventClass={}, listener={}", method, path, eventClass.getCanonicalName(), listener.getClass().getCanonicalName());
+        logger.info("sse, method={}, path={}, eventClass={}, listener={}", method, path, eventClass.getCanonicalName(), listener.getClass().getCanonicalName());
 
         if (patchedServerSentEventHandler == null) {
             patchedServerSentEventHandler = new PatchedServerSentEventHandler(context.logManager, context.httpServer.siteManager.sessionManager, context.httpServer.handlerContext);

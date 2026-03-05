@@ -63,8 +63,19 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
             logger.debug("sse OPTIONS preflight rejected, no route registered for path={}", path);
             return false;
         }
-        return "text/event-stream".equals(headers.getFirst(Headers.ACCEPT))
-               && supports.containsKey(key(method.toString(), path));
+
+        var routeKey = key(method.toString(), path);
+        // Check if the path is registered for SSE
+        if (!supports.containsKey(routeKey)) {
+            logger.debug("sse route not found, method={}, path={}, registered routes={}", method, path, supports.keySet());
+            return false;
+        }
+        logger.debug("sse route found, method={}, path={}", method, path);
+        //todo wait implementation check method
+//        if (headers != null && headers.getFirst(Headers.ACCEPT) != null) {
+//            return headers.getFirst(Headers.ACCEPT).contains("text/event-stream");
+//        }
+        return true;
     }
 
     @Override
