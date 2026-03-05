@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * Inline picker widget for JLine. Shows a navigable list below the input.
- * Arrow keys navigate, Enter selects, Esc/any-other-key cancels.
+ * Arrow keys navigate, Enter selects, Esc/Backspace/any-other-key cancels.
  *
  * @author xander
  */
@@ -28,6 +28,7 @@ public class InlinePicker {
     private final List<String> items = new ArrayList<>();
     private int selectedIndex;
     private String bufferSnapshot;
+    private char activeTriggerChar = '@';
 
     public InlinePicker(LineReaderImpl reader) {
         this.reader = reader;
@@ -35,7 +36,8 @@ public class InlinePicker {
         registerKeymap();
     }
 
-    public void activate(List<String> candidates) {
+    public void activate(List<String> candidates, char triggerChar) {
+        this.activeTriggerChar = triggerChar;
         items.clear();
         items.addAll(candidates);
         selectedIndex = 0;
@@ -65,10 +67,10 @@ public class InlinePicker {
             String selected = items.isEmpty() ? null : items.get(selectedIndex);
             dismiss();
             if (selected != null) {
-                int atPos = bufferSnapshot.lastIndexOf('@');
+                int pos = bufferSnapshot.lastIndexOf(activeTriggerChar);
                 reader.getBuffer().clear();
-                if (atPos > 0) {
-                    reader.getBuffer().write(bufferSnapshot.substring(0, atPos));
+                if (pos > 0) {
+                    reader.getBuffer().write(bufferSnapshot.substring(0, pos));
                 }
                 reader.getBuffer().write(selected);
             }
@@ -78,6 +80,15 @@ public class InlinePicker {
 
         reader.getWidgets().put("picker-cancel", () -> {
             dismiss();
+            reader.callWidget(LineReader.REDISPLAY);
+            return true;
+        });
+
+        reader.getWidgets().put("picker-backspace", () -> {
+            dismiss();
+            if (reader.getBuffer().length() > 0) {
+                reader.getBuffer().backspace();
+            }
             reader.callWidget(LineReader.REDISPLAY);
             return true;
         });
@@ -93,7 +104,12 @@ public class InlinePicker {
         map.bind(new Reference("picker-select"), "\r");
         map.bind(new Reference("picker-select"), "\n");
         map.bind(new Reference("picker-cancel"), "\u001B");
+        map.bind(new Reference("picker-backspace"), "\u007F");
+        map.bind(new Reference("picker-backspace"), "\b");
+        map.bind(new Reference("picker-cancel"), "\u0003"); // Ctrl+C
+        map.bind(new Reference("picker-cancel"), "\u0004"); // Ctrl+D
         map.setUnicode(new Reference("picker-cancel"));
+        map.setNomatch(new Reference("picker-cancel"));
         reader.getKeyMaps().put(KEYMAP_NAME, map);
     }
 

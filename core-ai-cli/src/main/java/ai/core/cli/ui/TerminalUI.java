@@ -88,7 +88,10 @@ public class TerminalUI {
             this.jlineReader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .appName("core-ai")
-                    .completer(new SlashCommandCompleter())
+                    .completer(new org.jline.reader.impl.completer.AggregateCompleter(
+                            new SlashCommandCompleter(),
+                            new FileReferenceCompleter()
+                    ))
                     .build();
             this.jlineReader.setOpt(LineReader.Option.AUTO_LIST);
             this.jlineReader.setOpt(LineReader.Option.AUTO_MENU);
@@ -408,16 +411,12 @@ public class TerminalUI {
         reader.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference(slashWidget), "/");
 
-        var picker = new InlinePicker(reader);
         String atWidget = "at-file-complete";
         reader.getWidgets().put(atWidget, () -> {
             reader.callWidget(LineReader.SELF_INSERT);
             String buf = reader.getBuffer().toString();
             if (buf.endsWith("@") && (buf.length() == 1 || buf.charAt(buf.length() - 2) == ' ')) {
-                var candidates = listFileCandidates();
-                if (!candidates.isEmpty()) {
-                    picker.activate(candidates);
-                }
+                reader.callWidget(LineReader.LIST_CHOICES);
             }
             return true;
         });
