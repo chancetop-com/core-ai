@@ -5,6 +5,7 @@ plugins {
     `maven-publish`
 }
 
+
 repositories {
     mavenCentral()
 }
@@ -71,7 +72,7 @@ configure(
 
 val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
-    version = "1.3.0-SNAPSHOT"
+    version = ProjectVersions.CORE_AI_VERSION
     dependencies {
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
@@ -102,7 +103,7 @@ project(":core-ai") {
 
 
 project(":core-ai-api") {
-    version = "1.3.0-SNAPSHOT"
+    version = ProjectVersions.CORE_AI_API_VERSION
     dependencies {
         implementation("core.framework:core-ng-api:${Versions.CORE_FRAMEWORK_VERSION}")
     }
@@ -110,7 +111,7 @@ project(":core-ai-api") {
 
 
 project(":core-ai-server") {
-    version = "1.0.0-SNAPSHOT"
+    version = ProjectVersions.CORE_AI_SERVER_VERSION
     apply(plugin = "app")
     dependencies {
         implementation(project(":core-ai"))
@@ -125,7 +126,7 @@ project(":core-ai-server") {
 }
 
 project(":core-ai-cli") {
-    version = "1.0.0-SNAPSHOT"
+    version = ProjectVersions.CORE_AI_CLI_VERSION
     apply(plugin = "application")
     apply(plugin = "native-app")
     the<JavaApplication>().mainClass.set("Main")
@@ -150,5 +151,19 @@ project(":core-ai-cli") {
         systemProperty("org.jline.terminal.type", "xterm-256color")
         System.getProperty("core.ai.debug")?.let { systemProperty("core.ai.debug", it) }
         outputs.upToDateWhen { false }
+    }
+    project(":core-ai-benchmark") {
+        version = ProjectVersions.CORE_AI_BENCHMARK_VERSION
+        apply(plugin = "app")
+        dependencies {
+            implementation(project(":core-ai"))
+            implementation(project(":core-ai-api"))
+            implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+            implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
+            testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+        }
+        tasks.withType<Test> {
+            setProperty("failOnNoDiscoveredTests", false)
+        }
     }
 }

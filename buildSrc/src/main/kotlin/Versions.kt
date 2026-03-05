@@ -18,3 +18,11 @@ object Versions {
     const val PICOCLI_VERSION = "4.7.7"
     const val GRAALVM_SDK_VERSION = "25.0.0"
 }
+
+object ProjectVersions {
+    const val CORE_AI_VERSION = "1.3.0-SNAPSHOT"
+    const val CORE_AI_API_VERSION = "1.3.0-SNAPSHOT"
+    const val CORE_AI_SERVER_VERSION = "1.0.0-SNAPSHOT"
+    const val CORE_AI_CLI_VERSION = "1.0.0-SNAPSHOT"
+    const val CORE_AI_BENCHMARK_VERSION = "1.0.0-SNAPSHOT"
+}
