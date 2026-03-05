@@ -3,6 +3,7 @@ package ai.core.cli.ui;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntSupplier;
 
 /**
  * @author xander
@@ -15,14 +16,15 @@ public class StreamingMarkdownRenderer {
 
     private final PrintWriter writer;
     private final boolean smartTerminal;
-    private final int terminalWidth;
+    private final IntSupplier terminalWidth;
     private final StringBuilder buffer = new StringBuilder();
     private final List<String> tableBuffer = new ArrayList<>();
     private boolean inCodeBlock;
+    private String codeBlockLanguage;
     private int printedLength;
     private int printedDisplayWidth;
 
-    public StreamingMarkdownRenderer(PrintWriter writer, boolean smartTerminal, int terminalWidth) {
+    public StreamingMarkdownRenderer(PrintWriter writer, boolean smartTerminal, IntSupplier terminalWidth) {
         this.writer = writer;
         this.smartTerminal = smartTerminal;
         this.terminalWidth = terminalWidth;
@@ -51,6 +53,7 @@ public class StreamingMarkdownRenderer {
         buffer.setLength(0);
         tableBuffer.clear();
         inCodeBlock = false;
+        codeBlockLanguage = null;
         printedLength = 0;
         printedDisplayWidth = 0;
     }
@@ -88,7 +91,8 @@ public class StreamingMarkdownRenderer {
         if (!smartTerminal || printedDisplayWidth <= 0) {
             return;
         }
-        int extraLines = printedDisplayWidth / terminalWidth;
+        int width = Math.max(terminalWidth.getAsInt(), 1);
+        int extraLines = printedDisplayWidth / width;
         for (int i = 0; i < extraLines; i++) {
             writer.print(ANSI_CLEAR_LINE + ANSI_CURSOR_UP);
         }
@@ -125,20 +129,35 @@ public class StreamingMarkdownRenderer {
     }
 
     private void updateCodeBlockState(String line) {
-        if (line.stripLeading().startsWith(FENCE)) {
-            inCodeBlock = !inCodeBlock;
+        String trimmed = line.stripLeading();
+        if (trimmed.startsWith(FENCE)) {
+            if (!inCodeBlock) {
+                inCodeBlock = true;
+                String langTag = trimmed.substring(FENCE.length()).trim();
+                codeBlockLanguage = langTag.isEmpty() ? null : langTag.split("\\s+")[0];
+            } else {
+                inCodeBlock = false;
+                codeBlockLanguage = null;
+            }
         }
     }
 
     private void renderSmartLine(String line) {
         String trimmed = line.stripLeading();
         if (trimmed.startsWith(FENCE)) {
-            inCodeBlock = !inCodeBlock;
+            if (!inCodeBlock) {
+                inCodeBlock = true;
+                String langTag = trimmed.substring(FENCE.length()).trim();
+                codeBlockLanguage = langTag.isEmpty() ? null : langTag.split("\\s+")[0];
+            } else {
+                inCodeBlock = false;
+                codeBlockLanguage = null;
+            }
             writer.print(AnsiTheme.MD_CODE_BLOCK + line + AnsiTheme.RESET);
             return;
         }
         if (inCodeBlock) {
-            writer.print(AnsiTheme.MD_CODE_BLOCK + line + AnsiTheme.RESET);
+            writer.print(CodeHighlighter.highlight(codeBlockLanguage, line));
         } else {
             writer.print(MarkdownLineRenderer.renderLine(line));
         }

@@ -49,7 +49,7 @@ public class CliEventListener implements AgentEventListener {
         this.ui = ui;
         this.session = session;
         this.agent = agent;
-        this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui.getTerminalWidth());
+        this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
         this.spinner = new ThinkingSpinner(ui.getWriter());
     }
 

@@ -164,13 +164,33 @@ public class EditFileTool extends ToolCall {
                     : String.format("Successfully replaced 1 occurrence in file: %s", filePath);
 
             LOGGER.debug(successMsg);
-            return successMsg;
+            return successMsg + "\n" + buildMiniDiff(oldString, newString);
 
         } catch (IOException e) {
             String error = "Error writing file: " + e.getMessage();
             LOGGER.error(error, e);
             return error;
         }
+    }
+
+    private String buildMiniDiff(String oldString, String newString) {
+        int maxLines = 8;
+        var sb = new StringBuilder(256);
+        sb.append("```diff\n");
+        String[] oldLines = oldString.split("\n", maxLines + 1);
+        String[] newLines = newString.split("\n", maxLines + 1);
+        int oldLimit = Math.min(oldLines.length, maxLines);
+        int newLimit = Math.min(newLines.length, maxLines);
+        for (int i = 0; i < oldLimit; i++) {
+            sb.append("- ").append(oldLines[i]).append('\n');
+        }
+        if (oldLines.length > maxLines) sb.append("- ...\n");
+        for (int i = 0; i < newLimit; i++) {
+            sb.append("+ ").append(newLines[i]).append('\n');
+        }
+        if (newLines.length > maxLines) sb.append("+ ...\n");
+        sb.append("```");
+        return sb.toString();
     }
 
     private int countOccurrences(String text, String substring) {

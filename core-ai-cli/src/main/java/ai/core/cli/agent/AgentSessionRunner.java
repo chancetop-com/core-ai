@@ -337,12 +337,10 @@ public class AgentSessionRunner {
     }
 
     private void handleCopy() {
-        var messages = agent.getMessages();
         String lastAssistant = null;
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            var msg = messages.get(i);
-            if (msg.role == RoleType.ASSISTANT && msg.getTextContent() != null) {
-                lastAssistant = msg.getTextContent();
+        for (var msgs = agent.getMessages(), i = msgs.size() - 1; i >= 0; i--) {
+            if (msgs.get(i).role == RoleType.ASSISTANT && msgs.get(i).getTextContent() != null) {
+                lastAssistant = msgs.get(i).getTextContent();
                 break;
             }
         }
@@ -362,41 +360,29 @@ public class AgentSessionRunner {
 
     private void handleCompact() {
         var messages = agent.getMessages();
-        int total = messages.size();
-        if (total <= 4) {
+        if (messages.size() <= 4) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
             return;
         }
-        // keep system prompt (index 0) + last 4 messages (2 user-assistant pairs)
-        int removeEnd = total - 4;
-        int removed = removeEnd - 1;
-        messages.subList(1, removeEnd).clear();
+        int removed = messages.size() - 5; // keep system prompt + last 4 messages
+        messages.subList(1, messages.size() - 4).clear();
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Compacted: removed " + removed + " messages, kept " + messages.size() + "\n\n");
     }
 
     private void handleUndo() {
         var messages = agent.getMessages();
-        int lastUserIndex = -1;
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            if (messages.get(i).role == RoleType.USER) {
-                lastUserIndex = i;
-                break;
-            }
-        }
-        if (lastUserIndex < 0) {
+        int idx = messages.size() - 1;
+        while (idx >= 0 && messages.get(idx).role != RoleType.USER) idx--;
+        if (idx < 0) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to undo.\n" + AnsiTheme.RESET);
             return;
         }
-        String preview = messages.get(lastUserIndex).getTextContent();
-        if (preview != null && preview.length() > 60) {
-            preview = preview.substring(0, 57) + "...";
-        }
-        int removed = messages.size() - lastUserIndex;
-        messages.subList(lastUserIndex, messages.size()).clear();
-        if (agent.hasPersistenceProvider()) {
-            agent.save(sessionId);
-        }
+        String preview = messages.get(idx).getTextContent();
+        if (preview != null && preview.length() > 60) preview = preview.substring(0, 57) + "...";
+        int removed = messages.size() - idx;
+        messages.subList(idx, messages.size()).clear();
+        if (agent.hasPersistenceProvider()) agent.save(sessionId);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Undone " + removed + " message(s): " + AnsiTheme.MUTED + preview + AnsiTheme.RESET + "\n\n");
     }

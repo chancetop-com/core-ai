@@ -170,7 +170,7 @@ public class LiteLLMProvider extends LLMProvider {
             return holder[0];
         }
         if (holder[0] == null && lastError != null) {
-            throw lastError instanceof RuntimeException re ? re : new RuntimeException(lastError);
+            throw (RuntimeException) lastError;
         }
         callback.onComplete();
         if (!Objects.requireNonNull(holder[0]).choices.getFirst().message.reasoningContent.isEmpty()) {

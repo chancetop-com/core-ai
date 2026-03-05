@@ -19,6 +19,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/init", "Create .core-ai.md project config"),
             new SlashCommand("/skill", "List loaded skills"),
             new SlashCommand("/mcp", "Show MCP server status"),
+            new SlashCommand("/undo", "Undo last message and its response"),
             new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/debug", "Toggle debug mode"),
             new SlashCommand("/clear", "Clear screen"),

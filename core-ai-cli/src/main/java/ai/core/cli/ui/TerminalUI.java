@@ -12,6 +12,8 @@ import org.jline.terminal.TerminalBuilder;
 
 import ai.core.utils.JsonUtil;
 
+import org.jline.reader.impl.completer.AggregateCompleter;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -63,7 +65,7 @@ public class TerminalUI {
             this.jlineReader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .appName("core-ai")
-                    .completer(new SlashCommandCompleter())
+                    .completer(new AggregateCompleter(new SlashCommandCompleter(), new FileReferenceCompleter()))
                     .build();
             this.jlineReader.setOpt(LineReader.Option.AUTO_LIST);
             this.jlineReader.setOpt(LineReader.Option.AUTO_MENU);
@@ -231,10 +233,9 @@ public class TerminalUI {
                 : AnsiTheme.ERROR + "  ✗ ";
         writer.println(icon + AnsiTheme.RESET + toolName);
         if (result != null && !result.isBlank()) {
-            String display = result.length() > 100 ? result.substring(0, 100) + "..." : result;
-            for (String line : display.split("\n", 3)) {
-                writer.println(AnsiTheme.MUTED + "    " + line + AnsiTheme.RESET);
-            }
+            String firstLine = result.split("\n", 2)[0];
+            if (firstLine.length() > 120) firstLine = firstLine.substring(0, 120) + "...";
+            writer.println(AnsiTheme.MUTED + "    " + firstLine + AnsiTheme.RESET);
         }
         writer.flush();
     }

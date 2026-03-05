@@ -2,6 +2,7 @@ package ai.core.cli.ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -51,7 +52,7 @@ public final class CodeHighlighter {
                     "OUTER", "ON", "AND", "OR", "NOT", "NULL", "IS", "IN", "AS", "ORDER", "BY", "GROUP",
                     "HAVING", "LIMIT", "OFFSET", "UNION", "ALL", "DISTINCT", "EXISTS", "BETWEEN", "LIKE",
                     "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "DEFAULT", "CHECK")
-                    .flatMap(kw -> Stream.of(kw, kw.toLowerCase()))
+                    .flatMap(kw -> Stream.of(kw, kw.toLowerCase(Locale.ROOT)))
                     .collect(Collectors.toUnmodifiableSet())),
             Map.entry("shell", Set.of(
                     "if", "then", "else", "elif", "fi", "for", "while", "do", "done", "case", "esac",
@@ -90,10 +91,14 @@ public final class CodeHighlighter {
     private static final Pattern HASH_COMMENT = Pattern.compile("#.*");
     private static final Set<String> HASH_COMMENT_LANGS = Set.of("python", "shell");
     private static final Pattern MULTI_LINE_COMMENT_INLINE = Pattern.compile("/\\*.*?\\*/");
-    private static final Pattern NUMBER_PATTERN = Pattern.compile("\\b(?:0[xXbBoO][\\da-fA-F_]+|\\d[\\d_]*\\.?\\d*(?:[eE][+-]?\\d+)?[fFdDlLuU]?)\\b");
+    private static final Pattern NUMBER_PATTERN = Pattern.compile(
+            "\\b(?:0[xXbBoO][\\da-fA-F_]+|\\d[\\d_]*\\.?\\d*(?:[eE][+-]?\\d+)?[fFdDlLuU]?)\\b");
     private static final Pattern ANNOTATION_PATTERN = Pattern.compile("@\\w+");
     private static final Pattern WORD_PATTERN = Pattern.compile("\\b[A-Za-z_]\\w*\\b");
     private static final Pattern YAML_KEY_PATTERN = Pattern.compile("^(\\s*)(\\S[^:]*):(.*)");
+
+    private record Span(int start, int end, String color) {
+    }
 
     private CodeHighlighter() {
     }
@@ -116,7 +121,7 @@ public final class CodeHighlighter {
     }
 
     private static String resolveLanguage(String language) {
-        String lower = language.toLowerCase().trim();
+        String lower = language.toLowerCase(Locale.ROOT).trim();
         String alias = LANGUAGE_ALIASES.get(lower);
         return alias != null ? alias : lower;
     }
@@ -247,8 +252,13 @@ public final class CodeHighlighter {
     }
 
     private static boolean isTypeName(String word) {
-        return !word.isEmpty() && Character.isUpperCase(word.charAt(0))
-                && word.length() > 1 && !word.equals(word.toUpperCase());
+        if (word.isEmpty() || !Character.isUpperCase(word.charAt(0)) || word.length() <= 1) {
+            return false;
+        }
+        for (int i = 1; i < word.length(); i++) {
+            if (Character.isLowerCase(word.charAt(i))) return true;
+        }
+        return false;
     }
 
     private static boolean isOverlapping(List<Span> spans, int start, int end) {
@@ -277,8 +287,5 @@ public final class CodeHighlighter {
             sb.append(AnsiTheme.MD_CODE_BLOCK).append(line.substring(pos)).append(AnsiTheme.RESET);
         }
         return sb.toString();
-    }
-
-    private record Span(int start, int end, String color) {
     }
 }
