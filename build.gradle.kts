@@ -31,7 +31,7 @@ subprojects {
         return@subprojects
     }
 
-    if (project.name.startsWith("core-ai") || project.name.endsWith("library") || project.name.endsWith("api")) {
+    if (project.name.endsWith("core-ai") || project.name.endsWith("core-ai-api")) {
         the<JavaPluginExtension>().withSourcesJar()
         apply(plugin = "maven-publish")
         publishing {
