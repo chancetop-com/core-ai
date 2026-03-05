@@ -20,6 +20,7 @@ import ai.core.cli.ui.ThinkingSpinner;
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -28,6 +29,23 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class CliEventListener implements AgentEventListener {
 
     private static final int ESC = 27;
+    private static final char[] BRAILLE_FRAMES = {'\u280B', '\u2819', '\u2839', '\u2838', '\u283C', '\u2834', '\u2826', '\u2827', '\u2807', '\u280F'};
+    private static final String CLEAR_LINE = "\u001B[2K\r";
+    private static final long SUMMARY_FRAME_MS = 80;
+    private static final int SUMMARY_TOTAL_FRAMES = 18;
+    private static final int FRAMES_PER_MESSAGE = 5;
+    private static final String[] SUMMARY_MESSAGES = {
+            "Charging the laser...",
+            "Assembling pixels...",
+            "Consulting the oracle...",
+            "Brewing fresh tokens...",
+            "Polishing the output...",
+            "Crunching numbers...",
+            "Weaving magic...",
+            "Summoning results...",
+            "Recalibrating flux...",
+            "Feeding the hamsters...",
+    };
 
     private static String truncate(String text, int maxLength) {
         if (text == null) return "null";
@@ -43,6 +61,8 @@ public class CliEventListener implements AgentEventListener {
     private final AtomicBoolean turnRunning = new AtomicBoolean(false);
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
     private volatile long turnTokensBefore;
+    private volatile long turnPromptTokensBefore;
+    private volatile long turnCompletionTokensBefore;
     private volatile boolean turnTextStarted;
     private Thread escReaderThread;
 
@@ -58,7 +78,10 @@ public class CliEventListener implements AgentEventListener {
         turnFuture = new CompletableFuture<>();
         turnRunning.set(true);
         turnTextStarted = false;
-        turnTokensBefore = agent.getCurrentTokenUsage().getTotalTokens();
+        var usage = agent.getCurrentTokenUsage();
+        turnTokensBefore = usage.getTotalTokens();
+        turnPromptTokensBefore = usage.getPromptTokens();
+        turnCompletionTokensBefore = usage.getCompletionTokens();
         startEscReader();
     }
 
@@ -157,13 +180,37 @@ public class CliEventListener implements AgentEventListener {
 
     private void printTurnSummary() {
         long elapsed = spinner.getElapsedMs();
-        long totalNow = agent.getCurrentTokenUsage().getTotalTokens();
-        long turnTokens = totalNow - turnTokensBefore;
+        var usage = agent.getCurrentTokenUsage();
+        long turnTokens = usage.getTotalTokens() - turnTokensBefore;
+        long turnInput = usage.getPromptTokens() - turnPromptTokensBefore;
+        long turnOutput = usage.getCompletionTokens() - turnCompletionTokensBefore;
         String time = ThinkingSpinner.formatElapsed(elapsed);
-        ui.getWriter().println("\n" + AnsiTheme.MUTED + "  ✻ " + time
-                + " | " + String.format("%,d", turnTokens) + " tokens"
-                + AnsiTheme.RESET);
-        ui.getWriter().flush();
+        String tokenDetail = String.format("%,d tokens (\u2191 %,d \u2193 %,d)", turnTokens, turnInput, turnOutput);
+
+        var pw = ui.getWriter();
+        pw.println();
+
+        if (ui.isAnsiSupported()) {
+            int startIdx = ThreadLocalRandom.current().nextInt(SUMMARY_MESSAGES.length);
+            for (int f = 0; f < SUMMARY_TOTAL_FRAMES; f++) {
+                char spin = BRAILLE_FRAMES[f % BRAILLE_FRAMES.length];
+                String msg = SUMMARY_MESSAGES[(startIdx + f / FRAMES_PER_MESSAGE) % SUMMARY_MESSAGES.length];
+                pw.print(CLEAR_LINE + AnsiTheme.MUTED + "  " + spin + " " + msg + " "
+                        + time + " | " + tokenDetail + AnsiTheme.RESET);
+                pw.flush();
+                try {
+                    Thread.sleep(SUMMARY_FRAME_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            pw.print(CLEAR_LINE);
+        }
+
+        pw.println(AnsiTheme.MUTED + "  \u273B " + time
+                + " | " + tokenDetail + AnsiTheme.RESET);
+        pw.flush();
     }
 
     private void startEscReader() {
