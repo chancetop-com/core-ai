@@ -34,6 +34,22 @@ public class TerminalUI {
         return t == null || Terminal.TYPE_DUMB.equals(t.getType()) || Terminal.TYPE_DUMB_COLOR.equals(t.getType());
     }
 
+    private static List<String> listFileCandidates() {
+        List<String> result = new java.util.ArrayList<>();
+        try (var stream = Files.newDirectoryStream(Path.of("."))) {
+            for (var entry : stream) {
+                String name = entry.getFileName().toString();
+                if (name.startsWith(".")) continue;
+                boolean isDir = Files.isDirectory(entry);
+                result.add("@" + name + (isDir ? "/" : ""));
+            }
+        } catch (IOException ignored) {
+            // skip on I/O error
+        }
+        java.util.Collections.sort(result);
+        return result;
+    }
+
     private final PrintWriter writer;
     private final LineReader jlineReader;
     private final BufferedReader simpleReader;
@@ -338,21 +354,5 @@ public class TerminalUI {
         });
         reader.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference(atWidget), "@");
-    }
-
-    private static List<String> listFileCandidates() {
-        List<String> result = new java.util.ArrayList<>();
-        try (var stream = java.nio.file.Files.newDirectoryStream(java.nio.file.Path.of("."))) {
-            for (var entry : stream) {
-                String name = entry.getFileName().toString();
-                if (name.startsWith(".")) continue;
-                boolean isDir = java.nio.file.Files.isDirectory(entry);
-                result.add("@" + name + (isDir ? "/" : ""));
-            }
-        } catch (java.io.IOException ignored) {
-            // skip on I/O error
-        }
-        java.util.Collections.sort(result);
-        return result;
     }
 }

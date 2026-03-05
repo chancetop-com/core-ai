@@ -1,6 +1,7 @@
 package ai.core.cli.ui;
 
 import org.jline.keymap.KeyMap;
+import org.jline.reader.Binding;
 import org.jline.reader.LineReader;
 import org.jline.reader.Reference;
 import org.jline.reader.impl.LineReaderImpl;
@@ -83,9 +84,8 @@ public class InlinePicker {
         });
     }
 
-    @SuppressWarnings("PMD.AvoidInstantiatingObjectsInLoops")
     private void registerKeymap() {
-        KeyMap<org.jline.keymap.Binding> map = new KeyMap<>();
+        KeyMap<Binding> map = new KeyMap<>();
         map.bind(new Reference("picker-down"),
                 KeyMap.key(reader.getTerminal(), InfoCmp.Capability.key_down));
         map.bind(new Reference("picker-up"),
