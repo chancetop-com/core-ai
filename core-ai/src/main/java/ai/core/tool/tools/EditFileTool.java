@@ -130,6 +130,10 @@ public class EditFileTool extends ToolCall {
             return error;
         }
 
+        // Normalize line endings to match file style
+        oldString = normalizeLineEndings(oldString, content);
+        newString = normalizeLineEndings(newString, content);
+
         // Check if old_string exists in file
         if (!content.contains(oldString)) {
             return "Error: old_string not found in file. Make sure to copy the exact text including whitespace and line breaks.";
@@ -191,6 +195,18 @@ public class EditFileTool extends ToolCall {
         if (newLines.length > maxLines) sb.append("+ ...\n");
         sb.append("```");
         return sb.toString();
+    }
+
+    private String normalizeLineEndings(String text, String fileContent) {
+        boolean fileHasCRLF = fileContent.contains("\r\n");
+        boolean textHasCRLF = text.contains("\r\n");
+        if (fileHasCRLF && !textHasCRLF) {
+            return text.replace("\n", "\r\n");
+        }
+        if (!fileHasCRLF && textHasCRLF) {
+            return text.replace("\r\n", "\n");
+        }
+        return text;
     }
 
     private int countOccurrences(String text, String substring) {
