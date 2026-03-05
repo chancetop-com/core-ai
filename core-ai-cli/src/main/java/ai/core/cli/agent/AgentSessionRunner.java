@@ -77,6 +77,7 @@ public class AgentSessionRunner {
         Semaphore readyForInput = new Semaphore(1);
 
         printBanner();
+        printSessionHistory();
         startSenderThread(messageQueue, listener, session, readyForInput);
         readInputLoop(commands, messageQueue, readyForInput);
 
@@ -88,6 +89,29 @@ public class AgentSessionRunner {
         BannerPrinter.print(ui.getWriter(), modelName);
         DebugLog.log("terminal: type=" + ui.getTerminalType()
                 + ", jline=" + ui.isJLineEnabled() + ", ansi=" + ui.isAnsiSupported());
+    }
+
+    private void printSessionHistory() {
+        var messages = agent.getMessages();
+        boolean hasHistory = false;
+        var renderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
+        for (var msg : messages) {
+            String text = msg.getTextContent();
+            if (text == null || text.isBlank()) continue;
+            if (msg.role == RoleType.USER) {
+                hasHistory = true;
+                ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + text.strip() + "\n");
+            } else if (msg.role == RoleType.ASSISTANT) {
+                ui.printStreamingChunk("\n" + AnsiTheme.SEPARATOR + "⏺" + AnsiTheme.RESET + "\n");
+                renderer.processChunk(text);
+                renderer.flush();
+                renderer.reset();
+                ui.getWriter().println();
+            }
+        }
+        if (hasHistory) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  ↑ restored " + sessionId + AnsiTheme.RESET + "\n");
+        }
     }
 
     private void startSenderThread(BlockingQueue<String> queue, CliEventListener listener,
@@ -288,24 +312,15 @@ public class AgentSessionRunner {
     private void handleExport(String trimmed) {
         String[] parts = trimmed.split("\\s+", 2);
         String filePath = parts.length > 1 ? parts[1].trim() : "session-" + sessionId + ".md";
-        var messages = agent.getMessages();
-        try (var writer = Files.newBufferedWriter(Path.of(filePath))) {
-            writer.write("# Session: " + sessionId);
-            writer.newLine();
-            writer.newLine();
-            for (var msg : messages) {
-                String role = msg.role.name();
-                String text = msg.getTextContent();
-                if (text == null) continue;
-                writer.write("## " + role);
-                writer.newLine();
-                writer.newLine();
-                writer.write(text);
-                writer.newLine();
-                writer.newLine();
-            }
-            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                    + " Exported to " + filePath + "\n\n");
+        var sb = new StringBuilder(4096);
+        sb.append("# Session: ").append(sessionId).append("\n\n");
+        for (var msg : agent.getMessages()) {
+            String text = msg.getTextContent();
+            if (text != null) sb.append("## ").append(msg.role.name()).append("\n\n").append(text).append("\n\n");
+        }
+        try {
+            Files.writeString(Path.of(filePath), sb.toString());
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Exported to " + filePath + "\n\n");
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
@@ -394,45 +409,29 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.MUTED + "No saved sessions found." + AnsiTheme.RESET + "\n");
             return null;
         }
-        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions:" + AnsiTheme.RESET + "\n\n");
         int limit = Math.min(sessions.size(), 10);
+        List<String> labels = new java.util.ArrayList<>(limit);
         for (int i = 0; i < limit; i++) {
             var session = sessions.get(i);
-            var marker = session.id().equals(sessionId) ? " (current)" : "";
+            String marker = session.id().equals(sessionId) ? " (current)" : "";
             String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
             String title = sessionManager.firstUserMessage(session.id());
             String display = title != null && !title.isBlank()
                 ? (title.length() > 50 ? title.substring(0, 50) + "..." : title).replaceAll("[\\r\\n]+", " ")
                 : session.id();
-            ui.printStreamingChunk(String.format("  %s%2d)%s %s %s(%s)%s%s%n",
-                AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET,
-                display,
-                AnsiTheme.MUTED, timeStr, marker, AnsiTheme.RESET));
+            labels.add(display + " (" + timeStr + ")" + marker);
         }
-        ui.printStreamingChunk("\n");
-
-        while (true) {
-            ui.printStreamingChunk(AnsiTheme.PROMPT + "Select session (1-" + limit + "), or 'q' to cancel: " + AnsiTheme.RESET);
-            var line = ui.readRawLine();
-            if (line == null || "q".equalsIgnoreCase(line.trim())) {
-                return null;
-            }
-            try {
-                int choice = Integer.parseInt(line.trim());
-                if (choice >= 1 && choice <= limit) {
-                    var picked = sessions.get(choice - 1).id();
-                    if (picked.equals(sessionId)) {
-                        ui.printStreamingChunk(AnsiTheme.MUTED + "Already in this session." + AnsiTheme.RESET + "\n");
-                        return null;
-                    }
-                    ui.printStreamingChunk(AnsiTheme.MUTED + "Switching to session: " + picked + AnsiTheme.RESET + "\n");
-                    return picked;
-                }
-            } catch (NumberFormatException ignored) {
-                // fall through
-            }
-            ui.printStreamingChunk(AnsiTheme.WARNING + "Invalid selection." + AnsiTheme.RESET + "\n");
+        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions:" + AnsiTheme.RESET
+                + AnsiTheme.MUTED + " (↑↓ select, Enter confirm, q/Esc cancel)" + AnsiTheme.RESET + "\n");
+        int choice = ui.pickIndex(labels);
+        if (choice < 0) return null;
+        var picked = sessions.get(choice).id();
+        if (picked.equals(sessionId)) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "Already in this session." + AnsiTheme.RESET + "\n");
+            return null;
         }
+        ui.printStreamingChunk(AnsiTheme.MUTED + "Switching to session: " + picked + AnsiTheme.RESET + "\n");
+        return picked;
     }
 
     private void waitForReady(Semaphore readyForInput) {

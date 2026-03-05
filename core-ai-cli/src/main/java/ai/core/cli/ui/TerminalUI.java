@@ -34,6 +34,14 @@ public class TerminalUI {
         return t == null || Terminal.TYPE_DUMB.equals(t.getType()) || Terminal.TYPE_DUMB_COLOR.equals(t.getType());
     }
 
+    private static int readArrowKey(org.jline.utils.NonBlockingReader reader, int c) throws IOException {
+        if (c != 27) return 0;
+        int c2 = reader.peek(100);
+        if (c2 != '[') return -1;
+        reader.read();
+        return reader.read();
+    }
+
     private static List<String> listFileCandidates() {
         List<String> result = new java.util.ArrayList<>();
         try (var stream = Files.newDirectoryStream(Path.of("."))) {
@@ -256,6 +264,67 @@ public class TerminalUI {
         } catch (IOException e) {
             return null;
         }
+    }
+
+    public int pickIndex(List<String> items) {
+        if (items.isEmpty() || terminal == null) return -1;
+        var savedAttrs = terminal.enterRawMode();
+        try {
+            return pickIndexRaw(items);
+        } finally {
+            terminal.setAttributes(savedAttrs);
+        }
+    }
+
+    private int pickIndexRaw(List<String> items) {
+        int selected = 0;
+        int limit = Math.min(items.size(), 10);
+        renderPickerList(items, selected, limit);
+        try {
+            var reader = terminal.reader();
+            while (true) {
+                int c = reader.read();
+                if (c == '\r' || c == '\n') {
+                    clearPickerList(limit);
+                    return selected;
+                }
+                if (c == 'q' || c == 'Q') {
+                    clearPickerList(limit);
+                    return -1;
+                }
+                int arrow = readArrowKey(reader, c);
+                if (arrow == -1) {
+                    clearPickerList(limit);
+                    return -1;
+                }
+                if (arrow == 'A') selected = (selected - 1 + limit) % limit;
+                if (arrow == 'B') selected = (selected + 1) % limit;
+                renderPickerList(items, selected, limit);
+            }
+        } catch (IOException e) {
+            return -1;
+        }
+    }
+
+    private void renderPickerList(List<String> items, int selected, int limit) {
+        for (int i = 0; i < limit; i++) {
+            writer.print("\n\u001B[2K");
+            if (i == selected) {
+                writer.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + items.get(i));
+            } else {
+                writer.print("   " + AnsiTheme.MUTED + items.get(i) + AnsiTheme.RESET);
+            }
+        }
+        writer.print("\u001B[" + limit + "A");
+        writer.flush();
+    }
+
+    private void clearPickerList(int limit) {
+        for (int i = 0; i < limit; i++) {
+            writer.print("\n\u001B[2K");
+        }
+        writer.print("\u001B[" + limit + "A");
+        writer.flush();
     }
 
     public void endStreaming() {
