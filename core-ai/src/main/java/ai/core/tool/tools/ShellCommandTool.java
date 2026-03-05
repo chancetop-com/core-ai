@@ -220,12 +220,12 @@ public class ShellCommandTool extends ToolCall {
         var workDir = new File(dir);
         if (!workDir.exists()) {
             String error = "Error: workspace directory does not exist: " + dir;
-            LOGGER.warn(error);
+            LOGGER.debug(error);
             return error;
         }
         if (!workDir.isDirectory()) {
             String error = "Error: workspace path is not a directory: " + dir;
-            LOGGER.warn(error);
+            LOGGER.debug(error);
             return error;
         }
 
@@ -244,7 +244,7 @@ public class ShellCommandTool extends ToolCall {
                 waitFor(process);
                 var errorLines = InputStreamUtil.readStream(process.getInputStream());
                 var error = "Command timed out after " + timeout + " seconds\nPlease check your command and workspace dir\n" + String.join("\n", errorLines);
-                LOGGER.warn(error);
+                LOGGER.debug(error);
                 return error;
             }
 
@@ -253,7 +253,7 @@ public class ShellCommandTool extends ToolCall {
 
             if (exitCode != 0) {
                 String error = "Command exited with code " + exitCode + ":\n" + String.join("\n", outputLines);
-                LOGGER.warn(error);
+                LOGGER.debug(error);
                 return error;
             }
 
