@@ -1,23 +1,23 @@
 package ai.core.sse.internal;
 
-import core.framework.internal.json.JSONWriter;
+import ai.core.utils.JsonUtil;
 import org.jspecify.annotations.Nullable;
 
 class PatchedServerSentEventWriter<T> {
-    private final JSONWriter<T> writer;
-    // todo: no validator
-    //private final Validator<T> validator;
+    // todo: no validator, use jsonutils directly
+//    private final JSONWriter<T> writer;
+//    private final Validator<T> validator;
 
     PatchedServerSentEventWriter(Class<T> eventClass) {
-        writer = new JSONWriter<>(eventClass);
-        //validator = Validator.of(eventClass);
+//        writer = new JSONWriter<>(eventClass);
+//        validator = Validator.of(eventClass);
     }
 
     String toMessage(@Nullable String id, T event) {
         // todo: no validator
-        //validator.validate(event, false);
-        String data = writer.toJSONString(event);
-
+//        validator.validate(event, false);
+//        String data = writer.toJSONString(event);
+        var data = JsonUtil.toJson(event);
         return message(id, data);
     }
 
