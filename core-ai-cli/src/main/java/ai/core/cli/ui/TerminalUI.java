@@ -19,6 +19,7 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
@@ -322,16 +323,36 @@ public class TerminalUI {
         reader.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference(slashWidget), "/");
 
+        var picker = new InlinePicker(reader);
         String atWidget = "at-file-complete";
         reader.getWidgets().put(atWidget, () -> {
             reader.callWidget(LineReader.SELF_INSERT);
             String buf = reader.getBuffer().toString();
             if (buf.endsWith("@") && (buf.length() == 1 || buf.charAt(buf.length() - 2) == ' ')) {
-                reader.callWidget(LineReader.MENU_COMPLETE);
+                var candidates = listFileCandidates();
+                if (!candidates.isEmpty()) {
+                    picker.activate(candidates);
+                }
             }
             return true;
         });
         reader.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference(atWidget), "@");
+    }
+
+    private static List<String> listFileCandidates() {
+        List<String> result = new java.util.ArrayList<>();
+        try (var stream = java.nio.file.Files.newDirectoryStream(java.nio.file.Path.of("."))) {
+            for (var entry : stream) {
+                String name = entry.getFileName().toString();
+                if (name.startsWith(".")) continue;
+                boolean isDir = java.nio.file.Files.isDirectory(entry);
+                result.add("@" + name + (isDir ? "/" : ""));
+            }
+        } catch (java.io.IOException ignored) {
+            // skip on I/O error
+        }
+        java.util.Collections.sort(result);
+        return result;
     }
 }
