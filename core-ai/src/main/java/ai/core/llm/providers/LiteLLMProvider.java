@@ -209,9 +209,8 @@ public class LiteLLMProvider extends LLMProvider {
                 if (holder[0] == null) {
                     holder[0] = chunk;
                     initializeFinalChoiceMessage(holder[0]);
-                } else {
-                    mergeChunkIntoFinalResponse(holder[0], chunk);
                 }
+                mergeChunkIntoFinalResponse(holder[0], chunk);
             }
             return holder[0];
         }
@@ -244,9 +243,9 @@ public class LiteLLMProvider extends LLMProvider {
 
         finalChoice.message = new AssistantMessage();
         finalChoice.message.role = finalChoice.delta.role;
-        finalChoice.message.content = finalChoice.delta.content != null ? finalChoice.delta.content : "";
-        finalChoice.message.reasoningContent = finalChoice.delta.reasoningContent != null ? finalChoice.delta.reasoningContent : "";
-        finalChoice.message.toolCalls = finalChoice.delta.toolCalls != null ? new ArrayList<>(finalChoice.delta.toolCalls) : new ArrayList<>();
+        finalChoice.message.content = "";
+        finalChoice.message.reasoningContent = "";
+        finalChoice.message.toolCalls = new ArrayList<>();
     }
 
     private void mergeChunkIntoFinalResponse(CompletionResponse finalResponse, CompletionResponse chunk) {

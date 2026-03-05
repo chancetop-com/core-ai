@@ -21,9 +21,8 @@ public class InlinePicker {
 
     private static final int MAX_VISIBLE = 10;
     private static final String KEYMAP_NAME = "picker";
-    private static final String SAVE_CURSOR = "\u001B[s";
-    private static final String RESTORE_CURSOR = "\u001B[u";
     private static final String CLEAR_LINE = "\u001B[2K";
+    private static final int PROMPT_DISPLAY_WIDTH = 3; // "❯  " = 3 visible chars
 
     private final LineReaderImpl reader;
     private final List<String> items = new ArrayList<>();
@@ -108,7 +107,6 @@ public class InlinePicker {
         PrintWriter tw = reader.getTerminal().writer();
         int limit = Math.min(items.size(), MAX_VISIBLE);
 
-        tw.print(SAVE_CURSOR);
         for (int i = 0; i < limit; i++) {
             tw.print("\n" + CLEAR_LINE);
             if (i == selectedIndex) {
@@ -117,19 +115,29 @@ public class InlinePicker {
                 tw.print("   " + AnsiTheme.MUTED + items.get(i) + AnsiTheme.RESET);
             }
         }
-        tw.print(RESTORE_CURSOR);
-        tw.flush();
+        moveBackToInput(tw, limit);
     }
 
     private void clearDisplay() {
         PrintWriter tw = reader.getTerminal().writer();
         int limit = Math.min(items.size(), MAX_VISIBLE);
 
-        tw.print(SAVE_CURSOR);
         for (int i = 0; i < limit; i++) {
             tw.print("\n" + CLEAR_LINE);
         }
-        tw.print(RESTORE_CURSOR);
+        moveBackToInput(tw, limit);
+    }
+
+    private void moveBackToInput(PrintWriter tw, int lines) {
+        if (lines > 0) {
+            tw.print("\u001B[" + lines + "A");
+        }
+        // move cursor to end of current input (prompt width + buffer length)
+        int col = PROMPT_DISPLAY_WIDTH + reader.getBuffer().cursor();
+        tw.print("\r");
+        if (col > 0) {
+            tw.print("\u001B[" + col + "C");
+        }
         tw.flush();
     }
 }

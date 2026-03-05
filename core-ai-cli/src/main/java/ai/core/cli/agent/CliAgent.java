@@ -76,6 +76,11 @@ public class CliAgent {
                 Always use the workspace directory as the working directory when executing shell commands or scripts.
                 """.formatted(workspaceInfo));
 
+        var instructions = loadProjectInstructions(config.workspace);
+        if (!instructions.isEmpty()) {
+            sb.append("\n<project-instructions>\n").append(instructions).append("</project-instructions>\n");
+        }
+
         if (config.memory != null) {
             sb.append("""
 
@@ -100,6 +105,16 @@ public class CliAgent {
         if (serverNames != null && !serverNames.isEmpty()) {
             var mcpTools = McpToolCalls.from(manager, new ArrayList<>(serverNames), null);
             builder.toolCalls(new ArrayList<>(mcpTools));
+        }
+    }
+
+    private static String loadProjectInstructions(Path workspace) {
+        var file = workspace.resolve(".core-ai/instructions.md");
+        if (!Files.isRegularFile(file)) return "";
+        try {
+            return Files.readString(file).trim();
+        } catch (IOException e) {
+            return "";
         }
     }
 
