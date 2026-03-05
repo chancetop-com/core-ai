@@ -10,6 +10,7 @@ import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.FileReferenceExpander;
+import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.config.ProviderConfigurator;
