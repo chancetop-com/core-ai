@@ -43,6 +43,7 @@ public class CliEventListener implements AgentEventListener {
     private final AtomicBoolean turnRunning = new AtomicBoolean(false);
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
     private volatile long turnTokensBefore;
+    private volatile boolean turnTextStarted;
     private Thread escReaderThread;
 
     public CliEventListener(TerminalUI ui, AgentSession session, Agent agent) {
@@ -56,6 +57,7 @@ public class CliEventListener implements AgentEventListener {
     public void prepareTurn() {
         turnFuture = new CompletableFuture<>();
         turnRunning.set(true);
+        turnTextStarted = false;
         turnTokensBefore = agent.getCurrentTokenUsage().getTotalTokens();
         startEscReader();
     }
@@ -70,6 +72,10 @@ public class CliEventListener implements AgentEventListener {
     public void onTextChunk(TextChunkEvent event) {
         DebugLog.log("text chunk: length=" + event.chunk.length());
         stopSpinnerIfActive();
+        if (!turnTextStarted) {
+            turnTextStarted = true;
+            ui.getWriter().println("\n" + AnsiTheme.SEPARATOR + "⏺" + AnsiTheme.RESET);
+        }
         markdownRenderer.processChunk(event.chunk);
     }
 

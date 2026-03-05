@@ -97,12 +97,6 @@ public final class CodeHighlighter {
     private static final Pattern WORD_PATTERN = Pattern.compile("\\b[A-Za-z_]\\w*\\b");
     private static final Pattern YAML_KEY_PATTERN = Pattern.compile("^(\\s*)(\\S[^:]*):(.*)");
 
-    private record Span(int start, int end, String color) {
-    }
-
-    private CodeHighlighter() {
-    }
-
     public static String highlight(String language, String line) {
         if (language == null || language.isEmpty()) {
             return AnsiTheme.MD_CODE_BLOCK + line + AnsiTheme.RESET;
@@ -140,10 +134,11 @@ public final class CodeHighlighter {
     }
 
     private static String highlightJson(String line) {
-        List<Span> spans = new ArrayList<>();
-        collectStrings(line, spans);
-        collectNumbers(line, spans);
-        return applySpans(line, spans);
+        List<int[]> spans = new ArrayList<>();
+        List<String> colors = new ArrayList<>();
+        collectStrings(line, spans, colors);
+        collectNumbers(line, spans, colors);
+        return applySpans(line, spans, colors);
     }
 
     private static String highlightYaml(String line) {
@@ -176,77 +171,83 @@ public final class CodeHighlighter {
     }
 
     private static String highlightGeneric(String lang, String line) {
-        List<Span> spans = new ArrayList<>();
-
-        collectStrings(line, spans);
-        collectComments(lang, line, spans);
-        collectAnnotations(line, spans);
-        collectNumbers(line, spans);
-        collectKeywordsAndTypes(lang, line, spans);
-
-        return applySpans(line, spans);
+        List<int[]> spans = new ArrayList<>();
+        List<String> colors = new ArrayList<>();
+        collectStrings(line, spans, colors);
+        collectComments(lang, line, spans, colors);
+        collectAnnotations(line, spans, colors);
+        collectNumbers(line, spans, colors);
+        collectKeywordsAndTypes(lang, line, spans, colors);
+        return applySpans(line, spans, colors);
     }
 
-    private static void collectStrings(String line, List<Span> spans) {
+    private static void collectStrings(String line, List<int[]> spans, List<String> colors) {
         Matcher m = STRING_PATTERN.matcher(line);
         while (m.find()) {
-            spans.add(new Span(m.start(), m.end(), AnsiTheme.SYN_STRING));
+            spans.add(new int[]{m.start(), m.end()});
+            colors.add(AnsiTheme.SYN_STRING);
         }
     }
 
-    private static void collectComments(String lang, String line, List<Span> spans) {
+    private static void collectComments(String lang, String line, List<int[]> spans, List<String> colors) {
         Matcher m = C_STYLE_COMMENT.matcher(line);
         while (m.find()) {
             if (!isOverlapping(spans, m.start(), m.end())) {
-                spans.add(new Span(m.start(), m.end(), AnsiTheme.SYN_COMMENT));
+                spans.add(new int[]{m.start(), m.end()});
+                colors.add(AnsiTheme.SYN_COMMENT);
             }
         }
         if (HASH_COMMENT_LANGS.contains(lang)) {
             m = HASH_COMMENT.matcher(line);
             while (m.find()) {
                 if (!isOverlapping(spans, m.start(), m.end())) {
-                    spans.add(new Span(m.start(), m.end(), AnsiTheme.SYN_COMMENT));
+                    spans.add(new int[]{m.start(), m.end()});
+                    colors.add(AnsiTheme.SYN_COMMENT);
                 }
             }
         }
         m = MULTI_LINE_COMMENT_INLINE.matcher(line);
         while (m.find()) {
             if (!isOverlapping(spans, m.start(), m.end())) {
-                spans.add(new Span(m.start(), m.end(), AnsiTheme.SYN_COMMENT));
+                spans.add(new int[]{m.start(), m.end()});
+                colors.add(AnsiTheme.SYN_COMMENT);
             }
         }
     }
 
-    private static void collectAnnotations(String line, List<Span> spans) {
+    private static void collectAnnotations(String line, List<int[]> spans, List<String> colors) {
         Matcher m = ANNOTATION_PATTERN.matcher(line);
         while (m.find()) {
             if (!isOverlapping(spans, m.start(), m.end())) {
-                spans.add(new Span(m.start(), m.end(), AnsiTheme.SYN_ANNOTATION));
+                spans.add(new int[]{m.start(), m.end()});
+                colors.add(AnsiTheme.SYN_ANNOTATION);
             }
         }
     }
 
-    private static void collectNumbers(String line, List<Span> spans) {
+    private static void collectNumbers(String line, List<int[]> spans, List<String> colors) {
         Matcher m = NUMBER_PATTERN.matcher(line);
         while (m.find()) {
             if (!isOverlapping(spans, m.start(), m.end())) {
-                spans.add(new Span(m.start(), m.end(), AnsiTheme.SYN_NUMBER));
+                spans.add(new int[]{m.start(), m.end()});
+                colors.add(AnsiTheme.SYN_NUMBER);
             }
         }
     }
 
-    private static void collectKeywordsAndTypes(String lang, String line, List<Span> spans) {
+    private static void collectKeywordsAndTypes(String lang, String line, List<int[]> spans, List<String> colors) {
         Set<String> kw = KEYWORDS.get(lang);
         if (kw == null) return;
-
         Matcher m = WORD_PATTERN.matcher(line);
         while (m.find()) {
             if (isOverlapping(spans, m.start(), m.end())) continue;
             String word = m.group();
             if (kw.contains(word)) {
-                spans.add(new Span(m.start(), m.end(), AnsiTheme.SYN_KEYWORD));
+                spans.add(new int[]{m.start(), m.end()});
+                colors.add(AnsiTheme.SYN_KEYWORD);
             } else if (isTypeName(word)) {
-                spans.add(new Span(m.start(), m.end(), AnsiTheme.SYN_TYPE));
+                spans.add(new int[]{m.start(), m.end()});
+                colors.add(AnsiTheme.SYN_TYPE);
             }
         }
     }
@@ -261,31 +262,37 @@ public final class CodeHighlighter {
         return false;
     }
 
-    private static boolean isOverlapping(List<Span> spans, int start, int end) {
-        for (Span s : spans) {
-            if (start < s.end && end > s.start) return true;
+    private static boolean isOverlapping(List<int[]> spans, int start, int end) {
+        for (int[] s : spans) {
+            if (start < s[1] && end > s[0]) return true;
         }
         return false;
     }
 
-    private static String applySpans(String line, List<Span> spans) {
+    private static String applySpans(String line, List<int[]> spans, List<String> colors) {
         if (spans.isEmpty()) {
             return AnsiTheme.MD_CODE_BLOCK + line + AnsiTheme.RESET;
         }
-        spans.sort((a, b) -> a.start - b.start);
+        Integer[] order = new Integer[spans.size()];
+        for (int i = 0; i < order.length; i++) order[i] = i;
+        java.util.Arrays.sort(order, (a, b) -> spans.get(a)[0] - spans.get(b)[0]);
 
         StringBuilder sb = new StringBuilder();
         int pos = 0;
-        for (Span span : spans) {
-            if (span.start > pos) {
-                sb.append(AnsiTheme.MD_CODE_BLOCK).append(line, pos, span.start).append(AnsiTheme.RESET);
+        for (int idx : order) {
+            int[] span = spans.get(idx);
+            if (span[0] > pos) {
+                sb.append(AnsiTheme.MD_CODE_BLOCK).append(line, pos, span[0]).append(AnsiTheme.RESET);
             }
-            sb.append(span.color).append(line, span.start, span.end).append(AnsiTheme.RESET);
-            pos = span.end;
+            sb.append(colors.get(idx)).append(line, span[0], span[1]).append(AnsiTheme.RESET);
+            pos = span[1];
         }
         if (pos < line.length()) {
             sb.append(AnsiTheme.MD_CODE_BLOCK).append(line.substring(pos)).append(AnsiTheme.RESET);
         }
         return sb.toString();
+    }
+
+    private CodeHighlighter() {
     }
 }

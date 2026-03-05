@@ -85,7 +85,7 @@ public class AgentSessionRunner {
     }
 
     private void printBanner() {
-        BannerPrinter.print(ui.getWriter(), ui.getTerminalWidth(), modelName);
+        BannerPrinter.print(ui.getWriter(), modelName);
         DebugLog.log("terminal: type=" + ui.getTerminalType()
                 + ", jline=" + ui.isJLineEnabled() + ", ansi=" + ui.isAnsiSupported());
     }
@@ -337,10 +337,11 @@ public class AgentSessionRunner {
     }
 
     private void handleCopy() {
+        var messages = agent.getMessages();
         String lastAssistant = null;
-        for (var msgs = agent.getMessages(), i = msgs.size() - 1; i >= 0; i--) {
-            if (msgs.get(i).role == RoleType.ASSISTANT && msgs.get(i).getTextContent() != null) {
-                lastAssistant = msgs.get(i).getTextContent();
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i).role == RoleType.ASSISTANT && messages.get(i).getTextContent() != null) {
+                lastAssistant = messages.get(i).getTextContent();
                 break;
             }
         }

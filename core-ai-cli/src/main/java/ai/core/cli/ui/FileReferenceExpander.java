@@ -21,9 +21,6 @@ public final class FileReferenceExpander {
     private static final long MAX_FILE_SIZE = 100 * 1024;
     private static final Path CWD = Path.of("").toAbsolutePath().normalize();
 
-    private FileReferenceExpander() {
-    }
-
     public static String expand(String input) {
         Matcher m = FILE_REF.matcher(input);
         if (!m.find()) return input;
@@ -72,5 +69,8 @@ public final class FileReferenceExpander {
         int dot = fileName.lastIndexOf('.');
         if (dot < 0) return "";
         return fileName.substring(dot + 1);
+    }
+
+    private FileReferenceExpander() {
     }
 }

@@ -12,8 +12,6 @@ import org.jline.terminal.TerminalBuilder;
 
 import ai.core.utils.JsonUtil;
 
-import org.jline.reader.impl.completer.AggregateCompleter;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -65,12 +63,14 @@ public class TerminalUI {
             this.jlineReader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .appName("core-ai")
-                    .completer(new AggregateCompleter(new SlashCommandCompleter(), new FileReferenceCompleter()))
+                    .completer(new SlashCommandCompleter())
                     .build();
             this.jlineReader.setOpt(LineReader.Option.AUTO_LIST);
             this.jlineReader.setOpt(LineReader.Option.AUTO_MENU);
             this.jlineReader.setOpt(LineReader.Option.LIST_PACKED);
             this.jlineReader.setOpt(LineReader.Option.AUTO_MENU_LIST);
+            this.jlineReader.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference(LineReader.MENU_COMPLETE), "\t");
             registerSlashWidget();
             this.simpleReader = null;
         }
@@ -120,16 +120,7 @@ public class TerminalUI {
     }
 
     public void printInputFrame() {
-        int width = getTerminalWidth();
-        String border = AnsiTheme.SEPARATOR + "─".repeat(width) + AnsiTheme.RESET;
-        String hint = AnsiTheme.MUTED + "  /help for commands | Esc to interrupt" + AnsiTheme.RESET;
-        // top border → prompt placeholder → bottom border → status hint
-        writer.println(border);
         writer.println();
-        writer.println(border);
-        writer.println(hint);
-        // move cursor back up to the prompt line (up 3 lines)
-        writer.print("\u001B[3A\r");
         writer.flush();
     }
 
@@ -145,11 +136,6 @@ public class TerminalUI {
     }
 
     private void clearInputFrameBelow() {
-        // after readLine, cursor is on the line below prompt (bottom border)
-        // clear bottom border + status hint lines
-        writer.print("\u001B[2K");
-        writer.print("\u001B[J");
-        writer.print("\r");
         writer.flush();
     }
 
@@ -325,8 +311,8 @@ public class TerminalUI {
         if (!(jlineReader instanceof LineReaderImpl reader)) {
             return;
         }
-        String widgetName = "slash-auto-complete";
-        reader.getWidgets().put(widgetName, () -> {
+        String slashWidget = "slash-auto-complete";
+        reader.getWidgets().put(slashWidget, () -> {
             reader.callWidget(LineReader.SELF_INSERT);
             if ("/".equals(reader.getBuffer().toString())) {
                 reader.callWidget(LineReader.LIST_CHOICES);
@@ -334,6 +320,18 @@ public class TerminalUI {
             return true;
         });
         reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference(widgetName), "/");
+                .bind(new Reference(slashWidget), "/");
+
+        String atWidget = "at-file-complete";
+        reader.getWidgets().put(atWidget, () -> {
+            reader.callWidget(LineReader.SELF_INSERT);
+            String buf = reader.getBuffer().toString();
+            if (buf.endsWith("@") && (buf.length() == 1 || buf.charAt(buf.length() - 2) == ' ')) {
+                reader.callWidget(LineReader.MENU_COMPLETE);
+            }
+            return true;
+        });
+        reader.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference(atWidget), "@");
     }
 }

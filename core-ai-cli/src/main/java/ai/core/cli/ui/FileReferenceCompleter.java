@@ -48,19 +48,16 @@ public class FileReferenceCompleter implements Completer {
                 String relative = base.equals(Path.of("."))
                         ? name
                         : base + "/" + name;
-                String display = "@" + relative;
-                if (Files.isDirectory(entry)) {
-                    display += "/";
-                    relative += "/";
-                }
+                boolean isDir = Files.isDirectory(entry);
+                String suffix = isDir ? "/" : "";
                 candidates.add(new Candidate(
-                        "@" + relative,
-                        display,
+                        "@" + relative + suffix,
+                        "@" + relative + suffix,
                         null,
-                        Files.isDirectory(entry) ? "directory" : null,
+                        isDir ? "directory" : null,
                         null,
                         null,
-                        !Files.isDirectory(entry)
+                        !isDir
                 ));
             }
         } catch (IOException ignored) {
