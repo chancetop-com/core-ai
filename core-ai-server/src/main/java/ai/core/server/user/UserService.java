@@ -2,12 +2,9 @@ package ai.core.server.user;
 
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.api.server.user.UserView;
-import ai.core.api.server.UserWebService;
-import ai.core.server.auth.AuthContext;
 import ai.core.server.domain.User;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.web.WebContext;
 
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -15,27 +12,20 @@ import java.util.Base64;
 /**
  * @author stephen
  */
-public class UserWebServiceImpl implements UserWebService {
+public class UserService {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int API_KEY_BYTES = 32;
 
     @Inject
     MongoCollection<User> userCollection;
 
-    @Inject
-    WebContext webContext;
-
-    @Override
-    public UserView me() {
-        var userId = AuthContext.userId(webContext);
+    public UserView me(String userId) {
         var user = userCollection.get(userId)
             .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
         return toView(user);
     }
 
-    @Override
-    public GenerateApiKeyResponse generateApiKey() {
-        var userId = AuthContext.userId(webContext);
+    public GenerateApiKeyResponse generateApiKey(String userId) {
         var user = userCollection.get(userId)
             .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
 

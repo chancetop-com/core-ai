@@ -1,11 +1,12 @@
-package ai.core.server.tool;
+package ai.core.server.web;
 
+import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
 import ai.core.api.server.tool.ToolRegistryView;
-import ai.core.api.server.ToolRegistryWebService;
 import ai.core.server.domain.ToolRegistry;
+import ai.core.server.tool.ToolRegistryService;
 import core.framework.inject.Inject;
 
 /**

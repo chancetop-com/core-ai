@@ -1,18 +1,15 @@
 package ai.core.server.agent;
 
 import ai.core.api.server.agent.AgentDefinitionView;
-import ai.core.api.server.AgentDefinitionWebService;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
-import ai.core.server.auth.AuthContext;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.web.WebContext;
 import org.bson.types.ObjectId;
 
 import java.time.ZonedDateTime;
@@ -20,18 +17,14 @@ import java.time.ZonedDateTime;
 /**
  * @author stephen
  */
-public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService {
+public class AgentDefinitionService {
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
 
-    @Inject
-    WebContext webContext;
-
-    @Override
-    public AgentDefinitionView create(CreateAgentRequest request) {
+    public AgentDefinitionView create(CreateAgentRequest request, String userId) {
         var entity = new AgentDefinition();
         entity.id = new ObjectId();
-        entity.userId = AuthContext.userId(webContext);
+        entity.userId = userId;
         entity.name = request.name;
         entity.description = request.description;
         entity.systemPrompt = request.systemPrompt;
@@ -50,9 +43,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         return toView(entity);
     }
 
-    @Override
-    public ListAgentsResponse list() {
-        var userId = AuthContext.userId(webContext);
+    public ListAgentsResponse list(String userId) {
         var entities = agentDefinitionCollection.find(Filters.eq("user_id", userId));
         var response = new ListAgentsResponse();
         response.agents = entities.stream().map(this::toView).toList();
@@ -60,17 +51,15 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         return response;
     }
 
-    @Override
     public AgentDefinitionView get(String id) {
         var entity = agentDefinitionCollection.get(new ObjectId(id))
-            .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
         return toView(entity);
     }
 
-    @Override
     public AgentDefinitionView update(String id, UpdateAgentRequest request) {
         var entity = agentDefinitionCollection.get(new ObjectId(id))
-            .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         if (request.name != null) entity.name = request.name;
         if (request.description != null) entity.description = request.description;
@@ -88,10 +77,9 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         return toView(entity);
     }
 
-    @Override
     public AgentDefinitionView publish(String id) {
         var entity = agentDefinitionCollection.get(new ObjectId(id))
-            .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         var config = new AgentPublishedConfig();
         config.systemPrompt = entity.systemPrompt;
@@ -112,7 +100,6 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         return toView(entity);
     }
 
-    @Override
     public void delete(String id) {
         agentDefinitionCollection.delete(new ObjectId(id));
     }

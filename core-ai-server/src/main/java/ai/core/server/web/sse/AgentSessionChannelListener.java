@@ -1,4 +1,4 @@
-package ai.core.server.web;
+package ai.core.server.web.sse;
 
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.session.AgentSessionManager;
@@ -18,6 +18,8 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
 
     @Inject
     AgentSessionManager sessionManager;
+    @Inject
+    SessionChannelService sessionChannelService;
 
     @Override
     public void onConnect(Request request, Channel<SseBaseEvent> channel, String lastEventId) {
@@ -28,15 +30,19 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
         }
 
         logger.info("SSE client connected, sessionId={}", sessionId);
+        sessionChannelService.connect(channel, sessionId);
         var session = sessionManager.getSession(sessionId);
         channel.context().put(SESSION_ID_KEY, sessionId);
         channel.join(sessionId);
-        session.onEvent(new SseEventBridge(channel));
+        session.onEvent(new SseEventBridge(sessionId, sessionChannelService));
     }
 
     @Override
     public void onClose(Channel<SseBaseEvent> channel) {
         var sessionId = (String) channel.context().get(SESSION_ID_KEY);
         logger.info("SSE client disconnected, sessionId={}", sessionId);
+        if (sessionId != null) {
+            sessionChannelService.close(sessionId);
+        }
     }
 }

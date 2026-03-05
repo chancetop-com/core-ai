@@ -1,13 +1,19 @@
-package ai.core.server.file;
+package ai.core.server.web;
 
-import ai.core.api.server.file.FileView;
 import ai.core.api.server.FileWebService;
+import ai.core.api.server.file.FileView;
+import ai.core.server.web.auth.AuthContext;
+import ai.core.server.file.FileService;
 import core.framework.inject.Inject;
+import core.framework.log.ActionLogContext;
+import core.framework.web.WebContext;
 
 /**
  * @author stephen
  */
 public class FileWebServiceImpl implements FileWebService {
+    @Inject
+    WebContext webContext;
     @Inject
     FileService fileService;
 
@@ -25,6 +31,8 @@ public class FileWebServiceImpl implements FileWebService {
 
     @Override
     public void delete(String id) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
         fileService.delete(id);
     }
 }

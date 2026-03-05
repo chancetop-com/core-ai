@@ -1,4 +1,4 @@
-package ai.core.server.migration;
+package ai.core.server.domain.migration;
 
 import core.framework.mongo.Mongo;
 

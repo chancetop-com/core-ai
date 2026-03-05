@@ -7,7 +7,7 @@ import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.ToolRegistry;
 import ai.core.server.domain.User;
-import ai.core.server.migration.SchemaVersion;
+import ai.core.server.domain.migration.SchemaVersion;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
 import core.framework.mongo.module.MongoConfig;

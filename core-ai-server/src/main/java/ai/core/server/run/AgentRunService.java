@@ -2,7 +2,6 @@ package ai.core.server.run;
 
 import ai.core.api.server.run.AgentRunDetailView;
 import ai.core.api.server.run.AgentRunView;
-import ai.core.api.server.AgentRunWebService;
 import ai.core.api.server.run.ListRunsRequest;
 import ai.core.api.server.run.ListRunsResponse;
 import ai.core.api.server.run.TriggerRunRequest;
@@ -23,17 +22,14 @@ import java.util.Map;
 /**
  * @author stephen
  */
-public class AgentRunWebServiceImpl implements AgentRunWebService {
+public class AgentRunService {
     @Inject
     AgentRunner agentRunner;
-
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
-
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
 
-    @Override
     public TriggerRunResponse trigger(String agentId, TriggerRunRequest request) {
         var definition = agentDefinitionCollection.get(new ObjectId(agentId))
             .orElseThrow(() -> new RuntimeException("agent not found, id=" + agentId));
@@ -47,7 +43,6 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
         return response;
     }
 
-    @Override
     public ListRunsResponse listByAgent(String agentId, ListRunsRequest request) {
         var query = new Query();
         if (request.status != null && !request.status.isBlank()) {
@@ -68,14 +63,12 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
         return response;
     }
 
-    @Override
     public AgentRunDetailView get(String id) {
         var entity = agentRunCollection.get(new ObjectId(id))
             .orElseThrow(() -> new RuntimeException("run not found, id=" + id));
         return toDetailView(entity);
     }
 
-    @Override
     public void cancel(String id) {
         agentRunner.cancel(id);
     }

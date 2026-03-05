@@ -1,4 +1,4 @@
-package ai.core.server.auth;
+package ai.core.server.web.auth;
 
 import core.framework.web.WebContext;
 

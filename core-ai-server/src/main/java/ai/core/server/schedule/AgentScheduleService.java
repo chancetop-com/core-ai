@@ -1,17 +1,14 @@
 package ai.core.server.schedule;
 
 import ai.core.api.server.schedule.AgentScheduleView;
-import ai.core.api.server.AgentScheduleWebService;
 import ai.core.api.server.schedule.CreateScheduleRequest;
 import ai.core.api.server.schedule.ListSchedulesResponse;
 import ai.core.api.server.schedule.UpdateScheduleRequest;
-import ai.core.server.auth.AuthContext;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ConcurrencyPolicy;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.web.WebContext;
 import org.bson.types.ObjectId;
 
 import java.time.ZoneId;
@@ -20,19 +17,15 @@ import java.time.ZonedDateTime;
 /**
  * @author stephen
  */
-public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
+public class AgentScheduleService {
     @Inject
     MongoCollection<AgentSchedule> agentScheduleCollection;
 
-    @Inject
-    WebContext webContext;
-
-    @Override
-    public AgentScheduleView create(CreateScheduleRequest request) {
+    public AgentScheduleView create(CreateScheduleRequest request, String userId) {
         var entity = new AgentSchedule();
         entity.id = new ObjectId();
         entity.agentId = new ObjectId(request.agentId);
-        entity.userId = AuthContext.userId(webContext);
+        entity.userId = userId;
         entity.cronExpression = request.cronExpression;
         entity.timezone = request.timezone != null ? request.timezone : "UTC";
         entity.enabled = true;
@@ -51,7 +44,6 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
         return toView(entity);
     }
 
-    @Override
     public ListSchedulesResponse listByAgent(String agentId) {
         var schedules = agentScheduleCollection.find(Filters.eq("agent_id", new ObjectId(agentId)));
         var response = new ListSchedulesResponse();
@@ -59,7 +51,6 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
         return response;
     }
 
-    @Override
     public AgentScheduleView update(String id, UpdateScheduleRequest request) {
         var entity = agentScheduleCollection.get(new ObjectId(id))
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));
@@ -79,7 +70,6 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
         return toView(entity);
     }
 
-    @Override
     public void delete(String id) {
         agentScheduleCollection.delete(new ObjectId(id));
     }

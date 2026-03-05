@@ -1,0 +1,61 @@
+package ai.core.server.web;
+
+import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.AgentDefinitionWebService;
+import ai.core.api.server.agent.CreateAgentRequest;
+import ai.core.api.server.agent.ListAgentsResponse;
+import ai.core.api.server.agent.UpdateAgentRequest;
+import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.web.auth.AuthContext;
+import core.framework.inject.Inject;
+import core.framework.log.ActionLogContext;
+import core.framework.web.WebContext;
+
+/**
+ * @author stephen
+ */
+public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService {
+    @Inject
+    WebContext webContext;
+    @Inject
+    AgentDefinitionService agentDefinitionService;
+
+    @Override
+    public AgentDefinitionView create(CreateAgentRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        return agentDefinitionService.create(request, userId);
+    }
+
+    @Override
+    public ListAgentsResponse list() {
+        var userId = AuthContext.userId(webContext);
+        return agentDefinitionService.list(userId);
+    }
+
+    @Override
+    public AgentDefinitionView get(String id) {
+        return agentDefinitionService.get(id);
+    }
+
+    @Override
+    public AgentDefinitionView update(String id, UpdateAgentRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        return agentDefinitionService.update(id, request);
+    }
+
+    @Override
+    public AgentDefinitionView publish(String id) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        return agentDefinitionService.publish(id);
+    }
+
+    @Override
+    public void delete(String id) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        agentDefinitionService.delete(id);
+    }
+}

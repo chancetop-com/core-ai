@@ -8,8 +8,11 @@ import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.api.server.session.SessionStatusResponse;
 import ai.core.api.server.session.SessionStatus;
+import ai.core.server.web.auth.AuthContext;
 import ai.core.server.session.AgentSessionManager;
 import core.framework.inject.Inject;
+import core.framework.log.ActionLogContext;
+import core.framework.web.WebContext;
 
 import java.util.ArrayList;
 
@@ -17,12 +20,15 @@ import java.util.ArrayList;
  * @author stephen
  */
 public class AgentSessionWebServiceImpl implements AgentSessionWebService {
-
+    @Inject
+    WebContext webContext;
     @Inject
     AgentSessionManager sessionManager;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
         var sessionId = sessionManager.createSession(request.config);
         var response = new CreateSessionResponse();
         response.sessionId = sessionId;
@@ -31,12 +37,18 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     @Override
     public void sendMessage(String sessionId, SendMessageRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
         var session = sessionManager.getSession(sessionId);
         session.sendMessage(request.message);
     }
 
     @Override
     public void approve(String sessionId, ApproveToolCallRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
         var session = sessionManager.getSession(sessionId);
         session.approveToolCall(request.callId, request.decision);
     }
@@ -60,6 +72,9 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     @Override
     public void close(String sessionId) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
         sessionManager.closeSession(sessionId);
     }
 }
