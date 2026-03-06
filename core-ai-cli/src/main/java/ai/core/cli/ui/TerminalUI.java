@@ -267,7 +267,7 @@ public class TerminalUI {
         int limit = Math.min(items.size(), 10);
         renderPickerList(items, selected, limit);
         var resized = new java.util.concurrent.atomic.AtomicBoolean(false);
-        var prevHandler = terminal.handle(org.jline.terminal.Terminal.Signal.WINCH, sig -> resized.set(true));
+        var prevHandler = terminal.handle(Terminal.Signal.WINCH, sig -> resized.set(true));
         try {
             var reader = terminal.reader();
             while (true) {
@@ -297,7 +297,7 @@ public class TerminalUI {
         } catch (IOException e) {
             return -1;
         } finally {
-            terminal.handle(org.jline.terminal.Terminal.Signal.WINCH, prevHandler);
+            terminal.handle(Terminal.Signal.WINCH, prevHandler);
         }
     }
 

@@ -17,17 +17,17 @@ public class ThinkingSpinner {
     private static final long MESSAGE_INTERVAL_MS = 3000;
     private static final int FALLBACK_WIDTH = 80;
     private static final String[] SPINNER_MESSAGES = {
-            "Thinking...",
-            "Charging the laser...",
-            "Assembling pixels...",
-            "Consulting the oracle...",
-            "Brewing fresh tokens...",
-            "Polishing the output...",
-            "Crunching numbers...",
-            "Weaving magic...",
-            "Summoning results...",
-            "Recalibrating flux...",
-            "Feeding the hamsters...",
+        "Thinking...",
+        "Charging the laser...",
+        "Assembling pixels...",
+        "Consulting the oracle...",
+        "Brewing fresh tokens...",
+        "Polishing the output...",
+        "Crunching numbers...",
+        "Weaving magic...",
+        "Summoning results...",
+        "Recalibrating flux...",
+        "Feeding the hamsters..."
     };
 
     public static String formatElapsed(long ms) {
@@ -100,8 +100,8 @@ public class ThinkingSpinner {
                 }
                 writer.print(CLEAR_LINE + AnsiTheme.PROMPT + content + AnsiTheme.RESET);
                 writer.flush();
-                prevContentLen = content.length();
-                lastContentLen = prevContentLen;
+                lastContentLen = content.length();
+                prevContentLen = lastContentLen;
                 frame++;
                 try {
                     Thread.sleep(FRAME_INTERVAL_MS);

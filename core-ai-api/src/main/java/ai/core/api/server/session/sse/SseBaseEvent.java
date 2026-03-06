@@ -9,6 +9,7 @@ import java.time.ZonedDateTime;
 /**
  * @author stephen
  */
+@SuppressWarnings("PMD.AbstractClassWithoutAnyMethod")
 public abstract class SseBaseEvent {
     @NotNull
     @Property(name = "type")

@@ -102,61 +102,35 @@ public class EditFileTool extends ToolCall {
     }
 
     private String editFile(String filePath, String oldString, String newString, Boolean replaceAll) {
-        // Validate parameters first
         var validationError = validateEditParameters(filePath, oldString, newString);
-        if (validationError != null) {
-            return validationError;
-        }
+        if (validationError != null) return validationError;
 
         var file = new File(filePath);
+        if (!file.exists()) return "Error: File does not exist: " + filePath;
+        if (!file.isFile()) return "Error: Path is not a file: " + filePath;
 
-        // Check if file exists
-        if (!file.exists()) {
-            return "Error: File does not exist: " + filePath;
-        }
-
-        // Check if it's a file (not a directory)
-        if (!file.isFile()) {
-            return "Error: Path is not a file: " + filePath;
-        }
-
-        // Read file content
         String content;
         try {
             content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            String error = "Error reading file: " + e.getMessage();
-            LOGGER.error(error, e);
-            return error;
+            LOGGER.error("Error reading file: {}", e.getMessage(), e);
+            return "Error reading file: " + e.getMessage();
         }
 
-        // Normalize line endings to match file style
-        oldString = normalizeLineEndings(oldString, content);
-        newString = normalizeLineEndings(newString, content);
+        var normalizedOld = normalizeLineEndings(oldString, content);
+        var normalizedNew = normalizeLineEndings(newString, content);
 
-        // Check if old_string exists in file
-        if (!content.contains(oldString)) {
+        if (!content.contains(normalizedOld)) {
             return "Error: old_string not found in file. Make sure to copy the exact text including whitespace and line breaks.";
         }
 
-        // Count occurrences
-        int occurrences = countOccurrences(content, oldString);
-        LOGGER.debug("Found {} occurrence(s) of old_string in file: {}", occurrences, filePath);
-
-        // If not replace_all and more than one occurrence, fail
+        int occurrences = countOccurrences(content, normalizedOld);
         if (!replaceAll && occurrences > 1) {
             return String.format("Error: old_string appears %d times in the file. Either provide a larger string with more surrounding context to make it unique, or set replace_all=true to replace all occurrences.", occurrences);
         }
 
-        // Perform replacement
-        String newContent;
-        if (replaceAll) {
-            newContent = content.replace(oldString, newString);
-            LOGGER.debug("Replacing all {} occurrence(s) in file", occurrences);
-        } else {
-            newContent = content.replace(oldString, newString);
-            LOGGER.debug("Replacing single occurrence in file");
-        }
+        String newContent = content.replace(normalizedOld, normalizedNew);
+        LOGGER.debug("Replacing {} occurrence(s) in file: {}", occurrences, filePath);
 
         // Write back to file
         try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
