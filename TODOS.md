@@ -7,7 +7,6 @@
 | # | 项目                      | 描述 | 对标来源 | 影响范围 |
 |---|-------------------------|------|----------|----------|
 | 1 | **WriteTodos 会话恢复时加载**  | `WriteTodosTool.loadTodos()` 已实现但未接入任何恢复流程。会话恢复时待办事项丢失。需要在 TodoLifecycle.beforeAgentRun 或 InProcessAgentSession 中增加加载钩子。 | Claude Code: initialTodos | tool/tools, session |
-| 2 | **丢掉  Subagent 隔离执行环境** | 当前 SubAgentToolCall 共享父 Agent 消息上下文，缺少独立的执行环境隔离。需实现：独立消息历史、独立权限作用域、结果回传机制。对标 Claude Code 的 I2A 子任务代理和 OpenCode 的 TaskTool（独立子 Session）。 | Claude Code: I2A / OpenCode: TaskTool | agent, session |
 | 4 | **多层权限模型**              | 当前仅有 `ToolCall.needAuth` 布尔标记 + `ToolPermissionStore` 简单存储。需升级为：三级权限（allow/deny/ask）、按工具+路径模式匹配、权限规则优先级合并、Session 级权限覆写。 | Claude Code: sM() 6层验证链 / OpenCode: PermissionNext 三级模型 | tool, session, agent |
 | 5 | **Doom Loop 检测**        | LLM 可能陷入重复调用同一工具的死循环。需检测最近 N 次工具调用是否相同（工具名+参数），触发时中断或请求用户确认。 | OpenCode: processor.ts doom loop 检测 | agent |
 
