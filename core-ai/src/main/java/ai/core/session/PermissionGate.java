@@ -45,6 +45,11 @@ public class PermissionGate {
         }
     }
 
+    public void cancelAll() {
+        pending.forEach((id, future) -> future.complete(ApprovalDecision.DENY));
+        pending.clear();
+    }
+
     // Called by API/Client thread - unblocks the agent thread
     public void respond(String callId, ApprovalDecision decision) {
         var future = pending.get(callId);

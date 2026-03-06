@@ -12,6 +12,7 @@ import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -22,15 +23,32 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     private final String sessionId;
     private final Consumer<AgentEvent> dispatcher;
     private final PermissionGate permissionGate;
-    private final boolean autoApproveAll;
+    private final PermissionEvaluator evaluator;
     private final ToolPermissionStore permissionStore;
 
     public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, boolean autoApproveAll, ToolPermissionStore permissionStore) {
+        this(sessionId, dispatcher, permissionGate, buildEvaluator(autoApproveAll, permissionStore), permissionStore);
+    }
+
+    public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, PermissionEvaluator evaluator, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
         this.dispatcher = dispatcher;
         this.permissionGate = permissionGate;
-        this.autoApproveAll = autoApproveAll;
+        this.evaluator = evaluator;
         this.permissionStore = permissionStore;
+    }
+
+    private static PermissionEvaluator buildEvaluator(boolean autoApproveAll, ToolPermissionStore permissionStore) {
+        if (autoApproveAll) {
+            return new PermissionEvaluator(List.of(new PermissionRule("*", null, PermissionRule.PermissionAction.ALLOW)));
+        }
+        if (permissionStore != null) {
+            var storeRules = permissionStore.approvedTools().stream()
+                    .map(name -> new PermissionRule(name, null, PermissionRule.PermissionAction.ALLOW))
+                    .toList();
+            return new PermissionEvaluator(storeRules);
+        }
+        return new PermissionEvaluator(List.of());
     }
 
     @Override
@@ -41,37 +59,35 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         logger.debug("beforeTool: tool={}, callId={}", toolName, callId);
 
-        // 1. Notify client that tool is about to start
         dispatcher.accept(ToolStartEvent.of(sessionId, callId, toolName, arguments));
 
-        // 2. Handle approval if needed
-        if (autoApproveAll) {
-            logger.debug("auto-approve enabled, skipping approval for tool={}, callId={}", toolName, callId);
-            return;
-        }
-        if (permissionStore != null && permissionStore.isApproved(toolName)) {
-            logger.debug("tool already approved, skipping approval for tool={}, callId={}", toolName, callId);
-            return;
-        }
+        var action = evaluator.evaluate(toolName, arguments);
 
-        // Pre-register future BEFORE dispatching, because dispatch may be synchronous
-        // and the listener may call respond() before waitForApproval() creates the future
-        permissionGate.prepare(callId);
-        logger.debug("dispatching approval request: tool={}, callId={}", toolName, callId);
+        switch (action) {
+            case ALLOW -> {
+                logger.debug("permission ALLOW for tool={}, callId={}", toolName, callId);
+            }
+            case DENY -> {
+                logger.debug("permission DENY for tool={}, callId={}", toolName, callId);
+                throw new ToolCallDeniedException(toolName);
+            }
+            case ASK -> {
+                permissionGate.prepare(callId);
+                logger.debug("dispatching approval request: tool={}, callId={}", toolName, callId);
 
-        // Send approval request
-        dispatcher.accept(ToolApprovalRequestEvent.of(sessionId, callId, toolName, arguments));
+                dispatcher.accept(ToolApprovalRequestEvent.of(sessionId, callId, toolName, arguments));
 
-        logger.debug("waiting for approval: tool={}, callId={}", toolName, callId);
-        // Block and wait for client response (future already exists from prepare())
-        var decision = permissionGate.waitForApproval(callId, 300_000); // 5 minutes timeout
-        logger.debug("approval received: tool={}, callId={}, decision={}", toolName, callId, decision);
+                logger.debug("waiting for approval: tool={}, callId={}", toolName, callId);
+                var decision = permissionGate.waitForApproval(callId, 300_000);
+                logger.debug("approval received: tool={}, callId={}, decision={}", toolName, callId, decision);
 
-        if (decision == ApprovalDecision.DENY) {
-            throw new ToolCallDeniedException(toolName);
-        }
-        if (decision == ApprovalDecision.APPROVE_ALWAYS && permissionStore != null) {
-            permissionStore.approve(toolName);
+                if (decision == ApprovalDecision.DENY) {
+                    throw new ToolCallDeniedException(toolName);
+                }
+                if (decision == ApprovalDecision.APPROVE_ALWAYS && permissionStore != null) {
+                    permissionStore.approve(toolName);
+                }
+            }
         }
     }
 
