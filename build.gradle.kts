@@ -152,18 +152,23 @@ project(":core-ai-cli") {
         System.getProperty("core.ai.debug")?.let { systemProperty("core.ai.debug", it) }
         outputs.upToDateWhen { false }
     }
-    project(":core-ai-benchmark") {
-        version = ProjectVersions.CORE_AI_BENCHMARK_VERSION
-        apply(plugin = "app")
-        dependencies {
-            implementation(project(":core-ai"))
-            implementation(project(":core-ai-api"))
-            implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-            implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
-            testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
-        }
-        tasks.withType<Test> {
-            setProperty("failOnNoDiscoveredTests", false)
-        }
+    tasks.register<Copy>("install") {
+        dependsOn("nativeCompile")
+        from("build/native/nativeCompile/core-ai-cli")
+        into("${System.getProperty("user.home")}/.local/bin")
     }
+project(":core-ai-benchmark") {
+    version = ProjectVersions.CORE_AI_BENCHMARK_VERSION
+    apply(plugin = "app")
+    dependencies {
+        implementation(project(":core-ai"))
+        implementation(project(":core-ai-api"))
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+    }
+    tasks.withType<Test> {
+        setProperty("failOnNoDiscoveredTests", false)
+    }
+}
 }
