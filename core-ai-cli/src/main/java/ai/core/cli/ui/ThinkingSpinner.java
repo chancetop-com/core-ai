@@ -51,9 +51,15 @@ public class ThinkingSpinner {
         this.statsSupplier = supplier;
     }
 
+    public void resetTimer() {
+        startTime = System.currentTimeMillis();
+    }
+
     public void start() {
         stop();
-        startTime = System.currentTimeMillis();
+        if (startTime == 0) {
+            startTime = System.currentTimeMillis();
+        }
         Thread spinnerThread = new Thread(() -> {
             int frame = 0;
             while (!Thread.currentThread().isInterrupted()) {

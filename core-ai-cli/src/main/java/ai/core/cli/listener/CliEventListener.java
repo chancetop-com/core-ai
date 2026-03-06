@@ -64,6 +64,7 @@ public class CliEventListener implements AgentEventListener {
         turnTokensBefore = usage.getTotalTokens();
         turnPromptTokensBefore = usage.getPromptTokens();
         turnCompletionTokensBefore = usage.getCompletionTokens();
+        spinner.resetTimer();
         spinner.setStatsSupplier(() -> {
             var u = agent.getCurrentTokenUsage();
             long tokens = u.getTotalTokens() - turnTokensBefore;
