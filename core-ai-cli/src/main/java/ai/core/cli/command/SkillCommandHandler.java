@@ -52,10 +52,10 @@ public class SkillCommandHandler {
             try {
                 String skillMd = Files.readString(skillFile, StandardCharsets.UTF_8);
                 var sb = new StringBuilder(skillMd.length() + 256);
-                sb.append("<skill name=\"").append(name).append("\"");
-                sb.append(" base_dir=\"").append(skillDir.toAbsolutePath()).append("\"");
-                sb.append(">\n");
-                sb.append(skillMd);
+                sb.append("<skill name=\"").append(name)
+                        .append("\" base_dir=\"").append(skillDir.toAbsolutePath())
+                        .append("\">\n")
+                        .append(skillMd);
                 List<String> resources = scanResources(skillDir);
                 if (!resources.isEmpty()) {
                     sb.append("\n\nResources:\n");

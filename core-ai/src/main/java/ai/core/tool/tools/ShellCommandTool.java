@@ -243,16 +243,7 @@ public class ShellCommandTool extends ToolCall {
             if (timedOut) {
                 process.destroyForcibly();
                 waitFor(process);
-                String partial = "";
-                try {
-                    var errorLines = InputStreamUtil.readStream(process.getInputStream());
-                    partial = String.join("\n", errorLines);
-                } catch (IOException ignored) {
-                    // stream may already be closed after destroyForcibly
-                }
-                var error = "Command timed out after " + timeout + " seconds\nPlease check your command and workspace dir\n" + partial;
-                LOGGER.debug(error);
-                return error;
+                return handleTimeout(process, timeout);
             }
 
             var outputLines = InputStreamUtil.readStream(process.getInputStream());
@@ -274,6 +265,19 @@ public class ShellCommandTool extends ToolCall {
             LOGGER.error(error, e);
             return error;
         }
+    }
+
+    private static String handleTimeout(Process process, long timeout) {
+        String partial = "";
+        try {
+            var errorLines = InputStreamUtil.readStream(process.getInputStream());
+            partial = String.join("\n", errorLines);
+        } catch (IOException ignored) {
+            // stream may already be closed after destroyForcibly
+        }
+        var error = "Command timed out after " + timeout + " seconds\nPlease check your command and workspace dir\n" + partial;
+        LOGGER.debug(error);
+        return error;
     }
 
     public static String execScript(Path scriptPath, String workdir, long timeout) {

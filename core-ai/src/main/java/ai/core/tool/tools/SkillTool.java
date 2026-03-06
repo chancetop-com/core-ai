@@ -46,8 +46,7 @@ public class SkillTool extends ToolCall {
             return NO_SKILLS_DESC;
         }
         var sb = new StringBuilder(BASE_DESC.length() + skills.size() * 100);
-        sb.append(BASE_DESC);
-        sb.append("\nAvailable skills:\n");
+        sb.append(BASE_DESC).append("\nAvailable skills:\n");
         for (var skill : skills) {
             sb.append("- ").append(skill.getName()).append(": ").append(skill.getDescription()).append('\n');
         }
@@ -107,12 +106,11 @@ public class SkillTool extends ToolCall {
         }
         String skillMd = new String(bytes, StandardCharsets.UTF_8);
         var sb = new StringBuilder(skillMd.length() + 256);
-        sb.append("<skill name=\"").append(skill.getName()).append("\"");
+        sb.append("<skill name=\"").append(skill.getName()).append('"');
         if (skill.getSkillDir() != null) {
-            sb.append(" base_dir=\"").append(skill.getSkillDir()).append("\"");
+            sb.append(" base_dir=\"").append(skill.getSkillDir()).append('"');
         }
-        sb.append(">\n");
-        sb.append(skillMd);
+        sb.append(">\n").append(skillMd);
         List<String> resources = skill.getResources();
         if (resources != null && !resources.isEmpty()) {
             sb.append("\n\nResources:\n");

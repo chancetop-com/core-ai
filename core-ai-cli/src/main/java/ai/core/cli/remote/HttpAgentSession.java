@@ -31,17 +31,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * @author stephen
  */
-public class HttpAgentSession implements AgentSession {
-    private final String sessionId;
-    private final RemoteApiClient api;
-    private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
-    private volatile Thread sseThread;
-    private final CountDownLatch sseConnected = new CountDownLatch(1);
-
-    private HttpAgentSession(String sessionId, RemoteApiClient api) {
-        this.sessionId = sessionId;
-        this.api = api;
-    }
+public final class HttpAgentSession implements AgentSession {
 
     public static HttpAgentSession connect(RemoteApiClient api, String agentId) {
         var sessionId = createSession(api, agentId);
@@ -68,6 +58,17 @@ public class HttpAgentSession implements AgentSession {
         return (String) result.get("sessionId");
     }
 
+    private final String sessionId;
+    private final RemoteApiClient api;
+    private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
+    private volatile Thread sseThread;
+    private final CountDownLatch sseConnected = new CountDownLatch(1);
+
+    private HttpAgentSession(String sessionId, RemoteApiClient api) {
+        this.sessionId = sessionId;
+        this.api = api;
+    }
+
     private void connectSse() {
         sseThread = new Thread(() -> {
             try {
@@ -75,22 +76,10 @@ public class HttpAgentSession implements AgentSession {
                         .header("Accept", "text/event-stream")
                         .method("PUT", HttpRequest.BodyPublishers.noBody())
                         .build();
-
                 var response = api.httpClient().send(request, HttpResponse.BodyHandlers.ofInputStream());
                 DebugLog.log("SSE connected, status=" + response.statusCode());
                 sseConnected.countDown();
-
-                try (var reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (line.startsWith("data:")) {
-                            var data = line.substring(5).trim();
-                            if (!data.isEmpty()) {
-                                handleSseData(data);
-                            }
-                        }
-                    }
-                }
+                readSseStream(response);
             } catch (Exception e) {
                 if (!Thread.currentThread().isInterrupted()) {
                     DebugLog.log("SSE connection error: " + e.getMessage());
@@ -99,6 +88,19 @@ public class HttpAgentSession implements AgentSession {
         }, "sse-reader");
         sseThread.setDaemon(true);
         sseThread.start();
+    }
+
+    private void readSseStream(HttpResponse<java.io.InputStream> response) throws java.io.IOException {
+        try (var reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+            for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+                if (line.startsWith("data:")) {
+                    var data = line.substring(5).trim();
+                    if (!data.isEmpty()) {
+                        handleSseData(data);
+                    }
+                }
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")

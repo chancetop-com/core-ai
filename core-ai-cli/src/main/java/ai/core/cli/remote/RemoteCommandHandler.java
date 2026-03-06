@@ -33,7 +33,7 @@ public class RemoteCommandHandler {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote server: " + AnsiTheme.RESET + saved.serverUrl() + "\n");
         var input = ui.readRawLine(AnsiTheme.MUTED + "  Saved login found. " + AnsiTheme.RESET + "Connect? (y/n/new): ");
         if (input == null) return null;
-        var trimmed = input.trim().toLowerCase();
+        var trimmed = input.trim().toLowerCase(java.util.Locale.ROOT);
 
         if ("y".equals(trimmed) || "yes".equals(trimmed) || trimmed.isEmpty()) {
             return saved;

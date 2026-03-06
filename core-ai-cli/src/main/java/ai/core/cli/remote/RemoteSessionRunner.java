@@ -21,6 +21,12 @@ import java.util.concurrent.Semaphore;
 public class RemoteSessionRunner {
     private static final String POISON_PILL = "\0__EXIT__";
 
+    static String truncate(String text, int max) {
+        if (text == null) return "";
+        var clean = text.replaceAll("[\\r\\n]+", " ").strip();
+        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
+    }
+
     private final TerminalUI ui;
     private final AgentSession session;
     private final RemoteApiClient api;
@@ -90,12 +96,10 @@ public class RemoteSessionRunner {
                 continue;
             }
             var trimmed = input.trim();
-            if (trimmed.startsWith("/")) {
-                if (handleCommand(trimmed)) {
-                    showFrame = true;
-                    readyForInput.release();
-                    continue;
-                }
+            if (trimmed.startsWith("/") && handleCommand(trimmed)) {
+                showFrame = true;
+                readyForInput.release();
+                continue;
             }
             showFrame = true;
             queue.offer(FileReferenceExpander.expand(input));
@@ -158,7 +162,7 @@ public class RemoteSessionRunner {
                 {"/tools", "List available tools"},
                 {"/debug", "Toggle debug mode"},
                 {"/clear", "Clear screen"},
-                {"/exit", "Disconnect and return to local mode"},
+                {"/exit", "Disconnect and return to local mode"}
         };
         for (var c : cmds) {
             ui.printStreamingChunk(String.format("  %s%-16s%s %s%s%s%n",
@@ -185,7 +189,6 @@ public class RemoteSessionRunner {
         for (var agent : agents) {
             var id = (String) agent.get("id");
             var name = (String) agent.get("name");
-            var desc = (String) agent.get("description");
             var isDefault = Boolean.TRUE.equals(agent.get("system_default"));
             var status = (String) agent.get("status");
             String marker = isDefault ? AnsiTheme.SUCCESS + " (default)" + AnsiTheme.RESET : "";
@@ -193,6 +196,7 @@ public class RemoteSessionRunner {
             ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + id + AnsiTheme.RESET + marker + statusTag + "\n");
             if (name != null) {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "    " + name);
+                var desc = (String) agent.get("description");
                 if (desc != null && !desc.isBlank()) {
                     ui.printStreamingChunk(" - " + truncate(desc, 60));
                 }
@@ -260,12 +264,6 @@ public class RemoteSessionRunner {
     private void printField(String label, Object value) {
         if (value == null) return;
         ui.printStreamingChunk(String.format("  %s%-15s%s %s%n", AnsiTheme.MUTED, label + ":", AnsiTheme.RESET, value));
-    }
-
-    private static String truncate(String text, int max) {
-        if (text == null) return "";
-        var clean = text.replaceAll("[\\r\\n]+", " ").strip();
-        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
     }
 
     private void waitForReady(Semaphore readyForInput) {

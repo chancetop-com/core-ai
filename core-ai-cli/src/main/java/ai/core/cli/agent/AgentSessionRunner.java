@@ -14,6 +14,7 @@ import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.FileReferenceExpander;
 import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.cli.ui.TextUtil;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.config.ProviderConfigurator;
 import ai.core.llm.LLMProviderType;
@@ -128,9 +129,7 @@ public class AgentSessionRunner {
             try {
                 while (true) {
                     String msg = queue.take();
-                    if (POISON_PILL.equals(msg)) {
-                        break;
-                    }
+                    if (POISON_PILL.equals(msg)) break;
                     DebugLog.log("sending message: " + msg);
                     listener.prepareTurn();
                     session.sendMessage(msg);
@@ -248,11 +247,15 @@ public class AgentSessionRunner {
         if (line == null || "q".equalsIgnoreCase(line.trim())) return;
         String input = line.trim();
         if ("a".equalsIgnoreCase(input)) {
-            addModelToProvider();
+            new ProviderConfigurator(ui, llmProviders, modelRegistry).addModelToProvider();
             return;
         }
         if ("b".equalsIgnoreCase(input)) {
-            configureProvider();
+            var result = new ProviderConfigurator(ui, llmProviders, modelRegistry).configure();
+            if (result != null) {
+                agent.setLlmProvider(llmProviders.getProvider(result.type()));
+                agent.setModel(result.model());
+            }
             return;
         }
         try {
@@ -343,19 +346,6 @@ public class AgentSessionRunner {
         }
     }
 
-    private void addModelToProvider() {
-        new ProviderConfigurator(ui, llmProviders, modelRegistry).addModelToProvider();
-    }
-
-    private void configureProvider() {
-        var configurator = new ProviderConfigurator(ui, llmProviders, modelRegistry);
-        var result = configurator.configure();
-        if (result != null) {
-            agent.setLlmProvider(llmProviders.getProvider(result.type()));
-            agent.setModel(result.model());
-        }
-    }
-
     private String formatToolSummary(String desc) {
         if (desc == null || desc.isBlank()) return "";
         String line = desc.lines().findFirst().orElse("").trim();
@@ -428,7 +418,7 @@ public class AgentSessionRunner {
             String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
             String title = sessionManager.firstUserMessage(session.id());
             String display = title != null && !title.isBlank()
-                ? truncateTitle(title.replaceAll("[\\r\\n]+", " "), 50)
+                ? TextUtil.truncateByDisplayWidth(title.replaceAll("[\\r\\n]+", " "), 50)
                 : session.id();
             labels.add(display + " (" + timeStr + ")" + marker);
         }
@@ -443,27 +433,6 @@ public class AgentSessionRunner {
         }
         ui.printStreamingChunk(AnsiTheme.MUTED + "Switching to session: " + picked + AnsiTheme.RESET + "\n");
         return picked;
-    }
-
-    private static String truncateTitle(String text, int maxColumns) {
-        int width = 0;
-        for (int i = 0; i < text.length(); ) {
-            int cp = text.codePointAt(i);
-            int charWidth = (cp >= 0x1100 && cp <= 0x115F)
-                || (cp >= 0x2E80 && cp <= 0x9FFF)
-                || (cp >= 0xAC00 && cp <= 0xD7AF)
-                || (cp >= 0xF900 && cp <= 0xFAFF)
-                || (cp >= 0xFE10 && cp <= 0xFE6F)
-                || (cp >= 0xFF01 && cp <= 0xFF60)
-                || (cp >= 0xFFE0 && cp <= 0xFFE6)
-                || (cp >= 0x20000 && cp <= 0x2FA1F) ? 2 : 1;
-            if (width + charWidth > maxColumns) {
-                return text.substring(0, i) + "...";
-            }
-            width += charWidth;
-            i += Character.charCount(cp);
-        }
-        return text;
     }
 
     private void waitForReady(Semaphore readyForInput) {

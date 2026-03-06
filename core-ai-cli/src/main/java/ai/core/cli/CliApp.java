@@ -167,9 +167,10 @@ public class CliApp {
         return cleaned.substring(0, maxLength) + "...";
     }
 
+    @SuppressWarnings("PMD.SystemPrintln")
     public void startRemote(String serverUrl, String apiKey, String agentId) {
         if (apiKey == null || apiKey.isBlank()) {
-            System.err.println("Error: --api-key is required for remote mode. Login first and use the returned API key.");
+            System.err.println("Error: --api-key is required for remote mode.");
             return;
         }
         var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant");

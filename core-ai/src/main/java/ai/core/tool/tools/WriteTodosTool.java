@@ -84,6 +84,20 @@ public class WriteTodosTool {
         return Functions.from(todos, "writeTodos").getFirst();
     }
 
+    @SuppressWarnings("PMD.UseDiamondOperator") // diamond breaks TypeReference generic inference
+    public static List<Todo> loadTodos(ExecutionContext context) {
+        if (context == null || context.getPersistenceProvider() == null) return List.of();
+        var key = todosKey(context.getSessionId());
+        return context.getPersistenceProvider().load(key)
+                .map(json -> JsonUtil.fromJson(new TypeReference<List<Todo>>() {
+                }, json))
+                .orElse(List.of());
+    }
+
+    private static String todosKey(String sessionId) {
+        return "todos:" + (sessionId != null ? sessionId : "default");
+    }
+
     @CoreAiMethod(name = "write_todos", description = WT_TOOL_DESC)
     public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos, ExecutionContext context) {
         String todosJson = JSON.toJSON(todos);
@@ -96,9 +110,9 @@ public class WriteTodosTool {
                   <system-reminder>
                   Your todo list has changed. DO NOT mention this explicitly to the user.
                   Here are the latest contents of your todo list:
-                
+
                   %s
-                
+
                   Continue on with the tasks at hand if applicable.
                   </system-reminder>
                 """.formatted(todosJson);
@@ -114,19 +128,6 @@ public class WriteTodosTool {
         } catch (Exception e) {
             LOGGER.warn("failed to persist todos, sessionId={}", context.getSessionId(), e);
         }
-    }
-
-    public static List<Todo> loadTodos(ExecutionContext context) {
-        if (context == null || context.getPersistenceProvider() == null) return List.of();
-        var key = todosKey(context.getSessionId());
-        return context.getPersistenceProvider().load(key)
-                .map(json -> JsonUtil.fromJson(new TypeReference<List<Todo>>() {
-                }, json))
-                .orElse(List.of());
-    }
-
-    private static String todosKey(String sessionId) {
-        return "todos:" + (sessionId != null ? sessionId : "default");
     }
 
     public enum Status {

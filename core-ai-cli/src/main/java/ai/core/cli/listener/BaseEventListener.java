@@ -121,7 +121,7 @@ public class BaseEventListener implements AgentEventListener {
         String time = ThinkingSpinner.formatElapsed(elapsed);
         var event = lastTurnComplete.get();
         var sb = new StringBuilder();
-        sb.append("\n").append(AnsiTheme.MUTED).append("  \u2726 ").append(time);
+        sb.append('\n').append(AnsiTheme.MUTED).append("  \u2726 ").append(time);
         if (event != null && event.inputTokens != null && event.outputTokens != null) {
             long total = event.inputTokens + event.outputTokens;
             sb.append(String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", total, event.inputTokens, event.outputTokens));

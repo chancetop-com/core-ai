@@ -18,21 +18,17 @@ public class SkillLifecycle extends AbstractLifecycle {
 
     private final SkillConfig config;
     private final SkillLoader loader;
-    private final SkillPromptFormatter formatter;
     private volatile List<SkillMetadata> loadedSkills;
-    private volatile String cachedSkillsSection;
 
     public SkillLifecycle(SkillConfig config) {
         this.config = config;
         this.loader = new SkillLoader(config.getMaxSkillFileSize());
-        this.formatter = new SkillPromptFormatter();
     }
 
     @Override
     public void afterAgentBuild(Agent agent) {
         if (!config.isEnabled()) return;
         this.loadedSkills = loader.loadAll(config.getSources());
-        this.cachedSkillsSection = formatter.format(loadedSkills);
         LOGGER.debug("Loaded {} skills", loadedSkills.size());
     }
 

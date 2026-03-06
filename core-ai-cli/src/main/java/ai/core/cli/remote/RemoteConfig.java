@@ -1,5 +1,6 @@
 package ai.core.cli.remote;
 
+import ai.core.cli.DebugLog;
 import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
 
@@ -30,7 +31,7 @@ public record RemoteConfig(@Property(name = "server_url") String serverUrl,
             Files.createDirectories(CONFIG_PATH.getParent());
             Files.writeString(CONFIG_PATH, JsonUtil.toJson(this));
         } catch (IOException e) {
-            // non-critical
+            DebugLog.log("Failed to save remote config: " + e.getMessage());
         }
     }
 
@@ -38,7 +39,7 @@ public record RemoteConfig(@Property(name = "server_url") String serverUrl,
         try {
             Files.deleteIfExists(CONFIG_PATH);
         } catch (IOException e) {
-            // non-critical
+            DebugLog.log("Failed to clear remote config: " + e.getMessage());
         }
     }
 }

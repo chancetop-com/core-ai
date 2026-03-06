@@ -238,9 +238,7 @@ public abstract class Node<T extends Node<T>> {
         try {
             AtomicReference<String> queryRef = new AtomicReference<>(query);
             agentLifecycles.forEach(alc -> alc.beforeAgentRun(queryRef, getExecutionContext()));
-            // execute raw method
             var rs = exec.apply(queryRef.get(), getExecutionContext().getCustomVariables());
-
             AtomicReference<String> resultRef = new AtomicReference<>(rs);
             agentLifecycles.forEach(alc -> alc.afterAgentRun(queryRef.get(), resultRef, getExecutionContext()));
             return resultRef.get();
@@ -276,7 +274,6 @@ public abstract class Node<T extends Node<T>> {
         if (task == null) throw new IllegalArgumentException("Task cannot be null");
         if (this.task == null) this.task = task;
         var lastMessage = task.getLastMessage();
-        // need user input but new query not yet submitted, return and wait
         if (task.getStatus() == TaskStatus.INPUT_REQUIRED && lastMessage.getRole() != TaskRoleType.USER) {
             throw new IllegalArgumentException("Task is waiting for user input, please submit the query first");
         }
@@ -372,7 +369,6 @@ public abstract class Node<T extends Node<T>> {
 
     void setFormatter(Formatter formatter) {
     }
-
     void setPersistence(Persistence<T> persistence) {
         this.persistence = persistence;
     }
@@ -408,7 +404,6 @@ public abstract class Node<T extends Node<T>> {
     Map<String, Object> getSystemVariables() {
         return this.systemVariables;
     }
-
     public void addTokenCost(Usage cost) {
         if (cost == null) return;
         this.currentTokenUsage.setCompletionTokens(this.currentTokenUsage.getCompletionTokens() + cost.getCompletionTokens());

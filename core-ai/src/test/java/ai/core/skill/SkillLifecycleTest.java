@@ -24,9 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SkillLifecycleTest {
 
     @Test
-    void beforeModelInjectsSkillsIntoSystemPrompt(@TempDir Path tempDir) throws IOException {
+    void beforeModelNoLongerInjectsSystemPrompt(@TempDir Path tempDir) throws IOException {
         createSkillFixture(tempDir, "web-research", "Provides web research methodology");
-        createSkillFixture(tempDir, "code-review", "Provides code review checklist");
 
         var config = SkillConfig.of(tempDir.toString());
         var lifecycle = new SkillLifecycle(config);
@@ -39,10 +38,7 @@ class SkillLifecycleTest {
         lifecycle.beforeModel(request, ExecutionContext.builder().build());
 
         String systemText = request.messages.getFirst().getTextContent();
-        assertTrue(systemText.contains("## Skills"));
-        assertTrue(systemText.contains("web-research"));
-        assertTrue(systemText.contains("code-review"));
-        assertTrue(systemText.contains("SKILL.md"));
+        assertEquals("You are a helpful assistant", systemText);
     }
 
     @Test
@@ -78,17 +74,18 @@ class SkillLifecycleTest {
     }
 
     @Test
-    void beforeModelHandlesEmptyMessages(@TempDir Path tempDir) throws IOException {
-        createSkillFixture(tempDir, "test-skill", "A test skill");
+    void afterAgentBuildLoadsSkills(@TempDir Path tempDir) throws IOException {
+        createSkillFixture(tempDir, "web-research", "Provides web research methodology");
+        createSkillFixture(tempDir, "code-review", "Provides code review checklist");
+
         var config = SkillConfig.of(tempDir.toString());
         var lifecycle = new SkillLifecycle(config);
         lifecycle.afterAgentBuild(null);
 
-        var request = new CompletionRequest();
-        request.messages = new ArrayList<>();
-        lifecycle.beforeModel(request, ExecutionContext.builder().build());
-
-        assertTrue(request.messages.isEmpty());
+        var skills = lifecycle.getLoadedSkills();
+        assertEquals(2, skills.size());
+        assertTrue(skills.stream().anyMatch(s -> "web-research".equals(s.getName())));
+        assertTrue(skills.stream().anyMatch(s -> "code-review".equals(s.getName())));
     }
 
     @Test
@@ -104,7 +101,7 @@ class SkillLifecycleTest {
     }
 
     @Test
-    void promptIncludesResourcesWhenPresent(@TempDir Path tempDir) throws IOException {
+    void skillResourcesLoadedCorrectly(@TempDir Path tempDir) throws IOException {
         var skillDir = tempDir.resolve("my-skill");
         var scriptsDir = skillDir.resolve("scripts");
         Files.createDirectories(scriptsDir);
@@ -120,33 +117,8 @@ class SkillLifecycleTest {
         var lifecycle = new SkillLifecycle(config);
         lifecycle.afterAgentBuild(null);
 
-        var systemMsg = Message.of(RoleType.SYSTEM, "You are an assistant");
-        var request = new CompletionRequest();
-        request.messages = new ArrayList<>(List.of(systemMsg));
-
-        lifecycle.beforeModel(request, ExecutionContext.builder().build());
-
-        String systemText = request.messages.getFirst().getTextContent();
-        assertTrue(systemText.contains("Available resources"));
-        assertTrue(systemText.contains("scripts/collect.sh"));
-    }
-
-    @Test
-    void promptOmitsResourcesWhenAbsent(@TempDir Path tempDir) throws IOException {
-        createSkillFixture(tempDir, "plain-skill", "Skill without resources");
-
-        var config = SkillConfig.of(tempDir.toString());
-        var lifecycle = new SkillLifecycle(config);
-        lifecycle.afterAgentBuild(null);
-
-        var systemMsg = Message.of(RoleType.SYSTEM, "You are an assistant");
-        var request = new CompletionRequest();
-        request.messages = new ArrayList<>(List.of(systemMsg));
-
-        lifecycle.beforeModel(request, ExecutionContext.builder().build());
-
-        String systemText = request.messages.getFirst().getTextContent();
-        assertFalse(systemText.contains("Available resources"));
+        var skill = lifecycle.getLoadedSkills().getFirst();
+        assertTrue(skill.getResources().contains("scripts/collect.sh"));
     }
 
     private void createSkillFixture(Path baseDir, String name, String description) throws IOException {
