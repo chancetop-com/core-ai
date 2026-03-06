@@ -152,11 +152,6 @@ project(":core-ai-cli") {
         System.getProperty("core.ai.debug")?.let { systemProperty("core.ai.debug", it) }
         outputs.upToDateWhen { false }
     }
-    tasks.register<Copy>("install") {
-        dependsOn("nativeCompile")
-        from("build/native/nativeCompile/core-ai-cli")
-        into("${System.getProperty("user.home")}/.local/bin")
-    }
 project(":core-ai-benchmark") {
     version = ProjectVersions.CORE_AI_BENCHMARK_VERSION
     apply(plugin = "app")

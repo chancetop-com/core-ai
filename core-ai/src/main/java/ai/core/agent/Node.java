@@ -350,7 +350,12 @@ public abstract class Node<T extends Node<T>> {
     }
 
     public ExecutionContext getExecutionContext() {
-        return executionContext != null ? executionContext : ExecutionContext.empty();
+        if (executionContext != null) return executionContext;
+        var builder = ExecutionContext.builder();
+        if (persistenceProvider != null) {
+            builder.persistenceProvider(persistenceProvider);
+        }
+        return builder.build();
     }
 
     public void setRound(Integer round) {

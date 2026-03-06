@@ -1,19 +1,21 @@
 package ai.core.tool.tools;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.ToolCall;
 import ai.core.tool.function.Functions;
+import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.json.JSON;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-/**
- * author: lim chen
- * date: 2025/11/20
- * description:
- */
 public class WriteTodosTool {
+    public static final String TODOS_CONTEXT_KEY = "agent_todos";
+    private static final Logger LOGGER = LoggerFactory.getLogger(WriteTodosTool.class);
 
     private static final String WT_TOOL_DESC = """
             Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
@@ -83,9 +85,12 @@ public class WriteTodosTool {
     }
 
     @CoreAiMethod(name = "write_todos", description = WT_TOOL_DESC)
-    public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos) {
-        //todo persistence
+    public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos, ExecutionContext context) {
         String todosJson = JSON.toJSON(todos);
+        if (context != null) {
+            context.getCustomVariables().put(TODOS_CONTEXT_KEY, todos);
+            persist(context, todosJson);
+        }
         return """
                   Todos have been modified successfully.
                   <system-reminder>
@@ -97,6 +102,31 @@ public class WriteTodosTool {
                   Continue on with the tasks at hand if applicable.
                   </system-reminder>
                 """.formatted(todosJson);
+    }
+    //todo more than 3 reminder
+
+    private void persist(ExecutionContext context, String todosJson) {
+        var provider = context.getPersistenceProvider();
+        if (provider == null) return;
+        var key = todosKey(context.getSessionId());
+        try {
+            provider.save(key, todosJson);
+        } catch (Exception e) {
+            LOGGER.warn("failed to persist todos, sessionId={}", context.getSessionId(), e);
+        }
+    }
+
+    public static List<Todo> loadTodos(ExecutionContext context) {
+        if (context == null || context.getPersistenceProvider() == null) return List.of();
+        var key = todosKey(context.getSessionId());
+        return context.getPersistenceProvider().load(key)
+                .map(json -> JsonUtil.fromJson(new TypeReference<List<Todo>>() {
+                }, json))
+                .orElse(List.of());
+    }
+
+    private static String todosKey(String sessionId) {
+        return "todos:" + (sessionId != null ? sessionId : "default");
     }
 
     public enum Status {

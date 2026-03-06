@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.llm.LLMProvider;
+import ai.core.persistence.PersistenceProvider;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import core.framework.util.Maps;
 
@@ -23,6 +24,7 @@ public final class ExecutionContext {
     private final Map<String, Object> customVariables;
     private final ToolCallAsyncTaskManager asyncTaskManager;
     private final AttachedContent attachedContent;
+    private final PersistenceProvider persistenceProvider;
     private LLMProvider llmProvider;
     private String model;
 
@@ -33,6 +35,7 @@ public final class ExecutionContext {
         this.customVariables = Maps.newHashMap();
         this.customVariables.putAll(builder.customVariables);
         this.asyncTaskManager = builder.asyncTaskManager;
+        this.persistenceProvider = builder.persistenceProvider;
     }
 
     public String getSessionId() {
@@ -84,11 +87,16 @@ public final class ExecutionContext {
         this.model = model;
     }
 
+    public PersistenceProvider getPersistenceProvider() {
+        return persistenceProvider;
+    }
+
     public static class Builder {
         private String sessionId;
         private String userId;
         private ToolCallAsyncTaskManager asyncTaskManager;
         private AttachedContent attachedContent;
+        private PersistenceProvider persistenceProvider;
         private final Map<String, Object> customVariables = Maps.newHashMap();
 
         public Builder sessionId(String sessionId) {
@@ -120,6 +128,11 @@ public final class ExecutionContext {
 
         public Builder attachedContent(AttachedContent attachedContent) {
             this.attachedContent = attachedContent;
+            return this;
+        }
+
+        public Builder persistenceProvider(PersistenceProvider persistenceProvider) {
+            this.persistenceProvider = persistenceProvider;
             return this;
         }
 

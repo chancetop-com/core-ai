@@ -47,7 +47,7 @@ class WriteTodosTest {
 
         when(llmProvider.completionStream(any(), any())).thenReturn(crs);
         agent.run("Make scrambled eggs with tomatoes");
-        verify(wtl).writeTodos(anyList());
+        verify(wtl).writeTodos(anyList(),any());
 
     }
 }
