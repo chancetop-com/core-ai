@@ -48,10 +48,11 @@ public class SkillCommandHandler {
             var path = Path.of(dir);
             if (!Files.isDirectory(path)) continue;
             try (var stream = Files.list(path)) {
-                stream.filter(p -> p.toString().endsWith(".md"))
+                stream.filter(Files::isDirectory)
+                      .filter(p -> Files.isRegularFile(p.resolve("SKILL.md")))
                       .sorted()
                       .forEach(p -> {
-                          String name = p.getFileName().toString().replace(".md", "");
+                          String name = p.getFileName().toString();
                           result.add(new SkillEntry(name, dir));
                       });
             } catch (IOException ignored) {
