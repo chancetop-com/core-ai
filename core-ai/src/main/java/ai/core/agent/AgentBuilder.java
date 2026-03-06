@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.agent.internal.DoomLoopDetector;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.context.Compression;
@@ -53,6 +54,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private boolean toolCallPruningEnabled = false;
     private ToolCallPruning.Config toolCallPruningConfig;
     private ReasoningEffort reasoningEffort;
+    private boolean doomLoopEnabled = true;
+    private int doomLoopWindowSize = 3;
 
     // Memory configuration
     private Memory memory;
@@ -271,6 +274,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder doomLoopDetection(boolean enabled) {
+        this.doomLoopEnabled = enabled;
+        return this;
+    }
+
+    public AgentBuilder doomLoopWindowSize(int size) {
+        this.doomLoopWindowSize = size;
+        return this;
+    }
+
     public Agent build() {
         beforeAgentBuildLifecycle();
         var agent = new Agent();
@@ -331,6 +344,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.setPersistence(new AgentPersistence());
         agent.agentLifecycles = new ArrayList<>(agentLifecycles);
         agent.reasoningEffort = this.reasoningEffort;
+        if (this.doomLoopEnabled) {
+            agent.doomLoopDetector = new DoomLoopDetector(this.doomLoopWindowSize);
+        }
         if (this.enableReflection && this.reflectionConfig == null) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
         }

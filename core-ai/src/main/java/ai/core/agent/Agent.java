@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.internal.AgentHelper;
+import ai.core.agent.internal.DoomLoopDetector;
 import ai.core.agent.slashcommand.SlashCommandParser;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
@@ -29,6 +30,7 @@ import ai.core.reflection.ReflectionStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 import ai.core.tool.ToolExecutor;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;
@@ -75,6 +77,7 @@ public class Agent extends Node<Agent> {
     Compression compression;
     ReasoningEffort reasoningEffort;
     List<SubAgentToolCall> subAgents = new ArrayList<>();
+    DoomLoopDetector doomLoopDetector;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -283,6 +286,18 @@ public class Agent extends Node<Agent> {
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream().map(tool -> {
             var msg = new ArrayList<Message>();
+
+            if (doomLoopDetector != null && doomLoopDetector.record(tool)) {
+                logger.warn("doom loop detected for tool: {}", tool.function.name);
+                var doomResult = ToolCallResult.failed(
+                        "Repeated identical tool call detected (doom loop). "
+                                + "You have called " + tool.function.name + " with the same arguments "
+                                + doomLoopDetector.getWindowSize() + " times in a row. "
+                                + "Please try a different approach or ask the user for help.");
+                msg.add(AgentHelper.buildToolMessage(tool, doomResult));
+                return msg;
+            }
+
             var result = getToolExecutor().execute(tool, getExecutionContext());
             if (result.isDirectReturn() || Strings.isBlank(result.toResultForLLM())) {
                 msg.add(AgentHelper.buildToolMessage(tool, result, true));
@@ -303,6 +318,7 @@ public class Agent extends Node<Agent> {
     }
 
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
+        if (doomLoopDetector != null) doomLoopDetector.reset();
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
             addTaskHistoriesToMessages();
