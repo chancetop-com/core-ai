@@ -4,8 +4,6 @@ import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.Content;
-import ai.core.llm.domain.RoleType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,22 +38,7 @@ public class SkillLifecycle extends AbstractLifecycle {
 
     @Override
     public void beforeModel(CompletionRequest request, ExecutionContext executionContext) {
-        if (cachedSkillsSection == null || cachedSkillsSection.isEmpty()) return;
-        if (request == null || request.messages == null || request.messages.isEmpty()) return;
-
-        appendToSystemMessage(request, cachedSkillsSection);
-    }
-
-    private void appendToSystemMessage(CompletionRequest request, String skillsSection) {
-        for (var message : request.messages) {
-            if (message.role == RoleType.SYSTEM) {
-                String currentText = message.getTextContent();
-                if (currentText == null) currentText = "";
-                message.content = List.of(Content.of(currentText + skillsSection));
-                return;
-            }
-        }
-        LOGGER.debug("No system message found in request, skills section not injected");
+        // skill info is now in SkillTool description, no longer injected into system prompt
     }
 
     public List<SkillMetadata> getLoadedSkills() {

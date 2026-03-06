@@ -75,6 +75,30 @@ public class CliEventListener extends BaseEventListener {
     public void onToolStart(ToolStartEvent event) {
         DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId + " args=" + truncate(event.arguments));
         super.onToolStart(event);
+        stopSpinnerIfActive();
+        markdownRenderer.flush();
+        showSkillHintIfApplicable(event);
+        ui.showToolStart(event.toolName, event.arguments);
+    }
+
+    private void showSkillHintIfApplicable(ToolStartEvent event) {
+        if (!"read_file".equals(event.toolName) || event.arguments == null) return;
+        String skillName = extractSkillName(event.arguments);
+        if (skillName != null) {
+            ui.getWriter().println("\n  " + AnsiTheme.CMD_NAME + "\uD83D\uDCD6 Using skill: " + skillName + AnsiTheme.RESET);
+            ui.getWriter().flush();
+        }
+    }
+
+    private String extractSkillName(String arguments) {
+        int idx = arguments.indexOf("SKILL.md");
+        if (idx < 0) return null;
+        String before = arguments.substring(0, idx);
+        int lastSlash = before.lastIndexOf('/');
+        if (lastSlash < 0) return null;
+        int secondLastSlash = before.lastIndexOf('/', lastSlash - 1);
+        if (secondLastSlash < 0) return null;
+        return before.substring(secondLastSlash + 1, lastSlash);
     }
 
     @Override

@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -242,8 +243,14 @@ public class ShellCommandTool extends ToolCall {
             if (timedOut) {
                 process.destroyForcibly();
                 waitFor(process);
-                var errorLines = InputStreamUtil.readStream(process.getInputStream());
-                var error = "Command timed out after " + timeout + " seconds\nPlease check your command and workspace dir\n" + String.join("\n", errorLines);
+                String partial = "";
+                try {
+                    var errorLines = InputStreamUtil.readStream(process.getInputStream());
+                    partial = String.join("\n", errorLines);
+                } catch (IOException ignored) {
+                    // stream may already be closed after destroyForcibly
+                }
+                var error = "Command timed out after " + timeout + " seconds\nPlease check your command and workspace dir\n" + partial;
                 LOGGER.debug(error);
                 return error;
             }

@@ -4,6 +4,8 @@ import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -40,6 +42,59 @@ public class SkillCommandHandler {
                     + AnsiTheme.MUTED + " (" + skill.source + ")" + AnsiTheme.RESET + "\n");
         }
         ui.printStreamingChunk("\n");
+    }
+
+    public String loadSkillContent(String name) {
+        for (String dir : SKILL_DIRS) {
+            var skillDir = Path.of(dir, name);
+            var skillFile = skillDir.resolve("SKILL.md");
+            if (!Files.isRegularFile(skillFile)) continue;
+            try {
+                String skillMd = Files.readString(skillFile, StandardCharsets.UTF_8);
+                var sb = new StringBuilder(skillMd.length() + 256);
+                sb.append("<skill name=\"").append(name).append("\"");
+                sb.append(" base_dir=\"").append(skillDir.toAbsolutePath()).append("\"");
+                sb.append(">\n");
+                sb.append(skillMd);
+                List<String> resources = scanResources(skillDir);
+                if (!resources.isEmpty()) {
+                    sb.append("\n\nResources:\n");
+                    for (String resource : resources) {
+                        sb.append("- ").append(resource).append('\n');
+                    }
+                }
+                sb.append("</skill>");
+                ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
+                        + " Skill '" + name + "' loaded into conversation.\n\n");
+                return sb.toString();
+            } catch (IOException e) {
+                ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to read skill: " + e.getMessage() + AnsiTheme.RESET + "\n");
+                return null;
+            }
+        }
+        ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET
+                + " Skill '" + name + "' not found.\n\n");
+        return null;
+    }
+
+    private List<String> scanResources(Path skillDir) {
+        String[] subDirs = {"scripts", "references"};
+        var result = new ArrayList<String>();
+        for (String sub : subDirs) {
+            Path subDir = skillDir.resolve(sub);
+            if (!Files.isDirectory(subDir)) continue;
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(subDir)) {
+                for (Path entry : stream) {
+                    if (Files.isRegularFile(entry)) {
+                        result.add(sub + "/" + entry.getFileName().toString());
+                    }
+                }
+            } catch (IOException ignored) {
+                // skip
+            }
+        }
+        result.sort(String::compareTo);
+        return result;
     }
 
     private List<SkillEntry> scanSkills() {

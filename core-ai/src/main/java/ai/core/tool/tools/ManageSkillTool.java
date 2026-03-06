@@ -28,15 +28,14 @@ public class ManageSkillTool extends ToolCall {
     private static final Logger LOGGER = LoggerFactory.getLogger(ManageSkillTool.class);
 
     private static final String TOOL_DESC = """
-            Create, update, or delete skill files in the project's .core-ai/skills/ directory.
-            Skills are markdown files with YAML frontmatter that extend agent capabilities.
+            Manage skill files (create/delete/list). To USE a skill, call use_skill instead.
 
             Actions:
-            - "create": Create a new skill file with the given name and content
-            - "delete": Delete an existing skill file
-            - "list": List all skill files in the skills directory
+            - "create": Create a new skill directory with SKILL.md
+            - "delete": Delete an existing skill directory
+            - "list": List all skills with their SKILL.md paths
 
-            Skill file format:
+            Skill file format (SKILL.md with YAML frontmatter):
             ---
             name: skill-name
             description: What this skill does
@@ -131,7 +130,7 @@ public class ManageSkillTool extends ToolCall {
             stream.filter(Files::isDirectory)
                     .filter(p -> Files.isRegularFile(p.resolve("SKILL.md")))
                     .sorted()
-                    .forEach(p -> result.add(p.getFileName().toString() + " (" + source + ")"));
+                    .forEach(p -> result.add(p.getFileName().toString() + " (" + source + ") → " + p.resolve("SKILL.md")));
         }
     }
 

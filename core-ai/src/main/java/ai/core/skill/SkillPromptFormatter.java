@@ -11,9 +11,9 @@ public class SkillPromptFormatter {
 
         ## Skills
 
-        You can use the following skills to accomplish specialized tasks.
-        Skills use progressive disclosure - you only see names and descriptions here.
-        Read the full SKILL.md when you need to use a skill.
+        **IMPORTANT: You MUST check available skills BEFORE attempting any task yourself.**
+        If a skill matches the user's request, you MUST use it — do NOT attempt to accomplish the task without the skill.
+        Skills provide tested, reliable workflows. Read the full SKILL.md first when you need to use a skill.
 
         **Available Skills:**
 
@@ -21,11 +21,12 @@ public class SkillPromptFormatter {
 
     private static final String SKILLS_FOOTER = """
 
-        **How to use:**
-        1. Determine if the user's request matches a skill's description
-        2. If matched, use read_file tool to read the corresponding SKILL.md for full instructions
-        3. Follow the workflow in SKILL.md to execute the task
+        **How to use (MANDATORY when a skill matches):**
+        1. Check if the user's request matches any skill's description above
+        2. If matched, IMMEDIATELY use read_file to read the corresponding SKILL.md
+        3. Follow the workflow in SKILL.md exactly to execute the task
         4. Use absolute paths when executing auxiliary scripts from skills
+        5. Do NOT try alternative approaches (e.g. pip install, manual scripting) when a skill is available
         """;
 
     private static final String SKILL_ENTRY_FORMAT = "- **%s**: %s\n  → Read `%s` for full instructions\n";

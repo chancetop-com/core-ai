@@ -13,6 +13,7 @@ import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.ManageSkillTool;
 import ai.core.tool.tools.MemoryTool;
+import ai.core.tool.tools.SkillTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,7 +29,8 @@ import java.util.stream.Collectors;
 public class CliAgent {
 
     public static Agent of(Config config) {
-        var tools = buildTools(config);
+        var skillConfig = buildSkillConfig(config);
+        var tools = buildTools(config, skillConfig);
         var builder = Agent.builder()
                 .llmProvider(config.providers.getProvider())
                 .systemPrompt(buildSystemPrompt(config))
@@ -36,10 +38,6 @@ public class CliAgent {
                 .toolCalls(tools)
                 .temperature(0.8);
 
-        var skillConfig = SkillConfig.builder()
-                .source("workspace", config.workspace.resolve(".core-ai/skills").toString(), 100)
-                .source("user", userSkillsDir().toString(), 50)
-                .build();
         builder.skills(skillConfig);
         configureMcp(builder);
 
@@ -52,13 +50,24 @@ public class CliAgent {
         return builder.build();
     }
 
-    private static List<ToolCall> buildTools(Config config) {
+    private static SkillConfig buildSkillConfig(Config config) {
+        return SkillConfig.builder()
+                .source("workspace", config.workspace.resolve(".core-ai/skills").toString(), 100)
+                .source("user", userSkillsDir().toString(), 50)
+                .build();
+    }
+
+    private static List<ToolCall> buildTools(Config config, SkillConfig skillConfig) {
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
         tools.add(ManageSkillTool.builder()
                 .skillsDir(config.workspace.resolve(".core-ai/skills"))
                 .userSkillsDir(userSkillsDir())
+                .build());
+        tools.add(SkillTool.builder()
+                .sources(skillConfig.getSources())
+                .maxFileSize(skillConfig.getMaxSkillFileSize())
                 .build());
         if (config.memory != null) {
             tools.add(MemoryTool.builder().provider(config.memory).build());

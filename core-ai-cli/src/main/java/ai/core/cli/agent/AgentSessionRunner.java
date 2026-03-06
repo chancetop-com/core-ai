@@ -197,6 +197,9 @@ public class AgentSessionRunner {
             memoryCommand.handle(trimmed);
         } else if ("/skill".equals(lower) || "/skills".equals(lower)) {
             new SkillCommandHandler(ui).handle();
+        } else if (lower.startsWith("/skill ")) {
+            String content = new SkillCommandHandler(ui).loadSkillContent(trimmed.substring(7).trim());
+            if (content != null) queue.offer(content);
         } else if ("/mcp".equals(lower)) {
             new McpCommandHandler(ui).handle();
         } else if ("/resume".equals(lower)) {
@@ -341,8 +344,7 @@ public class AgentSessionRunner {
     }
 
     private void addModelToProvider() {
-        var configurator = new ProviderConfigurator(ui, llmProviders, modelRegistry);
-        configurator.addModelToProvider();
+        new ProviderConfigurator(ui, llmProviders, modelRegistry).addModelToProvider();
     }
 
     private void configureProvider() {
@@ -355,14 +357,9 @@ public class AgentSessionRunner {
     }
 
     private String formatToolSummary(String desc) {
-        if (desc == null || desc.isBlank()) {
-            return "";
-        }
-        String firstLine = desc.lines().findFirst().orElse("").trim();
-        if (firstLine.length() > 60) {
-            firstLine = firstLine.substring(0, 57) + "...";
-        }
-        return AnsiTheme.MUTED + " - " + firstLine + AnsiTheme.RESET;
+        if (desc == null || desc.isBlank()) return "";
+        String line = desc.lines().findFirst().orElse("").trim();
+        return AnsiTheme.MUTED + " - " + (line.length() > 60 ? line.substring(0, 57) + "..." : line) + AnsiTheme.RESET;
     }
 
     private void handleCopy() {
@@ -394,7 +391,7 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
             return;
         }
-        int removed = messages.size() - 5; // keep system prompt + last 4 messages
+        int removed = messages.size() - 5;
         messages.subList(1, messages.size() - 4).clear();
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                 + " Compacted: removed " + removed + " messages, kept " + messages.size() + "\n\n");
