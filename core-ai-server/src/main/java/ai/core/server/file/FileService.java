@@ -4,7 +4,6 @@ import ai.core.server.domain.FileRecord;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.NotFoundException;
-import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 /**
  * @author stephen
@@ -32,9 +32,9 @@ public class FileService {
     }
 
     public FileRecord upload(String userId, String fileName, String contentType, Path tempFile) {
-        var id = new ObjectId();
+        var id = UUID.randomUUID().toString();
         var now = ZonedDateTime.now();
-        var relativePath = now.format(DIR_FORMAT) + "/" + id.toHexString() + "_" + sanitizeFileName(fileName);
+        var relativePath = now.format(DIR_FORMAT) + "/" + id + "_" + sanitizeFileName(fileName);
 
         var targetPath = storageRoot.resolve(relativePath);
         try {
@@ -59,7 +59,7 @@ public class FileService {
     }
 
     public FileRecord get(String id) {
-        return fileRecordCollection.get(new ObjectId(id))
+        return fileRecordCollection.get(id)
             .orElseThrow(() -> new NotFoundException("file not found, id=" + id));
     }
 
@@ -75,7 +75,7 @@ public class FileService {
         } catch (IOException e) {
             LOGGER.warn("failed to delete file from disk, path={}", filePath, e);
         }
-        fileRecordCollection.delete(new ObjectId(id));
+        fileRecordCollection.delete(id);
     }
 
     private long fileSize(Path path) {

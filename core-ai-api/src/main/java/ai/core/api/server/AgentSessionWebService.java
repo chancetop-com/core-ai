@@ -39,6 +39,10 @@ public interface AgentSessionWebService {
     @Path("/api/sessions/:sessionId/status")
     SessionStatusResponse status(@PathParam("sessionId") String sessionId);
 
+    @POST
+    @Path("/api/sessions/:sessionId/cancel")
+    void cancel(@PathParam("sessionId") String sessionId);
+
     @DELETE
     @Path("/api/sessions/:sessionId")
     void close(@PathParam("sessionId") String sessionId);

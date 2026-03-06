@@ -9,6 +9,7 @@ import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.api.server.session.SessionStatusResponse;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.session.AgentSessionManager;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -24,12 +25,22 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     WebContext webContext;
     @Inject
     AgentSessionManager sessionManager;
+    @Inject
+    AgentDefinitionService agentDefinitionService;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
-        var sessionId = sessionManager.createSession(request.config);
+
+        String sessionId;
+        if (request.agentId != null) {
+            var agent = agentDefinitionService.getEntity(request.agentId);
+            sessionId = sessionManager.createSessionFromAgent(agent, request.config);
+        } else {
+            sessionId = sessionManager.createSession(request.config);
+        }
+
         var response = new CreateSessionResponse();
         response.sessionId = sessionId;
         return response;
@@ -68,6 +79,15 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         response.sessionId = sessionId;
         response.status = SessionStatus.IDLE;
         return response;
+    }
+
+    @Override
+    public void cancel(String sessionId) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
+        var session = sessionManager.getSession(sessionId);
+        session.cancelTurn();
     }
 
     @Override

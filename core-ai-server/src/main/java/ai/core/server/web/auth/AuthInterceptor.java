@@ -28,6 +28,10 @@ public class AuthInterceptor implements Interceptor {
             return invocation.proceed();
         }
 
+        if (path.equals("/api/auth/register") || path.equals("/api/auth/login")) {
+            return invocation.proceed();
+        }
+
         String userId = authenticateFromAzureAD(request);
         if (userId == null) {
             userId = authenticateFromApiKey(request);
@@ -60,6 +64,10 @@ public class AuthInterceptor implements Interceptor {
         var user = userCollection.findOne(Filters.eq("api_key", apiKey));
         if (user.isEmpty()) throw new UnauthorizedException("invalid api key");
 
+        if (!"active".equals(user.get().status)) {
+            throw new UnauthorizedException("account is pending approval");
+        }
+
         updateLastLogin(user.get());
         return user.get().id;
     }
@@ -69,7 +77,9 @@ public class AuthInterceptor implements Interceptor {
         if (existing.isEmpty()) {
             var user = new User();
             user.id = userId;
+            user.email = userId;
             user.name = name;
+            user.status = "active";
             user.createdAt = ZonedDateTime.now();
             user.lastLoginAt = user.createdAt;
             userCollection.insert(user);

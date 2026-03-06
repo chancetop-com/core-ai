@@ -118,6 +118,8 @@ project(":core-ai-server") {
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         implementation("core.framework:core-ng-mongo:${Versions.CORE_FRAMEWORK_VERSION}")
+        // BouncyCastle for password hashing
+        implementation("org.bouncycastle:bcprov-jdk18on:1.79")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<Test> {

@@ -2,6 +2,7 @@ package ai.core.server.web;
 
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.AgentDefinitionWebService;
+import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
@@ -50,6 +51,13 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         return agentDefinitionService.publish(id);
+    }
+
+    @Override
+    public AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        return agentDefinitionService.createFromSession(request, userId);
     }
 
     @Override

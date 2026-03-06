@@ -19,8 +19,22 @@ public class User {
     @Field(name = "name")
     public String name;
 
+    @Field(name = "email")
+    public String email;
+
+    @Field(name = "password_hash")
+    public String passwordHash;
+
     @Field(name = "api_key")
     public String apiKey;
+
+    @NotNull
+    @Field(name = "role")
+    public String role = "user";
+
+    @NotNull
+    @Field(name = "status")
+    public String status = "pending";
 
     @NotNull
     @Field(name = "created_at")

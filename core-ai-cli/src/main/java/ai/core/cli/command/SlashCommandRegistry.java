@@ -20,6 +20,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/skill", "List loaded skills"),
             new SlashCommand("/mcp", "Show MCP server status"),
             new SlashCommand("/undo", "Undo last message and its response"),
+            new SlashCommand("/remote", "Connect to a remote core-ai-server"),
             new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/debug", "Toggle debug mode"),
             new SlashCommand("/clear", "Clear screen"),

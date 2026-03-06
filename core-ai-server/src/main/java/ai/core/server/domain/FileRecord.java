@@ -4,7 +4,6 @@ import core.framework.api.validate.NotNull;
 import core.framework.mongo.Collection;
 import core.framework.mongo.Field;
 import core.framework.mongo.Id;
-import org.bson.types.ObjectId;
 
 import java.time.ZonedDateTime;
 
@@ -14,7 +13,7 @@ import java.time.ZonedDateTime;
 @Collection(name = "file_records")
 public class FileRecord {
     @Id
-    public ObjectId id;
+    public String id;
 
     @NotNull
     @Field(name = "user_id")

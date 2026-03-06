@@ -15,7 +15,6 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
-import org.bson.types.ObjectId;
 
 import java.util.Map;
 
@@ -31,7 +30,7 @@ public class AgentRunService {
     MongoCollection<AgentRun> agentRunCollection;
 
     public TriggerRunResponse trigger(String agentId, TriggerRunRequest request) {
-        var definition = agentDefinitionCollection.get(new ObjectId(agentId))
+        var definition = agentDefinitionCollection.get(agentId)
             .orElseThrow(() -> new RuntimeException("agent not found, id=" + agentId));
 
         var input = request.input != null ? request.input : definition.inputTemplate;
@@ -47,11 +46,11 @@ public class AgentRunService {
         var query = new Query();
         if (request.status != null && !request.status.isBlank()) {
             query.filter = Filters.and(
-                Filters.eq("agent_id", new ObjectId(agentId)),
+                Filters.eq("agent_id", agentId),
                 Filters.eq("status", RunStatus.valueOf(request.status))
             );
         } else {
-            query.filter = Filters.eq("agent_id", new ObjectId(agentId));
+            query.filter = Filters.eq("agent_id", agentId);
         }
         query.sort = Sorts.descending("started_at");
         query.limit = request.limit != null ? request.limit : 20;
@@ -64,7 +63,7 @@ public class AgentRunService {
     }
 
     public AgentRunDetailView get(String id) {
-        var entity = agentRunCollection.get(new ObjectId(id))
+        var entity = agentRunCollection.get(id)
             .orElseThrow(() -> new RuntimeException("run not found, id=" + id));
         return toDetailView(entity);
     }
@@ -75,8 +74,8 @@ public class AgentRunService {
 
     private AgentRunView toView(AgentRun entity) {
         var view = new AgentRunView();
-        view.id = entity.id.toHexString();
-        view.agentId = entity.agentId.toHexString();
+        view.id = entity.id;
+        view.agentId = entity.agentId;
         view.triggeredBy = entity.triggeredBy.name();
         view.status = entity.status.name();
         view.input = entity.input;
@@ -95,8 +94,8 @@ public class AgentRunService {
 
     private AgentRunDetailView toDetailView(AgentRun entity) {
         var view = new AgentRunDetailView();
-        view.id = entity.id.toHexString();
-        view.agentId = entity.agentId.toHexString();
+        view.id = entity.id;
+        view.agentId = entity.agentId;
         view.triggeredBy = entity.triggeredBy.name();
         view.status = entity.status.name();
         view.input = entity.input;

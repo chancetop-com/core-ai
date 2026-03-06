@@ -7,19 +7,17 @@ import core.framework.mongo.Id;
 
 import java.time.ZonedDateTime;
 
-import org.bson.types.ObjectId;
-
 /**
  * @author stephen
  */
 @Collection(name = "agent_schedules")
 public class AgentSchedule {
     @Id
-    public ObjectId id;
+    public String id;
 
     @NotNull
     @Field(name = "agent_id")
-    public ObjectId agentId;
+    public String agentId;
 
     @NotNull
     @Field(name = "user_id")

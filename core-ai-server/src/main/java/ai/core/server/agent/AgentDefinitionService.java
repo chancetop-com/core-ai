@@ -1,18 +1,21 @@
 package ai.core.server.agent;
 
 import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
+import ai.core.server.session.AgentSessionManager;
+import ai.core.tool.ToolCall;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import org.bson.types.ObjectId;
 
 import java.time.ZonedDateTime;
+import java.util.UUID;
 
 /**
  * @author stephen
@@ -21,9 +24,12 @@ public class AgentDefinitionService {
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
 
+    @Inject
+    AgentSessionManager sessionManager;
+
     public AgentDefinitionView create(CreateAgentRequest request, String userId) {
         var entity = new AgentDefinition();
-        entity.id = new ObjectId();
+        entity.id = UUID.randomUUID().toString();
         entity.userId = userId;
         entity.name = request.name;
         entity.description = request.description;
@@ -44,7 +50,10 @@ public class AgentDefinitionService {
     }
 
     public ListAgentsResponse list(String userId) {
-        var entities = agentDefinitionCollection.find(Filters.eq("user_id", userId));
+        var entities = agentDefinitionCollection.find(Filters.or(
+            Filters.eq("user_id", userId),
+            Filters.eq("system_default", true)
+        ));
         var response = new ListAgentsResponse();
         response.agents = entities.stream().map(this::toView).toList();
         response.total = (long) response.agents.size();
@@ -52,13 +61,18 @@ public class AgentDefinitionService {
     }
 
     public AgentDefinitionView get(String id) {
-        var entity = agentDefinitionCollection.get(new ObjectId(id))
+        var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
         return toView(entity);
     }
 
+    public AgentDefinition getEntity(String id) {
+        return agentDefinitionCollection.get(id)
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+    }
+
     public AgentDefinitionView update(String id, UpdateAgentRequest request) {
-        var entity = agentDefinitionCollection.get(new ObjectId(id))
+        var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         if (request.name != null) entity.name = request.name;
@@ -78,7 +92,7 @@ public class AgentDefinitionService {
     }
 
     public AgentDefinitionView publish(String id) {
-        var entity = agentDefinitionCollection.get(new ObjectId(id))
+        var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         var config = new AgentPublishedConfig();
@@ -100,13 +114,37 @@ public class AgentDefinitionService {
         return toView(entity);
     }
 
-    public void delete(String id) {
-        agentDefinitionCollection.delete(new ObjectId(id));
+    public AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request, String userId) {
+        var session = sessionManager.getSession(request.sessionId);
+        var agent = session.agent();
+
+        var entity = new AgentDefinition();
+        entity.id = UUID.randomUUID().toString();
+        entity.userId = userId;
+        entity.name = request.name;
+        entity.description = request.description;
+        entity.systemPrompt = agent.getSystemPrompt();
+        entity.model = agent.getModel();
+        entity.temperature = agent.getTemperature();
+        entity.maxTurns = 20;
+        entity.timeoutSeconds = 600;
+        entity.toolIds = agent.getToolCalls().stream().map(ToolCall::getName).toList();
+        entity.inputTemplate = request.inputTemplate;
+        entity.status = AgentStatus.DRAFT;
+        entity.createdAt = ZonedDateTime.now();
+        entity.updatedAt = entity.createdAt;
+
+        agentDefinitionCollection.insert(entity);
+        return toView(entity);
     }
 
-    private AgentDefinitionView toView(AgentDefinition entity) {
+    public void delete(String id) {
+        agentDefinitionCollection.delete(id);
+    }
+
+    AgentDefinitionView toView(AgentDefinition entity) {
         var view = new AgentDefinitionView();
-        view.id = entity.id.toHexString();
+        view.id = entity.id;
         view.name = entity.name;
         view.description = entity.description;
         view.systemPrompt = entity.systemPrompt;
@@ -117,6 +155,7 @@ public class AgentDefinitionService {
         view.toolIds = entity.toolIds;
         view.inputTemplate = entity.inputTemplate;
         view.variables = entity.variables;
+        view.systemDefault = entity.systemDefault;
         view.status = entity.status != null ? entity.status.name() : null;
         view.publishedAt = entity.publishedAt;
         view.createdAt = entity.createdAt;

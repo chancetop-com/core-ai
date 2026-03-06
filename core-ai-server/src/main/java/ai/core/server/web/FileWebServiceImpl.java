@@ -21,7 +21,7 @@ public class FileWebServiceImpl implements FileWebService {
     public FileView get(String id) {
         var record = fileService.get(id);
         var view = new FileView();
-        view.id = record.id.toHexString();
+        view.id = record.id;
         view.fileName = record.fileName;
         view.contentType = record.contentType;
         view.size = record.size;

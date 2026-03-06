@@ -6,6 +6,8 @@ import ai.core.cli.command.McpCommandHandler;
 import ai.core.cli.command.MemoryCommandHandler;
 import ai.core.cli.command.ReplCommandHandler;
 import ai.core.cli.command.SkillCommandHandler;
+import ai.core.cli.remote.RemoteCommandHandler;
+import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
@@ -54,6 +56,7 @@ public class AgentSessionRunner {
     private final ModelRegistry modelRegistry;
     private final MemoryCommandHandler memoryCommand;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
+    private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
 
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
         this.ui = ui;
@@ -84,6 +87,10 @@ public class AgentSessionRunner {
 
         session.close();
         return switchSessionId.get();
+    }
+
+    public RemoteConfig getRemoteConfig() {
+        return remoteConfig.get();
     }
 
     private void printBanner() {
@@ -161,7 +168,7 @@ public class AgentSessionRunner {
             if (trimmed.startsWith("/")) {
                 dispatchCommand(trimmed, commands, queue);
                 showFrame = true;
-                if (switchSessionId.get() != null) break;
+                if (switchSessionId.get() != null || remoteConfig.get() != null) break;
                 readyForInput.release();
                 continue;
             }
@@ -196,6 +203,12 @@ public class AgentSessionRunner {
             String picked = showSessionPicker();
             if (picked != null) {
                 switchSessionId.set(picked);
+                queue.offer(POISON_PILL);
+            }
+        } else if ("/remote".equals(lower)) {
+            var config = new RemoteCommandHandler(ui).handle();
+            if (config != null) {
+                remoteConfig.set(config);
                 queue.offer(POISON_PILL);
             }
         } else {
@@ -418,7 +431,7 @@ public class AgentSessionRunner {
             String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
             String title = sessionManager.firstUserMessage(session.id());
             String display = title != null && !title.isBlank()
-                ? (title.length() > 50 ? title.substring(0, 50) + "..." : title).replaceAll("[\\r\\n]+", " ")
+                ? truncateTitle(title.replaceAll("[\\r\\n]+", " "), 50)
                 : session.id();
             labels.add(display + " (" + timeStr + ")" + marker);
         }
@@ -433,6 +446,27 @@ public class AgentSessionRunner {
         }
         ui.printStreamingChunk(AnsiTheme.MUTED + "Switching to session: " + picked + AnsiTheme.RESET + "\n");
         return picked;
+    }
+
+    private static String truncateTitle(String text, int maxColumns) {
+        int width = 0;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            int charWidth = (cp >= 0x1100 && cp <= 0x115F)
+                || (cp >= 0x2E80 && cp <= 0x9FFF)
+                || (cp >= 0xAC00 && cp <= 0xD7AF)
+                || (cp >= 0xF900 && cp <= 0xFAFF)
+                || (cp >= 0xFE10 && cp <= 0xFE6F)
+                || (cp >= 0xFF01 && cp <= 0xFF60)
+                || (cp >= 0xFFE0 && cp <= 0xFFE6)
+                || (cp >= 0x20000 && cp <= 0x2FA1F) ? 2 : 1;
+            if (width + charWidth > maxColumns) {
+                return text.substring(0, i) + "...";
+            }
+            width += charWidth;
+            i += Character.charCount(cp);
+        }
+        return text;
     }
 
     private void waitForReady(Semaphore readyForInput) {

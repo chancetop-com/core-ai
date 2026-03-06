@@ -13,7 +13,7 @@ import static com.mongodb.client.model.Indexes.descending;
 public class SchemaMigrationVInitialize implements SchemaMigration {
     @Override
     public String version() {
-        return "20260304001";
+        return "20260306001";
     }
 
     @Override
@@ -26,6 +26,7 @@ public class SchemaMigrationVInitialize implements SchemaMigration {
         mongo.runAdminCommand(new Document().append("setParameter", 1).append("notablescan", 1));
 
         mongo.createIndex("agents", ascending("user_id"));
+        mongo.createIndex("agents", ascending("system_default"));
         mongo.createIndex("agents", ascending("created_at"));
         mongo.createIndex("agents", ascending("updated_at"));
         mongo.createIndex("agents", ascending("status"));

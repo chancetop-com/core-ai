@@ -62,6 +62,10 @@ public class InProcessAgentSession implements AgentSession {
         return sessionId;
     }
 
+    public Agent agent() {
+        return agent;
+    }
+
     @Override
     public void sendMessage(String message) {
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));

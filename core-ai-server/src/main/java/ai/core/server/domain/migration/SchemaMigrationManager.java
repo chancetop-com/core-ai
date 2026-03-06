@@ -48,7 +48,8 @@ public class SchemaMigrationManager {
 
     private List<SchemaMigration> migrations() {
         return List.of(
-            new SchemaMigrationVInitialize()
+            new SchemaMigrationVInitialize(),
+            new SchemaMigrationVDefaultAgent()
         );
     }
 }

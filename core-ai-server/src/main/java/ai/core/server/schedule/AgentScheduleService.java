@@ -9,10 +9,10 @@ import ai.core.server.domain.ConcurrencyPolicy;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import org.bson.types.ObjectId;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.UUID;
 
 /**
  * @author stephen
@@ -23,8 +23,8 @@ public class AgentScheduleService {
 
     public AgentScheduleView create(CreateScheduleRequest request, String userId) {
         var entity = new AgentSchedule();
-        entity.id = new ObjectId();
-        entity.agentId = new ObjectId(request.agentId);
+        entity.id = UUID.randomUUID().toString();
+        entity.agentId = request.agentId;
         entity.userId = userId;
         entity.cronExpression = request.cronExpression;
         entity.timezone = request.timezone != null ? request.timezone : "UTC";
@@ -45,14 +45,14 @@ public class AgentScheduleService {
     }
 
     public ListSchedulesResponse listByAgent(String agentId) {
-        var schedules = agentScheduleCollection.find(Filters.eq("agent_id", new ObjectId(agentId)));
+        var schedules = agentScheduleCollection.find(Filters.eq("agent_id", agentId));
         var response = new ListSchedulesResponse();
         response.schedules = schedules.stream().map(this::toView).toList();
         return response;
     }
 
     public AgentScheduleView update(String id, UpdateScheduleRequest request) {
-        var entity = agentScheduleCollection.get(new ObjectId(id))
+        var entity = agentScheduleCollection.get(id)
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));
 
         if (request.cronExpression != null) entity.cronExpression = request.cronExpression;
@@ -71,13 +71,13 @@ public class AgentScheduleService {
     }
 
     public void delete(String id) {
-        agentScheduleCollection.delete(new ObjectId(id));
+        agentScheduleCollection.delete(id);
     }
 
     private AgentScheduleView toView(AgentSchedule entity) {
         var view = new AgentScheduleView();
-        view.id = entity.id.toHexString();
-        view.agentId = entity.agentId.toHexString();
+        view.id = entity.id;
+        view.agentId = entity.agentId;
         view.cronExpression = entity.cronExpression;
         view.timezone = entity.timezone;
         view.enabled = entity.enabled;

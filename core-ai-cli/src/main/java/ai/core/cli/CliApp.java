@@ -8,6 +8,10 @@ import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.memory.LocalFileMemoryProvider;
+import ai.core.cli.remote.HttpAgentSession;
+import ai.core.cli.remote.RemoteApiClient;
+import ai.core.cli.remote.RemoteConfig;
+import ai.core.cli.remote.RemoteSessionRunner;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.session.FileSessionPersistence;
@@ -84,6 +88,12 @@ public class CliApp {
                 var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory, modelRegistry);
                 var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
                 String nextSessionId = runner.run();
+                var remote = runner.getRemoteConfig();
+                if (remote != null) {
+                    runRemoteSession(ui, remote);
+                    ui.printStreamingChunk(AnsiTheme.MUTED + "  Back to local mode." + AnsiTheme.RESET + "\n");
+                    continue;
+                }
                 if (nextSessionId == null) break;
                 currentSessionId = nextSessionId;
             }
@@ -155,6 +165,34 @@ public class CliApp {
         String cleaned = text.replaceAll("[\\r\\n]+", " ").strip();
         if (cleaned.length() <= maxLength) return cleaned;
         return cleaned.substring(0, maxLength) + "...";
+    }
+
+    public void startRemote(String serverUrl, String apiKey, String agentId) {
+        if (apiKey == null || apiKey.isBlank()) {
+            System.err.println("Error: --api-key is required for remote mode. Login first and use the returned API key.");
+            return;
+        }
+        var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant");
+        var ui = new TerminalUI();
+        try {
+            runRemoteSession(ui, config);
+            ui.printStreamingChunk("Goodbye!\n");
+        } catch (Exception e) {
+            ui.showError(e.getMessage());
+        } finally {
+            closeQuietly(ui);
+        }
+    }
+
+    private void runRemoteSession(TerminalUI ui, RemoteConfig config) {
+        try {
+            var api = new RemoteApiClient(config.serverUrl(), config.apiKey());
+            var session = HttpAgentSession.connect(api, config.agentId());
+            var runner = new RemoteSessionRunner(ui, session, api);
+            runner.run();
+        } catch (Exception e) {
+            ui.showError(e.getMessage());
+        }
     }
 
     private void closeQuietly(TerminalUI ui) {

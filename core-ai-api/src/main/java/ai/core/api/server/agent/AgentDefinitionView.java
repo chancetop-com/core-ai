@@ -46,6 +46,9 @@ public class AgentDefinitionView {
     @Property(name = "variables")
     public Map<String, String> variables;
 
+    @Property(name = "system_default")
+    public Boolean systemDefault;
+
     @Property(name = "status")
     public String status;
 

@@ -1,31 +1,24 @@
 package ai.core.cli.listener;
 
 import ai.core.agent.Agent;
-import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.AgentSession;
-import ai.core.api.server.session.ErrorEvent;
-import ai.core.api.server.session.ReasoningChunkEvent;
-import ai.core.api.server.session.SessionStatus;
-import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
-import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.cli.DebugLog;
 import ai.core.cli.ui.AnsiTheme;
-import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
+
 import java.io.File;
 import java.io.FileInputStream;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author stephen
  */
-public class CliEventListener implements AgentEventListener {
+public class CliEventListener extends BaseEventListener {
 
     private static final int ESC = 27;
 
@@ -34,37 +27,26 @@ public class CliEventListener implements AgentEventListener {
         return text.length() <= 200 ? text : text.substring(0, 200) + "...(" + text.length() + " chars)";
     }
 
-    private final TerminalUI ui;
-    private final AgentSession session;
     private final Agent agent;
-    private final StreamingMarkdownRenderer markdownRenderer;
-    private final ThinkingSpinner spinner;
-    private volatile CompletableFuture<Void> turnFuture;
     private final AtomicBoolean turnRunning = new AtomicBoolean(false);
-    private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
     private volatile long turnTokensBefore;
     private volatile long turnPromptTokensBefore;
     private volatile long turnCompletionTokensBefore;
-    private volatile boolean turnTextStarted;
     private Thread escReaderThread;
 
     public CliEventListener(TerminalUI ui, AgentSession session, Agent agent) {
-        this.ui = ui;
-        this.session = session;
+        super(ui, session);
         this.agent = agent;
-        this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
-        this.spinner = new ThinkingSpinner(ui.getWriter(), ui::getTerminalWidth);
     }
 
+    @Override
     public void prepareTurn() {
-        turnFuture = new CompletableFuture<>();
+        super.prepareTurn();
         turnRunning.set(true);
-        turnTextStarted = false;
         var usage = agent.getCurrentTokenUsage();
         turnTokensBefore = usage.getTotalTokens();
         turnPromptTokensBefore = usage.getPromptTokens();
         turnCompletionTokensBefore = usage.getCompletionTokens();
-        spinner.resetTimer();
         spinner.setStatsSupplier(() -> {
             var u = agent.getCurrentTokenUsage();
             long tokens = u.getTotalTokens() - turnTokensBefore;
@@ -76,8 +58,9 @@ public class CliEventListener implements AgentEventListener {
         startEscReader();
     }
 
+    @Override
     public void waitForTurn() {
-        if (turnFuture != null) turnFuture.join();
+        super.waitForTurn();
         turnRunning.set(false);
         stopEscReader();
     }
@@ -85,91 +68,30 @@ public class CliEventListener implements AgentEventListener {
     @Override
     public void onTextChunk(TextChunkEvent event) {
         DebugLog.log("text chunk: length=" + event.chunk.length());
-        stopSpinnerIfActive();
-        if (!turnTextStarted) {
-            turnTextStarted = true;
-            ui.getWriter().println("\n" + AnsiTheme.SEPARATOR + "⏺" + AnsiTheme.RESET);
-        }
-        markdownRenderer.processChunk(event.chunk);
-    }
-
-    @Override
-    public void onReasoningChunk(ReasoningChunkEvent event) {
-        DebugLog.log("reasoning chunk: length=" + event.chunk.length());
-        stopSpinnerIfActive();
-        ui.printStreamingChunk(AnsiTheme.REASONING + event.chunk + AnsiTheme.RESET);
+        super.onTextChunk(event);
     }
 
     @Override
     public void onToolStart(ToolStartEvent event) {
         DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId + " args=" + truncate(event.arguments));
-        stopSpinnerIfActive();
-        markdownRenderer.flush();
-        ui.showToolStart(event.toolName, event.arguments);
+        super.onToolStart(event);
     }
 
     @Override
     public void onToolResult(ToolResultEvent event) {
         DebugLog.log("tool result: " + event.toolName + " callId=" + event.callId + " status=" + event.status + " result=" + truncate(event.result));
-        ui.showToolResult(event.toolName, event.status, event.result);
-        startSpinner();
+        super.onToolResult(event);
     }
 
     @Override
     public void onToolApprovalRequest(ToolApprovalRequestEvent event) {
         DebugLog.log("tool approval request: " + event.toolName + " callId=" + event.callId);
-        stopSpinnerIfActive();
-        var decision = ui.askPermission(event.toolName, event.arguments);
-        DebugLog.log("tool approval decision: " + event.toolName + " callId=" + event.callId + " decision=" + decision);
-        session.approveToolCall(event.callId, decision);
+        super.onToolApprovalRequest(event);
         DebugLog.log("tool approval sent: " + event.toolName + " callId=" + event.callId);
     }
 
     @Override
-    public void onTurnComplete(TurnCompleteEvent event) {
-        DebugLog.log("turn complete, cancelled=" + event.cancelled);
-        stopSpinnerIfActive();
-        markdownRenderer.flush();
-        markdownRenderer.reset();
-        if (Boolean.TRUE.equals(event.cancelled)) {
-            ui.getWriter().println("\n" + AnsiTheme.WARNING + "[Cancelled]" + AnsiTheme.RESET);
-            ui.getWriter().flush();
-        }
-        printTurnSummary();
-        if (turnFuture != null) turnFuture.complete(null);
-    }
-
-    @Override
-    public void onError(ErrorEvent event) {
-        DebugLog.log("error: " + event.message);
-        stopSpinnerIfActive();
-        markdownRenderer.flush();
-        markdownRenderer.reset();
-        ui.showError(event.message);
-        if (turnFuture != null) turnFuture.complete(null);
-    }
-
-    @Override
-    public void onStatusChange(StatusChangeEvent event) {
-        DebugLog.log("status change: " + event.status);
-        if (event.status == SessionStatus.RUNNING) {
-            startSpinner();
-        }
-    }
-
-    private void startSpinner() {
-        if (spinnerActive.compareAndSet(false, true)) {
-            spinner.start();
-        }
-    }
-
-    private void stopSpinnerIfActive() {
-        if (spinnerActive.compareAndSet(true, false)) {
-            spinner.stop();
-        }
-    }
-
-    private void printTurnSummary() {
+    protected void printTurnSummary() {
         long elapsed = spinner.getElapsedMs();
         var usage = agent.getCurrentTokenUsage();
         long turnTokens = usage.getTotalTokens() - turnTokensBefore;

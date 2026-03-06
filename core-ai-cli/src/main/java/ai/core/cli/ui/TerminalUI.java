@@ -80,6 +80,7 @@ public class TerminalUI {
             this.jlineReader.setOpt(LineReader.Option.AUTO_LIST);
             this.jlineReader.setOpt(LineReader.Option.AUTO_MENU);
             this.jlineReader.setOpt(LineReader.Option.LIST_PACKED);
+            this.jlineReader.setOpt(LineReader.Option.AUTO_MENU_LIST);
             this.jlineReader.getKeyMaps().get(LineReader.MAIN)
                     .bind(new Reference(LineReader.MENU_COMPLETE), "\t");
             registerSlashWidget();
@@ -238,12 +239,20 @@ public class TerminalUI {
     }
 
     public String readRawLine() {
+        return readRawLine(null);
+    }
+
+    public String readRawLine(String prompt) {
         if (jlineReader != null) {
             try {
-                return jlineReader.readLine();
+                return prompt != null ? jlineReader.readLine(prompt) : jlineReader.readLine();
             } catch (org.jline.reader.UserInterruptException | org.jline.reader.EndOfFileException e) {
                 return null;
             }
+        }
+        if (prompt != null) {
+            writer.print(prompt);
+            writer.flush();
         }
         try {
             return simpleReader.readLine();
@@ -266,28 +275,21 @@ public class TerminalUI {
         int selected = 0;
         int limit = Math.min(items.size(), 10);
         renderPickerList(items, selected, limit);
-        var resized = new java.util.concurrent.atomic.AtomicBoolean(false);
-        var prevHandler = terminal.handle(Terminal.Signal.WINCH, sig -> resized.set(true));
         try {
             var reader = terminal.reader();
             while (true) {
-                int c = reader.read(150);
-                if (resized.compareAndSet(true, false)) {
-                    renderPickerList(items, selected, limit);
-                    if (c == -2) continue;
-                }
-                if (c == -2) continue;
+                int c = reader.read();
                 if (c == '\r' || c == '\n') {
-                    clearPickerList();
+                    clearPickerList(limit);
                     return selected;
                 }
                 if (c == 'q' || c == 'Q') {
-                    clearPickerList();
+                    clearPickerList(limit);
                     return -1;
                 }
                 int arrow = readArrowKey(reader, c);
                 if (arrow == -1) {
-                    clearPickerList();
+                    clearPickerList(limit);
                     return -1;
                 }
                 if (arrow == 'A') selected = (selected - 1 + limit) % limit;
@@ -296,32 +298,27 @@ public class TerminalUI {
             }
         } catch (IOException e) {
             return -1;
-        } finally {
-            terminal.handle(Terminal.Signal.WINCH, prevHandler);
         }
     }
 
     private void renderPickerList(List<String> items, int selected, int limit) {
-        writer.print("\u001B[J");
-        int width = getTerminalWidth();
-        int maxTextLen = Math.max(width - 4, 20);
         for (int i = 0; i < limit; i++) {
-            String text = items.get(i);
-            if (text.length() > maxTextLen) {
-                text = text.substring(0, maxTextLen - 3) + "...";
-            }
+            writer.print("\n\u001B[2K");
             if (i == selected) {
-                writer.print("\n" + AnsiTheme.PROMPT + " \u276F " + AnsiTheme.RESET + text);
+                writer.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + items.get(i));
             } else {
-                writer.print("\n   " + AnsiTheme.MUTED + text + AnsiTheme.RESET);
+                writer.print("   " + AnsiTheme.MUTED + items.get(i) + AnsiTheme.RESET);
             }
         }
         writer.print("\u001B[" + limit + "A");
         writer.flush();
     }
 
-    private void clearPickerList() {
-        writer.print("\u001B[J");
+    private void clearPickerList(int limit) {
+        for (int i = 0; i < limit; i++) {
+            writer.print("\n\u001B[2K");
+        }
+        writer.print("\u001B[" + limit + "A");
         writer.flush();
     }
 
@@ -395,9 +392,8 @@ public class TerminalUI {
         if (!(jlineReader instanceof LineReaderImpl reader)) {
             return;
         }
-
-        // NORMAL → COMMAND: "/" at line start triggers completion
-        reader.getWidgets().put("slash-auto-complete", () -> {
+        String slashWidget = "slash-auto-complete";
+        reader.getWidgets().put(slashWidget, () -> {
             reader.callWidget(LineReader.SELF_INSERT);
             if ("/".equals(reader.getBuffer().toString())) {
                 reader.callWidget(LineReader.LIST_CHOICES);
@@ -405,10 +401,10 @@ public class TerminalUI {
             return true;
         });
         reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference("slash-auto-complete"), "/");
+                .bind(new Reference(slashWidget), "/");
 
-        // NORMAL → FILE: "@" at word boundary triggers completion
-        reader.getWidgets().put("at-file-complete", () -> {
+        String atWidget = "at-file-complete";
+        reader.getWidgets().put(atWidget, () -> {
             reader.callWidget(LineReader.SELF_INSERT);
             String buf = reader.getBuffer().toString();
             if (buf.endsWith("@") && (buf.length() == 1 || buf.charAt(buf.length() - 2) == ' ')) {
@@ -417,18 +413,6 @@ public class TerminalUI {
             return true;
         });
         reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference("at-file-complete"), "@");
-
-        // Every backspace: clear post then re-evaluate completer.
-        // Completer returns candidates → menu updates; returns empty → menu disappears.
-        reader.getWidgets().put("backspace-refresh", () -> {
-            reader.callWidget(LineReader.BACKWARD_DELETE_CHAR);
-            org.jline.reader.impl.CompletionHelper.refreshCompletion(reader);
-            return true;
-        });
-        reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference("backspace-refresh"), "\u007F");
-        reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference("backspace-refresh"), "\u0008");
+                .bind(new Reference(atWidget), "@");
     }
 }

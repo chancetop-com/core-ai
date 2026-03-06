@@ -1,6 +1,7 @@
 package ai.core.api.server;
 
 import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
@@ -37,6 +38,11 @@ public interface AgentDefinitionWebService {
     @POST
     @Path("/api/agents/:id/publish")
     AgentDefinitionView publish(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/agents/from-session")
+    @ResponseStatus(HTTPStatus.CREATED)
+    AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request);
 
     @DELETE
     @Path("/api/agents/:id")

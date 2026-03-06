@@ -33,7 +33,7 @@ public class FileUploadController implements Controller {
         var record = fileService.upload(userId, multipartFile.fileName, multipartFile.contentType, multipartFile.path);
 
         var view = new FileView();
-        view.id = record.id.toHexString();
+        view.id = record.id;
         view.fileName = record.fileName;
         view.contentType = record.contentType;
         view.size = record.size;

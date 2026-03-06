@@ -9,15 +9,13 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 
-import org.bson.types.ObjectId;
-
 /**
  * @author stephen
  */
 @Collection(name = "agents")
 public class AgentDefinition {
     @Id
-    public ObjectId id;
+    public String id;
 
     @NotNull
     @Field(name = "user_id")
@@ -53,6 +51,9 @@ public class AgentDefinition {
 
     @Field(name = "variables")
     public Map<String, String> variables;
+
+    @Field(name = "system_default")
+    public Boolean systemDefault;
 
     @NotNull
     @Field(name = "status")

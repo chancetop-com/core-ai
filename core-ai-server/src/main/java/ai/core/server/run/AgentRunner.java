@@ -9,9 +9,9 @@ import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.tool.ToolRegistryService;
+import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -53,7 +54,7 @@ public class AgentRunner {
         var runEntity = createRunRecord(definition, input, trigger);
         agentRunCollection.insert(runEntity);
 
-        var runId = runEntity.id.toHexString();
+        var runId = runEntity.id;
         var future = CompletableFuture.runAsync(() -> executeAgent(runEntity, definition), executorService);
         runningFutures.put(runId, future);
         future.whenComplete((result, error) -> runningFutures.remove(runId));
@@ -66,7 +67,7 @@ public class AgentRunner {
         if (future != null) {
             future.cancel(true);
         }
-        agentRunCollection.get(new ObjectId(runId)).ifPresent(run -> {
+        agentRunCollection.get(runId).ifPresent(run -> {
             if (run.status == RunStatus.RUNNING) {
                 run.status = RunStatus.CANCELLED;
                 run.completedAt = ZonedDateTime.now();
@@ -75,17 +76,17 @@ public class AgentRunner {
         });
     }
 
-    public boolean isRunning(ObjectId agentId) {
+    public boolean isRunning(String agentId) {
         return agentRunCollection.findOne(
-            com.mongodb.client.model.Filters.and(
-                com.mongodb.client.model.Filters.eq("agent_id", agentId),
-                com.mongodb.client.model.Filters.eq("status", RunStatus.RUNNING)
+            Filters.and(
+                Filters.eq("agent_id", agentId),
+                Filters.eq("status", RunStatus.RUNNING)
             )
         ).isPresent();
     }
 
     private void executeAgent(AgentRun runEntity, AgentDefinition definition) {
-        var runId = runEntity.id.toHexString();
+        var runId = runEntity.id;
         try {
             var agent = buildAgent(definition);
             var config = definition.publishedConfig;
@@ -173,7 +174,7 @@ public class AgentRunner {
 
     private AgentRun createRunRecord(AgentDefinition definition, String input, TriggerType trigger) {
         var entity = new AgentRun();
-        entity.id = new ObjectId();
+        entity.id = UUID.randomUUID().toString();
         entity.agentId = definition.id;
         entity.userId = definition.userId;
         entity.triggeredBy = trigger;
