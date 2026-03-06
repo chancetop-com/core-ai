@@ -46,6 +46,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -78,6 +80,7 @@ public class Agent extends Node<Agent> {
     ReasoningEffort reasoningEffort;
     List<SubAgentToolCall> subAgents = new ArrayList<>();
     DoomLoopDetector doomLoopDetector;
+    private final BlockingQueue<String> pendingMessages = new LinkedBlockingQueue<>();
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -234,6 +237,12 @@ public class Agent extends Node<Agent> {
         var agentOut = new StringBuilder();
         do {
             if (cancelled) break;
+
+            var pending = drainPendingMessages();
+            if (pending != null) {
+                addMessage(Message.of(RoleType.USER, pending));
+            }
+
             var turnMsgList = turn(getMessages(), AgentHelper.toReqTools(toolCalls), constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
@@ -437,6 +446,24 @@ public class Agent extends Node<Agent> {
 
     public SubAgentToolCall toSubAgentToolCall(Class<?>... classes) {
         return SubAgentToolCall.builder().subAgent(this, classes).build();
+    }
+
+    public void queueMessage(String message) {
+        pendingMessages.offer(message);
+    }
+
+    public boolean hasPendingMessages() {
+        return !pendingMessages.isEmpty();
+    }
+
+    private String drainPendingMessages() {
+        var messages = new ArrayList<String>();
+        pendingMessages.drainTo(messages);
+        if (messages.isEmpty()) return null;
+        return messages.stream()
+                .map(m -> "<system-reminder>The user has sent a new message: \"" + m
+                        + "\". Please address this message and continue your current task.</system-reminder>")
+                .collect(Collectors.joining("\n"));
     }
 
     public void cancel() {
