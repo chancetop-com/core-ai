@@ -25,6 +25,7 @@ import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.SubAgentToolCall;
+import ai.core.tool.tools.TodoLifecycle;
 import ai.core.tool.tools.ToolActivationTool;
 import core.framework.util.Lists;
 
@@ -336,6 +337,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
 
         configureToolDiscovery(agent);
+        configureTodoLifecycle(agent);
 
         agent.ragConfig = this.ragConfig;
         agent.reflectionConfig = this.reflectionConfig;
@@ -389,6 +391,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
                 tool.setLlmVisible(false);
             }
             agent.toolCalls.add(ToolActivationTool.builder().allToolCalls(agent.toolCalls).build());
+        }
+    }
+
+    private void configureTodoLifecycle(Agent agent) {
+        boolean hasTodoTool = agent.toolCalls.stream().anyMatch(t -> "write_todos".equals(t.getName()));
+        if (hasTodoTool) {
+            agent.agentLifecycles.addFirst(new TodoLifecycle());
         }
     }
 

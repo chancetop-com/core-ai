@@ -303,6 +303,10 @@ public abstract class Node<T extends Node<T>> {
         if (this.round != null) systemVariables.put(SystemVariables.NODE_CURRENT_ROUND, this.round);
         systemVariables.put(SystemVariables.NODE_CURRENT_INPUT, query);
         systemVariables.put(SystemVariables.SYSTEM_CURRENT_TIME, ZonedDateTime.now());
+        var todosPrompt = executionContext != null ? executionContext.getCustomVariable(SystemVariables.AGENT_WRITE_TODOS_SYSTEM_PROMPT) : null;
+        if (todosPrompt != null) {
+            systemVariables.put(SystemVariables.AGENT_WRITE_TODOS_SYSTEM_PROMPT, todosPrompt);
+        }
     }
 
     abstract String execute(String query, Map<String, Object> variables);
