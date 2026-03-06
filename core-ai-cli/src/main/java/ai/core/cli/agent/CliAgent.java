@@ -28,30 +28,19 @@ import java.util.stream.Collectors;
 public class CliAgent {
 
     public static Agent of(Config config) {
-        var systemPrompt = buildSystemPrompt(config);
-        List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
-        tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
-        tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
-        tools.add(ManageSkillTool.builder().skillsDir(config.workspace.resolve(".core-ai/skills")).build());
-        if (config.memory != null) {
-            tools.add(MemoryTool.builder().provider(config.memory).build());
-        }
-
+        var tools = buildTools(config);
         var builder = Agent.builder()
                 .llmProvider(config.providers.getProvider())
-                .systemPrompt(systemPrompt)
+                .systemPrompt(buildSystemPrompt(config))
                 .maxTurn(config.maxTurn)
                 .toolCalls(tools)
                 .temperature(0.8);
 
-        // Skills: load from workspace and user home
         var skillConfig = SkillConfig.builder()
                 .source("workspace", config.workspace.resolve(".core-ai/skills").toString(), 100)
-                .source("user", Path.of(System.getProperty("user.home"), ".core-ai", "skills").toString(), 50)
+                .source("user", userSkillsDir().toString(), 50)
                 .build();
         builder.skills(skillConfig);
-
-        // MCP: connect to configured servers if available
         configureMcp(builder);
 
         if (config.persistenceProvider != null) {
@@ -60,8 +49,25 @@ public class CliAgent {
         if (config.modelOverride != null) {
             builder.model(config.modelOverride);
         }
-
         return builder.build();
+    }
+
+    private static List<ToolCall> buildTools(Config config) {
+        List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
+        tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
+        tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
+        tools.add(ManageSkillTool.builder()
+                .skillsDir(config.workspace.resolve(".core-ai/skills"))
+                .userSkillsDir(userSkillsDir())
+                .build());
+        if (config.memory != null) {
+            tools.add(MemoryTool.builder().provider(config.memory).build());
+        }
+        return tools;
+    }
+
+    private static Path userSkillsDir() {
+        return Path.of(System.getProperty("user.home"), ".core-ai", "skills");
     }
 
     private static String buildSystemPrompt(Config config) {

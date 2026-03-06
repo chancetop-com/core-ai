@@ -10,6 +10,9 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -46,6 +49,7 @@ public class ManageSkillTool extends ToolCall {
     }
 
     private Path skillsDir;
+    private Path userSkillsDir;
 
     @Override
     public ToolCallResult execute(String arguments) {
@@ -75,8 +79,9 @@ public class ManageSkillTool extends ToolCall {
         if (content == null || content.isBlank()) {
             return ToolCallResult.failed("'content' is required for create action");
         }
-        Files.createDirectories(skillsDir);
-        Path file = skillsDir.resolve(name + ".md");
+        Path skillDir = skillsDir.resolve(name);
+        Files.createDirectories(skillDir);
+        Path file = skillDir.resolve("SKILL.md");
         Files.writeString(file, content);
         LOGGER.info("Created skill: {}", file);
         return ToolCallResult.completed("Skill '" + name + "' created at " + file + ". Restart or /skill to verify.")
@@ -88,35 +93,51 @@ public class ManageSkillTool extends ToolCall {
         if (name == null || name.isBlank()) {
             return ToolCallResult.failed("'name' is required for delete action");
         }
-        Path file = skillsDir.resolve(name + ".md");
-        if (!Files.exists(file)) {
+        Path skillDir = skillsDir.resolve(name);
+        if (!Files.isDirectory(skillDir)) {
             return ToolCallResult.failed("Skill '" + name + "' not found");
         }
-        Files.delete(file);
+        deleteDirectory(skillDir);
         return ToolCallResult.completed("Skill '" + name + "' deleted.")
                 .withDuration(System.currentTimeMillis() - startTime);
     }
 
-    private ToolCallResult listSkills(long startTime) throws IOException {
-        if (!Files.isDirectory(skillsDir)) {
-            return ToolCallResult.completed("No skills directory found at " + skillsDir);
-        }
-        try (var stream = Files.list(skillsDir)) {
-            var skills = stream
-                    .filter(p -> p.toString().endsWith(".md"))
-                    .map(p -> p.getFileName().toString().replace(".md", ""))
-                    .sorted()
-                    .toList();
-            if (skills.isEmpty()) {
-                return ToolCallResult.completed("No skills found in " + skillsDir);
+    private void deleteDirectory(Path dir) throws IOException {
+        try (var files = Files.walk(dir)) {
+            var paths = files.sorted(Comparator.reverseOrder()).toList();
+            for (var p : paths) {
+                Files.delete(p);
             }
-            return ToolCallResult.completed("Skills: " + skills)
+        }
+    }
+
+    private ToolCallResult listSkills(long startTime) throws IOException {
+        var skills = new ArrayList<String>();
+        scanSkillDir(skillsDir, "workspace", skills);
+        if (userSkillsDir != null) {
+            scanSkillDir(userSkillsDir, "user", skills);
+        }
+        if (skills.isEmpty()) {
+            return ToolCallResult.completed("No skills found.")
                     .withDuration(System.currentTimeMillis() - startTime);
+        }
+        return ToolCallResult.completed("Skills: " + skills)
+                .withDuration(System.currentTimeMillis() - startTime);
+    }
+
+    private void scanSkillDir(Path dir, String source, List<String> result) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        try (var stream = Files.list(dir)) {
+            stream.filter(Files::isDirectory)
+                    .filter(p -> Files.isRegularFile(p.resolve("SKILL.md")))
+                    .sorted()
+                    .forEach(p -> result.add(p.getFileName().toString() + " (" + source + ")"));
         }
     }
 
     public static class Builder extends ToolCall.Builder<Builder, ManageSkillTool> {
         private Path skillsDir;
+        private Path userSkillsDir;
 
         @Override
         protected Builder self() {
@@ -128,6 +149,11 @@ public class ManageSkillTool extends ToolCall {
             return this;
         }
 
+        public Builder userSkillsDir(Path dir) {
+            this.userSkillsDir = dir;
+            return this;
+        }
+
         public ManageSkillTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
@@ -135,7 +161,7 @@ public class ManageSkillTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "action",
                             "Action: create, delete, or list").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "name",
-                            "Skill name (without .md extension)"),
+                            "Skill name"),
                     ToolCallParameters.ParamSpec.of(String.class, "content",
                             "Skill content in markdown with YAML frontmatter (for create)")
             ));
@@ -144,6 +170,7 @@ public class ManageSkillTool extends ToolCall {
             tool.skillsDir = this.skillsDir != null
                     ? this.skillsDir
                     : Path.of(".core-ai/skills");
+            tool.userSkillsDir = this.userSkillsDir;
             return tool;
         }
     }

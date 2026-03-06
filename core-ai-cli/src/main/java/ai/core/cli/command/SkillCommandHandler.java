@@ -31,7 +31,7 @@ public class SkillCommandHandler {
         var skills = scanSkills();
         if (skills.isEmpty()) {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "No skills found." + AnsiTheme.RESET);
-            ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Place .md files in .core-ai/skills/ to add skills." + AnsiTheme.RESET + "\n\n");
+            ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Create skill directories with SKILL.md in .core-ai/skills/" + AnsiTheme.RESET + "\n\n");
             return;
         }
         ui.printStreamingChunk(String.format("%n  %sAvailable Skills (%d)%s%n", AnsiTheme.PROMPT, skills.size(), AnsiTheme.RESET));

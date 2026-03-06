@@ -1,5 +1,6 @@
 package ai.core.cli.ui;
 
+import java.io.IOError;
 import java.io.PrintWriter;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -69,51 +70,69 @@ public class ThinkingSpinner {
         if (startTime == 0) {
             startTime = System.currentTimeMillis();
         }
-        Thread spinnerThread = new Thread(() -> {
-            int frame = 0;
-            int prevContentLen = 0;
-            while (!Thread.currentThread().isInterrupted()) {
-                long elapsedMs = System.currentTimeMillis() - startTime;
-                String elapsed = formatElapsed(elapsedMs);
-                char spinner = BRAILLE_FRAMES[frame % BRAILLE_FRAMES.length];
-                int msgIdx = (int) (elapsedMs / MESSAGE_INTERVAL_MS) % SPINNER_MESSAGES.length;
-                String message = SPINNER_MESSAGES[msgIdx];
-                Supplier<String> stats = statsSupplier;
-                String statsText = "";
-                if (stats != null) {
-                    String s = stats.get();
-                    if (s != null && !s.isEmpty()) {
-                        statsText = " | " + s;
-                    }
-                }
-                String content = "  " + spinner + " " + message + " (esc to cancel, " + elapsed + ")" + statsText;
-                int termWidth = widthSupplier.getAsInt();
-                if (termWidth > 0 && content.length() > termWidth - 1) {
-                    content = content.substring(0, termWidth - 1);
-                }
-                // clear residual wrapped lines from previous frame after terminal shrink
-                if (termWidth > 0 && prevContentLen > termWidth) {
-                    int extraLines = (prevContentLen - 1) / termWidth;
-                    for (int i = 0; i < extraLines; i++) {
-                        writer.print("\u001B[A\u001B[2K");
-                    }
-                }
-                writer.print(CLEAR_LINE + AnsiTheme.PROMPT + content + AnsiTheme.RESET);
-                writer.flush();
-                lastContentLen = content.length();
-                prevContentLen = lastContentLen;
-                frame++;
-                try {
-                    Thread.sleep(FRAME_INTERVAL_MS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        }, "thinking-spinner");
+        Thread spinnerThread = new Thread(this::runSpinnerLoop, "thinking-spinner");
         spinnerThread.setDaemon(true);
         thread = spinnerThread;
         spinnerThread.start();
+    }
+
+    private void runSpinnerLoop() {
+        int frame = 0;
+        int prevContentLen = 0;
+        while (!Thread.currentThread().isInterrupted()) {
+            String content = buildSpinnerContent(frame);
+            int termWidth = safeGetTermWidth();
+            if (termWidth < 0) break;
+            if (termWidth > 0 && content.length() > termWidth - 1) {
+                content = content.substring(0, termWidth - 1);
+            }
+            clearWrappedLines(termWidth, prevContentLen);
+            writer.print(CLEAR_LINE + AnsiTheme.PROMPT + content + AnsiTheme.RESET);
+            writer.flush();
+            lastContentLen = content.length();
+            prevContentLen = lastContentLen;
+            frame++;
+            try {
+                Thread.sleep(FRAME_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    private String buildSpinnerContent(int frame) {
+        long elapsedMs = System.currentTimeMillis() - startTime;
+        String elapsed = formatElapsed(elapsedMs);
+        char spinner = BRAILLE_FRAMES[frame % BRAILLE_FRAMES.length];
+        int msgIdx = (int) (elapsedMs / MESSAGE_INTERVAL_MS) % SPINNER_MESSAGES.length;
+        String message = SPINNER_MESSAGES[msgIdx];
+        Supplier<String> stats = statsSupplier;
+        String statsText = "";
+        if (stats != null) {
+            String s = stats.get();
+            if (s != null && !s.isEmpty()) {
+                statsText = " | " + s;
+            }
+        }
+        return "  " + spinner + " " + message + " (esc to cancel, " + elapsed + ")" + statsText;
+    }
+
+    private int safeGetTermWidth() {
+        try {
+            return widthSupplier.getAsInt();
+        } catch (Exception | IOError e) {
+            return -1;
+        }
+    }
+
+    private void clearWrappedLines(int termWidth, int prevContentLen) {
+        if (termWidth > 0 && prevContentLen > termWidth) {
+            int extraLines = (prevContentLen - 1) / termWidth;
+            for (int i = 0; i < extraLines; i++) {
+                writer.print("\u001B[A\u001B[2K");
+            }
+        }
     }
 
     public void stop() {
@@ -127,13 +146,9 @@ public class ThinkingSpinner {
                 Thread.currentThread().interrupt();
             }
         }
-        int termWidth = widthSupplier.getAsInt();
-        int len = lastContentLen;
-        if (termWidth > 0 && len > termWidth) {
-            int extraLines = (len - 1) / termWidth;
-            for (int i = 0; i < extraLines; i++) {
-                writer.print("\u001B[A\u001B[2K");
-            }
+        int termWidth = safeGetTermWidth();
+        if (termWidth > 0) {
+            clearWrappedLines(termWidth, lastContentLen);
         }
         lastContentLen = 0;
         writer.print(CLEAR_LINE);
