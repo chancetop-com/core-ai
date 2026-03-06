@@ -35,7 +35,12 @@ public class SubAgentToolCall extends ToolCall {
                 return ToolCallResult.failed("Parameter 'query' is required for subagent " + getName());
             }
 
-            var result = subAgent.run(query, context);
+            var childSessionId = (context.getSessionId() != null ? context.getSessionId() : "default") + ":sub:" + subAgent.getName();
+            var childContext = context.createChildContext(childSessionId);
+
+            subAgent.reset();
+
+            var result = subAgent.run(query, childContext);
 
             // Handle subagent status propagation
             var subAgentStatus = subAgent.getNodeStatus();

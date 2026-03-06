@@ -65,6 +65,7 @@ public abstract class Node<T extends Node<T>> {
     private final Map<String, Object> systemVariables = Maps.newHashMap();
     private final Pattern compiledPattern = Pattern.compile(NAME_REGEX_PATTERN);
     List<AbstractLifecycle> agentLifecycles = Lists.newArrayList();
+    private boolean isolatedMessages = false;
 
     public Node() {
         this.nodeStatus = NodeStatus.INITED;
@@ -450,10 +451,14 @@ public abstract class Node<T extends Node<T>> {
         this.terminations.addAll(terminations);
     }
 
+    public void setIsolatedMessages(boolean isolated) {
+        this.isolatedMessages = isolated;
+    }
+
     @SuppressWarnings("unchecked")
     void addAssistantOrToolMessage(Message message) {
         this.messages.add(message);
         this.getMessageUpdatedEventListener().ifPresent(v -> v.eventHandler((T) this, message));
-        if (this.parent != null) this.parent.addAssistantOrToolMessage(message);
+        if (this.parent != null && !this.isolatedMessages) this.parent.addAssistantOrToolMessage(message);
     }
 }

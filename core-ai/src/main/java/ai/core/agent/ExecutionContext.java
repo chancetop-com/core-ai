@@ -91,6 +91,14 @@ public final class ExecutionContext {
         return persistenceProvider;
     }
 
+    public ExecutionContext createChildContext(String childSessionId) {
+        return ExecutionContext.builder()
+                .sessionId(childSessionId)
+                .userId(this.userId)
+                .persistenceProvider(this.persistenceProvider)
+                .build();
+    }
+
     public static class Builder {
         private String sessionId;
         private String userId;

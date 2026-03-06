@@ -332,6 +332,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agent.setSubAgents(this.subAgents);
             for (var subAgent : this.subAgents) {
                 subAgent.getSubAgent().setParentNode(agent);
+                subAgent.getSubAgent().setIsolatedMessages(true);
                 agent.toolCalls.add(subAgent);
             }
         }
