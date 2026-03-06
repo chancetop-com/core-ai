@@ -34,6 +34,12 @@ public class TurnCompleteEvent implements AgentEvent {
     @Property(name = "cancelled")
     public Boolean cancelled;
 
+    @Property(name = "input_tokens")
+    public Long inputTokens;
+
+    @Property(name = "output_tokens")
+    public Long outputTokens;
+
     @Override
     public String sessionId() {
         return sessionId;

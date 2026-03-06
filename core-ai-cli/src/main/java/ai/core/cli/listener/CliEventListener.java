@@ -7,9 +7,7 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.cli.DebugLog;
-import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
-import ai.core.cli.ui.ThinkingSpinner;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -30,8 +28,8 @@ public class CliEventListener extends BaseEventListener {
     private final Agent agent;
     private final AtomicBoolean turnRunning = new AtomicBoolean(false);
     private volatile long turnTokensBefore;
-    private volatile long turnPromptTokensBefore;
-    private volatile long turnCompletionTokensBefore;
+    private volatile long turnInputBefore;
+    private volatile long turnOutputBefore;
     private Thread escReaderThread;
 
     public CliEventListener(TerminalUI ui, AgentSession session, Agent agent) {
@@ -45,14 +43,14 @@ public class CliEventListener extends BaseEventListener {
         turnRunning.set(true);
         var usage = agent.getCurrentTokenUsage();
         turnTokensBefore = usage.getTotalTokens();
-        turnPromptTokensBefore = usage.getPromptTokens();
-        turnCompletionTokensBefore = usage.getCompletionTokens();
+        turnInputBefore = usage.getPromptTokens();
+        turnOutputBefore = usage.getCompletionTokens();
         spinner.setStatsSupplier(() -> {
             var u = agent.getCurrentTokenUsage();
             long tokens = u.getTotalTokens() - turnTokensBefore;
             if (tokens == 0) return null;
-            long input = u.getPromptTokens() - turnPromptTokensBefore;
-            long output = u.getCompletionTokens() - turnCompletionTokensBefore;
+            long input = u.getPromptTokens() - turnInputBefore;
+            long output = u.getCompletionTokens() - turnOutputBefore;
             return String.format("%,d tokens (\u2191 %,d \u2193 %,d)", tokens, input, output);
         });
         startEscReader();
@@ -112,20 +110,6 @@ public class CliEventListener extends BaseEventListener {
         DebugLog.log("tool approval request: " + event.toolName + " callId=" + event.callId);
         super.onToolApprovalRequest(event);
         DebugLog.log("tool approval sent: " + event.toolName + " callId=" + event.callId);
-    }
-
-    @Override
-    protected void printTurnSummary() {
-        long elapsed = spinner.getElapsedMs();
-        var usage = agent.getCurrentTokenUsage();
-        long turnTokens = usage.getTotalTokens() - turnTokensBefore;
-        long turnInput = usage.getPromptTokens() - turnPromptTokensBefore;
-        long turnOutput = usage.getCompletionTokens() - turnCompletionTokensBefore;
-        String time = ThinkingSpinner.formatElapsed(elapsed);
-        String tokenDetail = String.format("%,d tokens (\u2191 %,d \u2193 %,d)", turnTokens, turnInput, turnOutput);
-        ui.getWriter().println("\n" + AnsiTheme.MUTED + "  \u2726 " + time
-                + " | " + tokenDetail + AnsiTheme.RESET);
-        ui.getWriter().flush();
     }
 
     private void startEscReader() {

@@ -73,6 +73,9 @@ public class InProcessAgentSession implements AgentSession {
         Future<?> future = executor.submit(() -> {
             try {
                 debug("agent run starting");
+                var usageBefore = agent.getCurrentTokenUsage();
+                long inputBefore = usageBefore.getPromptTokens();
+                long outputBefore = usageBefore.getCompletionTokens();
                 var result = agent.run(message);
                 if (agent.isCancelled()) {
                     debug("agent run cancelled");
@@ -84,7 +87,11 @@ public class InProcessAgentSession implements AgentSession {
                     agent.save(sessionId);
                 }
                 debug("agent run completed");
-                dispatch(TurnCompleteEvent.of(sessionId, result != null ? result : ""));
+                var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
+                var usageAfter = agent.getCurrentTokenUsage();
+                turnComplete.inputTokens = usageAfter.getPromptTokens() - inputBefore;
+                turnComplete.outputTokens = usageAfter.getCompletionTokens() - outputBefore;
+                dispatch(turnComplete);
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             } catch (Throwable e) {
                 if (agent.isCancelled()) {
