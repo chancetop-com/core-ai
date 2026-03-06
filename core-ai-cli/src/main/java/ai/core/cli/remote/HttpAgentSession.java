@@ -19,6 +19,7 @@ import ai.core.utils.JsonUtil;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -72,11 +73,12 @@ public final class HttpAgentSession implements AgentSession {
     private void connectSse() {
         sseThread = new Thread(() -> {
             try {
+                var sseClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
                 var request = api.putRequest("/api/sessions/events?sessionId=" + sessionId)
                         .header("Accept", "text/event-stream")
                         .method("PUT", HttpRequest.BodyPublishers.noBody())
                         .build();
-                var response = api.httpClient().send(request, HttpResponse.BodyHandlers.ofInputStream());
+                var response = sseClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
                 DebugLog.log("SSE connected, status=" + response.statusCode());
                 sseConnected.countDown();
                 readSseStream(response);

@@ -38,7 +38,8 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.vender.VendorConfig",
         "ai.core.vender.VendorManagement",
         "ai.core.vender.VendorException",
-        "ai.core.vender.vendors.RipgrepVendor"
+        "ai.core.vender.vendors.RipgrepVendor",
+        "ai.core.cli.remote.RemoteConfig"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
