@@ -7,6 +7,7 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.cli.DebugLog;
+import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 
 import java.io.File;
