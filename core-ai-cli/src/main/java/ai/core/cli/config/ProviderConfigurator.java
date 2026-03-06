@@ -115,6 +115,58 @@ public class ProviderConfigurator {
         new Result(type, model);
     }
 
+    public void removeModelFromProvider() {
+        var allEntries = modelRegistry.getAllEntries();
+        if (allEntries.isEmpty()) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  No models to remove.\n" + AnsiTheme.RESET);
+            return;
+        }
+        ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Remove Model" + AnsiTheme.RESET + "\n\n");
+        for (int i = 0; i < allEntries.size(); i++) {
+            var entry = allEntries.get(i);
+            String tag = AnsiTheme.MUTED + " [" + entry.providerType().getName() + "]" + AnsiTheme.RESET;
+            ui.printStreamingChunk(String.format("  %s%d)%s %s%s%n", AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, entry.model(), tag));
+        }
+        ui.printStreamingChunk("\n" + AnsiTheme.MUTED + "  Select model to remove (1-" + allEntries.size() + "): " + AnsiTheme.RESET);
+        var line = ui.readRawLine();
+        if (line == null) return;
+        int idx;
+        try {
+            idx = Integer.parseInt(line.trim());
+            if (idx < 1 || idx > allEntries.size()) return;
+        } catch (NumberFormatException e) {
+            return;
+        }
+        var target = allEntries.get(idx - 1);
+        modelRegistry.removeModel(target.model(), target.providerType());
+        removeModelFromFile(target.providerType(), target.model());
+        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model "
+                + target.model() + " removed from " + target.providerType().getName() + ".\n\n");
+    }
+
+    private void removeModelFromFile(LLMProviderType type, String model) {
+        try {
+            var props = loadProperties();
+            String prefix = type.getName();
+            String existing = props.getProperty(prefix + ".models", "");
+            if (!existing.isBlank()) {
+                String updated = Arrays.stream(existing.split(","))
+                        .map(String::trim)
+                        .filter(m -> !m.equals(model))
+                        .reduce((a, b) -> a + "," + b)
+                        .orElse("");
+                if (updated.isEmpty()) {
+                    props.remove(prefix + ".models");
+                } else {
+                    props.setProperty(prefix + ".models", updated);
+                }
+                storeProperties(props);
+            }
+        } catch (IOException e) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save config: " + e.getMessage() + AnsiTheme.RESET + "\n");
+        }
+    }
+
     private void saveModelToFile(LLMProviderType type, String model) {
         try {
             var props = loadProperties();

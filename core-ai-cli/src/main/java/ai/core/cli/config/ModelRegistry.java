@@ -55,6 +55,10 @@ public class ModelRegistry {
         appendIfAbsent(entries, model, type);
     }
 
+    public boolean removeModel(String model, LLMProviderType type) {
+        return entries.removeIf(e -> e.model.equals(model) && e.providerType == type);
+    }
+
     private void appendIfAbsent(List<ModelEntry> list, String model, LLMProviderType type) {
         boolean exists = list.stream().anyMatch(e -> e.model.equals(model) && e.providerType == type);
         if (!exists) {

@@ -178,8 +178,10 @@ public class AgentSessionRunner {
 
     private void dispatchCommand(String trimmed, ReplCommandHandler commands, BlockingQueue<String> queue) {
         var lower = trimmed.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("/model")) {
-            handleModelCommand(trimmed);
+        if (lower.startsWith("/model ")) {
+            switchModel(getCurrentModelName(), trimmed.split("\\s+", 2)[1].trim(), null);
+        } else if ("/model".equals(lower) || "/models".equals(lower)) {
+            showModelPicker();
         } else if ("/stats".equals(lower)) {
             handleStats();
         } else if ("/tools".equals(lower)) {
@@ -218,17 +220,8 @@ public class AgentSessionRunner {
         }
     }
 
-    private void handleModelCommand(String trimmed) {
+    private void showModelPicker() {
         String currentModel = getCurrentModelName();
-        String[] parts = trimmed.split("\\s+", 2);
-        if (parts.length >= 2) {
-            switchModel(currentModel, parts[1].trim(), null);
-            return;
-        }
-        showModelPicker(currentModel);
-    }
-
-    private void showModelPicker(String currentModel) {
         var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
         ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Current model: " + AnsiTheme.RESET + currentModel + "\n\n");
         var entries = buildModelEntryList(currentModel);
@@ -240,22 +233,25 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(String.format("  %s%2d)%s %s%s%s%n",
                     AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, entry.model(), providerTag, marker));
         }
-        ui.printStreamingChunk("\n  " + AnsiTheme.CMD_NAME + " a)" + AnsiTheme.RESET + " Add model to provider\n");
-        ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + " b)" + AnsiTheme.RESET + " Configure new provider\n\n");
-        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + entries.size() + "), a/b, model name, or 'q' to cancel: " + AnsiTheme.RESET);
+        ui.printStreamingChunk(String.format("%n  %s a)%s Add model  %s b)%s New provider  %s c)%s Remove model%n%n",
+                AnsiTheme.CMD_NAME, AnsiTheme.RESET, AnsiTheme.CMD_NAME, AnsiTheme.RESET, AnsiTheme.CMD_NAME, AnsiTheme.RESET));
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Select (1-" + entries.size() + "), a/b/c, model name, or 'q' to cancel: " + AnsiTheme.RESET);
         var line = ui.readRawLine();
         if (line == null || "q".equalsIgnoreCase(line.trim())) return;
         String input = line.trim();
+        var configurator = new ProviderConfigurator(ui, llmProviders, modelRegistry);
         if ("a".equalsIgnoreCase(input)) {
-            new ProviderConfigurator(ui, llmProviders, modelRegistry).addModelToProvider();
+            configurator.addModelToProvider();
             return;
-        }
-        if ("b".equalsIgnoreCase(input)) {
-            var result = new ProviderConfigurator(ui, llmProviders, modelRegistry).configure();
+        } else if ("b".equalsIgnoreCase(input)) {
+            var result = configurator.configure();
             if (result != null) {
                 agent.setLlmProvider(llmProviders.getProvider(result.type()));
                 agent.setModel(result.model());
             }
+            return;
+        } else if ("c".equalsIgnoreCase(input)) {
+            configurator.removeModelFromProvider();
             return;
         }
         try {
