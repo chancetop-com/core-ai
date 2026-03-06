@@ -32,8 +32,9 @@ public class CompressionLifecycle extends AbstractLifecycle {
 
         List<Message> compressed = compression.compress(request.messages);
         if (compressed != request.messages) {
-            request.messages = compressed;
-            LOGGER.debug("Messages compressed before model call");
+            request.messages.clear();
+            request.messages.addAll(compressed);
+            LOGGER.debug("Messages compressed before model call, agent messages updated in-place");
         }
     }
 

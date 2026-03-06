@@ -29,9 +29,9 @@ public class CliEventListener implements AgentEventListener {
 
     private static final int ESC = 27;
 
-    private static String truncate(String text, int maxLength) {
+    private static String truncate(String text) {
         if (text == null) return "null";
-        return text.length() <= maxLength ? text : text.substring(0, maxLength) + "...(" + text.length() + " chars)";
+        return text.length() <= 200 ? text : text.substring(0, 200) + "...(" + text.length() + " chars)";
     }
 
     private final TerminalUI ui;
@@ -53,7 +53,7 @@ public class CliEventListener implements AgentEventListener {
         this.session = session;
         this.agent = agent;
         this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
-        this.spinner = new ThinkingSpinner(ui.getWriter());
+        this.spinner = new ThinkingSpinner(ui.getWriter(), ui::getTerminalWidth);
     }
 
     public void prepareTurn() {
@@ -102,7 +102,7 @@ public class CliEventListener implements AgentEventListener {
 
     @Override
     public void onToolStart(ToolStartEvent event) {
-        DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId + " args=" + truncate(event.arguments, 200));
+        DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId + " args=" + truncate(event.arguments));
         stopSpinnerIfActive();
         markdownRenderer.flush();
         ui.showToolStart(event.toolName, event.arguments);
@@ -110,7 +110,7 @@ public class CliEventListener implements AgentEventListener {
 
     @Override
     public void onToolResult(ToolResultEvent event) {
-        DebugLog.log("tool result: " + event.toolName + " callId=" + event.callId + " status=" + event.status + " result=" + truncate(event.result, 200));
+        DebugLog.log("tool result: " + event.toolName + " callId=" + event.callId + " status=" + event.status + " result=" + truncate(event.result));
         ui.showToolResult(event.toolName, event.status, event.result);
         startSpinner();
     }
