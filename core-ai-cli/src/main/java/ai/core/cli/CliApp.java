@@ -4,7 +4,9 @@ import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.agent.AgentSessionRunner;
+import ai.core.agent.Agent;
 import ai.core.cli.agent.CliAgent;
+import ai.core.cli.agent.CodeAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.memory.LocalFileMemoryProvider;
@@ -16,6 +18,7 @@ import ai.core.session.SessionPersistence.SessionInfo;
 import ai.core.session.ToolPermissionStore;
 
 import java.nio.file.Path;
+import java.util.function.Function;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -36,14 +39,16 @@ public class CliApp {
     private final boolean continueSession;
     private final boolean resume;
     private final Path workspace;
+    private final String mode;
 
-    public CliApp(Path configFile, String modelOverride, boolean autoApproveAll, boolean continueSession, boolean resume, Path workspace) {
+    public CliApp(Path configFile, String modelOverride, boolean autoApproveAll, boolean continueSession, boolean resume, Path workspace, String mode) {
         this.configFile = configFile != null ? configFile : DEFAULT_CONFIG;
         this.modelOverride = modelOverride;
         this.autoApproveAll = autoApproveAll;
         this.continueSession = continueSession;
         this.resume = resume;
         this.workspace = workspace != null ? workspace.toAbsolutePath() : Paths.get("").toAbsolutePath();
+        this.mode = mode;
     }
 
     public void start() {
@@ -75,12 +80,7 @@ public class CliApp {
 
         try {
             while (true) {
-                var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
-                    ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
-                    ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
-                    return ui.readRawLine();
-                }, noteMemory);
-                var agent = CliAgent.of(agentConfig);
+                var agent = createAgent(result, maxTurn, sessionPersistence, workspace, ui, noteMemory);
                 var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory, modelRegistry);
                 var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
                 String nextSessionId = runner.run();
@@ -92,6 +92,20 @@ public class CliApp {
             closeQuietly(ui);
             closeShutdownResources(result);
         }
+    }
+
+    private Agent createAgent(BootstrapResult result, int maxTurn, FileSessionPersistence sessionPersistence, Path workspace, TerminalUI ui, LocalFileMemoryProvider noteMemory) {
+        Function<String, String> askUserHandler = question -> {
+            ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
+            ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
+            return ui.readRawLine();
+        };
+        if ("code".equals(mode)) {
+            var config = new CodeAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, askUserHandler, noteMemory);
+            return CodeAgent.of(config);
+        }
+        var config = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, askUserHandler, noteMemory);
+        return CliAgent.of(config);
     }
 
     private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {

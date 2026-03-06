@@ -43,13 +43,16 @@ public class Main implements Callable<Integer> {
     @Option(names = "--workspace", description = "Set the working directory for the agent session")
     Path workspace;
 
+    @Option(names = "--mode", description = "Agent mode: cli (default), code")
+    String mode;
+
     @Override
     public Integer call() {
         if (debug) {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
-        new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace).start();
+        new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace, mode).start();
         return 0;
     }
 }
