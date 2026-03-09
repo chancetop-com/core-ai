@@ -149,7 +149,11 @@ public class AgentSessionRunner {
     private void readInputLoop(ReplCommandHandler commands, BlockingQueue<String> queue, Semaphore readyForInput) {
         boolean showFrame = true;
         while (true) {
-            waitForReady(readyForInput);
+            try {
+                readyForInput.acquire();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             if (showFrame) {
                 ui.printInputFrame();
             }
@@ -371,16 +375,24 @@ public class AgentSessionRunner {
         }
     }
 
+    @SuppressWarnings("PMD.CompareObjectsWithEquals")
     private void handleCompact() {
         var messages = agent.getMessages();
-        if (messages.size() <= 4) {
+        var compression = agent.getCompression();
+        if (messages.size() <= 4 || compression == null) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
             return;
         }
-        int removed = messages.size() - 5;
-        messages.subList(1, messages.size() - 4).clear();
+        int beforeCount = messages.size();
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Compacting...\n" + AnsiTheme.RESET);
+        var compressed = compression.forceCompress(messages);
+        if (compressed != messages) {
+            messages.clear();
+            messages.addAll(compressed);
+            if (agent.hasPersistenceProvider()) agent.save(sessionId);
+        }
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                + " Compacted: removed " + removed + " messages, kept " + messages.size() + "\n\n");
+                + " Compacted: " + beforeCount + " → " + messages.size() + " messages\n\n");
     }
 
     private void handleUndo() {
@@ -429,14 +441,6 @@ public class AgentSessionRunner {
         }
         ui.printStreamingChunk(AnsiTheme.MUTED + "Switching to session: " + picked + AnsiTheme.RESET + "\n");
         return picked;
-    }
-
-    private void waitForReady(Semaphore readyForInput) {
-        try {
-            readyForInput.acquire();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     public record Config(String modelName, boolean autoApproveAll, String sessionId,

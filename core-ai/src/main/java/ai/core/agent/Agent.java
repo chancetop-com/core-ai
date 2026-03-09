@@ -92,7 +92,7 @@ public class Agent extends Node<Agent> {
                     .build();
 
             return activeTracer.traceAgentExecution(context, () -> {
-                var result = doExecute(query, variables);
+                var result = doExecute(query, variables, false);
                 // Update context with execution results for tracing
                 context.setOutput(getOutput());
                 context.setStatus(getNodeStatus().name());
@@ -100,7 +100,7 @@ public class Agent extends Node<Agent> {
                 return result;
             });
         }
-        return doExecute(query, variables);
+        return doExecute(query, variables, false);
     }
 
     private void chatCommand(String query, Map<String, Object> variables) {
@@ -123,10 +123,6 @@ public class Agent extends Node<Agent> {
         if (reflectionConfig != null && reflectionConfig.enabled() && !skipReflection) {
             reflectionLoop(variables);
         }
-    }
-
-    private String doExecute(String query, Map<String, Object> variables) {
-        return doExecute(query, variables, false);
     }
 
     private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
@@ -389,6 +385,10 @@ public class Agent extends Node<Agent> {
 
     public LLMProvider getLLMProvider() {
         return llmProvider;
+    }
+
+    public Compression getCompression() {
+        return compression;
     }
 
     public void setAuthenticated(boolean authenticated) {

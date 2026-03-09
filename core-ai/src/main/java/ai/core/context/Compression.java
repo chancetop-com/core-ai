@@ -81,6 +81,14 @@ public class Compression {
         return doCompress(messages);
     }
 
+    public List<Message> forceCompress(List<Message> messages) {
+        if (messages == null || messages.isEmpty() || llmProvider == null) {
+            return messages;
+        }
+        LOGGER.info("Force compressing messages: count={}", messages.size());
+        return doCompress(messages);
+    }
+
     private List<Message> doCompress(List<Message> messages) {
         var systemMsg = extractSystemMessage(messages);
         var conversationMsgs = extractConversationMessages(messages);
