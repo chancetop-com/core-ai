@@ -14,16 +14,18 @@ import java.net.http.HttpResponse;
 public class RemoteApiClient {
     private final String serverUrl;
     private final String apiKey;
-    private final HttpClient httpClient;
+    private final HttpClient sseClient;
+    private final HttpClient apiClient;
 
     public RemoteApiClient(String serverUrl, String apiKey) {
         this.serverUrl = serverUrl;
         this.apiKey = apiKey;
-        this.httpClient = HttpClient.newBuilder().build();
+        this.sseClient = HttpClient.newBuilder().build();
+        this.apiClient = HttpClient.newBuilder().build();
     }
 
     public HttpClient httpClient() {
-        return httpClient;
+        return sseClient;
     }
 
     public String serverUrl() {
@@ -81,7 +83,7 @@ public class RemoteApiClient {
 
     private String send(HttpRequest request) {
         try {
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = apiClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
                 DebugLog.log("API error: " + response.statusCode() + " " + response.body());
             }
