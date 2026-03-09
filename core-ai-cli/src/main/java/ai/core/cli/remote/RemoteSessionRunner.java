@@ -106,22 +106,12 @@ public class RemoteSessionRunner {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private boolean handleCommand(String cmd) {
         var lower = cmd.toLowerCase(Locale.ROOT);
-        return switch (lower) {
-            case "/help" -> {
-                printHelp();
-                yield true;
-            }
-            case "/agents" -> {
-                handleAgents();
-                yield true;
-            }
-            case "/tools" -> {
-                handleTools();
-                yield true;
-            }
+        switch (lower) {
+            case "/help" -> printHelp();
+            case "/agents" -> handleAgents();
+            case "/tools" -> handleTools();
             case "/debug" -> {
                 if (DebugLog.isEnabled()) {
                     DebugLog.disable();
@@ -131,27 +121,24 @@ public class RemoteSessionRunner {
                     System.setProperty("core.ai.debug", "true");
                     ui.printStreamingChunk("Debug mode: ON\n");
                 }
-                yield true;
             }
-            case "/clear" -> {
-                ui.printStreamingChunk("\u001B[2J\u001B[H");
-                yield true;
-            }
+            case "/clear" -> ui.printStreamingChunk("\u001B[2J\u001B[H");
             default -> {
                 if (lower.startsWith("/agent ")) {
                     handleAgentDetail(cmd.substring(7).trim());
-                    yield true;
+                    break;
                 }
                 if (lower.startsWith("/stats") || lower.startsWith("/model")
                         || lower.startsWith("/undo") || lower.startsWith("/compact") || lower.startsWith("/export")
                         || lower.startsWith("/copy") || lower.startsWith("/resume") || lower.startsWith("/memory")
                         || lower.startsWith("/skill") || lower.startsWith("/mcp")) {
                     ui.printStreamingChunk(AnsiTheme.MUTED + "  Not available in remote mode.\n" + AnsiTheme.RESET);
-                    yield true;
+                    break;
                 }
-                yield false;
+                ui.printStreamingChunk(AnsiTheme.WARNING + "Unknown command: " + cmd.split("\\s+", 2)[0] + ". Type /help for available commands." + AnsiTheme.RESET + "\n");
             }
-        };
+        }
+        return true;
     }
 
     private void printHelp() {
