@@ -82,13 +82,17 @@ public class RemoteCommandHandler {
     private String login(String serverUrl, String email, String password) {
         try {
             var body = JsonUtil.toJson(Map.of("email", email, "password", password));
+            var uri = URI.create(serverUrl + "/api/auth/login");
+            DebugLog.log("login request: uri=" + uri + ", body=" + body);
             var request = HttpRequest.newBuilder()
-                    .uri(URI.create(serverUrl + "/api/auth/login"))
+                    .uri(uri)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
             var httpClient = HttpClient.newBuilder().build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            DebugLog.log("login response: status=" + response.statusCode() + ", body=" + response.body()
+                    + ", uri=" + response.uri());
             if (response.statusCode() != 200) {
                 ui.printStreamingChunk("\n" + AnsiTheme.ERROR + "  ✗ Login failed: " + response.body() + AnsiTheme.RESET + "\n");
                 return null;
