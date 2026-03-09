@@ -15,7 +15,7 @@ import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.MockLLMProvider;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
+
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -101,7 +101,7 @@ class CancellationTest {
                 .llmProvider(slowProvider)
                 .build();
 
-        var session = new InProcessAgentSession("test-cancel", agent, true, new ToolPermissionStore(Path.of("/tmp/test-perms.json")));
+        var session = new InProcessAgentSession("test-cancel", agent, true, new InMemoryToolPermissionStore());
         var events = new CopyOnWriteArrayList<AgentEvent>();
         var latch = new CountDownLatch(1);
 
@@ -159,7 +159,7 @@ class CancellationTest {
                 .llmProvider(provider)
                 .build();
 
-        var session = new InProcessAgentSession("test-reset", agent, true, new ToolPermissionStore(Path.of("/tmp/test-perms2.json")));
+        var session = new InProcessAgentSession("test-reset", agent, true, new InMemoryToolPermissionStore());
         var completedEvents = new CopyOnWriteArrayList<TurnCompleteEvent>();
 
         session.onEvent(new AgentEventListener() {

@@ -6,6 +6,7 @@ import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.session.InProcessAgentSession;
+import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.tool.BuiltinTools;
 import core.framework.inject.Inject;
 
@@ -29,7 +30,8 @@ public class AgentSessionManager {
         var sessionId = UUID.randomUUID().toString();
         var agent = buildAgent(config);
         var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
-        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, null);
+        var permissionStore = new InMemoryToolPermissionStore();
+        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
         sessions.put(sessionId, session);
         return sessionId;
     }

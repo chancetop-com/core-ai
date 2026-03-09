@@ -133,7 +133,9 @@ public class AgentRunner {
         if (temperature != null) builder.temperature(temperature);
         if (maxTurns != null) builder.maxTurn(maxTurns);
 
-        return builder.build();
+        var agent = builder.build();
+        agent.setAuthenticated(true);
+        return agent;
     }
 
     private void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, Agent agent) {
