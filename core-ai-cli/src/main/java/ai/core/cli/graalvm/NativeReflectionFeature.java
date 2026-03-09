@@ -39,7 +39,17 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.vender.VendorManagement",
         "ai.core.vender.VendorException",
         "ai.core.vender.vendors.RipgrepVendor",
-        "ai.core.cli.remote.RemoteConfig"
+        "ai.core.cli.remote.RemoteConfig",
+        // SSE event classes for remote mode deserialization
+        "ai.core.api.server.session.TextChunkEvent",
+        "ai.core.api.server.session.ReasoningChunkEvent",
+        "ai.core.api.server.session.ReasoningCompleteEvent",
+        "ai.core.api.server.session.ToolStartEvent",
+        "ai.core.api.server.session.ToolResultEvent",
+        "ai.core.api.server.session.ToolApprovalRequestEvent",
+        "ai.core.api.server.session.TurnCompleteEvent",
+        "ai.core.api.server.session.ErrorEvent",
+        "ai.core.api.server.session.StatusChangeEvent"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
