@@ -18,6 +18,7 @@ import java.security.SecureRandom;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Locale;
 
 /**
  * @author stephen
@@ -37,12 +38,12 @@ public class AuthService {
     public String adminName;
 
     public void initialize() {
-        var existing = userCollection.get(adminEmail.toLowerCase());
+        var existing = userCollection.get(adminEmail.toLowerCase(Locale.getDefault()));
         if (existing.isPresent()) return;
 
         var admin = new User();
-        admin.id = adminEmail.toLowerCase();
-        admin.email = adminEmail.toLowerCase();
+        admin.id = adminEmail.toLowerCase(Locale.getDefault());
+        admin.email = adminEmail.toLowerCase(Locale.getDefault());
         admin.name = adminName;
         admin.passwordHash = hashPassword(adminPassword);
         admin.role = "admin";
@@ -53,7 +54,7 @@ public class AuthService {
     }
 
     public RegisterResponse register(String email, String password, String name) {
-        var normalizedEmail = email.toLowerCase();
+        var normalizedEmail = email.toLowerCase(Locale.getDefault());
         var existing = userCollection.get(normalizedEmail);
 
         if (existing.isPresent()) {
@@ -90,7 +91,7 @@ public class AuthService {
     }
 
     public LoginResponse login(String email, String password) {
-        var normalizedEmail = email.toLowerCase();
+        var normalizedEmail = email.toLowerCase(Locale.getDefault());
         var user = userCollection.get(normalizedEmail)
             .orElseThrow(() -> new UnauthorizedException("invalid email or password"));
 
@@ -113,7 +114,7 @@ public class AuthService {
     public void invite(String adminUserId, String email) {
         requireAdmin(adminUserId);
 
-        var normalizedEmail = email.toLowerCase();
+        var normalizedEmail = email.toLowerCase(Locale.getDefault());
         var existing = userCollection.get(normalizedEmail);
         if (existing.isPresent()) {
             var user = existing.get();

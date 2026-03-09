@@ -73,7 +73,6 @@ public class CliEventListener extends BaseEventListener {
     @Override
     public void onToolStart(ToolStartEvent event) {
         DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId + " args=" + truncate(event.arguments));
-        super.onToolStart(event);
         stopSpinnerIfActive();
         markdownRenderer.flush();
         showSkillHintIfApplicable(event);

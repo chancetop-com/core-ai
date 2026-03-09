@@ -14,6 +14,7 @@ object Versions {
     const val MCP_SDK_VERSION = "0.17.0"
     const val SQLITE_JDBC_VERSION = "3.47.2.0"
     const val SNAKEYAML_VERSION = "2.2"
+    const val JSOUP_VERSION = "1.18.3"
     const val JLINE_VERSION = "3.26.1"
     const val PICOCLI_VERSION = "4.7.7"
     const val GRAALVM_SDK_VERSION = "25.0.0"

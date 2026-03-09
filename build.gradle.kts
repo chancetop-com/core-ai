@@ -98,6 +98,8 @@ project(":core-ai") {
         implementation("org.xerial:sqlite-jdbc:${Versions.SQLITE_JDBC_VERSION}")
         // SnakeYAML for Skills YAML frontmatter parsing
         implementation("org.yaml:snakeyaml:${Versions.SNAKEYAML_VERSION}")
+        // Jsoup for HTML parsing (DuckDuckGo search provider)
+        implementation("org.jsoup:jsoup:${Versions.JSOUP_VERSION}")
     }
 }
 
