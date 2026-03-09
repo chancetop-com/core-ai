@@ -28,7 +28,8 @@ public class AuthInterceptor implements Interceptor {
             return invocation.proceed();
         }
 
-        if (path.equals("/api/auth/register") || path.equals("/api/auth/login")) {
+        if (path.equals("/api/auth/register") || path.equals("/api/auth/login")
+                || path.startsWith("/api/webhooks/")) {
             return invocation.proceed();
         }
 

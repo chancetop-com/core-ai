@@ -110,6 +110,7 @@ public class RemoteSessionRunner {
         var lower = cmd.toLowerCase(Locale.ROOT);
         switch (lower) {
             case "/help" -> printHelp();
+            case "/build-agent" -> new CreateAgentCommandHandler(ui, api, session.id()).handle();
             case "/agents" -> handleAgents();
             case "/tools" -> handleTools();
             case "/debug" -> {
@@ -144,6 +145,7 @@ public class RemoteSessionRunner {
     private void printHelp() {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote Commands:" + AnsiTheme.RESET + "\n");
         String[][] cmds = {
+                {"/build-agent", "Build agent from current conversation, so it can be scheduled periodically on the server"},
                 {"/agents", "List available agents"},
                 {"/agent <id>", "Show agent details"},
                 {"/tools", "List available tools"},

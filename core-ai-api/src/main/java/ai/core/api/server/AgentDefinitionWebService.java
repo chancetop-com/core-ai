@@ -44,6 +44,14 @@ public interface AgentDefinitionWebService {
     @ResponseStatus(HTTPStatus.CREATED)
     AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request);
 
+    @POST
+    @Path("/api/agents/:id/webhook/enable")
+    AgentDefinitionView enableWebhook(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/agents/:id/webhook/disable")
+    AgentDefinitionView disableWebhook(@PathParam("id") String id);
+
     @DELETE
     @Path("/api/agents/:id")
     void delete(@PathParam("id") String id);

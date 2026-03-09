@@ -9,6 +9,7 @@ import ai.core.api.server.AgentSessionWebService;
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.UserWebService;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.auth.AuthService;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.file.FileDownloadController;
@@ -24,6 +25,7 @@ import ai.core.server.session.AgentSessionManager;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.user.UserService;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
+import ai.core.server.web.webhook.WebhookController;
 import ai.core.server.web.AgentRunWebServiceImpl;
 import ai.core.server.web.AgentScheduleWebServiceImpl;
 import ai.core.server.web.sse.AgentSessionChannelListener;
@@ -62,6 +64,7 @@ public class ServerModule extends Module {
         bind(AgentScheduler.class);
         bind(AgentSessionManager.class);
         bind(AgentDefinitionService.class);
+        bind(AgentDraftGenerator.class);
         bind(AgentRunService.class);
         bind(AgentScheduleService.class);
         bind(UserService.class);
@@ -84,6 +87,7 @@ public class ServerModule extends Module {
         api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
         api().service(FileWebService.class, bind(FileWebServiceImpl.class));
 
+        http().route(HTTPMethod.POST, "/api/webhooks/:agentId", bind(WebhookController.class));
         http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
         http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));
 

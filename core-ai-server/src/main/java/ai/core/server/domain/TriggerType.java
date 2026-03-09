@@ -11,5 +11,7 @@ public enum TriggerType {
     @MongoEnumValue("MANUAL")
     MANUAL,
     @MongoEnumValue("API")
-    API
+    API,
+    @MongoEnumValue("WEBHOOK")
+    WEBHOOK
 }

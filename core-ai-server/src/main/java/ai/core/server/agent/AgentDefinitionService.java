@@ -138,6 +138,24 @@ public class AgentDefinitionService {
         return toView(entity);
     }
 
+    public AgentDefinitionView enableWebhook(String id) {
+        var entity = agentDefinitionCollection.get(id)
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+        entity.webhookSecret = "whk_" + UUID.randomUUID().toString().replace("-", "");
+        entity.updatedAt = ZonedDateTime.now();
+        agentDefinitionCollection.replace(entity);
+        return toView(entity);
+    }
+
+    public AgentDefinitionView disableWebhook(String id) {
+        var entity = agentDefinitionCollection.get(id)
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+        entity.webhookSecret = null;
+        entity.updatedAt = ZonedDateTime.now();
+        agentDefinitionCollection.replace(entity);
+        return toView(entity);
+    }
+
     public void delete(String id) {
         agentDefinitionCollection.delete(id);
     }
@@ -155,6 +173,7 @@ public class AgentDefinitionService {
         view.toolIds = entity.toolIds;
         view.inputTemplate = entity.inputTemplate;
         view.variables = entity.variables;
+        view.webhookSecret = entity.webhookSecret;
         view.systemDefault = entity.systemDefault;
         view.status = entity.status != null ? entity.status.name() : null;
         view.publishedAt = entity.publishedAt;

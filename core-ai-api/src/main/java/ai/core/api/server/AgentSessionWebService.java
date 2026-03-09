@@ -1,5 +1,6 @@
 package ai.core.api.server;
 
+import ai.core.api.server.agent.GenerateAgentDraftResponse;
 import ai.core.api.server.session.ApproveToolCallRequest;
 import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
@@ -42,6 +43,10 @@ public interface AgentSessionWebService {
     @POST
     @Path("/api/sessions/:sessionId/cancel")
     void cancel(@PathParam("sessionId") String sessionId);
+
+    @POST
+    @Path("/api/sessions/:sessionId/generate-agent-draft")
+    GenerateAgentDraftResponse generateAgentDraft(@PathParam("sessionId") String sessionId);
 
     @DELETE
     @Path("/api/sessions/:sessionId")

@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.api.server.AgentSessionWebService;
+import ai.core.api.server.agent.GenerateAgentDraftResponse;
 import ai.core.api.server.session.ApproveToolCallRequest;
 import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
@@ -8,6 +9,7 @@ import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.api.server.session.SessionStatusResponse;
 import ai.core.api.server.session.SessionStatus;
+import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.session.AgentSessionManager;
@@ -27,6 +29,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     AgentSessionManager sessionManager;
     @Inject
     AgentDefinitionService agentDefinitionService;
+    @Inject
+    AgentDraftGenerator agentDraftGenerator;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
@@ -88,6 +92,15 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("session_id", sessionId);
         var session = sessionManager.getSession(sessionId);
         session.cancelTurn();
+    }
+
+    @Override
+    public GenerateAgentDraftResponse generateAgentDraft(String sessionId) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
+        var session = sessionManager.getSession(sessionId);
+        return agentDraftGenerator.generate(session);
     }
 
     @Override

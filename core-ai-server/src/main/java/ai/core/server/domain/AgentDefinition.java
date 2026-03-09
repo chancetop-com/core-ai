@@ -52,6 +52,9 @@ public class AgentDefinition {
     @Field(name = "variables")
     public Map<String, String> variables;
 
+    @Field(name = "webhook_secret")
+    public String webhookSecret;
+
     @Field(name = "system_default")
     public Boolean systemDefault;
 

@@ -61,6 +61,20 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     }
 
     @Override
+    public AgentDefinitionView enableWebhook(String id) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        return agentDefinitionService.enableWebhook(id);
+    }
+
+    @Override
+    public AgentDefinitionView disableWebhook(String id) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        return agentDefinitionService.disableWebhook(id);
+    }
+
+    @Override
     public void delete(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
