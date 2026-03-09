@@ -80,7 +80,6 @@ public class TerminalUI {
             this.jlineReader.setOpt(LineReader.Option.AUTO_LIST);
             this.jlineReader.setOpt(LineReader.Option.AUTO_MENU);
             this.jlineReader.setOpt(LineReader.Option.LIST_PACKED);
-            this.jlineReader.setOpt(LineReader.Option.AUTO_MENU_LIST);
             this.jlineReader.getKeyMaps().get(LineReader.MAIN)
                     .bind(new Reference(LineReader.MENU_COMPLETE), "\t");
             registerSlashWidget();
@@ -414,5 +413,15 @@ public class TerminalUI {
         });
         reader.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference(atWidget), "@");
+
+        reader.getWidgets().put("backspace-refresh", () -> {
+            reader.callWidget(LineReader.BACKWARD_DELETE_CHAR);
+            org.jline.reader.impl.CompletionHelper.refreshCompletion(reader);
+            return true;
+        });
+        reader.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference("backspace-refresh"), "\u007F");
+        reader.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference("backspace-refresh"), "\u0008");
     }
 }
