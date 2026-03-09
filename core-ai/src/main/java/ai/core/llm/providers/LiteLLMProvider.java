@@ -2,6 +2,7 @@ package ai.core.llm.providers;
 
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
+import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.AssistantMessage;
 import ai.core.llm.domain.CaptionImageRequest;
@@ -47,7 +48,7 @@ public class LiteLLMProvider extends LLMProvider {
         super(config);
         this.url = url;
         this.token = token;
-        this.client = HTTPClient.builder()
+        this.client = new PatchedHTTPClientBuilder()
                 .connectTimeout(config.getConnectTimeout())
                 .timeout(config.getTimeout())
                 .trustAll()

@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallResult;
@@ -59,7 +60,7 @@ public class WebSearchTool extends ToolCall {
         return new Builder();
     }
 
-    private final HTTPClient client = HTTPClient.builder().build();
+    private final HTTPClient client = new PatchedHTTPClientBuilder().build();
     private String searchApiEndpoint;
     private String apiKey;
     private int maxResults = 10;
