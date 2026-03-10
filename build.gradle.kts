@@ -72,12 +72,13 @@ configure(
 
 val useLocalProjects = System.getenv("CORE_AI_USE_LOCAL_PROJECTS")?.toBoolean() ?: false
 project(":core-ai") {
+    apply(plugin = "java-library")
     version = ProjectVersions.CORE_AI_VERSION
     dependencies {
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
+        api("com.fasterxml.jackson.core:jackson-core:${Versions.JACKSON_VERSION}")
         implementation("com.github.spullara.mustache.java:compiler:${Versions.MUSTACHE_JAVA_VERSION}")
         implementation("io.milvus:milvus-sdk-java:${Versions.MILVUS_JAVA_VERSION}")
         implementation("com.github.jelmerk:hnswlib-core:${Versions.HNSWLIB_JAVA_VERSION}")
