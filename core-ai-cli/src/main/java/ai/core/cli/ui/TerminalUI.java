@@ -86,7 +86,7 @@ public class TerminalUI {
             this.jlineReader = null;
             this.simpleReader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         } else {
-            this.writer = terminal.writer();
+            this.writer = wrapWriter(terminal.writer());
             this.jlineReader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .appName("core-ai")
@@ -374,7 +374,7 @@ public class TerminalUI {
 
     private void renderPickerList(List<String> items, int selected, int limit) {
         for (int i = 0; i < limit; i++) {
-            writer.print("\r\n\u001B[2K");
+            writer.print("\n\u001B[2K");
             if (i == selected) {
                 writer.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + items.get(i));
             } else {
@@ -387,7 +387,7 @@ public class TerminalUI {
 
     private void clearPickerList(int limit) {
         for (int i = 0; i < limit; i++) {
-            writer.print("\r\n\u001B[2K");
+            writer.print("\n\u001B[2K");
         }
         writer.print("\u001B[" + limit + "A");
         writer.flush();
@@ -456,6 +456,34 @@ public class TerminalUI {
         }
         DebugLog.log("terminal: all providers failed, falling back to default");
         return TerminalBuilder.builder().system(true).build();
+    }
+
+    // on Windows native terminal, \n alone only does LF without CR, causing output to drift right.
+    // wrap writer to auto-translate \n to \r\n
+    private static PrintWriter wrapWriter(PrintWriter delegate) {
+        String os = System.getProperty("os.name", "");
+        if (!os.toLowerCase(Locale.ROOT).contains("win")) return delegate;
+        return new PrintWriter(new java.io.FilterWriter(delegate) {
+            @Override
+            public void write(int c) throws IOException {
+                if (c == '\n') out.write('\r');
+                out.write(c);
+            }
+
+            @Override
+            public void write(char[] cbuf, int off, int len) throws IOException {
+                for (int i = off; i < off + len; i++) {
+                    write(cbuf[i]);
+                }
+            }
+
+            @Override
+            public void write(String str, int off, int len) throws IOException {
+                for (int i = off; i < off + len; i++) {
+                    write(str.charAt(i));
+                }
+            }
+        }, true);
     }
 
     private boolean tryTtyTerminal() {
