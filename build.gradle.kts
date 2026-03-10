@@ -142,6 +142,7 @@ project(":core-ai-cli") {
         implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
         // JLine 3 for modern CLI experience
         implementation("org.jline:jline-terminal:${Versions.JLINE_VERSION}")
+        implementation("org.jline:jline-terminal-ffm:${Versions.JLINE_VERSION}")
         implementation("org.jline:jline-reader:${Versions.JLINE_VERSION}")
         implementation("org.jline:jline-style:${Versions.JLINE_VERSION}")
         // picocli for CLI arg parsing (GraalVM native-image friendly)

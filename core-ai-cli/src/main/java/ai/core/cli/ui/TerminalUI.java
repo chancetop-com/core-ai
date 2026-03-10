@@ -12,6 +12,10 @@ import org.jline.terminal.TerminalBuilder;
 
 import ai.core.utils.JsonUtil;
 
+import org.jline.keymap.BindingReader;
+import org.jline.keymap.KeyMap;
+import org.jline.utils.InfoCmp;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -34,13 +38,11 @@ public class TerminalUI {
         return t == null || Terminal.TYPE_DUMB.equals(t.getType()) || Terminal.TYPE_DUMB_COLOR.equals(t.getType());
     }
 
-    private static int readArrowKey(org.jline.utils.NonBlockingReader reader, int c) throws IOException {
-        if (c != 27) return 0;
-        int c2 = reader.peek(100);
-        if (c2 != '[') return -1;
-        reader.read(100);
-        return reader.read(100);
-    }
+    private static final String PICK_UP = "up";
+    private static final String PICK_DOWN = "down";
+    private static final String PICK_ENTER = "enter";
+    private static final String PICK_QUIT = "quit";
+    private static final String PICK_ESC = "esc";
 
     private final PrintWriter writer;
     private final LineReader jlineReader;
@@ -48,12 +50,28 @@ public class TerminalUI {
     private Terminal terminal;
 
     public TerminalUI() {
-        Logger.getLogger("org.jline").setLevel(Level.SEVERE);
+        boolean isDebug = DebugLog.isEnabled();
+        Logger.getLogger("org.jline").setLevel(isDebug ? Level.FINE : Level.SEVERE);
+        if (isDebug) {
+            // route JLine logs to DebugLog
+            Logger.getLogger("org.jline").addHandler(new java.util.logging.Handler() {
+                @Override public void publish(java.util.logging.LogRecord record) {
+                    DebugLog.log("[jline] " + record.getMessage());
+                    if (record.getThrown() != null) {
+                        DebugLog.log("[jline] exception: " + record.getThrown());
+                    }
+                }
+                @Override public void flush() {}
+                @Override public void close() {}
+            });
+        }
         boolean isDumb;
         try {
-            this.terminal = TerminalBuilder.builder().system(true).build();
+            this.terminal = buildTerminal();
             isDumb = isDumbTerminal(terminal);
+            DebugLog.log("terminal built: type=" + terminal.getType() + ", class=" + terminal.getClass().getName());
         } catch (IOException e) {
+            DebugLog.log("terminal build failed: " + e.getMessage());
             isDumb = true;
         }
 
@@ -261,7 +279,11 @@ public class TerminalUI {
     }
 
     public int pickIndex(List<String> items) {
-        if (items.isEmpty() || terminal == null) return -1;
+        if (items.isEmpty()) return -1;
+        if (terminal == null || isDumbTerminal(terminal)) {
+            DebugLog.log("picker: dumb terminal, falling back to numeric selection");
+            return pickIndexNumeric(items);
+        }
         var savedAttrs = terminal.enterRawMode();
         try {
             return pickIndexRaw(items);
@@ -270,39 +292,89 @@ public class TerminalUI {
         }
     }
 
+    private int pickIndexNumeric(List<String> items) {
+        int limit = Math.min(items.size(), 10);
+        for (int i = 0; i < limit; i++) {
+            writer.println("  " + (i + 1) + ". " + items.get(i));
+        }
+        writer.print(AnsiTheme.PROMPT + "Enter number (1-" + limit + ", q to cancel): " + AnsiTheme.RESET);
+        writer.flush();
+        String line = readRawLine();
+        if (line == null || line.isBlank() || "q".equalsIgnoreCase(line.trim())) return -1;
+        try {
+            int choice = Integer.parseInt(line.trim());
+            if (choice >= 1 && choice <= limit) return choice - 1;
+        } catch (NumberFormatException ignored) {
+        }
+        return -1;
+    }
+
     private int pickIndexRaw(List<String> items) {
         int selected = 0;
         int limit = Math.min(items.size(), 10);
         renderPickerList(items, selected, limit);
+
+        KeyMap<String> keyMap = new KeyMap<>();
+        // use JLine terminal capabilities for cross-platform arrow key support
         try {
-            var reader = terminal.reader();
+            String keyUp = KeyMap.key(terminal, InfoCmp.Capability.key_up);
+            String keyDown = KeyMap.key(terminal, InfoCmp.Capability.key_down);
+            DebugLog.log("picker keyMap: key_up=" + escape(keyUp) + ", key_down=" + escape(keyDown));
+            keyMap.bind(PICK_UP, keyUp);
+            keyMap.bind(PICK_DOWN, keyDown);
+        } catch (Exception e) {
+            DebugLog.log("picker: failed to get terminal key capabilities: " + e.getMessage());
+        }
+        // also bind standard ANSI sequences as fallback
+        keyMap.bind(PICK_UP, "\033[A");
+        keyMap.bind(PICK_DOWN, "\033[B");
+        keyMap.bind(PICK_UP, "\033OA");
+        keyMap.bind(PICK_DOWN, "\033OB");
+        keyMap.bind(PICK_ENTER, "\r");
+        keyMap.bind(PICK_ENTER, "\n");
+        keyMap.bind(PICK_QUIT, "q");
+        keyMap.bind(PICK_QUIT, "Q");
+        keyMap.bind(PICK_ESC, "\033");
+        keyMap.setAmbiguousTimeout(200L);
+
+        DebugLog.log("picker: terminal type=" + terminal.getType() + ", class=" + terminal.getClass().getName());
+
+        var bindingReader = new BindingReader(terminal.reader());
+        try {
             while (true) {
-                int c = reader.read();
-                if (c == '\r' || c == '\n') {
+                String action = bindingReader.readBinding(keyMap);
+                DebugLog.log("picker: action=" + action);
+                if (action == null || PICK_QUIT.equals(action) || PICK_ESC.equals(action)) {
+                    clearPickerList(limit);
+                    return -1;
+                }
+                if (PICK_ENTER.equals(action)) {
                     clearPickerList(limit);
                     return selected;
                 }
-                if (c == 'q' || c == 'Q') {
-                    clearPickerList(limit);
-                    return -1;
-                }
-                int arrow = readArrowKey(reader, c);
-                if (arrow == -1) {
-                    clearPickerList(limit);
-                    return -1;
-                }
-                if (arrow == 'A') selected = (selected - 1 + limit) % limit;
-                if (arrow == 'B') selected = (selected + 1) % limit;
+                if (PICK_UP.equals(action)) selected = (selected - 1 + limit) % limit;
+                if (PICK_DOWN.equals(action)) selected = (selected + 1) % limit;
                 renderPickerList(items, selected, limit);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
+            DebugLog.log("picker: error reading input: " + e.getMessage());
             return -1;
         }
     }
 
+    private static String escape(String s) {
+        if (s == null) return "null";
+        var sb = new StringBuilder();
+        for (char c : s.toCharArray()) {
+            if (c < 32) sb.append("\\x").append(String.format("%02x", (int) c));
+            else sb.append(c);
+        }
+        return sb.toString();
+    }
+
     private void renderPickerList(List<String> items, int selected, int limit) {
         for (int i = 0; i < limit; i++) {
-            writer.print("\n\u001B[2K");
+            writer.print("\r\n\u001B[2K");
             if (i == selected) {
                 writer.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + items.get(i));
             } else {
@@ -315,7 +387,7 @@ public class TerminalUI {
 
     private void clearPickerList(int limit) {
         for (int i = 0; i < limit; i++) {
-            writer.print("\n\u001B[2K");
+            writer.print("\r\n\u001B[2K");
         }
         writer.print("\u001B[" + limit + "A");
         writer.flush();
@@ -363,6 +435,27 @@ public class TerminalUI {
 
     public void close() throws IOException {
         if (terminal != null) terminal.close();
+    }
+
+    private static Terminal buildTerminal() throws IOException {
+        String os = System.getProperty("os.name", "");
+        DebugLog.log("terminal: os.name=" + os);
+        // try each provider explicitly (GraalVM native image may not discover providers via ServiceLoader)
+        for (String providerName : new String[]{"ffm", "jni", "jansi"}) {
+            try {
+                Terminal t = TerminalBuilder.builder().system(true).provider(providerName).build();
+                if (!isDumbTerminal(t)) {
+                    DebugLog.log("terminal: using provider=" + providerName);
+                    return t;
+                }
+                DebugLog.log("terminal: provider " + providerName + " returned dumb terminal, skipping");
+                t.close();
+            } catch (Exception e) {
+                DebugLog.log("terminal: provider " + providerName + " failed: " + e.getMessage());
+            }
+        }
+        DebugLog.log("terminal: all providers failed, falling back to default");
+        return TerminalBuilder.builder().system(true).build();
     }
 
     private boolean tryTtyTerminal() {

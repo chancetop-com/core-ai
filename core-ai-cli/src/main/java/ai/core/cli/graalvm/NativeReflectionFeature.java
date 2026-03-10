@@ -2,10 +2,14 @@ package ai.core.cli.graalvm;
 
 import ai.core.api.tool.function.CoreAiMethod;
 import org.graalvm.nativeimage.hosted.Feature;
+import org.graalvm.nativeimage.hosted.RuntimeForeignAccess;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.MemoryLayout;
+import java.lang.foreign.ValueLayout;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -40,7 +44,10 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.vender.VendorManagement",
         "ai.core.vender.VendorException",
         "ai.core.vender.vendors.RipgrepVendor",
-        "ai.core.cli.remote.RemoteConfig"
+        "ai.core.cli.remote.RemoteConfig",
+        // JLine FFM terminal provider for Windows native terminal support
+        "org.jline.terminal.impl.ffm.FfmTerminalProvider",
+        "org.jline.terminal.impl.ffm.FfmTerminal"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
@@ -49,6 +56,11 @@ public class NativeReflectionFeature implements Feature {
     };
 
     private final Set<Class<?>> registered = new HashSet<>();
+
+    @Override
+    public void duringSetup(DuringSetupAccess access) {
+        registerJLineKernel32Downcalls();
+    }
 
     @Override
     public void beforeAnalysis(BeforeAnalysisAccess access) {
@@ -235,5 +247,39 @@ public class NativeReflectionFeature implements Feature {
         for (var f : clazz.getDeclaredFields()) {
             RuntimeReflection.register(f);
         }
+    }
+
+    // register FFM downcall descriptors for JLine's Kernel32 Windows API calls
+    private void registerJLineKernel32Downcalls() {
+        var I = ValueLayout.JAVA_INT;      // C int / DWORD / BOOL
+        var L = ValueLayout.JAVA_LONG;     // C pointer / HANDLE (64-bit)
+        var S = ValueLayout.JAVA_SHORT;    // C short / WORD
+        var C = ValueLayout.JAVA_CHAR;     // C wchar_t
+        var P = ValueLayout.ADDRESS;       // pointer
+        MemoryLayout COORD = MemoryLayout.structLayout(S.withName("x"), S.withName("y"));
+
+        FunctionDescriptor[] descriptors = {
+            FunctionDescriptor.of(I, P, I),                     // WaitForSingleObject, SetConsoleMode
+            FunctionDescriptor.of(P, I),                        // GetStdHandle, _get_osfhandle
+            FunctionDescriptor.of(I, I, P, I, I, P, I, P),     // FormatMessageW
+            FunctionDescriptor.of(I, P, S),                     // SetConsoleTextAttribute
+            FunctionDescriptor.of(I, P, P),                     // GetConsoleMode, GetConsoleScreenBufferInfo
+            FunctionDescriptor.of(I, P),                        // SetConsoleTitleW, GetFileType
+            FunctionDescriptor.of(I, P, COORD),                 // SetConsoleCursorPosition
+            FunctionDescriptor.of(I, P, C, I, COORD, P),       // FillConsoleOutputCharacterW
+            FunctionDescriptor.of(I, P, S, I, COORD, P),       // FillConsoleOutputAttribute
+            FunctionDescriptor.of(I, P, P, I, P, P),           // WriteConsoleW
+            FunctionDescriptor.of(I, P, P, I, P),              // ReadConsoleInputW, PeekConsoleInputW
+            FunctionDescriptor.of(I),                           // GetLastError
+            FunctionDescriptor.of(I, P, P, P, COORD, P),       // ScrollConsoleScreenBufferW
+        };
+        for (FunctionDescriptor desc : descriptors) {
+            try {
+                RuntimeForeignAccess.registerForDowncall(desc);
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "failed to register FFM downcall: {0}", desc);
+            }
+        }
+        LOGGER.log(Level.INFO, "registered {0} JLine Kernel32 FFM downcall descriptors", descriptors.length);
     }
 }
