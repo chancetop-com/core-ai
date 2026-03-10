@@ -164,7 +164,6 @@ project(":core-ai-benchmark") {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<Test> {
