@@ -42,6 +42,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("max_turns", 100)
             .append("timeout_seconds", 600)
             .append("system_default", true)
+            .append("type", "AGENT")
             .append("status", "PUBLISHED")
             .append("published_config", publishedConfig)
             .append("published_at", now)

@@ -59,6 +59,13 @@ public class AgentDefinition {
     public Boolean systemDefault;
 
     @NotNull
+    @Field(name = "type")
+    public DefinitionType type;
+
+    @Field(name = "response_schema")
+    public String responseSchema;
+
+    @NotNull
     @Field(name = "status")
     public AgentStatus status;
 

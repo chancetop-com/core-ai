@@ -1,5 +1,6 @@
 package ai.core.api.server.agent;
 
+import ai.core.api.apidefinition.ApiDefinitionType;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
@@ -40,4 +41,10 @@ public class CreateAgentRequest {
 
     @Property(name = "variables")
     public Map<String, String> variables;
+
+    @Property(name = "type")
+    public String type;
+
+    @Property(name = "response_schema")
+    public List<ApiDefinitionType> responseSchema;
 }

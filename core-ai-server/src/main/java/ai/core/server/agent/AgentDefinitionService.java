@@ -1,5 +1,6 @@
 package ai.core.server.agent;
 
+import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
@@ -8,13 +9,17 @@ import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.tool.ToolCall;
+import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -41,6 +46,8 @@ public class AgentDefinitionService {
         entity.toolIds = request.toolIds;
         entity.inputTemplate = request.inputTemplate;
         entity.variables = request.variables;
+        entity.type = request.type != null ? DefinitionType.valueOf(request.type) : DefinitionType.AGENT;
+        entity.responseSchema = request.responseSchema != null ? serializeResponseSchema(request.responseSchema) : null;
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -85,6 +92,7 @@ public class AgentDefinitionService {
         if (request.toolIds != null) entity.toolIds = request.toolIds;
         if (request.inputTemplate != null) entity.inputTemplate = request.inputTemplate;
         if (request.variables != null) entity.variables = request.variables;
+        if (request.responseSchema != null) entity.responseSchema = serializeResponseSchema(request.responseSchema);
         entity.updatedAt = ZonedDateTime.now();
 
         agentDefinitionCollection.replace(entity);
@@ -104,6 +112,7 @@ public class AgentDefinitionService {
         config.toolIds = entity.toolIds;
         config.inputTemplate = entity.inputTemplate;
         config.variables = entity.variables;
+        config.responseSchema = entity.responseSchema;
 
         entity.publishedConfig = config;
         entity.status = AgentStatus.PUBLISHED;
@@ -130,6 +139,7 @@ public class AgentDefinitionService {
         entity.timeoutSeconds = 600;
         entity.toolIds = agent.getToolCalls().stream().map(ToolCall::getName).toList();
         entity.inputTemplate = request.inputTemplate;
+        entity.type = DefinitionType.AGENT;
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -175,10 +185,20 @@ public class AgentDefinitionService {
         view.variables = entity.variables;
         view.webhookSecret = entity.webhookSecret;
         view.systemDefault = entity.systemDefault;
+        view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
+        view.responseSchema = entity.responseSchema != null ? deserializeResponseSchema(entity.responseSchema) : null;
         view.status = entity.status != null ? entity.status.name() : null;
         view.publishedAt = entity.publishedAt;
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;
         return view;
+    }
+
+    private String serializeResponseSchema(List<ApiDefinitionType> schema) {
+        return JsonUtil.toJson(schema);
+    }
+
+    private List<ApiDefinitionType> deserializeResponseSchema(String json) {
+        return JsonUtil.fromJson(new TypeReference<>() { }, json);
     }
 }

@@ -1,14 +1,21 @@
 package ai.core.server.run;
 
 import ai.core.agent.Agent;
+import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.llm.LLMProviders;
+import ai.core.llm.domain.CompletionRequest;
+import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -55,7 +62,7 @@ public class AgentRunner {
         agentRunCollection.insert(runEntity);
 
         var runId = runEntity.id;
-        var future = CompletableFuture.runAsync(() -> executeAgent(runEntity, definition), executorService);
+        var future = CompletableFuture.runAsync(() -> execute(runEntity, definition), executorService);
         runningFutures.put(runId, future);
         future.whenComplete((result, error) -> runningFutures.remove(runId));
 
@@ -85,6 +92,14 @@ public class AgentRunner {
         ).isPresent();
     }
 
+    private void execute(AgentRun runEntity, AgentDefinition definition) {
+        if (definition.type == DefinitionType.LLM_CALL) {
+            executeLLMCall(runEntity, definition);
+        } else {
+            executeAgent(runEntity, definition);
+        }
+    }
+
     private void executeAgent(AgentRun runEntity, AgentDefinition definition) {
         var runId = runEntity.id;
         try {
@@ -103,6 +118,82 @@ public class AgentRunner {
             LOGGER.error("agent run failed, runId={}", runId, e);
             updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), null);
         }
+    }
+
+    private void executeLLMCall(AgentRun runEntity, AgentDefinition definition) {
+        var runId = runEntity.id;
+        var config = definition.publishedConfig;
+        var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
+        if (responseSchemaJson == null) {
+            updateRunStatus(runEntity, RunStatus.FAILED, null, "LLM_CALL definition requires response_schema", null);
+            return;
+        }
+        try {
+            var systemPrompt = config != null ? config.systemPrompt : definition.systemPrompt;
+            var model = config != null ? config.model : definition.model;
+            var temperature = config != null ? config.temperature : definition.temperature;
+            var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
+                : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
+
+            List<ApiDefinitionType> responseSchemaTypes = JsonUtil.fromJson(new TypeReference<>() { }, responseSchemaJson);
+            var responseFormat = ResponseSchemaConverter.toResponseFormat(responseSchemaTypes);
+
+            var messages = new ArrayList<Message>();
+            if (systemPrompt != null) {
+                messages.add(Message.of(RoleType.SYSTEM, systemPrompt));
+            }
+            messages.add(Message.of(RoleType.USER, runEntity.input));
+
+            var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
+                messages, null, temperature, model, null, false, responseFormat, null
+            ));
+            request.setTimeoutSeconds(timeoutSeconds);
+
+            var provider = llmProviders.getProvider();
+            var response = provider.completion(request);
+
+            var output = response.choices.getFirst().message.content;
+            var tokenUsage = new TokenUsage();
+            if (response.usage != null) {
+                tokenUsage.input = (long) response.usage.getPromptTokens();
+                tokenUsage.output = (long) response.usage.getCompletionTokens();
+            }
+
+            var transcript = buildLLMCallTranscript(systemPrompt, runEntity.input, output);
+
+            runEntity.status = RunStatus.COMPLETED;
+            runEntity.output = output;
+            runEntity.completedAt = ZonedDateTime.now();
+            runEntity.tokenUsage = tokenUsage;
+            runEntity.transcript = transcript;
+            agentRunCollection.replace(runEntity);
+        } catch (Exception e) {
+            LOGGER.error("llm call run failed, runId={}", runId, e);
+            updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), null);
+        }
+    }
+
+    private List<TranscriptEntry> buildLLMCallTranscript(String systemPrompt, String input, String output) {
+        var transcript = new ArrayList<TranscriptEntry>();
+        if (systemPrompt != null) {
+            var systemEntry = new TranscriptEntry();
+            systemEntry.timestamp = ZonedDateTime.now();
+            systemEntry.role = "system";
+            systemEntry.content = systemPrompt;
+            transcript.add(systemEntry);
+        }
+        var userEntry = new TranscriptEntry();
+        userEntry.timestamp = ZonedDateTime.now();
+        userEntry.role = "user";
+        userEntry.content = input;
+        transcript.add(userEntry);
+
+        var assistantEntry = new TranscriptEntry();
+        assistantEntry.timestamp = ZonedDateTime.now();
+        assistantEntry.role = "assistant";
+        assistantEntry.content = output;
+        transcript.add(assistantEntry);
+        return transcript;
     }
 
     private String executeWithTimeout(Agent agent, String input, int timeoutSeconds) throws Exception {

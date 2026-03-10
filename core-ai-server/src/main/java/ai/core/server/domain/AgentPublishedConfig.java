@@ -32,4 +32,7 @@ public class AgentPublishedConfig {
 
     @Field(name = "variables")
     public Map<String, String> variables;
+
+    @Field(name = "response_schema")
+    public String responseSchema;
 }
