@@ -48,7 +48,8 @@ public class BingScrapingSearchProvider implements SearchProvider {
 
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
-                throw new RuntimeException("Bing returned status " + response.statusCode());
+                LOGGER.error("Bing returned status: {}", response.statusCode());
+                return List.of();
             }
 
             return parseResults(response.body(), maxResults);
