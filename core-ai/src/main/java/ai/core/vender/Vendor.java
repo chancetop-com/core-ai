@@ -59,22 +59,22 @@ public abstract class Vendor {
                 return;
             }
 
-            logger.info("Initializing vendor: {}", getVendorName());
+            logger.debug("Initializing vendor: {}", getVendorName());
 
             try {
                 // Ensure vendor home directory is created
                 getVendorHomeDirectory();
                 if (!isInstalled()) {
-                    logger.info("Vendor {} not found, starting installation...", getVendorName());
+                    logger.debug("Vendor {} not found, starting installation...", getVendorName());
                     download();
                     install();
                     verify();
                 } else {
-                    logger.info("Vendor {} already installed at: {}", getVendorName(), vendorHome);
+                    logger.debug("Vendor {} already installed at: {}", getVendorName(), vendorHome);
                     verify();
                 }
                 initialized = true;
-                logger.info("Vendor {} initialized successfully", getVendorName());
+                logger.debug("Vendor {} initialized successfully", getVendorName());
             } catch (Exception e) {
                 throw new VendorException("Failed to initialize vendor: " + getVendorName(), e);
             }
@@ -104,7 +104,7 @@ public abstract class Vendor {
 
     public void cleanup() {
         try {
-            logger.info("Cleaning up vendor: {}", getVendorName());
+            logger.debug("Cleaning up vendor: {}", getVendorName());
             if (Files.exists(vendorHome)) {
                 SystemUtil.deleteDirectory(vendorHome);
             }
