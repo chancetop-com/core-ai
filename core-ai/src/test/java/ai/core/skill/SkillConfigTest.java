@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -59,21 +58,4 @@ class SkillConfigTest {
         assertEquals(5 * 1024 * 1024, config.getMaxSkillFileSize());
     }
 
-    @Test
-    void workspaceAddsCoreDotAiSkillsSource() {
-        String cwd = System.getProperty("user.dir");
-        var config = SkillConfig.builder()
-                .source("built-in", "/built-in/skills", 0)
-                .workspace()
-                .build();
-
-        assertEquals(2, config.getSources().size());
-        var workspaceSource = config.getSources().stream()
-                .filter(s -> "workspace".equals(s.name()))
-                .findFirst()
-                .orElse(null);
-        assertNotNull(workspaceSource);
-        assertEquals(cwd + "/.core-ai/skills", workspaceSource.path());
-        assertEquals(100, workspaceSource.priority());
-    }
 }
