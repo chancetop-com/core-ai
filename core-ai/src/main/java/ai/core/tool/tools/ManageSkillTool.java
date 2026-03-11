@@ -22,6 +22,7 @@ import java.util.Map;
  *
  * @author xander
  */
+// todo use create_skill to create skill ,delete ManageSkillTool,support marketplace & plugin
 public class ManageSkillTool extends ToolCall {
 
     public static final String TOOL_NAME = "manage_skill";

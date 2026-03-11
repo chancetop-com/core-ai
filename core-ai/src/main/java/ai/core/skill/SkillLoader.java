@@ -152,6 +152,7 @@ public class SkillLoader {
         try {
             var options = new LoaderOptions();
             //todo Prevent YAML Bomb
+            //todo skill counts
             options.setCodePointLimit(maxSkillFileSize);
             // only allow String/Map/List avoid Deserialization attack
             var yaml = new Yaml(new SafeConstructor(options));

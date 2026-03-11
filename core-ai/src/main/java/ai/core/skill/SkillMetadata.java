@@ -26,6 +26,7 @@ public final class SkillMetadata {
     private final String description;
     private final String path;
     private final String skillDir;
+    //todo delete useless var
     private final String license;
     private final String compatibility;
     private final Map<String, String> metadata;
