@@ -5,6 +5,7 @@ import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
+import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
@@ -124,10 +125,6 @@ public class AgentRunner {
         var runId = runEntity.id;
         var config = definition.publishedConfig;
         var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
-        if (responseSchemaJson == null) {
-            updateRunStatus(runEntity, RunStatus.FAILED, null, "LLM_CALL definition requires response_schema", null);
-            return;
-        }
         try {
             var systemPrompt = config != null ? config.systemPrompt : definition.systemPrompt;
             var model = config != null ? config.model : definition.model;
@@ -135,8 +132,11 @@ public class AgentRunner {
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
 
-            List<ApiDefinitionType> responseSchemaTypes = JsonUtil.fromJson(new TypeReference<>() { }, responseSchemaJson);
-            var responseFormat = ResponseSchemaConverter.toResponseFormat(responseSchemaTypes);
+            ResponseFormat responseFormat = null;
+            if (responseSchemaJson != null) {
+                List<ApiDefinitionType> responseSchemaTypes = JsonUtil.fromJson(new TypeReference<>() { }, responseSchemaJson);
+                responseFormat = ResponseSchemaConverter.toResponseFormat(responseSchemaTypes);
+            }
 
             var messages = new ArrayList<Message>();
             if (systemPrompt != null) {

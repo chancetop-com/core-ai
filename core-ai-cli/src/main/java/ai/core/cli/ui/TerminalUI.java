@@ -154,9 +154,13 @@ public class TerminalUI {
     }
 
     public String readInput() {
+        return readInput(null);
+    }
+
+    public String readInput(String promptPrefix) {
         setBlockCursor();
         try {
-            String input = doReadInput();
+            String input = doReadInput(promptPrefix);
             clearInputFrameBelow();
             return input;
         } finally {
@@ -168,17 +172,20 @@ public class TerminalUI {
         writer.flush();
     }
 
-    private String doReadInput() {
+    private String doReadInput(String promptPrefix) {
+        String prompt = promptPrefix != null
+                ? AnsiTheme.PROMPT + promptPrefix + AnsiTheme.RESET
+                : AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET;
         if (jlineReader != null) {
             try {
-                return jlineReader.readLine(AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET);
+                return jlineReader.readLine(prompt);
             } catch (org.jline.reader.UserInterruptException e) {
                 return "/exit";
             } catch (org.jline.reader.EndOfFileException e) {
                 return null;
             }
         }
-        writer.print(AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET);
+        writer.print(prompt);
         writer.flush();
         try {
             return simpleReader.readLine();

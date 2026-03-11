@@ -173,7 +173,7 @@ public class CliApp {
             System.err.println("Error: --api-key is required for remote mode.");
             return;
         }
-        var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant");
+        var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant", null);
         var ui = new TerminalUI();
         try {
             runRemoteSession(ui, config);
@@ -189,7 +189,7 @@ public class CliApp {
         try {
             var api = new RemoteApiClient(config.serverUrl(), config.apiKey());
             var session = HttpAgentSession.connect(api, config.agentId());
-            var runner = new RemoteSessionRunner(ui, session, api);
+            var runner = new RemoteSessionRunner(ui, session, api, config.name());
             runner.run();
         } catch (Exception e) {
             ui.showError(e.getMessage());

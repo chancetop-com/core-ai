@@ -13,7 +13,8 @@ import java.nio.file.Path;
  */
 public record RemoteConfig(@Property(name = "server_url") String serverUrl,
                            @Property(name = "api_key") String apiKey,
-                           @Property(name = "agent_id") String agentId) {
+                           @Property(name = "agent_id") String agentId,
+                           @Property(name = "name") String name) {
     private static final Path CONFIG_PATH = Path.of(System.getProperty("user.home"), ".core-ai", "remote.json");
 
     public static RemoteConfig load() {

@@ -108,6 +108,7 @@ public class AuthService {
         var response = new LoginResponse();
         response.apiKey = user.apiKey;
         response.userId = user.id;
+        response.name = user.name;
         return response;
     }
 

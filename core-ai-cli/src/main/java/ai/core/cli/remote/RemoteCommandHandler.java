@@ -64,22 +64,24 @@ public class RemoteCommandHandler {
 
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Logging in..." + AnsiTheme.RESET);
 
-        var apiKey = login(serverUrl, email.trim(), password.trim());
-        if (apiKey == null) return null;
+        var loginResult = login(serverUrl, email.trim(), password.trim());
+        if (loginResult == null) return null;
 
         ui.printStreamingChunk("\r" + AnsiTheme.SUCCESS + "  ✓ Login successful" + AnsiTheme.RESET + "                    \n");
 
         var agentId = ui.readRawLine("  Agent ID (default: default-assistant): ");
         if (agentId == null || agentId.isBlank()) agentId = "default-assistant";
 
-        var config = new RemoteConfig(serverUrl, apiKey, agentId.trim());
+        var config = new RemoteConfig(serverUrl, loginResult.apiKey, agentId.trim(), loginResult.name);
         config.save();
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Config saved to ~/.core-ai/remote.json" + AnsiTheme.RESET + "\n");
         return config;
     }
 
+    record LoginResult(String apiKey, String name) {}
+
     @SuppressWarnings("unchecked")
-    private String login(String serverUrl, String email, String password) {
+    private LoginResult login(String serverUrl, String email, String password) {
         try {
             var body = JsonUtil.toJson(Map.of("email", email, "password", password));
             var uri = URI.create(serverUrl + "/api/auth/login");
@@ -98,7 +100,7 @@ public class RemoteCommandHandler {
                 return null;
             }
             Map<String, Object> result = JsonUtil.fromJson(Map.class, response.body());
-            return (String) result.get("api_key");
+            return new LoginResult((String) result.get("api_key"), (String) result.get("name"));
         } catch (Exception e) {
             ui.printStreamingChunk("\n" + AnsiTheme.ERROR + "  ✗ Connection failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
             return null;

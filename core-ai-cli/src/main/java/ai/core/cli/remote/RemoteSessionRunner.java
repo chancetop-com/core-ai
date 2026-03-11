@@ -8,6 +8,7 @@ import ai.core.cli.ui.FileReferenceExpander;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.utils.JsonUtil;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,11 +31,21 @@ public class RemoteSessionRunner {
     private final TerminalUI ui;
     private final AgentSession session;
     private final RemoteApiClient api;
+    private final String remotePrompt;
 
-    public RemoteSessionRunner(TerminalUI ui, AgentSession session, RemoteApiClient api) {
+    public RemoteSessionRunner(TerminalUI ui, AgentSession session, RemoteApiClient api, String name) {
         this.ui = ui;
         this.session = session;
         this.api = api;
+        this.remotePrompt = buildRemotePrompt(name, api.serverUrl());
+    }
+
+    private static String buildRemotePrompt(String name, String serverUrl) {
+        String host = URI.create(serverUrl).getHost();
+        if (name != null && !name.isBlank()) {
+            return name + "@" + host + "> ";
+        }
+        return host + "> ";
     }
 
     public void run() {
@@ -85,7 +96,7 @@ public class RemoteSessionRunner {
         while (true) {
             waitForReady(readyForInput);
             if (showFrame) ui.printInputFrame();
-            var input = ui.readInput();
+            var input = ui.readInput(remotePrompt);
             if (input == null || "/exit".equalsIgnoreCase(input.trim())) {
                 queue.offer(POISON_PILL);
                 break;

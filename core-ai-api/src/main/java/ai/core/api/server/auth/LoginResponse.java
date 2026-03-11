@@ -11,4 +11,7 @@ public class LoginResponse {
 
     @Property(name = "user_id")
     public String userId;
+
+    @Property(name = "name")
+    public String name;
 }
