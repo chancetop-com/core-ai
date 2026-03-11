@@ -13,8 +13,8 @@ import ai.core.rag.LongQueryHandler;
 import ai.core.telemetry.Tracer;
 import ai.core.telemetry.TracerRegistry;
 import ai.core.termination.Termination;
-import core.framework.util.Lists;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,7 +40,7 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     String id;
     Tracer tracer;
     ExecutionContext executionContext;
-    List<AbstractLifecycle> agentLifecycles = Lists.newArrayList();
+    List<AbstractLifecycle> agentLifecycles = new ArrayList<>();
 
     // This method needs to be overridden in the subclass Builders
     protected abstract B self();

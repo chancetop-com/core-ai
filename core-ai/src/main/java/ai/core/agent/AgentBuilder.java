@@ -1,23 +1,23 @@
 package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.llm.LLMProvider;
 import ai.core.context.Compression;
 import ai.core.context.CompressionLifecycle;
 import ai.core.context.ToolCallPruning;
 import ai.core.context.ToolCallPruningLifecycle;
+import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.ReasoningEffort;
+import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.memory.Memory;
 import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryLifecycle;
-import ai.core.memory.Memory;
-import ai.core.skill.SkillConfig;
-import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
 import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionListener;
+import ai.core.skill.SkillConfig;
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
@@ -251,7 +251,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     public AgentBuilder agentLifecycle(List<AbstractLifecycle> agentLifecycles) {
-        this.agentLifecycles = agentLifecycles;
+        this.agentLifecycles.addAll(agentLifecycles);
         return this;
     }
 
@@ -282,10 +282,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             description = "assistant agent that help with user";
         }
         build(agent);
+        configureSubAgents(agent);
+        configureToolCallPruning();
+        configureMemory();
+        configureCompression();
 
         // Fetch prompts from Langfuse if configured
         fetchLangfusePromptsIfConfigured();
+        configureToolDiscovery();
         copyValue(agent);
+
         var systemVariables = agent.getSystemVariables();
         systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
         afterAgentBuildLifecycle(agent);
@@ -300,6 +306,17 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
     }
 
+    private void configureSubAgents(Agent agent) {
+        // Process subAgents: convert to SubAgentToolCall and add to toolCalls
+        if (this.subAgents != null && !this.subAgents.isEmpty()) {
+            for (var subAgent : this.subAgents) {
+                subAgent.getSubAgent().setParentNode(agent);
+                toolCalls.add(subAgent);
+            }
+        }
+
+    }
+
     private void copyValue(Agent agent) {
         agent.systemPrompt = this.systemPrompt == null ? "you are a helpful assistant" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
@@ -311,17 +328,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             throw new Error("llmProvider is required for agent, please set it with llmProvider() method");
         }
         agent.toolCalls = this.toolCalls;
-
-        // Process subAgents: convert to SubAgentToolCall and add to toolCalls
-        if (this.subAgents != null && !this.subAgents.isEmpty()) {
-            agent.setSubAgents(this.subAgents);
-            for (var subAgent : this.subAgents) {
-                subAgent.getSubAgent().setParentNode(agent);
-                agent.toolCalls.add(subAgent);
-            }
-        }
-
-        configureToolDiscovery(agent);
+        agent.subAgents = this.subAgents;
 
         agent.ragConfig = this.ragConfig;
         agent.reflectionConfig = this.reflectionConfig;
@@ -341,46 +348,50 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
-
-        if (this.toolCallPruningEnabled) {
-            var pruningCfg = this.toolCallPruningConfig != null ? this.toolCallPruningConfig : ToolCallPruning.Config.defaultConfig();
-            agent.agentLifecycles.addFirst(new ToolCallPruningLifecycle(new ToolCallPruning(pruningCfg.keepRecentSegments(), pruningCfg.excludeToolNames())));
-        }
-
-        if (this.compressionEnabled) {
-            agent.compression = this.compression != null
-                    ? this.compression
-                    : new Compression(this.llmProvider, this.model);
-            agent.agentLifecycles.add(new CompressionLifecycle(agent.compression));
-        }
-        configureMemory(agent);
     }
 
-    private void configureToolDiscovery(Agent agent) {
-        var discoverableTools = agent.toolCalls.stream().filter(ToolCall::isDiscoverable).toList();
+    private void configureToolCallPruning() {
+        if (this.toolCallPruningEnabled) {
+            var pruningCfg = this.toolCallPruningConfig != null ? this.toolCallPruningConfig : ToolCallPruning.Config.defaultConfig();
+            agentLifecycles.addFirst(new ToolCallPruningLifecycle(new ToolCallPruning(pruningCfg.keepRecentSegments(), pruningCfg.excludeToolNames())));
+        }
+    }
+
+    private void configureCompression() {
+        if (compressionEnabled) {
+            if (compression == null) {
+                compression = new Compression(this.llmProvider, this.model);
+            }
+            agentLifecycles.add(new CompressionLifecycle(compression));
+        }
+    }
+
+
+    private void configureToolDiscovery() {
+        var discoverableTools = toolCalls.stream().filter(ToolCall::isDiscoverable).toList();
         if (!discoverableTools.isEmpty()) {
             for (var tool : discoverableTools) {
                 tool.setLlmVisible(false);
             }
-            agent.toolCalls.add(ToolActivationTool.builder().allToolCalls(agent.toolCalls).build());
+            toolCalls.add(ToolActivationTool.builder().allToolCalls(toolCalls).build());
         }
     }
 
-    private void configureMemory(Agent agent) {
+    private void configureMemory() {
         if (this.memory == null) {
             return;
         }
         var config = this.memoryConfig != null
-            ? this.memoryConfig
-            : MemoryConfig.defaultConfig();
+                ? this.memoryConfig
+                : MemoryConfig.defaultConfig();
 
         var lifecycle = new MemoryLifecycle(this.memory, config.getMaxRecallRecords());
-        agent.agentLifecycles.add(lifecycle);
+        agentLifecycles.add(lifecycle);
 
         // Only auto-register MemoryRecallTool if autoRecall is enabled
         if (config.isAutoRecall()) {
             var memoryRecallTool = lifecycle.getMemoryRecallTool();
-            agent.toolCalls.add(memoryRecallTool);
+            toolCalls.add(memoryRecallTool);
         }
     }
 
