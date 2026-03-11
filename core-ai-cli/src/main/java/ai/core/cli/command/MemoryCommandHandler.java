@@ -1,9 +1,13 @@
 package ai.core.cli.command;
 
+import ai.core.cli.DebugLog;
 import ai.core.cli.memory.LocalFileMemoryProvider;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
-import ai.core.memory.MemoryProvider;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * @author xander
@@ -11,9 +15,9 @@ import ai.core.memory.MemoryProvider;
 public class MemoryCommandHandler {
 
     private final TerminalUI ui;
-    private final MemoryProvider memory;
+    private final LocalFileMemoryProvider memory;
 
-    public MemoryCommandHandler(TerminalUI ui, MemoryProvider memory) {
+    public MemoryCommandHandler(TerminalUI ui, LocalFileMemoryProvider memory) {
         this.ui = ui;
         this.memory = memory;
     }
@@ -26,34 +30,11 @@ public class MemoryCommandHandler {
         String args = trimmed.length() > "/memory".length()
                 ? trimmed.substring("/memory".length()).trim()
                 : "";
-        if (args.isEmpty()) {
-            showMemory();
-        } else if (args.startsWith("add ")) {
-            handleAdd(args.substring(4).trim());
-        } else if (args.startsWith("forget ")) {
-            forgetMemory(args.substring(7).trim());
-        } else {
-            printUsage();
-        }
-    }
-
-    private void handleAdd(String rest) {
-        boolean isGlobal = rest.startsWith("--global ");
-        String text = isGlobal ? rest.substring("--global ".length()).trim() : rest;
-        if (text.isBlank()) {
-            ui.printStreamingChunk(AnsiTheme.WARNING + "  Nothing to add.\n" + AnsiTheme.RESET);
-            return;
-        }
-        if (isGlobal) {
-            if (memory instanceof LocalFileMemoryProvider local) {
-                local.saveToScope("global", text);
-                ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                        + " Added to global memory: " + text + "\n\n");
-            } else {
-                ui.printStreamingChunk(AnsiTheme.WARNING + "  --global not supported.\n" + AnsiTheme.RESET);
-            }
-        } else {
-            addMemory(text);
+        switch (args) {
+            case "read", "" -> showMemory();
+            case "edit" -> openInEditor();
+            case "open" -> openFolder();
+            default -> printUsage();
         }
     }
 
@@ -67,46 +48,66 @@ public class MemoryCommandHandler {
         for (String line : content.split("\n")) {
             ui.printStreamingChunk("  " + line + "\n");
         }
-        if (memory instanceof LocalFileMemoryProvider local) {
-            long globalSize = local.sizeInBytes("global");
-            long projectSize = local.sizeInBytes("project");
-            ui.printStreamingChunk(String.format("%n  %sSize: global %d bytes / 5KB, project %d bytes / 10KB%s%n%n",
-                    AnsiTheme.MUTED, globalSize, projectSize, AnsiTheme.RESET));
-        } else {
-            ui.printStreamingChunk("\n");
-        }
+        long globalSize = memory.sizeInBytes("global");
+        long projectSize = memory.sizeInBytes("project");
+        ui.printStreamingChunk(String.format("%n  %sSize: global %d bytes / 5KB, project %d bytes / 10KB%s%n%n",
+                AnsiTheme.MUTED, globalSize, projectSize, AnsiTheme.RESET));
     }
 
-    private void addMemory(String text) {
+    @SuppressWarnings("PMD.SystemPrintln")
+    private void openInEditor() {
+        Path filePath = memory.getProjectPath();
+        ensureFileExists(filePath);
+
+        String editor = System.getenv("EDITOR");
+        if (editor == null) editor = System.getenv("VISUAL");
+        if (editor == null) editor = "vim";
+
         try {
-            memory.save(text);
-            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                    + " Added to project memory: " + text + "\n\n");
-        } catch (Exception e) {
-            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
+            ui.printStreamingChunk("\n  Opening " + filePath + " with " + editor + "...\n\n");
+            var process = new ProcessBuilder(editor, filePath.toAbsolutePath().toString())
+                    .inheritIO()
+                    .start();
+            process.waitFor();
+        } catch (IOException | InterruptedException e) {
+            DebugLog.log("Failed to open editor: " + e.getMessage());
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to open editor: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
 
-    private void forgetMemory(String keyword) {
-        if (keyword.isBlank()) {
-            ui.printStreamingChunk(AnsiTheme.WARNING + "  Keyword required.\n" + AnsiTheme.RESET);
-            return;
+    private void openFolder() {
+        Path folder = memory.getProjectPath().getParent();
+        ensureFileExists(memory.getProjectPath());
+
+        String os = System.getProperty("os.name", "").toLowerCase();
+        String command = os.contains("mac") ? "open" : os.contains("win") ? "explorer" : "xdg-open";
+
+        try {
+            ui.printStreamingChunk("\n  Opening " + folder + "...\n\n");
+            new ProcessBuilder(command, folder.toAbsolutePath().toString()).start();
+        } catch (IOException e) {
+            DebugLog.log("Failed to open folder: " + e.getMessage());
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to open folder: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
-        int total = memory.remove(keyword);
-        if (total > 0) {
-            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                    + " Removed " + total + " matching entries.\n\n");
-        } else {
-            ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "No entries matched '" + keyword + "'." + AnsiTheme.RESET + "\n\n");
+    }
+
+    private void ensureFileExists(Path filePath) {
+        try {
+            Files.createDirectories(filePath.getParent());
+            if (!Files.exists(filePath)) {
+                Files.writeString(filePath, "");
+            }
+        } catch (IOException e) {
+            DebugLog.log("Failed to create memory file: " + e.getMessage());
         }
     }
 
     private void printUsage() {
         ui.printStreamingChunk(String.format("%n  %sUsage:%s%n"
-                        + "  /memory                       Show all memories%n"
-                        + "  /memory add <text>            Add project memory%n"
-                        + "  /memory add --global <text>   Add global memory%n"
-                        + "  /memory forget <keyword>      Remove matching entries%n%n",
+                        + "  /memory              Show all memories%n"
+                        + "  /memory read         Show all memories%n"
+                        + "  /memory edit         Open memory file in editor ($EDITOR or vim)%n"
+                        + "  /memory open         Open memory file folder%n%n",
                 AnsiTheme.PROMPT, AnsiTheme.RESET));
     }
 }

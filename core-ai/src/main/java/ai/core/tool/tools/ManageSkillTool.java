@@ -39,6 +39,14 @@ public class ManageSkillTool extends ToolCall {
             ---
             name: skill-name
             description: What this skill does
+            triggers:
+              - "keyword or phrase that should activate this skill"
+            references:
+              - file: references/guide.md
+                description: Reference file description
+            examples:
+              - "Example user request"
+            output-format: markdown
             ---
             # Skill content in markdown
             """;

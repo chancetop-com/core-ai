@@ -20,7 +20,7 @@ import ai.core.cli.config.ProviderConfigurator;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
-import ai.core.memory.MemoryProvider;
+import ai.core.cli.memory.LocalFileMemoryProvider;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
 import ai.core.session.ToolPermissionStore;
@@ -200,11 +200,13 @@ public class AgentSessionRunner {
             handleExport(trimmed);
         } else if (lower.startsWith("/memory")) {
             memoryCommand.handle(trimmed);
+        } else if (lower.startsWith("/skill config")) {
+            new SkillCommandHandler(ui).handleConfig(trimmed.length() > 13 ? trimmed.substring(13).trim() : "");
         } else if ("/skill".equals(lower) || "/skills".equals(lower)) {
             new SkillCommandHandler(ui).handle();
         } else if (lower.startsWith("/skill ")) {
-            String content = new SkillCommandHandler(ui).loadSkillContent(trimmed.substring(7).trim());
-            if (content != null) queue.offer(content);
+            var sc = new SkillCommandHandler(ui).loadSkillContent(trimmed.substring(7).trim());
+            if (sc != null) queue.offer(sc);
         } else if ("/mcp".equals(lower)) {
             new McpCommandHandler(ui).handle();
         } else if ("/resume".equals(lower)) {
@@ -443,8 +445,6 @@ public class AgentSessionRunner {
         return picked;
     }
 
-    public record Config(String modelName, boolean autoApproveAll, String sessionId,
-                         SessionManager sessionManager, ToolPermissionStore permissionStore,
-                         MemoryProvider memory, ModelRegistry modelRegistry) {
-    }
+    public record Config(String modelName, boolean autoApproveAll, String sessionId, SessionManager sessionManager,
+                         ToolPermissionStore permissionStore, LocalFileMemoryProvider memory, ModelRegistry modelRegistry) { }
 }

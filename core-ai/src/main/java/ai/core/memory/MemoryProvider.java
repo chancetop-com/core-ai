@@ -6,7 +6,7 @@ package ai.core.memory;
 public interface MemoryProvider {
     String load();
 
-    void save(String content);
+    String readRaw();
 
-    int remove(String keyword);
+    String edit(String oldString, String newString);
 }

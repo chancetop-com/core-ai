@@ -14,8 +14,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -107,16 +109,21 @@ public class SkillLoader {
             }
             String content = new String(bytes, StandardCharsets.UTF_8);
             Path skillDir = skillFile.getParent();
-            List<String> resources = scanResources(skillDir);
+            List<String> scannedFiles = scanResourceFiles(skillDir);
             SkillMetadata base = parseSkillMd(content, skillFile.toAbsolutePath().toString(), directoryName);
             if (base == null) return null;
+            List<SkillMetadata.ReferenceEntry> mergedRefs = mergeReferences(base.getReferences(), scannedFiles);
             return SkillMetadata.builder(base.getName(), base.getDescription(), base.getPath())
+                    .type(base.getType())
                     .skillDir(skillDir.toAbsolutePath().toString())
-                    .resources(resources)
                     .license(base.getLicense())
                     .compatibility(base.getCompatibility())
                     .metadata(base.getMetadata())
                     .allowedTools(base.getAllowedTools())
+                    .triggers(base.getTriggers())
+                    .references(mergedRefs)
+                    .examples(base.getExamples())
+                    .outputFormat(base.getOutputFormat())
                     .build();
         } catch (IOException e) {
             LOGGER.warn("Failed to read skill file: {}", skillFile, e);
@@ -124,7 +131,7 @@ public class SkillLoader {
         }
     }
 
-    List<String> scanResources(Path skillDir) {
+    List<String> scanResourceFiles(Path skillDir) {
         String[] subDirs = {"scripts", "references"};
         List<String> result = new ArrayList<>();
         for (String sub : subDirs) {
@@ -142,6 +149,28 @@ public class SkillLoader {
         }
         Collections.sort(result);
         return result;
+    }
+
+    List<SkillMetadata.ReferenceEntry> mergeReferences(List<SkillMetadata.ReferenceEntry> declared, List<String> scannedFiles) {
+        if ((declared == null || declared.isEmpty()) && (scannedFiles == null || scannedFiles.isEmpty())) {
+            return Collections.emptyList();
+        }
+        Set<String> declaredFiles = new LinkedHashSet<>();
+        List<SkillMetadata.ReferenceEntry> merged = new ArrayList<>();
+        if (declared != null) {
+            for (var ref : declared) {
+                declaredFiles.add(ref.file());
+                merged.add(ref);
+            }
+        }
+        if (scannedFiles != null) {
+            for (String file : scannedFiles) {
+                if (!declaredFiles.contains(file)) {
+                    merged.add(new SkillMetadata.ReferenceEntry(file, ""));
+                }
+            }
+        }
+        return merged;
     }
 
     SkillMetadata parseSkillMd(String content, String filePath, String directoryName) {
@@ -171,16 +200,26 @@ public class SkillLoader {
                 return null;
             }
 
+            String type = (String) data.get("type");
             String license = (String) data.get("license");
             String compatibility = (String) data.get("compatibility");
             Map<String, String> metadata = parseMetadata(data.get("metadata"));
             List<String> allowedTools = parseAllowedTools(data.get("allowed-tools"));
+            List<String> triggers = parseStringList(data.get("triggers"));
+            List<SkillMetadata.ReferenceEntry> references = parseReferences(data.get("references"));
+            List<String> examples = parseStringList(data.get("examples"));
+            String outputFormat = (String) data.get("output-format");
 
             return SkillMetadata.builder(name, description, filePath)
+                    .type(type)
                     .license(license)
                     .compatibility(compatibility)
                     .metadata(metadata)
                     .allowedTools(allowedTools)
+                    .triggers(triggers)
+                    .references(references)
+                    .examples(examples)
+                    .outputFormat(outputFormat)
                     .build();
         } catch (Exception e) {
             LOGGER.warn("Failed to parse YAML frontmatter in {}", filePath, e);
@@ -216,5 +255,34 @@ public class SkillLoader {
             return list.stream().map(String::valueOf).toList();
         }
         return Collections.emptyList();
+    }
+
+    private List<String> parseStringList(Object raw) {
+        if (raw == null) return Collections.emptyList();
+        if (raw instanceof List<?> list) {
+            return list.stream().map(String::valueOf).toList();
+        }
+        if (raw instanceof String str) {
+            String trimmed = str.trim();
+            if (trimmed.isEmpty()) return Collections.emptyList();
+            return List.of(trimmed);
+        }
+        return Collections.emptyList();
+    }
+
+    private List<SkillMetadata.ReferenceEntry> parseReferences(Object raw) {
+        if (raw == null) return Collections.emptyList();
+        if (!(raw instanceof List<?> list)) return Collections.emptyList();
+        List<SkillMetadata.ReferenceEntry> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                String file = map.get("file") != null ? String.valueOf(map.get("file")) : null;
+                if (file != null && !file.isBlank()) {
+                    String desc = map.get("description") != null ? String.valueOf(map.get("description")) : "";
+                    result.add(new SkillMetadata.ReferenceEntry(file, desc));
+                }
+            }
+        }
+        return result;
     }
 }

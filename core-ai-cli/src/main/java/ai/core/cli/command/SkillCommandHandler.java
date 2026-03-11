@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * Handles /skill command to list available skills from skill directories.
@@ -56,11 +57,11 @@ public class SkillCommandHandler {
                         .append("\" base_dir=\"").append(skillDir.toAbsolutePath())
                         .append("\">\n")
                         .append(skillMd);
-                List<String> resources = scanResources(skillDir);
-                if (!resources.isEmpty()) {
-                    sb.append("\n\nResources:\n");
-                    for (String resource : resources) {
-                        sb.append("- ").append(resource).append('\n');
+                List<String> refFiles = scanResourceFiles(skillDir);
+                if (!refFiles.isEmpty()) {
+                    sb.append("\n\nReferences:\n");
+                    for (String file : refFiles) {
+                        sb.append("- ").append(file).append('\n');
                     }
                 }
                 sb.append("</skill>");
@@ -77,7 +78,7 @@ public class SkillCommandHandler {
         return null;
     }
 
-    private List<String> scanResources(Path skillDir) {
+    private List<String> scanResourceFiles(Path skillDir) {
         String[] subDirs = {"scripts", "references"};
         var result = new ArrayList<String>();
         for (String sub : subDirs) {
@@ -115,6 +116,64 @@ public class SkillCommandHandler {
             }
         }
         return result;
+    }
+
+    public void handleConfig(String args) {
+        Path configFile = Path.of(".core-ai", "skill-config.properties");
+        if (args == null || args.isBlank()) {
+            showConfig(configFile);
+            return;
+        }
+        String[] parts = args.trim().split("\\s+", 2);
+        if (parts.length < 2) {
+            ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "Usage: /skill config <key> <value>" + AnsiTheme.RESET);
+            ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Example: /skill config recommend on|off" + AnsiTheme.RESET + "\n\n");
+            return;
+        }
+        String key = parts[0];
+        if ("recommend".equals(key)) {
+            boolean enabled = "on".equalsIgnoreCase(parts[1]) || "true".equalsIgnoreCase(parts[1]);
+            saveConfig(configFile, "recommendEnabled", enabled);
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Skill recommendation " + (enabled ? "enabled" : "disabled")
+                    + AnsiTheme.RESET + "\n\n");
+        } else {
+            ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "Unknown config key: " + key + AnsiTheme.RESET + "\n\n");
+        }
+    }
+
+    private void showConfig(Path configFile) {
+        Properties props = loadConfigFile(configFile);
+        ui.printStreamingChunk(String.format("%n  %sSkill Config%s%n", AnsiTheme.PROMPT, AnsiTheme.RESET));
+        boolean recommend = "true".equals(props.getProperty("recommendEnabled", "false"));
+        ui.printStreamingChunk("  recommend: " + (recommend ? "on" : "off") + "\n\n");
+    }
+
+    private void saveConfig(Path configFile, String key, Object value) {
+        Properties props = loadConfigFile(configFile);
+        props.setProperty(key, String.valueOf(value));
+        try {
+            Files.createDirectories(configFile.getParent());
+        } catch (IOException e) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to save config: " + e.getMessage() + AnsiTheme.RESET + "\n");
+            return;
+        }
+        try (var out = Files.newOutputStream(configFile)) {
+            props.store(out, "skill config");
+        } catch (IOException e) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to save config: " + e.getMessage() + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    private Properties loadConfigFile(Path configFile) {
+        var props = new Properties();
+        if (Files.isRegularFile(configFile)) {
+            try (var in = Files.newInputStream(configFile)) {
+                props.load(in);
+            } catch (IOException ignored) {
+                // use defaults
+            }
+        }
+        return props;
     }
 
     private record SkillEntry(String name, String source) {

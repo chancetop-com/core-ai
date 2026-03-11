@@ -16,10 +16,18 @@ public class SlashCommandCompleter implements Completer {
 
     @Override
     public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
-        String word = line.word();
-        if (word == null || !word.startsWith("/")) {
-            return;
+        String buffer = line.line().stripLeading();
+        if (!buffer.startsWith("/")) return;
+
+        int wordIndex = line.wordIndex();
+        if (wordIndex == 0) {
+            completeCommand(line.word(), candidates);
+        } else if (wordIndex == 1) {
+            completeSubCommand(line.words().getFirst(), line.word(), candidates);
         }
+    }
+
+    private void completeCommand(String word, List<Candidate> candidates) {
         for (SlashCommand cmd : SlashCommandRegistry.all()) {
             if (cmd.name().startsWith(word)) {
                 candidates.add(new Candidate(
@@ -29,9 +37,21 @@ public class SlashCommandCompleter implements Completer {
                         cmd.description(),
                         null,
                         null,
-                        true
+                        cmd.subCommands().isEmpty()
                 ));
             }
+        }
+    }
+
+    private void completeSubCommand(String commandName, String word, List<Candidate> candidates) {
+        for (SlashCommand cmd : SlashCommandRegistry.all()) {
+            if (!cmd.name().equals(commandName)) continue;
+            for (String sub : cmd.subCommands()) {
+                if (sub.startsWith(word)) {
+                    candidates.add(new Candidate(sub, sub, null, null, null, null, true));
+                }
+            }
+            break;
         }
     }
 }

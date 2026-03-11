@@ -15,7 +15,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/copy", "Copy last response to clipboard"),
             new SlashCommand("/compact", "Remove old messages to free context"),
             new SlashCommand("/export", "Export session to markdown (/export [file])"),
-            new SlashCommand("/memory", "Show conversation memory summary"),
+            new SlashCommand("/memory", "Show conversation memory", List.of("read", "edit", "open")),
             new SlashCommand("/init", "Create .core-ai/instructions.md project config"),
             new SlashCommand("/skill", "List loaded skills"),
             new SlashCommand("/mcp", "Show MCP server status"),

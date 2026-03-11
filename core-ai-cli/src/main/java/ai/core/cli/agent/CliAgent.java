@@ -13,6 +13,7 @@ import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.ManageSkillTool;
 import ai.core.tool.tools.MemoryTool;
+import ai.core.tool.tools.ReadSkillReferenceTool;
 import ai.core.tool.tools.SkillTool;
 
 import java.io.IOException;
@@ -69,6 +70,10 @@ public class CliAgent {
                 .sources(skillConfig.getSources())
                 .maxFileSize(skillConfig.getMaxSkillFileSize())
                 .build());
+        tools.add(ReadSkillReferenceTool.builder()
+                .sources(skillConfig.getSources())
+                .maxFileSize(skillConfig.getMaxSkillFileSize())
+                .build());
         if (config.memory != null) {
             tools.add(MemoryTool.builder().provider(config.memory).build());
         }
@@ -83,6 +88,11 @@ public class CliAgent {
         var workspaceInfo = buildWorkspaceInfo(config.workspace);
         var sb = new StringBuilder("""
                 You are a helpful AI coding assistant.
+                  For each user request, follow this flow:
+                1. Before execution: check if any system skill should be triggered based on the user's message
+                2. Execute the main task
+                3. After execution: review the conversation and decide if any system skill should be triggered
+                If a system skill's conditions are met at any point, act on it immediately using the relevant tools.
 
                 <workspace>
                 %s
@@ -99,10 +109,10 @@ public class CliAgent {
         if (config.memory != null) {
             sb.append("""
 
-                You have access to persistent memory that survives across sessions.
+                You have access to persistent memory (MEMORY.md) that survives across sessions.
                 - Existing memories are shown in <memory> tags below
-                - Use memory_tool to save when the user shares preferences, project conventions, or explicitly asks to remember
-                - Do NOT save session-specific context, duplicate existing memories, or unverified information
+                - Use memory_tool with action='read' then 'edit' to organize memories into proper sections
+                - Do NOT save session-specific context or duplicate existing memories
                 - Reference existing memories naturally without announcing them
                 """);
             var memoryContent = config.memory.load();
@@ -110,6 +120,11 @@ public class CliAgent {
                 sb.append("\n<memory>\n").append(memoryContent).append("</memory>\n");
             }
         }
+        sb.append("""
+
+                <system-skill> tags contain system skills that run alongside every task.
+              
+                """);
         return sb.toString();
     }
 

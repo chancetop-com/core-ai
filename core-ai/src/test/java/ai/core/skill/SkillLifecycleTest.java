@@ -118,7 +118,83 @@ class SkillLifecycleTest {
         lifecycle.afterAgentBuild(null);
 
         var skill = lifecycle.getLoadedSkills().getFirst();
-        assertTrue(skill.getResources().contains("scripts/collect.sh"));
+        assertTrue(skill.getReferences().stream().anyMatch(r -> "scripts/collect.sh".equals(r.file())));
+    }
+
+    @Test
+    void recommendMatchesByTrigger(@TempDir Path tempDir) throws IOException {
+        createSkillWithTriggers(tempDir, "code-review", "Code review skill",
+                List.of("review code", "check code quality"));
+
+        var config = SkillConfig.builder()
+                .source("test", tempDir.toString(), 0)
+                .recommendEnabled(true)
+                .build();
+        var lifecycle = new SkillLifecycle(config);
+        lifecycle.afterAgentBuild(null);
+
+        var request = new CompletionRequest();
+        request.messages = new ArrayList<>(List.of(
+                Message.of(RoleType.SYSTEM, "You are helpful"),
+                Message.of(RoleType.USER, "please review code for this module")));
+
+        lifecycle.beforeModel(request, ExecutionContext.builder().build());
+
+        assertEquals(3, request.messages.size());
+        assertTrue(request.messages.get(2).getTextContent().contains("code-review"));
+    }
+
+    @Test
+    void recommendDisabledByDefault(@TempDir Path tempDir) throws IOException {
+        createSkillWithTriggers(tempDir, "code-review", "Code review skill",
+                List.of("review code"));
+
+        var config = SkillConfig.of(tempDir.toString());
+        var lifecycle = new SkillLifecycle(config);
+        lifecycle.afterAgentBuild(null);
+
+        var request = new CompletionRequest();
+        request.messages = new ArrayList<>(List.of(
+                Message.of(RoleType.SYSTEM, "You are helpful"),
+                Message.of(RoleType.USER, "review code please")));
+
+        lifecycle.beforeModel(request, ExecutionContext.builder().build());
+
+        assertEquals(2, request.messages.size());
+    }
+
+    @Test
+    void recommendNoMatchDoesNotInject(@TempDir Path tempDir) throws IOException {
+        createSkillWithTriggers(tempDir, "code-review", "Code review skill",
+                List.of("review code"));
+
+        var config = SkillConfig.builder()
+                .source("test", tempDir.toString(), 0)
+                .recommendEnabled(true)
+                .build();
+        var lifecycle = new SkillLifecycle(config);
+        lifecycle.afterAgentBuild(null);
+
+        var request = new CompletionRequest();
+        request.messages = new ArrayList<>(List.of(
+                Message.of(RoleType.SYSTEM, "You are helpful"),
+                Message.of(RoleType.USER, "what is the weather today")));
+
+        lifecycle.beforeModel(request, ExecutionContext.builder().build());
+
+        assertEquals(2, request.messages.size());
+    }
+
+    private void createSkillWithTriggers(Path baseDir, String name, String description, List<String> triggers) throws IOException {
+        var skillDir = baseDir.resolve(name);
+        Files.createDirectories(skillDir);
+        var sb = new StringBuilder(256);
+        sb.append("---\nname: ").append(name).append("\ndescription: ").append(description).append("\ntriggers:\n");
+        for (String trigger : triggers) {
+            sb.append("  - \"").append(trigger).append("\"\n");
+        }
+        sb.append("---\n# ").append(name).append(" Skill\n");
+        Files.writeString(skillDir.resolve("SKILL.md"), sb.toString());
     }
 
     private void createSkillFixture(Path baseDir, String name, String description) throws IOException {

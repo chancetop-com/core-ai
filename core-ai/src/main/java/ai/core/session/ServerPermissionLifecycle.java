@@ -14,9 +14,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.function.Consumer;
 
-/**
- * @author stephen
- */
 public class ServerPermissionLifecycle extends AbstractLifecycle {
     private final Logger logger = LoggerFactory.getLogger(ServerPermissionLifecycle.class);
     private final String sessionId;
@@ -41,10 +38,8 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         logger.debug("beforeTool: tool={}, callId={}", toolName, callId);
 
-        // 1. Notify client that tool is about to start
         dispatcher.accept(ToolStartEvent.of(sessionId, callId, toolName, arguments));
 
-        // 2. Handle approval if needed
         if (autoApproveAll) {
             logger.debug("auto-approve enabled, skipping approval for tool={}, callId={}", toolName, callId);
             return;
@@ -54,17 +49,13 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
             return;
         }
 
-        // Pre-register future BEFORE dispatching, because dispatch may be synchronous
-        // and the listener may call respond() before waitForApproval() creates the future
         permissionGate.prepare(callId);
         logger.debug("dispatching approval request: tool={}, callId={}", toolName, callId);
 
-        // Send approval request
         dispatcher.accept(ToolApprovalRequestEvent.of(sessionId, callId, toolName, arguments));
 
         logger.debug("waiting for approval: tool={}, callId={}", toolName, callId);
-        // Block and wait for client response (future already exists from prepare())
-        var decision = permissionGate.waitForApproval(callId, 300_000); // 5 minutes timeout
+        var decision = permissionGate.waitForApproval(callId, 300_000);
         logger.debug("approval received: tool={}, callId={}, decision={}", toolName, callId, decision);
 
         if (decision == ApprovalDecision.DENY) {

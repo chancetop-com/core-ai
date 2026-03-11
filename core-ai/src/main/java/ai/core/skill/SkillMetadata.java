@@ -10,30 +10,42 @@ import java.util.Map;
  * @author xander
  */
 public final class SkillMetadata {
+
+    public static final String TYPE_SYSTEM = "system";
+    public static final String TYPE_TASK = "task";
+
     public static Builder builder(String name, String description, String path) {
         return new Builder(name, description, path);
     }
 
     private final String name;
     private final String description;
+    private final String type;
     private final String path;
     private final String skillDir;
     private final String license;
     private final String compatibility;
     private final Map<String, String> metadata;
     private final List<String> allowedTools;
-    private final List<String> resources;
+    private final List<String> triggers;
+    private final List<ReferenceEntry> references;
+    private final List<String> examples;
+    private final String outputFormat;
 
     private SkillMetadata(Builder builder) {
         this.name = builder.name;
         this.description = builder.description;
+        this.type = builder.type;
         this.path = builder.path;
         this.skillDir = builder.skillDir;
         this.license = builder.license;
         this.compatibility = builder.compatibility;
         this.metadata = Collections.unmodifiableMap(new LinkedHashMap<>(builder.metadata));
         this.allowedTools = Collections.unmodifiableList(new ArrayList<>(builder.allowedTools));
-        this.resources = Collections.unmodifiableList(new ArrayList<>(builder.resources));
+        this.triggers = Collections.unmodifiableList(new ArrayList<>(builder.triggers));
+        this.references = Collections.unmodifiableList(new ArrayList<>(builder.references));
+        this.examples = Collections.unmodifiableList(new ArrayList<>(builder.examples));
+        this.outputFormat = builder.outputFormat;
     }
 
     public String getName() {
@@ -44,16 +56,20 @@ public final class SkillMetadata {
         return description;
     }
 
+    public String getType() {
+        return type;
+    }
+
+    public boolean isSystemSkill() {
+        return TYPE_SYSTEM.equals(type);
+    }
+
     public String getPath() {
         return path;
     }
 
     public String getSkillDir() {
         return skillDir;
-    }
-
-    public List<String> getResources() {
-        return resources;
     }
 
     public String getLicense() {
@@ -72,16 +88,36 @@ public final class SkillMetadata {
         return allowedTools;
     }
 
+    public List<String> getTriggers() {
+        return triggers;
+    }
+
+    public List<ReferenceEntry> getReferences() {
+        return references;
+    }
+
+    public List<String> getExamples() {
+        return examples;
+    }
+
+    public String getOutputFormat() {
+        return outputFormat;
+    }
+
     public static final class Builder {
         private final String name;
         private final String description;
         private final String path;
+        private String type = TYPE_TASK;
         private String skillDir;
         private String license;
         private String compatibility;
         private Map<String, String> metadata = Collections.emptyMap();
         private List<String> allowedTools = Collections.emptyList();
-        private List<String> resources = Collections.emptyList();
+        private List<String> triggers = Collections.emptyList();
+        private List<ReferenceEntry> references = Collections.emptyList();
+        private List<String> examples = Collections.emptyList();
+        private String outputFormat;
 
         private Builder(String name, String description, String path) {
             this.name = name;
@@ -89,13 +125,13 @@ public final class SkillMetadata {
             this.path = path;
         }
 
-        public Builder skillDir(String skillDir) {
-            this.skillDir = skillDir;
+        public Builder type(String type) {
+            this.type = type != null ? type : TYPE_TASK;
             return this;
         }
 
-        public Builder resources(List<String> resources) {
-            this.resources = resources != null ? resources : Collections.emptyList();
+        public Builder skillDir(String skillDir) {
+            this.skillDir = skillDir;
             return this;
         }
 
@@ -119,8 +155,30 @@ public final class SkillMetadata {
             return this;
         }
 
+        public Builder triggers(List<String> triggers) {
+            this.triggers = triggers != null ? triggers : Collections.emptyList();
+            return this;
+        }
+
+        public Builder references(List<ReferenceEntry> references) {
+            this.references = references != null ? references : Collections.emptyList();
+            return this;
+        }
+
+        public Builder examples(List<String> examples) {
+            this.examples = examples != null ? examples : Collections.emptyList();
+            return this;
+        }
+
+        public Builder outputFormat(String outputFormat) {
+            this.outputFormat = outputFormat;
+            return this;
+        }
+
         public SkillMetadata build() {
             return new SkillMetadata(this);
         }
     }
+
+    public record ReferenceEntry(String file, String description) { }
 }

@@ -49,13 +49,13 @@ public class SkillPromptFormatter {
 
     private String formatSkillEntry(SkillMetadata skill) {
         String base = String.format(SKILL_ENTRY_FORMAT, skill.getName(), skill.getDescription(), skill.getPath());
-        List<String> resources = skill.getResources();
-        if (resources == null || resources.isEmpty()) {
+        var references = skill.getReferences();
+        if (references == null || references.isEmpty()) {
             return base;
         }
-        String resourceList = resources.stream()
-                .map(r -> "`" + r + "`")
+        String refList = references.stream()
+                .map(r -> "`" + r.file() + "`")
                 .collect(Collectors.joining(", "));
-        return base + String.format(SKILL_RESOURCES_LINE, resourceList);
+        return base + String.format(SKILL_RESOURCES_LINE, refList);
     }
 }

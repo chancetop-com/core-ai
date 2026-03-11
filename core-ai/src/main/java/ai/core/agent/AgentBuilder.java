@@ -298,7 +298,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     private void afterAgentBuildLifecycle(Agent agent) {
-        agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
+        agent.agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
     }
 
     private void copyValue(Agent agent) {

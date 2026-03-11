@@ -113,24 +113,33 @@
 
 ---
 
-### Phase 4：内置 Skill 包（E）
+### Phase 4：Skill 包创建与外部 Skill 内部化验证（E）
 
-**目标**：为 CLI 预置高质量 skill。
+**目标**：创建内置 skill 并验证外部 skill 内部化的可行性。
 
-**需新建文件**：
-- `core-ai-cli/src/main/resources/skills/auto-memory/SKILL.md` — 自动记忆管理，跨会话持久化用户偏好和项目约定
-- `core-ai-cli/src/main/resources/skills/code-simplify/SKILL.md` — 代码简化，审查并精简代码以提高清晰度和可维护性
+**需创建的内置 Skill**：
+- `auto-memory` — 自动记忆管理，跨会话持久化用户偏好和项目约定
+- `code-simplify` — 代码简化，审查并精简代码以提高清晰度和可维护性
 
-**需修改文件**：
-- `core-ai-cli/src/main/java/ai/core/cli/agent/CliAgent.java` — 添加内置 skill 源（最低优先级）
+**外部 Skill 内部化验证**：
+- 来源：`https://skillsmp.com/skills/f-prompts-chat-plugins-claude-prompts-chat-skills-skill-lookup-skill-md`
+- 将该外部 skill 内容适配为 core-ai SKILL.md 格式，放入本地 skill 目录验证效果
 
 **改动内容**：
 
-1. Skill 打包为 classpath 资源
-2. CliAgent 添加内置 skill 源，优先级为 0（最低，用户/工作区 skill 可覆盖）
-3. SkillLoader 需支持 classpath 资源加载，或解压到临时目录
+1. 创建 `auto-memory` 和 `code-simplify` 的 SKILL.md（包含 triggers、references 等新字段）
+2. 获取并分析外部 skill 内容结构
+3. 适配为 core-ai SKILL.md 格式
+4. 放入 `~/.core-ai/skills/` 或工作区 `.core-ai/skills/` 目录
+5. 手动测试所有 skill 的加载、触发、执行效果
 
-**验证方式**：CLI 手动测试
+**验证方式**：CLI 手动测试，确认内置 skill 和外部 skill 内部化后均可正常工作
+
+**实现状态**：
+- ✅ `auto-memory` skill 已创建于 `.core-ai/skills/auto-memory/SKILL.md`
+- ✅ `code-simplify` skill 已创建于 `.core-ai/skills/code-simplify/SKILL.md`
+- ⚠️ 外部 skill 源 (skillsmp.com) 被 Cloudflare 防护拦截 (403)，已手动创建 `skill-lookup` 作为外部 skill 内部化的验证示例
+- ⏳ 待人工 CLI 手动验证
 
 ---
 

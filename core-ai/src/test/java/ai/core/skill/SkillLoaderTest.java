@@ -181,7 +181,7 @@ class SkillLoaderTest {
     }
 
     @Test
-    void scanResourcesIncludesScriptsAndReferences(@TempDir Path tempDir) throws IOException {
+    void scanMergesDiscoveredFilesIntoReferences(@TempDir Path tempDir) throws IOException {
         var skillDir = tempDir.resolve("my-skill");
         var scriptsDir = skillDir.resolve("scripts");
         var referencesDir = skillDir.resolve("references");
@@ -199,14 +199,14 @@ class SkillLoaderTest {
         var skills = loader.loadFromSource(tempDir.toString());
         assertEquals(1, skills.size());
         var skill = skills.getFirst();
-        var resources = skill.getResources();
-        assertTrue(resources.contains("scripts/run.sh"));
-        assertTrue(resources.contains("references/guide.md"));
-        assertEquals(2, resources.size());
+        var refs = skill.getReferences();
+        assertEquals(2, refs.size());
+        assertTrue(refs.stream().anyMatch(r -> "scripts/run.sh".equals(r.file())));
+        assertTrue(refs.stream().anyMatch(r -> "references/guide.md".equals(r.file())));
     }
 
     @Test
-    void scanResourcesIgnoresOtherFiles(@TempDir Path tempDir) throws IOException {
+    void scanIgnoresOtherDirectories(@TempDir Path tempDir) throws IOException {
         var skillDir = tempDir.resolve("my-skill");
         var assetsDir = skillDir.resolve("assets");
         Files.createDirectories(assetsDir);
@@ -221,7 +221,7 @@ class SkillLoaderTest {
 
         var skills = loader.loadFromSource(tempDir.toString());
         assertEquals(1, skills.size());
-        assertTrue(skills.getFirst().getResources().isEmpty());
+        assertTrue(skills.getFirst().getReferences().isEmpty());
     }
 
     @Test
@@ -241,6 +241,79 @@ class SkillLoaderTest {
         assertNotNull(skill.getSkillDir());
         assertTrue(skill.getSkillDir().endsWith("my-skill"));
         assertTrue(skill.getPath().endsWith("SKILL.md"));
+    }
+
+    @Test
+    void parseTriggersFromFrontmatter() {
+        String skillsDir = getTestResourcePath("skills");
+        var skills = loader.loadFromSource(skillsDir);
+        var enhanced = skills.stream().filter(s -> "enhanced-skill".equals(s.getName())).findFirst().orElse(null);
+        assertNotNull(enhanced);
+        assertEquals(3, enhanced.getTriggers().size());
+        assertTrue(enhanced.getTriggers().contains("when user asks to enhance code"));
+        assertTrue(enhanced.getTriggers().contains("improve code quality"));
+        assertTrue(enhanced.getTriggers().contains("code enhancement"));
+    }
+
+    @Test
+    void parseReferencesFromFrontmatter() {
+        String skillsDir = getTestResourcePath("skills");
+        var skills = loader.loadFromSource(skillsDir);
+        var enhanced = skills.stream().filter(s -> "enhanced-skill".equals(s.getName())).findFirst().orElse(null);
+        assertNotNull(enhanced);
+        var declaredRefs = enhanced.getReferences().stream()
+                .filter(r -> !r.description().isEmpty())
+                .toList();
+        assertEquals(2, declaredRefs.size());
+        var ref1 = declaredRefs.get(0);
+        assertEquals("references/best-practices.md", ref1.file());
+        assertEquals("Code quality best practices guide", ref1.description());
+        var ref2 = declaredRefs.get(1);
+        assertEquals("references/patterns.md", ref2.file());
+        assertEquals("Common design patterns reference", ref2.description());
+    }
+
+    @Test
+    void parseExamplesFromFrontmatter() {
+        String skillsDir = getTestResourcePath("skills");
+        var skills = loader.loadFromSource(skillsDir);
+        var enhanced = skills.stream().filter(s -> "enhanced-skill".equals(s.getName())).findFirst().orElse(null);
+        assertNotNull(enhanced);
+        assertEquals(2, enhanced.getExamples().size());
+        assertTrue(enhanced.getExamples().contains("Enhance the authentication module"));
+    }
+
+    @Test
+    void parseOutputFormatFromFrontmatter() {
+        String skillsDir = getTestResourcePath("skills");
+        var skills = loader.loadFromSource(skillsDir);
+        var enhanced = skills.stream().filter(s -> "enhanced-skill".equals(s.getName())).findFirst().orElse(null);
+        assertNotNull(enhanced);
+        assertEquals("markdown", enhanced.getOutputFormat());
+    }
+
+    @Test
+    void skillWithoutNewFieldsHasEmptyDefaults() {
+        String skillsDir = getTestResourcePath("skills");
+        var skills = loader.loadFromSource(skillsDir);
+        var codeReview = skills.stream().filter(s -> "code-review".equals(s.getName())).findFirst().orElse(null);
+        assertNotNull(codeReview);
+        assertTrue(codeReview.getTriggers().isEmpty());
+        assertTrue(codeReview.getExamples().isEmpty());
+        assertNull(codeReview.getOutputFormat());
+    }
+
+    @Test
+    void mergeReferencesDeduplicates() {
+        var declared = List.of(
+                new SkillMetadata.ReferenceEntry("references/guide.md", "Guide doc"));
+        var scanned = List.of("references/guide.md", "scripts/run.sh");
+        var merged = loader.mergeReferences(declared, scanned);
+        assertEquals(2, merged.size());
+        assertEquals("references/guide.md", merged.get(0).file());
+        assertEquals("Guide doc", merged.get(0).description());
+        assertEquals("scripts/run.sh", merged.get(1).file());
+        assertEquals("", merged.get(1).description());
     }
 
     private String getTestResourcePath(String path) {

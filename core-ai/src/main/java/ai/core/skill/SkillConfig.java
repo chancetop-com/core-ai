@@ -23,17 +23,19 @@ public final class SkillConfig {
     }
 
     public static SkillConfig disabled() {
-        return new SkillConfig(Collections.emptyList(), false, DEFAULT_MAX_SKILL_FILE_SIZE);
+        return new SkillConfig(Collections.emptyList(), false, DEFAULT_MAX_SKILL_FILE_SIZE, false);
     }
 
     private final List<SkillSource> sources;
     private final boolean enabled;
     private final int maxSkillFileSize;
+    private final boolean recommendEnabled;
 
-    private SkillConfig(List<SkillSource> sources, boolean enabled, int maxSkillFileSize) {
+    private SkillConfig(List<SkillSource> sources, boolean enabled, int maxSkillFileSize, boolean recommendEnabled) {
         this.sources = sources;
         this.enabled = enabled;
         this.maxSkillFileSize = maxSkillFileSize;
+        this.recommendEnabled = recommendEnabled;
     }
 
     public List<SkillSource> getSources() {
@@ -48,10 +50,15 @@ public final class SkillConfig {
         return maxSkillFileSize;
     }
 
+    public boolean isRecommendEnabled() {
+        return recommendEnabled;
+    }
+
     public static final class Builder {
         private final List<SkillSource> sources = new ArrayList<>();
         private boolean enabled = true;
         private int maxSkillFileSize = DEFAULT_MAX_SKILL_FILE_SIZE;
+        private boolean recommendEnabled;
 
         private Builder() {
         }
@@ -78,9 +85,14 @@ public final class SkillConfig {
             return this;
         }
 
+        public Builder recommendEnabled(boolean recommendEnabled) {
+            this.recommendEnabled = recommendEnabled;
+            return this;
+        }
+
         public SkillConfig build() {
             Collections.sort(sources);
-            return new SkillConfig(new ArrayList<>(sources), enabled, maxSkillFileSize);
+            return new SkillConfig(new ArrayList<>(sources), enabled, maxSkillFileSize, recommendEnabled);
         }
     }
 }
