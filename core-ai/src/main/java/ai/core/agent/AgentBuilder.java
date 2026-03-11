@@ -11,7 +11,6 @@ import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryLifecycle;
 import ai.core.memory.Memory;
 import ai.core.skill.SkillConfig;
-import ai.core.skill.SkillLifecycle;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -348,8 +347,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agent.agentLifecycles.addFirst(new ToolCallPruningLifecycle(new ToolCallPruning(pruningCfg.keepRecentSegments(), pruningCfg.excludeToolNames())));
         }
 
-        configureSkills(agent);
-
         if (this.compressionEnabled) {
             agent.compression = this.compression != null
                     ? this.compression
@@ -357,13 +354,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agent.agentLifecycles.add(new CompressionLifecycle(agent.compression));
         }
         configureMemory(agent);
-    }
-
-    // Skills must run after ToolCallPruning (index 0) but before Compression (added last)
-    private void configureSkills(Agent agent) {
-        if (this.skillConfig == null || !this.skillConfig.isEnabled()) return;
-        var skillLifecycleIndex = this.toolCallPruningEnabled ? 1 : 0;
-        agent.agentLifecycles.add(skillLifecycleIndex, new SkillLifecycle(this.skillConfig));
     }
 
     private void configureToolDiscovery(Agent agent) {
