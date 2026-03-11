@@ -25,8 +25,6 @@ public class SkillLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillLoader.class);
     private static final String SKILL_FILE_NAME = "SKILL.md";
     private static final Pattern FRONTMATTER_PATTERN = Pattern.compile("^---\\s*\\r?\\n(.*?)\\r?\\n---\\s*\\r?\\n", Pattern.DOTALL);
-    private static final Pattern SKILL_NAME_PATTERN = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
-    private static final int MAX_SKILL_NAME_LENGTH = 64;
 
     private final int maxSkillFileSize;
 
@@ -42,7 +40,7 @@ public class SkillLoader {
         var sorted = new ArrayList<>(sources);
         Collections.sort(sorted);
         for (var source : sorted) {
-            var skills = loadFromSource(source.getPath());
+            var skills = loadFromSource(source.path());
             for (var skill : skills) {
                 skillMap.put(skill.getName(), skill);
             }
@@ -90,6 +88,7 @@ public class SkillLoader {
         }
     }
 
+    // Parse symlinks to prevent... /.. Attacks like /etc/passwd
     private boolean isWithinDirectory(Path file, Path directory) {
         try {
             return file.toRealPath().startsWith(directory);
@@ -152,7 +151,9 @@ public class SkillLoader {
         }
         try {
             var options = new LoaderOptions();
+            //todo Prevent YAML Bomb
             options.setCodePointLimit(maxSkillFileSize);
+            // only allow String/Map/List avoid Deserialization attack
             var yaml = new Yaml(new SafeConstructor(options));
             Map<String, Object> data = yaml.load(matcher.group(1));
             if (data == null) {
@@ -189,8 +190,7 @@ public class SkillLoader {
     }
 
     boolean validateSkillName(String name, String directoryName) {
-        if (name == null || name.length() > MAX_SKILL_NAME_LENGTH) return false;
-        if (!SKILL_NAME_PATTERN.matcher(name).matches()) return false;
+        if (!SkillMetadata.isValidName(name)) return false;
         return name.equals(directoryName);
     }
 

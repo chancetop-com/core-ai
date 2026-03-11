@@ -17,10 +17,10 @@ class SkillConfigTest {
         var config = SkillConfig.of("/path/a", "/path/b");
         assertTrue(config.isEnabled());
         assertEquals(2, config.getSources().size());
-        assertEquals("/path/a", config.getSources().get(0).getPath());
-        assertEquals("/path/b", config.getSources().get(1).getPath());
-        assertEquals(0, config.getSources().get(0).getPriority());
-        assertEquals(1, config.getSources().get(1).getPriority());
+        assertEquals("/path/a", config.getSources().get(0).path());
+        assertEquals("/path/b", config.getSources().get(1).path());
+        assertEquals(0, config.getSources().get(0).priority());
+        assertEquals(1, config.getSources().get(1).priority());
     }
 
     @Test
@@ -38,9 +38,9 @@ class SkillConfigTest {
                 .build();
 
         assertEquals(3, config.getSources().size());
-        assertEquals("low", config.getSources().get(0).getName());
-        assertEquals("mid", config.getSources().get(1).getName());
-        assertEquals("high", config.getSources().get(2).getName());
+        assertEquals("low", config.getSources().get(0).name());
+        assertEquals("mid", config.getSources().get(1).name());
+        assertEquals("high", config.getSources().get(2).name());
     }
 
     @Test
@@ -69,11 +69,11 @@ class SkillConfigTest {
 
         assertEquals(2, config.getSources().size());
         var workspaceSource = config.getSources().stream()
-                .filter(s -> "workspace".equals(s.getName()))
+                .filter(s -> "workspace".equals(s.name()))
                 .findFirst()
                 .orElse(null);
         assertNotNull(workspaceSource);
-        assertEquals(cwd + "/.core-ai/skills", workspaceSource.getPath());
-        assertEquals(100, workspaceSource.getPriority());
+        assertEquals(cwd + "/.core-ai/skills", workspaceSource.path());
+        assertEquals(100, workspaceSource.priority());
     }
 }

@@ -1,15 +1,23 @@
 package ai.core.skill;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * @author xander
  */
 public final class SkillMetadata {
+    private static final Pattern SKILL_NAME_PATTERN = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
+    private static final int MAX_SKILL_NAME_LENGTH = 64;
+
+    public static boolean isValidName(String name) {
+        if (name == null || name.isEmpty() || name.length() > MAX_SKILL_NAME_LENGTH) return false;
+        return SKILL_NAME_PATTERN.matcher(name).matches();
+    }
+
     public static Builder builder(String name, String description, String path) {
         return new Builder(name, description, path);
     }
@@ -32,8 +40,8 @@ public final class SkillMetadata {
         this.license = builder.license;
         this.compatibility = builder.compatibility;
         this.metadata = Collections.unmodifiableMap(new LinkedHashMap<>(builder.metadata));
-        this.allowedTools = Collections.unmodifiableList(new ArrayList<>(builder.allowedTools));
-        this.resources = Collections.unmodifiableList(new ArrayList<>(builder.resources));
+        this.allowedTools = List.copyOf(builder.allowedTools);
+        this.resources = List.copyOf(builder.resources);
     }
 
     public String getName() {

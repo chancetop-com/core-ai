@@ -17,7 +17,7 @@ import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionListener;
-import ai.core.skill.SkillConfig;
+
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
@@ -56,9 +56,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     // Memory configuration
     private Memory memory;
     private MemoryConfig memoryConfig;
-
-    // Skill configuration
-    private SkillConfig skillConfig;
 
     // SubAgent configuration
     private List<SubAgentToolCall> subAgents = Lists.newArrayList();
@@ -124,16 +121,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     public AgentBuilder unifiedMemory(Memory memory, MemoryConfig config) {
         this.memory = memory;
         this.memoryConfig = config;
-        return this;
-    }
-
-    public AgentBuilder skills(String... paths) {
-        this.skillConfig = SkillConfig.of(paths);
-        return this;
-    }
-
-    public AgentBuilder skills(SkillConfig config) {
-        this.skillConfig = config;
         return this;
     }
 

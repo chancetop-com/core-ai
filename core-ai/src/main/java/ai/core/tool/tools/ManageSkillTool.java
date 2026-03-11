@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+import ai.core.skill.SkillMetadata;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -75,10 +76,16 @@ public class ManageSkillTool extends ToolCall {
         if (name == null || name.isBlank()) {
             return ToolCallResult.failed("'name' is required for create action");
         }
+        if (!SkillMetadata.isValidName(name)) {
+            return ToolCallResult.failed("Invalid skill name '" + name + "': must be lowercase alphanumeric with hyphens, max 64 chars");
+        }
         if (content == null || content.isBlank()) {
             return ToolCallResult.failed("'content' is required for create action");
         }
         Path skillDir = skillsDir.resolve(name);
+        if (!isWithinDirectory(skillDir, skillsDir)) {
+            return ToolCallResult.failed("Invalid skill path");
+        }
         Files.createDirectories(skillDir);
         Path file = skillDir.resolve("SKILL.md");
         Files.writeString(file, content);
@@ -92,13 +99,29 @@ public class ManageSkillTool extends ToolCall {
         if (name == null || name.isBlank()) {
             return ToolCallResult.failed("'name' is required for delete action");
         }
+        if (!SkillMetadata.isValidName(name)) {
+            return ToolCallResult.failed("Invalid skill name '" + name + "'");
+        }
         Path skillDir = skillsDir.resolve(name);
+        if (!isWithinDirectory(skillDir, skillsDir)) {
+            return ToolCallResult.failed("Invalid skill path");
+        }
         if (!Files.isDirectory(skillDir)) {
             return ToolCallResult.failed("Skill '" + name + "' not found");
         }
         deleteDirectory(skillDir);
         return ToolCallResult.completed("Skill '" + name + "' deleted.")
                 .withDuration(System.currentTimeMillis() - startTime);
+    }
+
+    private boolean isWithinDirectory(Path target, Path parent) {
+        try {
+            Path resolvedParent = parent.toAbsolutePath().normalize();
+            Path resolvedTarget = target.toAbsolutePath().normalize();
+            return resolvedTarget.startsWith(resolvedParent);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void deleteDirectory(Path dir) throws IOException {

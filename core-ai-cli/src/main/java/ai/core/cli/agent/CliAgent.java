@@ -38,7 +38,6 @@ public class CliAgent {
                 .toolCalls(tools)
                 .temperature(0.8);
 
-        builder.skills(skillConfig);
         configureMcp(builder);
 
         if (config.persistenceProvider != null) {
