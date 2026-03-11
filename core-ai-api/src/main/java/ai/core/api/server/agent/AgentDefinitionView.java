@@ -59,6 +59,9 @@ public class AgentDefinitionView {
     @Property(name = "response_schema")
     public List<ApiDefinitionType> responseSchema;
 
+    @Property(name = "created_by")
+    public String createdBy;
+
     @Property(name = "status")
     public String status;
 

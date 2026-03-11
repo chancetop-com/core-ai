@@ -14,7 +14,6 @@ public class ThinkingSpinner {
 
     private static final char[] BRAILLE_FRAMES = {'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'};
     private static final long FRAME_INTERVAL_MS = 80;
-    private static final String CLEAR_LINE = "\u001B[2K\r";
     private static final long MESSAGE_INTERVAL_MS = 3000;
     private static final int FALLBACK_WIDTH = 80;
     private static final String[] SPINNER_MESSAGES = {
@@ -87,7 +86,8 @@ public class ThinkingSpinner {
                 content = content.substring(0, termWidth - 1);
             }
             clearWrappedLines(termWidth, prevContentLen);
-            writer.print(CLEAR_LINE + AnsiTheme.PROMPT + content + AnsiTheme.RESET);
+            int pad = Math.max(0, prevContentLen - content.length());
+            writer.print("\r" + AnsiTheme.PROMPT + content + AnsiTheme.RESET + " ".repeat(pad));
             writer.flush();
             lastContentLen = content.length();
             prevContentLen = lastContentLen;
@@ -150,9 +150,9 @@ public class ThinkingSpinner {
         if (termWidth > 0) {
             clearWrappedLines(termWidth, lastContentLen);
         }
-        lastContentLen = 0;
-        writer.print(CLEAR_LINE);
+        writer.print("\r" + " ".repeat(lastContentLen) + "\r");
         writer.flush();
+        lastContentLen = 0;
     }
 
     public long getElapsedMs() {

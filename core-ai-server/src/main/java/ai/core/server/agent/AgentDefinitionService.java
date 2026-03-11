@@ -10,6 +10,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.User;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.tool.ToolCall;
 import ai.core.utils.JsonUtil;
@@ -28,6 +29,9 @@ import java.util.UUID;
 public class AgentDefinitionService {
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
+
+    @Inject
+    MongoCollection<User> userCollection;
 
     @Inject
     AgentSessionManager sessionManager;
@@ -185,6 +189,7 @@ public class AgentDefinitionService {
         view.variables = entity.variables;
         view.webhookSecret = entity.webhookSecret;
         view.systemDefault = entity.systemDefault;
+        view.createdBy = resolveUserName(entity.userId);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema != null ? deserializeResponseSchema(entity.responseSchema) : null;
         view.status = entity.status != null ? entity.status.name() : null;
@@ -192,6 +197,11 @@ public class AgentDefinitionService {
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;
         return view;
+    }
+
+    private String resolveUserName(String userId) {
+        if (userId == null) return null;
+        return userCollection.get(userId).map(u -> u.name).orElse(userId);
     }
 
     private String serializeResponseSchema(List<ApiDefinitionType> schema) {

@@ -122,7 +122,7 @@ public class RemoteSessionRunner {
         switch (lower) {
             case "/help" -> printHelp();
             case "/build-agent" -> new CreateAgentCommandHandler(ui, api, session.id()).handle();
-            case "/agents" -> handleAgents();
+            case "/agents" -> new AgentCommandHandler(ui, api).handle();
             case "/tools" -> handleTools();
             case "/debug" -> {
                 if (DebugLog.isEnabled()) {
@@ -136,10 +136,6 @@ public class RemoteSessionRunner {
             }
             case "/clear" -> ui.printStreamingChunk("\u001B[2J\u001B[H");
             default -> {
-                if (lower.startsWith("/agent ")) {
-                    handleAgentDetail(cmd.substring(7).trim());
-                    break;
-                }
                 if (lower.startsWith("/stats") || lower.startsWith("/model")
                         || lower.startsWith("/undo") || lower.startsWith("/compact") || lower.startsWith("/export")
                         || lower.startsWith("/copy") || lower.startsWith("/resume") || lower.startsWith("/memory")
@@ -157,8 +153,7 @@ public class RemoteSessionRunner {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote Commands:" + AnsiTheme.RESET + "\n");
         String[][] cmds = {
                 {"/build-agent", "Build agent from current conversation, so it can be scheduled periodically on the server"},
-                {"/agents", "List available agents"},
-                {"/agent <id>", "Show agent details"},
+                {"/agents", "Manage agents (details, trigger, schedule)"},
                 {"/tools", "List available tools"},
                 {"/debug", "Toggle debug mode"},
                 {"/clear", "Clear screen"},
@@ -168,77 +163,6 @@ public class RemoteSessionRunner {
             ui.printStreamingChunk(String.format("  %s%-16s%s %s%s%s%n",
                     AnsiTheme.CMD_NAME, c[0], AnsiTheme.RESET,
                     AnsiTheme.MUTED, c[1], AnsiTheme.RESET));
-        }
-        ui.printStreamingChunk("\n");
-    }
-
-    @SuppressWarnings("unchecked")
-    private void handleAgents() {
-        String json;
-        try {
-            json = api.get("/api/agents");
-        } catch (RemoteApiException e) {
-            ui.showError(e.getMessage());
-            return;
-        }
-        if (json == null) {
-            ui.showError("failed to fetch agents");
-            return;
-        }
-        Map<String, Object> response = JsonUtil.fromJson(Map.class, json);
-        var agents = (List<Map<String, Object>>) response.get("agents");
-        if (agents == null || agents.isEmpty()) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  No agents found.\n" + AnsiTheme.RESET);
-            return;
-        }
-        ui.printStreamingChunk(String.format("%n  %sAgents (%d)%s%n", AnsiTheme.PROMPT, agents.size(), AnsiTheme.RESET));
-        for (var agent : agents) {
-            var id = (String) agent.get("id");
-            var name = (String) agent.get("name");
-            var isDefault = Boolean.TRUE.equals(agent.get("system_default"));
-            var status = (String) agent.get("status");
-            String marker = isDefault ? AnsiTheme.SUCCESS + " (default)" + AnsiTheme.RESET : "";
-            String statusTag = status != null ? AnsiTheme.MUTED + " [" + status + "]" + AnsiTheme.RESET : "";
-            ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + id + AnsiTheme.RESET + marker + statusTag + "\n");
-            if (name != null) {
-                ui.printStreamingChunk(AnsiTheme.MUTED + "    " + name);
-                var desc = (String) agent.get("description");
-                if (desc != null && !desc.isBlank()) {
-                    ui.printStreamingChunk(" - " + truncate(desc, 60));
-                }
-                ui.printStreamingChunk(AnsiTheme.RESET + "\n");
-            }
-        }
-        ui.printStreamingChunk("\n");
-    }
-
-    @SuppressWarnings("unchecked")
-    private void handleAgentDetail(String agentId) {
-        String json;
-        try {
-            json = api.get("/api/agents/" + agentId);
-        } catch (RemoteApiException e) {
-            ui.showError(e.getMessage());
-            return;
-        }
-        if (json == null) {
-            ui.showError("failed to fetch agent: " + agentId);
-            return;
-        }
-        Map<String, Object> agent = JsonUtil.fromJson(Map.class, json);
-        ui.printStreamingChunk(String.format("%n  %sAgent: %s%s%n", AnsiTheme.PROMPT, agent.get("name"), AnsiTheme.RESET));
-        printField("ID", agent.get("id"));
-        printField("Model", agent.get("model"));
-        printField("Temperature", agent.get("temperature"));
-        printField("Max Turns", agent.get("max_turns"));
-        printField("Status", agent.get("status"));
-        var toolIds = (List<String>) agent.get("tool_ids");
-        if (toolIds != null && !toolIds.isEmpty()) {
-            printField("Tools", String.join(", ", toolIds));
-        }
-        var prompt = (String) agent.get("system_prompt");
-        if (prompt != null && !prompt.isBlank()) {
-            printField("System Prompt", truncate(prompt, 80));
         }
         ui.printStreamingChunk("\n");
     }
@@ -277,11 +201,6 @@ public class RemoteSessionRunner {
             ui.printStreamingChunk("\n");
         }
         ui.printStreamingChunk("\n");
-    }
-
-    private void printField(String label, Object value) {
-        if (value == null) return;
-        ui.printStreamingChunk(String.format("  %s%-15s%s %s%n", AnsiTheme.MUTED, label + ":", AnsiTheme.RESET, value));
     }
 
     private void waitForReady(Semaphore readyForInput) {
