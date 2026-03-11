@@ -163,7 +163,13 @@ public class RemoteSessionRunner {
 
     @SuppressWarnings("unchecked")
     private void handleAgents() {
-        var json = api.get("/api/agents");
+        String json;
+        try {
+            json = api.get("/api/agents");
+        } catch (RemoteApiException e) {
+            ui.showError(e.getMessage());
+            return;
+        }
         if (json == null) {
             ui.showError("failed to fetch agents");
             return;
@@ -197,7 +203,13 @@ public class RemoteSessionRunner {
 
     @SuppressWarnings("unchecked")
     private void handleAgentDetail(String agentId) {
-        var json = api.get("/api/agents/" + agentId);
+        String json;
+        try {
+            json = api.get("/api/agents/" + agentId);
+        } catch (RemoteApiException e) {
+            ui.showError(e.getMessage());
+            return;
+        }
         if (json == null) {
             ui.showError("failed to fetch agent: " + agentId);
             return;
@@ -222,7 +234,13 @@ public class RemoteSessionRunner {
 
     @SuppressWarnings("unchecked")
     private void handleTools() {
-        var json = api.get("/api/tools");
+        String json;
+        try {
+            json = api.get("/api/tools");
+        } catch (RemoteApiException e) {
+            ui.showError(e.getMessage());
+            return;
+        }
         if (json == null) {
             ui.showError("failed to fetch tools");
             return;

@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -86,11 +87,33 @@ public class RemoteApiClient {
             var response = apiClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
                 DebugLog.log("API error: " + response.statusCode() + " " + response.body());
+                var message = parseErrorMessage(response.statusCode(), response.body());
+                throw new RemoteApiException(response.statusCode(), message);
             }
             return response.body();
+        } catch (RemoteApiException e) {
+            throw e;
         } catch (Exception e) {
             DebugLog.log("API request failed: " + e.getMessage());
             return null;
         }
+    }
+
+    private String parseErrorMessage(int statusCode, String body) {
+        if (body != null && !body.isBlank()) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> error = JsonUtil.fromJson(Map.class, body);
+                var message = error.get("message");
+                if (message != null) return String.valueOf(message);
+            } catch (Exception ignored) {
+            }
+        }
+        return switch (statusCode) {
+            case 401 -> "authentication failed, please re-login with /remote";
+            case 403 -> "access denied";
+            case 404 -> "resource not found";
+            default -> "server error (" + statusCode + ")";
+        };
     }
 }
