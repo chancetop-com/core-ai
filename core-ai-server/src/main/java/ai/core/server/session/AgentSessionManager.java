@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
@@ -32,9 +33,10 @@ public class AgentSessionManager {
     @Inject
     ToolRegistryService toolRegistryService;
 
-    public String createSession(SessionConfig config) {
+    public String createSession(SessionConfig config, String userId) {
         var sessionId = UUID.randomUUID().toString();
-        var agent = buildAgent(config, null);
+        var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
+        var agent = buildAgent(config, null, context);
         var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
         var permissionStore = new InMemoryToolPermissionStore();
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
@@ -42,7 +44,7 @@ public class AgentSessionManager {
         return sessionId;
     }
 
-    public String createSessionFromAgent(AgentDefinition definition, SessionConfig overrides) {
+    public String createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
         var config = toSessionConfig(definition);
         if (overrides != null) {
             if (overrides.model != null) config.model = overrides.model;
@@ -55,7 +57,8 @@ public class AgentSessionManager {
         var tools = toolRegistryService.resolveTools(toolIds);
 
         var sessionId = UUID.randomUUID().toString();
-        var agent = buildAgent(config, tools.isEmpty() ? null : tools);
+        var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
+        var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
         var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
         var permissionStore = new InMemoryToolPermissionStore();
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
@@ -84,7 +87,7 @@ public class AgentSessionManager {
         return config;
     }
 
-    private Agent buildAgent(SessionConfig config, List<ToolCall> tools) {
+    private Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context) {
         var builder = Agent.builder()
                 .llmProvider(llmProviders.getProvider())
                 .toolCalls(tools != null ? tools : BuiltinTools.ALL)
@@ -100,6 +103,10 @@ public class AgentSessionManager {
         }
         if (config != null && config.maxTurns != null) {
             builder.maxTurn(config.maxTurns);
+        }
+
+        if (context != null) {
+            builder.executionContext(context);
         }
 
         var provider = persistenceProviders.getDefaultPersistenceProvider();

@@ -1,5 +1,6 @@
 package ai.core.server.llmcall;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.server.agent.AgentDefinitionService;
@@ -26,19 +27,19 @@ public final class PublishLLMCallTool extends ToolCall {
     }
 
     private final AgentDefinitionService agentDefinitionService;
-    private String userId;
 
     private PublishLLMCallTool(AgentDefinitionService agentDefinitionService) {
         this.agentDefinitionService = agentDefinitionService;
     }
 
-    public void setUserId(String userId) {
-        this.userId = userId;
+    @Override
+    public ToolCallResult execute(String text) {
+        return execute(text, null);
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public ToolCallResult execute(String text) {
+    public ToolCallResult execute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {
             var args = JSON.fromJSON(Map.class, text);
@@ -62,6 +63,7 @@ public final class PublishLLMCallTool extends ToolCall {
                 request.responseSchema = schemaTypes;
             }
 
+            var userId = context != null ? context.getUserId() : null;
             var view = agentDefinitionService.create(request, userId != null ? userId : "system");
             agentDefinitionService.publish(view.id);
 
@@ -70,9 +72,9 @@ public final class PublishLLMCallTool extends ToolCall {
                 .append(view.id)
                 .append("\nName: ")
                 .append(view.name)
-                .append("\nTrigger endpoint: POST /api/runs/agent/")
+                .append("\nAPI endpoint: POST /api/llm/")
                 .append(view.id)
-                .append("/trigger\nRequest body: {\"input\": \"your input text\"}\n");
+                .append("/call\nRequest body: {\"input\": \"your input text\"}\n");
 
             return ToolCallResult.completed(result.toString())
                 .withDuration(System.currentTimeMillis() - startTime);

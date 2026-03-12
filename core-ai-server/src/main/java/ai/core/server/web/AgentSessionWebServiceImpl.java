@@ -40,9 +40,9 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         String sessionId;
         if (request.agentId != null) {
             var agent = agentDefinitionService.getEntity(request.agentId);
-            sessionId = sessionManager.createSessionFromAgent(agent, request.config);
+            sessionId = sessionManager.createSessionFromAgent(agent, request.config, userId);
         } else {
-            sessionId = sessionManager.createSession(request.config);
+            sessionId = sessionManager.createSession(request.config, userId);
         }
 
         var response = new CreateSessionResponse();

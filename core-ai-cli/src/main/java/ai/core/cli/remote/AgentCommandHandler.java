@@ -90,8 +90,9 @@ public class AgentCommandHandler {
         var agentId = (String) agent.get("id");
         var agentName = (String) agent.get("name");
         var type = (String) agent.get("type");
+        var isDefault = Boolean.TRUE.equals(agent.get("system_default"));
         printAgentDetail(agent);
-        return handleAgentAction(agentId, agentName, "LLM_CALL".equals(type));
+        return handleAgentAction(agentId, agentName, "LLM_CALL".equals(type), isDefault);
     }
 
     private List<Map<String, Object>> filterAgents(List<Map<String, Object>> agents) {
@@ -129,10 +130,13 @@ public class AgentCommandHandler {
         }
     }
 
-    private AgentSwitch handleAgentAction(String agentId, String agentName, boolean isLLMCall) {
-        var actions = isLLMCall
-            ? List.of("Chat", "Test", "Back")
-            : List.of("Chat", "Trigger run", "Schedule", "Back");
+    private AgentSwitch handleAgentAction(String agentId, String agentName, boolean isLLMCall, boolean isDefault) {
+        List<String> actions;
+        if (isDefault || isLLMCall) {
+            actions = isLLMCall ? List.of("Chat", "Test", "Back") : List.of("Chat", "Back");
+        } else {
+            actions = List.of("Chat", "Trigger run", "Schedule", "Back");
+        }
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Action:" + AnsiTheme.RESET + "\n");
         int actionIdx = ui.pickIndex(actions);
         if (actionIdx < 0 || actionIdx == actions.size() - 1) return null;
