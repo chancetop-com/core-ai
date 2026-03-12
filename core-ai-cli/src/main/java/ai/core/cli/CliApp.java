@@ -189,7 +189,7 @@ public class CliApp {
         try {
             var api = new RemoteApiClient(config.serverUrl(), config.apiKey());
             var session = HttpAgentSession.connect(api, config.agentId());
-            var runner = new RemoteSessionRunner(ui, session, api, config.name());
+            var runner = new RemoteSessionRunner(ui, session, api, config.name(), config.agentId());
             runner.run();
         } catch (Exception e) {
             ui.showError(e.getMessage());

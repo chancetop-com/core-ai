@@ -48,52 +48,50 @@ public class AgentCommandHandler {
 
     private final TerminalUI ui;
     private final RemoteApiClient api;
-    private final String promptPrefix;
 
-    public AgentCommandHandler(TerminalUI ui, RemoteApiClient api, String promptPrefix) {
+    public AgentCommandHandler(TerminalUI ui, RemoteApiClient api) {
         this.ui = ui;
         this.api = api;
-        this.promptPrefix = promptPrefix;
     }
 
     @SuppressWarnings("unchecked")
-    public void handle() {
+    public AgentSwitch handle() {
         List<Map<String, Object>> agents;
         try {
             var json = api.get("/api/agents");
             if (json == null) {
                 ui.showError("failed to fetch agents");
-                return;
+                return null;
             }
             Map<String, Object> response = JsonUtil.fromJson(Map.class, json);
             agents = (List<Map<String, Object>>) response.get("agents");
         } catch (RemoteApiException e) {
             ui.showError(e.getMessage());
-            return;
+            return null;
         }
         if (agents == null || agents.isEmpty()) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  No agents found.\n" + AnsiTheme.RESET);
-            return;
+            return null;
         }
 
         var filtered = filterAgents(agents);
         if (filtered.isEmpty()) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  No matching agents.\n" + AnsiTheme.RESET);
-            return;
+            return null;
         }
 
         ui.printStreamingChunk(AnsiTheme.PROMPT + "  Select agent:" + AnsiTheme.RESET + "\n");
         var labels = buildAgentLabels(filtered);
 
         int selected = ui.pickIndex(labels);
-        if (selected < 0) return;
+        if (selected < 0) return null;
 
         var agent = filtered.get(selected);
         var agentId = (String) agent.get("id");
         var agentName = (String) agent.get("name");
         var type = (String) agent.get("type");
         printAgentDetail(agent);
-        handleAgentAction(agentId, agentName, "LLM_CALL".equals(type));
+        return handleAgentAction(agentId, agentName, "LLM_CALL".equals(type));
     }
 
     private List<Map<String, Object>> filterAgents(List<Map<String, Object>> agents) {
@@ -131,27 +129,36 @@ public class AgentCommandHandler {
         }
     }
 
-    private void handleAgentAction(String agentId, String agentName, boolean isLLMCall) {
+    private AgentSwitch handleAgentAction(String agentId, String agentName, boolean isLLMCall) {
         var actions = isLLMCall
-            ? List.of("Test", "Back")
+            ? List.of("Chat", "Test", "Back")
             : List.of("Chat", "Trigger run", "Schedule", "Back");
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Action:" + AnsiTheme.RESET + "\n");
         int actionIdx = ui.pickIndex(actions);
-        if (actionIdx < 0 || actionIdx == actions.size() - 1) return;
+        if (actionIdx < 0 || actionIdx == actions.size() - 1) return null;
 
         if (isLLMCall) {
-            if (actionIdx == 0) testLLMCall(agentId);
-        } else {
-            switch (actionIdx) {
-                case 0 -> {
-                    var chatPrompt = promptPrefix + ":" + (agentName != null ? agentName : agentId) + "> ";
-                    new AgentChatSession(ui, api).start(agentId, chatPrompt);
+            return switch (actionIdx) {
+                case 0 -> new AgentSwitch(agentId, agentName != null ? agentName : agentId);
+                case 1 -> {
+                    testLLMCall(agentId);
+                    yield null;
                 }
-                case 1 -> triggerRun(agentId);
-                case 2 -> manageSchedule(agentId);
-                default -> { }
-            }
+                default -> null;
+            };
         }
+        return switch (actionIdx) {
+            case 0 -> new AgentSwitch(agentId, agentName != null ? agentName : agentId);
+            case 1 -> {
+                triggerRun(agentId);
+                yield null;
+            }
+            case 2 -> {
+                manageSchedule(agentId);
+                yield null;
+            }
+            default -> null;
+        };
     }
 
     private void testLLMCall(String agentId) {
@@ -316,4 +323,6 @@ public class AgentCommandHandler {
         if (value == null) return;
         ui.printStreamingChunk(String.format("  %s%-15s%s %s%n", AnsiTheme.MUTED, label + ":", AnsiTheme.RESET, value));
     }
+
+    record AgentSwitch(String agentId, String agentName) { }
 }

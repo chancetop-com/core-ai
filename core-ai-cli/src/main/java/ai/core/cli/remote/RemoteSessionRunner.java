@@ -1,6 +1,5 @@
 package ai.core.cli.remote;
 
-import ai.core.api.server.session.AgentSession;
 import ai.core.cli.DebugLog;
 import ai.core.cli.command.SlashCommand;
 import ai.core.cli.listener.RemoteEventListener;
@@ -49,19 +48,22 @@ public class RemoteSessionRunner {
     }
 
     private final TerminalUI ui;
-    private final AgentSession session;
     private final RemoteApiClient api;
     private final String promptPrefix;
+    private volatile HttpAgentSession session;
+    private volatile RemoteEventListener listener;
+    private volatile String currentPrompt;
 
-    public RemoteSessionRunner(TerminalUI ui, AgentSession session, RemoteApiClient api, String name) {
+    public RemoteSessionRunner(TerminalUI ui, HttpAgentSession session, RemoteApiClient api, String name, String agentId) {
         this.ui = ui;
-        this.session = session;
         this.api = api;
         this.promptPrefix = buildPromptPrefix(name, api.serverUrl());
+        this.session = session;
+        this.listener = new RemoteEventListener(ui, session);
+        this.currentPrompt = promptPrefix + ":" + agentId + "> ";
     }
 
     public void run() {
-        var listener = new RemoteEventListener(ui, session);
         session.onEvent(listener);
 
         BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
@@ -70,11 +72,25 @@ public class RemoteSessionRunner {
         ui.setSlashCommands(REMOTE_COMMANDS);
         try {
             printBanner();
-            startSenderThread(messageQueue, listener, readyForInput);
+            startSenderThread(messageQueue, readyForInput);
             readInputLoop(messageQueue, readyForInput);
             session.close();
         } finally {
             ui.resetSlashCommands();
+        }
+    }
+
+    private void switchAgent(String agentId, String agentName) {
+        session.close();
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Switching to " + agentName + "..." + AnsiTheme.RESET + "\n");
+        try {
+            session = HttpAgentSession.connect(api, agentId);
+            listener = new RemoteEventListener(ui, session);
+            session.onEvent(listener);
+            currentPrompt = promptPrefix + ":" + agentName + "> ";
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Session: " + session.id() + AnsiTheme.RESET + "\n\n");
+        } catch (RuntimeException e) {
+            ui.showError("failed to switch agent: " + e.getMessage());
         }
     }
 
@@ -86,7 +102,7 @@ public class RemoteSessionRunner {
         ui.printStreamingChunk(AnsiTheme.MUTED + "  /help for commands, /exit to return to local mode" + AnsiTheme.RESET + "\n");
     }
 
-    private void startSenderThread(BlockingQueue<String> queue, RemoteEventListener listener, Semaphore readyForInput) {
+    private void startSenderThread(BlockingQueue<String> queue, Semaphore readyForInput) {
         Thread senderThread = new Thread(() -> {
             try {
                 while (true) {
@@ -113,7 +129,7 @@ public class RemoteSessionRunner {
         while (true) {
             waitForReady(readyForInput);
             if (showFrame) ui.printInputFrame();
-            var input = ui.readInput(promptPrefix + "> ");
+            var input = ui.readInput(currentPrompt);
             if (input == null || "/exit".equalsIgnoreCase(input.trim())) {
                 queue.offer(POISON_PILL);
                 break;
@@ -139,8 +155,13 @@ public class RemoteSessionRunner {
         switch (lower) {
             case "/help" -> printHelp();
             case "/build-agent" -> new CreateAgentCommandHandler(ui, api, session.id()).handle();
-            case "/build-llm-call-api" -> new BuildLLMCallCommandHandler(ui, api, promptPrefix).handle();
-            case "/agents" -> new AgentCommandHandler(ui, api, promptPrefix).handle();
+            case "/build-llm-call-api" -> switchAgent("llm-call-builder", "llm-call-builder");
+            case "/agents" -> {
+                var switchReq = new AgentCommandHandler(ui, api).handle();
+                if (switchReq != null) {
+                    switchAgent(switchReq.agentId(), switchReq.agentName());
+                }
+            }
             case "/tools" -> handleTools();
             case "/debug" -> {
                 if (DebugLog.isEnabled()) {
