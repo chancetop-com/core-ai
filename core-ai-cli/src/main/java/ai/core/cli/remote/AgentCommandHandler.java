@@ -88,8 +88,9 @@ public class AgentCommandHandler {
 
         var agent = filtered.get(selected);
         var agentId = (String) agent.get("id");
+        var type = (String) agent.get("type");
         printAgentDetail(agent);
-        handleAgentAction(agentId);
+        handleAgentAction(agentId, "LLM_CALL".equals(type));
     }
 
     private List<Map<String, Object>> filterAgents(List<Map<String, Object>> agents) {
@@ -127,16 +128,49 @@ public class AgentCommandHandler {
         }
     }
 
-    private void handleAgentAction(String agentId) {
-        var actions = List.of("Trigger run", "Schedule", "Back");
+    private void handleAgentAction(String agentId, boolean isLLMCall) {
+        var actions = isLLMCall
+            ? List.of("Test", "Back")
+            : List.of("Chat", "Trigger run", "Schedule", "Back");
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Action:" + AnsiTheme.RESET + "\n");
         int actionIdx = ui.pickIndex(actions);
-        if (actionIdx < 0 || actionIdx == 2) return;
+        if (actionIdx < 0 || actionIdx == actions.size() - 1) return;
 
-        switch (actionIdx) {
-            case 0 -> triggerRun(agentId);
-            case 1 -> manageSchedule(agentId);
-            default -> { }
+        if (isLLMCall) {
+            if (actionIdx == 0) testLLMCall(agentId);
+        } else {
+            switch (actionIdx) {
+                case 0 -> new AgentChatSession(ui, api).start(agentId, "chat> ");
+                case 1 -> triggerRun(agentId);
+                case 2 -> manageSchedule(agentId);
+                default -> { }
+            }
+        }
+    }
+
+    private void testLLMCall(String agentId) {
+        var input = ui.readRawLine("  Test input: ");
+        if (input == null || input.isBlank()) return;
+        triggerRunWithInput(agentId, input.trim());
+    }
+
+    private void triggerRunWithInput(String agentId, String input) {
+        var body = new LinkedHashMap<String, Object>();
+        body.put("input", input);
+        try {
+            var json = api.post("/api/runs/agent/" + agentId + "/trigger", body);
+            if (json == null) {
+                ui.showError("failed to trigger run");
+                return;
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = JsonUtil.fromJson(Map.class, json);
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Run triggered" + AnsiTheme.RESET + "\n");
+            printField("Run ID", result.get("run_id"));
+            printField("Status", result.get("status"));
+            ui.printStreamingChunk("\n");
+        } catch (RemoteApiException e) {
+            ui.showError(e.getMessage());
         }
     }
 
