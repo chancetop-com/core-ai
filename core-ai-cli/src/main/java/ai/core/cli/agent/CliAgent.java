@@ -128,6 +128,9 @@ public class CliAgent {
                 - Use memory_tool with action='read' then 'edit' to organize memories into proper sections
                 - Do NOT save session-specific context or duplicate existing memories
                 - Reference existing memories naturally without announcing them
+                - If a skill in <available_skills> describes memory-related triggers (e.g. detecting user \
+                preferences, corrections, or conventions), follow its instructions to proactively persist \
+                relevant information using memory_tool throughout the conversation
                 """);
             var memoryContent = config.memory.load();
             if (!memoryContent.isBlank()) {

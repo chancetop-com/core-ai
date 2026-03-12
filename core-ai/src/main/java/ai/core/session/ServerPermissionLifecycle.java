@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.function.Consumer;
 
 /**
- * Server-side permission lifecycle for tool call approval.
+ * Server-side permission lifecycle manager for tool call approval.
  */
 public class ServerPermissionLifecycle extends AbstractLifecycle {
     private final Logger logger = LoggerFactory.getLogger(ServerPermissionLifecycle.class);
