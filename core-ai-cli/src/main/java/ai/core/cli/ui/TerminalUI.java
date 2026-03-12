@@ -46,6 +46,7 @@ public class TerminalUI {
 
     private final PrintWriter writer;
     private final LineReader jlineReader;
+    private final SlashCommandCompleter slashCompleter;
     private final BufferedReader simpleReader;
     private Terminal terminal;
 
@@ -84,14 +85,16 @@ public class TerminalUI {
         if (isDumb) {
             this.writer = terminal != null ? terminal.writer() : new PrintWriter(System.out, true, StandardCharsets.UTF_8);
             this.jlineReader = null;
+            this.slashCompleter = null;
             this.simpleReader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         } else {
             this.writer = wrapWriter(terminal.writer());
+            this.slashCompleter = new SlashCommandCompleter();
             this.jlineReader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .appName("core-ai")
                     .completer(new org.jline.reader.impl.completer.AggregateCompleter(
-                            new SlashCommandCompleter(),
+                            slashCompleter,
                             new FileReferenceCompleter()
                     ))
                     .build();
@@ -103,6 +106,14 @@ public class TerminalUI {
             registerSlashWidget();
             this.simpleReader = null;
         }
+    }
+
+    public void setSlashCommands(List<ai.core.cli.command.SlashCommand> commands) {
+        if (slashCompleter != null) slashCompleter.setCommands(commands);
+    }
+
+    public void resetSlashCommands() {
+        if (slashCompleter != null) slashCompleter.resetCommands();
     }
 
     public void printStreamingChunk(String chunk) {

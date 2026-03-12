@@ -13,6 +13,15 @@ import java.util.List;
  * @author xander
  */
 public class SlashCommandCompleter implements Completer {
+    private volatile List<SlashCommand> commands = SlashCommandRegistry.all();
+
+    public void setCommands(List<SlashCommand> commands) {
+        this.commands = commands;
+    }
+
+    public void resetCommands() {
+        this.commands = SlashCommandRegistry.all();
+    }
 
     @Override
     public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
@@ -20,7 +29,7 @@ public class SlashCommandCompleter implements Completer {
         if (word == null || !word.startsWith("/")) {
             return;
         }
-        for (SlashCommand cmd : SlashCommandRegistry.all()) {
+        for (SlashCommand cmd : commands) {
             if (cmd.name().startsWith(word)) {
                 candidates.add(new Candidate(
                         cmd.name(),

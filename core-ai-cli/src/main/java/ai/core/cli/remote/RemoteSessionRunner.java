@@ -2,6 +2,7 @@ package ai.core.cli.remote;
 
 import ai.core.api.server.session.AgentSession;
 import ai.core.cli.DebugLog;
+import ai.core.cli.command.SlashCommand;
 import ai.core.cli.listener.RemoteEventListener;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.FileReferenceExpander;
@@ -48,6 +49,16 @@ public class RemoteSessionRunner {
         return host + "> ";
     }
 
+    private static final List<SlashCommand> REMOTE_COMMANDS = List.of(
+        new SlashCommand("/help", "Show available commands"),
+        new SlashCommand("/build-agent", "Build agent from conversation"),
+        new SlashCommand("/agents", "Manage agents (details, trigger, schedule)"),
+        new SlashCommand("/tools", "List available tools"),
+        new SlashCommand("/debug", "Toggle debug mode"),
+        new SlashCommand("/clear", "Clear screen"),
+        new SlashCommand("/exit", "Disconnect and return to local mode")
+    );
+
     public void run() {
         var listener = new RemoteEventListener(ui, session);
         session.onEvent(listener);
@@ -55,10 +66,15 @@ public class RemoteSessionRunner {
         BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
         Semaphore readyForInput = new Semaphore(1);
 
-        printBanner();
-        startSenderThread(messageQueue, listener, readyForInput);
-        readInputLoop(messageQueue, readyForInput);
-        session.close();
+        ui.setSlashCommands(REMOTE_COMMANDS);
+        try {
+            printBanner();
+            startSenderThread(messageQueue, listener, readyForInput);
+            readInputLoop(messageQueue, readyForInput);
+            session.close();
+        } finally {
+            ui.resetSlashCommands();
+        }
     }
 
     private void printBanner() {
