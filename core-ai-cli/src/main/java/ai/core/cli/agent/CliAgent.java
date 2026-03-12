@@ -10,6 +10,7 @@ import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AddMcpServerTool;
+import ai.core.tool.tools.GrepFileTool;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.ManageSkillTool;
 import ai.core.tool.tools.MemoryTool;
@@ -60,6 +61,12 @@ public class CliAgent {
 
     private static List<ToolCall> buildTools(Config config, SkillConfig skillConfig) {
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
+        tools.replaceAll(tool -> {
+            if (tool instanceof GrepFileTool) {
+                return GrepFileTool.builder().workingDir(config.workspace.toFile()).build();
+            }
+            return tool;
+        });
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
         tools.add(ManageSkillTool.builder()
@@ -88,13 +95,19 @@ public class CliAgent {
         var workspaceInfo = buildWorkspaceInfo(config.workspace);
         var sb = new StringBuilder("""
                 You are a helpful AI coding assistant.
+
                 ## Skills (mandatory)
                 Before replying: scan <available_skills> <description> entries.
                   - If exactly one skill clearly applies: read its SKILL.md at <location> with `read`, then follow it.
                   - If multiple could apply: choose the most specific one, then read/follow it.
                   - If none clearly apply: do not read any SKILL.md.
+                  - If a skill defines an execution flow (e.g. actions before and after the main task), you MUST follow it.
+                  - After completing the main task, re-evaluate whether any skill should be triggered based on what happened.
                 Constraints: never read more than one skill up front; only read after selecting.
-                
+                When a skill has a <base_dir>, use it as the default path for grep_file and read operations within that skill.
+
+                {{AVAILABLE_SKILLS}}
+
                 <workspace>
                 %s
                 </workspace>
@@ -106,18 +119,6 @@ public class CliAgent {
         if (!instructions.isEmpty()) {
             sb.append("\n<project-instructions>\n").append(instructions).append("</project-instructions>\n");
         }
-
-        sb.append("""
-
-                <available_skills> lists all loaded skills. For each user request:
-                1. Check if any skill matches the task — if so, use use_skill to load it before proceeding.
-                2. Check if any skill defines an execution flow (e.g. observational skills that require action \
-                before and after the main task) — you MUST follow their flow instructions throughout the conversation.
-                3. After completing the main task, re-evaluate whether any skill should be triggered based on \
-                what happened during execution.
-
-                {{AVAILABLE_SKILLS}}
-                """);
 
         if (config.memory != null) {
             sb.append("""

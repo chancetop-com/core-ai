@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 public class GrepFileTool extends ToolCall {
     public static final String TOOL_NAME = "grep_file";
 
+    private java.io.File workingDir;
+
     private static final String TOOL_DESC = """
             A powerful search tool built on ripgrep
 
@@ -56,6 +58,9 @@ public class GrepFileTool extends ToolCall {
 
             // Execute ripgrep
             var pb = new ProcessBuilder(command);
+            if (workingDir != null) {
+                pb.directory(workingDir);
+            }
             pb.redirectErrorStream(true);
 
             process = pb.start();
@@ -203,8 +208,15 @@ public class GrepFileTool extends ToolCall {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, GrepFileTool> {
+        private java.io.File workingDir;
+
         @Override
         protected Builder self() {
+            return this;
+        }
+
+        public Builder workingDir(java.io.File workingDir) {
+            this.workingDir = workingDir;
             return this;
         }
 
@@ -226,6 +238,7 @@ public class GrepFileTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(Boolean.class, "multiline", "Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false.")
                     ));
             var tool = new GrepFileTool();
+            tool.workingDir = this.workingDir;
             build(tool);
             return tool;
         }
