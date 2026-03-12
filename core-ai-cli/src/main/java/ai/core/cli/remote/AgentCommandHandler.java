@@ -132,8 +132,10 @@ public class AgentCommandHandler {
 
     private AgentSwitch handleAgentAction(String agentId, String agentName, boolean isLLMCall, boolean isDefault) {
         List<String> actions;
-        if (isDefault || isLLMCall) {
-            actions = isLLMCall ? List.of("Chat", "Test", "Back") : List.of("Chat", "Back");
+        if (isLLMCall) {
+            actions = List.of("Test", "Back");
+        } else if (isDefault) {
+            actions = List.of("Chat", "Back");
         } else {
             actions = List.of("Chat", "Trigger run", "Schedule", "Back");
         }
@@ -142,14 +144,8 @@ public class AgentCommandHandler {
         if (actionIdx < 0 || actionIdx == actions.size() - 1) return null;
 
         if (isLLMCall) {
-            return switch (actionIdx) {
-                case 0 -> new AgentSwitch(agentId, agentName != null ? agentName : agentId);
-                case 1 -> {
-                    testLLMCall(agentId);
-                    yield null;
-                }
-                default -> null;
-            };
+            testLLMCall(agentId);
+            return null;
         }
         return switch (actionIdx) {
             case 0 -> new AgentSwitch(agentId, agentName != null ? agentName : agentId);
@@ -185,7 +181,7 @@ public class AgentCommandHandler {
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Response:" + AnsiTheme.RESET + "\n");
             var output = result.get("output");
             if (output != null) {
-                ui.printStreamingChunk("  " + output + "\n");
+                ui.printStreamingChunk("  " + output.toString().replace("\n", "\n  ") + "\n");
             }
             var tokenUsage = (Map<String, Object>) result.get("token_usage");
             if (tokenUsage != null) {

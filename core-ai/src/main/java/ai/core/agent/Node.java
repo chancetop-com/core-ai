@@ -256,20 +256,20 @@ public abstract class Node<T extends Node<T>> {
     public final String run(String query, Map<String, Object> variables) {
         return run(query, ExecutionContext.builder().customVariables(variables).build());
     }
-
     public final String run(String query) {
         try {
             return aroundExecute((q, v) -> {
                 setupNodeSystemVariables(q);
                 return execute(q, v);
             }, query);
+        } catch (ai.core.session.ToolCallDeniedException e) {
+            throw e;
         } catch (Exception e) {
             updateNodeStatus(NodeStatus.FAILED);
             throw new RuntimeException(Strings.format("Run node {}<{}> failed: {}, raw request/response: {}, {}",
                 this.name, this.id, e.getMessage(), getInput(), getFailedMessage()), e);
         }
     }
-
     public final void run(Task task) {
         if (task == null) throw new IllegalArgumentException("Task cannot be null");
         if (this.task == null) this.task = task;

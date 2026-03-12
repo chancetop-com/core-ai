@@ -93,6 +93,10 @@ public class InProcessAgentSession implements AgentSession {
                 turnComplete.outputTokens = usageAfter.getCompletionTokens() - outputBefore;
                 dispatch(turnComplete);
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            } catch (ToolCallDeniedException e) {
+                debug("tool call denied: " + e.getMessage());
+                dispatch(TurnCompleteEvent.cancelled(sessionId));
+                dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
             } catch (Throwable e) {
                 if (agent.isCancelled()) {
                     debug("agent run cancelled");
