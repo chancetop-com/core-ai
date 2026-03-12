@@ -11,6 +11,7 @@ import ai.core.api.server.UserWebService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.auth.AuthService;
+import ai.core.server.llmcall.LLMCallBuilderTools;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
@@ -75,7 +76,10 @@ public class ServerModule extends Module {
         bind(ChannelService.class);
         bind(SessionChannelService.class);
 
+        var builderTools = bind(LLMCallBuilderTools.class);
+
         onStartup(toolRegistry::initialize);
+        onStartup(builderTools::initialize);
         onStartup(authService::initialize);
 
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));

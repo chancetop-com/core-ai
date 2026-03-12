@@ -52,6 +52,7 @@ public class RemoteSessionRunner {
     private static final List<SlashCommand> REMOTE_COMMANDS = List.of(
         new SlashCommand("/help", "Show available commands"),
         new SlashCommand("/build-agent", "Build agent from conversation"),
+        new SlashCommand("/build-llm-call-api", "Build LLM Call API interactively"),
         new SlashCommand("/agents", "Manage agents (details, trigger, schedule)"),
         new SlashCommand("/tools", "List available tools"),
         new SlashCommand("/debug", "Toggle debug mode"),
@@ -138,6 +139,7 @@ public class RemoteSessionRunner {
         switch (lower) {
             case "/help" -> printHelp();
             case "/build-agent" -> new CreateAgentCommandHandler(ui, api, session.id()).handle();
+            case "/build-llm-call-api" -> new BuildLLMCallCommandHandler(ui, api).handle();
             case "/agents" -> new AgentCommandHandler(ui, api).handle();
             case "/tools" -> handleTools();
             case "/debug" -> {
@@ -169,6 +171,7 @@ public class RemoteSessionRunner {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote Commands:" + AnsiTheme.RESET + "\n");
         String[][] cmds = {
                 {"/build-agent", "Build agent from current conversation, so it can be scheduled periodically on the server"},
+                {"/build-llm-call-api", "Build LLM Call API with structured output interactively"},
                 {"/agents", "Manage agents (details, trigger, schedule)"},
                 {"/tools", "List available tools"},
                 {"/debug", "Toggle debug mode"},

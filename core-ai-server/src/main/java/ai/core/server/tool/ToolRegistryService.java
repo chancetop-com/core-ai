@@ -31,6 +31,7 @@ public class ToolRegistryService {
         "builtin-code-execution", BuiltinTools.CODE_EXECUTION
     );
 
+    private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
     private final Map<String, ToolRegistry> tools = new ConcurrentHashMap<>();
 
     @Inject
@@ -70,6 +71,10 @@ public class ToolRegistryService {
             .toList();
     }
 
+    public void registerToolSet(String name, List<ToolCall> toolCalls) {
+        dynamicToolSets.put(name, toolCalls);
+    }
+
     public List<ToolCall> resolveTools(List<String> toolIds) {
         if (toolIds == null || toolIds.isEmpty()) return List.of();
 
@@ -78,6 +83,11 @@ public class ToolRegistryService {
             var builtinSet = BUILTIN_TOOL_SETS.get(toolId);
             if (builtinSet != null) {
                 result.addAll(builtinSet);
+                continue;
+            }
+            var dynamicSet = dynamicToolSets.get(toolId);
+            if (dynamicSet != null) {
+                result.addAll(dynamicSet);
                 continue;
             }
 

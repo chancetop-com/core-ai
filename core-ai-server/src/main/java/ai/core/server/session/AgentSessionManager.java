@@ -5,11 +5,14 @@ import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.tool.ToolRegistryService;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.tool.BuiltinTools;
+import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -26,9 +29,12 @@ public class AgentSessionManager {
     @Inject
     PersistenceProviders persistenceProviders;
 
+    @Inject
+    ToolRegistryService toolRegistryService;
+
     public String createSession(SessionConfig config) {
         var sessionId = UUID.randomUUID().toString();
-        var agent = buildAgent(config);
+        var agent = buildAgent(config, null);
         var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
         var permissionStore = new InMemoryToolPermissionStore();
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
@@ -45,7 +51,16 @@ public class AgentSessionManager {
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
             if (overrides.autoApproveAll != null) config.autoApproveAll = overrides.autoApproveAll;
         }
-        return createSession(config);
+        var toolIds = definition.publishedConfig != null ? definition.publishedConfig.toolIds : definition.toolIds;
+        var tools = toolRegistryService.resolveTools(toolIds);
+
+        var sessionId = UUID.randomUUID().toString();
+        var agent = buildAgent(config, tools.isEmpty() ? null : tools);
+        var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
+        var permissionStore = new InMemoryToolPermissionStore();
+        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+        sessions.put(sessionId, session);
+        return sessionId;
     }
 
     public InProcessAgentSession getSession(String sessionId) {
@@ -69,10 +84,10 @@ public class AgentSessionManager {
         return config;
     }
 
-    private Agent buildAgent(SessionConfig config) {
+    private Agent buildAgent(SessionConfig config, List<ToolCall> tools) {
         var builder = Agent.builder()
                 .llmProvider(llmProviders.getProvider())
-                .toolCalls(BuiltinTools.ALL)
+                .toolCalls(tools != null ? tools : BuiltinTools.ALL)
                 .temperature(config != null && config.temperature != null ? config.temperature : 0.8);
 
         if (config != null && config.systemPrompt != null) {
