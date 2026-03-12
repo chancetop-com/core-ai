@@ -28,8 +28,10 @@ import java.util.Properties;
  * Groups:
  *   A - Skill info only in tool description
  *   B - Skill info only in system prompt
- *   C - Skill info in both (duplicated)
+ *   C - Skill info in both (duplicated across locations)
  *   D - Tool desc has "what" (function), system prompt has "when" (trigger conditions)
+ *   E - Skill info repeated 2x in tool description only (same-location repetition control)
+ *   F - Skill info repeated 2x in system prompt only (same-location repetition control)
  *
  * Test set: 4 categories x multiple queries per skill
  *   - Positive: clearly should trigger a specific skill
@@ -42,7 +44,7 @@ import java.util.Properties;
  *
  * @author Xander
  */
-@Disabled
+//@Disabled
 class SkillPlacementExperimentTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillPlacementExperimentTest.class);
 
@@ -53,7 +55,7 @@ class SkillPlacementExperimentTest {
     // models to test
     private static final List<String> MODELS = List.of(
             "openai/gpt-4.1-mini",
-            "anthropic/claude-sonnet-4.6"
+            "minimax/minimax-m2.5"
     );
 
     private static final int RUNS_PER_CASE = 3;
@@ -207,6 +209,44 @@ class SkillPlacementExperimentTest {
         return sb.toString();
     }
 
+    // Group E: skill info repeated 2x in tool description, generic system prompt
+    static String buildToolDescGroupE() {
+        var sb = new StringBuilder("Use a skill to accomplish specialized tasks.\n");
+        sb.append("When a skill matches the user's request, call this tool.\n\n");
+        sb.append("Available skills:\n");
+        for (var skill : SKILLS) {
+            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
+        }
+        sb.append("\nSkill reference (repeated for clarity):\n");
+        for (var skill : SKILLS) {
+            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
+        }
+        return sb.toString();
+    }
+
+    static String buildSystemPromptGroupE() {
+        return "You are a helpful assistant with access to tools.";
+    }
+
+    // Group F: generic tool description, skill info repeated 2x in system prompt
+    static String buildToolDescGroupF() {
+        return "Use a skill to accomplish specialized tasks. Call this tool with the skill name when appropriate.";
+    }
+
+    static String buildSystemPromptGroupF() {
+        var sb = new StringBuilder("You are a helpful assistant with access to tools.\n\n");
+        sb.append("You have a use_skill tool. Available skills:\n");
+        for (var skill : SKILLS) {
+            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
+        }
+        sb.append("\nSkill reference (repeated for clarity):\n");
+        for (var skill : SKILLS) {
+            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
+        }
+        sb.append("\nWhen a skill matches the user's request, call use_skill with the name.");
+        return sb.toString();
+    }
+
     // ===== Setup =====
 
     @BeforeAll
@@ -253,18 +293,21 @@ class SkillPlacementExperimentTest {
                 TEST_CASES.stream().filter(t -> t.type == QueryType.NEGATIVE).count());
         LOGGER.info("Runs per case: {}", RUNS_PER_CASE);
 
-        Map<String, String> groupToolDescs = Map.of(
-                "A", buildToolDescGroupA(),
-                "B", buildToolDescGroupB(),
-                "C", buildToolDescGroupC(),
-                "D", buildToolDescGroupD()
-        );
-        Map<String, String> groupSysPrompts = Map.of(
-                "A", buildSystemPromptGroupA(),
-                "B", buildSystemPromptGroupB(),
-                "C", buildSystemPromptGroupC(),
-                "D", buildSystemPromptGroupD()
-        );
+        var groupToolDescs = new LinkedHashMap<String, String>();
+        groupToolDescs.put("A", buildToolDescGroupA());
+        groupToolDescs.put("B", buildToolDescGroupB());
+        groupToolDescs.put("C", buildToolDescGroupC());
+        groupToolDescs.put("D", buildToolDescGroupD());
+        groupToolDescs.put("E", buildToolDescGroupE());
+        groupToolDescs.put("F", buildToolDescGroupF());
+
+        var groupSysPrompts = new LinkedHashMap<String, String>();
+        groupSysPrompts.put("A", buildSystemPromptGroupA());
+        groupSysPrompts.put("B", buildSystemPromptGroupB());
+        groupSysPrompts.put("C", buildSystemPromptGroupC());
+        groupSysPrompts.put("D", buildSystemPromptGroupD());
+        groupSysPrompts.put("E", buildSystemPromptGroupE());
+        groupSysPrompts.put("F", buildSystemPromptGroupF());
 
         // results[model][group] = Metrics
         var allResults = new LinkedHashMap<String, Map<String, Metrics>>();
@@ -273,7 +316,7 @@ class SkillPlacementExperimentTest {
             LOGGER.info("\n====== MODEL: {} ======", model);
             var modelResults = new LinkedHashMap<String, Metrics>();
 
-            for (String group : List.of("A", "B", "C", "D")) {
+            for (String group : List.of("A", "B", "C", "D", "E", "F")) {
                 LOGGER.info("--- Group {} ---", group);
                 var metrics = runGroup(model, groupToolDescs.get(group), groupSysPrompts.get(group));
                 modelResults.put(group, metrics);
