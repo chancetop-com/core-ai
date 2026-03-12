@@ -46,7 +46,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     public LiteLLMProvider(LLMProviderConfig config, String url, String token) {
         super(config);
-        this.url = url;
+        this.url = stripTrailingSlashes(url);
         this.token = token;
         this.client = new PatchedHTTPClientBuilder()
                 .connectTimeout(config.getConnectTimeout())
@@ -296,6 +296,11 @@ public class LiteLLMProvider extends LLMProvider {
         if (chunkChoice.delta.role != null && finalChoice.message.role == null) {
             finalChoice.message.role = chunkChoice.delta.role;
         }
+    }
+
+    private static String stripTrailingSlashes(String url) {
+        if (url == null) return url;
+        return url.replaceAll("/+$", "");
     }
 
     private void copyToolCallsToFinalChoice(Choice finalChoice, Choice chunkChoice) {

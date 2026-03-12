@@ -69,7 +69,8 @@ public class DynamicApiCaller {
         var argsMap = (Map<String, Object>) JsonUtil.fromJsonSafe(Map.class, args);
         ActionLogContext.put("mcp-call-api-args-map", argsMap);
         var apiDefinition = apiDefinitionMap.get(name);
-        var url = apiDefinition.baseUrl + operation.path;
+        var baseUrl = apiDefinition.baseUrl.replaceAll("/+$", "");
+        var url = baseUrl + operation.path;
         var client = HTTPClient.builder().trustAll().build();
         for (var pathParam : operation.pathParams) {
             if (!argsMap.containsKey(pathParam.name)) {
