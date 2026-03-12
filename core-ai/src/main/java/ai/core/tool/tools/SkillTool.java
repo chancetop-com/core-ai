@@ -112,7 +112,7 @@ public class SkillTool extends ToolCall {
         }
         sb.append(">\n").append(skillMd);
         List<String> resources = skill.getResources();
-        if (resources != null && !resources.isEmpty()) {
+        if (!resources.isEmpty()) {
             sb.append("\n\nResources:\n");
             for (String resource : resources) {
                 sb.append("- ").append(resource).append('\n');
