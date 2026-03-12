@@ -88,12 +88,13 @@ public class CliAgent {
         var workspaceInfo = buildWorkspaceInfo(config.workspace);
         var sb = new StringBuilder("""
                 You are a helpful AI coding assistant.
-                  For each user request, follow this flow:
-                1. Before execution: check if any skill should be triggered based on the user's message
-                2. Execute the main task
-                3. After execution: review the conversation and decide if any skill should be triggered
-                If a skill's conditions are met at any point, act on it immediately using the relevant tools.
-
+                ## Skills (mandatory)
+                Before replying: scan <available_skills> <description> entries.
+                  - If exactly one skill clearly applies: read its SKILL.md at <location> with `read`, then follow it.
+                  - If multiple could apply: choose the most specific one, then read/follow it.
+                  - If none clearly apply: do not read any SKILL.md.
+                Constraints: never read more than one skill up front; only read after selecting.
+                
                 <workspace>
                 %s
                 </workspace>
