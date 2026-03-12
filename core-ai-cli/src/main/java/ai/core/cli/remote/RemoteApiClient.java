@@ -57,6 +57,17 @@ public class RemoteApiClient {
         return send(request);
     }
 
+    public String put(String path, Object body) {
+        var json = body != null ? JsonUtil.toJson(body) : "{}";
+        var request = HttpRequest.newBuilder()
+                .uri(URI.create(serverUrl + path))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .PUT(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+        return send(request);
+    }
+
     public String postEmpty(String path) {
         var request = HttpRequest.newBuilder()
                 .uri(URI.create(serverUrl + path))

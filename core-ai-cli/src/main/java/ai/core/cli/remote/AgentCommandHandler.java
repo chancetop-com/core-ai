@@ -133,27 +133,35 @@ public class AgentCommandHandler {
     private AgentSwitch handleAgentAction(String agentId, String agentName, boolean isLLMCall, boolean isDefault) {
         List<String> actions;
         if (isLLMCall) {
-            actions = List.of("Test", "Back");
+            actions = List.of("Test", "Edit", "Back");
         } else if (isDefault) {
             actions = List.of("Chat", "Back");
         } else {
-            actions = List.of("Chat", "Trigger run", "Schedule", "Back");
+            actions = List.of("Chat", "Edit", "Trigger run", "Schedule", "Back");
         }
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Action:" + AnsiTheme.RESET + "\n");
         int actionIdx = ui.pickIndex(actions);
         if (actionIdx < 0 || actionIdx == actions.size() - 1) return null;
 
         if (isLLMCall) {
-            testLLMCall(agentId);
+            switch (actionIdx) {
+                case 0 -> testLLMCall(agentId);
+                case 1 -> new AgentEditHandler(ui, api).edit(agentId, true);
+                default -> { }
+            }
             return null;
         }
         return switch (actionIdx) {
             case 0 -> new AgentSwitch(agentId, agentName != null ? agentName : agentId);
             case 1 -> {
-                triggerRun(agentId);
+                new AgentEditHandler(ui, api).edit(agentId, false);
                 yield null;
             }
             case 2 -> {
+                triggerRun(agentId);
+                yield null;
+            }
+            case 3 -> {
                 manageSchedule(agentId);
                 yield null;
             }

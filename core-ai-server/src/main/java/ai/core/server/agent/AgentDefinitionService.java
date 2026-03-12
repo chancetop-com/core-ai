@@ -45,8 +45,11 @@ public class AgentDefinitionService {
         entity.systemPrompt = request.systemPrompt;
         entity.model = request.model;
         entity.temperature = request.temperature;
-        entity.maxTurns = request.maxTurns != null ? request.maxTurns : 20;
-        entity.timeoutSeconds = request.timeoutSeconds != null ? request.timeoutSeconds : 600;
+        var isLLMCall = "LLM_CALL".equals(request.type);
+        if (!isLLMCall) {
+            entity.maxTurns = request.maxTurns != null ? request.maxTurns : 20;
+            entity.timeoutSeconds = request.timeoutSeconds != null ? request.timeoutSeconds : 600;
+        }
         entity.toolIds = request.toolIds;
         entity.inputTemplate = request.inputTemplate;
         entity.variables = request.variables;
