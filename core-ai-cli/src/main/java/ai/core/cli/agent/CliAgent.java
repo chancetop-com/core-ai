@@ -11,7 +11,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
-import ai.core.tool.tools.ManageSkillTool;
 import ai.core.tool.tools.MemoryTool;
 import ai.core.tool.tools.SkillTool;
 
@@ -60,10 +59,6 @@ public class CliAgent {
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
-        tools.add(ManageSkillTool.builder()
-                .skillsDir(config.workspace.resolve(".core-ai/skills"))
-                .userSkillsDir(userSkillsDir())
-                .build());
         tools.add(SkillTool.builder()
                 .sources(skillConfig.getSources())
                 .maxFileSize(skillConfig.getMaxSkillFileSize())
