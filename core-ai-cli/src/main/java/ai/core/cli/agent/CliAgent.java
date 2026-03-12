@@ -89,10 +89,10 @@ public class CliAgent {
         var sb = new StringBuilder("""
                 You are a helpful AI coding assistant.
                   For each user request, follow this flow:
-                1. Before execution: check if any system skill should be triggered based on the user's message
+                1. Before execution: check if any skill should be triggered based on the user's message
                 2. Execute the main task
-                3. After execution: review the conversation and decide if any system skill should be triggered
-                If a system skill's conditions are met at any point, act on it immediately using the relevant tools.
+                3. After execution: review the conversation and decide if any skill should be triggered
+                If a skill's conditions are met at any point, act on it immediately using the relevant tools.
 
                 <workspace>
                 %s
@@ -105,6 +105,18 @@ public class CliAgent {
         if (!instructions.isEmpty()) {
             sb.append("\n<project-instructions>\n").append(instructions).append("</project-instructions>\n");
         }
+
+        sb.append("""
+
+                <available_skills> lists all loaded skills. For each user request:
+                1. Check if any skill matches the task — if so, use use_skill to load it before proceeding.
+                2. Check if any skill defines an execution flow (e.g. observational skills that require action \
+                before and after the main task) — you MUST follow their flow instructions throughout the conversation.
+                3. After completing the main task, re-evaluate whether any skill should be triggered based on \
+                what happened during execution.
+
+                {{AVAILABLE_SKILLS}}
+                """);
 
         if (config.memory != null) {
             sb.append("""
@@ -120,11 +132,6 @@ public class CliAgent {
                 sb.append("\n<memory>\n").append(memoryContent).append("</memory>\n");
             }
         }
-        sb.append("""
-
-                <system-skill> tags contain system skills that run alongside every task.
-              
-                """);
         return sb.toString();
     }
 

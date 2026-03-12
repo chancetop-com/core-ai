@@ -29,48 +29,13 @@ public class SkillTool extends ToolCall {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillTool.class);
 
-    private static final String BASE_DESC = """
-            Use a skill to accomplish specialized tasks.
-            When a skill matches the user's request, you MUST call this tool IMMEDIATELY.
-            Do NOT attempt the task without the skill when one is available.
-            Triggers are hints to improve matching — a skill can be used even if no trigger phrase is matched exactly.
-            """;
-
-    private static final String NO_SKILLS_DESC = BASE_DESC + "\nNo skills currently available.";
+    private static final String TOOL_DESC = """
+            Load a skill by name to get its full instructions and resources.
+            Available skills are listed in <available_skills> in the system prompt.
+            When a skill matches the user's request, call this tool with the skill name.""";
 
     public static Builder builder() {
         return new Builder();
-    }
-
-    static String buildDescription(List<SkillMetadata> skills) {
-        if (skills == null || skills.isEmpty()) {
-            return NO_SKILLS_DESC;
-        }
-        var sb = new StringBuilder(BASE_DESC.length() + skills.size() * 200);
-        sb.append(BASE_DESC).append("\nAvailable skills:\n");
-        for (var skill : skills) {
-            sb.append("- ").append(skill.getName()).append(": ").append(skill.getDescription()).append('\n');
-            var triggers = skill.getTriggers();
-            if (triggers != null && !triggers.isEmpty()) {
-                sb.append("  Triggers: ");
-                for (int i = 0; i < triggers.size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append('"').append(triggers.get(i)).append('"');
-                }
-                sb.append('\n');
-            }
-            var examples = skill.getExamples();
-            if (examples != null && !examples.isEmpty()) {
-                sb.append("  Examples: ");
-                for (int i = 0; i < examples.size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append('"').append(examples.get(i)).append('"');
-                }
-                sb.append('\n');
-            }
-        }
-        sb.append("\nProvide the skill name to get full instructions and resources.");
-        return sb.toString();
     }
 
     private List<SkillMetadata> loadedSkills;
@@ -177,10 +142,9 @@ public class SkillTool extends ToolCall {
         public SkillTool build() {
             var loader = new SkillLoader(maxFileSize);
             List<SkillMetadata> allSkills = sources != null ? loader.loadAll(sources) : List.of();
-//            List<SkillMetadata> skills = allSkills.stream().filter(s -> !s.isSystemSkill()).toList();
 
             this.name(TOOL_NAME);
-            this.description(buildDescription(allSkills));
+            this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "name", "Skill name to use").required()
             ));

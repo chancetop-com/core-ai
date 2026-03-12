@@ -9,10 +9,6 @@ import ai.core.llm.domain.RoleType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -38,39 +34,30 @@ public class SkillLifecycle extends AbstractLifecycle {
         if (!config.isEnabled()) return;
         this.loadedSkills = loader.loadAll(config.getSources());
         LOGGER.debug("Loaded {} skills", loadedSkills.size());
-        if (agent != null) {
-            injectSystemSkills(agent);
+        if (agent != null && !loadedSkills.isEmpty()) {
+            injectSkillsToSystemPrompt(agent);
         }
     }
 
-    private void injectSystemSkills(Agent agent) {
-        var sb = new StringBuilder(1024);
+    private static final String SKILLS_PLACEHOLDER = "{{AVAILABLE_SKILLS}}";
+
+    private void injectSkillsToSystemPrompt(Agent agent) {
+        var sb = new StringBuilder(2048);
+        sb.append("<available_skills>\n");
         for (var skill : loadedSkills) {
-            if (!skill.isSystemSkill()) continue;
-            String content = readSkillFile(skill);
-            if (content != null) {
-                sb.append("\n<system-skill name=\"")
-                        .append(skill.getName())
-                        .append("\">\n")
-                        .append(content)
-                        .append("\n</system-skill>\n");
-                LOGGER.debug("Injected system skill: {}", skill.getName());
-            }
+            sb.append("<skill>\n");
+            sb.append("<name>").append(skill.getName()).append("</name>\n");
+            sb.append("<description>").append(skill.getDescription()).append("</description>\n");
+            sb.append("<location>").append(skill.getPath()).append("</location>\n");
+            sb.append("</skill>\n");
         }
-        if (!sb.isEmpty()) {
-            String current = agent.getSystemPrompt();
-            agent.setSystemPrompt(current == null ? sb.toString() : current + sb);
-        }
-    }
+        sb.append("</available_skills>");
 
-    private String readSkillFile(SkillMetadata skill) {
-        try {
-            byte[] bytes = Files.readAllBytes(Path.of(skill.getPath()));
-            if (bytes.length > config.getMaxSkillFileSize()) return null;
-            return new String(bytes, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            LOGGER.warn("Failed to read system skill: {}", skill.getPath(), e);
-            return null;
+        String current = agent.getSystemPrompt();
+        if (current != null && current.contains(SKILLS_PLACEHOLDER)) {
+            agent.setSystemPrompt(current.replace(SKILLS_PLACEHOLDER, sb.toString()));
+        } else {
+            agent.setSystemPrompt(current == null ? sb.toString() : current + "\n" + sb);
         }
     }
 
@@ -82,44 +69,27 @@ public class SkillLifecycle extends AbstractLifecycle {
         String userQuery = findLastUserMessage(request.messages);
         if (userQuery == null || userQuery.isBlank()) return;
 
-        var matchResult = matchSkills(userQuery);
+        List<String> matched = matchSkills(userQuery);
+        if (matched.isEmpty()) return;
 
-        if (config.isRecommendEnabled() && !matchResult.taskSkills.isEmpty()) {
-            request.messages.add(Message.of(RoleType.SYSTEM, buildRecommendHint(matchResult.taskSkills)));
-            LOGGER.debug("Recommended task skills: {}", matchResult.taskSkills);
-        }
-        if (!matchResult.systemSkills.isEmpty()) {
-            request.messages.add(Message.of(RoleType.SYSTEM, buildSystemSkillReminder(matchResult.systemSkills)));
-            LOGGER.debug("Triggered system skills: {}", matchResult.systemSkills);
-        }
+        request.messages.add(Message.of(RoleType.SYSTEM, buildSkillReminder(matched)));
+        LOGGER.debug("Skill reminder: {}", matched);
     }
 
-    MatchResult matchSkills(String query) {
+    List<String> matchSkills(String query) {
         String lowerQuery = query.toLowerCase(Locale.ROOT);
-        List<String> taskSkills = new ArrayList<>();
-        List<String> systemSkills = new ArrayList<>();
+        List<String> matched = new ArrayList<>();
         for (var skill : loadedSkills) {
             if (matchesSkill(skill, lowerQuery)) {
-                if (skill.isSystemSkill()) {
-                    systemSkills.add(skill.getName());
-                } else {
-                    taskSkills.add(skill.getName());
-                }
+                matched.add(skill.getName());
             }
         }
-        return new MatchResult(taskSkills, systemSkills);
+        return matched;
     }
-
-    record MatchResult(List<String> taskSkills, List<String> systemSkills) { }
 
     private boolean matchesSkill(SkillMetadata skill, String lowerQuery) {
         if (lowerQuery.contains(skill.getName())) {
             return true;
-        }
-        for (String trigger : skill.getTriggers()) {
-            if (lowerQuery.contains(trigger.toLowerCase(Locale.ROOT))) {
-                return true;
-            }
         }
         String[] descWords = skill.getDescription().toLowerCase(Locale.ROOT).split("\\s+");
         int matchCount = 0;
@@ -141,25 +111,14 @@ public class SkillLifecycle extends AbstractLifecycle {
         return null;
     }
 
-    private String buildRecommendHint(List<String> skillNames) {
+    private String buildSkillReminder(List<String> skillNames) {
         var sb = new StringBuilder(128);
-        sb.append("[Skill Recommendation] The following skills may help with this task: ");
+        sb.append("[Skill Reminder] The following skills match this request: ");
         for (int i = 0; i < skillNames.size(); i++) {
             if (i > 0) sb.append(", ");
             sb.append('\'').append(skillNames.get(i)).append('\'');
         }
-        sb.append(". Use use_skill to load them.");
-        return sb.toString();
-    }
-
-    private String buildSystemSkillReminder(List<String> skillNames) {
-        var sb = new StringBuilder(128);
-        sb.append("[System Skill Reminder] The following system skills are triggered: ");
-        for (int i = 0; i < skillNames.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append('\'').append(skillNames.get(i)).append('\'');
-        }
-        sb.append(". Review the <system-skill> instructions and act on them using the relevant tools.");
+        sb.append(". Use use_skill to load full instructions, or follow the skill description directly.");
         return sb.toString();
     }
 

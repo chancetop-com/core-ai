@@ -166,10 +166,9 @@ public class ReadSkillReferenceTool extends ToolCall {
         public ReadSkillReferenceTool build() {
             var loader = new SkillLoader(maxFileSize);
             List<SkillMetadata> allSkills = sources != null ? loader.loadAll(sources) : List.of();
-            List<SkillMetadata> skills = allSkills.stream().filter(s -> !s.isSystemSkill()).toList();
 
             this.name(TOOL_NAME);
-            this.description(buildDescription(skills));
+            this.description(buildDescription(allSkills));
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "skill_name", "Name of the skill").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "file", "Reference file path relative to skill directory").required()
@@ -177,7 +176,7 @@ public class ReadSkillReferenceTool extends ToolCall {
 
             var tool = new ReadSkillReferenceTool();
             build(tool);
-            tool.loadedSkills = skills;
+            tool.loadedSkills = allSkills;
             tool.maxFileSize = this.maxFileSize;
             return tool;
         }

@@ -11,9 +11,6 @@ import java.util.Map;
  */
 public final class SkillMetadata {
 
-    public static final String TYPE_SYSTEM = "system";
-    public static final String TYPE_TASK = "task";
-
     public static Builder builder(String name, String description, String path) {
         return new Builder(name, description, path);
     }
@@ -60,10 +57,6 @@ public final class SkillMetadata {
         return type;
     }
 
-    public boolean isSystemSkill() {
-        return TYPE_SYSTEM.equals(type);
-    }
-
     public String getPath() {
         return path;
     }
@@ -108,7 +101,7 @@ public final class SkillMetadata {
         private final String name;
         private final String description;
         private final String path;
-        private String type = TYPE_TASK;
+        private String type;
         private String skillDir;
         private String license;
         private String compatibility;
@@ -126,7 +119,7 @@ public final class SkillMetadata {
         }
 
         public Builder type(String type) {
-            this.type = type != null ? type : TYPE_TASK;
+            this.type = type;
             return this;
         }
 
