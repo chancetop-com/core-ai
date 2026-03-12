@@ -40,24 +40,24 @@ public class RemoteSessionRunner {
         return clean.length() <= max ? clean : clean.substring(0, max) + "...";
     }
 
-    private static String buildRemotePrompt(String name, String serverUrl) {
+    static String buildPromptPrefix(String name, String serverUrl) {
         String host = URI.create(serverUrl).getHost();
         if (name != null && !name.isBlank()) {
-            return name + "@" + host + "> ";
+            return name + "@" + host;
         }
-        return host + "> ";
+        return host;
     }
 
     private final TerminalUI ui;
     private final AgentSession session;
     private final RemoteApiClient api;
-    private final String remotePrompt;
+    private final String promptPrefix;
 
     public RemoteSessionRunner(TerminalUI ui, AgentSession session, RemoteApiClient api, String name) {
         this.ui = ui;
         this.session = session;
         this.api = api;
-        this.remotePrompt = buildRemotePrompt(name, api.serverUrl());
+        this.promptPrefix = buildPromptPrefix(name, api.serverUrl());
     }
 
     public void run() {
@@ -113,7 +113,7 @@ public class RemoteSessionRunner {
         while (true) {
             waitForReady(readyForInput);
             if (showFrame) ui.printInputFrame();
-            var input = ui.readInput(remotePrompt);
+            var input = ui.readInput(promptPrefix + "> ");
             if (input == null || "/exit".equalsIgnoreCase(input.trim())) {
                 queue.offer(POISON_PILL);
                 break;
@@ -139,8 +139,8 @@ public class RemoteSessionRunner {
         switch (lower) {
             case "/help" -> printHelp();
             case "/build-agent" -> new CreateAgentCommandHandler(ui, api, session.id()).handle();
-            case "/build-llm-call-api" -> new BuildLLMCallCommandHandler(ui, api).handle();
-            case "/agents" -> new AgentCommandHandler(ui, api).handle();
+            case "/build-llm-call-api" -> new BuildLLMCallCommandHandler(ui, api, promptPrefix).handle();
+            case "/agents" -> new AgentCommandHandler(ui, api, promptPrefix).handle();
             case "/tools" -> handleTools();
             case "/debug" -> {
                 if (DebugLog.isEnabled()) {

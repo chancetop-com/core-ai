@@ -2,6 +2,8 @@ package ai.core.server.web;
 
 import ai.core.api.server.AgentRunWebService;
 import ai.core.api.server.run.AgentRunDetailView;
+import ai.core.api.server.run.LLMCallRequest;
+import ai.core.api.server.run.LLMCallResponse;
 import ai.core.api.server.run.ListRunsRequest;
 import ai.core.api.server.run.ListRunsResponse;
 import ai.core.api.server.run.TriggerRunRequest;
@@ -37,6 +39,12 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
     @Override
     public AgentRunDetailView get(String id) {
         return agentRunService.get(id);
+    }
+
+    @Override
+    public LLMCallResponse llmCall(String id, LLMCallRequest request) {
+        ActionLogContext.put("llm_call_id", id);
+        return agentRunService.llmCall(id, request);
     }
 
     @Override

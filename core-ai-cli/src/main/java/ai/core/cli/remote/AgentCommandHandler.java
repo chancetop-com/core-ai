@@ -48,10 +48,12 @@ public class AgentCommandHandler {
 
     private final TerminalUI ui;
     private final RemoteApiClient api;
+    private final String promptPrefix;
 
-    public AgentCommandHandler(TerminalUI ui, RemoteApiClient api) {
+    public AgentCommandHandler(TerminalUI ui, RemoteApiClient api, String promptPrefix) {
         this.ui = ui;
         this.api = api;
+        this.promptPrefix = promptPrefix;
     }
 
     @SuppressWarnings("unchecked")
@@ -88,9 +90,10 @@ public class AgentCommandHandler {
 
         var agent = filtered.get(selected);
         var agentId = (String) agent.get("id");
+        var agentName = (String) agent.get("name");
         var type = (String) agent.get("type");
         printAgentDetail(agent);
-        handleAgentAction(agentId, "LLM_CALL".equals(type));
+        handleAgentAction(agentId, agentName, "LLM_CALL".equals(type));
     }
 
     private List<Map<String, Object>> filterAgents(List<Map<String, Object>> agents) {
@@ -128,7 +131,7 @@ public class AgentCommandHandler {
         }
     }
 
-    private void handleAgentAction(String agentId, boolean isLLMCall) {
+    private void handleAgentAction(String agentId, String agentName, boolean isLLMCall) {
         var actions = isLLMCall
             ? List.of("Test", "Back")
             : List.of("Chat", "Trigger run", "Schedule", "Back");
@@ -140,7 +143,10 @@ public class AgentCommandHandler {
             if (actionIdx == 0) testLLMCall(agentId);
         } else {
             switch (actionIdx) {
-                case 0 -> new AgentChatSession(ui, api).start(agentId, "chat> ");
+                case 0 -> {
+                    var chatPrompt = promptPrefix + ":" + (agentName != null ? agentName : agentId) + "> ";
+                    new AgentChatSession(ui, api).start(agentId, chatPrompt);
+                }
                 case 1 -> triggerRun(agentId);
                 case 2 -> manageSchedule(agentId);
                 default -> { }
@@ -151,23 +157,30 @@ public class AgentCommandHandler {
     private void testLLMCall(String agentId) {
         var input = ui.readRawLine("  Test input: ");
         if (input == null || input.isBlank()) return;
-        triggerRunWithInput(agentId, input.trim());
+        callLLM(agentId, input.trim());
     }
 
-    private void triggerRunWithInput(String agentId, String input) {
+    @SuppressWarnings("unchecked")
+    private void callLLM(String agentId, String input) {
         var body = new LinkedHashMap<String, Object>();
         body.put("input", input);
         try {
-            var json = api.post("/api/runs/agent/" + agentId + "/trigger", body);
+            var json = api.post("/api/llm/" + agentId + "/call", body);
             if (json == null) {
-                ui.showError("failed to trigger run");
+                ui.showError("failed to call LLM");
                 return;
             }
-            @SuppressWarnings("unchecked")
             Map<String, Object> result = JsonUtil.fromJson(Map.class, json);
-            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Run triggered" + AnsiTheme.RESET + "\n");
-            printField("Run ID", result.get("run_id"));
-            printField("Status", result.get("status"));
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Response:" + AnsiTheme.RESET + "\n");
+            var output = result.get("output");
+            if (output != null) {
+                ui.printStreamingChunk("  " + output + "\n");
+            }
+            var tokenUsage = (Map<String, Object>) result.get("token_usage");
+            if (tokenUsage != null) {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "  tokens: input=" + tokenUsage.get("input")
+                    + " output=" + tokenUsage.get("output") + AnsiTheme.RESET + "\n");
+            }
             ui.printStreamingChunk("\n");
         } catch (RemoteApiException e) {
             ui.showError(e.getMessage());

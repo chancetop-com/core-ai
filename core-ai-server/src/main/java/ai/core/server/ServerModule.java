@@ -18,6 +18,7 @@ import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
 import ai.core.server.domain.migration.SchemaMigrationManager;
 import ai.core.server.run.AgentRunService;
+import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.run.AgentRunner;
 import ai.core.server.schedule.AgentScheduleService;
 import ai.core.server.schedule.AgentScheduler;
@@ -61,6 +62,7 @@ public class ServerModule extends Module {
         var storagePath = property("sys.file.storagePath").orElse("./data/files");
         bind(new FileService(Path.of(storagePath)));
 
+        bind(LLMCallExecutor.class);
         bind(AgentRunner.class);
         bind(AgentScheduler.class);
         bind(AgentSessionManager.class);

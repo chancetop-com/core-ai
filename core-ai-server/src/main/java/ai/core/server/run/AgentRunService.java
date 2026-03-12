@@ -2,12 +2,15 @@ package ai.core.server.run;
 
 import ai.core.api.server.run.AgentRunDetailView;
 import ai.core.api.server.run.AgentRunView;
+import ai.core.api.server.run.LLMCallRequest;
+import ai.core.api.server.run.LLMCallResponse;
 import ai.core.api.server.run.ListRunsRequest;
 import ai.core.api.server.run.ListRunsResponse;
 import ai.core.api.server.run.TriggerRunRequest;
 import ai.core.api.server.run.TriggerRunResponse;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import com.mongodb.client.model.Filters;
@@ -24,6 +27,8 @@ import java.util.Map;
 public class AgentRunService {
     @Inject
     AgentRunner agentRunner;
+    @Inject
+    LLMCallExecutor llmCallExecutor;
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
     @Inject
@@ -66,6 +71,27 @@ public class AgentRunService {
         var entity = agentRunCollection.get(id)
             .orElseThrow(() -> new RuntimeException("run not found, id=" + id));
         return toDetailView(entity);
+    }
+
+    public LLMCallResponse llmCall(String id, LLMCallRequest request) {
+        var definition = agentDefinitionCollection.get(id)
+            .orElseThrow(() -> new RuntimeException("llm call not found, id=" + id));
+        if (definition.type != DefinitionType.LLM_CALL) {
+            throw new RuntimeException("definition is not LLM_CALL type, id=" + id);
+        }
+        if (definition.publishedConfig == null) {
+            throw new RuntimeException("llm call not published, id=" + id);
+        }
+
+        var result = llmCallExecutor.execute(definition, request.input, request.attachments);
+
+        var response = new LLMCallResponse();
+        response.output = result.output();
+        response.tokenUsage = Map.of(
+            "input", result.inputTokens(),
+            "output", result.outputTokens()
+        );
+        return response;
     }
 
     public void cancel(String id) {

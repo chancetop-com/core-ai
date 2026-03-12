@@ -1,12 +1,7 @@
 package ai.core.server.run;
 
 import ai.core.agent.Agent;
-import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.llm.LLMProviders;
-import ai.core.llm.domain.CompletionRequest;
-import ai.core.llm.domain.Message;
-import ai.core.llm.domain.ResponseFormat;
-import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
@@ -15,8 +10,6 @@ import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.tool.ToolRegistryService;
-import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -51,6 +44,9 @@ public class AgentRunner {
 
     @Inject
     LLMProviders llmProviders;
+
+    @Inject
+    LLMCallExecutor llmCallExecutor;
 
     @Inject
     ToolRegistryService toolRegistryService;
@@ -122,53 +118,24 @@ public class AgentRunner {
     }
 
     private void executeLLMCall(AgentRun runEntity, AgentDefinition definition) {
-        var runId = runEntity.id;
-        var config = definition.publishedConfig;
-        var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
         try {
-            var systemPrompt = config != null ? config.systemPrompt : definition.systemPrompt;
-            var model = config != null ? config.model : definition.model;
-            var temperature = config != null ? config.temperature : definition.temperature;
-            var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
-                : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
+            var result = llmCallExecutor.execute(definition, runEntity.input);
 
-            ResponseFormat responseFormat = null;
-            if (responseSchemaJson != null) {
-                List<ApiDefinitionType> responseSchemaTypes = JsonUtil.fromJson(new TypeReference<>() { }, responseSchemaJson);
-                responseFormat = ResponseSchemaConverter.toResponseFormat(responseSchemaTypes);
-            }
-
-            var messages = new ArrayList<Message>();
-            if (systemPrompt != null) {
-                messages.add(Message.of(RoleType.SYSTEM, systemPrompt));
-            }
-            messages.add(Message.of(RoleType.USER, runEntity.input));
-
-            var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
-                messages, null, temperature, model, null, false, responseFormat, null
-            ));
-            request.setTimeoutSeconds(timeoutSeconds);
-
-            var provider = llmProviders.getProvider();
-            var response = provider.completion(request);
-
-            var output = response.choices.getFirst().message.content;
             var tokenUsage = new TokenUsage();
-            if (response.usage != null) {
-                tokenUsage.input = (long) response.usage.getPromptTokens();
-                tokenUsage.output = (long) response.usage.getCompletionTokens();
-            }
+            tokenUsage.input = result.inputTokens();
+            tokenUsage.output = result.outputTokens();
 
-            var transcript = buildLLMCallTranscript(systemPrompt, runEntity.input, output);
+            var config = definition.publishedConfig;
+            var systemPrompt = config != null ? config.systemPrompt : definition.systemPrompt;
 
             runEntity.status = RunStatus.COMPLETED;
-            runEntity.output = output;
+            runEntity.output = result.output();
             runEntity.completedAt = ZonedDateTime.now();
             runEntity.tokenUsage = tokenUsage;
-            runEntity.transcript = transcript;
+            runEntity.transcript = buildLLMCallTranscript(systemPrompt, runEntity.input, result.output());
             agentRunCollection.replace(runEntity);
         } catch (Exception e) {
-            LOGGER.error("llm call run failed, runId={}", runId, e);
+            LOGGER.error("llm call run failed, runId={}", runEntity.id, e);
             updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), null);
         }
     }

@@ -1,6 +1,8 @@
 package ai.core.api.server;
 
 import ai.core.api.server.run.AgentRunDetailView;
+import ai.core.api.server.run.LLMCallRequest;
+import ai.core.api.server.run.LLMCallResponse;
 import ai.core.api.server.run.ListRunsRequest;
 import ai.core.api.server.run.ListRunsResponse;
 import ai.core.api.server.run.TriggerRunRequest;
@@ -32,4 +34,8 @@ public interface AgentRunWebService {
     @POST
     @Path("/api/runs/:id/cancel")
     void cancel(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/llm/:id/call")
+    LLMCallResponse llmCall(@PathParam("id") String id, LLMCallRequest request);
 }
