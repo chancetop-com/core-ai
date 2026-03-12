@@ -13,6 +13,39 @@ import java.util.Map;
  * @author stephen
  */
 public class AgentCommandHandler {
+    private static final int SEARCH_THRESHOLD = 5;
+
+    private static boolean matchesKeyword(Map<String, Object> agent, String keyword) {
+        for (var field : List.of("name", "description", "created_by", "type", "model")) {
+            var value = agent.get(field);
+            if (value != null && value.toString().toLowerCase(java.util.Locale.ROOT).contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<String> buildAgentLabels(List<Map<String, Object>> agents) {
+        var labels = new ArrayList<String>();
+        for (var agent : agents) {
+            var name = (String) agent.get("name");
+            var status = (String) agent.get("status");
+            var createdBy = (String) agent.get("created_by");
+            var sb = new StringBuilder(name != null ? name : (String) agent.get("id"));
+            if (status != null) sb.append(" [").append(status).append(']');
+            if (Boolean.TRUE.equals(agent.get("system_default"))) sb.append(" (default)");
+            if (createdBy != null) sb.append(" by ").append(createdBy);
+            labels.add(sb.toString());
+        }
+        return labels;
+    }
+
+    private static String truncate(String text, int max) {
+        if (text == null) return "";
+        var clean = text.replaceAll("[\\r\\n]+", " ").strip();
+        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
+    }
+
     private final TerminalUI ui;
     private final RemoteApiClient api;
 
@@ -59,8 +92,6 @@ public class AgentCommandHandler {
         handleAgentAction(agentId);
     }
 
-    private static final int SEARCH_THRESHOLD = 5;
-
     private List<Map<String, Object>> filterAgents(List<Map<String, Object>> agents) {
         if (agents.size() <= SEARCH_THRESHOLD) {
             ui.printStreamingChunk("\n");
@@ -74,31 +105,6 @@ public class AgentCommandHandler {
             if (matchesKeyword(agent, lower)) result.add(agent);
         }
         return result;
-    }
-
-    private static boolean matchesKeyword(Map<String, Object> agent, String keyword) {
-        for (var field : List.of("name", "description", "created_by", "type", "model")) {
-            var value = agent.get(field);
-            if (value != null && value.toString().toLowerCase(java.util.Locale.ROOT).contains(keyword)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static List<String> buildAgentLabels(List<Map<String, Object>> agents) {
-        var labels = new ArrayList<String>();
-        for (var agent : agents) {
-            var name = (String) agent.get("name");
-            var status = (String) agent.get("status");
-            var createdBy = (String) agent.get("created_by");
-            var sb = new StringBuilder(name != null ? name : (String) agent.get("id"));
-            if (status != null) sb.append(" [").append(status).append(']');
-            if (Boolean.TRUE.equals(agent.get("system_default"))) sb.append(" (default)");
-            if (createdBy != null) sb.append(" by ").append(createdBy);
-            labels.add(sb.toString());
-        }
-        return labels;
     }
 
     @SuppressWarnings("unchecked")
@@ -262,11 +268,5 @@ public class AgentCommandHandler {
     private void printField(String label, Object value) {
         if (value == null) return;
         ui.printStreamingChunk(String.format("  %s%-15s%s %s%n", AnsiTheme.MUTED, label + ":", AnsiTheme.RESET, value));
-    }
-
-    private static String truncate(String text, int max) {
-        if (text == null) return "";
-        var clean = text.replaceAll("[\\r\\n]+", " ").strip();
-        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
     }
 }

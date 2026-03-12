@@ -107,6 +107,7 @@ public class RemoteApiClient {
                 var message = error.get("message");
                 if (message != null) return String.valueOf(message);
             } catch (Exception ignored) {
+                // failed to parse error body as JSON, fall through to generic message
             }
         }
         return switch (statusCode) {

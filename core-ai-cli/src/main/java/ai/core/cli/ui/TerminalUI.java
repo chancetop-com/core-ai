@@ -12,9 +12,6 @@ import org.jline.terminal.TerminalBuilder;
 
 import ai.core.utils.JsonUtil;
 
-import org.jline.keymap.BindingReader;
-import org.jline.keymap.KeyMap;
-import org.jline.utils.InfoCmp;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -38,11 +35,31 @@ public class TerminalUI {
         return t == null || Terminal.TYPE_DUMB.equals(t.getType()) || Terminal.TYPE_DUMB_COLOR.equals(t.getType());
     }
 
-    private static final String PICK_UP = "up";
-    private static final String PICK_DOWN = "down";
-    private static final String PICK_ENTER = "enter";
-    private static final String PICK_QUIT = "quit";
-    private static final String PICK_ESC = "esc";
+    private static Terminal buildTerminal() throws IOException {
+        String os = System.getProperty("os.name", "");
+        DebugLog.log("terminal: os.name=" + os);
+        for (String providerName : new String[]{"ffm", "jni", "jansi"}) {
+            try {
+                Terminal t = TerminalBuilder.builder().system(true).provider(providerName).build();
+                if (!isDumbTerminal(t)) {
+                    DebugLog.log("terminal: using provider=" + providerName);
+                    return t;
+                }
+                DebugLog.log("terminal: provider " + providerName + " returned dumb terminal, skipping");
+                t.close();
+            } catch (Exception e) {
+                DebugLog.log("terminal: provider " + providerName + " failed: " + e.getMessage());
+            }
+        }
+        DebugLog.log("terminal: all providers failed, falling back to default");
+        return TerminalBuilder.builder().system(true).build();
+    }
+
+    private static PrintWriter wrapWriter(PrintWriter delegate) {
+        String os = System.getProperty("os.name", "");
+        if (!os.toLowerCase(Locale.ROOT).contains("win")) return delegate;
+        return new PrintWriter(new CrLfFilterWriter(delegate), true);
+    }
 
     private final PrintWriter writer;
     private final LineReader jlineReader;
@@ -51,21 +68,7 @@ public class TerminalUI {
     private Terminal terminal;
 
     public TerminalUI() {
-        boolean isDebug = DebugLog.isEnabled();
-        Logger.getLogger("org.jline").setLevel(isDebug ? Level.FINE : Level.SEVERE);
-        if (isDebug) {
-            // route JLine logs to DebugLog
-            Logger.getLogger("org.jline").addHandler(new java.util.logging.Handler() {
-                @Override public void publish(java.util.logging.LogRecord record) {
-                    DebugLog.log("[jline] " + record.getMessage());
-                    if (record.getThrown() != null) {
-                        DebugLog.log("[jline] exception: " + record.getThrown());
-                    }
-                }
-                @Override public void flush() {}
-                @Override public void close() {}
-            });
-        }
+        initDebugLogging();
         boolean isDumb;
         try {
             this.terminal = buildTerminal();
@@ -76,8 +79,6 @@ public class TerminalUI {
             isDumb = true;
         }
 
-        // when running as subprocess (e.g. Gradle), stdin/stdout are pipes so JLine
-        // detects dumb terminal; try /dev/tty to get a real terminal on macOS/Linux
         if (isDumb) {
             isDumb = !tryTtyTerminal();
         }
@@ -90,20 +91,7 @@ public class TerminalUI {
         } else {
             this.writer = wrapWriter(terminal.writer());
             this.slashCompleter = new SlashCommandCompleter();
-            this.jlineReader = LineReaderBuilder.builder()
-                    .terminal(terminal)
-                    .appName("core-ai")
-                    .completer(new org.jline.reader.impl.completer.AggregateCompleter(
-                            slashCompleter,
-                            new FileReferenceCompleter()
-                    ))
-                    .build();
-            this.jlineReader.setOpt(LineReader.Option.AUTO_LIST);
-            this.jlineReader.setOpt(LineReader.Option.AUTO_MENU);
-            this.jlineReader.setOpt(LineReader.Option.LIST_PACKED);
-            this.jlineReader.getKeyMaps().get(LineReader.MAIN)
-                    .bind(new Reference(LineReader.MENU_COMPLETE), "\t");
-            registerSlashWidget();
+            this.jlineReader = buildJLineReader();
             this.simpleReader = null;
         }
     }
@@ -128,7 +116,6 @@ public class TerminalUI {
     }
 
     public void showStatus(SessionStatus status) {
-        // handled by ThinkingSpinner in CliEventListener
         DebugLog.log("status: " + status);
     }
 
@@ -139,24 +126,6 @@ public class TerminalUI {
             writer.println(AnsiTheme.MUTED + "    " + truncateError(message) + AnsiTheme.RESET);
         }
         writer.flush();
-    }
-
-    private String parseErrorHint(String message) {
-        if (message == null) return "Oops, something went wrong.";
-        if (message.contains("statusCode=401")) return "API key is invalid or expired. Please check your config with /help.";
-        if (message.contains("statusCode=402")) return "API quota used up. Top up your account or switch model with /model.";
-        if (message.contains("statusCode=403")) return "No permission to access this model. Try a different one with /model.";
-        if (message.contains("statusCode=404")) return "Model not found. Check spelling or try /model to switch.";
-        if (message.contains("statusCode=429")) return "Too many requests. Wait a moment and try again.";
-        if (message.contains("statusCode=500")) return "API server error. This is not your fault — try again shortly.";
-        if (message.contains("statusCode=503")) return "API service is temporarily down. Please try again later.";
-        if (message.contains("timeout") || message.contains("Timeout")) return "Request timed out. Check your network or try again.";
-        if (message.contains("Connection refused")) return "Cannot connect to API. Check your network and config.";
-        return message.length() > 80 ? message.substring(0, 77) + "..." : message;
-    }
-
-    private String truncateError(String message) {
-        return message.length() > 200 ? message.substring(0, 197) + "..." : message;
     }
 
     public void printInputFrame() {
@@ -172,69 +141,18 @@ public class TerminalUI {
         setBlockCursor();
         try {
             String input = doReadInput(promptPrefix);
-            clearInputFrameBelow();
+            writer.flush();
             return input;
         } finally {
             restoreCursor();
         }
     }
 
-    private void clearInputFrameBelow() {
-        writer.flush();
-    }
-
-    private String doReadInput(String promptPrefix) {
-        String prompt = promptPrefix != null
-                ? AnsiTheme.PROMPT + promptPrefix + AnsiTheme.RESET
-                : AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET;
-        if (jlineReader != null) {
-            try {
-                return jlineReader.readLine(prompt);
-            } catch (org.jline.reader.UserInterruptException e) {
-                return "/exit";
-            } catch (org.jline.reader.EndOfFileException e) {
-                return null;
-            }
-        }
-        writer.print(prompt);
-        writer.flush();
-        try {
-            return simpleReader.readLine();
-        } catch (IOException e) {
-            return null;
-        }
-    }
-
-    private void setBlockCursor() {
-        writer.print("\u001B[2 q");
-        writer.flush();
-    }
-
-    private void restoreCursor() {
-        writer.print("\u001B[5 q");
-        writer.flush();
-    }
-
     public ApprovalDecision askPermission(String toolName, String arguments) {
         String prompt = "  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + "Allow? (y/n/always): ";
-        String input;
-        if (jlineReader != null) {
-            try {
-                input = jlineReader.readLine(prompt).trim().toLowerCase(Locale.ROOT);
-            } catch (org.jline.reader.UserInterruptException | org.jline.reader.EndOfFileException e) {
-                input = "n";
-            }
-        } else {
-            writer.print(prompt);
-            writer.flush();
-            try {
-                input = simpleReader.readLine();
-                input = input != null ? input.trim().toLowerCase(Locale.ROOT) : "n";
-            } catch (IOException e) {
-                input = "n";
-            }
-        }
-        return switch (input) {
+        String input = readLineWithPrompt(prompt);
+        if (input == null) input = "n";
+        return switch (input.trim().toLowerCase(Locale.ROOT)) {
             case "y", "yes" -> ApprovalDecision.APPROVE;
             case "always", "a" -> ApprovalDecision.APPROVE_ALWAYS;
             default -> ApprovalDecision.DENY;
@@ -244,18 +162,7 @@ public class TerminalUI {
     public void showToolStart(String toolName, String arguments) {
         writer.println("\n  " + AnsiTheme.WARNING + "⟳ " + AnsiTheme.RESET + toolName);
         if (arguments != null && !arguments.isBlank() && !"{}".equals(arguments.trim())) {
-            try {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
-                for (var entry : argsMap.entrySet()) {
-                    String value = String.valueOf(entry.getValue());
-                    if (value.length() > 100) value = value.substring(0, 100) + "...";
-                    writer.println(AnsiTheme.MUTED + "    " + entry.getKey() + ": " + value + AnsiTheme.RESET);
-                }
-            } catch (Exception e) {
-                String display = arguments.length() > 200 ? arguments.substring(0, 200) + "..." : arguments;
-                writer.println(AnsiTheme.MUTED + "    " + display + AnsiTheme.RESET);
-            }
+            printToolArguments(arguments);
         }
         writer.flush();
     }
@@ -304,111 +211,10 @@ public class TerminalUI {
         }
         var savedAttrs = terminal.enterRawMode();
         try {
-            return pickIndexRaw(items);
+            return new TerminalPicker(terminal, writer).pickIndexRaw(items);
         } finally {
             terminal.setAttributes(savedAttrs);
         }
-    }
-
-    private int pickIndexNumeric(List<String> items) {
-        int limit = Math.min(items.size(), 10);
-        for (int i = 0; i < limit; i++) {
-            writer.println("  " + (i + 1) + ". " + items.get(i));
-        }
-        writer.print(AnsiTheme.PROMPT + "Enter number (1-" + limit + ", q to cancel): " + AnsiTheme.RESET);
-        writer.flush();
-        String line = readRawLine();
-        if (line == null || line.isBlank() || "q".equalsIgnoreCase(line.trim())) return -1;
-        try {
-            int choice = Integer.parseInt(line.trim());
-            if (choice >= 1 && choice <= limit) return choice - 1;
-        } catch (NumberFormatException ignored) {
-        }
-        return -1;
-    }
-
-    private int pickIndexRaw(List<String> items) {
-        int selected = 0;
-        int limit = Math.min(items.size(), 10);
-        renderPickerList(items, selected, limit);
-
-        KeyMap<String> keyMap = new KeyMap<>();
-        // use JLine terminal capabilities for cross-platform arrow key support
-        try {
-            String keyUp = KeyMap.key(terminal, InfoCmp.Capability.key_up);
-            String keyDown = KeyMap.key(terminal, InfoCmp.Capability.key_down);
-            DebugLog.log("picker keyMap: key_up=" + escape(keyUp) + ", key_down=" + escape(keyDown));
-            keyMap.bind(PICK_UP, keyUp);
-            keyMap.bind(PICK_DOWN, keyDown);
-        } catch (Exception e) {
-            DebugLog.log("picker: failed to get terminal key capabilities: " + e.getMessage());
-        }
-        // also bind standard ANSI sequences as fallback
-        keyMap.bind(PICK_UP, "\033[A");
-        keyMap.bind(PICK_DOWN, "\033[B");
-        keyMap.bind(PICK_UP, "\033OA");
-        keyMap.bind(PICK_DOWN, "\033OB");
-        keyMap.bind(PICK_ENTER, "\r");
-        keyMap.bind(PICK_ENTER, "\n");
-        keyMap.bind(PICK_QUIT, "q");
-        keyMap.bind(PICK_QUIT, "Q");
-        keyMap.bind(PICK_ESC, "\033");
-        keyMap.setAmbiguousTimeout(200L);
-
-        DebugLog.log("picker: terminal type=" + terminal.getType() + ", class=" + terminal.getClass().getName());
-
-        var bindingReader = new BindingReader(terminal.reader());
-        try {
-            while (true) {
-                String action = bindingReader.readBinding(keyMap);
-                DebugLog.log("picker: action=" + action);
-                if (action == null || PICK_QUIT.equals(action) || PICK_ESC.equals(action)) {
-                    clearPickerList(limit);
-                    return -1;
-                }
-                if (PICK_ENTER.equals(action)) {
-                    clearPickerList(limit);
-                    return selected;
-                }
-                if (PICK_UP.equals(action)) selected = (selected - 1 + limit) % limit;
-                if (PICK_DOWN.equals(action)) selected = (selected + 1) % limit;
-                renderPickerList(items, selected, limit);
-            }
-        } catch (Exception e) {
-            DebugLog.log("picker: error reading input: " + e.getMessage());
-            return -1;
-        }
-    }
-
-    private static String escape(String s) {
-        if (s == null) return "null";
-        var sb = new StringBuilder();
-        for (char c : s.toCharArray()) {
-            if (c < 32) sb.append("\\x").append(String.format("%02x", (int) c));
-            else sb.append(c);
-        }
-        return sb.toString();
-    }
-
-    private void renderPickerList(List<String> items, int selected, int limit) {
-        for (int i = 0; i < limit; i++) {
-            writer.print("\n\u001B[2K");
-            if (i == selected) {
-                writer.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + items.get(i));
-            } else {
-                writer.print("   " + AnsiTheme.MUTED + items.get(i) + AnsiTheme.RESET);
-            }
-        }
-        writer.print("\u001B[" + limit + "A");
-        writer.flush();
-    }
-
-    private void clearPickerList(int limit) {
-        for (int i = 0; i < limit; i++) {
-            writer.print("\n\u001B[2K");
-        }
-        writer.print("\u001B[" + limit + "A");
-        writer.flush();
     }
 
     public void endStreaming() {
@@ -455,53 +261,130 @@ public class TerminalUI {
         if (terminal != null) terminal.close();
     }
 
-    private static Terminal buildTerminal() throws IOException {
-        String os = System.getProperty("os.name", "");
-        DebugLog.log("terminal: os.name=" + os);
-        // try each provider explicitly (GraalVM native image may not discover providers via ServiceLoader)
-        for (String providerName : new String[]{"ffm", "jni", "jansi"}) {
-            try {
-                Terminal t = TerminalBuilder.builder().system(true).provider(providerName).build();
-                if (!isDumbTerminal(t)) {
-                    DebugLog.log("terminal: using provider=" + providerName);
-                    return t;
-                }
-                DebugLog.log("terminal: provider " + providerName + " returned dumb terminal, skipping");
-                t.close();
-            } catch (Exception e) {
-                DebugLog.log("terminal: provider " + providerName + " failed: " + e.getMessage());
-            }
+    private void initDebugLogging() {
+        boolean isDebug = DebugLog.isEnabled();
+        Logger.getLogger("org.jline").setLevel(isDebug ? Level.FINE : Level.SEVERE);
+        if (isDebug) {
+            Logger.getLogger("org.jline").addHandler(new JLineDebugHandler());
         }
-        DebugLog.log("terminal: all providers failed, falling back to default");
-        return TerminalBuilder.builder().system(true).build();
     }
 
-    // on Windows native terminal, \n alone only does LF without CR, causing output to drift right.
-    // wrap writer to auto-translate \n to \r\n
-    private static PrintWriter wrapWriter(PrintWriter delegate) {
-        String os = System.getProperty("os.name", "");
-        if (!os.toLowerCase(Locale.ROOT).contains("win")) return delegate;
-        return new PrintWriter(new java.io.FilterWriter(delegate) {
-            @Override
-            public void write(int c) throws IOException {
-                if (c == '\n') out.write('\r');
-                out.write(c);
-            }
+    private LineReader buildJLineReader() {
+        var reader = LineReaderBuilder.builder()
+                .terminal(terminal)
+                .appName("core-ai")
+                .completer(new org.jline.reader.impl.completer.AggregateCompleter(
+                        slashCompleter,
+                        new FileReferenceCompleter()
+                ))
+                .build();
+        reader.setOpt(LineReader.Option.AUTO_LIST);
+        reader.setOpt(LineReader.Option.AUTO_MENU);
+        reader.setOpt(LineReader.Option.LIST_PACKED);
+        reader.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference(LineReader.MENU_COMPLETE), "\t");
+        registerSlashWidget(reader);
+        return reader;
+    }
 
-            @Override
-            public void write(char[] cbuf, int off, int len) throws IOException {
-                for (int i = off; i < off + len; i++) {
-                    write(cbuf[i]);
-                }
+    private String readLineWithPrompt(String prompt) {
+        if (jlineReader != null) {
+            try {
+                return jlineReader.readLine(prompt);
+            } catch (org.jline.reader.UserInterruptException | org.jline.reader.EndOfFileException e) {
+                return null;
             }
+        }
+        writer.print(prompt);
+        writer.flush();
+        try {
+            return simpleReader.readLine();
+        } catch (IOException e) {
+            return null;
+        }
+    }
 
-            @Override
-            public void write(String str, int off, int len) throws IOException {
-                for (int i = off; i < off + len; i++) {
-                    write(str.charAt(i));
-                }
+    private String parseErrorHint(String message) {
+        if (message == null) return "Oops, something went wrong.";
+        if (message.contains("statusCode=401")) return "API key is invalid or expired. Please check your config with /help.";
+        if (message.contains("statusCode=402")) return "API quota used up. Top up your account or switch model with /model.";
+        if (message.contains("statusCode=403")) return "No permission to access this model. Try a different one with /model.";
+        if (message.contains("statusCode=404")) return "Model not found. Check spelling or try /model to switch.";
+        if (message.contains("statusCode=429")) return "Too many requests. Wait a moment and try again.";
+        if (message.contains("statusCode=500")) return "API server error. This is not your fault — try again shortly.";
+        if (message.contains("statusCode=503")) return "API service is temporarily down. Please try again later.";
+        if (message.contains("timeout") || message.contains("Timeout")) return "Request timed out. Check your network or try again.";
+        if (message.contains("Connection refused")) return "Cannot connect to API. Check your network and config.";
+        return message.length() > 80 ? message.substring(0, 77) + "..." : message;
+    }
+
+    private String truncateError(String message) {
+        return message.length() > 200 ? message.substring(0, 197) + "..." : message;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void printToolArguments(String arguments) {
+        try {
+            Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
+            for (var entry : argsMap.entrySet()) {
+                String value = String.valueOf(entry.getValue());
+                if (value.length() > 100) value = value.substring(0, 100) + "...";
+                writer.println(AnsiTheme.MUTED + "    " + entry.getKey() + ": " + value + AnsiTheme.RESET);
             }
-        }, true);
+        } catch (Exception e) {
+            String display = arguments.length() > 200 ? arguments.substring(0, 200) + "..." : arguments;
+            writer.println(AnsiTheme.MUTED + "    " + display + AnsiTheme.RESET);
+        }
+    }
+
+    private String doReadInput(String promptPrefix) {
+        String prompt = promptPrefix != null
+                ? AnsiTheme.PROMPT + promptPrefix + AnsiTheme.RESET
+                : AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET;
+        if (jlineReader != null) {
+            try {
+                return jlineReader.readLine(prompt);
+            } catch (org.jline.reader.UserInterruptException e) {
+                return "/exit";
+            } catch (org.jline.reader.EndOfFileException e) {
+                return null;
+            }
+        }
+        writer.print(prompt);
+        writer.flush();
+        try {
+            return simpleReader.readLine();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private void setBlockCursor() {
+        writer.print("\u001B[2 q");
+        writer.flush();
+    }
+
+    private void restoreCursor() {
+        writer.print("\u001B[5 q");
+        writer.flush();
+    }
+
+    private int pickIndexNumeric(List<String> items) {
+        int limit = Math.min(items.size(), 10);
+        for (int i = 0; i < limit; i++) {
+            writer.println("  " + (i + 1) + ". " + items.get(i));
+        }
+        writer.print(AnsiTheme.PROMPT + "Enter number (1-" + limit + ", q to cancel): " + AnsiTheme.RESET);
+        writer.flush();
+        String line = readRawLine();
+        if (line == null || line.isBlank() || "q".equalsIgnoreCase(line.trim())) return -1;
+        try {
+            int choice = Integer.parseInt(line.trim());
+            if (choice >= 1 && choice <= limit) return choice - 1;
+        } catch (NumberFormatException ignored) {
+            // not a valid number, return -1
+        }
+        return -1;
     }
 
     private boolean tryTtyTerminal() {
@@ -526,41 +409,39 @@ public class TerminalUI {
         }
     }
 
-    private void registerSlashWidget() {
-        if (!(jlineReader instanceof LineReaderImpl reader)) {
+    private void registerSlashWidget(LineReader reader) {
+        if (!(reader instanceof LineReaderImpl impl)) {
             return;
         }
-        String slashWidget = "slash-auto-complete";
-        reader.getWidgets().put(slashWidget, () -> {
-            reader.callWidget(LineReader.SELF_INSERT);
-            if ("/".equals(reader.getBuffer().toString())) {
-                reader.callWidget(LineReader.LIST_CHOICES);
+        impl.getWidgets().put("slash-auto-complete", () -> {
+            impl.callWidget(LineReader.SELF_INSERT);
+            if ("/".equals(impl.getBuffer().toString())) {
+                impl.callWidget(LineReader.LIST_CHOICES);
             }
             return true;
         });
-        reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference(slashWidget), "/");
+        impl.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference("slash-auto-complete"), "/");
 
-        String atWidget = "at-file-complete";
-        reader.getWidgets().put(atWidget, () -> {
-            reader.callWidget(LineReader.SELF_INSERT);
-            String buf = reader.getBuffer().toString();
+        impl.getWidgets().put("at-file-complete", () -> {
+            impl.callWidget(LineReader.SELF_INSERT);
+            String buf = impl.getBuffer().toString();
             if (buf.endsWith("@") && (buf.length() == 1 || buf.charAt(buf.length() - 2) == ' ')) {
-                reader.callWidget(LineReader.LIST_CHOICES);
+                impl.callWidget(LineReader.LIST_CHOICES);
             }
             return true;
         });
-        reader.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference(atWidget), "@");
+        impl.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference("at-file-complete"), "@");
 
-        reader.getWidgets().put("backspace-refresh", () -> {
-            reader.callWidget(LineReader.BACKWARD_DELETE_CHAR);
-            org.jline.reader.impl.CompletionHelper.refreshCompletion(reader);
+        impl.getWidgets().put("backspace-refresh", () -> {
+            impl.callWidget(LineReader.BACKWARD_DELETE_CHAR);
+            org.jline.reader.impl.CompletionHelper.refreshCompletion(impl);
             return true;
         });
-        reader.getKeyMaps().get(LineReader.MAIN)
+        impl.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference("backspace-refresh"), "\u007F");
-        reader.getKeyMaps().get(LineReader.MAIN)
+        impl.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference("backspace-refresh"), "\u0008");
     }
 }

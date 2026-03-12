@@ -251,27 +251,26 @@ public class NativeReflectionFeature implements Feature {
 
     // register FFM downcall descriptors for JLine's Kernel32 Windows API calls
     private void registerJLineKernel32Downcalls() {
-        var I = ValueLayout.JAVA_INT;      // C int / DWORD / BOOL
-        var L = ValueLayout.JAVA_LONG;     // C pointer / HANDLE (64-bit)
-        var S = ValueLayout.JAVA_SHORT;    // C short / WORD
-        var C = ValueLayout.JAVA_CHAR;     // C wchar_t
-        var P = ValueLayout.ADDRESS;       // pointer
-        MemoryLayout COORD = MemoryLayout.structLayout(S.withName("x"), S.withName("y"));
+        var intLayout = ValueLayout.JAVA_INT;      // C int / DWORD / BOOL
+        var shortLayout = ValueLayout.JAVA_SHORT;    // C short / WORD
+        var charLayout = ValueLayout.JAVA_CHAR;     // C wchar_t
+        var ptrLayout = ValueLayout.ADDRESS;       // pointer
+        MemoryLayout coord = MemoryLayout.structLayout(shortLayout.withName("x"), shortLayout.withName("y"));
 
         FunctionDescriptor[] descriptors = {
-            FunctionDescriptor.of(I, P, I),                     // WaitForSingleObject, SetConsoleMode
-            FunctionDescriptor.of(P, I),                        // GetStdHandle, _get_osfhandle
-            FunctionDescriptor.of(I, I, P, I, I, P, I, P),     // FormatMessageW
-            FunctionDescriptor.of(I, P, S),                     // SetConsoleTextAttribute
-            FunctionDescriptor.of(I, P, P),                     // GetConsoleMode, GetConsoleScreenBufferInfo
-            FunctionDescriptor.of(I, P),                        // SetConsoleTitleW, GetFileType
-            FunctionDescriptor.of(I, P, COORD),                 // SetConsoleCursorPosition
-            FunctionDescriptor.of(I, P, C, I, COORD, P),       // FillConsoleOutputCharacterW
-            FunctionDescriptor.of(I, P, S, I, COORD, P),       // FillConsoleOutputAttribute
-            FunctionDescriptor.of(I, P, P, I, P, P),           // WriteConsoleW
-            FunctionDescriptor.of(I, P, P, I, P),              // ReadConsoleInputW, PeekConsoleInputW
-            FunctionDescriptor.of(I),                           // GetLastError
-            FunctionDescriptor.of(I, P, P, P, COORD, P),       // ScrollConsoleScreenBufferW
+            FunctionDescriptor.of(intLayout, ptrLayout, intLayout),                                                       // WaitForSingleObject, SetConsoleMode
+            FunctionDescriptor.of(ptrLayout, intLayout),                                                                  // GetStdHandle, _get_osfhandle
+            FunctionDescriptor.of(intLayout, intLayout, ptrLayout, intLayout, intLayout, ptrLayout, intLayout, ptrLayout), // FormatMessageW
+            FunctionDescriptor.of(intLayout, ptrLayout, shortLayout),                                                     // SetConsoleTextAttribute
+            FunctionDescriptor.of(intLayout, ptrLayout, ptrLayout),                                                       // GetConsoleMode, GetConsoleScreenBufferInfo
+            FunctionDescriptor.of(intLayout, ptrLayout),                                                                  // SetConsoleTitleW, GetFileType
+            FunctionDescriptor.of(intLayout, ptrLayout, coord),                                                           // SetConsoleCursorPosition
+            FunctionDescriptor.of(intLayout, ptrLayout, charLayout, intLayout, coord, ptrLayout),                          // FillConsoleOutputCharacterW
+            FunctionDescriptor.of(intLayout, ptrLayout, shortLayout, intLayout, coord, ptrLayout),                         // FillConsoleOutputAttribute
+            FunctionDescriptor.of(intLayout, ptrLayout, ptrLayout, intLayout, ptrLayout, ptrLayout),                       // WriteConsoleW
+            FunctionDescriptor.of(intLayout, ptrLayout, ptrLayout, intLayout, ptrLayout),                                  // ReadConsoleInputW, PeekConsoleInputW
+            FunctionDescriptor.of(intLayout),                                                                             // GetLastError
+            FunctionDescriptor.of(intLayout, ptrLayout, ptrLayout, ptrLayout, coord, ptrLayout)                            // ScrollConsoleScreenBufferW
         };
         for (FunctionDescriptor desc : descriptors) {
             try {

@@ -23,10 +23,29 @@ import java.util.concurrent.Semaphore;
 public class RemoteSessionRunner {
     private static final String POISON_PILL = "\0__EXIT__";
 
+    private static final List<SlashCommand> REMOTE_COMMANDS = List.of(
+        new SlashCommand("/help", "Show available commands"),
+        new SlashCommand("/build-agent", "Build agent from conversation"),
+        new SlashCommand("/build-llm-call-api", "Build LLM Call API interactively"),
+        new SlashCommand("/agents", "Manage agents (details, trigger, schedule)"),
+        new SlashCommand("/tools", "List available tools"),
+        new SlashCommand("/debug", "Toggle debug mode"),
+        new SlashCommand("/clear", "Clear screen"),
+        new SlashCommand("/exit", "Disconnect and return to local mode")
+    );
+
     static String truncate(String text, int max) {
         if (text == null) return "";
         var clean = text.replaceAll("[\\r\\n]+", " ").strip();
         return clean.length() <= max ? clean : clean.substring(0, max) + "...";
+    }
+
+    private static String buildRemotePrompt(String name, String serverUrl) {
+        String host = URI.create(serverUrl).getHost();
+        if (name != null && !name.isBlank()) {
+            return name + "@" + host + "> ";
+        }
+        return host + "> ";
     }
 
     private final TerminalUI ui;
@@ -40,25 +59,6 @@ public class RemoteSessionRunner {
         this.api = api;
         this.remotePrompt = buildRemotePrompt(name, api.serverUrl());
     }
-
-    private static String buildRemotePrompt(String name, String serverUrl) {
-        String host = URI.create(serverUrl).getHost();
-        if (name != null && !name.isBlank()) {
-            return name + "@" + host + "> ";
-        }
-        return host + "> ";
-    }
-
-    private static final List<SlashCommand> REMOTE_COMMANDS = List.of(
-        new SlashCommand("/help", "Show available commands"),
-        new SlashCommand("/build-agent", "Build agent from conversation"),
-        new SlashCommand("/build-llm-call-api", "Build LLM Call API interactively"),
-        new SlashCommand("/agents", "Manage agents (details, trigger, schedule)"),
-        new SlashCommand("/tools", "List available tools"),
-        new SlashCommand("/debug", "Toggle debug mode"),
-        new SlashCommand("/clear", "Clear screen"),
-        new SlashCommand("/exit", "Disconnect and return to local mode")
-    );
 
     public void run() {
         var listener = new RemoteEventListener(ui, session);

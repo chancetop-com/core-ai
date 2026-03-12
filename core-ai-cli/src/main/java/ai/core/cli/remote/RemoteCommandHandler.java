@@ -78,8 +78,6 @@ public class RemoteCommandHandler {
         return config;
     }
 
-    record LoginResult(String apiKey, String name) {}
-
     @SuppressWarnings("unchecked")
     private LoginResult login(String serverUrl, String email, String password) {
         try {
@@ -106,4 +104,6 @@ public class RemoteCommandHandler {
             return null;
         }
     }
+
+    record LoginResult(String apiKey, String name) { }
 }
