@@ -259,6 +259,7 @@ public class AgentBootstrap {
             try {
                 var mcpServersConfig = (Map<String, Object>) JsonUtil.fromJson(Map.class, json);
                 var manager = McpClientManager.fromConfig(mcpServersConfig);
+                McpClientManagerRegistry.notifyCreation(manager);
                 manager.warmup();
                 result.mcpClientManager = manager;
                 McpClientManagerRegistry.setManager(manager);

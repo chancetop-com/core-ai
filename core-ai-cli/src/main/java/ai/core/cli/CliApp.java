@@ -5,6 +5,8 @@ import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
+import ai.core.mcp.client.McpClientManager;
+import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
@@ -61,7 +63,9 @@ public class CliApp {
         DebugLog.log("loading config from " + configFile);
         var props = PropertiesFileSource.fromFile(configFile);
         var bootstrap = new AgentBootstrap(props);
+        registerMcpLoadingListener();
         var result = bootstrap.initialize();
+        clearLoading();
         DebugLog.log("bootstrap initialized");
 
         restoreActiveProvider(props, result.llmProviders);
@@ -215,6 +219,30 @@ public class CliApp {
         } catch (Exception ignored) {
             // terminal cleanup failure is non-critical
         }
+    }
+
+    @SuppressWarnings("PMD.SystemPrintln")
+    private void clearLoading() {
+        System.err.print("\r\033[K");
+        System.err.flush();
+    }
+
+    @SuppressWarnings("PMD.SystemPrintln")
+    private void registerMcpLoadingListener() {
+        McpClientManagerRegistry.addCreationListener(manager ->
+            manager.addListener((serverName, oldState, newState) -> {
+                if (newState == McpClientManager.ConnectionState.CONNECTING) {
+                    System.err.print("\r\033[K" + AnsiTheme.MUTED + "  Loading MCP server: " + serverName + "..." + AnsiTheme.RESET);
+                    System.err.flush();
+                } else if (newState == McpClientManager.ConnectionState.CONNECTED) {
+                    System.err.print("\r\033[K" + AnsiTheme.MUTED + "  MCP server loaded: " + serverName + AnsiTheme.RESET);
+                    System.err.flush();
+                } else if (newState == McpClientManager.ConnectionState.FAILED) {
+                    System.err.print("\r\033[K" + AnsiTheme.WARNING + "  MCP server failed: " + serverName + AnsiTheme.RESET);
+                    System.err.flush();
+                }
+            })
+        );
     }
 
     private void closeShutdownResources(BootstrapResult result) {
