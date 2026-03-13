@@ -29,7 +29,9 @@ public class AuthInterceptor implements Interceptor {
         }
 
         if (path.equals("/api/auth/register") || path.equals("/api/auth/login")
-                || path.startsWith("/api/webhooks/")) {
+                || path.startsWith("/api/webhooks/")
+                || path.startsWith("/api/public/otel/")
+                || path.startsWith("/api/ingest/")) {
             return invocation.proceed();
         }
 
@@ -59,7 +61,7 @@ public class AuthInterceptor implements Interceptor {
         if (auth.isEmpty()) return null;
 
         var value = auth.get();
-        if (!value.startsWith("Bearer coreai_")) return null;
+        if (!value.startsWith("Bearer coreai_") && !value.startsWith("Bearer cai_")) return null;
 
         var apiKey = value.substring(7);
         var user = userCollection.findOne(Filters.eq("api_key", apiKey));

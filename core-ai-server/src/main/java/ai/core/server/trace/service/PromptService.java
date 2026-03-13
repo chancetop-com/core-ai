@@ -32,6 +32,7 @@ public class PromptService {
     }
 
     public PromptTemplate create(PromptTemplate template) {
+        template.id = java.util.UUID.randomUUID().toString();
         template.version = 1;
         template.status = PromptStatus.DRAFT;
         template.createdAt = ZonedDateTime.now();

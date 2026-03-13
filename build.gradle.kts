@@ -123,6 +123,9 @@ project(":core-ai-server") {
         implementation("core.framework:core-ng-mongo:${Versions.CORE_FRAMEWORK_VERSION}")
         // BouncyCastle for password hashing
         implementation("org.bouncycastle:bcprov-jdk18on:1.79")
+        // Jackson for trace JSON serialization
+        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
+        implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.JACKSON_VERSION}")
         // OTLP protobuf for trace ingestion
         implementation("io.opentelemetry.proto:opentelemetry-proto:${Versions.OPENTELEMETRY_PROTO_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
