@@ -7,9 +7,9 @@ import java.util.Optional;
  * @author stephen
  */
 public interface ToolPermissionStore {
-    void allow(String toolName, String pathPattern);
+    void allow(String pattern);
 
-    void deny(String toolName, String pathPattern);
+    void deny(String pattern);
 
     Optional<Boolean> checkPermission(String toolName, Map<String, Object> arguments);
 }

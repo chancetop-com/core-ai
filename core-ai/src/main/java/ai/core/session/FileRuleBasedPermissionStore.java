@@ -1,6 +1,5 @@
 package ai.core.session;
 
-import ai.core.session.permission.PathExtractor;
 import ai.core.session.permission.PermissionRule;
 import core.framework.api.json.Property;
 import core.framework.json.JSON;
@@ -19,8 +18,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class FileRuleBasedPermissionStore implements ToolPermissionStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileRuleBasedPermissionStore.class);
 
-    private final List<PermissionRule> allowRules = new CopyOnWriteArrayList<>();
-    private final List<PermissionRule> denyRules = new CopyOnWriteArrayList<>();
+    private final List<String> allowPatterns = new CopyOnWriteArrayList<>();
+    private final List<String> denyPatterns = new CopyOnWriteArrayList<>();
     private final Path persistFile;
 
     public FileRuleBasedPermissionStore() {
@@ -33,44 +32,40 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
     }
 
     @Override
-    public void allow(String toolName, String pathPattern) {
-        var rule = new PermissionRule(toolName, pathPattern);
-        denyRules.remove(rule);
-        if (!allowRules.contains(rule)) {
-            allowRules.add(rule);
+    public void allow(String pattern) {
+        denyPatterns.remove(pattern);
+        if (!allowPatterns.contains(pattern)) {
+            allowPatterns.add(pattern);
             save();
         }
     }
 
     @Override
-    public void deny(String toolName, String pathPattern) {
-        var rule = new PermissionRule(toolName, pathPattern);
-        allowRules.remove(rule);
-        if (!denyRules.contains(rule)) {
-            denyRules.add(rule);
+    public void deny(String pattern) {
+        allowPatterns.remove(pattern);
+        if (!denyPatterns.contains(pattern)) {
+            denyPatterns.add(pattern);
             save();
         }
     }
 
     @Override
     public Optional<Boolean> checkPermission(String toolName, Map<String, Object> arguments) {
-        var path = PathExtractor.extractPath(toolName, arguments).orElse(null);
-
-        boolean denied = denyRules.stream().anyMatch(r -> r.matches(toolName, path));
+        boolean denied = denyPatterns.stream().anyMatch(p -> PermissionRule.matches(p, toolName, arguments));
         if (denied) return Optional.of(false);
 
-        boolean allowed = allowRules.stream().anyMatch(r -> r.matches(toolName, path));
+        boolean allowed = allowPatterns.stream().anyMatch(p -> PermissionRule.matches(p, toolName, arguments));
         if (allowed) return Optional.of(true);
 
         return Optional.empty();
     }
 
-    public List<PermissionRule> getAllowRules() {
-        return List.copyOf(allowRules);
+    public List<String> getAllowPatterns() {
+        return List.copyOf(allowPatterns);
     }
 
-    public List<PermissionRule> getDenyRules() {
-        return List.copyOf(denyRules);
+    public List<String> getDenyPatterns() {
+        return List.copyOf(denyPatterns);
     }
 
     private void load() {
@@ -78,11 +73,11 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
         try {
             var content = Files.readString(persistFile);
             var domain = JSON.fromJSON(PermissionsDomain.class, content);
-            if (domain.allow != null) allowRules.addAll(domain.allow);
-            if (domain.deny != null) denyRules.addAll(domain.deny);
-            LOGGER.debug("loaded {} allow / {} deny rules from {}", allowRules.size(), denyRules.size(), persistFile);
+            if (domain.allow != null) allowPatterns.addAll(domain.allow);
+            if (domain.deny != null) denyPatterns.addAll(domain.deny);
+            LOGGER.debug("loaded {} allow / {} deny patterns from {}", allowPatterns.size(), denyPatterns.size(), persistFile);
         } catch (IOException e) {
-            LOGGER.warn("failed to load permission rules from {}", persistFile, e);
+            LOGGER.warn("failed to load permission patterns from {}", persistFile, e);
         }
     }
 
@@ -91,20 +86,20 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
         try {
             Files.createDirectories(persistFile.getParent());
             var domain = new PermissionsDomain();
-            domain.allow = new ArrayList<>(allowRules);
-            domain.deny = new ArrayList<>(denyRules);
+            domain.allow = new ArrayList<>(allowPatterns);
+            domain.deny = new ArrayList<>(denyPatterns);
             Files.writeString(persistFile, JSON.toJSON(domain));
-            LOGGER.debug("saved {} allow / {} deny rules to {}", allowRules.size(), denyRules.size(), persistFile);
+            LOGGER.debug("saved {} allow / {} deny patterns to {}", allowPatterns.size(), denyPatterns.size(), persistFile);
         } catch (IOException e) {
-            LOGGER.warn("failed to save permission rules to {}", persistFile, e);
+            LOGGER.warn("failed to save permission patterns to {}", persistFile, e);
         }
     }
 
     public static class PermissionsDomain {
         @Property(name = "allow")
-        public List<PermissionRule> allow;
+        public List<String> allow;
 
         @Property(name = "deny")
-        public List<PermissionRule> deny;
+        public List<String> deny;
     }
 }

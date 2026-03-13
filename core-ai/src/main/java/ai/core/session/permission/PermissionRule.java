@@ -1,58 +1,48 @@
 package ai.core.session.permission;
 
-import core.framework.api.json.Property;
-
-import java.util.Objects;
+import java.util.Map;
+import java.util.Optional;
 
 public class PermissionRule {
-    @Property(name = "tool_name")
-    public String toolName;
-
-    @Property(name = "path_pattern")
-    public String pathPattern;
-
-    public PermissionRule() {
+    public static String buildPattern(String toolName, Map<String, Object> arguments) {
+        var primaryArg = extractPrimaryArg(arguments);
+        return primaryArg.map(s -> toolName + "(" + s + ")").orElse(toolName);
     }
 
-    public PermissionRule(String toolName, String pathPattern) {
-        this.toolName = toolName;
-        this.pathPattern = pathPattern;
+    public static Optional<String> extractPrimaryArg(Map<String, Object> arguments) {
+        if (arguments == null || arguments.isEmpty()) return Optional.empty();
+        return arguments.keySet().stream()
+                .sorted()
+                .map(arguments::get)
+                .filter(v -> v != null)
+                .map(Object::toString)
+                .findFirst();
     }
 
-    public boolean matchesToolName(String name) {
-        if ("*".equals(toolName)) return true;
-        return Objects.equals(toolName, name);
-    }
-
-    public boolean matchesPath(String path) {
-        if (pathPattern == null || pathPattern.isEmpty()) return true;
-        if (path == null) return true;
-
-        if (pathPattern.endsWith("/**")) {
-            var prefix = pathPattern.substring(0, pathPattern.length() - 3);
-            return path.startsWith(prefix);
+    public static boolean matches(String pattern, String toolName, Map<String, Object> arguments) {
+        int parenOpen = pattern.indexOf('(');
+        if (parenOpen < 0) {
+            return pattern.equals(toolName);
         }
-        if (pathPattern.endsWith("/*")) {
-            var prefix = pathPattern.substring(0, pathPattern.length() - 2);
-            return path.startsWith(prefix) && !path.substring(prefix.length() + 1).contains("/");
+
+        String patternTool = pattern.substring(0, parenOpen);
+        if (!patternTool.equals(toolName)) return false;
+
+        String argPattern = pattern.substring(parenOpen + 1, pattern.length() - 1);
+        String primaryArg = extractPrimaryArg(arguments).orElse("");
+        return globMatch(argPattern, primaryArg);
+    }
+
+    static boolean globMatch(String pattern, String text) {
+        if ("*".equals(pattern)) return true;
+        if (pattern.endsWith("**")) {
+            String prefix = pattern.substring(0, pattern.length() - 2);
+            return text.startsWith(prefix);
         }
-        return Objects.equals(pathPattern, path);
-    }
-
-    public boolean matches(String toolName, String path) {
-        return matchesToolName(toolName) && matchesPath(path);
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof PermissionRule that)) return false;
-        return Objects.equals(toolName, that.toolName)
-                && Objects.equals(pathPattern, that.pathPattern);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(toolName, pathPattern);
+        if (pattern.endsWith("*")) {
+            String prefix = pattern.substring(0, pattern.length() - 1);
+            return text.startsWith(prefix);
+        }
+        return pattern.equals(text);
     }
 }

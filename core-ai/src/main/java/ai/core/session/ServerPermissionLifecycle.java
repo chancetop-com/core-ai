@@ -7,6 +7,7 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.llm.domain.FunctionCall;
+import ai.core.session.permission.PermissionRule;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
@@ -49,8 +50,9 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
             return;
         }
 
+        Map<String, Object> argMap = parseArguments(arguments);
+
         if (permissionStore != null) {
-            Map<String, Object> argMap = parseArguments(arguments);
             var result = permissionStore.checkPermission(toolName, argMap);
             if (result.isPresent() && result.get()) {
                 logger.debug("rule matched ALLOW for tool={}, callId={}", toolName, callId);
@@ -70,17 +72,19 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         var decision = permissionGate.waitForApproval(callId, 300_000);
         logger.debug("approval received: tool={}, callId={}, decision={}", toolName, callId, decision);
 
+        String pattern = PermissionRule.buildPattern(toolName, argMap);
+
         switch (decision) {
             case DENY -> throw new ToolCallDeniedException(toolName);
             case DENY_ALWAYS -> {
                 if (permissionStore != null) {
-                    permissionStore.deny(toolName, null);
+                    permissionStore.deny(pattern);
                 }
                 throw new ToolCallDeniedException(toolName);
             }
             case APPROVE_ALWAYS -> {
                 if (permissionStore != null) {
-                    permissionStore.allow(toolName, null);
+                    permissionStore.allow(pattern);
                 }
             }
             default -> {

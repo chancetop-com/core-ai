@@ -2,58 +2,115 @@ package ai.core.session.permission;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PermissionRuleTest {
 
     @Test
-    void matchesExactToolName() {
-        var rule = new PermissionRule("read_file", null);
-        assertTrue(rule.matchesToolName("read_file"));
-        assertFalse(rule.matchesToolName("write_file"));
+    void buildPatternWithFilePath() {
+        var pattern = PermissionRule.buildPattern("read_file", Map.of("file_path", "/home/user/a.txt"));
+        assertEquals("read_file(/home/user/a.txt)", pattern);
     }
 
     @Test
-    void wildcardMatchesAnyTool() {
-        var rule = new PermissionRule("*", null);
-        assertTrue(rule.matchesToolName("read_file"));
-        assertTrue(rule.matchesToolName("shell_command"));
+    void buildPatternWithPath() {
+        var pattern = PermissionRule.buildPattern("glob_file", Map.of("path", "/src"));
+        assertEquals("glob_file(/src)", pattern);
     }
 
     @Test
-    void nullPathPatternMatchesAnyPath() {
-        var rule = new PermissionRule("read_file", null);
-        assertTrue(rule.matchesPath("/any/path"));
-        assertTrue(rule.matchesPath(null));
+    void buildPatternWithCommand() {
+        var pattern = PermissionRule.buildPattern("run_bash_command", Map.of("command", "echo hello"));
+        assertEquals("run_bash_command(echo hello)", pattern);
     }
 
     @Test
-    void doubleStarPathPatternMatchesRecursively() {
-        var rule = new PermissionRule("read_file", "/home/user/workspace/**");
-        assertTrue(rule.matchesPath("/home/user/workspace/file.txt"));
-        assertTrue(rule.matchesPath("/home/user/workspace/deep/nested/file.txt"));
-        assertFalse(rule.matchesPath("/etc/passwd"));
+    void buildPatternWithAnyArg() {
+        var pattern = PermissionRule.buildPattern("grep_file", Map.of("pattern", "*.java"));
+        assertEquals("grep_file(*.java)", pattern);
     }
 
     @Test
-    void exactPathPatternMatchesExactly() {
-        var rule = new PermissionRule("read_file", "/etc/passwd");
-        assertTrue(rule.matchesPath("/etc/passwd"));
-        assertFalse(rule.matchesPath("/etc/shadow"));
+    void buildPatternWithNullArgs() {
+        var pattern = PermissionRule.buildPattern("shell_command", null);
+        assertEquals("shell_command", pattern);
     }
 
     @Test
-    void nullPathAlwaysMatchesWhenPatternExists() {
-        var rule = new PermissionRule("read_file", "/some/path/**");
-        assertTrue(rule.matchesPath(null));
+    void matchesExactToolOnly() {
+        assertTrue(PermissionRule.matches("read_file", "read_file", Map.of()));
+        assertFalse(PermissionRule.matches("read_file", "write_file", Map.of()));
     }
 
     @Test
-    void matchesCombinesToolAndPath() {
-        var rule = new PermissionRule("read_file", "/home/user/**");
-        assertTrue(rule.matches("read_file", "/home/user/a.txt"));
-        assertFalse(rule.matches("write_file", "/home/user/a.txt"));
-        assertFalse(rule.matches("read_file", "/etc/passwd"));
+    void matchesExactToolAndArg() {
+        assertTrue(PermissionRule.matches(
+                "read_file(/home/user/a.txt)", "read_file",
+                Map.of("file_path", "/home/user/a.txt")));
+
+        assertFalse(PermissionRule.matches(
+                "read_file(/home/user/a.txt)", "read_file",
+                Map.of("file_path", "/etc/passwd")));
+    }
+
+    @Test
+    void matchesWildcardArg() {
+        assertTrue(PermissionRule.matches(
+                "read_file(/home/user/*)", "read_file",
+                Map.of("file_path", "/home/user/a.txt")));
+
+        assertFalse(PermissionRule.matches(
+                "read_file(/home/user/*)", "read_file",
+                Map.of("file_path", "/etc/passwd")));
+    }
+
+    @Test
+    void matchesDoubleStarWildcard() {
+        assertTrue(PermissionRule.matches(
+                "read_file(/home/user/**)", "read_file",
+                Map.of("file_path", "/home/user/deep/nested/file.txt")));
+
+        assertFalse(PermissionRule.matches(
+                "read_file(/home/user/**)", "read_file",
+                Map.of("file_path", "/etc/passwd")));
+    }
+
+    @Test
+    void matchesCommandWildcard() {
+        assertTrue(PermissionRule.matches(
+                "run_bash_command(echo *)", "run_bash_command",
+                Map.of("command", "echo hello world")));
+
+        assertFalse(PermissionRule.matches(
+                "run_bash_command(echo *)", "run_bash_command",
+                Map.of("command", "rm -rf /")));
+    }
+
+    @Test
+    void matchesToolOnlyPatternMatchesAnyArgs() {
+        assertTrue(PermissionRule.matches("shell_command", "shell_command", Map.of("command", "ls")));
+        assertTrue(PermissionRule.matches("shell_command", "shell_command", Map.of()));
+    }
+
+    @Test
+    void wrongToolNeverMatches() {
+        assertFalse(PermissionRule.matches("read_file(/a.txt)", "write_file", Map.of("file_path", "/a.txt")));
+    }
+
+    @Test
+    void extractPrimaryArgUsesFirstValue() {
+        var result = PermissionRule.extractPrimaryArg(Map.of("pattern", "*.java"));
+        assertTrue(result.isPresent());
+        assertEquals("*.java", result.get());
+    }
+
+    @Test
+    void extractPrimaryArgEmpty() {
+        assertFalse(PermissionRule.extractPrimaryArg(Map.of()).isPresent());
+        assertFalse(PermissionRule.extractPrimaryArg(null).isPresent());
     }
 }

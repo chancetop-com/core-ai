@@ -24,18 +24,40 @@ class FileRuleBasedPermissionStoreTest {
     }
 
     @Test
-    void allowReturnsTrue() {
-        store.allow("read_file", null);
-        var result = store.checkPermission("read_file", Map.of());
-        assertTrue(result.isPresent());
-        assertTrue(result.get());
-
+    void allowToolOnly() {
+        store.allow("read_file");
+        assertTrue(store.checkPermission("read_file", Map.of()).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/any/path")).orElse(false));
         assertTrue(store.checkPermission("write_file", Map.of()).isEmpty());
     }
 
     @Test
+    void allowWithExactPath() {
+        store.allow("read_file(/home/user/a.txt)");
+
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/a.txt")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/etc/passwd")).isEmpty());
+    }
+
+    @Test
+    void allowWithWildcard() {
+        store.allow("read_file(/home/user/**)");
+
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/deep/file.txt")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/etc/passwd")).isEmpty());
+    }
+
+    @Test
+    void allowCommandWildcard() {
+        store.allow("run_bash_command(echo *)");
+
+        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "echo hello")).orElse(false));
+        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "rm -rf /")).isEmpty());
+    }
+
+    @Test
     void denyReturnsFalse() {
-        store.deny("shell_command", null);
+        store.deny("shell_command");
         var result = store.checkPermission("shell_command", Map.of());
         assertTrue(result.isPresent());
         assertFalse(result.get());
@@ -43,12 +65,10 @@ class FileRuleBasedPermissionStoreTest {
 
     @Test
     void denyTakesPrecedenceOverAllow() {
-        store.allow("read_file", null);
-        store.deny("read_file", "/etc/passwd");
+        store.allow("read_file");
+        store.deny("read_file(/etc/passwd)");
 
-        var allowResult = store.checkPermission("read_file", Map.of("file_path", "/home/user/a.txt"));
-        assertTrue(allowResult.isPresent());
-        assertTrue(allowResult.get());
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/a.txt")).orElse(false));
 
         var denyResult = store.checkPermission("read_file", Map.of("file_path", "/etc/passwd"));
         assertTrue(denyResult.isPresent());
@@ -56,55 +76,29 @@ class FileRuleBasedPermissionStoreTest {
     }
 
     @Test
-    void allowWithPathPattern() {
-        store.allow("read_file", "/home/user/workspace/**");
-
-        var result = store.checkPermission("read_file", Map.of("file_path", "/home/user/workspace/a.txt"));
-        assertTrue(result.isPresent());
-        assertTrue(result.get());
-
-        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/etc/passwd")).isEmpty());
-    }
-
-    @Test
-    void wildcardDenyWithSpecificAllow() {
-        store.deny("*", null);
-        store.allow("read_file", null);
-
-        // deny * matches everything including read_file, deny wins
-        var result = store.checkPermission("read_file", Map.of());
-        assertTrue(result.isPresent());
-        assertFalse(result.get());
-
-        var shellResult = store.checkPermission("shell_command", Map.of());
-        assertTrue(shellResult.isPresent());
-        assertFalse(shellResult.get());
-    }
-
-    @Test
     void allowRemovesPreviousDeny() {
-        store.deny("read_file", null);
+        store.deny("read_file");
         assertFalse(store.checkPermission("read_file", Map.of()).orElse(true));
 
-        store.allow("read_file", null);
+        store.allow("read_file");
         assertTrue(store.checkPermission("read_file", Map.of()).orElse(false));
-        assertTrue(store.getDenyRules().isEmpty());
+        assertTrue(store.getDenyPatterns().isEmpty());
     }
 
     @Test
     void denyRemovesPreviousAllow() {
-        store.allow("read_file", null);
+        store.allow("read_file");
         assertTrue(store.checkPermission("read_file", Map.of()).orElse(false));
 
-        store.deny("read_file", null);
+        store.deny("read_file");
         assertFalse(store.checkPermission("read_file", Map.of()).orElse(true));
-        assertTrue(store.getAllowRules().isEmpty());
+        assertTrue(store.getAllowPatterns().isEmpty());
     }
 
     @Test
-    void duplicateRulesNotAdded() {
-        store.allow("read_file", null);
-        store.allow("read_file", null);
-        assertEquals(1, store.getAllowRules().size());
+    void duplicatePatternsNotAdded() {
+        store.allow("read_file(/home/user/a.txt)");
+        store.allow("read_file(/home/user/a.txt)");
+        assertEquals(1, store.getAllowPatterns().size());
     }
 }
