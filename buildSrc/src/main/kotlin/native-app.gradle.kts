@@ -21,7 +21,7 @@ graalvmNative {
             buildArgs.add("-H:IncludeResources=org/jline/.*")
             buildArgs.add("-H:IncludeResources=META-INF/services/org/jline/.*")
             buildArgs.add("-H:IncludeResources=META-INF/services/io.modelcontextprotocol.*")
-            buildArgs.add("-Dslf4j.provider=ai.core.cli.log.CliLoggerServiceProvider")
+            buildArgs.add("--initialize-at-run-time=org.slf4j.LoggerFactory")
             buildArgs.add("--features=ai.core.cli.graalvm.NativeReflectionFeature")
         }
     }

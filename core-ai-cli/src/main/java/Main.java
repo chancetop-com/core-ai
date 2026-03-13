@@ -4,6 +4,10 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import org.slf4j.LoggerFactory;
+
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
@@ -13,8 +17,16 @@ import java.util.concurrent.Callable;
 @Command(name = "core-ai-cli", version = "1.0.0", description = "Core-AI CLI agent")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
-        System.setProperty("slf4j.provider", "ai.core.cli.log.CliLoggerServiceProvider");
+        initSlf4j();
         System.exit(new CommandLine(new Main()).execute(args));
+    }
+
+    private static void initSlf4j() {
+        System.setProperty("slf4j.provider", "ai.core.cli.log.CliLoggerServiceProvider");
+        var stderr = System.err;
+        System.setErr(new PrintStream(OutputStream.nullOutputStream(), false, stderr.charset()));
+        LoggerFactory.getILoggerFactory();
+        System.setErr(stderr);
     }
 
     @Option(names = {"-h", "--help"}, usageHelp = true, description = "Show help")

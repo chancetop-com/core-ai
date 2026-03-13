@@ -57,7 +57,9 @@ public class NativeReflectionFeature implements Feature {
         "io.modelcontextprotocol.json.schema.jackson.DefaultJsonSchemaValidator",
         // JLine FFM terminal provider for Windows native terminal support
         "org.jline.terminal.impl.ffm.FfmTerminalProvider",
-        "org.jline.terminal.impl.ffm.FfmTerminal"
+        "org.jline.terminal.impl.ffm.FfmTerminal",
+        // SLF4J provider for Class.forName() via slf4j.provider system property
+        "ai.core.cli.log.CliLoggerServiceProvider"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
