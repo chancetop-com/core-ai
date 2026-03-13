@@ -176,6 +176,6 @@ public class AuthService {
     private String generateApiKey() {
         var bytes = new byte[32];
         RANDOM.nextBytes(bytes);
-        return "cai_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        return "coreai_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

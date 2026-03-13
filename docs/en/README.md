@@ -11,6 +11,12 @@ Welcome to the English documentation for Core-AI!
 - [Basic Agent Tutorial](tutorial-basic-agent.md) - Building intelligent agents
 - [Skills System](tutorial-skills.md) - Modular domain knowledge packages
 
+### Design Documents
+- [Server Architecture](design-server-architecture.md) - Server design principles, domain model, execution flows, tracing
+- [Agent Platform Architecture](design-agent-platform-architecture.md) - Enterprise agent platform design
+- [Client/Server Architecture](design-client-server-architecture.md) - C/S architecture, session model, SSE events
+- [Native Image](design-native-image.md) - GraalVM native image compilation
+
 ### 🚧 In Progress
 The following tutorials need full English translation:
 - [Memory Systems](tutorial-memory.md)

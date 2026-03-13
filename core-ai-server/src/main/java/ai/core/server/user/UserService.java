@@ -31,7 +31,7 @@ public class UserService {
 
         var bytes = new byte[API_KEY_BYTES];
         RANDOM.nextBytes(bytes);
-        var apiKey = "cai_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        var apiKey = "coreai_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 
         user.apiKey = apiKey;
         userCollection.replace(user);
