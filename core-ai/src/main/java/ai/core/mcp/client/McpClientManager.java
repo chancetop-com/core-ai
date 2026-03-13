@@ -84,7 +84,7 @@ public class McpClientManager implements AutoCloseable {
         states.put(name, ConnectionState.NOT_CONNECTED);
         locks.put(name, new Object());
         getConnectionMonitor().addServer(name);
-        LOGGER.info("Added MCP server config: {}", name);
+        LOGGER.debug("Added MCP server config: {}", name);
     }
 
     public void removeServer(String serverName) {
@@ -93,7 +93,7 @@ public class McpClientManager implements AutoCloseable {
         configs.remove(serverName);
         states.remove(serverName);
         locks.remove(serverName);
-        LOGGER.info("Removed MCP server: {}", serverName);
+        LOGGER.debug("Removed MCP server: {}", serverName);
     }
 
     public Set<String> getServerNames() {
@@ -135,7 +135,7 @@ public class McpClientManager implements AutoCloseable {
     }
 
     public void warmup() {
-        LOGGER.info("Warming up {} MCP clients...", configs.size());
+        LOGGER.debug("Warming up {} MCP clients...", configs.size());
         configs.keySet().parallelStream().forEach(serverName -> {
             try {
                 getClient(serverName);
@@ -143,7 +143,7 @@ public class McpClientManager implements AutoCloseable {
                 LOGGER.error("Failed to warmup client: {}", serverName, e);
             }
         });
-        LOGGER.info("MCP clients warmup completed");
+        LOGGER.debug("MCP clients warmup completed");
 
         boolean anyHeartbeatEnabled = configs.values().stream()
             .anyMatch(McpServerConfig::isEnableHeartbeat);
@@ -164,7 +164,7 @@ public class McpClientManager implements AutoCloseable {
         if (!configs.containsKey(serverName)) {
             throw new IllegalArgumentException("Server not configured: " + serverName);
         }
-        LOGGER.info("Manual reconnect requested for server: {}", serverName);
+        LOGGER.debug("Manual reconnect requested for server: {}", serverName);
         getConnectionMonitor().resetReconnectAttempts(serverName);
         handleDisconnection(serverName);
         var config = configs.get(serverName);
@@ -208,7 +208,7 @@ public class McpClientManager implements AutoCloseable {
             try {
                 client.close();
                 updateState(serverName, ConnectionState.DISCONNECTED);
-                LOGGER.info("Closed MCP client: {}", serverName);
+                LOGGER.debug("Closed MCP client: {}", serverName);
             } catch (Exception e) {
                 updateState(serverName, ConnectionState.FAILED);
                 LOGGER.error("Error closing MCP client: {}", serverName, e);
@@ -222,7 +222,7 @@ public class McpClientManager implements AutoCloseable {
             return;
         }
         closed = true;
-        LOGGER.info("Closing McpClientManager with {} clients...", clients.size());
+        LOGGER.debug("Closing McpClientManager with {} clients...", clients.size());
         getConnectionMonitor().close();
         for (String serverName : List.copyOf(clients.keySet())) {
             closeClient(serverName);
@@ -230,7 +230,7 @@ public class McpClientManager implements AutoCloseable {
         listeners.clear();
         removeShutdownHook();
         disposeReactorSchedulers();
-        LOGGER.info("McpClientManager closed");
+        LOGGER.debug("McpClientManager closed");
     }
 
     private void handleDisconnection(String serverName) {
@@ -257,7 +257,7 @@ public class McpClientManager implements AutoCloseable {
     void registerShutdownHook() {
         shutdownHook = new Thread(() -> {
             if (!closed) {
-                LOGGER.info("JVM shutdown hook triggered, closing McpClientManager...");
+                LOGGER.debug("JVM shutdown hook triggered, closing McpClientManager...");
                 close();
             }
         }, "mcp-client-shutdown-hook");
@@ -281,7 +281,7 @@ public class McpClientManager implements AutoCloseable {
             var client = new McpClientService(config);
             clients.put(serverName, client);
             updateState(serverName, ConnectionState.CONNECTED);
-            LOGGER.info("Created MCP client: {}, transport: {}", serverName, config.getTransportType());
+            LOGGER.debug("Created MCP client: {}, transport: {}", serverName, config.getTransportType());
             return client;
         } catch (Exception e) {
             updateState(serverName, ConnectionState.FAILED);

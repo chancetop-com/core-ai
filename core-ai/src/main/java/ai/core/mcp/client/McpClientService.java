@@ -129,7 +129,7 @@ public class McpClientService implements AutoCloseable {
 
     @Override
     public void close() {
-        LOGGER.info("Closing MCP client: {}", serverName);
+        LOGGER.debug("Closing MCP client: {}", serverName);
         if (client != null) {
             try {
                 client.closeGracefully();
@@ -150,7 +150,7 @@ public class McpClientService implements AutoCloseable {
         } else {
             LOGGER.debug("No subprocess to destroy for: {}", serverName);
         }
-        LOGGER.info("MCP client closed: {}", serverName);
+        LOGGER.debug("MCP client closed: {}", serverName);
     }
 
     private void forceDestroyProcessTree(Process process) {
@@ -160,7 +160,7 @@ public class McpClientService implements AutoCloseable {
         }
 
         long pid = process.pid();
-        LOGGER.info("Force destroying MCP subprocess tree: server={}, pid={}", serverName, pid);
+        LOGGER.debug("Force destroying MCP subprocess tree: server={}, pid={}", serverName, pid);
 
         process.descendants().forEach(ph -> {
             LOGGER.debug("Destroying descendant process: pid={}", ph.pid());
@@ -185,7 +185,7 @@ public class McpClientService implements AutoCloseable {
 
     private void killProcessTreeOnWindows(long pid) {
         try {
-            LOGGER.info("Using taskkill to forcefully terminate process tree: pid={}", pid);
+            LOGGER.debug("Using taskkill to forcefully terminate process tree: pid={}", pid);
             var processBuilder = new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(pid));
             processBuilder.redirectErrorStream(true);
             var killProcess = processBuilder.start();
@@ -198,12 +198,13 @@ public class McpClientService implements AutoCloseable {
     private McpSyncClient createClient(McpClientTransport transport, McpServerConfig config) {
         var syncClient = McpClient.sync(transport)
             .requestTimeout(config.getRequestTimeout())
+            .initializationTimeout(config.getInitializationTimeout())
             .build();
         syncClient.initialize();
         if (transport instanceof StdioClientTransport stdioTransport) {
             extractProcessFromTransport(stdioTransport);
         }
-        LOGGER.info("MCP client initialized: name={}, transport={}, requestTimeout={}s",
+        LOGGER.debug("MCP client initialized: name={}, transport={}, requestTimeout={}s",
             config.getName(), config.getTransportType(), config.getRequestTimeout().toSeconds());
         return syncClient;
     }
@@ -216,7 +217,7 @@ public class McpClientService implements AutoCloseable {
                     field.setAccessible(true);
                     this.stdioProcess = (Process) field.get(transport);
                     if (this.stdioProcess != null) {
-                        LOGGER.info("Extracted process PID {} from StdioClientTransport field '{}' for cleanup",
+                        LOGGER.debug("Extracted process PID {} from StdioClientTransport field '{}' for cleanup",
                             stdioProcess.pid(), field.getName());
                         return;
                     }

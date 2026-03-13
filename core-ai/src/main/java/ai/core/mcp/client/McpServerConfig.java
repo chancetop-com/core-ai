@@ -113,6 +113,14 @@ public class McpServerConfig {
             }
         }
 
+        // Initialization timeout: "initializationTimeout": 120
+        if (config.containsKey("initializationTimeout")) {
+            Object value = config.get("initializationTimeout");
+            if (value instanceof Number num) {
+                builder.initializationTimeout(Duration.ofSeconds(num.longValue()));
+            }
+        }
+
         // Auto reconnect: "autoReconnect": true/false
         if (config.containsKey("autoReconnect")) {
             Object value = config.get("autoReconnect");
@@ -154,6 +162,7 @@ public class McpServerConfig {
     // Timeout configuration
     private Duration connectTimeout = Duration.ofSeconds(10);
     private Duration requestTimeout = Duration.ofSeconds(60);
+    private Duration initializationTimeout = Duration.ofSeconds(60);
 
     // Reconnect configuration
     private boolean autoReconnect = true;
@@ -206,6 +215,10 @@ public class McpServerConfig {
         return requestTimeout;
     }
 
+    public Duration getInitializationTimeout() {
+        return initializationTimeout;
+    }
+
     public boolean isAutoReconnect() {
         return autoReconnect;
     }
@@ -254,6 +267,7 @@ public class McpServerConfig {
         void heartbeatTimeout(Duration timeout);
         void connectTimeout(Duration timeout);
         void requestTimeout(Duration timeout);
+        void initializationTimeout(Duration timeout);
         void autoReconnect(boolean autoReconnect);
         void maxReconnectAttempts(int maxAttempts);
         void reconnectInterval(Duration interval);
@@ -307,6 +321,11 @@ public class McpServerConfig {
         @Override
         public void requestTimeout(Duration timeout) {
             config.requestTimeout = timeout;
+        }
+
+        @Override
+        public void initializationTimeout(Duration timeout) {
+            config.initializationTimeout = timeout;
         }
 
         @Override
@@ -401,6 +420,11 @@ public class McpServerConfig {
         @Override
         public void requestTimeout(Duration timeout) {
             config.requestTimeout = timeout;
+        }
+
+        @Override
+        public void initializationTimeout(Duration timeout) {
+            config.initializationTimeout = timeout;
         }
 
         @Override

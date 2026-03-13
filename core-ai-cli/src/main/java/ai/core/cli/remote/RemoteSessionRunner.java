@@ -27,6 +27,7 @@ public class RemoteSessionRunner {
         new SlashCommand("/build-agent", "Build agent from conversation"),
         new SlashCommand("/agents", "Switch agent or manage agents"),
         new SlashCommand("/tools", "List available tools"),
+        new SlashCommand("/mcp", "Manage MCP server connections"),
         new SlashCommand("/debug", "Toggle debug mode"),
         new SlashCommand("/clear", "Clear screen"),
         new SlashCommand("/exit", "Disconnect and return to local mode")
@@ -161,6 +162,7 @@ public class RemoteSessionRunner {
                 }
             }
             case "/tools" -> handleTools();
+            case "/mcp" -> new McpServerCommandHandler(ui, api).handle();
             case "/debug" -> {
                 if (DebugLog.isEnabled()) {
                     DebugLog.disable();
@@ -176,7 +178,7 @@ public class RemoteSessionRunner {
                 if (lower.startsWith("/stats") || lower.startsWith("/model")
                         || lower.startsWith("/undo") || lower.startsWith("/compact") || lower.startsWith("/export")
                         || lower.startsWith("/copy") || lower.startsWith("/resume") || lower.startsWith("/memory")
-                        || lower.startsWith("/skill") || lower.startsWith("/mcp")) {
+                        || lower.startsWith("/skill")) {
                     ui.printStreamingChunk(AnsiTheme.MUTED + "  Not available in remote mode.\n" + AnsiTheme.RESET);
                     break;
                 }
@@ -192,6 +194,7 @@ public class RemoteSessionRunner {
                 {"/build-agent", "Build agent from current conversation, so it can be scheduled periodically on the server"},
                 {"/agents", "Switch agent or manage agents"},
                 {"/tools", "List available tools"},
+                {"/mcp", "Manage MCP server connections (add, enable, disable, edit, delete)"},
                 {"/debug", "Toggle debug mode"},
                 {"/clear", "Clear screen"},
                 {"/exit", "Disconnect and return to local mode"}
