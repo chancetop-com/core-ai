@@ -8,10 +8,15 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.llm.domain.FunctionCall;
+import ai.core.session.permission.PermissionLevel;
+import ai.core.session.permission.PermissionRule;
+import ai.core.session.permission.PermissionScope;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -41,37 +46,60 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         logger.debug("beforeTool: tool={}, callId={}", toolName, callId);
 
-        // 1. Notify client that tool is about to start
         dispatcher.accept(ToolStartEvent.of(sessionId, callId, toolName, arguments));
 
-        // 2. Handle approval if needed
         if (autoApproveAll) {
             logger.debug("auto-approve enabled, skipping approval for tool={}, callId={}", toolName, callId);
             return;
         }
+
+        if (permissionStore != null) {
+            Map<String, Object> argMap = parseArguments(arguments);
+            var matchedRule = permissionStore.matchRule(toolName, argMap);
+            if (matchedRule.isPresent()) {
+                var level = matchedRule.get().getLevel();
+                if (level == PermissionLevel.ALLOW) {
+                    logger.debug("rule matched ALLOW for tool={}, callId={}", toolName, callId);
+                    return;
+                }
+                if (level == PermissionLevel.DENY) {
+                    logger.debug("rule matched DENY for tool={}, callId={}", toolName, callId);
+                    throw new ToolCallDeniedException(toolName);
+                }
+            }
+        }
+
         if (permissionStore != null && permissionStore.isApproved(toolName)) {
             logger.debug("tool already approved, skipping approval for tool={}, callId={}", toolName, callId);
             return;
         }
 
-        // Pre-register future BEFORE dispatching, because dispatch may be synchronous
-        // and the listener may call respond() before waitForApproval() creates the future
         permissionGate.prepare(callId);
         logger.debug("dispatching approval request: tool={}, callId={}", toolName, callId);
-
-        // Send approval request
         dispatcher.accept(ToolApprovalRequestEvent.of(sessionId, callId, toolName, arguments));
 
         logger.debug("waiting for approval: tool={}, callId={}", toolName, callId);
-        // Block and wait for client response (future already exists from prepare())
-        var decision = permissionGate.waitForApproval(callId, 300_000); // 5 minutes timeout
+        var decision = permissionGate.waitForApproval(callId, 300_000);
         logger.debug("approval received: tool={}, callId={}, decision={}", toolName, callId, decision);
 
-        if (decision == ApprovalDecision.DENY) {
-            throw new ToolCallDeniedException(toolName);
-        }
-        if (decision == ApprovalDecision.APPROVE_ALWAYS && permissionStore != null) {
-            permissionStore.approve(toolName);
+        switch (decision) {
+            case DENY -> throw new ToolCallDeniedException(toolName);
+            case DENY_ALWAYS -> {
+                if (permissionStore != null) {
+                    permissionStore.addRule(new PermissionRule(
+                            toolName, null, PermissionLevel.DENY, PermissionScope.PERSISTENT, 0));
+                }
+                throw new ToolCallDeniedException(toolName);
+            }
+            case APPROVE_ALWAYS -> {
+                if (permissionStore != null) {
+                    permissionStore.addRule(new PermissionRule(
+                            toolName, null, PermissionLevel.ALLOW, PermissionScope.PERSISTENT, 0));
+                }
+            }
+            default -> {
+                // APPROVE: single-time, no persistence
+            }
         }
     }
 
@@ -84,5 +112,16 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);
         dispatcher.accept(ToolResultEvent.of(sessionId, callId, toolName, status, result));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseArguments(String arguments) {
+        if (arguments == null || arguments.isBlank()) return Map.of();
+        try {
+            return JsonUtil.fromJson(Map.class, arguments);
+        } catch (Exception e) {
+            logger.debug("failed to parse arguments for rule matching: {}", e.getMessage());
+            return Map.of();
+        }
     }
 }

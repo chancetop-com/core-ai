@@ -11,5 +11,7 @@ public enum ApprovalDecision {
     @Property(name = "APPROVE_ALWAYS")
     APPROVE_ALWAYS,
     @Property(name = "DENY")
-    DENY
+    DENY,
+    @Property(name = "DENY_ALWAYS")
+    DENY_ALWAYS
 }
