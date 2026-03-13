@@ -23,6 +23,7 @@ import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.SubAgentToolCall;
+import ai.core.tool.tools.TodoReminderLifecycle;
 import ai.core.tool.tools.ToolActivationTool;
 import core.framework.util.Lists;
 
@@ -272,6 +273,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         configureSubAgents(agent);
         configureToolCallPruning();
         configureMemory();
+        configureTodoReminder();
         configureCompression();
 
         // Fetch prompts from Langfuse if configured
@@ -341,6 +343,14 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (this.toolCallPruningEnabled) {
             var pruningCfg = this.toolCallPruningConfig != null ? this.toolCallPruningConfig : ToolCallPruning.Config.defaultConfig();
             agentLifecycles.addFirst(new ToolCallPruningLifecycle(new ToolCallPruning(pruningCfg.keepRecentSegments(), pruningCfg.excludeToolNames())));
+        }
+    }
+
+    private void configureTodoReminder() {
+        boolean hasWriteTodos = toolCalls.stream()
+                .anyMatch(t -> "write_todos".equals(t.getName()));
+        if (hasWriteTodos) {
+            agentLifecycles.add(new TodoReminderLifecycle());
         }
     }
 

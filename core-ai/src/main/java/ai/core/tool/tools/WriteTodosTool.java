@@ -92,8 +92,6 @@ public class WriteTodosTool {
                   </system-reminder>
                 """.formatted(todosJson);
     }
-    //todo more than 3 reminder
-
 
     public enum Status {
         PENDING, IN_PROGRESS, COMPLETED
