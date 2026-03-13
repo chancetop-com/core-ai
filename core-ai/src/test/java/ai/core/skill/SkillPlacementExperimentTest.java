@@ -44,7 +44,7 @@ import java.util.Properties;
  *
  * @author Xander
  */
-//@Disabled
+@Disabled
 class SkillPlacementExperimentTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillPlacementExperimentTest.class);
 
