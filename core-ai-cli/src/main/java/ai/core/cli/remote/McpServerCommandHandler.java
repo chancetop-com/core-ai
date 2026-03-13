@@ -156,7 +156,7 @@ public class McpServerCommandHandler {
         }
     }
 
-    private LinkedHashMap<String, String> readTransportConfig(int transportIdx) {
+    private Map<String, String> readTransportConfig(int transportIdx) {
         var config = new LinkedHashMap<String, String>();
         switch (transportIdx) {
             case 0, 1 -> {
@@ -204,7 +204,7 @@ public class McpServerCommandHandler {
         if (cat != null && !cat.isBlank()) body.put("category", cat.trim());
 
         var editConfig = ui.readRawLine("  Edit config? (y/N): ");
-        if (editConfig != null && editConfig.trim().toLowerCase().startsWith("y")) {
+        if (editConfig != null && editConfig.trim().toLowerCase(java.util.Locale.ROOT).startsWith("y")) {
             var currentConfig = (Map<String, String>) server.get("config");
             var newConfig = new LinkedHashMap<String, String>();
             if (currentConfig != null) {
@@ -253,7 +253,7 @@ public class McpServerCommandHandler {
 
     private void deleteServer(String id, String name) {
         var confirm = ui.readRawLine("  Delete " + name + "? (y/N): ");
-        if (confirm == null || !confirm.trim().toLowerCase().startsWith("y")) return;
+        if (confirm == null || !confirm.trim().toLowerCase(java.util.Locale.ROOT).startsWith("y")) return;
 
         try {
             api.delete("/api/tools/mcp-servers/" + id);
