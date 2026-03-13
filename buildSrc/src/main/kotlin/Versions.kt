@@ -26,4 +26,5 @@ object ProjectVersions {
     const val CORE_AI_SERVER_VERSION = "1.0.0-SNAPSHOT"
     const val CORE_AI_CLI_VERSION = "1.0.0-SNAPSHOT"
     const val CORE_AI_BENCHMARK_VERSION = "1.0.0-SNAPSHOT"
+    const val CORE_AI_TRACE_VERSION = "1.0.0-SNAPSHOT"
 }

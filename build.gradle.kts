@@ -171,4 +171,19 @@ project(":core-ai-benchmark") {
         setProperty("failOnNoDiscoveredTests", false)
     }
 }
+
+project(":core-ai-trace") {
+    version = ProjectVersions.CORE_AI_TRACE_VERSION
+    apply(plugin = "app")
+    dependencies {
+        implementation(project(":core-ai-api"))
+        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("core.framework:core-ng-mongo:${Versions.CORE_FRAMEWORK_VERSION}")
+        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
+    }
+    tasks.withType<Test> {
+        setProperty("failOnNoDiscoveredTests", false)
+    }
+}
 }
