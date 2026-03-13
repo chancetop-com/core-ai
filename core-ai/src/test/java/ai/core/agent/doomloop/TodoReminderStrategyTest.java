@@ -1,4 +1,4 @@
-package ai.core.tool.tools;
+package ai.core.agent.doomloop;
 
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.FunctionCall;
@@ -14,16 +14,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class TodoReminderLifecycleTest {
-    private TodoReminderLifecycle lifecycle;
+class TodoReminderStrategyTest {
+    private TodoReminderStrategy strategy;
 
     @BeforeEach
     void setUp() {
-        lifecycle = new TodoReminderLifecycle(3);
+        strategy = new TodoReminderStrategy(3);
     }
 
     @Test
-    void noReminderWhenTodosNeverCalled() {
+    void noDetectionWhenTodosNeverCalled() {
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "do something"),
                 assistantWithToolCall("c1", "read_file"),
@@ -33,16 +33,12 @@ class TodoReminderLifecycleTest {
                 assistantWithToolCall("c3", "shell_command"),
                 toolResult("c3", "shell_command", "output")
         ));
-        var request = buildRequest(messages);
 
-        assertFalse(lifecycle.hasTodosInContext(request));
-        lifecycle.beforeModel(request, null);
-
-        assertFalse(messages.getLast().getTextContent().contains("system-reminder"));
+        assertFalse(strategy.detect(buildRequest(messages), null));
     }
 
     @Test
-    void noReminderWhenRecentlyCalledWriteTodos() {
+    void noDetectionWhenRecentlyCalledWriteTodos() {
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "do task"),
                 assistantWithToolCall("c1", "write_todos"),
@@ -50,17 +46,13 @@ class TodoReminderLifecycleTest {
                 assistantWithToolCall("c2", "read_file"),
                 toolResult("c2", "read_file", "content")
         ));
-        var request = buildRequest(messages);
 
-        assertTrue(lifecycle.hasTodosInContext(request));
-        assertEquals(1, lifecycle.countToolCallsSinceLastWriteTodos(request));
-
-        lifecycle.beforeModel(request, null);
-        assertFalse(messages.getLast().getTextContent().contains("system-reminder"));
+        assertFalse(strategy.detect(buildRequest(messages), null));
+        assertEquals(1, strategy.countToolCallsSinceLastWriteTodos(buildRequest(messages)));
     }
 
     @Test
-    void reminderTriggeredAfterThresholdExceeded() {
+    void detectionTriggeredAfterThreshold() {
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "do task"),
                 assistantWithToolCall("c1", "write_todos"),
@@ -73,17 +65,13 @@ class TodoReminderLifecycleTest {
                 assistantWithToolCall("c4", "shell_command"),
                 toolResult("c4", "shell_command", "output")
         ));
-        var request = buildRequest(messages);
 
-        assertEquals(3, lifecycle.countToolCallsSinceLastWriteTodos(request));
-
-        lifecycle.beforeModel(request, null);
-        assertTrue(messages.getLast().getTextContent().contains("system-reminder"));
-        assertTrue(messages.getLast().getTextContent().contains("write_todos"));
+        assertTrue(strategy.detect(buildRequest(messages), null));
+        assertTrue(strategy.warningMessage().contains("system-reminder"));
     }
 
     @Test
-    void reminderResetsAfterWriteTodosCalledAgain() {
+    void detectionResetsAfterWriteTodosCalledAgain() {
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "do task"),
                 assistantWithToolCall("c1", "write_todos"),
@@ -102,55 +90,13 @@ class TodoReminderLifecycleTest {
                 assistantWithToolCall("c6", "read_file"),
                 toolResult("c6", "read_file", "more content")
         ));
-        var request = buildRequest(messages);
 
-        assertEquals(1, lifecycle.countToolCallsSinceLastWriteTodos(request));
-
-        lifecycle.beforeModel(request, null);
-        assertFalse(messages.getLast().getTextContent().contains("system-reminder"));
-    }
-
-    @Test
-    void reminderNotDuplicated() {
-        var messages = new ArrayList<>(List.of(
-                Message.of(RoleType.USER, "do task"),
-                assistantWithToolCall("c1", "write_todos"),
-                toolResult("c1", "write_todos", "todos updated"),
-                Message.of(RoleType.ASSISTANT, "Working"),
-                assistantWithToolCall("c2", "read_file"),
-                toolResult("c2", "read_file", "content"),
-                assistantWithToolCall("c3", "edit_file"),
-                toolResult("c3", "edit_file", "done"),
-                assistantWithToolCall("c4", "shell_command"),
-                toolResult("c4", "shell_command", "output")
-        ));
-        var request = buildRequest(messages);
-
-        lifecycle.beforeModel(request, null);
-        assertTrue(messages.getLast().getTextContent().contains("system-reminder"));
-
-        String contentAfterFirst = messages.getLast().getTextContent();
-
-        lifecycle.beforeModel(request, null);
-        assertEquals(contentAfterFirst, messages.getLast().getTextContent());
-    }
-
-    @Test
-    void nullRequestHandledGracefully() {
-        lifecycle.beforeModel(null, null);
-        // no exception
-    }
-
-    @Test
-    void emptyMessagesHandledGracefully() {
-        var request = buildRequest(new ArrayList<>());
-        lifecycle.beforeModel(request, null);
-        // no exception
+        assertFalse(strategy.detect(buildRequest(messages), null));
     }
 
     @Test
     void customThreshold() {
-        var customLifecycle = new TodoReminderLifecycle(5);
+        var customStrategy = new TodoReminderStrategy(5);
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "task"),
                 assistantWithToolCall("c1", "write_todos"),
@@ -165,16 +111,13 @@ class TodoReminderLifecycleTest {
                 assistantWithToolCall("c5", "t4"),
                 toolResult("c5", "t4", "r4")
         ));
-        var request = buildRequest(messages);
 
-        customLifecycle.beforeModel(request, null);
-        assertFalse(messages.getLast().getTextContent().contains("system-reminder"));
+        assertFalse(customStrategy.detect(buildRequest(messages), null));
 
         messages.add(assistantWithToolCall("c6", "t5"));
         messages.add(toolResult("c6", "t5", "r5"));
 
-        customLifecycle.beforeModel(request, null);
-        assertTrue(messages.getLast().getTextContent().contains("system-reminder"));
+        assertTrue(customStrategy.detect(buildRequest(messages), null));
     }
 
     private CompletionRequest buildRequest(List<Message> messages) {

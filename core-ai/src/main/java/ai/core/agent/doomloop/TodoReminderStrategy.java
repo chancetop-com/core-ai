@@ -1,11 +1,10 @@
-package ai.core.tool.tools;
+package ai.core.agent.doomloop;
 
 import ai.core.agent.ExecutionContext;
-import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.RoleType;
 
-public class TodoReminderLifecycle extends AbstractLifecycle {
+public class TodoReminderStrategy implements DoomLoopStrategy {
     static final String WRITE_TODOS_TOOL_NAME = "write_todos";
     static final int DEFAULT_REMINDER_THRESHOLD = 3;
     static final String REMINDER_MESSAGE = """
@@ -22,23 +21,23 @@ public class TodoReminderLifecycle extends AbstractLifecycle {
 
     private final int reminderThreshold;
 
-    public TodoReminderLifecycle() {
+    public TodoReminderStrategy() {
         this(DEFAULT_REMINDER_THRESHOLD);
     }
 
-    public TodoReminderLifecycle(int reminderThreshold) {
+    public TodoReminderStrategy(int reminderThreshold) {
         this.reminderThreshold = reminderThreshold;
     }
 
     @Override
-    public void beforeModel(CompletionRequest request, ExecutionContext context) {
-        if (request == null || request.messages == null || request.messages.isEmpty()) return;
-        if (!hasTodosInContext(request)) return;
+    public boolean detect(CompletionRequest request, ExecutionContext context) {
+        if (!hasTodosInContext(request)) return false;
+        return countToolCallsSinceLastWriteTodos(request) >= reminderThreshold;
+    }
 
-        int toolCallsSinceLastTodos = countToolCallsSinceLastWriteTodos(request);
-        if (toolCallsSinceLastTodos >= reminderThreshold) {
-            appendReminder(request);
-        }
+    @Override
+    public String warningMessage() {
+        return REMINDER_MESSAGE;
     }
 
     boolean hasTodosInContext(CompletionRequest request) {
@@ -52,24 +51,10 @@ public class TodoReminderLifecycle extends AbstractLifecycle {
         for (int i = request.messages.size() - 1; i >= 0; i--) {
             var msg = request.messages.get(i);
             if (RoleType.TOOL.equals(msg.role)) {
-                if (WRITE_TODOS_TOOL_NAME.equals(msg.name)) {
-                    return count;
-                }
+                if (WRITE_TODOS_TOOL_NAME.equals(msg.name)) return count;
                 count++;
             }
         }
         return count;
-    }
-
-    void appendReminder(CompletionRequest request) {
-        for (int i = request.messages.size() - 1; i >= 0; i--) {
-            var msg = request.messages.get(i);
-            if (RoleType.TOOL.equals(msg.role)) {
-                var currentText = msg.getTextContent();
-                if (currentText != null && currentText.contains(REMINDER_MESSAGE)) return;
-                msg.content.getFirst().text = (currentText == null ? "" : currentText) + REMINDER_MESSAGE;
-                return;
-            }
-        }
     }
 }

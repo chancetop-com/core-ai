@@ -1,6 +1,9 @@
 package ai.core.agent;
 
-import ai.core.agent.internal.DoomLoopDetector;
+import ai.core.agent.doomloop.DoomLoopLifecycle;
+import ai.core.agent.doomloop.DoomLoopStrategy;
+import ai.core.agent.doomloop.RepetitiveCallStrategy;
+import ai.core.agent.doomloop.TodoReminderStrategy;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.context.Compression;
 import ai.core.context.CompressionLifecycle;
@@ -24,7 +27,6 @@ import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.SubAgentToolCall;
-import ai.core.tool.tools.TodoReminderLifecycle;
 import ai.core.tool.tools.ToolActivationTool;
 import core.framework.util.Lists;
 
@@ -292,7 +294,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         configureSubAgents(agent);
         configureToolCallPruning();
         configureMemory();
-        configureTodoReminder();
+        configureDoomLoop();
         configureCompression();
 
         // Fetch prompts from Langfuse if configured
@@ -345,9 +347,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.setPersistence(new AgentPersistence());
         agent.agentLifecycles = new ArrayList<>(agentLifecycles);
         agent.reasoningEffort = this.reasoningEffort;
-        if (this.doomLoopEnabled) {
-            agent.doomLoopDetector = new DoomLoopDetector(this.doomLoopWindowSize, this.doomLoopThreshold);
-        }
         if (this.enableReflection && this.reflectionConfig == null) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
         }
@@ -368,11 +367,18 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
     }
 
-    private void configureTodoReminder() {
+    private void configureDoomLoop() {
+        var strategies = new ArrayList<DoomLoopStrategy>();
+        if (doomLoopEnabled) {
+            strategies.add(new RepetitiveCallStrategy(doomLoopWindowSize, doomLoopThreshold));
+        }
         boolean hasWriteTodos = toolCalls.stream()
                 .anyMatch(t -> "write_todos".equals(t.getName()));
         if (hasWriteTodos) {
-            agentLifecycles.add(new TodoReminderLifecycle());
+            strategies.add(new TodoReminderStrategy());
+        }
+        if (!strategies.isEmpty()) {
+            agentLifecycles.add(new DoomLoopLifecycle(strategies));
         }
     }
 
