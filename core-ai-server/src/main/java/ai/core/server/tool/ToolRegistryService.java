@@ -92,7 +92,7 @@ public class ToolRegistryService {
         entity.category = category;
         entity.type = ToolType.MCP;
         entity.config = config;
-        entity.enabled = enabled != null ? enabled : true;
+        entity.enabled = enabled == null || enabled;
         entity.createdAt = ZonedDateTime.now();
         toolRegistryCollection.insert(entity);
 
