@@ -95,6 +95,10 @@ public class BaseEventListener implements AgentEventListener {
             ui.getWriter().println("\n" + AnsiTheme.WARNING + "[Cancelled]" + AnsiTheme.RESET);
             ui.getWriter().flush();
         }
+        if (Boolean.TRUE.equals(event.maxTurnsReached)) {
+            ui.getWriter().println("\n" + AnsiTheme.WARNING + "[Max turns reached] The agent has used all available turns. You can continue the conversation with a follow-up message." + AnsiTheme.RESET);
+            ui.getWriter().flush();
+        }
         lastTurnComplete.set(event);
         printTurnSummary();
         if (turnFuture != null) turnFuture.complete(null);

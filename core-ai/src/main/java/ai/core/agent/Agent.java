@@ -237,6 +237,7 @@ public class Agent extends Node<Agent> {
         setOutput(agentOut.toString());
         if (currentIteCount >= maxTurnNumber) {
             logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
+            throw new MaxTurnsExceededException(maxTurnNumber);
         }
     }
 

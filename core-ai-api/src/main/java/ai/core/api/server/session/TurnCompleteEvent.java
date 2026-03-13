@@ -34,6 +34,10 @@ public class TurnCompleteEvent implements AgentEvent {
     @Property(name = "cancelled")
     public Boolean cancelled;
 
+    @NotNull
+    @Property(name = "max_turns_reached")
+    public Boolean maxTurnsReached = false;
+
     @Property(name = "input_tokens")
     public Long inputTokens;
 

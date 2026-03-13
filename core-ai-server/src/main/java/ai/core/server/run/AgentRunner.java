@@ -1,6 +1,7 @@
 package ai.core.server.run;
 
 import ai.core.agent.Agent;
+import ai.core.agent.MaxTurnsExceededException;
 import ai.core.llm.LLMProviders;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
@@ -99,8 +100,8 @@ public class AgentRunner {
 
     private void executeAgent(AgentRun runEntity, AgentDefinition definition) {
         var runId = runEntity.id;
+        var agent = buildAgent(definition);
         try {
-            var agent = buildAgent(definition);
             var config = definition.publishedConfig;
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
@@ -112,6 +113,11 @@ public class AgentRunner {
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
             updateRunStatus(runEntity, RunStatus.TIMEOUT, null, "execution timed out after " + timeoutSeconds + "s", null);
         } catch (Exception e) {
+            if (unwrapCause(e) instanceof MaxTurnsExceededException maxTurnsEx) {
+                LOGGER.warn("agent run exceeded max turns, runId={}, maxTurns={}", runId, maxTurnsEx.maxTurns);
+                updateRunStatus(runEntity, RunStatus.COMPLETED, agent.getOutput(), "max turns reached: " + maxTurnsEx.maxTurns, agent);
+                return;
+            }
             LOGGER.error("agent run failed, runId={}", runId, e);
             updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), null);
         }
@@ -242,5 +248,10 @@ public class AgentRunner {
         entity.input = input;
         entity.startedAt = ZonedDateTime.now();
         return entity;
+    }
+
+    private Throwable unwrapCause(Throwable e) {
+        Throwable cause = e.getCause();
+        return cause != null ? cause : e;
     }
 }

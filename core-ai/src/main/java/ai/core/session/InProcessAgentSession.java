@@ -1,6 +1,7 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
+import ai.core.agent.MaxTurnsExceededException;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.AgentSession;
@@ -70,49 +71,65 @@ public class InProcessAgentSession implements AgentSession {
     public void sendMessage(String message) {
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
         agent.resetCancellation();
-        Future<?> future = executor.submit(() -> {
-            try {
-                debug("agent run starting");
-                var usageBefore = agent.getCurrentTokenUsage();
-                long inputBefore = usageBefore.getPromptTokens();
-                long outputBefore = usageBefore.getCompletionTokens();
-                var result = agent.run(message);
-                if (agent.isCancelled()) {
-                    debug("agent run cancelled");
-                    dispatch(TurnCompleteEvent.cancelled(sessionId));
-                    dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
-                    return;
-                }
-                if (agent.hasPersistenceProvider()) {
-                    agent.save(sessionId);
-                }
-                debug("agent run completed");
-                var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
-                var usageAfter = agent.getCurrentTokenUsage();
-                turnComplete.inputTokens = usageAfter.getPromptTokens() - inputBefore;
-                turnComplete.outputTokens = usageAfter.getCompletionTokens() - outputBefore;
-                dispatch(turnComplete);
-                dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
-            } catch (ToolCallDeniedException e) {
-                debug("tool call denied: " + e.getMessage());
+        Future<?> future = executor.submit(() -> executeAgentRun(message));
+        currentTask.set(future);
+    }
+
+    private void executeAgentRun(String message) {
+        var usageBefore = agent.getCurrentTokenUsage();
+        long inputBefore = usageBefore.getPromptTokens();
+        long outputBefore = usageBefore.getCompletionTokens();
+        try {
+            debug("agent run starting");
+            var result = agent.run(message);
+            if (agent.isCancelled()) {
+                debug("agent run cancelled");
                 dispatch(TurnCompleteEvent.cancelled(sessionId));
                 dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
-            } catch (Throwable e) {
-                if (agent.isCancelled()) {
-                    debug("agent run cancelled");
-                    dispatch(TurnCompleteEvent.cancelled(sessionId));
-                    dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
-                    return;
-                }
-                debug("agent run failed: " + e);
-                logger.warn("agent session run failed, sessionId={}, error={}", sessionId, e.getMessage());
-                dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
-                dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
-            } finally {
-                currentTask.compareAndSet(currentTask.get(), null);
+                return;
             }
-        });
-        currentTask.set(future);
+            if (agent.hasPersistenceProvider()) {
+                agent.save(sessionId);
+            }
+            debug("agent run completed");
+            var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
+            populateTokenUsage(turnComplete, inputBefore, outputBefore);
+            dispatch(turnComplete);
+            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+        } catch (MaxTurnsExceededException e) {
+            debug("agent exceeded max turns: " + e.maxTurns);
+            if (agent.hasPersistenceProvider()) {
+                agent.save(sessionId);
+            }
+            var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
+            populateTokenUsage(turnComplete, inputBefore, outputBefore);
+            turnComplete.maxTurnsReached = true;
+            dispatch(turnComplete);
+            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+        } catch (ToolCallDeniedException e) {
+            debug("tool call denied: " + e.getMessage());
+            dispatch(TurnCompleteEvent.cancelled(sessionId));
+            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+        } catch (Throwable e) {
+            if (agent.isCancelled()) {
+                debug("agent run cancelled");
+                dispatch(TurnCompleteEvent.cancelled(sessionId));
+                dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+                return;
+            }
+            debug("agent run failed: " + e);
+            logger.warn("agent session run failed, sessionId={}, error={}", sessionId, e.getMessage());
+            dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
+            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
+        } finally {
+            currentTask.compareAndSet(currentTask.get(), null);
+        }
+    }
+
+    private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore) {
+        var usageAfter = agent.getCurrentTokenUsage();
+        event.inputTokens = usageAfter.getPromptTokens() - inputBefore;
+        event.outputTokens = usageAfter.getCompletionTokens() - outputBefore;
     }
 
     @Override
