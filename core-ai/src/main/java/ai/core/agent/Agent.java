@@ -29,7 +29,6 @@ import ai.core.reflection.ReflectionStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
-import ai.core.tool.ToolCallResult;
 import ai.core.tool.ToolExecutor;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;

@@ -9,28 +9,28 @@ class PermissionRuleTest {
 
     @Test
     void matchesExactToolName() {
-        var rule = new PermissionRule("read_file", null, PermissionLevel.ALLOW, PermissionScope.PERSISTENT, 0);
+        var rule = new PermissionRule("read_file", null);
         assertTrue(rule.matchesToolName("read_file"));
         assertFalse(rule.matchesToolName("write_file"));
     }
 
     @Test
     void wildcardMatchesAnyTool() {
-        var rule = new PermissionRule("*", null, PermissionLevel.DENY, PermissionScope.SESSION, 0);
+        var rule = new PermissionRule("*", null);
         assertTrue(rule.matchesToolName("read_file"));
         assertTrue(rule.matchesToolName("shell_command"));
     }
 
     @Test
     void nullPathPatternMatchesAnyPath() {
-        var rule = new PermissionRule("read_file", null, PermissionLevel.ALLOW, PermissionScope.PERSISTENT, 0);
+        var rule = new PermissionRule("read_file", null);
         assertTrue(rule.matchesPath("/any/path"));
         assertTrue(rule.matchesPath(null));
     }
 
     @Test
     void doubleStarPathPatternMatchesRecursively() {
-        var rule = new PermissionRule("read_file", "/Users/lim/workspace/**", PermissionLevel.ALLOW, PermissionScope.PERSISTENT, 0);
+        var rule = new PermissionRule("read_file", "/Users/lim/workspace/**");
         assertTrue(rule.matchesPath("/Users/lim/workspace/file.txt"));
         assertTrue(rule.matchesPath("/Users/lim/workspace/deep/nested/file.txt"));
         assertFalse(rule.matchesPath("/etc/passwd"));
@@ -38,14 +38,22 @@ class PermissionRuleTest {
 
     @Test
     void exactPathPatternMatchesExactly() {
-        var rule = new PermissionRule("read_file", "/etc/passwd", PermissionLevel.DENY, PermissionScope.PERSISTENT, 10);
+        var rule = new PermissionRule("read_file", "/etc/passwd");
         assertTrue(rule.matchesPath("/etc/passwd"));
         assertFalse(rule.matchesPath("/etc/shadow"));
     }
 
     @Test
     void nullPathAlwaysMatchesWhenPatternExists() {
-        var rule = new PermissionRule("read_file", "/some/path/**", PermissionLevel.ALLOW, PermissionScope.PERSISTENT, 0);
+        var rule = new PermissionRule("read_file", "/some/path/**");
         assertTrue(rule.matchesPath(null));
+    }
+
+    @Test
+    void matchesCombinesToolAndPath() {
+        var rule = new PermissionRule("read_file", "/Users/lim/**");
+        assertTrue(rule.matches("read_file", "/Users/lim/a.txt"));
+        assertFalse(rule.matches("write_file", "/Users/lim/a.txt"));
+        assertFalse(rule.matches("read_file", "/etc/passwd"));
     }
 }

@@ -7,9 +7,6 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.llm.domain.FunctionCall;
-import ai.core.session.permission.PermissionLevel;
-import ai.core.session.permission.PermissionRule;
-import ai.core.session.permission.PermissionScope;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
@@ -54,23 +51,16 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         if (permissionStore != null) {
             Map<String, Object> argMap = parseArguments(arguments);
-            var matchedRule = permissionStore.matchRule(toolName, argMap);
-            if (matchedRule.isPresent()) {
-                var level = matchedRule.get().getLevel();
-                if (level == PermissionLevel.ALLOW) {
+            var result = permissionStore.checkPermission(toolName, argMap);
+            if (result.isPresent()) {
+                if (result.get()) {
                     logger.debug("rule matched ALLOW for tool={}, callId={}", toolName, callId);
                     return;
-                }
-                if (level == PermissionLevel.DENY) {
+                } else {
                     logger.debug("rule matched DENY for tool={}, callId={}", toolName, callId);
                     throw new ToolCallDeniedException(toolName);
                 }
             }
-        }
-
-        if (permissionStore != null && permissionStore.isApproved(toolName)) {
-            logger.debug("tool already approved, skipping approval for tool={}, callId={}", toolName, callId);
-            return;
         }
 
         permissionGate.prepare(callId);
@@ -85,15 +75,13 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
             case DENY -> throw new ToolCallDeniedException(toolName);
             case DENY_ALWAYS -> {
                 if (permissionStore != null) {
-                    permissionStore.addRule(new PermissionRule(
-                            toolName, null, PermissionLevel.DENY, PermissionScope.PERSISTENT, 0));
+                    permissionStore.deny(toolName, null);
                 }
                 throw new ToolCallDeniedException(toolName);
             }
             case APPROVE_ALWAYS -> {
                 if (permissionStore != null) {
-                    permissionStore.addRule(new PermissionRule(
-                            toolName, null, PermissionLevel.ALLOW, PermissionScope.PERSISTENT, 0));
+                    permissionStore.allow(toolName, null);
                 }
             }
             default -> {

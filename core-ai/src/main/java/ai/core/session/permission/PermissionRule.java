@@ -1,20 +1,22 @@
 package ai.core.session.permission;
 
+import core.framework.api.json.Property;
+
 import java.util.Objects;
 
 public class PermissionRule {
-    private final String toolName;
-    private final String pathPattern;
-    private final PermissionLevel level;
-    private final PermissionScope scope;
-    private final int priority;
+    @Property(name = "tool_name")
+    public String toolName;
 
-    public PermissionRule(String toolName, String pathPattern, PermissionLevel level, PermissionScope scope, int priority) {
+    @Property(name = "path_pattern")
+    public String pathPattern;
+
+    public PermissionRule() {
+    }
+
+    public PermissionRule(String toolName, String pathPattern) {
         this.toolName = toolName;
         this.pathPattern = pathPattern;
-        this.level = level;
-        this.scope = scope;
-        this.priority = priority;
     }
 
     public boolean matchesToolName(String name) {
@@ -37,24 +39,8 @@ public class PermissionRule {
         return Objects.equals(pathPattern, path);
     }
 
-    public String getToolName() {
-        return toolName;
-    }
-
-    public String getPathPattern() {
-        return pathPattern;
-    }
-
-    public PermissionLevel getLevel() {
-        return level;
-    }
-
-    public PermissionScope getScope() {
-        return scope;
-    }
-
-    public int getPriority() {
-        return priority;
+    public boolean matches(String toolName, String path) {
+        return matchesToolName(toolName) && matchesPath(path);
     }
 
     @Override
@@ -62,13 +48,11 @@ public class PermissionRule {
         if (this == o) return true;
         if (!(o instanceof PermissionRule that)) return false;
         return Objects.equals(toolName, that.toolName)
-                && Objects.equals(pathPattern, that.pathPattern)
-                && level == that.level
-                && scope == that.scope;
+                && Objects.equals(pathPattern, that.pathPattern);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(toolName, pathPattern, level, scope);
+        return Objects.hash(toolName, pathPattern);
     }
 }

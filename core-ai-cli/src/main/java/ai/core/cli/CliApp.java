@@ -19,7 +19,7 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence.SessionInfo;
-import ai.core.session.FileToolPermissionStore;
+import ai.core.session.FileRuleBasedPermissionStore;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -77,7 +77,7 @@ public class CliApp {
             currentSessionId = "cli-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
         }
 
-        var permissionStore = new FileToolPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.txt"));
+        var permissionStore = new FileRuleBasedPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.json"));
         var noteMemory = new LocalFileMemoryProvider(workspace);
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
 
