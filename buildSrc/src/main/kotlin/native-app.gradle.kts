@@ -17,6 +17,7 @@ graalvmNative {
             buildArgs.add("-H:IncludeResources=com/knuddels/jtokkit/.*")
             buildArgs.add("-H:IncludeResources=org/jline/.*")
             buildArgs.add("-H:IncludeResources=META-INF/services/org/jline/.*")
+            buildArgs.add("-H:IncludeResources=META-INF/services/io.modelcontextprotocol.*")
             buildArgs.add("--features=ai.core.cli.graalvm.NativeReflectionFeature")
         }
     }

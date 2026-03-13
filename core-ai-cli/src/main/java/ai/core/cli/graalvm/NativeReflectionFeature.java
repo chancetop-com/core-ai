@@ -29,7 +29,10 @@ public class NativeReflectionFeature implements Feature {
     private static final String[] PACKAGES = {
         "ai/core/llm/domain",
         "ai/core/api/jsonschema",
-        "ai/core/api/server/session"
+        "ai/core/api/server/session",
+        "io/modelcontextprotocol/spec",
+        "io/modelcontextprotocol/json/jackson",
+        "io/modelcontextprotocol/json/schema/jackson"
     };
 
     private static final String[] EXTRA_CLASSES = {
@@ -45,6 +48,11 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.vender.VendorException",
         "ai.core.vender.vendors.RipgrepVendor",
         "ai.core.cli.remote.RemoteConfig",
+        // MCP SDK service loader implementations
+        "io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapperSupplier",
+        "io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper",
+        "io.modelcontextprotocol.json.schema.jackson.JacksonJsonSchemaValidatorSupplier",
+        "io.modelcontextprotocol.json.schema.jackson.DefaultJsonSchemaValidator",
         // JLine FFM terminal provider for Windows native terminal support
         "org.jline.terminal.impl.ffm.FfmTerminalProvider",
         "org.jline.terminal.impl.ffm.FfmTerminal"
