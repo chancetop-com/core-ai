@@ -153,7 +153,7 @@ public class MilvusVectorStore implements VectorStore {
         var rsp = milvusClientV2.insert(InsertReq.builder()
                 .collectionName(collection)
                 .data(List.of(row)).build());
-        logger.info("insert wiki: {}", rsp.getPrimaryKeys().getFirst());
+        logger.debug("insert wiki: {}", rsp.getPrimaryKeys().getFirst());
     }
 
     public void createImageCaptionCollection(String collection) {
@@ -199,6 +199,6 @@ public class MilvusVectorStore implements VectorStore {
         var rsp = milvusClientV2.insert(InsertReq.builder()
                 .collectionName(collection)
                 .data(List.of(row)).build());
-        logger.info("insert image caption: {}", rsp.getPrimaryKeys().getFirst());
+        logger.debug("insert image caption: {}", rsp.getPrimaryKeys().getFirst());
     }
 }

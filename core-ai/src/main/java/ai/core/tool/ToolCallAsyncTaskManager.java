@@ -37,7 +37,7 @@ public class ToolCallAsyncTaskManager {
     public void storeTask(ToolCallAsyncTask task) {
         var data = AsyncTaskData.from(task);
         persistenceProvider.save(TASK_PREFIX + task.taskId(), JSON.toJSON(data));
-        LOGGER.info("Stored async task: {}", task.taskId());
+        LOGGER.debug("Stored async task: {}", task.taskId());
     }
 
     public Optional<ToolCallAsyncTask> loadTask(String taskId) {
@@ -58,7 +58,7 @@ public class ToolCallAsyncTaskManager {
 
     public void deleteTask(String taskId) {
         persistenceProvider.delete(java.util.List.of(TASK_PREFIX + taskId));
-        LOGGER.info("Deleted async task: {}", taskId);
+        LOGGER.debug("Deleted async task: {}", taskId);
     }
 
     public ToolCallResult pollTask(String taskId) {
@@ -75,7 +75,7 @@ public class ToolCallAsyncTaskManager {
         try {
             var result = task.tool().poll(taskId);
             result.withToolName(task.tool().getName());
-            LOGGER.info("Polled task {}: status={}", taskId, result.getStatus());
+            LOGGER.debug("Polled task {}: status={}", taskId, result.getStatus());
 
             if (result.isTerminal()) {
                 deleteTask(taskId);

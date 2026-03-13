@@ -79,7 +79,7 @@ public class ToolCallPruning {
             return messages;
         }
 
-        LOGGER.info("Pruned {} segments ({} messages removed), {} -> {} messages", prunableSegments.size(), toRemove.size(), messages.size(), result.size());
+        LOGGER.debug("Pruned {} segments ({} messages removed), {} -> {} messages", prunableSegments.size(), toRemove.size(), messages.size(), result.size());
 
         return result;
     }

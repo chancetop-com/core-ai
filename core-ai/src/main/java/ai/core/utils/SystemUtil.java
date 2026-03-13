@@ -114,7 +114,7 @@ public class SystemUtil {
             return tmp;
         }
         if (isFileAlreadyDownloaded(tmp, uri)) {
-            LOGGER.info("File already exist, skipping download.");
+            LOGGER.debug("File already exist, skipping download.");
             return tmp;
         }
         return downloadHttp(url, tmp);

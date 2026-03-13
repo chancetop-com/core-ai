@@ -63,7 +63,7 @@ public class Extraction {
         }
 
         int totalCount = historyProvider.loadForExtraction(userId).size();
-        LOGGER.info("Triggering extraction: {} unextracted messages", unextracted.size());
+        LOGGER.debug("Triggering extraction: {} unextracted messages", unextracted.size());
         performExtraction(userId, unextracted, totalCount - 1);
     }
 
@@ -108,7 +108,7 @@ public class Extraction {
             memoryStore.saveAll(userId, memoryRecords, embeddings);
             success = true;
 
-            LOGGER.info("Extracted and saved {} memories from {} messages",
+            LOGGER.debug("Extracted and saved {} memories from {} messages",
                 memoryRecords.size(), records.size());
 
         } catch (Exception e) {

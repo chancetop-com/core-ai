@@ -35,7 +35,7 @@ public class McpServerService implements AutoCloseable {
                 .serverInfo(serverName, serverVersion)
                 .capabilities(McpSchema.ServerCapabilities.builder().tools(true).build())
                 .build();
-        LOGGER.info("MCP Server initialized: name={}, version={}", serverName, serverVersion);
+        LOGGER.debug("MCP Server initialized: name={}, version={}", serverName, serverVersion);
     }
 
     public void setToolLoader(McpServerToolLoader toolLoader) {
@@ -59,7 +59,7 @@ public class McpServerService implements AutoCloseable {
             registerTool(tool);
         }
         toolsLoaded = true;
-        LOGGER.info("Loaded {} tools into MCP server", tools.size());
+        LOGGER.debug("Loaded {} tools into MCP server", tools.size());
     }
 
     public void reload() {
@@ -127,7 +127,7 @@ public class McpServerService implements AutoCloseable {
 
     @Override
     public void close() {
-        LOGGER.info("Closing MCP Server: {}", serverName);
+        LOGGER.debug("Closing MCP Server: {}", serverName);
         try {
             server.close();
         } catch (Exception e) {

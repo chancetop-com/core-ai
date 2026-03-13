@@ -76,7 +76,7 @@ public class Compression {
             return messages;
         }
 
-        LOGGER.info("Compressing messages: currentTokens={}, threshold={}", currentTokens, (int) (maxContextTokens * triggerThreshold));
+        LOGGER.debug("Compressing messages: currentTokens={}, threshold={}", currentTokens, (int) (maxContextTokens * triggerThreshold));
 
         return doCompress(messages);
     }
@@ -85,7 +85,7 @@ public class Compression {
         if (messages == null || messages.isEmpty() || llmProvider == null) {
             return messages;
         }
-        LOGGER.info("Force compressing messages: count={}", messages.size());
+        LOGGER.debug("Force compressing messages: count={}", messages.size());
         return doCompress(messages);
     }
 
@@ -140,7 +140,7 @@ public class Compression {
 
         var result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
         var newTokens = MessageTokenCounterUtil.count(result);
-        LOGGER.info("Compression complete: {} -> {} tokens, {} -> {} messages", MessageTokenCounterUtil.count(messages), newTokens, messages.size(), result.size());
+        LOGGER.debug("Compression complete: {} -> {} tokens, {} -> {} messages", MessageTokenCounterUtil.count(messages), newTokens, messages.size(), result.size());
 
         return result;
     }
@@ -192,7 +192,7 @@ public class Compression {
         var threshold = (int) (maxContextTokens * triggerThreshold);
 
         if (tokensFromKeep >= threshold) {
-            LOGGER.info("Recent turns exceed threshold ({} >= {}), use max keepFromIndex",
+            LOGGER.debug("Recent turns exceed threshold ({} >= {}), use max keepFromIndex",
                 tokensFromKeep, threshold);
             return Math.max(keepFromIndex, conversationMsgs.size() - 1);
         }
@@ -324,7 +324,7 @@ public class Compression {
             Path filePath = writeToolResultToFile(toolName, result, sessionId);
             String summary = buildToolResultSummary(toolName, result, tokenCount, filePath);
 
-            LOGGER.info("Long tool result from {} saved to file: {} ({} tokens, max: {})",
+            LOGGER.debug("Long tool result from {} saved to file: {} ({} tokens, max: {})",
                 toolName, filePath, tokenCount, MAX_TOOL_RESULT_TOKENS);
 
             return summary;

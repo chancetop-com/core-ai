@@ -127,10 +127,10 @@ public final class TelemetryConfig {
             // Add shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 sdkTracerProvider.close();
-                LOGGER.info("OpenTelemetry tracer provider closed");
+                LOGGER.debug("OpenTelemetry tracer provider closed");
             }));
 
-            LOGGER.info("OpenTelemetry initialized - service: {}, endpoint: {}", serviceName, otlpEndpoint);
+            LOGGER.debug("OpenTelemetry initialized - service: {}, endpoint: {}", serviceName, otlpEndpoint);
             return openTelemetrySdk;
         } catch (Exception e) {
             LOGGER.error("Failed to initialize OpenTelemetry, falling back to noop", e);

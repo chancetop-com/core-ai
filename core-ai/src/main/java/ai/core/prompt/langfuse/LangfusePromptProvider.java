@@ -109,7 +109,7 @@ public class LangfusePromptProvider {
                     cache.put(cacheKey, prompt);
                 }
 
-                LOGGER.info("Successfully fetched prompt '{}' (version: {}, type: {})",
+                LOGGER.debug("Successfully fetched prompt '{}' (version: {}, type: {})",
                     prompt.getName(), prompt.getVersion(), prompt.getType());
                 return prompt;
             } else {

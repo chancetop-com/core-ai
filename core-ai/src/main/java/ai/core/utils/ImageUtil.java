@@ -44,7 +44,7 @@ public final class ImageUtil {
             var newWidth = (int) (width * scale);
             var newHeight = (int) (height * scale);
             image = resizeImage(image, newWidth, newHeight);
-            LOGGER.info("Resized image from {}x{} to {}x{}", width, height, newWidth, newHeight);
+            LOGGER.debug("Resized image from {}x{} to {}x{}", width, height, newWidth, newHeight);
         }
 
         var outputStream = new ByteArrayOutputStream();

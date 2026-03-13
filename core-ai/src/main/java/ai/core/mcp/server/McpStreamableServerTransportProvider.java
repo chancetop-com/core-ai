@@ -20,13 +20,13 @@ public class McpStreamableServerTransportProvider implements McpStatelessServerT
     @Override
     public void setMcpHandler(McpStatelessServerHandler mcpHandler) {
         this.mcpHandler = mcpHandler;
-        LOGGER.info("MCP handler set for stateless transport");
+        LOGGER.debug("MCP handler set for stateless transport");
     }
 
     @Override
     public Mono<Void> closeGracefully() {
         isClosing = true;
-        LOGGER.info("Closing stateless MCP transport");
+        LOGGER.debug("Closing stateless MCP transport");
         return Mono.empty();
     }
 

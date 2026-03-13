@@ -99,7 +99,7 @@ public class McpConnectionMonitor implements AutoCloseable {
             }
             scheduler = null;
         }
-        LOGGER.info("Heartbeat monitoring stopped");
+        LOGGER.debug("Heartbeat monitoring stopped");
     }
 
     /**
@@ -168,7 +168,7 @@ public class McpConnectionMonitor implements AutoCloseable {
         long delayMs = calculateBackoffDelay(config, currentAttempt);
         reconnectCallback.onReconnecting(serverName);
 
-        LOGGER.info("Scheduling reconnect for server {} in {}ms (attempt {}/{})",
+        LOGGER.debug("Scheduling reconnect for server {} in {}ms (attempt {}/{})",
             serverName, delayMs, currentAttempt + 1, config.getMaxReconnectAttempts());
 
         ensureSchedulerRunning();
@@ -214,7 +214,7 @@ public class McpConnectionMonitor implements AutoCloseable {
         var attempts = reconnectAttempts.get(serverName);
         int currentAttempt = attempts.incrementAndGet();
 
-        LOGGER.info("Attempting reconnect for server {} (attempt {}/{})",
+        LOGGER.debug("Attempting reconnect for server {} (attempt {}/{})",
             serverName, currentAttempt, config.getMaxReconnectAttempts());
 
         boolean success = reconnectCallback.attemptReconnect(serverName, config);
@@ -222,7 +222,7 @@ public class McpConnectionMonitor implements AutoCloseable {
         if (success) {
             attempts.set(0);
             reconnectTasks.remove(serverName);
-            LOGGER.info("Successfully reconnected to server: {}", serverName);
+            LOGGER.debug("Successfully reconnected to server: {}", serverName);
         } else {
             if (currentAttempt < config.getMaxReconnectAttempts()) {
                 scheduleReconnect(serverName);
