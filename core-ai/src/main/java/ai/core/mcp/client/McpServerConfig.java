@@ -78,7 +78,6 @@ public class McpServerConfig {
     }
 
     private static void parseCommonConfig(CommonConfigBuilder<?> builder, Map<String, Object> config) {
-        // Heartbeat configuration: "heartbeat": 30 means enable heartbeat with 30s interval
         if (config.containsKey("heartbeat")) {
             Object heartbeatValue = config.get("heartbeat");
             if (heartbeatValue instanceof Number num) {
@@ -88,61 +87,22 @@ public class McpServerConfig {
                 builder.enableHeartbeat(bool);
             }
         }
-
-        // Heartbeat timeout: "heartbeatTimeout": 10
-        if (config.containsKey("heartbeatTimeout")) {
-            Object value = config.get("heartbeatTimeout");
-            if (value instanceof Number num) {
-                builder.heartbeatTimeout(Duration.ofSeconds(num.longValue()));
-            }
+        parseDuration(config, "heartbeatTimeout", builder::heartbeatTimeout);
+        parseDuration(config, "connectTimeout", builder::connectTimeout);
+        parseDuration(config, "requestTimeout", builder::requestTimeout);
+        parseDuration(config, "initializationTimeout", builder::initializationTimeout);
+        if (config.get("autoReconnect") instanceof Boolean bool) {
+            builder.autoReconnect(bool);
         }
-
-        // Connect timeout: "connectTimeout": 10
-        if (config.containsKey("connectTimeout")) {
-            Object value = config.get("connectTimeout");
-            if (value instanceof Number num) {
-                builder.connectTimeout(Duration.ofSeconds(num.longValue()));
-            }
+        if (config.get("maxReconnectAttempts") instanceof Number num) {
+            builder.maxReconnectAttempts(num.intValue());
         }
+        parseDuration(config, "reconnectInterval", builder::reconnectInterval);
+    }
 
-        // Request timeout: "requestTimeout": 60
-        if (config.containsKey("requestTimeout")) {
-            Object value = config.get("requestTimeout");
-            if (value instanceof Number num) {
-                builder.requestTimeout(Duration.ofSeconds(num.longValue()));
-            }
-        }
-
-        // Initialization timeout: "initializationTimeout": 120
-        if (config.containsKey("initializationTimeout")) {
-            Object value = config.get("initializationTimeout");
-            if (value instanceof Number num) {
-                builder.initializationTimeout(Duration.ofSeconds(num.longValue()));
-            }
-        }
-
-        // Auto reconnect: "autoReconnect": true/false
-        if (config.containsKey("autoReconnect")) {
-            Object value = config.get("autoReconnect");
-            if (value instanceof Boolean bool) {
-                builder.autoReconnect(bool);
-            }
-        }
-
-        // Max reconnect attempts: "maxReconnectAttempts": 3
-        if (config.containsKey("maxReconnectAttempts")) {
-            Object value = config.get("maxReconnectAttempts");
-            if (value instanceof Number num) {
-                builder.maxReconnectAttempts(num.intValue());
-            }
-        }
-
-        // Reconnect interval: "reconnectInterval": 5
-        if (config.containsKey("reconnectInterval")) {
-            Object value = config.get("reconnectInterval");
-            if (value instanceof Number num) {
-                builder.reconnectInterval(Duration.ofSeconds(num.longValue()));
-            }
+    private static void parseDuration(Map<String, Object> config, String key, java.util.function.Consumer<Duration> setter) {
+        if (config.get(key) instanceof Number num) {
+            setter.accept(Duration.ofSeconds(num.longValue()));
         }
     }
 

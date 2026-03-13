@@ -298,7 +298,7 @@ public class LiteLLMProvider extends LLMProvider {
         }
     }
 
-    private static String stripTrailingSlashes(String url) {
+    private String stripTrailingSlashes(String url) {
         if (url == null) return url;
         return url.replaceAll("/+$", "");
     }
