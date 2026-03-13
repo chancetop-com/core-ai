@@ -46,7 +46,7 @@ class FileRuleBasedPermissionStoreTest {
         store.allow("read_file", null);
         store.deny("read_file", "/etc/passwd");
 
-        var allowResult = store.checkPermission("read_file", Map.of("file_path", "/Users/lim/a.txt"));
+        var allowResult = store.checkPermission("read_file", Map.of("file_path", "/home/user/a.txt"));
         assertTrue(allowResult.isPresent());
         assertTrue(allowResult.get());
 
@@ -57,9 +57,9 @@ class FileRuleBasedPermissionStoreTest {
 
     @Test
     void allowWithPathPattern() {
-        store.allow("read_file", "/Users/lim/workspace/**");
+        store.allow("read_file", "/home/user/workspace/**");
 
-        var result = store.checkPermission("read_file", Map.of("file_path", "/Users/lim/workspace/a.txt"));
+        var result = store.checkPermission("read_file", Map.of("file_path", "/home/user/workspace/a.txt"));
         assertTrue(result.isPresent());
         assertTrue(result.get());
 

@@ -30,9 +30,9 @@ class PermissionRuleTest {
 
     @Test
     void doubleStarPathPatternMatchesRecursively() {
-        var rule = new PermissionRule("read_file", "/Users/lim/workspace/**");
-        assertTrue(rule.matchesPath("/Users/lim/workspace/file.txt"));
-        assertTrue(rule.matchesPath("/Users/lim/workspace/deep/nested/file.txt"));
+        var rule = new PermissionRule("read_file", "/home/user/workspace/**");
+        assertTrue(rule.matchesPath("/home/user/workspace/file.txt"));
+        assertTrue(rule.matchesPath("/home/user/workspace/deep/nested/file.txt"));
         assertFalse(rule.matchesPath("/etc/passwd"));
     }
 
@@ -51,9 +51,9 @@ class PermissionRuleTest {
 
     @Test
     void matchesCombinesToolAndPath() {
-        var rule = new PermissionRule("read_file", "/Users/lim/**");
-        assertTrue(rule.matches("read_file", "/Users/lim/a.txt"));
-        assertFalse(rule.matches("write_file", "/Users/lim/a.txt"));
+        var rule = new PermissionRule("read_file", "/home/user/**");
+        assertTrue(rule.matches("read_file", "/home/user/a.txt"));
+        assertFalse(rule.matches("write_file", "/home/user/a.txt"));
         assertFalse(rule.matches("read_file", "/etc/passwd"));
     }
 }

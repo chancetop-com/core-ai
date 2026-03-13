@@ -12,9 +12,9 @@ class PathExtractorTest {
 
     @Test
     void extractPathFromReadFile() {
-        var path = PathExtractor.extractPath("read_file", Map.of("file_path", "/Users/lim/a.txt"));
+        var path = PathExtractor.extractPath("read_file", Map.of("file_path", "/home/user/a.txt"));
         assertTrue(path.isPresent());
-        assertEquals("/Users/lim/a.txt", path.get());
+        assertEquals("/home/user/a.txt", path.get());
     }
 
     @Test
