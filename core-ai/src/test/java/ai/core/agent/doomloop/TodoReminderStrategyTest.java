@@ -4,6 +4,8 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.tool.tools.WriteFileTool;
+import ai.core.tool.tools.WriteTodosTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -41,8 +43,8 @@ class TodoReminderStrategyTest {
     void noDetectionWhenRecentlyCalledWriteTodos() {
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "do task"),
-                assistantWithToolCall("c1", "write_todos"),
-                toolResult("c1", "write_todos", "todos updated"),
+                assistantWithToolCall("c1", WriteTodosTool.WT_TOOL_NAME),
+                toolResult("c1", WriteTodosTool.WT_TOOL_NAME, "todos updated"),
                 assistantWithToolCall("c2", "read_file"),
                 toolResult("c2", "read_file", "content")
         ));
@@ -55,8 +57,8 @@ class TodoReminderStrategyTest {
     void detectionTriggeredAfterThreshold() {
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "do task"),
-                assistantWithToolCall("c1", "write_todos"),
-                toolResult("c1", "write_todos", "todos updated"),
+                assistantWithToolCall("c1", WriteTodosTool.WT_TOOL_NAME),
+                toolResult("c1", WriteTodosTool.WT_TOOL_NAME, "todos updated"),
                 Message.of(RoleType.ASSISTANT, "Working on it"),
                 assistantWithToolCall("c2", "read_file"),
                 toolResult("c2", "read_file", "content1"),
@@ -74,8 +76,8 @@ class TodoReminderStrategyTest {
     void detectionResetsAfterWriteTodosCalledAgain() {
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "do task"),
-                assistantWithToolCall("c1", "write_todos"),
-                toolResult("c1", "write_todos", "todos created"),
+                assistantWithToolCall("c1", WriteTodosTool.WT_TOOL_NAME),
+                toolResult("c1", WriteTodosTool.WT_TOOL_NAME, "todos created"),
                 Message.of(RoleType.ASSISTANT, "Working"),
                 assistantWithToolCall("c2", "read_file"),
                 toolResult("c2", "read_file", "content"),
@@ -84,8 +86,8 @@ class TodoReminderStrategyTest {
                 assistantWithToolCall("c4", "shell_command"),
                 toolResult("c4", "shell_command", "output"),
                 Message.of(RoleType.ASSISTANT, "Continuing"),
-                assistantWithToolCall("c5", "write_todos"),
-                toolResult("c5", "write_todos", "todos updated"),
+                assistantWithToolCall("c5", WriteTodosTool.WT_TOOL_NAME),
+                toolResult("c5", WriteTodosTool.WT_TOOL_NAME, "todos updated"),
                 Message.of(RoleType.ASSISTANT, "Next step"),
                 assistantWithToolCall("c6", "read_file"),
                 toolResult("c6", "read_file", "more content")
@@ -99,8 +101,8 @@ class TodoReminderStrategyTest {
         var customStrategy = new TodoReminderStrategy(5);
         var messages = new ArrayList<>(List.of(
                 Message.of(RoleType.USER, "task"),
-                assistantWithToolCall("c1", "write_todos"),
-                toolResult("c1", "write_todos", "todos"),
+                assistantWithToolCall("c1", WriteTodosTool.WT_TOOL_NAME),
+                toolResult("c1", WriteTodosTool.WT_TOOL_NAME, "todos"),
                 Message.of(RoleType.ASSISTANT, "ok"),
                 assistantWithToolCall("c2", "t1"),
                 toolResult("c2", "t1", "r1"),

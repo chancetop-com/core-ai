@@ -3,7 +3,6 @@ package ai.core.session;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.AgentEvent;
-import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;

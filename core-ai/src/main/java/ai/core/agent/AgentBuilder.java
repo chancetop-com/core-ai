@@ -21,13 +21,13 @@ import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionListener;
-
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.tool.tools.ToolActivationTool;
+import ai.core.tool.tools.WriteTodosTool;
 import core.framework.util.Lists;
 
 import java.util.ArrayList;
@@ -373,7 +373,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             strategies.add(new RepetitiveCallStrategy(doomLoopWindowSize, doomLoopThreshold));
         }
         boolean hasWriteTodos = toolCalls.stream()
-                .anyMatch(t -> "write_todos".equals(t.getName()));
+                .anyMatch(t -> WriteTodosTool.WT_TOOL_NAME.equals(t.getName()));
         if (hasWriteTodos) {
             strategies.add(new TodoReminderStrategy());
         }

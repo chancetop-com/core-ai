@@ -32,7 +32,7 @@ public class DoomLoopLifecycle extends AbstractLifecycle {
             if (RoleType.TOOL.equals(msg.role)) {
                 var currentText = msg.getTextContent();
                 if (currentText != null && currentText.contains(warning)) return;
-                msg.content.getFirst().text = (currentText == null ? "" : currentText) + warning;
+                msg.content.getFirst().text = String.join("\n", currentText == null ? "" : currentText, warning);
                 return;
             }
         }

@@ -71,13 +71,14 @@ public class WriteTodosTool {
             Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully
             Remember: If you only need to make a few tool calls to complete a task, and it is clear what you need to do, it is better to just do the task directly and NOT call this tool at all.
             """;
+    public static final String WT_TOOL_NAME = "write_todos";
 
     public static ToolCall self() {
         var todos = new WriteTodosTool();
         return Functions.from(todos, "writeTodos").getFirst();
     }
 
-    @CoreAiMethod(name = "write_todos", description = WT_TOOL_DESC)
+    @CoreAiMethod(name = WT_TOOL_NAME, description = WT_TOOL_DESC)
     public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos, ExecutionContext context) {
         String todosJson = JSON.toJSON(todos);
         return """
