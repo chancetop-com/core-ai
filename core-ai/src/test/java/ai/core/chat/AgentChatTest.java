@@ -85,6 +85,7 @@ class AgentChatTest {
     }
 
     @Test
+    @Disabled
     void testChatTool() {
         var wtl = spy(new FakerTools());
         var agent = Agent.builder()

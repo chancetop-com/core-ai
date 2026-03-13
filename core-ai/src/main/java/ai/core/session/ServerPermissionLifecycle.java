@@ -52,14 +52,13 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         if (permissionStore != null) {
             Map<String, Object> argMap = parseArguments(arguments);
             var result = permissionStore.checkPermission(toolName, argMap);
+            if (result.isPresent() && result.get()) {
+                logger.debug("rule matched ALLOW for tool={}, callId={}", toolName, callId);
+                return;
+            }
             if (result.isPresent()) {
-                if (result.get()) {
-                    logger.debug("rule matched ALLOW for tool={}, callId={}", toolName, callId);
-                    return;
-                } else {
-                    logger.debug("rule matched DENY for tool={}, callId={}", toolName, callId);
-                    throw new ToolCallDeniedException(toolName);
-                }
+                logger.debug("rule matched DENY for tool={}, callId={}", toolName, callId);
+                throw new ToolCallDeniedException(toolName);
             }
         }
 

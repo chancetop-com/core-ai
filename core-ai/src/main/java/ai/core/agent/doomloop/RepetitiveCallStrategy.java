@@ -82,17 +82,7 @@ public class RepetitiveCallStrategy implements DoomLoopStrategy {
 
     String detectCyclicPattern(List<ToolCallFingerprint> list) {
         for (int patternLen = 2; patternLen <= list.size() / 2; patternLen++) {
-            int repeats = 1;
-            boolean match = true;
-            for (int i = list.size() - 2 * patternLen; i >= 0 && match; i -= patternLen) {
-                for (int j = 0; j < patternLen; j++) {
-                    if (!list.get(i + j).equals(list.get(list.size() - patternLen + j))) {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match) repeats++;
-            }
+            int repeats = countPatternRepeats(list, patternLen);
             if (repeats >= 2) {
                 return String.format(
                         "[SYSTEM WARNING] Detected cyclic doom loop: pattern of length %d repeated %d times. "
@@ -102,5 +92,23 @@ public class RepetitiveCallStrategy implements DoomLoopStrategy {
             }
         }
         return null;
+    }
+
+    private int countPatternRepeats(List<ToolCallFingerprint> list, int patternLen) {
+        int repeats = 1;
+        for (int i = list.size() - 2 * patternLen; i >= 0; i -= patternLen) {
+            if (!matchesPattern(list, i, patternLen)) break;
+            repeats++;
+        }
+        return repeats;
+    }
+
+    private boolean matchesPattern(List<ToolCallFingerprint> list, int offset, int patternLen) {
+        for (int j = 0; j < patternLen; j++) {
+            if (!list.get(offset + j).equals(list.get(list.size() - patternLen + j))) {
+                return false;
+            }
+        }
+        return true;
     }
 }

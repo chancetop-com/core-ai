@@ -4,7 +4,6 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
-import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodosTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

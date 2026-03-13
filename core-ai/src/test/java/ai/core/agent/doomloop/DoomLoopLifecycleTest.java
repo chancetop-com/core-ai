@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -118,10 +119,6 @@ class DoomLoopLifecycleTest {
 
         // Warning should not be duplicated
         assertEquals(contentAfterFirst, contentAfterSecond);
-    }
-
-    private static void assertEquals(String expected, String actual) {
-        org.junit.jupiter.api.Assertions.assertEquals(expected, actual);
     }
 
     private CompletionRequest buildRequest(List<Message> messages) {

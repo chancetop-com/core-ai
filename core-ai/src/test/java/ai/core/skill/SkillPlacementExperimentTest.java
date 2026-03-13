@@ -52,16 +52,11 @@ class SkillPlacementExperimentTest {
     private static String apiBase;
     private static HTTPClient httpClient;
 
-    // models to test
     private static final List<String> MODELS = List.of(
             "anthropic/claude-sonnet-4.6"
     );
 
     private static final int RUNS_PER_CASE = 3;
-
-    // ===== Mock Skills =====
-
-    record MockSkill(String name, String whatDesc, String whenDesc) {}
 
     static final List<MockSkill> SKILLS = List.of(
             new MockSkill("code-review",
@@ -95,12 +90,6 @@ class SkillPlacementExperimentTest {
                     "Analyzes code performance, identifies bottlenecks, and suggests optimizations.",
                     "Use when user asks about performance, profiling, benchmarking, or optimization. Do NOT use for general code review or functional bug fixes.")
     );
-
-    // ===== Test Cases =====
-
-    enum QueryType { POSITIVE, NEAR_MISS, AMBIGUOUS, NEGATIVE }
-
-    record TestCase(String query, QueryType type, String expectedSkill, String note) {}
 
     static final List<TestCase> TEST_CASES = List.of(
             // --- Positive: clear skill match ---
@@ -152,16 +141,16 @@ class SkillPlacementExperimentTest {
             new TestCase("What is the difference between REST and GraphQL?", QueryType.NEGATIVE, null, "comparison/explanation")
     );
 
-    // ===== Prompt Builders for 4 Groups =====
-
-    static String buildToolDescGroupA() {
-        var sb = new StringBuilder("Use a skill to accomplish specialized tasks.\n");
-        sb.append("When a skill matches the user's request, call this tool.\n\n");
-        sb.append("Available skills:\n");
-        for (var skill : SKILLS) {
-            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
+    static String buildSkillLines(List<MockSkill> skills) {
+        var sb = new StringBuilder(1024);
+        for (var skill : skills) {
+            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(' ').append(skill.whenDesc).append('\n');
         }
         return sb.toString();
+    }
+
+    static String buildToolDescGroupA() {
+        return "Use a skill to accomplish specialized tasks.\nWhen a skill matches the user's request, call this tool.\n\nAvailable skills:\n" + buildSkillLines(SKILLS);
     }
 
     static String buildSystemPromptGroupA() {
@@ -173,13 +162,9 @@ class SkillPlacementExperimentTest {
     }
 
     static String buildSystemPromptGroupB() {
-        var sb = new StringBuilder("You are a helpful assistant with access to tools.\n\n");
-        sb.append("You have a use_skill tool. Available skills:\n");
-        for (var skill : SKILLS) {
-            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
-        }
-        sb.append("\nWhen a skill matches the user's request, call use_skill with the name.");
-        return sb.toString();
+        return "You are a helpful assistant with access to tools.\n\nYou have a use_skill tool. Available skills:\n"
+                + buildSkillLines(SKILLS)
+                + "\nWhen a skill matches the user's request, call use_skill with the name.";
     }
 
     static String buildToolDescGroupC() {
@@ -191,62 +176,43 @@ class SkillPlacementExperimentTest {
     }
 
     static String buildToolDescGroupD() {
-        var sb = new StringBuilder("Use a skill to accomplish specialized tasks.\n\n");
-        sb.append("Available skills (what each does):\n");
+        var sb = new StringBuilder(512);
+        sb.append("Use a skill to accomplish specialized tasks.\n\nAvailable skills (what each does):\n");
         for (var skill : SKILLS) {
-            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append("\n");
+            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append('\n');
         }
         return sb.toString();
     }
 
     static String buildSystemPromptGroupD() {
-        var sb = new StringBuilder("You are a helpful assistant with access to tools.\n\n");
-        sb.append("Skill trigger conditions (when to call use_skill):\n");
+        var sb = new StringBuilder(512);
+        sb.append("You are a helpful assistant with access to tools.\n\nSkill trigger conditions (when to call use_skill):\n");
         for (var skill : SKILLS) {
-            sb.append("- ").append(skill.name).append(": ").append(skill.whenDesc).append("\n");
+            sb.append("- ").append(skill.name).append(": ").append(skill.whenDesc).append('\n');
         }
         return sb.toString();
     }
 
-    // Group E: skill info repeated 2x in tool description, generic system prompt
     static String buildToolDescGroupE() {
-        var sb = new StringBuilder("Use a skill to accomplish specialized tasks.\n");
-        sb.append("When a skill matches the user's request, call this tool.\n\n");
-        sb.append("Available skills:\n");
-        for (var skill : SKILLS) {
-            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
-        }
-        sb.append("\nSkill reference (repeated for clarity):\n");
-        for (var skill : SKILLS) {
-            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
-        }
-        return sb.toString();
+        String lines = buildSkillLines(SKILLS);
+        return "Use a skill to accomplish specialized tasks.\nWhen a skill matches the user's request, call this tool.\n\nAvailable skills:\n"
+                + lines + "\nSkill reference (repeated for clarity):\n" + lines;
     }
 
     static String buildSystemPromptGroupE() {
         return "You are a helpful assistant with access to tools.";
     }
 
-    // Group F: generic tool description, skill info repeated 2x in system prompt
     static String buildToolDescGroupF() {
         return "Use a skill to accomplish specialized tasks. Call this tool with the skill name when appropriate.";
     }
 
     static String buildSystemPromptGroupF() {
-        var sb = new StringBuilder("You are a helpful assistant with access to tools.\n\n");
-        sb.append("You have a use_skill tool. Available skills:\n");
-        for (var skill : SKILLS) {
-            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
-        }
-        sb.append("\nSkill reference (repeated for clarity):\n");
-        for (var skill : SKILLS) {
-            sb.append("- ").append(skill.name).append(": ").append(skill.whatDesc).append(" ").append(skill.whenDesc).append("\n");
-        }
-        sb.append("\nWhen a skill matches the user's request, call use_skill with the name.");
-        return sb.toString();
+        String lines = buildSkillLines(SKILLS);
+        return "You are a helpful assistant with access to tools.\n\nYou have a use_skill tool. Available skills:\n"
+                + lines + "\nSkill reference (repeated for clarity):\n" + lines
+                + "\nWhen a skill matches the user's request, call use_skill with the name.";
     }
-
-    // ===== Setup =====
 
     @BeforeAll
     static void setup() throws IOException {
@@ -266,7 +232,6 @@ class SkillPlacementExperimentTest {
                 .build();
     }
 
-    // resolve ${ENV_VAR} in property values
     static String resolveProperty(Properties props, String key) {
         String value = props.getProperty(key);
         if (value == null) return null;
@@ -276,8 +241,6 @@ class SkillPlacementExperimentTest {
         }
         return value;
     }
-
-    // ===== Main Experiment =====
 
     @Test
     void runExperiment() {
@@ -308,13 +271,11 @@ class SkillPlacementExperimentTest {
         groupSysPrompts.put("E", buildSystemPromptGroupE());
         groupSysPrompts.put("F", buildSystemPromptGroupF());
 
-        // results[model][group] = Metrics
         var allResults = new LinkedHashMap<String, Map<String, Metrics>>();
 
         for (String model : MODELS) {
             LOGGER.info("\n====== MODEL: {} ======", model);
             var modelResults = new LinkedHashMap<String, Metrics>();
-
             for (String group : List.of("A", "B", "C", "D", "E", "F")) {
                 LOGGER.info("--- Group {} ---", group);
                 var metrics = runGroup(model, groupToolDescs.get(group), groupSysPrompts.get(group));
@@ -327,70 +288,73 @@ class SkillPlacementExperimentTest {
     }
 
     private Metrics runGroup(String model, String toolDesc, String systemPrompt) {
-        int tp = 0; // true positive: correct skill called
-        int fp = 0; // false positive: wrong skill called or shouldn't have called
-        int fn = 0; // false negative: should have called but didn't
-        int tn = 0; // true negative: correctly didn't call
-        int ambiguousCorrect = 0;
-        int ambiguousTotal = 0;
-        int totalCalls = 0;
-
+        int[] counters = new int[7]; // tp, fp, fn, tn, ambiguousCorrect, ambiguousTotal, totalCalls
         for (var testCase : TEST_CASES) {
             List<String> responses = new ArrayList<>();
             for (int run = 0; run < RUNS_PER_CASE; run++) {
-                String calledSkill = callAndExtractSkill(model, toolDesc, systemPrompt, testCase.query);
-                responses.add(calledSkill);
+                responses.add(callAndExtractSkill(model, toolDesc, systemPrompt, testCase.query));
             }
-            // majority vote
             String majoritySkill = majorityVote(responses);
-
-            switch (testCase.type) {
-                case POSITIVE -> {
-                    totalCalls++;
-                    if (testCase.expectedSkill.equals(majoritySkill)) {
-                        tp++;
-                    } else if (majoritySkill == null) {
-                        fn++;
-                        LOGGER.warn("  MISS [positive] query=\"{}\" expected={} got=none", testCase.query, testCase.expectedSkill);
-                    } else {
-                        fp++;
-                        fn++;
-                        LOGGER.warn("  WRONG [positive] query=\"{}\" expected={} got={}", testCase.query, testCase.expectedSkill, majoritySkill);
-                    }
-                }
-                case NEAR_MISS -> {
-                    totalCalls++;
-                    if (majoritySkill == null) {
-                        tn++;
-                    } else {
-                        fp++;
-                        LOGGER.warn("  FALSE_TRIGGER [near_miss] query=\"{}\" got={} note={}", testCase.query, majoritySkill, testCase.note);
-                    }
-                }
-                case AMBIGUOUS -> {
-                    ambiguousTotal++;
-                    totalCalls++;
-                    if (majoritySkill != null && testCase.expectedSkill.contains(majoritySkill)) {
-                        ambiguousCorrect++;
-                        tp++;
-                    } else if (majoritySkill == null) {
-                        fn++;
-                    } else if (!testCase.expectedSkill.contains(majoritySkill)) {
-                        fp++;
-                        LOGGER.warn("  WRONG [ambiguous] query=\"{}\" expected_one_of={} got={}", testCase.query, testCase.expectedSkill, majoritySkill);
-                    }
-                }
-                case NEGATIVE -> {
-                    totalCalls++;
-                    if (majoritySkill == null) {
-                        tn++;
-                    } else {
-                        fp++;
-                        LOGGER.warn("  FALSE_TRIGGER [negative] query=\"{}\" got={}", testCase.query, majoritySkill);
-                    }
-                }
-            }
+            evaluateTestCase(testCase, majoritySkill, counters);
         }
+        return buildMetrics(counters);
+    }
+
+    // counters indices: 0=tp, 1=fp, 2=fn, 3=tn, 4=ambiguousCorrect, 5=ambiguousTotal, 6=totalCalls
+    private void evaluateTestCase(TestCase testCase, String majoritySkill, int[] c) {
+        c[6]++;
+        switch (testCase.type) {
+            case POSITIVE -> evaluatePositive(testCase, majoritySkill, c);
+            case NEAR_MISS -> evaluateNegativeType(testCase, majoritySkill, c, "near_miss");
+            case AMBIGUOUS -> evaluateAmbiguous(testCase, majoritySkill, c);
+            case NEGATIVE -> evaluateNegativeType(testCase, majoritySkill, c, "negative");
+            default -> LOGGER.warn("Unknown query type: {}", testCase.type);
+        }
+    }
+
+    private void evaluatePositive(TestCase testCase, String majoritySkill, int[] c) {
+        if (testCase.expectedSkill.equals(majoritySkill)) {
+            c[0]++;
+        } else if (majoritySkill == null) {
+            c[2]++;
+            LOGGER.warn("  MISS [positive] query=\"{}\" expected={} got=none", testCase.query, testCase.expectedSkill);
+        } else {
+            c[1]++;
+            c[2]++;
+            LOGGER.warn("  WRONG [positive] query=\"{}\" expected={} got={}", testCase.query, testCase.expectedSkill, majoritySkill);
+        }
+    }
+
+    private void evaluateNegativeType(TestCase testCase, String majoritySkill, int[] c, String label) {
+        if (majoritySkill == null) {
+            c[3]++;
+        } else {
+            c[1]++;
+            LOGGER.warn("  FALSE_TRIGGER [{}] query=\"{}\" got={} note={}", label, testCase.query, majoritySkill, testCase.note);
+        }
+    }
+
+    private void evaluateAmbiguous(TestCase testCase, String majoritySkill, int[] c) {
+        c[5]++;
+        if (majoritySkill != null && testCase.expectedSkill.contains(majoritySkill)) {
+            c[4]++;
+            c[0]++;
+        } else if (majoritySkill == null) {
+            c[2]++;
+        } else {
+            c[1]++;
+            LOGGER.warn("  WRONG [ambiguous] query=\"{}\" expected_one_of={} got={}", testCase.query, testCase.expectedSkill, majoritySkill);
+        }
+    }
+
+    private Metrics buildMetrics(int[] counters) {
+        int tp = counters[0];
+        int fp = counters[1];
+        int fn = counters[2];
+        int tn = counters[3];
+        int ambiguousCorrect = counters[4];
+        int ambiguousTotal = counters[5];
+        int totalCalls = counters[6];
 
         double precision = (tp + fp) > 0 ? (double) tp / (tp + fp) : 0;
         double recall = (tp + fn) > 0 ? (double) tp / (tp + fn) : 0;
@@ -408,8 +372,6 @@ class SkillPlacementExperimentTest {
                 String.format("%.3f", ambiguousRate));
         return metrics;
     }
-
-    // ===== LLM Call =====
 
     private String callAndExtractSkill(String model, String toolDesc, String systemPrompt, String query) {
         var toolSchema = buildUseSkillToolSchema(toolDesc);
@@ -436,22 +398,24 @@ class SkillPlacementExperimentTest {
                 LOGGER.error("API error ({}): {}", rsp.statusCode, rsp.text());
                 return null;
             }
-            var response = JsonUtil.fromJson(CompletionResponse.class, rsp.text());
-            var choice = response.choices.getFirst();
-
-            // check if model called use_skill
-            if (choice.message.toolCalls != null && !choice.message.toolCalls.isEmpty()) {
-                var toolCall = choice.message.toolCalls.getFirst();
-                if ("use_skill".equals(toolCall.function.name)) {
-                    var args = JsonUtil.fromJson(Map.class, toolCall.function.arguments);
-                    return (String) args.get("name");
-                }
-            }
-            return null; // no tool call = no skill triggered
+            return extractSkillFromResponse(rsp.text());
         } catch (Exception e) {
             LOGGER.error("Call failed for query=\"{}\" model={}: {}", query, model, e.getMessage());
             return null;
         }
+    }
+
+    private String extractSkillFromResponse(String responseText) {
+        var response = JsonUtil.fromJson(CompletionResponse.class, responseText);
+        var choice = response.choices.getFirst();
+        if (choice.message.toolCalls != null && !choice.message.toolCalls.isEmpty()) {
+            var toolCall = choice.message.toolCalls.getFirst();
+            if ("use_skill".equals(toolCall.function.name)) {
+                var args = JsonUtil.fromJson(Map.class, toolCall.function.arguments);
+                return (String) args.get("name");
+            }
+        }
+        return null;
     }
 
     private Map<String, Object> buildUseSkillToolSchema(String toolDesc) {
@@ -475,8 +439,6 @@ class SkillPlacementExperimentTest {
         );
     }
 
-    // ===== Majority Vote =====
-
     private String majorityVote(List<String> results) {
         Map<String, Integer> counts = new HashMap<>();
         int nullCount = 0;
@@ -487,7 +449,6 @@ class SkillPlacementExperimentTest {
                 counts.merge(r, 1, Integer::sum);
             }
         }
-        // if majority is null, return null
         if (nullCount > results.size() / 2) return null;
 
         String best = null;
@@ -500,8 +461,6 @@ class SkillPlacementExperimentTest {
         }
         return bestCount >= nullCount ? best : null;
     }
-
-    // ===== Report =====
 
     private void printFinalReport(Map<String, Map<String, Metrics>> allResults) {
         LOGGER.info("\n\n========== FINAL REPORT ==========");
@@ -526,7 +485,10 @@ class SkillPlacementExperimentTest {
             LOGGER.info("{}", "-".repeat(115));
         }
 
-        // find best group per metric
+        printBestGroupPerModel(allResults);
+    }
+
+    private void printBestGroupPerModel(Map<String, Map<String, Metrics>> allResults) {
         LOGGER.info("\n========== BEST GROUP PER MODEL ==========");
         for (var modelEntry : allResults.entrySet()) {
             String model = modelEntry.getKey();
@@ -551,7 +513,13 @@ class SkillPlacementExperimentTest {
         }
     }
 
+    record MockSkill(String name, String whatDesc, String whenDesc) { }
+
+    enum QueryType { POSITIVE, NEAR_MISS, AMBIGUOUS, NEGATIVE }
+
+    record TestCase(String query, QueryType type, String expectedSkill, String note) { }
+
     record Metrics(int tp, int fp, int fn, int tn,
                    double precision, double recall, double f1,
-                   double falseRate, double ambiguousRate) {}
+                   double falseRate, double ambiguousRate) { }
 }

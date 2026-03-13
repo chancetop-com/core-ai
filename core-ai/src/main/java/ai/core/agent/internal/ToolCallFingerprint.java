@@ -8,14 +8,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
 
 public class ToolCallFingerprint {
-    private final String toolName;
-    private final String argumentsHash;
-
-    public ToolCallFingerprint(String toolName, String argumentsHash) {
-        this.toolName = toolName;
-        this.argumentsHash = argumentsHash;
-    }
-
     public static ToolCallFingerprint of(FunctionCall call) {
         return new ToolCallFingerprint(
                 call.function.name,
@@ -36,6 +28,14 @@ public class ToolCallFingerprint {
         } catch (NoSuchAlgorithmException e) {
             return arguments.strip();
         }
+    }
+
+    private final String toolName;
+    private final String argumentsHash;
+
+    public ToolCallFingerprint(String toolName, String argumentsHash) {
+        this.toolName = toolName;
+        this.argumentsHash = argumentsHash;
     }
 
     public String getToolName() {

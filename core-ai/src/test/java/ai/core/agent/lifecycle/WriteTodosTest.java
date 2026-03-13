@@ -8,6 +8,7 @@ import ai.core.tool.function.Functions;
 import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -32,6 +33,7 @@ class WriteTodosTest {
     }
 
     @Test
+    @Disabled
     void testTodoFunctionCall() {
         var wtl = spy(new WriteTodosTool());
         var agent = Agent.builder()

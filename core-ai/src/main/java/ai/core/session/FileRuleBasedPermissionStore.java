@@ -17,10 +17,10 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class FileRuleBasedPermissionStore implements ToolPermissionStore {
-    private static final Logger logger = LoggerFactory.getLogger(FileRuleBasedPermissionStore.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(FileRuleBasedPermissionStore.class);
 
-    private final CopyOnWriteArrayList<PermissionRule> allowRules = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<PermissionRule> denyRules = new CopyOnWriteArrayList<>();
+    private final List<PermissionRule> allowRules = new CopyOnWriteArrayList<>();
+    private final List<PermissionRule> denyRules = new CopyOnWriteArrayList<>();
     private final Path persistFile;
 
     public FileRuleBasedPermissionStore() {
@@ -80,9 +80,9 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
             var domain = JSON.fromJSON(PermissionsDomain.class, content);
             if (domain.allow != null) allowRules.addAll(domain.allow);
             if (domain.deny != null) denyRules.addAll(domain.deny);
-            logger.debug("loaded {} allow / {} deny rules from {}", allowRules.size(), denyRules.size(), persistFile);
+            LOGGER.debug("loaded {} allow / {} deny rules from {}", allowRules.size(), denyRules.size(), persistFile);
         } catch (IOException e) {
-            logger.warn("failed to load permission rules from {}", persistFile, e);
+            LOGGER.warn("failed to load permission rules from {}", persistFile, e);
         }
     }
 
@@ -94,9 +94,9 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
             domain.allow = new ArrayList<>(allowRules);
             domain.deny = new ArrayList<>(denyRules);
             Files.writeString(persistFile, JSON.toJSON(domain));
-            logger.debug("saved {} allow / {} deny rules to {}", allowRules.size(), denyRules.size(), persistFile);
+            LOGGER.debug("saved {} allow / {} deny rules to {}", allowRules.size(), denyRules.size(), persistFile);
         } catch (IOException e) {
-            logger.warn("failed to save permission rules to {}", persistFile, e);
+            LOGGER.warn("failed to save permission rules to {}", persistFile, e);
         }
     }
 

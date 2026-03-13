@@ -65,7 +65,7 @@ public class PromptController {
             byte[] body = request.body().orElseThrow(() -> new IllegalArgumentException("empty body"));
             return MAPPER.readValue(body, PromptTemplate.class);
         } catch (Exception e) {
-            throw new IllegalArgumentException("invalid request body: " + e.getMessage());
+            throw new IllegalArgumentException("invalid request body: " + e.getMessage(), e);
         }
     }
 

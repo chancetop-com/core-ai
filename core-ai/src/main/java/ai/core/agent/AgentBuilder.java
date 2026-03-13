@@ -73,7 +73,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private Integer langfusePromptVersion;
     private String langfusePromptLabel;
 
-
     public AgentBuilder promptTemplate(String promptTemplate) {
         this.promptTemplate = promptTemplate;
         return this;
@@ -324,7 +323,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
                 toolCalls.add(subAgent);
             }
         }
-
     }
 
     private void copyValue(Agent agent) {
@@ -390,7 +388,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agentLifecycles.add(new CompressionLifecycle(compression));
         }
     }
-
 
     private void configureToolDiscovery() {
         var discoverableTools = toolCalls.stream().filter(ToolCall::isDiscoverable).toList();

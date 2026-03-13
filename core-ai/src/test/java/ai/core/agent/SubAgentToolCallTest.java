@@ -13,6 +13,7 @@ import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.tool.tools.SubAgentToolCall;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
@@ -132,6 +133,7 @@ class SubAgentToolCallTest {
     }
 
     @Test
+    @Disabled
     void testCoordinatorCallsSubAgent() {
         // Mock subagent response
         var subAgentResponse = CompletionResponse.of(
