@@ -13,6 +13,7 @@ import java.util.concurrent.Callable;
 @Command(name = "core-ai-cli", version = "1.0.0", description = "Core-AI CLI agent")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
+        System.setProperty("slf4j.provider", "ai.core.cli.log.CliLoggerServiceProvider");
         System.exit(new CommandLine(new Main()).execute(args));
     }
 

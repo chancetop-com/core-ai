@@ -48,6 +48,8 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.vender.VendorException",
         "ai.core.vender.vendors.RipgrepVendor",
         "ai.core.cli.remote.RemoteConfig",
+        // MCP SDK stdio transport (for subprocess process extraction via reflection)
+        "io.modelcontextprotocol.client.transport.StdioClientTransport",
         // MCP SDK service loader implementations
         "io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapperSupplier",
         "io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper",
