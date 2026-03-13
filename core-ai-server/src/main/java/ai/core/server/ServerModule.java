@@ -38,6 +38,14 @@ import ai.core.server.web.FileWebServiceImpl;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
 import ai.core.server.web.AuthWebServiceImpl;
 import ai.core.server.web.UserWebServiceImpl;
+import ai.core.server.trace.service.IngestService;
+import ai.core.server.trace.service.OTLPIngestService;
+import ai.core.server.trace.service.PromptService;
+import ai.core.server.trace.service.TraceService;
+import ai.core.server.trace.web.ingest.IngestController;
+import ai.core.server.trace.web.otlp.OTLPController;
+import ai.core.server.trace.web.prompt.PromptController;
+import ai.core.server.trace.web.trace.TraceController;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.sse.PatchedServerSentEventConfig;
 import core.framework.http.HTTPMethod;
@@ -99,7 +107,36 @@ public class ServerModule extends Module {
 
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
 
+        registerTrace();
+
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
+    }
+
+    private void registerTrace() {
+        bind(TraceService.class);
+        bind(PromptService.class);
+        bind(OTLPIngestService.class);
+        bind(IngestService.class);
+
+        var traceController = bind(TraceController.class);
+        var promptController = bind(PromptController.class);
+        var otlpController = bind(OTLPController.class);
+        var ingestController = bind(IngestController.class);
+
+        http().route(HTTPMethod.GET, "/api/traces", traceController::list);
+        http().route(HTTPMethod.GET, "/api/traces/:traceId", traceController::get);
+        http().route(HTTPMethod.GET, "/api/traces/:traceId/spans", traceController::spans);
+
+        http().route(HTTPMethod.GET, "/api/prompts", promptController::list);
+        http().route(HTTPMethod.POST, "/api/prompts", promptController::create);
+        http().route(HTTPMethod.GET, "/api/prompts/:promptId", promptController::get);
+        http().route(HTTPMethod.PUT, "/api/prompts/:promptId", promptController::update);
+        http().route(HTTPMethod.DELETE, "/api/prompts/:promptId", promptController::delete);
+        http().route(HTTPMethod.POST, "/api/prompts/:promptId/publish", promptController::publish);
+
+        http().route(HTTPMethod.POST, "/v1/traces", otlpController::receive);
+        http().route(HTTPMethod.POST, "/api/public/otel/v1/traces", otlpController::receive);
+        http().route(HTTPMethod.POST, "/api/ingest/spans", ingestController::ingestSpans);
     }
 }

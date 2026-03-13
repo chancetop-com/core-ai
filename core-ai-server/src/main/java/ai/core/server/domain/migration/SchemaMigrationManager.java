@@ -49,7 +49,8 @@ public class SchemaMigrationManager {
     private List<SchemaMigration> migrations() {
         return List.of(
             new SchemaMigrationVInitialize(),
-            new SchemaMigrationVDefaultAgent()
+            new SchemaMigrationVDefaultAgent(),
+            new SchemaMigrationVTraceIndexes()
         );
     }
 }

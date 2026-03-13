@@ -8,6 +8,9 @@ import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.ToolRegistry;
 import ai.core.server.domain.User;
 import ai.core.server.domain.migration.SchemaVersion;
+import ai.core.server.trace.domain.PromptTemplate;
+import ai.core.server.trace.domain.Span;
+import ai.core.server.trace.domain.Trace;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
 import core.framework.mongo.module.MongoConfig;
@@ -38,5 +41,10 @@ public class ServerApp extends App {
         mongo.collection(AgentRun.class);
         mongo.collection(FileRecord.class);
         mongo.collection(SchemaVersion.class);
+
+        // trace collections
+        mongo.collection(Trace.class);
+        mongo.collection(Span.class);
+        mongo.collection(PromptTemplate.class);
     }
 }

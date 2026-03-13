@@ -18,6 +18,7 @@ object Versions {
     const val JLINE_VERSION = "3.26.1"
     const val PICOCLI_VERSION = "4.7.7"
     const val GRAALVM_SDK_VERSION = "25.0.0"
+    const val OPENTELEMETRY_PROTO_VERSION = "1.7.0-alpha"
 }
 
 object ProjectVersions {

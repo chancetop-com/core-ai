@@ -123,6 +123,8 @@ project(":core-ai-server") {
         implementation("core.framework:core-ng-mongo:${Versions.CORE_FRAMEWORK_VERSION}")
         // BouncyCastle for password hashing
         implementation("org.bouncycastle:bcprov-jdk18on:1.79")
+        // OTLP protobuf for trace ingestion
+        implementation("io.opentelemetry.proto:opentelemetry-proto:${Versions.OPENTELEMETRY_PROTO_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<Test> {
@@ -165,21 +167,6 @@ project(":core-ai-benchmark") {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
         implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
-    }
-    tasks.withType<Test> {
-        setProperty("failOnNoDiscoveredTests", false)
-    }
-}
-
-project(":core-ai-trace") {
-    version = ProjectVersions.CORE_AI_TRACE_VERSION
-    apply(plugin = "app")
-    dependencies {
-        implementation(project(":core-ai-api"))
-        implementation("core.framework:core-ng:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("core.framework:core-ng-mongo:${Versions.CORE_FRAMEWORK_VERSION}")
-        implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.JACKSON_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<Test> {
