@@ -31,7 +31,7 @@ public class CliAgent {
         var skillConfig = buildSkillConfig(config);
         var tools = buildTools(config, skillConfig);
         var builder = Agent.builder()
-                .llmProvider(config.providers.getProvider())
+                .llmProvider(config.providers.getDefaultProvider())
                 .systemPrompt(buildSystemPrompt(config))
                 .maxTurn(config.maxTurn)
                 .toolCalls(tools)

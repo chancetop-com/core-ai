@@ -31,6 +31,7 @@ public class BaseEventListener implements AgentEventListener {
     protected volatile CompletableFuture<Void> turnFuture;
     protected final AtomicBoolean spinnerActive = new AtomicBoolean(false);
     protected volatile boolean turnTextStarted;
+    protected volatile boolean reasoningShown;
     private final AtomicReference<TurnCompleteEvent> lastTurnComplete = new AtomicReference<>();
 
     protected BaseEventListener(TerminalUI ui, AgentSession session) {
@@ -43,6 +44,7 @@ public class BaseEventListener implements AgentEventListener {
     public void prepareTurn() {
         turnFuture = new CompletableFuture<>();
         turnTextStarted = false;
+        reasoningShown = false;
         spinner.resetTimer();
     }
 
@@ -55,7 +57,12 @@ public class BaseEventListener implements AgentEventListener {
         stopSpinnerIfActive();
         if (!turnTextStarted) {
             turnTextStarted = true;
-            ui.getWriter().println("\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET);
+            if (reasoningShown) {
+                ui.getWriter().print("\n\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET);
+            } else {
+                ui.getWriter().print("\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET);
+            }
+            ui.getWriter().flush();
         }
         markdownRenderer.processChunk(event.chunk);
     }
@@ -63,6 +70,13 @@ public class BaseEventListener implements AgentEventListener {
     @Override
     public void onReasoningChunk(ReasoningChunkEvent event) {
         stopSpinnerIfActive();
+        if (!reasoningShown) {
+            reasoningShown = true;
+            if (!turnTextStarted) {
+                ui.getWriter().print("\n" + AnsiTheme.MUTED + "\u23FA" + AnsiTheme.RESET);
+                ui.getWriter().flush();
+            }
+        }
         ui.printStreamingChunk(AnsiTheme.REASONING + event.chunk + AnsiTheme.RESET);
     }
 

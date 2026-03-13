@@ -71,7 +71,9 @@ public class ProviderConfigurator {
         try {
             var props = loadProperties();
             props.setProperty(type.getName() + ".model", model);
+            props.setProperty("active.provider", type.getName());
             storeProperties(props);
+            llmProviders.setDefaultProvider(type);
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save model: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }

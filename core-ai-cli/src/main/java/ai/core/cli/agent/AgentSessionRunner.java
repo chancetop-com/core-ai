@@ -268,7 +268,7 @@ public class AgentSessionRunner {
         } catch (NumberFormatException ignored) {
             // treat as model name
         }
-        if (!input.isBlank()) {
+        if (!input.isBlank() && modelRegistry.getProviderType(input) != null) {
             switchModel(currentModel, input, null);
         }
     }

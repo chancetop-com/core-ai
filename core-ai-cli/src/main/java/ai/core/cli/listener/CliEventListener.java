@@ -2,6 +2,7 @@ package ai.core.cli.listener;
 
 import ai.core.agent.Agent;
 import ai.core.api.server.session.AgentSession;
+import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
@@ -62,6 +63,12 @@ public class CliEventListener extends BaseEventListener {
         super.waitForTurn();
         turnRunning.set(false);
         stopEscReader();
+    }
+
+    @Override
+    public void onReasoningChunk(ReasoningChunkEvent event) {
+        DebugLog.log("reasoning chunk: length=" + event.chunk.length());
+        super.onReasoningChunk(event);
     }
 
     @Override

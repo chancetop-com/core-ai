@@ -11,6 +11,9 @@
 
 # Eclipse Files
 .factorypath
+.project
+.classpath
+.settings/
 
 # VsCode Configuration Files
 .vscode

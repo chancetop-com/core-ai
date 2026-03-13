@@ -54,8 +54,7 @@ class SkillPlacementExperimentTest {
 
     // models to test
     private static final List<String> MODELS = List.of(
-            "openai/gpt-4.1-mini",
-            "minimax/minimax-m2.5"
+            "anthropic/claude-sonnet-4.6"
     );
 
     private static final int RUNS_PER_CASE = 3;

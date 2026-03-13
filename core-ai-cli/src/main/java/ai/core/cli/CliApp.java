@@ -3,6 +3,8 @@ package ai.core.cli;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
+import ai.core.llm.LLMProviderType;
+import ai.core.llm.LLMProviders;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
@@ -62,12 +64,14 @@ public class CliApp {
         var result = bootstrap.initialize();
         DebugLog.log("bootstrap initialized");
 
+        restoreActiveProvider(props, result.llmProviders);
+
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
 
         var sessionPersistence = new FileSessionPersistence(SESSIONS_DIR);
         var sessionManager = new SessionManager(sessionPersistence);
         var ui = new TerminalUI();
-        var modelName = modelOverride != null ? modelOverride : result.llmProviders.getProvider().config.getModel();
+        var modelName = modelOverride != null ? modelOverride : result.llmProviders.getDefaultProvider().config.getModel();
         String currentSessionId = resolveSessionId(sessionManager, ui);
         if (currentSessionId == null) {
             currentSessionId = "cli-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
@@ -102,6 +106,15 @@ public class CliApp {
             closeQuietly(ui);
             closeShutdownResources(result);
         }
+    }
+
+    private void restoreActiveProvider(PropertiesFileSource props, LLMProviders providers) {
+        props.property("active.provider").ifPresent(name -> {
+            var type = LLMProviderType.fromName(name);
+            if (type != null && providers.getProvider(type) != null) {
+                providers.setDefaultProvider(type);
+            }
+        });
     }
 
     private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {
