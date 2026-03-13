@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.internal.AgentHelper;
+import ai.core.agent.internal.DoomLoopDetector;
 import ai.core.agent.slashcommand.SlashCommandParser;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
@@ -29,6 +30,7 @@ import ai.core.reflection.ReflectionStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 import ai.core.tool.ToolExecutor;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;
@@ -75,6 +77,7 @@ public class Agent extends Node<Agent> {
     Compression compression;
     ReasoningEffort reasoningEffort;
     List<SubAgentToolCall> subAgents = new ArrayList<>();
+    DoomLoopDetector doomLoopDetector;
 
     @Override
     String execute(String query, Map<String, Object> variables) {
@@ -223,6 +226,7 @@ public class Agent extends Node<Agent> {
 
     protected void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         buildUserQueryToMessage(query, variables);
+        if (doomLoopDetector != null) doomLoopDetector.reset();
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
@@ -280,6 +284,21 @@ public class Agent extends Node<Agent> {
     public List<Message> handleFunc(Message funcMsg) {
         return funcMsg.toolCalls.stream().map(tool -> {
             var msg = new ArrayList<Message>();
+
+            if (doomLoopDetector != null) {
+                doomLoopDetector.record(tool);
+                var doomLoop = doomLoopDetector.detect();
+                if (doomLoop.isPresent()) {
+                    logger.warn("Agent[{}] doom loop detected: {}", getName(), doomLoop.get());
+                    var warningResult = ToolCallResult.failed(
+                            "[SYSTEM WARNING] " + doomLoop.get()
+                                    + ". You are repeating the same action without making progress. "
+                                    + "Please try a different approach or ask the user for help.");
+                    msg.add(AgentHelper.buildToolMessage(tool, warningResult));
+                    return msg;
+                }
+            }
+
             var result = getToolExecutor().execute(tool, getExecutionContext());
             if (result.isDirectReturn() || Strings.isBlank(result.toResultForLLM())) {
                 msg.add(AgentHelper.buildToolMessage(tool, result, true));
