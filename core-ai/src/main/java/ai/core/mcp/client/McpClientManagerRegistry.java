@@ -12,7 +12,7 @@ import java.util.function.Consumer;
  */
 public final class McpClientManagerRegistry {
     private static McpClientManager manager;
-    private static final List<Consumer<McpClientManager>> creationListeners = new CopyOnWriteArrayList<>();
+    private static final List<Consumer<McpClientManager>> CREATION_LISTENERS = new CopyOnWriteArrayList<>();
 
     public static void setManager(McpClientManager manager) {
         McpClientManagerRegistry.manager = manager;
@@ -23,11 +23,11 @@ public final class McpClientManagerRegistry {
     }
 
     public static void addCreationListener(Consumer<McpClientManager> listener) {
-        creationListeners.add(listener);
+        CREATION_LISTENERS.add(listener);
     }
 
     public static void notifyCreation(McpClientManager manager) {
-        for (var listener : creationListeners) {
+        for (var listener : CREATION_LISTENERS) {
             listener.accept(manager);
         }
     }
