@@ -4,7 +4,6 @@ import core.framework.http.HTTPClient;
 import core.framework.internal.http.CookieManager;
 import core.framework.internal.http.DefaultTrustManager;
 import core.framework.internal.http.FallbackDNSCache;
-import core.framework.internal.http.HTTPClientImpl;
 import core.framework.internal.http.HTTPEventListenerFactory;
 import core.framework.internal.http.PEM;
 import core.framework.internal.http.RetryInterceptor;
@@ -119,7 +118,7 @@ public final class PatchedHTTPClientBuilder {
             if (enableFallbackDNSCache) builder.dns(new FallbackDNSCache(Clock.systemUTC()));
             if (proxy != null) builder.proxy(proxy);
 
-            return new HTTPClientImpl(builder.build(), userAgent, timeout);
+            return new CustomHTTPClientImpl(builder.build(), userAgent, timeout);
         } finally {
             // todo
             logger.debug("create http client, elapsed={}", watch.elapsed());
