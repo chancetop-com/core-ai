@@ -11,13 +11,10 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
-import ai.core.cli.ui.AnsiTheme;
-import ai.core.cli.ui.StreamingMarkdownRenderer;
+import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.TerminalUI;
-import ai.core.cli.ui.ThinkingSpinner;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -26,26 +23,19 @@ import java.util.concurrent.atomic.AtomicReference;
 public class BaseEventListener implements AgentEventListener {
     protected final TerminalUI ui;
     protected final AgentSession session;
-    protected final StreamingMarkdownRenderer markdownRenderer;
-    protected final ThinkingSpinner spinner;
+    protected final OutputPanel panel;
     protected volatile CompletableFuture<Void> turnFuture;
-    protected final AtomicBoolean spinnerActive = new AtomicBoolean(false);
-    protected volatile boolean turnTextStarted;
-    protected volatile boolean reasoningShown;
     private final AtomicReference<TurnCompleteEvent> lastTurnComplete = new AtomicReference<>();
 
     protected BaseEventListener(TerminalUI ui, AgentSession session) {
         this.ui = ui;
         this.session = session;
-        this.markdownRenderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
-        this.spinner = new ThinkingSpinner(ui.getWriter(), ui::getTerminalWidth);
+        this.panel = new OutputPanel(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
     }
 
     public void prepareTurn() {
         turnFuture = new CompletableFuture<>();
-        turnTextStarted = false;
-        reasoningShown = false;
-        spinner.resetTimer();
+        panel.beginTurn();
     }
 
     public void waitForTurn() {
@@ -54,64 +44,40 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onTextChunk(TextChunkEvent event) {
-        stopSpinnerIfActive();
-        if (!turnTextStarted) {
-            turnTextStarted = true;
-            if (reasoningShown) {
-                ui.getWriter().print("\n\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET);
-            } else {
-                ui.getWriter().print("\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET);
-            }
-            ui.getWriter().flush();
-        }
-        markdownRenderer.processChunk(event.chunk);
+        panel.streamText(event.chunk);
     }
 
     @Override
     public void onReasoningChunk(ReasoningChunkEvent event) {
-        stopSpinnerIfActive();
-        if (!reasoningShown) {
-            reasoningShown = true;
-            if (!turnTextStarted) {
-                ui.getWriter().print("\n" + AnsiTheme.MUTED + "\u23FA" + AnsiTheme.RESET);
-                ui.getWriter().flush();
-            }
-        }
-        ui.printStreamingChunk(AnsiTheme.REASONING + event.chunk + AnsiTheme.RESET);
+        panel.streamReasoning(event.chunk);
     }
 
     @Override
     public void onToolStart(ToolStartEvent event) {
-        stopSpinnerIfActive();
-        markdownRenderer.flush();
-        ui.showToolStart(event.toolName, event.arguments);
+        panel.toolStart(event.toolName, event.arguments);
     }
 
     @Override
     public void onToolResult(ToolResultEvent event) {
-        ui.showToolResult(event.toolName, event.status, event.result);
-        startSpinner();
+        panel.toolResult(event.status, event.result);
     }
 
     @Override
     public void onToolApprovalRequest(ToolApprovalRequestEvent event) {
-        stopSpinnerIfActive();
+        panel.stopSpinnerIfActive();
+        panel.getMarkdownRenderer().flush();
         var decision = ui.askPermission(event.toolName, event.arguments, event.suggestedPattern);
         session.approveToolCall(event.callId, decision);
     }
 
     @Override
     public void onTurnComplete(TurnCompleteEvent event) {
-        stopSpinnerIfActive();
-        markdownRenderer.flush();
-        markdownRenderer.reset();
+        panel.endTurn();
         if (Boolean.TRUE.equals(event.cancelled)) {
-            ui.getWriter().println("\n" + AnsiTheme.WARNING + "[Cancelled]" + AnsiTheme.RESET);
-            ui.getWriter().flush();
+            panel.cancelled();
         }
         if (Boolean.TRUE.equals(event.maxTurnsReached)) {
-            ui.getWriter().println("\n" + AnsiTheme.WARNING + "[Max turns reached] The agent has used all available turns. You can continue the conversation with a follow-up message." + AnsiTheme.RESET);
-            ui.getWriter().flush();
+            panel.maxTurnsReached();
         }
         lastTurnComplete.set(event);
         printTurnSummary();
@@ -120,44 +86,24 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onError(ErrorEvent event) {
-        stopSpinnerIfActive();
-        markdownRenderer.flush();
-        markdownRenderer.reset();
-        ui.showError(event.message);
+        panel.error(event.message);
         if (turnFuture != null) turnFuture.complete(null);
     }
 
     @Override
     public void onStatusChange(StatusChangeEvent event) {
         if (event.status == SessionStatus.RUNNING) {
-            startSpinner();
+            panel.startSpinner();
         }
     }
 
     protected void printTurnSummary() {
-        long elapsed = spinner.getElapsedMs();
-        String time = ThinkingSpinner.formatElapsed(elapsed);
+        long elapsed = panel.getSpinner().getElapsedMs();
         var event = lastTurnComplete.get();
-        var sb = new StringBuilder();
-        sb.append('\n').append(AnsiTheme.MUTED).append("  \u2726 ").append(time);
         if (event != null && event.inputTokens != null && event.outputTokens != null) {
-            long total = event.inputTokens + event.outputTokens;
-            sb.append(String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", total, event.inputTokens, event.outputTokens));
-        }
-        sb.append(AnsiTheme.RESET);
-        ui.getWriter().println(sb.toString());
-        ui.getWriter().flush();
-    }
-
-    protected void startSpinner() {
-        if (spinnerActive.compareAndSet(false, true)) {
-            spinner.start();
-        }
-    }
-
-    protected void stopSpinnerIfActive() {
-        if (spinnerActive.compareAndSet(true, false)) {
-            spinner.stop();
+            panel.turnSummary(elapsed, event.inputTokens, event.outputTokens);
+        } else {
+            panel.turnSummary(elapsed, null, null);
         }
     }
 }

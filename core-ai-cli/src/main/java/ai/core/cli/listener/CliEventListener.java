@@ -47,7 +47,7 @@ public class CliEventListener extends BaseEventListener {
         turnTokensBefore = usage.getTotalTokens();
         turnInputBefore = usage.getPromptTokens();
         turnOutputBefore = usage.getCompletionTokens();
-        spinner.setStatsSupplier(() -> {
+        panel.getSpinner().setStatsSupplier(() -> {
             var u = agent.getCurrentTokenUsage();
             long tokens = u.getTotalTokens() - turnTokensBefore;
             if (tokens == 0) return null;
@@ -80,10 +80,10 @@ public class CliEventListener extends BaseEventListener {
     @Override
     public void onToolStart(ToolStartEvent event) {
         DebugLog.log("tool start: " + event.toolName + " callId=" + event.callId + " args=" + truncate(event.arguments));
-        stopSpinnerIfActive();
-        markdownRenderer.flush();
+        panel.stopSpinnerIfActive();
+        panel.getMarkdownRenderer().flush();
         showSkillHintIfApplicable(event);
-        ui.showToolStart(event.toolName, event.arguments);
+        panel.toolStart(event.toolName, event.arguments);
     }
 
     private void showSkillHintIfApplicable(ToolStartEvent event) {

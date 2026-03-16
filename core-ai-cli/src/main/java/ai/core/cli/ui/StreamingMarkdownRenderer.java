@@ -23,6 +23,8 @@ public class StreamingMarkdownRenderer {
     private String codeBlockLanguage;
     private int printedLength;
     private int printedDisplayWidth;
+    private String linePrefix = "";
+    private boolean afterFirstLine;
 
     public StreamingMarkdownRenderer(PrintWriter writer, boolean smartTerminal, IntSupplier terminalWidth) {
         this.writer = writer;
@@ -49,6 +51,10 @@ public class StreamingMarkdownRenderer {
         }
     }
 
+    public void setLinePrefix(String prefix) {
+        this.linePrefix = prefix;
+    }
+
     public void reset() {
         buffer.setLength(0);
         tableBuffer.clear();
@@ -56,6 +62,7 @@ public class StreamingMarkdownRenderer {
         codeBlockLanguage = null;
         printedLength = 0;
         printedDisplayWidth = 0;
+        afterFirstLine = false;
     }
 
     private void completeLine() {
@@ -70,15 +77,22 @@ public class StreamingMarkdownRenderer {
 
         flushTable();
 
+        // print prefix + full line content
+        if (afterFirstLine && !linePrefix.isEmpty()) {
+            writer.print(linePrefix);
+        }
+
         if (smartTerminal) {
             renderSmartLine(line);
         } else {
-            printDumbDelta(line);
+            writer.print(line);
             updateCodeBlockState(line);
         }
+
         resetBufferState();
         writer.println();
         writer.flush();
+        afterFirstLine = true;
     }
 
     private void resetBufferState() {
@@ -111,21 +125,21 @@ public class StreamingMarkdownRenderer {
     }
 
     private void flushPartial() {
-        if (buffer.length() > printedLength) {
-            String delta = buffer.substring(printedLength);
-            writer.print(inCodeBlock
-                    ? AnsiTheme.MD_CODE_BLOCK + delta + AnsiTheme.RESET
-                    : delta);
-            writer.flush();
-            printedDisplayWidth += AnsiTheme.displayWidth(delta);
-            printedLength = buffer.length();
+        if (buffer.length() <= printedLength) {
+            return;
         }
-    }
-
-    private void printDumbDelta(String line) {
-        if (printedLength < line.length()) {
-            writer.print(line.substring(printedLength));
+        // at start of a new line, print prefix first
+        if (printedLength == 0 && afterFirstLine && !linePrefix.isEmpty()) {
+            writer.print(linePrefix);
+            printedDisplayWidth += AnsiTheme.displayWidth(linePrefix);
         }
+        String delta = buffer.substring(printedLength);
+        writer.print(inCodeBlock
+                ? AnsiTheme.MD_CODE_BLOCK + delta + AnsiTheme.RESET
+                : delta);
+        writer.flush();
+        printedDisplayWidth += AnsiTheme.displayWidth(delta);
+        printedLength = buffer.length();
     }
 
     private void updateCodeBlockState(String line) {

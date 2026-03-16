@@ -149,7 +149,6 @@ public class TerminalUI {
     }
 
     public ApprovalDecision askPermission(String toolName, String arguments, String suggestedPattern) {
-        writer.println("  " + AnsiTheme.WARNING + "?" + AnsiTheme.RESET + " Allow " + toolName + "?");
         var options = List.of(
                 "Yes",
                 "Yes, and don't ask again for: " + suggestedPattern,
@@ -166,22 +165,28 @@ public class TerminalUI {
     }
 
     public void showToolStart(String toolName, String arguments) {
-        writer.println("\n  " + AnsiTheme.WARNING + "⟳ " + AnsiTheme.RESET + toolName);
-        if (arguments != null && !arguments.isBlank() && !"{}".equals(arguments.trim())) {
-            printToolArguments(arguments);
-        }
+        String summary = formatToolSummary(toolName, arguments);
+        writer.println("\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET + " " + summary);
         writer.flush();
     }
 
     public void showToolResult(String toolName, String status, String result) {
-        String icon = "success".equals(status)
-                ? AnsiTheme.SUCCESS + "  ✓ "
-                : AnsiTheme.ERROR + "  ✗ ";
-        writer.println(icon + AnsiTheme.RESET + toolName);
+        String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
+        writer.print("  " + icon + "\u23BF" + AnsiTheme.RESET + "  ");
         if (result != null && !result.isBlank()) {
-            String firstLine = result.split("\n", 2)[0];
-            if (firstLine.length() > 120) firstLine = firstLine.substring(0, 120) + "...";
-            writer.println(AnsiTheme.MUTED + "    " + firstLine + AnsiTheme.RESET);
+            String[] lines = result.split("\n");
+            int limit = Math.min(lines.length, 3);
+            for (int i = 0; i < limit; i++) {
+                String line = lines[i];
+                if (line.length() > 120) line = line.substring(0, 120) + "...";
+                if (i > 0) writer.print("     ");
+                writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
+            }
+            if (lines.length > 3) {
+                writer.println(AnsiTheme.MUTED + "     \u2026 +" + (lines.length - 3) + " lines" + AnsiTheme.RESET);
+            }
+        } else {
+            writer.println(AnsiTheme.MUTED + "Done" + AnsiTheme.RESET);
         }
         writer.flush();
     }
@@ -329,18 +334,43 @@ public class TerminalUI {
     }
 
     @SuppressWarnings("unchecked")
-    private void printToolArguments(String arguments) {
+    private String formatToolSummary(String toolName, String arguments) {
+        if (arguments == null || arguments.isBlank() || "{}".equals(arguments.trim())) {
+            return toolName;
+        }
         try {
             Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
-            for (var entry : argsMap.entrySet()) {
-                String value = String.valueOf(entry.getValue());
-                if (value.length() > 100) value = value.substring(0, 100) + "...";
-                writer.println(AnsiTheme.MUTED + "    " + entry.getKey() + ": " + value + AnsiTheme.RESET);
+            String primaryValue = extractPrimaryArg(argsMap);
+            if (primaryValue != null) {
+                if (primaryValue.length() > 100) primaryValue = primaryValue.substring(0, 100) + "...";
+                return toolName + "(" + primaryValue + ")";
             }
+            var sb = new StringBuilder(toolName + "(");
+            boolean first = true;
+            for (var entry : argsMap.entrySet()) {
+                if (!first) sb.append(", ");
+                String value = String.valueOf(entry.getValue());
+                if (value.length() > 60) value = value.substring(0, 60) + "...";
+                sb.append(entry.getKey()).append(": ").append(value);
+                first = false;
+            }
+            sb.append(")");
+            return sb.toString();
         } catch (Exception e) {
-            String display = arguments.length() > 200 ? arguments.substring(0, 200) + "..." : arguments;
-            writer.println(AnsiTheme.MUTED + "    " + display + AnsiTheme.RESET);
+            return toolName;
         }
+    }
+
+    private String extractPrimaryArg(Map<String, Object> argsMap) {
+        if (argsMap.size() == 1) {
+            return String.valueOf(argsMap.values().iterator().next());
+        }
+        for (String key : List.of("command", "file_path", "pattern", "query", "prompt", "path", "url")) {
+            if (argsMap.containsKey(key)) {
+                return String.valueOf(argsMap.get(key));
+            }
+        }
+        return null;
     }
 
     private String doReadInput(String promptPrefix) {
