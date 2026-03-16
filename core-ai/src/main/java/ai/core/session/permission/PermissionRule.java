@@ -1,6 +1,7 @@
 package ai.core.session.permission;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 public class PermissionRule {
@@ -14,7 +15,7 @@ public class PermissionRule {
         return arguments.keySet().stream()
                 .sorted()
                 .map(arguments::get)
-                .filter(v -> v != null)
+                .filter(Objects::nonNull)
                 .map(Object::toString)
                 .findFirst();
     }

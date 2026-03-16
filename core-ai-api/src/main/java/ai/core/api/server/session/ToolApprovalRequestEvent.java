@@ -7,12 +7,13 @@ import core.framework.api.validate.NotNull;
  * @author stephen
  */
 public class ToolApprovalRequestEvent implements AgentEvent {
-    public static ToolApprovalRequestEvent of(String sessionId, String callId, String toolName, String arguments) {
+    public static ToolApprovalRequestEvent of(String sessionId, String callId, String toolName, String arguments, String suggestedPattern) {
         var event = new ToolApprovalRequestEvent();
         event.sessionId = sessionId;
         event.callId = callId;
         event.toolName = toolName;
         event.arguments = arguments;
+        event.suggestedPattern = suggestedPattern;
         return event;
     }
 
@@ -30,6 +31,9 @@ public class ToolApprovalRequestEvent implements AgentEvent {
 
     @Property(name = "arguments")
     public String arguments;
+
+    @Property(name = "suggestedPattern")
+    public String suggestedPattern;
 
     @Override
     public String sessionId() {

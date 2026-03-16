@@ -96,7 +96,7 @@ public class BaseEventListener implements AgentEventListener {
     @Override
     public void onToolApprovalRequest(ToolApprovalRequestEvent event) {
         stopSpinnerIfActive();
-        var decision = ui.askPermission(event.toolName, event.arguments);
+        var decision = ui.askPermission(event.toolName, event.arguments, event.suggestedPattern);
         session.approveToolCall(event.callId, decision);
     }
 

@@ -41,6 +41,7 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.api.tool.function.CoreAiMethod",
         "ai.core.agent.AgentPersistence$AgentPersistenceDomain",
         "ai.core.agent.NodeStatus",
+        "ai.core.session.FileRuleBasedPermissionStore$PermissionsDomain",
         // Vendor management classes for GraalVM reflection
         "ai.core.vender.Vendor",
         "ai.core.vender.VendorConfig",

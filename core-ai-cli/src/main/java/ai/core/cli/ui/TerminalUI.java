@@ -148,13 +148,19 @@ public class TerminalUI {
         }
     }
 
-    public ApprovalDecision askPermission(String toolName, String arguments) {
-        String prompt = "  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + "Allow? (y/n/always): ";
-        String input = readLineWithPrompt(prompt);
-        if (input == null) input = "n";
-        return switch (input.trim().toLowerCase(Locale.ROOT)) {
-            case "y", "yes" -> ApprovalDecision.APPROVE;
-            case "always", "a" -> ApprovalDecision.APPROVE_ALWAYS;
+    public ApprovalDecision askPermission(String toolName, String arguments, String suggestedPattern) {
+        writer.println("  " + AnsiTheme.WARNING + "?" + AnsiTheme.RESET + " Allow " + toolName + "?");
+        var options = List.of(
+                "Yes",
+                "Yes, and don't ask again for: " + suggestedPattern,
+                "No",
+                "No, and always deny: " + suggestedPattern
+        );
+        int choice = pickIndex(options);
+        return switch (choice) {
+            case 0 -> ApprovalDecision.APPROVE;
+            case 1 -> ApprovalDecision.APPROVE_ALWAYS;
+            case 3 -> ApprovalDecision.DENY_ALWAYS;
             default -> ApprovalDecision.DENY;
         };
     }

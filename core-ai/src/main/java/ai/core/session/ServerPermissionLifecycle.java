@@ -45,12 +45,13 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         dispatcher.accept(ToolStartEvent.of(sessionId, callId, toolName, arguments));
 
+        Map<String, Object> argMap = parseArguments(arguments);
+        String pattern = PermissionRule.buildPattern(toolName, argMap);
+
         if (autoApproveAll) {
             logger.debug("auto-approve enabled, skipping approval for tool={}, callId={}", toolName, callId);
             return;
         }
-
-        Map<String, Object> argMap = parseArguments(arguments);
 
         if (permissionStore != null) {
             var result = permissionStore.checkPermission(toolName, argMap);
@@ -66,13 +67,11 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         permissionGate.prepare(callId);
         logger.debug("dispatching approval request: tool={}, callId={}", toolName, callId);
-        dispatcher.accept(ToolApprovalRequestEvent.of(sessionId, callId, toolName, arguments));
+        dispatcher.accept(ToolApprovalRequestEvent.of(sessionId, callId, toolName, arguments, pattern));
 
         logger.debug("waiting for approval: tool={}, callId={}", toolName, callId);
         var decision = permissionGate.waitForApproval(callId, 300_000);
         logger.debug("approval received: tool={}, callId={}, decision={}", toolName, callId, decision);
-
-        String pattern = PermissionRule.buildPattern(toolName, argMap);
 
         switch (decision) {
             case DENY -> throw new ToolCallDeniedException(toolName);

@@ -1,8 +1,8 @@
 package ai.core.session;
 
 import ai.core.session.permission.PermissionRule;
+import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
-import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,7 +72,7 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
         if (persistFile == null || !Files.exists(persistFile)) return;
         try {
             var content = Files.readString(persistFile);
-            var domain = JSON.fromJSON(PermissionsDomain.class, content);
+            var domain = JsonUtil.fromJson(PermissionsDomain.class, content);
             if (domain.allow != null) allowPatterns.addAll(domain.allow);
             if (domain.deny != null) denyPatterns.addAll(domain.deny);
             LOGGER.debug("loaded {} allow / {} deny patterns from {}", allowPatterns.size(), denyPatterns.size(), persistFile);
@@ -88,7 +88,7 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
             var domain = new PermissionsDomain();
             domain.allow = new ArrayList<>(allowPatterns);
             domain.deny = new ArrayList<>(denyPatterns);
-            Files.writeString(persistFile, JSON.toJSON(domain));
+            Files.writeString(persistFile, JsonUtil.toJson(domain));
             LOGGER.debug("saved {} allow / {} deny patterns to {}", allowPatterns.size(), denyPatterns.size(), persistFile);
         } catch (IOException e) {
             LOGGER.warn("failed to save permission patterns to {}", persistFile, e);
@@ -98,7 +98,6 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
     public static class PermissionsDomain {
         @Property(name = "allow")
         public List<String> allow;
-
         @Property(name = "deny")
         public List<String> deny;
     }
