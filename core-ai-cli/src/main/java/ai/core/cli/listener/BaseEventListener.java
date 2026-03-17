@@ -54,7 +54,7 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onToolStart(ToolStartEvent event) {
-        panel.toolStart(event.toolName, event.arguments);
+        panel.toolStart(event.toolName, event.arguments, event.diff);
     }
 
     @Override

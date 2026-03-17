@@ -8,12 +8,19 @@ import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.session.permission.PermissionRule;
+import ai.core.tool.DiffGenerator;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.tools.EditFileTool;
+import ai.core.tool.tools.WriteFileTool;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -43,9 +50,12 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         logger.debug("beforeTool: tool={}, callId={}", toolName, callId);
 
-        dispatcher.accept(ToolStartEvent.of(sessionId, callId, toolName, arguments));
-
         Map<String, Object> argMap = parseArguments(arguments);
+
+        var startEvent = ToolStartEvent.of(sessionId, callId, toolName, arguments);
+        startEvent.diff = generatePreviewDiff(toolName, argMap);
+        dispatcher.accept(startEvent);
+
         String pattern = PermissionRule.buildPattern(toolName, argMap);
 
         if (autoApproveAll) {
@@ -101,6 +111,38 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);
         dispatcher.accept(ToolResultEvent.of(sessionId, callId, toolName, status, result));
+    }
+
+    private static final Set<String> DIFF_TOOLS = Set.of(EditFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME);
+
+    @SuppressWarnings("unchecked")
+    private String generatePreviewDiff(String toolName, Map<String, Object> argMap) {
+        if (!DIFF_TOOLS.contains(toolName)) return null;
+        try {
+            if (EditFileTool.TOOL_NAME.equals(toolName)) {
+                var filePath = (String) argMap.get("file_path");
+                var oldString = (String) argMap.get("old_string");
+                var newString = (String) argMap.get("new_string");
+                if (filePath == null || oldString == null || newString == null) return null;
+                var path = Path.of(filePath);
+                if (!Files.isRegularFile(path)) return null;
+                var content = Files.readString(path, StandardCharsets.UTF_8);
+                var result = DiffGenerator.forEdit(filePath, content, oldString, newString);
+                return result != null ? result.serialize() : null;
+            }
+            if (WriteFileTool.TOOL_NAME.equals(toolName)) {
+                var filePath = (String) argMap.get("file_path");
+                var newContent = (String) argMap.get("content");
+                if (filePath == null || newContent == null) return null;
+                var path = Path.of(filePath);
+                var oldContent = Files.isRegularFile(path) ? Files.readString(path, StandardCharsets.UTF_8) : null;
+                var result = DiffGenerator.forWrite(filePath, oldContent, newContent);
+                return result != null ? result.serialize() : null;
+            }
+        } catch (Exception e) {
+            logger.debug("failed to generate preview diff for tool={}: {}", toolName, e.getMessage());
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

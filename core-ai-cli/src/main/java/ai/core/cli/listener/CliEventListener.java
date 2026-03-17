@@ -83,7 +83,7 @@ public class CliEventListener extends BaseEventListener {
         panel.stopSpinnerIfActive();
         panel.getMarkdownRenderer().flush();
         showSkillHintIfApplicable(event);
-        panel.toolStart(event.toolName, event.arguments);
+        panel.toolStart(event.toolName, event.arguments, event.diff);
     }
 
     private void showSkillHintIfApplicable(ToolStartEvent event) {

@@ -1,5 +1,6 @@
 package ai.core.cli.ui;
 
+import ai.core.tool.DiffGenerator;
 import ai.core.utils.JsonUtil;
 
 import java.io.PrintWriter;
@@ -61,11 +62,16 @@ public class OutputPanel {
         writer.flush();
     }
 
-    public void toolStart(String toolName, String arguments) {
+    public void toolStart(String toolName, String arguments, String diff) {
         stopSpinnerIfActive();
         mdRenderer.flush();
         String summary = formatToolSummary(toolName, arguments);
         writer.println("\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET + " " + summary);
+
+        var diffResult = DiffGenerator.DiffResult.deserialize(diff);
+        if (diffResult != null) {
+            renderDiff(diffResult);
+        }
         writer.flush();
     }
 
@@ -89,6 +95,36 @@ public class OutputPanel {
         }
         writer.flush();
         startSpinner();
+    }
+
+    private void renderDiff(DiffGenerator.DiffResult diff) {
+        String summary = formatDiffSummary(diff.additions(), diff.deletions());
+        writer.println(INDENT + "\u23BF  " + AnsiTheme.MUTED + summary + AnsiTheme.RESET);
+
+        int maxLineNum = diff.lines().stream().mapToInt(DiffGenerator.DisplayLine::lineNumber).max().orElse(0);
+        int numWidth = Math.max(String.valueOf(maxLineNum).length(), 3);
+        String numFmt = "%" + numWidth + "d";
+
+        for (var line : diff.lines()) {
+            String num = String.format(numFmt, line.lineNumber());
+            switch (line.tag()) {
+                case DELETE -> writer.println(INDENT + "  " + AnsiTheme.SYN_DIFF_DEL + num + " -" + line.content() + AnsiTheme.RESET);
+                case INSERT -> writer.println(INDENT + "  " + AnsiTheme.SYN_DIFF_ADD + num + " +" + line.content() + AnsiTheme.RESET);
+                default -> writer.println(INDENT + "  " + AnsiTheme.MUTED + num + "  " + line.content() + AnsiTheme.RESET);
+            }
+        }
+    }
+
+    private String formatDiffSummary(int additions, int deletions) {
+        if (additions > 0 && deletions > 0) {
+            return String.format("Added %d line%s, removed %d line%s",
+                additions, additions > 1 ? "s" : "", deletions, deletions > 1 ? "s" : "");
+        } else if (additions > 0) {
+            return String.format("Added %d line%s", additions, additions > 1 ? "s" : "");
+        } else if (deletions > 0) {
+            return String.format("Removed %d line%s", deletions, deletions > 1 ? "s" : "");
+        }
+        return "No changes";
     }
 
     public void error(String message) {

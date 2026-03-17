@@ -31,6 +31,9 @@ public class ToolStartEvent implements AgentEvent {
     @Property(name = "arguments")
     public String arguments;
 
+    @Property(name = "diff")
+    public String diff;
+
     @Override
     public String sessionId() {
         return sessionId;

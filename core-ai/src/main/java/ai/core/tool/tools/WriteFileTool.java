@@ -69,19 +69,15 @@ public class WriteFileTool extends ToolCall {
     }
 
     private String writeFile(String filePath, String content) {
-        // Validate file path
         if (Strings.isBlank(filePath)) {
             return "Error: file_path parameter is required";
         }
-
-        // Validate content
         if (content == null) {
             return "Error: content parameter is required";
         }
 
         var file = new File(filePath);
 
-        // Create parent directories if they don't exist
         var parentDir = file.getParentFile();
         if (parentDir != null && !parentDir.exists()) {
             LOGGER.debug("Creating parent directories: {}", parentDir.getAbsolutePath());
@@ -92,7 +88,6 @@ public class WriteFileTool extends ToolCall {
             }
         }
 
-        // Check if file exists (for logging purposes)
         boolean fileExists = file.exists();
         if (fileExists) {
             LOGGER.debug("Overwriting existing file: {}", filePath);
@@ -100,7 +95,6 @@ public class WriteFileTool extends ToolCall {
             LOGGER.debug("Creating new file: {}", filePath);
         }
 
-        // Write content to file
         try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
             writer.write(content);
             writer.flush();

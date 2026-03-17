@@ -132,7 +132,6 @@ public class EditFileTool extends ToolCall {
         String newContent = content.replace(normalizedOld, normalizedNew);
         LOGGER.debug("Replacing {} occurrence(s) in file: {}", occurrences, filePath);
 
-        // Write back to file
         try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
             writer.write(newContent);
             writer.flush();
