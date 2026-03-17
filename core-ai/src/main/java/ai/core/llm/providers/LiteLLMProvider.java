@@ -150,12 +150,12 @@ public class LiteLLMProvider extends LLMProvider {
     }
 
     private CompletionResponse executeSSERequest(HTTPRequest req, StreamingCallback callback) {
-        var holder = new CompletionResponse[]{null};
+        CompletionResponse response = null;
         Exception lastError = null;
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             if (callback.isCancelled()) break;
             try {
-                holder[0] = consumeSSEStream(req, callback, holder);
+                response = consumeSSEStream(req, callback);
                 break;
             } catch (Exception e) {
                 if (callback.isCancelled()) break;
@@ -164,23 +164,24 @@ public class LiteLLMProvider extends LLMProvider {
             }
         }
         if (callback.isCancelled()) {
-            if (hasPartialContent(holder[0])) {
-                holder[0].choices.getFirst().message.content += "\n\n[interrupted]";
-                holder[0].choices.getFirst().finishReason = FinishReason.STOP;
+            if (hasPartialContent(response)) {
+                response.choices.getFirst().message.content += "\n\n[interrupted]";
+                response.choices.getFirst().finishReason = FinishReason.STOP;
             }
-            return holder[0];
+            return response;
         }
-        if (holder[0] == null && lastError != null) {
+        if (response == null && lastError != null) {
             throw (RuntimeException) lastError;
         }
-        callback.onComplete();
-        if (!Objects.requireNonNull(holder[0]).choices.getFirst().message.reasoningContent.isEmpty()) {
-            callback.onReasoningComplete(holder[0].choices.getFirst().message.reasoningContent);
+        if (!Objects.requireNonNull(response).choices.getFirst().message.reasoningContent.isEmpty()) {
+            callback.onReasoningComplete(response.choices.getFirst().message.reasoningContent);
         }
-        return holder[0];
+        callback.onComplete();
+        return response;
     }
 
-    private CompletionResponse consumeSSEStream(HTTPRequest req, StreamingCallback callback, CompletionResponse[] holder) {
+    private CompletionResponse consumeSSEStream(HTTPRequest req, StreamingCallback callback) {
+        CompletionResponse response = null;
         try (var eventSource = client.sse(req)) {
             callback.setActiveConnection(eventSource);
 
@@ -192,28 +193,28 @@ public class LiteLLMProvider extends LLMProvider {
                 }
 
                 var chunk = JsonUtil.fromJson(CompletionResponse.class, data);
-                if (chunk.usage != null && holder[0] != null) {
-                    holder[0].usage = chunk.usage;
+                if (chunk.usage != null && response != null) {
+                    response.usage = chunk.usage;
                 }
                 if (chunk.choices == null || chunk.choices.isEmpty()) {
                     continue;
                 }
 
                 var choice = chunk.choices.getFirst();
-                if (choice.delta != null && choice.delta.content != null) {
-                    callback.onChunk(choice.delta.content);
-                }
                 if (choice.delta != null && choice.delta.reasoningContent != null) {
                     callback.onReasoningChunk(choice.delta.reasoningContent);
                 }
-
-                if (holder[0] == null) {
-                    holder[0] = chunk;
-                    initializeFinalChoiceMessage(holder[0]);
+                if (choice.delta != null && choice.delta.content != null) {
+                    callback.onChunk(choice.delta.content);
                 }
-                mergeChunkIntoFinalResponse(holder[0], chunk);
+
+                if (response == null) {
+                    response = chunk;
+                    initializeFinalChoiceMessage(response);
+                }
+                mergeChunkIntoFinalResponse(response, chunk);
             }
-            return holder[0];
+            return response;
         }
     }
 

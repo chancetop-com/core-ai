@@ -27,10 +27,14 @@ public class Usage {
 
     @Override
     public String toString() {
+        String details = null;
+        if (completionTokensDetails != null) {
+            details = String.valueOf(completionTokensDetails.reasoningTokens);
+        }
         return "Usage{"
                 + "promptTokens=" + promptTokens
                 + ", completionTokens=" + completionTokens
-                + ", completionTokensDetails=" + completionTokensDetails.reasoningTokens
+                + ", completionTokensDetails=" + details
                 + ", totalTokens=" + totalTokens
                 + '}';
     }
