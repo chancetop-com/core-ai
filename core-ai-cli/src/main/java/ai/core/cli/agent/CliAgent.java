@@ -93,9 +93,33 @@ public class CliAgent {
 
     private static String buildSystemPrompt(Config config) {
         var workspaceInfo = buildWorkspaceInfo(config.workspace);
-        var sb = new StringBuilder("""
-                You are a helpful AI coding assistant.
-
+        var agentInfo = loadProjectAgentInfo(config.workspace);
+        var sb = new StringBuilder();
+        if (!agentInfo.isEmpty()) {
+            sb.append("""
+                    # Project Context
+                    ## .core-ai/agent.md
+                    %s
+                    """.formatted(agentInfo));
+        } else {
+            sb.append("""
+                    # Project Context
+                    ## .core-ai/agent.md
+                    [MISSING] Expected at: .core-ai/agent.md
+                    This file defines the agent's identity and behavior for this project. \
+                    It should contain: agent role and personality, processing rules and workflow, \
+                    coding conventions and principles, project-specific constraints. \
+                    Create it to customize how the agent works in this project.
+                    """);
+        }
+        sb.append("""
+                ## workspace
+                These user-editable files are loaded by core-ai and included below in Project Context
+                Always use the workspace directory as the working directory when executing shell commands or scripts.
+                path:./
+                %s
+                """.formatted(workspaceInfo));
+        sb.append("""
                 ## Skills (mandatory)
                 Before replying: scan <available_skills> <description> entries.
                   - If exactly one skill clearly applies: read its SKILL.md at <location> with `read`, then follow it.
@@ -105,33 +129,21 @@ public class CliAgent {
                   - After completing the main task, re-evaluate whether any skill should be triggered based on what happened.
                 Constraints: never read more than one skill up front; only read after selecting.
                 When a skill has a <base_dir>, use it as the default path for grep_file and read operations within that skill.
-
                 {{AVAILABLE_SKILLS}}
-
-                <workspace>
-                %s
-                </workspace>
-
-                Always use the workspace directory as the working directory when executing shell commands or scripts.
-                """.formatted(workspaceInfo));
-
-        var instructions = loadProjectInstructions(config.workspace);
-        if (!instructions.isEmpty()) {
-            sb.append("\n<project-instructions>\n").append(instructions).append("</project-instructions>\n");
-        }
+                """);
 
         if (config.memory != null) {
             sb.append("""
-
-                You have access to persistent memory (MEMORY.md) that survives across sessions.
-                - Existing memories are shown in <memory> tags below
-                - Use memory_tool with action='read' then 'edit' to organize memories into proper sections
-                - Do NOT save session-specific context or duplicate existing memories
-                - Reference existing memories naturally without announcing them
-                - If a skill in <available_skills> describes memory-related triggers (e.g. detecting user \
-                preferences, corrections, or conventions), follow its instructions to proactively persist \
-                relevant information using memory_tool throughout the conversation
-                """);
+                    
+                    You have access to persistent memory (MEMORY.md) that survives across sessions.
+                    - Existing memories are shown in <memory> tags below
+                    - Use memory_tool with action='read' then 'edit' to organize memories into proper sections
+                    - Do NOT save session-specific context or duplicate existing memories
+                    - Reference existing memories naturally without announcing them
+                    - If a skill in <available_skills> describes memory-related triggers (e.g. detecting user \
+                    preferences, corrections, or conventions), follow its instructions to proactively persist \
+                    relevant information using memory_tool throughout the conversation
+                    """);
             var memoryContent = config.memory.load();
             if (!memoryContent.isBlank()) {
                 sb.append("\n<memory>\n").append(memoryContent).append("</memory>\n");
@@ -150,8 +162,8 @@ public class CliAgent {
         }
     }
 
-    private static String loadProjectInstructions(Path workspace) {
-        var file = workspace.resolve(".core-ai/instructions.md");
+    private static String loadProjectAgentInfo(Path workspace) {
+        var file = workspace.resolve(".core-ai/agent.md");
         if (!Files.isRegularFile(file)) return "";
         try {
             return Files.readString(file).trim();
