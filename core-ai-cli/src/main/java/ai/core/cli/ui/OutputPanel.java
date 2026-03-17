@@ -43,8 +43,10 @@ public class OutputPanel {
         if (!textStarted) {
             textStarted = true;
             String prefix = reasoningShown ? "\n\n" : "\n";
-            writer.print(prefix + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " ");
+            String icon = AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " ";
+            writer.print(prefix + icon);
             writer.flush();
+            mdRenderer.setFirstLineOffset(AnsiTheme.displayWidth("\u25CF "));
         }
         mdRenderer.processChunk(indentAfterNewline(chunk));
     }

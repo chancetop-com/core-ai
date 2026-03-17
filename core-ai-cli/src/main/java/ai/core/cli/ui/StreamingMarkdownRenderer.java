@@ -25,6 +25,7 @@ public class StreamingMarkdownRenderer {
     private int printedDisplayWidth;
     private String linePrefix = "";
     private boolean afterFirstLine;
+    private int firstLineOffset;
 
     public StreamingMarkdownRenderer(PrintWriter writer, boolean smartTerminal, IntSupplier terminalWidth) {
         this.writer = writer;
@@ -55,6 +56,10 @@ public class StreamingMarkdownRenderer {
         this.linePrefix = prefix;
     }
 
+    public void setFirstLineOffset(int offset) {
+        this.firstLineOffset = offset;
+    }
+
     public void reset() {
         buffer.setLength(0);
         tableBuffer.clear();
@@ -63,6 +68,7 @@ public class StreamingMarkdownRenderer {
         printedLength = 0;
         printedDisplayWidth = 0;
         afterFirstLine = false;
+        firstLineOffset = 0;
     }
 
     private void completeLine() {
@@ -105,12 +111,17 @@ public class StreamingMarkdownRenderer {
         if (!smartTerminal || printedDisplayWidth <= 0) {
             return;
         }
+        int totalWidth = printedDisplayWidth + (!afterFirstLine ? firstLineOffset : 0);
         int width = Math.max(terminalWidth.getAsInt(), 1);
-        int extraLines = printedDisplayWidth / width;
+        int extraLines = totalWidth / width;
         for (int i = 0; i < extraLines; i++) {
             writer.print(ANSI_CLEAR_LINE + ANSI_CURSOR_UP);
         }
-        writer.print(ANSI_CLEAR_LINE + "\r");
+        if (!afterFirstLine && firstLineOffset > 0) {
+            writer.print("\r\u001B[" + firstLineOffset + "C\u001B[0K");
+        } else {
+            writer.print(ANSI_CLEAR_LINE + "\r");
+        }
     }
 
     private void flushTable() {
