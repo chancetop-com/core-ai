@@ -2,23 +2,23 @@ package ai.core.llm.providers;
 
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
+import ai.core.document.Embedding;
 import ai.core.internal.http.PatchedHTTPClientBuilder;
+import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.AssistantMessage;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.Choice;
-import ai.core.llm.domain.EmbeddingRequest;
-import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
-import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.EmbeddingRequest;
+import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.Usage;
-import ai.core.document.Embedding;
 import ai.core.utils.JsonUtil;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
@@ -201,13 +201,12 @@ public class LiteLLMProvider extends LLMProvider {
                 }
 
                 var choice = chunk.choices.getFirst();
-                if (choice.delta != null && choice.delta.reasoningContent != null) {
+                if (Objects.nonNull(choice.delta) && !Strings.isBlank(choice.delta.reasoningContent)) {
                     callback.onReasoningChunk(choice.delta.reasoningContent);
                 }
-                if (choice.delta != null && choice.delta.content != null) {
+                if (Objects.nonNull(choice.delta) && !Strings.isBlank(choice.delta.content)) {
                     callback.onChunk(choice.delta.content);
                 }
-
                 if (response == null) {
                     response = chunk;
                     initializeFinalChoiceMessage(response);

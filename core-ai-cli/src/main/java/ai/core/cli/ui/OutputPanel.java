@@ -43,10 +43,10 @@ public class OutputPanel {
         if (!textStarted) {
             textStarted = true;
             String prefix = reasoningShown ? "\n\n" : "\n";
-            writer.print(prefix + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET + " ");
+            writer.print(prefix + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " ");
             writer.flush();
         }
-        mdRenderer.processChunk(chunk);
+        mdRenderer.processChunk(indentAfterNewline(chunk));
     }
 
     public void streamReasoning(String chunk) {
@@ -54,11 +54,11 @@ public class OutputPanel {
         if (!reasoningShown) {
             reasoningShown = true;
             if (!textStarted) {
-                writer.print("\n" + AnsiTheme.MUTED + "\u23FA" + AnsiTheme.RESET);
+                writer.print("\n" + AnsiTheme.MUTED + "\u25CF" + AnsiTheme.SYN_NUMBER + " Thinking: " + AnsiTheme.RESET);
                 writer.flush();
             }
         }
-        writer.print(AnsiTheme.REASONING + chunk + AnsiTheme.RESET);
+        writer.print(AnsiTheme.MUTED + AnsiTheme.REASONING + indentAfterNewline(chunk) + AnsiTheme.RESET);
         writer.flush();
     }
 
@@ -66,7 +66,7 @@ public class OutputPanel {
         stopSpinnerIfActive();
         mdRenderer.flush();
         String summary = formatToolSummary(toolName, arguments);
-        writer.println("\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET + " " + summary);
+        writer.println("\n" + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " " + summary);
 
         var diffResult = DiffGenerator.DiffResult.deserialize(diff);
         if (diffResult != null) {
@@ -94,6 +94,7 @@ public class OutputPanel {
             writer.println(AnsiTheme.MUTED + "Done" + AnsiTheme.RESET);
         }
         writer.flush();
+        reasoningShown = false;
         startSpinner();
     }
 
@@ -108,9 +109,12 @@ public class OutputPanel {
         for (var line : diff.lines()) {
             String num = String.format(numFmt, line.lineNumber());
             switch (line.tag()) {
-                case DELETE -> writer.println(INDENT + "  " + AnsiTheme.SYN_DIFF_DEL + num + " -" + line.content() + AnsiTheme.RESET);
-                case INSERT -> writer.println(INDENT + "  " + AnsiTheme.SYN_DIFF_ADD + num + " +" + line.content() + AnsiTheme.RESET);
-                default -> writer.println(INDENT + "  " + AnsiTheme.MUTED + num + "  " + line.content() + AnsiTheme.RESET);
+                case DELETE ->
+                        writer.println(INDENT + "  " + AnsiTheme.SYN_DIFF_DEL + num + " -" + line.content() + AnsiTheme.RESET);
+                case INSERT ->
+                        writer.println(INDENT + "  " + AnsiTheme.SYN_DIFF_ADD + num + " +" + line.content() + AnsiTheme.RESET);
+                default ->
+                        writer.println(INDENT + "  " + AnsiTheme.MUTED + num + "  " + line.content() + AnsiTheme.RESET);
             }
         }
     }
@@ -118,7 +122,7 @@ public class OutputPanel {
     private String formatDiffSummary(int additions, int deletions) {
         if (additions > 0 && deletions > 0) {
             return String.format("Added %d line%s, removed %d line%s",
-                additions, additions > 1 ? "s" : "", deletions, deletions > 1 ? "s" : "");
+                    additions, additions > 1 ? "s" : "", deletions, deletions > 1 ? "s" : "");
         } else if (additions > 0) {
             return String.format("Added %d line%s", additions, additions > 1 ? "s" : "");
         } else if (deletions > 0) {
@@ -146,15 +150,15 @@ public class OutputPanel {
 
     public void maxTurnsReached() {
         writer.println("\n" + INDENT + AnsiTheme.WARNING
-            + "[Max turns reached] The agent has used all available turns. You can continue the conversation with a follow-up message."
-            + AnsiTheme.RESET);
+                + "[Max turns reached] The agent has used all available turns. You can continue the conversation with a follow-up message."
+                + AnsiTheme.RESET);
         writer.flush();
     }
 
     public void turnSummary(long elapsedMs, Long inputTokens, Long outputTokens) {
         var sb = new StringBuilder();
         sb.append('\n').append(AnsiTheme.MUTED).append(INDENT).append("\u2726 ")
-            .append(ThinkingSpinner.formatElapsed(elapsedMs));
+                .append(ThinkingSpinner.formatElapsed(elapsedMs));
         if (inputTokens != null && outputTokens != null) {
             long total = inputTokens + outputTokens;
             sb.append(String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", total, inputTokens, outputTokens));
@@ -232,19 +236,28 @@ public class OutputPanel {
 
     private String parseErrorHint(String message) {
         if (message == null) return "Oops, something went wrong.";
-        if (message.contains("statusCode=401")) return "API key is invalid or expired. Please check your config with /help.";
-        if (message.contains("statusCode=402")) return "API quota used up. Top up your account or switch model with /model.";
-        if (message.contains("statusCode=403")) return "No permission to access this model. Try a different one with /model.";
+        if (message.contains("statusCode=401"))
+            return "API key is invalid or expired. Please check your config with /help.";
+        if (message.contains("statusCode=402"))
+            return "API quota used up. Top up your account or switch model with /model.";
+        if (message.contains("statusCode=403"))
+            return "No permission to access this model. Try a different one with /model.";
         if (message.contains("statusCode=404")) return "Model not found. Check spelling or try /model to switch.";
         if (message.contains("statusCode=429")) return "Too many requests. Wait a moment and try again.";
-        if (message.contains("statusCode=500")) return "API server error. This is not your fault \u2014 try again shortly.";
+        if (message.contains("statusCode=500"))
+            return "API server error. This is not your fault \u2014 try again shortly.";
         if (message.contains("statusCode=503")) return "API service is temporarily down. Please try again later.";
-        if (message.contains("timeout") || message.contains("Timeout")) return "Request timed out. Check your network or try again.";
+        if (message.contains("timeout") || message.contains("Timeout"))
+            return "Request timed out. Check your network or try again.";
         if (message.contains("Connection refused")) return "Cannot connect to API. Check your network and config.";
         return message.length() > 80 ? message.substring(0, 77) + "..." : message;
     }
 
     private String truncateError(String message) {
         return message.length() > 200 ? message.substring(0, 197) + "..." : message;
+    }
+
+    private String indentAfterNewline(String text) {
+        return text.replace("\n", "\n  ");
     }
 }
