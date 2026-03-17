@@ -34,6 +34,17 @@ public class Message {
         return message;
     }
 
+    public static Message of(RoleType role, String content, String name, String toolCallId, List<FunctionCall> toolCalls, String reasoningContent) {
+        var message = new Message();
+        message.role = role;
+        message.content = List.of(Content.of(content));
+        message.name = name;
+        message.toolCallId = toolCallId;
+        message.toolCalls = toolCalls;
+        message.reasoningContent = reasoningContent;
+        return message;
+    }
+
     public static Message of(MessageRecord record) {
         var message = new Message();
         message.role = record.role;

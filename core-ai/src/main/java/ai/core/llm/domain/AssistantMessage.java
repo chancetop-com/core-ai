@@ -25,6 +25,6 @@ public class AssistantMessage {
     public List<FunctionCall> toolCalls;
 
     public Message toMessage() {
-        return Message.of(role, content, name, toolCallId, toolCalls);
+        return Message.of(role, content, name, toolCallId, toolCalls,reasoningContent);
     }
 }
