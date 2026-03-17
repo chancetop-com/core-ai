@@ -24,7 +24,7 @@ public class GrepFileTool extends ToolCall {
 
     private static final String TOOL_DESC = """
             A powerful search tool built on ripgrep
-
+            
               Usage:
               - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
               - Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
@@ -33,7 +33,7 @@ public class GrepFileTool extends ToolCall {
               - Use Task tool for open-ended searches requiring multiple rounds
               - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\\{\\}` to find `interface{}` in Go code)
               - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \\{[\\s\\S]*?field`, use `multiline: true`
-
+            
             """;
 
     public static Builder builder() {
@@ -71,7 +71,7 @@ public class GrepFileTool extends ToolCall {
             if (!finished) {
                 process.destroyForcibly();
                 return ToolCallResult.failed("Ripgrep process timed out")
-                    .withDuration(System.currentTimeMillis() - startTime);
+                        .withDuration(System.currentTimeMillis() - startTime);
             }
 
             int exitCode = process.exitValue();
@@ -79,30 +79,30 @@ public class GrepFileTool extends ToolCall {
             // Exit code 0 = matches found, 1 = no matches, 2+ = error
             if (exitCode > 1) {
                 return ToolCallResult.failed("Error executing ripgrep (exit code " + exitCode + "): " + output)
-                    .withDuration(System.currentTimeMillis() - startTime);
+                        .withDuration(System.currentTimeMillis() - startTime);
             }
 
             if (output.isEmpty()) {
                 return ToolCallResult.completed("No matches found")
-                    .withDuration(System.currentTimeMillis() - startTime)
-                    .withStats("pattern", params.path("pattern").asText());
+                        .withDuration(System.currentTimeMillis() - startTime)
+                        .withStats("pattern", params.path("pattern").asText());
             }
 
             return ToolCallResult.completed(output.trim())
-                .withDuration(System.currentTimeMillis() - startTime)
-                .withStats("pattern", params.path("pattern").asText());
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("pattern", params.path("pattern").asText());
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             process.destroyForcibly();
             return ToolCallResult.failed("Grep interrupted")
-                .withDuration(System.currentTimeMillis() - startTime);
+                    .withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
             if (process != null) {
                 process.destroyForcibly();
             }
             return ToolCallResult.failed("Error executing grep: " + e.getMessage(), e)
-                .withDuration(System.currentTimeMillis() - startTime);
+                    .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -213,7 +213,7 @@ public class GrepFileTool extends ToolCall {
             this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "pattern", "The regular expression pattern to search for in file contents").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "path", "File or directory to search in (rg PATH). Defaults to current working directory."),
+                    ToolCallParameters.ParamSpec.of(String.class, "path", "File or directory to search in (rg PATH). Defaults to current working directory.").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "glob", "Glob pattern to filter files (e.g. \"*.js\", \"*.{ts,tsx}\") - maps to rg --glob"),
                     ToolCallParameters.ParamSpec.of(String.class, "output_mode", "Output mode: \"content\" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), \"files_with_matches\" shows file paths (supports head_limit), \"count\" shows match counts (supports head_limit). Defaults to \"files_with_matches\".").enums(List.of("content", "files_with_matches", "count")),
                     ToolCallParameters.ParamSpec.of(Integer.class, "-B", "Number of lines to show before each match (rg -B). Requires output_mode: \"content\", ignored otherwise."),
@@ -224,7 +224,7 @@ public class GrepFileTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "type", "File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types."),
                     ToolCallParameters.ParamSpec.of(Integer.class, "head_limit", "Limit output to first N lines/entries, equivalent to \"| head -N\". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults based on \"cap\" experiment value: 0 (unlimited), 20, or 100."),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "multiline", "Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false.")
-                    ));
+            ));
             var tool = new GrepFileTool();
             build(tool);
             return tool;
