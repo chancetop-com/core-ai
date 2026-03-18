@@ -18,6 +18,7 @@ public class MdMemoryProvider {
             "^---\\s*\\n(.*?)\\n---\\s*\\n", Pattern.DOTALL);
     private static final Pattern FIELD_PATTERN = Pattern.compile(
             "^(\\w+):\\s*(.+)$", Pattern.MULTILINE);
+    private static final int MAX_LOAD_BYTES = 20 * 1024;
 
     private final Path memoryDir;
     private final Path indexPath;
@@ -26,8 +27,6 @@ public class MdMemoryProvider {
         this.memoryDir = workspace.resolve(".core-ai/memory");
         this.indexPath = workspace.resolve(".core-ai/MEMORY.md");
     }
-
-    private static final int MAX_LOAD_BYTES = 20 * 1024;
 
     public String load() {
         var sb = new StringBuilder(1024);
@@ -44,8 +43,8 @@ public class MdMemoryProvider {
                         sb.append("\n(Memory truncated, use md_memory_tool to read remaining files)\n");
                         break;
                     }
-                    sb.append("\n--- ").append(file.getFileName()).append(" ---\n");
-                    sb.append(content.strip()).append('\n');
+                    sb.append("\n--- ").append(file.getFileName()).append(" ---\n")
+                      .append(content.strip()).append('\n');
                 }
             } catch (IOException e) {
                 DebugLog.log("Failed to load memory files: " + e.getMessage());
