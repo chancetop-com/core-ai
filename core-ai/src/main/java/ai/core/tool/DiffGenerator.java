@@ -39,7 +39,7 @@ public final class DiffGenerator {
         }
         int newCtxStart = startLine + newLines.length;
         for (int i = endLine; i < ctxEnd; i++) {
-            lines.add(new DisplayLine(newCtxStart + (i - endLine) + 1, Tag.EQUAL, allLines[i]));
+            lines.add(new DisplayLine(newCtxStart + i - endLine + 1, Tag.EQUAL, allLines[i]));
         }
 
         return new DiffResult(newLines.length, oldLines.length, lines);
@@ -90,7 +90,8 @@ public final class DiffGenerator {
         }
 
         var result = new ArrayList<DiffEntry>();
-        int i = 0, j = 0;
+        int i = 0;
+        int j = 0;
         while (i < n || j < m) {
             if (i < n && j < m && oldLines[i].equals(newLines[j])) {
                 result.add(new DiffEntry(Tag.EQUAL, oldLines[i], i, j));
@@ -108,14 +109,7 @@ public final class DiffGenerator {
     }
 
     private static DiffResult toDiffResult(List<DiffEntry> diff) {
-        List<int[]> changeRanges = new ArrayList<>();
-        for (int i = 0; i < diff.size(); i++) {
-            if (diff.get(i).tag != Tag.EQUAL) {
-                int start = i;
-                while (i < diff.size() && diff.get(i).tag != Tag.EQUAL) i++;
-                changeRanges.add(new int[]{start, i});
-            }
-        }
+        List<int[]> changeRanges = collectChangeRanges(diff);
         if (changeRanges.isEmpty()) return null;
 
         List<int[]> hunks = mergeRanges(changeRanges, diff.size());
@@ -143,6 +137,21 @@ public final class DiffGenerator {
         return new DiffResult(additions, deletions, displayLines);
     }
 
+    private static List<int[]> collectChangeRanges(List<DiffEntry> diff) {
+        var changeRanges = new ArrayList<int[]>();
+        int idx = 0;
+        while (idx < diff.size()) {
+            if (diff.get(idx).tag != Tag.EQUAL) {
+                int start = idx;
+                while (idx < diff.size() && diff.get(idx).tag != Tag.EQUAL) idx++;
+                changeRanges.add(new int[]{start, idx});
+            } else {
+                idx++;
+            }
+        }
+        return changeRanges;
+    }
+
     private static List<int[]> mergeRanges(List<int[]> changeRanges, int totalSize) {
         var hunks = new ArrayList<int[]>();
         for (int[] range : changeRanges) {
@@ -157,9 +166,13 @@ public final class DiffGenerator {
         return hunks;
     }
 
+    private DiffGenerator() {
+    }
+
     public enum Tag { EQUAL, DELETE, INSERT }
 
-    public record DisplayLine(int lineNumber, Tag tag, String content) {}
+    public record DisplayLine(int lineNumber, Tag tag, String content) {
+    }
 
     public record DiffResult(int additions, int deletions, List<DisplayLine> lines) {
         public String serialize() {
@@ -205,7 +218,6 @@ public final class DiffGenerator {
         }
     }
 
-    record DiffEntry(Tag tag, String content, int oldIdx, int newIdx) {}
-
-    private DiffGenerator() {}
+    record DiffEntry(Tag tag, String content, int oldIdx, int newIdx) {
+    }
 }

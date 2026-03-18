@@ -17,6 +17,68 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OutputPanel {
     private static final String INDENT = "  ";
 
+    @SuppressWarnings("unchecked")
+    static String formatToolSummary(String toolName, String arguments) {
+        if (arguments == null || arguments.isBlank() || "{}".equals(arguments.trim())) {
+            return toolName;
+        }
+        try {
+            Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
+            String primaryValue = extractPrimaryArg(argsMap);
+            if (primaryValue != null) {
+                if (primaryValue.length() > 100) primaryValue = primaryValue.substring(0, 100) + "...";
+                return toolName + "(" + primaryValue + ")";
+            }
+            var sb = new StringBuilder(toolName).append('(');
+            boolean first = true;
+            for (var entry : argsMap.entrySet()) {
+                if (!first) sb.append(", ");
+                String value = String.valueOf(entry.getValue());
+                if (value.length() > 60) value = value.substring(0, 60) + "...";
+                sb.append(entry.getKey()).append(": ").append(value);
+                first = false;
+            }
+            return sb.append(')').toString();
+        } catch (Exception e) {
+            return toolName;
+        }
+    }
+
+    static String parseErrorHint(String message) {
+        if (message == null) return "Oops, something went wrong.";
+        if (message.contains("statusCode=401"))
+            return "API key is invalid or expired. Please check your config with /help.";
+        if (message.contains("statusCode=402"))
+            return "API quota used up. Top up your account or switch model with /model.";
+        if (message.contains("statusCode=403"))
+            return "No permission to access this model. Try a different one with /model.";
+        if (message.contains("statusCode=404")) return "Model not found. Check spelling or try /model to switch.";
+        if (message.contains("statusCode=429")) return "Too many requests. Wait a moment and try again.";
+        if (message.contains("statusCode=500"))
+            return "API server error. This is not your fault \u2014 try again shortly.";
+        if (message.contains("statusCode=503")) return "API service is temporarily down. Please try again later.";
+        if (message.contains("timeout") || message.contains("Timeout"))
+            return "Request timed out. Check your network or try again.";
+        if (message.contains("Connection refused")) return "Cannot connect to API. Check your network and config.";
+        return message.length() > 80 ? message.substring(0, 77) + "..." : message;
+    }
+
+    static String truncateError(String message) {
+        return message.length() > 200 ? message.substring(0, 197) + "..." : message;
+    }
+
+    private static String extractPrimaryArg(Map<String, Object> argsMap) {
+        if (argsMap.size() == 1) {
+            return String.valueOf(argsMap.values().iterator().next());
+        }
+        for (String key : List.of("command", "file_path", "pattern", "query", "prompt", "path", "url")) {
+            if (argsMap.containsKey(key)) {
+                return String.valueOf(argsMap.get(key));
+            }
+        }
+        return null;
+    }
+
     private final PrintWriter writer;
     private final StreamingMarkdownRenderer mdRenderer;
     private final ThinkingSpinner spinner;
@@ -112,12 +174,12 @@ public class OutputPanel {
         for (var line : diff.lines()) {
             String num = String.format(numFmt, line.lineNumber());
             switch (line.tag()) {
-                case DELETE ->
-                        writer.println(INDENT + "  " + AnsiTheme.SYN_DIFF_DEL + num + " -" + line.content() + AnsiTheme.RESET);
-                case INSERT ->
-                        writer.println(INDENT + "  " + AnsiTheme.SYN_DIFF_ADD + num + " +" + line.content() + AnsiTheme.RESET);
-                default ->
-                        writer.println(INDENT + "  " + AnsiTheme.MUTED + num + "  " + line.content() + AnsiTheme.RESET);
+                case DELETE -> writer.println(
+                    INDENT + "  " + AnsiTheme.SYN_DIFF_DEL + num + " -" + line.content() + AnsiTheme.RESET);
+                case INSERT -> writer.println(
+                    INDENT + "  " + AnsiTheme.SYN_DIFF_ADD + num + " +" + line.content() + AnsiTheme.RESET);
+                default -> writer.println(
+                    INDENT + "  " + AnsiTheme.MUTED + num + "  " + line.content() + AnsiTheme.RESET);
             }
         }
     }
@@ -195,69 +257,6 @@ public class OutputPanel {
         if (spinnerActive.compareAndSet(true, false)) {
             spinner.stop();
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    String formatToolSummary(String toolName, String arguments) {
-        if (arguments == null || arguments.isBlank() || "{}".equals(arguments.trim())) {
-            return toolName;
-        }
-        try {
-            Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
-            String primaryValue = extractPrimaryArg(argsMap);
-            if (primaryValue != null) {
-                if (primaryValue.length() > 100) primaryValue = primaryValue.substring(0, 100) + "...";
-                return toolName + "(" + primaryValue + ")";
-            }
-            var sb = new StringBuilder(toolName + "(");
-            boolean first = true;
-            for (var entry : argsMap.entrySet()) {
-                if (!first) sb.append(", ");
-                String value = String.valueOf(entry.getValue());
-                if (value.length() > 60) value = value.substring(0, 60) + "...";
-                sb.append(entry.getKey()).append(": ").append(value);
-                first = false;
-            }
-            sb.append(")");
-            return sb.toString();
-        } catch (Exception e) {
-            return toolName;
-        }
-    }
-
-    private String extractPrimaryArg(Map<String, Object> argsMap) {
-        if (argsMap.size() == 1) {
-            return String.valueOf(argsMap.values().iterator().next());
-        }
-        for (String key : List.of("command", "file_path", "pattern", "query", "prompt", "path", "url")) {
-            if (argsMap.containsKey(key)) {
-                return String.valueOf(argsMap.get(key));
-            }
-        }
-        return null;
-    }
-
-    private String parseErrorHint(String message) {
-        if (message == null) return "Oops, something went wrong.";
-        if (message.contains("statusCode=401"))
-            return "API key is invalid or expired. Please check your config with /help.";
-        if (message.contains("statusCode=402"))
-            return "API quota used up. Top up your account or switch model with /model.";
-        if (message.contains("statusCode=403"))
-            return "No permission to access this model. Try a different one with /model.";
-        if (message.contains("statusCode=404")) return "Model not found. Check spelling or try /model to switch.";
-        if (message.contains("statusCode=429")) return "Too many requests. Wait a moment and try again.";
-        if (message.contains("statusCode=500"))
-            return "API server error. This is not your fault \u2014 try again shortly.";
-        if (message.contains("statusCode=503")) return "API service is temporarily down. Please try again later.";
-        if (message.contains("timeout") || message.contains("Timeout"))
-            return "Request timed out. Check your network or try again.";
-        if (message.contains("Connection refused")) return "Cannot connect to API. Check your network and config.";
-        return message.length() > 80 ? message.substring(0, 77) + "..." : message;
-    }
-
-    private String truncateError(String message) {
-        return message.length() > 200 ? message.substring(0, 197) + "..." : message;
     }
 
     private String indentAfterNewline(String text) {

@@ -10,9 +10,6 @@ import org.jline.reader.impl.LineReaderImpl;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
-import ai.core.utils.JsonUtil;
-
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -22,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -120,10 +116,10 @@ public class TerminalUI {
     }
 
     public void showError(String message) {
-        String hint = parseErrorHint(message);
+        String hint = OutputPanel.parseErrorHint(message);
         writer.println("\n  " + AnsiTheme.ERROR + "✗ " + hint + AnsiTheme.RESET);
         if (!hint.equals(message)) {
-            writer.println(AnsiTheme.MUTED + "    " + truncateError(message) + AnsiTheme.RESET);
+            writer.println(AnsiTheme.MUTED + "    " + OutputPanel.truncateError(message) + AnsiTheme.RESET);
         }
         writer.flush();
     }
@@ -165,7 +161,7 @@ public class TerminalUI {
     }
 
     public void showToolStart(String toolName, String arguments) {
-        String summary = formatToolSummary(toolName, arguments);
+        String summary = OutputPanel.formatToolSummary(toolName, arguments);
         writer.println("\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET + " " + summary);
         writer.flush();
     }
@@ -296,81 +292,6 @@ public class TerminalUI {
                 .bind(new Reference(LineReader.MENU_COMPLETE), "\t");
         registerSlashWidget(reader);
         return reader;
-    }
-
-    private String readLineWithPrompt(String prompt) {
-        if (jlineReader != null) {
-            try {
-                return jlineReader.readLine(prompt);
-            } catch (org.jline.reader.UserInterruptException | org.jline.reader.EndOfFileException e) {
-                return null;
-            }
-        }
-        writer.print(prompt);
-        writer.flush();
-        try {
-            return simpleReader.readLine();
-        } catch (IOException e) {
-            return null;
-        }
-    }
-
-    private String parseErrorHint(String message) {
-        if (message == null) return "Oops, something went wrong.";
-        if (message.contains("statusCode=401")) return "API key is invalid or expired. Please check your config with /help.";
-        if (message.contains("statusCode=402")) return "API quota used up. Top up your account or switch model with /model.";
-        if (message.contains("statusCode=403")) return "No permission to access this model. Try a different one with /model.";
-        if (message.contains("statusCode=404")) return "Model not found. Check spelling or try /model to switch.";
-        if (message.contains("statusCode=429")) return "Too many requests. Wait a moment and try again.";
-        if (message.contains("statusCode=500")) return "API server error. This is not your fault — try again shortly.";
-        if (message.contains("statusCode=503")) return "API service is temporarily down. Please try again later.";
-        if (message.contains("timeout") || message.contains("Timeout")) return "Request timed out. Check your network or try again.";
-        if (message.contains("Connection refused")) return "Cannot connect to API. Check your network and config.";
-        return message.length() > 80 ? message.substring(0, 77) + "..." : message;
-    }
-
-    private String truncateError(String message) {
-        return message.length() > 200 ? message.substring(0, 197) + "..." : message;
-    }
-
-    @SuppressWarnings("unchecked")
-    private String formatToolSummary(String toolName, String arguments) {
-        if (arguments == null || arguments.isBlank() || "{}".equals(arguments.trim())) {
-            return toolName;
-        }
-        try {
-            Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
-            String primaryValue = extractPrimaryArg(argsMap);
-            if (primaryValue != null) {
-                if (primaryValue.length() > 100) primaryValue = primaryValue.substring(0, 100) + "...";
-                return toolName + "(" + primaryValue + ")";
-            }
-            var sb = new StringBuilder(toolName + "(");
-            boolean first = true;
-            for (var entry : argsMap.entrySet()) {
-                if (!first) sb.append(", ");
-                String value = String.valueOf(entry.getValue());
-                if (value.length() > 60) value = value.substring(0, 60) + "...";
-                sb.append(entry.getKey()).append(": ").append(value);
-                first = false;
-            }
-            sb.append(")");
-            return sb.toString();
-        } catch (Exception e) {
-            return toolName;
-        }
-    }
-
-    private String extractPrimaryArg(Map<String, Object> argsMap) {
-        if (argsMap.size() == 1) {
-            return String.valueOf(argsMap.values().iterator().next());
-        }
-        for (String key : List.of("command", "file_path", "pattern", "query", "prompt", "path", "url")) {
-            if (argsMap.containsKey(key)) {
-                return String.valueOf(argsMap.get(key));
-            }
-        }
-        return null;
     }
 
     private String doReadInput(String promptPrefix) {

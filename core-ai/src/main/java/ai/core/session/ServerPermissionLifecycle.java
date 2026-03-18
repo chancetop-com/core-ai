@@ -27,6 +27,8 @@ import java.util.function.Consumer;
  * @author stephen
  */
 public class ServerPermissionLifecycle extends AbstractLifecycle {
+    private static final Set<String> DIFF_TOOLS = Set.of(EditFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME);
+
     private final Logger logger = LoggerFactory.getLogger(ServerPermissionLifecycle.class);
     private final String sessionId;
     private final Consumer<AgentEvent> dispatcher;
@@ -112,8 +114,6 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);
         dispatcher.accept(ToolResultEvent.of(sessionId, callId, toolName, status, result));
     }
-
-    private static final Set<String> DIFF_TOOLS = Set.of(EditFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME);
 
     @SuppressWarnings("unchecked")
     private String generatePreviewDiff(String toolName, Map<String, Object> argMap) {
