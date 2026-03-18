@@ -4,6 +4,7 @@ import ai.core.session.FileRuleBasedPermissionStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -100,5 +101,33 @@ class FileRuleBasedPermissionStoreTest {
         store.allow("read_file(/home/user/a.txt)");
         store.allow("read_file(/home/user/a.txt)");
         assertEquals(1, store.getAllowPatterns().size());
+    }
+
+    @Test
+    void allowDirMatchesFilesInDirectory() {
+        store.allowDir("read_file", "/home/user/project");
+
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/src/Main.java")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/README.md")).orElse(false));
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/etc/passwd")).isEmpty());
+        assertTrue(store.checkPermission("write_file", Map.of("file_path", "/home/user/project/a.txt")).isEmpty());
+    }
+
+    @Test
+    void allowDirNormalizesTrailingSlash() {
+        store.allowDir("read_file", "/home/user/project/");
+        store.allowDir("read_file", "/home/user/project");
+        assertEquals(1, store.getAllowPatterns().size());
+        assertEquals("read_file(/home/user/project/**)", store.getAllowPatterns().getFirst());
+    }
+
+    @Test
+    void allowDirsMultipleTools() {
+        store.allowDirs(List.of("read_file", "write_file", "edit_file"), "/home/user/project");
+
+        assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/a.txt")).orElse(false));
+        assertTrue(store.checkPermission("write_file", Map.of("file_path", "/home/user/project/b.txt")).orElse(false));
+        assertTrue(store.checkPermission("edit_file", Map.of("file_path", "/home/user/project/c.txt")).orElse(false));
+        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "ls /home/user/project")).isEmpty());
     }
 }

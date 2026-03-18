@@ -22,6 +22,13 @@ import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence.SessionInfo;
 import ai.core.session.FileRuleBasedPermissionStore;
+import ai.core.session.ToolPermissionStore;
+import ai.core.tool.tools.AskUserTool;
+import ai.core.tool.tools.GlobFileTool;
+import ai.core.tool.tools.GrepFileTool;
+import ai.core.tool.tools.MemoryTool;
+import ai.core.tool.tools.ReadFileTool;
+import ai.core.tool.tools.WriteTodosTool;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -81,7 +88,7 @@ public class CliApp {
             currentSessionId = "cli-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
         }
 
-        var permissionStore = new FileRuleBasedPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.json"));
+        var permissionStore = whiteToolsPermissionStore();
         var noteMemory = new LocalFileMemoryProvider(workspace);
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
 
@@ -110,6 +117,20 @@ public class CliApp {
             closeQuietly(ui);
             closeShutdownResources(result);
         }
+    }
+
+    private ToolPermissionStore whiteToolsPermissionStore() {
+        var permissionStore = new FileRuleBasedPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.json"));
+        permissionStore.allowDirs(List.of(
+                ReadFileTool.TOOL_NAME,
+                GlobFileTool.TOOL_NAME,
+                GrepFileTool.TOOL_NAME
+        ), workspace.toString());
+        permissionStore.allow(WriteTodosTool.WT_TOOL_NAME);
+        permissionStore.allow(AskUserTool.TOOL_NAME);
+        permissionStore.allow(MemoryTool.TOOL_NAME);
+        return permissionStore;
+
     }
 
     private void restoreActiveProvider(PropertiesFileSource props, LLMProviders providers) {
@@ -151,9 +172,9 @@ public class CliApp {
             String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
             String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
             ui.printStreamingChunk(String.format("  %s%2d)%s %s %s(%s)%s%n",
-                AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET,
-                title,
-                AnsiTheme.MUTED, timeStr, AnsiTheme.RESET));
+                    AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET,
+                    title,
+                    AnsiTheme.MUTED, timeStr, AnsiTheme.RESET));
         }
         ui.printStreamingChunk("\n");
 
@@ -230,18 +251,18 @@ public class CliApp {
     @SuppressWarnings("PMD.SystemPrintln")
     private void registerMcpLoadingListener() {
         McpClientManagerRegistry.addCreationListener(manager ->
-            manager.addListener((serverName, oldState, newState) -> {
-                if (newState == McpClientManager.ConnectionState.CONNECTING) {
-                    System.err.print("\r\033[K" + AnsiTheme.MUTED + "  Loading MCP server: " + serverName + "..." + AnsiTheme.RESET);
-                    System.err.flush();
-                } else if (newState == McpClientManager.ConnectionState.CONNECTED) {
-                    System.err.print("\r\033[K" + AnsiTheme.MUTED + "  MCP server loaded: " + serverName + AnsiTheme.RESET);
-                    System.err.flush();
-                } else if (newState == McpClientManager.ConnectionState.FAILED) {
-                    System.err.print("\r\033[K" + AnsiTheme.WARNING + "  MCP server failed: " + serverName + AnsiTheme.RESET);
-                    System.err.flush();
-                }
-            })
+                manager.addListener((serverName, oldState, newState) -> {
+                    if (newState == McpClientManager.ConnectionState.CONNECTING) {
+                        System.err.print("\r\033[K" + AnsiTheme.MUTED + "  Loading MCP server: " + serverName + "..." + AnsiTheme.RESET);
+                        System.err.flush();
+                    } else if (newState == McpClientManager.ConnectionState.CONNECTED) {
+                        System.err.print("\r\033[K" + AnsiTheme.MUTED + "  MCP server loaded: " + serverName + AnsiTheme.RESET);
+                        System.err.flush();
+                    } else if (newState == McpClientManager.ConnectionState.FAILED) {
+                        System.err.print("\r\033[K" + AnsiTheme.WARNING + "  MCP server failed: " + serverName + AnsiTheme.RESET);
+                        System.err.flush();
+                    }
+                })
         );
     }
 
