@@ -120,16 +120,23 @@ public class EditFileTool extends ToolCall {
         var normalizedOld = normalizeLineEndings(oldString, content);
         var normalizedNew = normalizeLineEndings(newString, content);
 
-        if (!content.contains(normalizedOld)) {
-            return "Error: old_string not found in file. Make sure to copy the exact text including whitespace and line breaks.";
+        var matches = FuzzyMatchReplacer.findMatches(content, normalizedOld);
+        if (matches.isEmpty()) {
+            return "Error: old_string not found in file. Make sure the text is similar to the actual file content including structure and line breaks.";
         }
 
-        int occurrences = countOccurrences(content, normalizedOld);
+        String matchedText = matches.getFirst().matched;
+        String strategy = matches.getFirst().strategyName;
+
+        int occurrences = countOccurrences(content, matchedText);
         if (!replaceAll && occurrences > 1) {
             return String.format("Error: old_string appears %d times in the file. Either provide a larger string with more surrounding context to make it unique, or set replace_all=true to replace all occurrences.", occurrences);
         }
 
-        String newContent = content.replace(normalizedOld, normalizedNew);
+        String newContent = content.replace(matchedText, normalizedNew);
+        if (!"exact".equals(strategy)) {
+            LOGGER.info("Fuzzy matched using strategy '{}' in file: {}", strategy, filePath);
+        }
         LOGGER.debug("Replacing {} occurrence(s) in file: {}", occurrences, filePath);
 
         try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
