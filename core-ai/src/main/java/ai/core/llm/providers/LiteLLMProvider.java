@@ -25,6 +25,7 @@ import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.util.Strings;
+import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -201,10 +202,10 @@ public class LiteLLMProvider extends LLMProvider {
                 }
 
                 var choice = chunk.choices.getFirst();
-                if (Objects.nonNull(choice.delta) && !Strings.isBlank(choice.delta.reasoningContent)) {
+                if (Objects.nonNull(choice.delta) && StringUtils.isNotEmpty(choice.delta.reasoningContent)) {
                     callback.onReasoningChunk(choice.delta.reasoningContent);
                 }
-                if (Objects.nonNull(choice.delta) && !Strings.isBlank(choice.delta.content)) {
+                if (Objects.nonNull(choice.delta) && StringUtils.isNotEmpty(choice.delta.content)) {
                     callback.onChunk(choice.delta.content);
                 }
                 if (response == null) {
