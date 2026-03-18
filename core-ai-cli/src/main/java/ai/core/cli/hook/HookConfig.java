@@ -1,0 +1,83 @@
+package ai.core.cli.hook;
+
+import ai.core.cli.DebugLog;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+
+public class HookConfig {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private final Map<HookEvent, List<HookEntry>> hooks;
+
+    private HookConfig(Map<HookEvent, List<HookEntry>> hooks) {
+        this.hooks = hooks;
+    }
+
+    public List<HookEntry> getHooks(HookEvent event) {
+        return hooks.getOrDefault(event, Collections.emptyList());
+    }
+
+    public boolean isEmpty() {
+        return hooks.isEmpty();
+    }
+
+    public static HookConfig load(Path workspace) {
+        var file = workspace.resolve(".core-ai/hooks.json");
+        if (!Files.isRegularFile(file)) {
+            return new HookConfig(Collections.emptyMap());
+        }
+        try {
+            String content = Files.readString(file);
+            return parse(content, workspace);
+        } catch (IOException e) {
+            DebugLog.log("Failed to load hooks.json: " + e.getMessage());
+            return new HookConfig(Collections.emptyMap());
+        }
+    }
+
+    // Format (compatible with Claude Code):
+    // { "hooks": { "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "..." }] }] } }
+    static HookConfig parse(String json, Path workspace) throws IOException {
+        JsonNode root = OBJECT_MAPPER.readTree(json);
+        JsonNode hooksNode = root.has("hooks") ? root.get("hooks") : root;
+
+        Map<HookEvent, List<HookEntry>> hooks = new EnumMap<>(HookEvent.class);
+        for (HookEvent event : HookEvent.values()) {
+            JsonNode eventNode = hooksNode.get(event.name());
+            if (eventNode == null || !eventNode.isArray()) continue;
+
+            List<HookEntry> entries = new ArrayList<>();
+            for (JsonNode matcherGroup : eventNode) {
+                String matcher = matcherGroup.has("matcher") ? matcherGroup.get("matcher").asText() : null;
+                JsonNode hooksArray = matcherGroup.get("hooks");
+                if (hooksArray == null || !hooksArray.isArray()) continue;
+                for (JsonNode hookNode : hooksArray) {
+                    String command = hookNode.has("command") ? hookNode.get("command").asText() : null;
+                    if (command == null || command.isBlank()) continue;
+                    entries.add(new HookEntry(resolveCommand(command, workspace), matcher));
+                }
+            }
+            if (!entries.isEmpty()) {
+                hooks.put(event, entries);
+            }
+        }
+        return new HookConfig(hooks);
+    }
+
+    private static String resolveCommand(String command, Path workspace) {
+        if (command.startsWith("/")) return command;
+        if (command.startsWith("~")) {
+            return System.getProperty("user.home") + command.substring(1);
+        }
+        return workspace.resolve(command).toAbsolutePath().toString();
+    }
+}

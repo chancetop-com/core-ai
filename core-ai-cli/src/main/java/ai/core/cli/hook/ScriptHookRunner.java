@@ -1,0 +1,51 @@
+package ai.core.cli.hook;
+
+import ai.core.cli.DebugLog;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+public class ScriptHookRunner {
+    private static final long TIMEOUT_SECONDS = 10;
+
+    private final Path workspace;
+
+    public ScriptHookRunner(Path workspace) {
+        this.workspace = workspace;
+    }
+
+    public String run(String command, Map<String, String> env) {
+        try {
+            var pb = new ProcessBuilder("sh", "-c", command);
+            pb.directory(workspace.toFile());
+            pb.redirectErrorStream(false);
+            pb.environment().putAll(env);
+            var process = pb.start();
+
+            String stdout;
+            try (var is = process.getInputStream()) {
+                stdout = new String(is.readAllBytes());
+            }
+
+            boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                DebugLog.log("Hook script timed out: " + command);
+                return "";
+            }
+
+            int exitCode = process.exitValue();
+            if (exitCode != 0) {
+                DebugLog.log("Hook script exited with code " + exitCode + ": " + command);
+                return "";
+            }
+
+            return stdout.strip();
+        } catch (IOException | InterruptedException e) {
+            DebugLog.log("Hook script failed: " + command + " - " + e.getMessage());
+            return "";
+        }
+    }
+}
