@@ -104,6 +104,8 @@ public class CliAgent {
                 Writing: use write_file/edit_file to create or update .core-ai/memory/ topic files, \
                 each with YAML frontmatter (name, description, type: user/feedback/project/reference). \
                 Update .core-ai/MEMORY.md index when adding or removing files.
+                Before writing, check existing memories to avoid duplicates. \
+                If related content already exists, merge new information into the existing file instead of creating a new one.
 
                 <memories>
                 %s
