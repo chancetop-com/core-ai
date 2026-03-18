@@ -3,8 +3,10 @@ package ai.core.cli.agent;
 import ai.core.agent.Agent;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.cli.hook.HookConfig;
+import ai.core.cli.hook.ScriptHookLifecycle;
+import ai.core.cli.hook.ScriptHookRunner;
 import ai.core.cli.memory.MdMemoryProvider;
-import ai.core.cli.tool.MdMemoryTool;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.skill.SkillConfig;
 import ai.core.tool.BuiltinTools;
@@ -30,12 +32,29 @@ public class CliAgent {
     public static Agent of(Config config) {
         var skillConfig = buildSkillConfig(config);
         var tools = buildTools(config, skillConfig);
+
+        var hookConfig = HookConfig.load(config.workspace);
+        var hookLifecycle = hookConfig.isEmpty() ? null
+                : new ScriptHookLifecycle(hookConfig, new ScriptHookRunner(config.workspace));
+
+        var systemPrompt = buildSystemPrompt(config);
+        if (hookLifecycle != null) {
+            String sessionStartOutput = hookLifecycle.runSessionStartHooks();
+            if (!sessionStartOutput.isEmpty()) {
+                systemPrompt += "\n\n" + sessionStartOutput;
+            }
+        }
+
         var builder = Agent.builder()
                 .llmProvider(config.providers.getDefaultProvider())
-                .systemPrompt(buildSystemPrompt(config))
+                .systemPrompt(systemPrompt)
                 .maxTurn(config.maxTurn)
                 .toolCalls(tools)
                 .temperature(0.8);
+
+        if (hookLifecycle != null) {
+            builder.addAgentLifecycle(hookLifecycle);
+        }
 
         configureMcp(builder);
 
@@ -63,9 +82,6 @@ public class CliAgent {
                 .sources(skillConfig.getSources())
                 .maxFileSize(skillConfig.getMaxSkillFileSize())
                 .build());
-        tools.add(MdMemoryTool.builder()
-                .provider(new MdMemoryProvider(config.workspace))
-                .build());
         return tools;
     }
 
@@ -76,8 +92,8 @@ public class CliAgent {
     private static String buildSystemPrompt(Config config) {
         var workspaceInfo = buildWorkspaceInfo(config.workspace);
         var sb = new StringBuilder("""
-                You are a helpful AI coding assistant.
-
+                You are a helpful AI coding assistant and  a personal assistant running inside core-ai.
+                
                 <workspace>
                 %s
                 </workspace>
@@ -100,7 +116,7 @@ public class CliAgent {
                 You have a persistent structured memory system. All current memories are loaded below.
                 Index file: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
 
-                Reading: memories are already in context below. Use md_memory_tool (action=search) only when content was truncated.
+                Reading: memories are already in context below. Use grep_file/read_file to access remaining files if content was truncated.
                 Writing: use write_file/edit_file to create or update .core-ai/memory/ topic files, \
                 each with YAML frontmatter (name, description, type: user/feedback/project/reference). \
                 Update .core-ai/MEMORY.md index when adding or removing files.
