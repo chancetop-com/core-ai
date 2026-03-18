@@ -97,6 +97,7 @@ public class OutputPanel {
         }
         writer.flush();
         reasoningShown = false;
+        textStarted = false;
         startSpinner();
     }
 
