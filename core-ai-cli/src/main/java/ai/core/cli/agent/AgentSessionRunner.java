@@ -20,7 +20,7 @@ import ai.core.cli.config.ProviderConfigurator;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
-import ai.core.memory.MemoryProvider;
+import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
 import ai.core.session.ToolPermissionStore;
@@ -445,6 +445,6 @@ public class AgentSessionRunner {
 
     public record Config(String modelName, boolean autoApproveAll, String sessionId,
                          SessionManager sessionManager, ToolPermissionStore permissionStore,
-                         MemoryProvider memory, ModelRegistry modelRegistry) {
+                         MdMemoryProvider memory, ModelRegistry modelRegistry) {
     }
 }

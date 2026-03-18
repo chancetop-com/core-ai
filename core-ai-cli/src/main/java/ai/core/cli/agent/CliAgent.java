@@ -3,7 +3,8 @@ package ai.core.cli.agent;
 import ai.core.agent.Agent;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
-import ai.core.memory.MemoryProvider;
+import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.tool.MdMemoryTool;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.skill.SkillConfig;
 import ai.core.tool.BuiltinTools;
@@ -11,7 +12,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
-import ai.core.tool.tools.MemoryTool;
 import ai.core.tool.tools.SkillTool;
 
 import java.io.IOException;
@@ -63,9 +63,9 @@ public class CliAgent {
                 .sources(skillConfig.getSources())
                 .maxFileSize(skillConfig.getMaxSkillFileSize())
                 .build());
-        if (config.memory != null) {
-            tools.add(MemoryTool.builder().provider(config.memory).build());
-        }
+        tools.add(MdMemoryTool.builder()
+                .provider(new MdMemoryProvider(config.workspace))
+                .build());
         return tools;
     }
 
@@ -90,19 +90,25 @@ public class CliAgent {
             sb.append("\n<project-instructions>\n").append(instructions).append("</project-instructions>\n");
         }
 
-        if (config.memory != null) {
+        var mdMemoryProvider = new MdMemoryProvider(config.workspace);
+        var mdMemoryContent = mdMemoryProvider.load();
+        if (!mdMemoryContent.isBlank()) {
             sb.append("""
 
-                You have access to persistent memory that survives across sessions.
-                - Existing memories are shown in <memory> tags below
-                - Use memory_tool to save when the user shares preferences, project conventions, or explicitly asks to remember
-                - Do NOT save session-specific context, duplicate existing memories, or unverified information
-                - Reference existing memories naturally without announcing them
-                """);
-            var memoryContent = config.memory.load();
-            if (!memoryContent.isBlank()) {
-                sb.append("\n<memory>\n").append(memoryContent).append("</memory>\n");
-            }
+                ## Memory
+
+                You have a persistent structured memory system. All current memories are loaded below.
+                Index file: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
+
+                Reading: memories are already in context below. Use md_memory_tool (action=search) only when content was truncated.
+                Writing: use write_file/edit_file to create or update .core-ai/memory/ topic files, \
+                each with YAML frontmatter (name, description, type: user/feedback/project/reference). \
+                Update .core-ai/MEMORY.md index when adding or removing files.
+
+                <memories>
+                %s
+                </memories>
+                """.formatted(mdMemoryContent));
         }
         return sb.toString();
     }
@@ -151,6 +157,6 @@ public class CliAgent {
 
     public record Config(LLMProviders providers, String modelOverride, int maxTurn,
                          PersistenceProvider persistenceProvider, Path workspace,
-                         Function<String, String> askUserHandler, MemoryProvider memory) {
+                         Function<String, String> askUserHandler) {
     }
 }

@@ -11,7 +11,7 @@ import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
-import ai.core.cli.memory.LocalFileMemoryProvider;
+import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.remote.HttpAgentSession;
 import ai.core.cli.remote.RemoteApiClient;
 import ai.core.cli.remote.RemoteConfig;
@@ -89,7 +89,7 @@ public class CliApp {
         }
 
         var permissionStore = whiteToolsPermissionStore();
-        var noteMemory = new LocalFileMemoryProvider(workspace);
+        var noteMemory = new MdMemoryProvider(workspace);
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
 
         try {
@@ -98,7 +98,7 @@ public class CliApp {
                     ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
                     ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
                     return ui.readRawLine();
-                }, noteMemory);
+                });
                 var agent = CliAgent.of(agentConfig);
                 var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory, modelRegistry);
                 var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
