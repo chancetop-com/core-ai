@@ -75,4 +75,29 @@ jacoco {
             csv.required = false
         }
     }
+
+    // Coverage verification must run AFTER report generation to read fresh data
+    tasks.register<JacocoCoverageVerification>("testCodeCoverageVerification") {
+        dependsOn("testCodeCoverageReport")
+
+        violationRules {
+            rule {
+                limit {
+                    minimum = "0.80".toBigDecimal()
+                }
+            }
+            // Also enforce branch coverage if desired
+            rule {
+                element = "BRANCH"
+                limit {
+                    minimum = "0.80".toBigDecimal()
+                }
+            }
+        }
+    }
+
+    // Make check task depend on coverage verification
+    tasks.named("check") {
+        dependsOn("testCodeCoverageVerification")
+    }
 }

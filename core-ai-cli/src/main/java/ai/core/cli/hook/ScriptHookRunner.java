@@ -24,10 +24,7 @@ public class ScriptHookRunner {
             pb.environment().putAll(env);
             var process = pb.start();
 
-            String stdout;
-            try (var is = process.getInputStream()) {
-                stdout = new String(is.readAllBytes());
-            }
+            String stdout = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
 
             boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!finished) {
