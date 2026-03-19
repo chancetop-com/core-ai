@@ -146,7 +146,7 @@ public class OutputPanel {
             String[] lines = result.split("\n");
             int limit = Math.min(lines.length, 3);
             for (int i = 0; i < limit; i++) {
-                String line = lines[i];
+                String line = lines[i].stripLeading();
                 if (line.length() > 120) line = line.substring(0, 120) + "...";
                 if (i > 0) writer.print(INDENT + "   ");
                 writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);

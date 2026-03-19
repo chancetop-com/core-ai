@@ -204,7 +204,7 @@ public class ReadFileTool extends ToolCall {
                     line = line.substring(0, MAX_LINE_LENGTH) + "... [line truncated]";
                 }
 
-                result.append(String.format("%6d→%s%n", currentLine, line));
+                result.append(String.format("%6d -> %s%n", currentLine, line));
                 currentLine++;
                 linesRead++;
             }
