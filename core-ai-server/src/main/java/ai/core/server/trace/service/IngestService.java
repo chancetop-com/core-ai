@@ -88,8 +88,9 @@ public class IngestService {
         trace.createdAt = ZonedDateTime.now();
         trace.updatedAt = ZonedDateTime.now();
 
-        // Compute total tokens from attributes
-        trace.totalTokens = computeTotalTokens(rootSpan);
+        trace.inputTokens = 0L;
+        trace.outputTokens = 0L;
+        trace.totalTokens = 0L;
 
         traceCollection.insert(trace);
     }
@@ -128,6 +129,29 @@ public class IngestService {
         span.completedAt = toZonedDateTime(spanReq.completedAtEpochMs);
         span.createdAt = ZonedDateTime.now();
         spanCollection.insert(span);
+
+        // Recalculate trace token totals from all spans
+        recalculateTraceTokens(spanReq.traceId);
+    }
+
+    private void recalculateTraceTokens(String traceId) {
+        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
+        if (existing.isEmpty()) return;
+
+        var trace = existing.getFirst();
+        var spans = spanCollection.find(Filters.eq("trace_id", traceId));
+
+        long totalInput = 0;
+        long totalOutput = 0;
+        for (var span : spans) {
+            if (span.inputTokens != null) totalInput += span.inputTokens;
+            if (span.outputTokens != null) totalOutput += span.outputTokens;
+        }
+        trace.inputTokens = totalInput;
+        trace.outputTokens = totalOutput;
+        trace.totalTokens = totalInput + totalOutput;
+        trace.updatedAt = ZonedDateTime.now();
+        traceCollection.replace(trace);
     }
 
     private TraceStatus mapTraceStatus(String status) {
@@ -145,13 +169,6 @@ public class IngestService {
             case "GROUP" -> SpanType.GROUP;
             default -> SpanType.AGENT;
         };
-    }
-
-    private long computeTotalTokens(IngestSpanRequest span) {
-        long total = 0;
-        if (span.inputTokens != null) total += span.inputTokens;
-        if (span.outputTokens != null) total += span.outputTokens;
-        return total;
     }
 
     private ZonedDateTime toZonedDateTime(long epochMs) {

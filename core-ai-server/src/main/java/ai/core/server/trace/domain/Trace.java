@@ -39,6 +39,12 @@ public class Trace {
     @Field(name = "metadata")
     public Map<String, String> metadata;
 
+    @Field(name = "input_tokens")
+    public Long inputTokens;
+
+    @Field(name = "output_tokens")
+    public Long outputTokens;
+
     @Field(name = "total_tokens")
     public Long totalTokens;
 

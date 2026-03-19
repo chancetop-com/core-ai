@@ -99,6 +99,9 @@ public class OTLPIngestService {
         span.inputTokens = parseLongAttr(attrs, "gen_ai.usage.input_tokens");
         span.outputTokens = parseLongAttr(attrs, "gen_ai.usage.output_tokens");
         spanCollection.insert(span);
+
+        // Recalculate trace token totals from all spans
+        recalculateTraceTokens(traceId);
     }
 
     private void upsertTrace(io.opentelemetry.proto.trace.v1.Span protoSpan,
@@ -137,16 +140,31 @@ public class OTLPIngestService {
         trace.completedAt = toZonedDateTime(endMs);
         trace.createdAt = ZonedDateTime.now();
         trace.updatedAt = ZonedDateTime.now();
-
-        // Sum tokens from attributes
-        long totalTokens = 0;
-        var in = attrs.get("gen_ai.usage.input_tokens");
-        if (in != null) totalTokens += Long.parseLong(in);
-        var out = attrs.get("gen_ai.usage.output_tokens");
-        if (out != null) totalTokens += Long.parseLong(out);
-        trace.totalTokens = totalTokens;
+        trace.inputTokens = 0L;
+        trace.outputTokens = 0L;
+        trace.totalTokens = 0L;
 
         traceCollection.insert(trace);
+    }
+
+    private void recalculateTraceTokens(String traceId) {
+        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
+        if (existing.isEmpty()) return;
+
+        var trace = existing.getFirst();
+        var spans = spanCollection.find(Filters.eq("trace_id", traceId));
+
+        long totalInput = 0;
+        long totalOutput = 0;
+        for (var span : spans) {
+            if (span.inputTokens != null) totalInput += span.inputTokens;
+            if (span.outputTokens != null) totalOutput += span.outputTokens;
+        }
+        trace.inputTokens = totalInput;
+        trace.outputTokens = totalOutput;
+        trace.totalTokens = totalInput + totalOutput;
+        trace.updatedAt = ZonedDateTime.now();
+        traceCollection.replace(trace);
     }
 
     private SpanType resolveSpanType(Map<String, String> attrs) {

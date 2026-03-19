@@ -75,10 +75,22 @@ export default function TraceDetail() {
         </div>
         <div className="flex gap-6 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
           <span className="flex items-center gap-1"><Clock size={14} /> {trace.duration_ms ? `${(trace.duration_ms / 1000).toFixed(2)}s` : '-'}</span>
-          <span className="flex items-center gap-1"><Zap size={14} /> {trace.total_tokens?.toLocaleString() || '0'} tokens</span>
+          <span className="flex items-center gap-1">
+            <Zap size={14} />
+            {trace.total_tokens ? `${trace.total_tokens.toLocaleString()} tokens` : '0 tokens'}
+            {(trace.input_tokens > 0 || trace.output_tokens > 0) && (
+              <span className="text-xs ml-1">({trace.input_tokens?.toLocaleString() || 0} in / {trace.output_tokens?.toLocaleString() || 0} out)</span>
+            )}
+          </span>
           <span>Session: {trace.session_id || '-'}</span>
           <span>User: {trace.user_id || '-'}</span>
         </div>
+        {trace.started_at && (
+          <div className="flex gap-6 text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+            <span>Started: {new Date(trace.started_at).toLocaleString()}</span>
+            {trace.completed_at && <span>Completed: {new Date(trace.completed_at).toLocaleString()}</span>}
+          </div>
+        )}
         {trace.input && (
           <div className="mt-3 p-3 rounded-lg text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
             <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Input</div>
@@ -128,7 +140,10 @@ export default function TraceDetail() {
                       opacity: 0.7,
                     }} />
                 </div>
-                <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-secondary)', width: '60px', textAlign: 'right' }}>
+                <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-secondary)', width: '120px', textAlign: 'right' }}>
+                  {(span.input_tokens > 0 || span.output_tokens > 0) && (
+                    <span className="mr-2">{(span.input_tokens || 0) + (span.output_tokens || 0)}t</span>
+                  )}
                   {span.duration_ms ? `${span.duration_ms}ms` : '-'}
                 </span>
               </div>

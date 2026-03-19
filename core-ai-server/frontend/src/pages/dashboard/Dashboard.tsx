@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Activity, Zap, Clock, AlertCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { api } from '../../api/client';
 import type { Trace } from '../../api/client';
 
@@ -15,7 +15,9 @@ export default function Dashboard() {
   }, []);
 
   const totalTraces = traces.length;
-  const totalTokens = traces.reduce((sum, t) => sum + (t.total_tokens || 0), 0);
+  const totalInputTokens = traces.reduce((sum, t) => sum + (t.input_tokens || 0), 0);
+  const totalOutputTokens = traces.reduce((sum, t) => sum + (t.output_tokens || 0), 0);
+  const totalTokens = totalInputTokens + totalOutputTokens;
   const avgDuration = totalTraces > 0 ? traces.reduce((sum, t) => sum + (t.duration_ms || 0), 0) / totalTraces : 0;
   const errorRate = totalTraces > 0 ? traces.filter(t => t.status === 'ERROR').length / totalTraces * 100 : 0;
 
@@ -26,15 +28,17 @@ export default function Dashboard() {
 
   const tokensByDay = Object.entries(
     traces.reduce((acc, t) => {
-      const day = t.created_at ? new Date(t.created_at).toLocaleDateString() : 'Unknown';
-      acc[day] = (acc[day] || 0) + (t.total_tokens || 0);
+      const day = (t.started_at || t.created_at) ? new Date(t.started_at || t.created_at).toLocaleDateString() : 'Unknown';
+      if (!acc[day]) acc[day] = { input: 0, output: 0 };
+      acc[day].input += (t.input_tokens || 0);
+      acc[day].output += (t.output_tokens || 0);
       return acc;
-    }, {} as Record<string, number>)
-  ).map(([date, tokens]) => ({ date, tokens })).slice(-7);
+    }, {} as Record<string, { input: number; output: number }>)
+  ).map(([date, tokens]) => ({ date, input: tokens.input, output: tokens.output })).slice(-7);
 
   const statCards = [
     { label: 'Total Traces', value: totalTraces.toLocaleString(), icon: Activity, color: '#6366f1' },
-    { label: 'Total Tokens', value: totalTokens.toLocaleString(), icon: Zap, color: '#f59e0b' },
+    { label: 'Total Tokens', value: `${totalTokens.toLocaleString()} (${totalInputTokens.toLocaleString()} in / ${totalOutputTokens.toLocaleString()} out)`, icon: Zap, color: '#f59e0b' },
     { label: 'Avg Duration', value: `${(avgDuration / 1000).toFixed(1)}s`, icon: Clock, color: '#06b6d4' },
     { label: 'Error Rate', value: `${errorRate.toFixed(1)}%`, icon: AlertCircle, color: '#ef4444' },
   ];
@@ -73,7 +77,9 @@ export default function Dashboard() {
                 <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }} />
                 <YAxis tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }} />
                 <Tooltip contentStyle={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: 8 }} />
-                <Bar dataKey="tokens" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Legend />
+                <Bar dataKey="input" fill="#6366f1" radius={[0, 0, 0, 0]} name="Input Tokens" stackId="tokens" />
+                <Bar dataKey="output" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Output Tokens" stackId="tokens" />
               </BarChart>
             </ResponsiveContainer>
           ) : (

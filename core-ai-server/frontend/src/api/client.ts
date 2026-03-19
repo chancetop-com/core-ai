@@ -20,6 +20,8 @@ export interface Trace {
   input: string;
   output: string;
   metadata: Record<string, string>;
+  input_tokens: number;
+  output_tokens: number;
   total_tokens: number;
   duration_ms: number;
   started_at: string;

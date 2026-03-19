@@ -19,13 +19,21 @@ export default function TraceList() {
 
   const formatTime = (iso: string) => {
     if (!iso) return '-';
-    return new Date(iso).toLocaleString();
+    const d = new Date(iso);
+    return d.toLocaleString();
   };
 
   const formatDuration = (ms: number) => {
     if (!ms) return '-';
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  const formatTokens = (t: Trace) => {
+    if (!t.total_tokens) return '-';
+    const input = t.input_tokens || 0;
+    const output = t.output_tokens || 0;
+    return `${input.toLocaleString()} / ${output.toLocaleString()}`;
   };
 
   return (
@@ -48,9 +56,9 @@ export default function TraceList() {
                 <span className="flex items-center gap-1"><Clock size={14} /> Duration</span>
               </th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                <span className="flex items-center gap-1"><Zap size={14} /> Tokens</span>
+                <span className="flex items-center gap-1"><Zap size={14} /> Tokens (in/out)</span>
               </th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Time</th>
+              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Started At</th>
             </tr>
           </thead>
           <tbody>
@@ -71,8 +79,8 @@ export default function TraceList() {
                 </td>
                 <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatDuration(t.duration_ms)}</td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{t.total_tokens?.toLocaleString() || '-'}</td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(t.created_at)}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTokens(t)}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(t.started_at || t.created_at)}</td>
               </tr>
             ))}
           </tbody>
