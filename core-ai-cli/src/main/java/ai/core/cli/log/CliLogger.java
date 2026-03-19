@@ -102,8 +102,9 @@ public final class CliLogger extends AbstractLogger {
         var timestamp = LocalTime.now().format(TIME_FMT);
         var line = "[" + level.name() + " " + timestamp + "] " + name + " - " + formatted;
 
-        // INFO/DEBUG write to file only; WARN/ERROR write to both file and terminal
-        boolean writeToTerminal = (level == org.slf4j.event.Level.WARN) || (level == org.slf4j.event.Level.ERROR);
+        // INFO/DEBUG write to file only; WARN/ERROR from core-ai packages write to both file and terminal
+        boolean writeToTerminal = (level == org.slf4j.event.Level.WARN || level == org.slf4j.event.Level.ERROR)
+                && isCoreAiLogger();
 
         writeToFile(line, throwable);
 
@@ -120,13 +121,16 @@ public final class CliLogger extends AbstractLogger {
         return name.startsWith("io.modelcontextprotocol.");
     }
 
+    private boolean isCoreAiLogger() {
+        return name.startsWith("ai.core.");
+    }
+
     private boolean isLevelEnabled(org.slf4j.event.Level level) {
         if (isMuted()) return DebugLog.isEnabled();
         return switch (level) {
             case TRACE -> false;
-            case DEBUG -> DebugLog.isEnabled();   // DEBUG: 仅 debug 模式启用
-            case INFO -> true;                    // INFO: 始终记录到文件
-            case WARN, ERROR -> true;
+            case DEBUG -> DebugLog.isEnabled();
+            case INFO, WARN, ERROR -> true;
         };
     }
 
