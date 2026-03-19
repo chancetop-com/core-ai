@@ -6,6 +6,26 @@ import java.util.List;
 /**
  * Multi-level fuzzy matching for edit file operations.
  * Tries increasingly relaxed matching strategies to find old_string in file content.
+ * Multi-level fuzzy matching utility with 7 cascading strategies (strict → relaxed):
+
+ *   ┌─────┬───────────────────────────┬─────────────────────────────────────────────────────────┐
+ *   │  #  │         Strategy          │                         Solves                          │
+ *   ├─────┼───────────────────────────┼─────────────────────────────────────────────────────────┤
+ *   │ 1   │ SimpleMatch               │ Exact match (baseline)                                  │
+ *   ├─────┼───────────────────────────┼─────────────────────────────────────────────────────────┤
+ *   │ 2   │ LineTrimmedMatch          │ Trailing/leading whitespace per line                    │
+ *   ├─────┼───────────────────────────┼─────────────────────────────────────────────────────────┤
+ *   │ 3   │ BlockAnchorMatch          │ First/last line anchors + Levenshtein middle similarity │
+ *   ├─────┼───────────────────────────┼─────────────────────────────────────────────────────────┤
+ *   │ 4   │ WhitespaceNormalizedMatch │ Multiple spaces, tab/space mixing                       │
+ *   ├─────┼───────────────────────────┼─────────────────────────────────────────────────────────┤
+ *   │ 5   │ IndentationFlexibleMatch  │ Whole-block indentation offset (4 vs 8 spaces)          │
+ *   ├─────┼───────────────────────────┼─────────────────────────────────────────────────────────┤
+ *   │ 6   │ TrimmedBoundaryMatch      │ Extra whitespace/newlines at block boundaries           │
+ *   ├─────┼───────────────────────────┼─────────────────────────────────────────────────────────┤
+ *   │ 7   │ ContextAwareMatch         │ Last resort: 50% middle-line match threshold            │
+ *   └─────┴───────────────────────────┴─────────────────────────────────────────────────────────┘
+ *   Key: returns the actual text from the file, not the LLM's input — preserving original formatting.
  *
  * @author lim chen
  */
@@ -36,7 +56,7 @@ public final class FuzzyMatchReplacer {
 
     static List<MatchResult> simpleMatch(String content, String find) {
         List<MatchResult> results = new ArrayList<>();
-        int index = content.indexOf(find, 0);
+        int index = content.indexOf(find);
         while (index != -1) {
             results.add(new MatchResult(find, "exact"));
             index = content.indexOf(find, index + find.length());
@@ -74,8 +94,8 @@ public final class FuzzyMatchReplacer {
         if (candidates.isEmpty()) return List.of();
 
         if (candidates.size() == 1) {
-            int startLine = candidates.get(0)[0];
-            int endLine = candidates.get(0)[1];
+            int startLine = candidates.getFirst()[0];
+            int endLine = candidates.getFirst()[1];
             int actualBlockSize = endLine - startLine + 1;
             double similarity = computeMiddleSimilarity(originalLines, searchLines, startLine, searchLen, actualBlockSize);
             if (similarity >= SINGLE_CANDIDATE_SIMILARITY_THRESHOLD) {
@@ -130,7 +150,7 @@ public final class FuzzyMatchReplacer {
         if (trimmedFind.equals(find)) return List.of();
 
         List<MatchResult> results = new ArrayList<>();
-        int index = content.indexOf(trimmedFind, 0);
+        int index = content.indexOf(trimmedFind);
         while (index != -1) {
             results.add(new MatchResult(trimmedFind, "trimmed_boundary"));
             index = content.indexOf(trimmedFind, index + trimmedFind.length());
@@ -245,7 +265,7 @@ public final class FuzzyMatchReplacer {
             }
         }
 
-        if (maxSimilarity >= MULTIPLE_CANDIDATES_SIMILARITY_THRESHOLD && bestCandidate != null) {
+        if (maxSimilarity >= MULTIPLE_CANDIDATES_SIMILARITY_THRESHOLD) {
             return List.of(new MatchResult(extractBlock(originalLines, bestCandidate[0], bestCandidate[1]), "block_anchor"));
         }
         return List.of();
