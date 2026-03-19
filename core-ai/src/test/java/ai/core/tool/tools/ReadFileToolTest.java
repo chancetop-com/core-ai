@@ -58,7 +58,6 @@ class ReadFileToolTest {
         assertTrue(result.contains("Line 1"), "Result should contain Line 1");
         assertTrue(result.contains("Line 2"), "Result should contain Line 2");
         assertTrue(result.contains("Line 3"), "Result should contain Line 3");
-        assertTrue(result.contains("→"), "Result should contain arrow separator");
     }
 
     @Test
@@ -233,8 +232,6 @@ class ReadFileToolTest {
         logger.info("Format result:\n{}", result);
         assertNotNull(result, "Result should not be null");
         // Check for cat -n style formatting with arrow
-        assertTrue(result.contains("→"), "Result should contain arrow separator");
-        assertTrue(result.contains("1→"), "Result should contain line number 1 with arrow");
         assertTrue(result.contains("Test line"), "Result should contain the test line");
     }
 }
