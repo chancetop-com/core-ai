@@ -3,12 +3,17 @@ package ai.core.session;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.TextChunkEvent;
+
+import ai.core.llm.domain.FunctionCall;
+import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -44,22 +49,11 @@ public class SessionStreamingCallback implements StreamingCallback {
     }
 
     @Override
-    public void onToolStart(String toolName) {
-        // Here we map toolName to a generic callId, as the callback doesn't have callId.
-        // For accurate tool tracking, the Lifecycle will handle specific ToolStartEvent with callId.
-    }
-
-    @Override
-    public void onToolResult(String toolName, String result) {
-        // Similar to onToolStart, the Lifecycle is better suited for specific results.
-    }
-
-    @Override
-    public void onComplete() {
-        // TurnCompleteEvent is dispatched by InProcessAgentSession after the entire agent run
-        // (including all tool calls) is complete, not after each LLM streaming response.
-        // Dispatching here would prematurely unblock the REPL loop, causing stdin race conditions
-        // between readInput() and askPermission().
+    public void onTool(List<FunctionCall> functionCalls) {
+        for (FunctionCall call : functionCalls) {
+            if (call == null || Strings.isBlank(call.id)) continue;
+            dispatcher.accept(OnToolEvent.of(sessionId, call.function.name, call.function.arguments));
+        }
     }
 
     @Override

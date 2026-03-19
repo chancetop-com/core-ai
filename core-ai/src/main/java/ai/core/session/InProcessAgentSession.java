@@ -7,6 +7,7 @@ import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.AgentSession;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.SessionStatus;
@@ -178,8 +179,9 @@ public class InProcessAgentSession implements AgentSession {
                 else if (event instanceof TurnCompleteEvent e) listener.onTurnComplete(e);
                 else if (event instanceof ErrorEvent e) listener.onError(e);
                 else if (event instanceof StatusChangeEvent e) listener.onStatusChange(e);
+                else if (event instanceof OnToolEvent e) listener.onOnTool(e);
             } catch (Exception e) {
-                logger.warn("failed to dispatch event to listener, event={}, sessionId={}", event.getClass().getSimpleName(), sessionId, e);
+                logger.error("failed to dispatch event to listener, event={}, sessionId={}", event.getClass().getSimpleName(), sessionId, e);
             }
         }
     }

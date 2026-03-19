@@ -177,6 +177,9 @@ public class LiteLLMProvider extends LLMProvider {
         if (!Objects.requireNonNull(response).choices.getFirst().message.reasoningContent.isEmpty()) {
             callback.onReasoningComplete(response.choices.getFirst().message.reasoningContent);
         }
+        if (!Objects.requireNonNull(response).choices.getFirst().message.toolCalls.isEmpty()) {
+            callback.onToolComplete(response.choices.getFirst().message.toolCalls);
+        }
         callback.onComplete();
         return response;
     }
@@ -212,7 +215,7 @@ public class LiteLLMProvider extends LLMProvider {
                     response = chunk;
                     initializeFinalChoiceMessage(response);
                 }
-                mergeChunkIntoFinalResponse(response, chunk);
+                mergeChunkIntoFinalResponse(response, chunk, callback);
             }
             return response;
         }
@@ -250,13 +253,13 @@ public class LiteLLMProvider extends LLMProvider {
         finalChoice.message.toolCalls = new ArrayList<>();
     }
 
-    private void mergeChunkIntoFinalResponse(CompletionResponse finalResponse, CompletionResponse chunk) {
+    private void mergeChunkIntoFinalResponse(CompletionResponse finalResponse, CompletionResponse chunk, StreamingCallback streamingCallback) {
         if (chunk.choices != null && !chunk.choices.isEmpty() && finalResponse.choices != null && !finalResponse.choices.isEmpty()) {
             var finalChoice = finalResponse.choices.getFirst();
             var chunkChoice = chunk.choices.getFirst();
 
             if (chunkChoice.delta != null) {
-                copyDeltaToFinalChoice(finalChoice, chunkChoice);
+                copyDeltaToFinalChoice(finalChoice, chunkChoice, streamingCallback);
             }
 
             // Update finish reason from chunk
@@ -271,7 +274,7 @@ public class LiteLLMProvider extends LLMProvider {
         }
     }
 
-    private void copyDeltaToFinalChoice(Choice finalChoice, Choice chunkChoice) {
+    private void copyDeltaToFinalChoice(Choice finalChoice, Choice chunkChoice, StreamingCallback streamingCallback) {
         // Ensure message exists
         if (finalChoice.message == null) {
             finalChoice.message = new AssistantMessage();
@@ -290,6 +293,7 @@ public class LiteLLMProvider extends LLMProvider {
 
         // Merge tool calls into message by index
         if (chunkChoice.delta.toolCalls != null) {
+            streamingCallback.onTool(chunkChoice.delta.toolCalls);
             copyToolCallsToFinalChoice(finalChoice, chunkChoice);
         }
 
@@ -313,7 +317,6 @@ public class LiteLLMProvider extends LLMProvider {
             if (deltaToolCall.index == null) {
                 continue;
             }
-
             while (finalChoice.message.toolCalls.size() <= deltaToolCall.index) {
                 finalChoice.message.toolCalls.add(null);
             }

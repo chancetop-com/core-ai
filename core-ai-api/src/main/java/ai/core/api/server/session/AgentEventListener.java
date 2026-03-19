@@ -30,4 +30,6 @@ public interface AgentEventListener {
 
     default void onStatusChange(StatusChangeEvent event) {
     }
+    default void onOnTool(OnToolEvent event) {
+    }
 }

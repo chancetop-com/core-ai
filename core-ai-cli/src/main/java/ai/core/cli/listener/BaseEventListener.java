@@ -3,6 +3,7 @@ package ai.core.cli.listener;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.AgentSession;
 import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
@@ -105,5 +106,10 @@ public class BaseEventListener implements AgentEventListener {
         } else {
             panel.turnSummary(elapsed, null, null);
         }
+    }
+
+    @Override
+    public void onOnTool(OnToolEvent event) {
+        panel.startSpinner();
     }
 }

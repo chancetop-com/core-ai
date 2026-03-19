@@ -1,18 +1,25 @@
 package ai.core.agent.streaming;
 
+import ai.core.llm.domain.FunctionCall;
+
+import java.util.List;
+
 /**
  * @author stephen
  */
 public interface StreamingCallback {
-    default void onToolStart(String toolName) {
-    }
-
-    default void onToolResult(String toolName, String result) {
-    }
 
     void onChunk(String chunk);
 
     default void onReasoningChunk(String chunk) {
+
+    }
+
+    default void onTool(List<FunctionCall> functionCalls) {
+
+    }
+
+    default void onToolComplete(List<FunctionCall> functionCalls) {
 
     }
 
