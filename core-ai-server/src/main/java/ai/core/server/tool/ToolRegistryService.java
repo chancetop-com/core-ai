@@ -8,6 +8,7 @@ import ai.core.server.domain.ToolType;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -27,6 +28,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ToolRegistryService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryService.class);
+    private static final String CONFIG_PREFIX = "config:";
+    private static final String BUILTIN_PREFIX = "builtin:";
 
     private static final Map<String, List<ToolCall>> BUILTIN_TOOL_SETS = Map.of(
         "builtin-all", BuiltinTools.ALL,
@@ -44,8 +47,77 @@ public class ToolRegistryService {
     MongoCollection<ToolRegistry> toolRegistryCollection;
 
     public void initialize() {
+        loadBuiltinTools();
+        loadConfigMcpServers();
+        loadDatabaseTools();
+    }
+
+    private void loadBuiltinTools() {
+        for (var entry : BUILTIN_TOOL_SETS.entrySet()) {
+            var registry = new ToolRegistry();
+            registry.id = BUILTIN_PREFIX + entry.getKey();
+            registry.name = entry.getKey();
+            registry.type = ToolType.BUILTIN;
+            registry.category = "builtin";
+            registry.enabled = true;
+            registry.description = "Built-in tool set: " + entry.getKey();
+            var config = new HashMap<String, String>();
+            config.put("set", entry.getKey());
+            registry.config = config;
+            tools.put(registry.id, registry);
+            LOGGER.debug("loaded builtin toolset: {}", entry.getKey());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void loadConfigMcpServers() {
+        var mcpServersJson = System.getProperty("mcp.servers.json");
+        if (mcpServersJson == null || mcpServersJson.isBlank()) {
+            LOGGER.debug("no mcp.servers.json configured");
+            return;
+        }
+
+        try {
+            var servers = (Map<String, Map<String, Object>>) JsonUtil.fromJson(Map.class, mcpServersJson);
+            for (var entry : servers.entrySet()) {
+                var name = entry.getKey();
+                var config = entry.getValue();
+                var registry = new ToolRegistry();
+                registry.id = CONFIG_PREFIX + name;
+                registry.name = name;
+                registry.type = ToolType.MCP;
+                registry.category = "config";
+                registry.enabled = true;
+                registry.description = "MCP server from configuration";
+                registry.config = convertConfigToStringMap(config);
+                tools.put(registry.id, registry);
+                LOGGER.debug("loaded config mcp server: {}", name);
+            }
+            LOGGER.info("loaded {} mcp servers from configuration", servers.size());
+        } catch (Exception e) {
+            LOGGER.error("failed to parse mcp.servers.json from configuration", e);
+        }
+    }
+
+    private Map<String, String> convertConfigToStringMap(Map<String, Object> config) {
+        var result = new HashMap<String, String>();
+        if (config != null) {
+            for (var entry : config.entrySet()) {
+                if (entry.getValue() != null) {
+                    result.put(entry.getKey(), entry.getValue().toString());
+                }
+            }
+        }
+        return result;
+    }
+
+    private void loadDatabaseTools() {
         var entries = toolRegistryCollection.find(Filters.eq("enabled", true));
         for (var entry : entries) {
+            if (tools.containsKey(entry.id)) {
+                LOGGER.debug("skipping duplicate tool from database: {}", entry.id);
+                continue;
+            }
             tools.put(entry.id, entry);
             if (entry.type == ToolType.MCP) {
                 registerMcpServer(entry);
@@ -137,6 +209,13 @@ public class ToolRegistryService {
     }
 
     public void deleteMcpServer(String id) {
+        if (id.startsWith(CONFIG_PREFIX)) {
+            throw new RuntimeException("cannot delete mcp server from configuration, please modify agent.properties");
+        }
+        if (id.startsWith(BUILTIN_PREFIX)) {
+            throw new RuntimeException("cannot delete builtin tool set");
+        }
+
         var entity = tools.remove(id);
         if (entity == null) throw new RuntimeException("mcp server not found, id=" + id);
         if (entity.type != ToolType.MCP) {
@@ -150,6 +229,13 @@ public class ToolRegistryService {
     }
 
     public ToolRegistry enableMcpServer(String id) {
+        if (id.startsWith(CONFIG_PREFIX)) {
+            throw new RuntimeException("cannot enable/disable mcp server from configuration, please modify agent.properties");
+        }
+        if (id.startsWith(BUILTIN_PREFIX)) {
+            throw new RuntimeException("cannot enable/disable builtin tool set");
+        }
+
         var entity = tools.get(id);
         if (entity == null) throw new RuntimeException("mcp server not found, id=" + id);
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
@@ -164,6 +250,13 @@ public class ToolRegistryService {
     }
 
     public ToolRegistry disableMcpServer(String id) {
+        if (id.startsWith(CONFIG_PREFIX)) {
+            throw new RuntimeException("cannot enable/disable mcp server from configuration, please modify agent.properties");
+        }
+        if (id.startsWith(BUILTIN_PREFIX)) {
+            throw new RuntimeException("cannot enable/disable builtin tool set");
+        }
+
         var entity = tools.get(id);
         if (entity == null) throw new RuntimeException("mcp server not found, id=" + id);
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
@@ -200,11 +293,19 @@ public class ToolRegistryService {
                     var mcpManager = McpClientManagerRegistry.getManager();
                     if (mcpManager != null && mcpManager.hasServer(entry.id)) {
                         result.addAll(McpToolCalls.from(mcpManager, List.of(entry.id), null));
+                    } else if (entry.id.startsWith(CONFIG_PREFIX)) {
+                        var serverName = entry.id.substring(CONFIG_PREFIX.length());
+                        if (mcpManager != null && mcpManager.hasServer(serverName)) {
+                            result.addAll(McpToolCalls.from(mcpManager, List.of(serverName), null));
+                        }
                     }
                 }
                 case BUILTIN -> {
-                    var set = BUILTIN_TOOL_SETS.get(entry.config.get("set"));
-                    if (set != null) result.addAll(set);
+                    var setName = entry.config != null ? entry.config.get("set") : null;
+                    if (setName != null) {
+                        var set = BUILTIN_TOOL_SETS.get(setName);
+                        if (set != null) result.addAll(set);
+                    }
                 }
                 case API -> {
                     // TODO: implement API tool resolution

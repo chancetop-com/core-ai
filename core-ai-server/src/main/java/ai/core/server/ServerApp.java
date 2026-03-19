@@ -24,6 +24,9 @@ public class ServerApp extends App {
         load(new SystemModule("sys.properties"));
         loadProperties("agent.properties");
 
+        // Pass mcp.servers.json to system properties for ToolRegistryService
+        property("mcp.servers.json").ifPresent(json -> System.setProperty("mcp.servers.json", json));
+
         registerMongo();
 
         load(new MultiAgentModule());
