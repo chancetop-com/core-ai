@@ -181,7 +181,7 @@ public class InProcessAgentSession implements AgentSession {
 
     private void debug(String message) {
         if ("true".equals(System.getProperty("core.ai.debug"))) {
-            logger.warn("[DEBUG] {}, sessionId={}", message, sessionId);
+            logger.debug("[DEBUG] {}, sessionId={}", message, sessionId);
         }
     }
 }

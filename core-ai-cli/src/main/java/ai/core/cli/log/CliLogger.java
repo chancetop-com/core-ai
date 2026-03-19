@@ -7,6 +7,7 @@ import org.slf4j.helpers.AbstractLogger;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.io.PrintWriter;
 import java.io.Serial;
 import java.nio.file.Files;
@@ -36,14 +37,14 @@ public final class CliLogger extends AbstractLogger {
         try {
             Files.createDirectories(LOGS_DIR);
         } catch (IOException e) {
-            System.err.println("Failed to create logs directory: " + e.getMessage());
+            STDERR.println("Failed to create logs directory: " + e.getMessage());
         }
         closeFileWriter();
         Path logFile = LOGS_DIR.resolve(sessionId + ".log");
         try {
-            fileWriter = new PrintWriter(new FileWriter(logFile.toFile(), true), true);
+            fileWriter = new PrintWriter(new FileWriter(logFile.toFile(), StandardCharsets.UTF_8, true), true);
         } catch (IOException e) {
-            System.err.println("Failed to open log file: " + e.getMessage());
+            STDERR.println("Failed to open log file: " + e.getMessage());
             fileWriter = null;
         }
     }
@@ -76,6 +77,10 @@ public final class CliLogger extends AbstractLogger {
         }
     }
 
+    public static void writeToFileDirect(String line, Throwable throwable) {
+        writeToFile(line, throwable);
+    }
+
     public static String getCurrentSessionId() {
         return currentSessionId;
     }
@@ -97,7 +102,8 @@ public final class CliLogger extends AbstractLogger {
         var timestamp = LocalTime.now().format(TIME_FMT);
         var line = "[" + level.name() + " " + timestamp + "] " + name + " - " + formatted;
 
-        boolean writeToTerminal = level == org.slf4j.event.Level.ERROR || level == org.slf4j.event.Level.WARN;
+        // INFO/DEBUG write to file only; WARN/ERROR write to both file and terminal
+        boolean writeToTerminal = (level == org.slf4j.event.Level.WARN) || (level == org.slf4j.event.Level.ERROR);
 
         writeToFile(line, throwable);
 
@@ -163,12 +169,12 @@ public final class CliLogger extends AbstractLogger {
 
     @Override
     public boolean isInfoEnabled() {
-        return DebugLog.isEnabled();
+        return true;  // INFO: always enabled for file logging
     }
 
     @Override
     public boolean isInfoEnabled(Marker marker) {
-        return DebugLog.isEnabled();
+        return true;  // INFO: always enabled for file logging
     }
 
     @Override

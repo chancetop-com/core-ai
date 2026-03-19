@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author stephen
  */
 public class AgentSessionRunner {
-    private static final Logger logger = LoggerFactory.getLogger(AgentSessionRunner.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionRunner.class);
 
     private static final String POISON_PILL = "\0__EXIT__";
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -95,10 +95,9 @@ public class AgentSessionRunner {
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
     }
-
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), modelName);
-        logger.debug("terminal: type={}, jline={}, ansi={}",
+        LOGGER.debug("terminal: type={}, jline={}, ansi={}",
                 ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
     }
 
@@ -132,12 +131,12 @@ public class AgentSessionRunner {
                 while (true) {
                     String msg = queue.take();
                     if (POISON_PILL.equals(msg)) break;
-                    logger.debug("sending message: {}", msg);
+                    LOGGER.debug("sending message: {}", msg);
                     listener.prepareTurn();
                     session.sendMessage(msg);
-                    logger.debug("waiting for turn...");
+                    LOGGER.debug("waiting for turn...");
                     listener.waitForTurn();
-                    logger.debug("turn finished");
+                    LOGGER.debug("turn finished");
                     readyForInput.release();
                 }
             } catch (InterruptedException e) {
@@ -181,7 +180,6 @@ public class AgentSessionRunner {
             queue.offer(FileReferenceExpander.expand(input));
         }
     }
-
     private void dispatchCommand(String trimmed, ReplCommandHandler commands, BlockingQueue<String> queue) {
         var lower = trimmed.toLowerCase(Locale.ROOT);
         if (lower.startsWith("/model ")) {
@@ -225,7 +223,6 @@ public class AgentSessionRunner {
             commands.handle(trimmed);
         }
     }
-
     private void showModelPicker() {
         String currentModel = getCurrentModelName();
         var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
