@@ -1,5 +1,7 @@
 package ai.core.cli.remote;
 
+import ai.core.api.server.session.LoadToolsRequest;
+import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.cli.DebugLog;
 import ai.core.cli.command.SlashCommand;
 import ai.core.cli.listener.RemoteEventListener;
@@ -9,6 +11,7 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.utils.JsonUtil;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,6 +30,7 @@ public class RemoteSessionRunner {
         new SlashCommand("/build-agent", "Build agent from conversation"),
         new SlashCommand("/agents", "Switch agent or manage agents"),
         new SlashCommand("/tools", "List available tools"),
+        new SlashCommand("/load-tool", "Load additional tools for this session"),
         new SlashCommand("/mcp", "Manage MCP server connections"),
         new SlashCommand("/debug", "Toggle debug mode"),
         new SlashCommand("/clear", "Clear screen"),
@@ -162,6 +166,7 @@ public class RemoteSessionRunner {
                 }
             }
             case "/tools" -> handleTools();
+            case "/load-tool" -> handleLoadTool();
             case "/mcp" -> new McpServerCommandHandler(ui, api).handle();
             case "/debug" -> {
                 if (DebugLog.isEnabled()) {
@@ -194,6 +199,7 @@ public class RemoteSessionRunner {
                 {"/build-agent", "Build agent from current conversation, so it can be scheduled periodically on the server"},
                 {"/agents", "Switch agent or manage agents"},
                 {"/tools", "List available tools"},
+                {"/load-tool", "Load additional tools for this session"},
                 {"/mcp", "Manage MCP server connections (add, enable, disable, edit, delete)"},
                 {"/debug", "Toggle debug mode"},
                 {"/clear", "Clear screen"},
@@ -208,39 +214,126 @@ public class RemoteSessionRunner {
     }
 
     @SuppressWarnings("unchecked")
-    private void handleTools() {
+    private List<Map<String, Object>> fetchTools() {
         String json;
         try {
             json = api.get("/api/tools");
         } catch (RemoteApiException e) {
             ui.showError(e.getMessage());
-            return;
+            return null;
         }
         if (json == null) {
             ui.showError("failed to fetch tools");
-            return;
+            return null;
         }
         Map<String, Object> response = JsonUtil.fromJson(Map.class, json);
         var tools = (List<Map<String, Object>>) response.get("tools");
         if (tools == null || tools.isEmpty()) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  No tools found.\n" + AnsiTheme.RESET);
-            return;
+            return null;
         }
+        return tools;
+    }
+
+    private void printToolLine(Map<String, Object> tool, String prefix, int descMaxLen) {
+        var name = (String) tool.get("name");
+        var desc = (String) tool.get("description");
+        var type = (String) tool.get("type");
+        var category = (String) tool.get("category");
+        String typeTag = type != null ? AnsiTheme.MUTED + " [" + type + "]" + AnsiTheme.RESET : "";
+        String catTag = category != null ? AnsiTheme.MUTED + " (" + category + ")" + AnsiTheme.RESET : "";
+        String descTag = desc != null && !desc.isBlank() ? AnsiTheme.MUTED + " - " + truncate(desc, descMaxLen) + AnsiTheme.RESET : "";
+        ui.printStreamingChunk(prefix + AnsiTheme.CMD_NAME + name + AnsiTheme.RESET + typeTag + catTag + descTag + "\n");
+    }
+
+    private void handleTools() {
+        var tools = fetchTools();
+        if (tools == null) return;
         ui.printStreamingChunk(String.format("%n  %sTools (%d)%s%n", AnsiTheme.PROMPT, tools.size(), AnsiTheme.RESET));
         for (var tool : tools) {
-            var name = (String) tool.get("name");
-            var desc = (String) tool.get("description");
-            var type = (String) tool.get("type");
-            var category = (String) tool.get("category");
-            String typeTag = type != null ? AnsiTheme.MUTED + " [" + type + "]" + AnsiTheme.RESET : "";
-            String catTag = category != null ? AnsiTheme.MUTED + " (" + category + ")" + AnsiTheme.RESET : "";
-            ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + name + AnsiTheme.RESET + typeTag + catTag);
-            if (desc != null && !desc.isBlank()) {
-                ui.printStreamingChunk(AnsiTheme.MUTED + " - " + truncate(desc, 50) + AnsiTheme.RESET);
-            }
-            ui.printStreamingChunk("\n");
+            printToolLine(tool, "  ", 50);
         }
         ui.printStreamingChunk("\n");
+    }
+
+    private void handleLoadTool() {
+        var tools = fetchTools();
+        if (tools == null) return;
+
+        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Select tools to load:" + AnsiTheme.RESET + "\n\n");
+        for (int i = 0; i < tools.size(); i++) {
+            printToolLine(tools.get(i), String.format("  %s%2d.%s ", AnsiTheme.CMD_NAME, i + 1, AnsiTheme.RESET), 40);
+        }
+
+        var selection = ui.readRawLine("\n  " + AnsiTheme.MUTED + "(e.g., 1,3,5 or 1-3)" + AnsiTheme.RESET + "\n  Selection: ");
+        if (selection == null || selection.isBlank()) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Cancelled.\n" + AnsiTheme.RESET);
+            return;
+        }
+
+        var toolIds = parseSelection(selection, tools);
+        if (toolIds.isEmpty()) {
+            ui.showError("invalid selection");
+            return;
+        }
+
+        try {
+            var request = new LoadToolsRequest();
+            request.toolIds = toolIds;
+            var resultJson = api.post("/api/sessions/" + session.id() + "/tools", request);
+            if (resultJson == null) {
+                ui.showError("failed to load tools");
+                return;
+            }
+            var result = JsonUtil.fromJson(LoadToolsResponse.class, resultJson);
+            if (result.loadedTools != null && !result.loadedTools.isEmpty()) {
+                ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Loaded " + result.loadedTools.size() + " tool(s):" + AnsiTheme.RESET + "\n");
+                for (var toolName : result.loadedTools) {
+                    ui.printStreamingChunk("  - " + AnsiTheme.CMD_NAME + toolName + AnsiTheme.RESET + "\n");
+                }
+            } else {
+                ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "No tools were loaded." + AnsiTheme.RESET + "\n");
+            }
+        } catch (RemoteApiException e) {
+            ui.showError(e.getMessage());
+        }
+    }
+
+    private List<String> parseSelection(String selection, List<Map<String, Object>> tools) {
+        var toolIds = new ArrayList<String>();
+        for (var part : selection.split(",")) {
+            var p = part.trim();
+            if (p.isEmpty()) continue;
+            if (p.contains("-")) {
+                var range = p.split("-", 2);
+                try {
+                    int start = Integer.parseInt(range[0].trim());
+                    int end = Integer.parseInt(range[1].trim());
+                    for (int i = Math.max(start, 1); i <= Math.min(end, tools.size()); i++) {
+                        addToolId(toolIds, tools.get(i - 1));
+                    }
+                } catch (NumberFormatException e) {
+                    ui.printStreamingChunk(AnsiTheme.WARNING + "  Skipping invalid range: " + p + AnsiTheme.RESET + "\n");
+                }
+            } else {
+                try {
+                    int idx = Integer.parseInt(p);
+                    if (idx >= 1 && idx <= tools.size()) {
+                        addToolId(toolIds, tools.get(idx - 1));
+                    }
+                } catch (NumberFormatException e) {
+                    ui.printStreamingChunk(AnsiTheme.WARNING + "  Skipping invalid input: " + p + AnsiTheme.RESET + "\n");
+                }
+            }
+        }
+        return toolIds;
+    }
+
+    private void addToolId(List<String> toolIds, Map<String, Object> tool) {
+        var id = (String) tool.get("id");
+        if (id != null && !toolIds.contains(id)) {
+            toolIds.add(id);
+        }
     }
 
     private void waitForReady(Semaphore readyForInput) {

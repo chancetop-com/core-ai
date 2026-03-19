@@ -33,6 +33,7 @@ import core.framework.util.Lists;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 /**
@@ -335,7 +336,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.llmProvider == null) {
             throw new Error("llmProvider is required for agent, please set it with llmProvider() method");
         }
-        agent.toolCalls = this.toolCalls;
+        agent.toolCalls = new CopyOnWriteArrayList<>(this.toolCalls);
         agent.subAgents = this.subAgents;
 
         agent.ragConfig = this.ragConfig;

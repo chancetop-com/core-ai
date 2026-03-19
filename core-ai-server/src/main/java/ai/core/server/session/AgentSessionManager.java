@@ -12,6 +12,7 @@ import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
+import core.framework.web.exception.NotFoundException;
 
 import java.util.List;
 import java.util.UUID;
@@ -68,13 +69,23 @@ public class AgentSessionManager {
 
     public InProcessAgentSession getSession(String sessionId) {
         var session = sessions.get(sessionId);
-        if (session == null) throw new RuntimeException("session not found, sessionId=" + sessionId);
+        if (session == null) throw new NotFoundException("session not found, sessionId=" + sessionId);
         return session;
     }
 
     public void closeSession(String sessionId) {
         var session = sessions.remove(sessionId);
         if (session != null) session.close();
+    }
+
+    public List<String> loadTools(String sessionId, List<String> toolIds) {
+        var session = getSession(sessionId);
+        var tools = toolRegistryService.resolveTools(toolIds);
+        if (tools.isEmpty()) {
+            throw new NotFoundException("no tools found for ids: " + toolIds);
+        }
+        session.loadTools(tools);
+        return tools.stream().map(ToolCall::getName).toList();
     }
 
     private SessionConfig toSessionConfig(AgentDefinition definition) {

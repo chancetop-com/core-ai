@@ -364,6 +364,16 @@ public class Agent extends Node<Agent> {
         return this.toolCalls;
     }
 
+    public void addTools(List<ToolCall> tools) {
+        if (tools == null) return;
+        for (var tool : tools) {
+            if (toolCalls.stream().noneMatch(t -> t.getName().equals(tool.getName()))) {
+                toolCalls.add(tool);
+                logger.debug("added tool: {}", tool.getName());
+            }
+        }
+    }
+
     public void setModel(String model) {
         this.model = model;
     }

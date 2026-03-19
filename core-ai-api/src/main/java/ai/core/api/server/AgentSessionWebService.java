@@ -4,6 +4,8 @@ import ai.core.api.server.agent.GenerateAgentDraftResponse;
 import ai.core.api.server.session.ApproveToolCallRequest;
 import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
+import ai.core.api.server.session.LoadToolsRequest;
+import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.api.server.session.SessionStatusResponse;
@@ -47,6 +49,11 @@ public interface AgentSessionWebService {
     @POST
     @Path("/api/sessions/:sessionId/generate-agent-draft")
     GenerateAgentDraftResponse generateAgentDraft(@PathParam("sessionId") String sessionId);
+
+    @POST
+    @Path("/api/sessions/:sessionId/tools")
+    @ResponseStatus(HTTPStatus.CREATED)
+    LoadToolsResponse loadTools(@PathParam("sessionId") String sessionId, LoadToolsRequest request);
 
     @DELETE
     @Path("/api/sessions/:sessionId")

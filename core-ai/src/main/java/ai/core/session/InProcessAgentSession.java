@@ -160,6 +160,11 @@ public class InProcessAgentSession implements AgentSession {
         executor.shutdownNow();
     }
 
+    public void loadTools(List<ai.core.tool.ToolCall> tools) {
+        agent.addTools(tools);
+        logger.info("loaded {} tools to session, sessionId={}", tools.size(), sessionId);
+    }
+
     private void dispatch(AgentEvent event) {
         logger.debug("dispatching event: {}, sessionId={}, thread={}", event.getClass().getSimpleName(), sessionId, Thread.currentThread().getName());
         for (AgentEventListener listener : listeners) {
