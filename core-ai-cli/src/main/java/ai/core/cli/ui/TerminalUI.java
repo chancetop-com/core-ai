@@ -27,7 +27,7 @@ import java.util.logging.Level;
  * @author stephen
  */
 public class TerminalUI {
-    private static final Logger logger = LoggerFactory.getLogger(TerminalUI.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(TerminalUI.class);
 
     private static boolean isDumbTerminal(Terminal t) {
         return t == null || Terminal.TYPE_DUMB.equals(t.getType()) || Terminal.TYPE_DUMB_COLOR.equals(t.getType());
@@ -35,21 +35,21 @@ public class TerminalUI {
 
     private static Terminal buildTerminal() throws IOException {
         String os = System.getProperty("os.name", "");
-        logger.debug("terminal: os.name={}", os);
+        LOGGER.debug("terminal: os.name={}", os);
         for (String providerName : new String[]{"ffm", "jni", "jansi"}) {
             try {
                 Terminal t = TerminalBuilder.builder().system(true).provider(providerName).build();
                 if (!isDumbTerminal(t)) {
-                    logger.debug("terminal: using provider={}", providerName);
+                    LOGGER.debug("terminal: using provider={}", providerName);
                     return t;
                 }
-                logger.debug("terminal: provider {} returned dumb terminal, skipping", providerName);
+                LOGGER.debug("terminal: provider {} returned dumb terminal, skipping", providerName);
                 t.close();
             } catch (Exception e) {
-                logger.debug("terminal: provider {} failed: {}", providerName, e.getMessage());
+                LOGGER.debug("terminal: provider {} failed: {}", providerName, e.getMessage());
             }
         }
-        logger.debug("terminal: all providers failed, falling back to default");
+        LOGGER.debug("terminal: all providers failed, falling back to default");
         return TerminalBuilder.builder().system(true).build();
     }
 
@@ -71,9 +71,9 @@ public class TerminalUI {
         try {
             this.terminal = buildTerminal();
             isDumb = isDumbTerminal(terminal);
-            logger.debug("terminal built: type={}, class={}", terminal.getType(), terminal.getClass().getName());
+            LOGGER.debug("terminal built: type={}, class={}", terminal.getType(), terminal.getClass().getName());
         } catch (IOException e) {
-            logger.warn("terminal build failed: {}", e.getMessage());
+            LOGGER.warn("terminal build failed: {}", e.getMessage());
             isDumb = true;
         }
 
@@ -114,7 +114,7 @@ public class TerminalUI {
     }
 
     public void showStatus(SessionStatus status) {
-        logger.debug("status: {}", status);
+        LOGGER.debug("status: {}", status);
     }
 
     public void showError(String message) {
@@ -215,7 +215,7 @@ public class TerminalUI {
     public int pickIndex(List<String> items) {
         if (items.isEmpty()) return -1;
         if (terminal == null || isDumbTerminal(terminal)) {
-            logger.debug("picker: dumb terminal, falling back to numeric selection");
+            LOGGER.debug("picker: dumb terminal, falling back to numeric selection");
             return pickIndexNumeric(items);
         }
         var savedAttrs = terminal.enterRawMode();

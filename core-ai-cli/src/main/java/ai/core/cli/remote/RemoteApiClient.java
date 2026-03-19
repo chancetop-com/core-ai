@@ -14,7 +14,7 @@ import java.util.Map;
  * @author stephen
  */
 public class RemoteApiClient {
-    private static final Logger logger = LoggerFactory.getLogger(RemoteApiClient.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(RemoteApiClient.class);
 
     private final String serverUrl;
     private final String apiKey;
@@ -100,7 +100,7 @@ public class RemoteApiClient {
         try {
             var response = apiClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
-                logger.warn("API error: {} {}", response.statusCode(), response.body());
+                LOGGER.warn("API error: {} {}", response.statusCode(), response.body());
                 var message = parseErrorMessage(response.statusCode(), response.body());
                 throw new RemoteApiException(response.statusCode(), message);
             }
@@ -108,7 +108,7 @@ public class RemoteApiClient {
         } catch (RemoteApiException e) {
             throw e;
         } catch (Exception e) {
-            logger.warn("API request failed: {}", e.getMessage());
+            LOGGER.warn("API request failed: {}", e.getMessage());
             return null;
         }
     }

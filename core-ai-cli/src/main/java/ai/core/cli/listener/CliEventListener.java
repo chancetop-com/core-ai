@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author stephen
  */
 public class CliEventListener extends BaseEventListener {
-    private static final Logger logger = LoggerFactory.getLogger(CliEventListener.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(CliEventListener.class);
 
     private static final int ESC = 27;
 
@@ -69,19 +69,19 @@ public class CliEventListener extends BaseEventListener {
 
     @Override
     public void onReasoningChunk(ReasoningChunkEvent event) {
-        logger.debug("reasoning chunk: length={}", event.chunk.length());
+        LOGGER.debug("reasoning chunk: length={}", event.chunk.length());
         super.onReasoningChunk(event);
     }
 
     @Override
     public void onTextChunk(TextChunkEvent event) {
-        logger.debug("text chunk: length={}", event.chunk.length());
+        LOGGER.debug("text chunk: length={}", event.chunk.length());
         super.onTextChunk(event);
     }
 
     @Override
     public void onToolStart(ToolStartEvent event) {
-        logger.debug("tool start: {} callId={} args={}", event.toolName, event.callId, truncate(event.arguments));
+        LOGGER.debug("tool start: {} callId={} args={}", event.toolName, event.callId, truncate(event.arguments));
         panel.stopSpinnerIfActive();
         panel.getMarkdownRenderer().flush();
         showSkillHintIfApplicable(event);
@@ -110,16 +110,16 @@ public class CliEventListener extends BaseEventListener {
 
     @Override
     public void onToolResult(ToolResultEvent event) {
-        logger.debug("tool result: {} callId={} status={} result={}",
+        LOGGER.debug("tool result: {} callId={} status={} result={}",
                 event.toolName, event.callId, event.status, truncate(event.result));
         super.onToolResult(event);
     }
 
     @Override
     public void onToolApprovalRequest(ToolApprovalRequestEvent event) {
-        logger.debug("tool approval request: {} callId={}", event.toolName, event.callId);
+        LOGGER.debug("tool approval request: {} callId={}", event.toolName, event.callId);
         super.onToolApprovalRequest(event);
-        logger.debug("tool approval sent: {} callId={}", event.toolName, event.callId);
+        LOGGER.debug("tool approval sent: {} callId={}", event.toolName, event.callId);
     }
 
     private void startEscReader() {
@@ -130,7 +130,7 @@ public class CliEventListener extends BaseEventListener {
             boolean escPressed = pollEscKey(ttyFile);
             stty("sane");
             if (escPressed) {
-                logger.debug("ESC pressed, cancelling turn");
+                LOGGER.debug("ESC pressed, cancelling turn");
                 session.cancelTurn();
             }
         }, "esc-reader");
@@ -155,7 +155,7 @@ public class CliEventListener extends BaseEventListener {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            logger.debug("esc reader error: {}", e.getMessage());
+            LOGGER.debug("esc reader error: {}", e.getMessage());
         }
         return false;
     }
@@ -179,7 +179,7 @@ public class CliEventListener extends BaseEventListener {
                     .start()
                     .waitFor();
         } catch (Exception e) {
-            logger.debug("stty failed: {}", e.getMessage());
+            LOGGER.debug("stty failed: {}", e.getMessage());
         }
     }
 }

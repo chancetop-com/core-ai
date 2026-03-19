@@ -44,7 +44,7 @@ import java.util.List;
  * @author stephen
  */
 public class CliApp {
-    private static final Logger logger = LoggerFactory.getLogger(CliApp.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(CliApp.class);
 
     private static final Path DEFAULT_CONFIG = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
     private static final String SESSIONS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "sessions").toString();
@@ -72,13 +72,13 @@ public class CliApp {
 
         InteractiveConfigSetup.setupIfNeeded();
 
-        logger.info("loading config from {}", configFile);
+        LOGGER.info("loading config from {}", configFile);
         var props = PropertiesFileSource.fromFile(configFile);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
         clearLoading();
-        logger.info("bootstrap initialized");
+        LOGGER.info("bootstrap initialized");
 
         restoreActiveProvider(props, result.llmProviders);
 
@@ -88,13 +88,8 @@ public class CliApp {
         var sessionManager = new SessionManager(sessionPersistence);
         var ui = new TerminalUI();
         var modelName = modelOverride != null ? modelOverride : result.llmProviders.getDefaultProvider().config.getModel();
-        String currentSessionId = resolveSessionId(sessionManager, ui);
-        if (currentSessionId == null) {
-            currentSessionId = "cli-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-        }
-
+        String currentSessionId = resolveOrCreateSessionId(sessionManager, ui);
         CliLogger.initialize(currentSessionId);
-
         var permissionStore = whiteToolsPermissionStore();
         var noteMemory = new MdMemoryProvider(workspace);
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
@@ -148,6 +143,11 @@ public class CliApp {
                 providers.setDefaultProvider(type);
             }
         });
+    }
+
+    private String resolveOrCreateSessionId(SessionManager sessionManager, TerminalUI ui) {
+        String sessionId = resolveSessionId(sessionManager, ui);
+        return sessionId != null ? sessionId : "cli-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
     }
 
     private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {

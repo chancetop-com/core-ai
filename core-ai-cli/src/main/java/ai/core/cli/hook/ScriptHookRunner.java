@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class ScriptHookRunner {
-    private static final Logger logger = LoggerFactory.getLogger(ScriptHookRunner.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ScriptHookRunner.class);
     private static final long TIMEOUT_SECONDS = 10;
 
     private final Path workspace;
@@ -31,19 +31,19 @@ public class ScriptHookRunner {
             boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                logger.warn("Hook script timed out: {}", command);
+                LOGGER.warn("Hook script timed out: {}", command);
                 return "";
             }
 
             int exitCode = process.exitValue();
             if (exitCode != 0) {
-                logger.warn("Hook script exited with code {}: {}", exitCode, command);
+                LOGGER.warn("Hook script exited with code {}: {}", exitCode, command);
                 return "";
             }
 
             return stdout.strip();
         } catch (IOException | InterruptedException e) {
-            logger.warn("Hook script failed: {} - {}", command, e.getMessage());
+            LOGGER.warn("Hook script failed: {} - {}", command, e.getMessage());
             return "";
         }
     }

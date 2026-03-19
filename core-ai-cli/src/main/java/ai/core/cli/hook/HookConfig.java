@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class HookConfig {
-    private static final Logger logger = LoggerFactory.getLogger(HookConfig.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(HookConfig.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public static HookConfig load(Path workspace) {
@@ -27,7 +27,7 @@ public final class HookConfig {
             String content = Files.readString(file);
             return parse(content, workspace);
         } catch (IOException e) {
-            logger.warn("Failed to load hooks.json: {}", e.getMessage());
+            LOGGER.warn("Failed to load hooks.json: {}", e.getMessage());
             return new HookConfig(Collections.emptyMap());
         }
     }

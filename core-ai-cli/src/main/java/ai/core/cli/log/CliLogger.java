@@ -4,14 +4,13 @@ import ai.core.cli.DebugLog;
 import org.slf4j.Marker;
 import org.slf4j.helpers.AbstractLogger;
 
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.io.PrintWriter;
 import java.io.Serial;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
@@ -28,10 +27,6 @@ public final class CliLogger extends AbstractLogger {
     private static volatile PrintWriter fileWriter;
     private static volatile String currentSessionId = "default";
 
-    CliLogger(String name) {
-        this.name = name;
-    }
-
     public static void initialize(String sessionId) {
         currentSessionId = sessionId;
         try {
@@ -42,7 +37,8 @@ public final class CliLogger extends AbstractLogger {
         closeFileWriter();
         Path logFile = LOGS_DIR.resolve(sessionId + ".log");
         try {
-            fileWriter = new PrintWriter(new FileWriter(logFile.toFile(), StandardCharsets.UTF_8, true), true);
+            var bw = Files.newBufferedWriter(logFile, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            fileWriter = new PrintWriter(bw, true);
         } catch (IOException e) {
             STDERR.println("Failed to open log file: " + e.getMessage());
             fileWriter = null;
@@ -87,6 +83,10 @@ public final class CliLogger extends AbstractLogger {
 
     public static void setCurrentSessionId(String currentSessionId) {
         CliLogger.currentSessionId = currentSessionId;
+    }
+
+    CliLogger(String name) {
+        this.name = name;
     }
 
     @Override

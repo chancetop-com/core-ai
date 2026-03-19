@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MemoryCommandHandler {
-    private static final Logger logger = LoggerFactory.getLogger(MemoryCommandHandler.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(MemoryCommandHandler.class);
 
     private final TerminalUI ui;
     private final MdMemoryProvider memory;
@@ -94,7 +94,7 @@ public class MemoryCommandHandler {
                     .waitFor();
             ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Editor closed.\n\n");
         } catch (IOException e) {
-            logger.warn("Failed to open editor: {}", e.getMessage());
+            LOGGER.warn("Failed to open editor: {}", e.getMessage());
             ui.printStreamingChunk("  " + AnsiTheme.ERROR + "Failed to open editor: " + e.getMessage()
                     + AnsiTheme.RESET + "\n\n");
         } catch (InterruptedException e) {
@@ -108,7 +108,7 @@ public class MemoryCommandHandler {
         try {
             java.nio.file.Files.createDirectories(dir);
         } catch (IOException e) {
-            logger.warn("Failed to create memory dir: {}", e.getMessage());
+            LOGGER.warn("Failed to create memory dir: {}", e.getMessage());
         }
         String dirPath = dir.toAbsolutePath().toString();
         String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
@@ -117,7 +117,7 @@ public class MemoryCommandHandler {
         try {
             new ProcessBuilder(cmd, dirPath).start();
         } catch (IOException e) {
-            logger.warn("Failed to open folder: {}", e.getMessage());
+            LOGGER.warn("Failed to open folder: {}", e.getMessage());
             ui.printStreamingChunk("  " + AnsiTheme.ERROR + "Failed: " + e.getMessage()
                     + AnsiTheme.RESET + "\n\n");
         }

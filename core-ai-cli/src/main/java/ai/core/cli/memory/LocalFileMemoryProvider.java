@@ -15,7 +15,7 @@ import java.util.Locale;
  * @author xander
  */
 public class LocalFileMemoryProvider implements MemoryProvider {
-    private static final Logger logger = LoggerFactory.getLogger(LocalFileMemoryProvider.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(LocalFileMemoryProvider.class);
 
     private static final long GLOBAL_MAX_BYTES = 5 * 1024L;
     private static final long PROJECT_MAX_BYTES = 10 * 1024L;
@@ -103,7 +103,7 @@ public class LocalFileMemoryProvider implements MemoryProvider {
             }
             return removed;
         } catch (IOException e) {
-            logger.warn("Failed to remove memory entries: {}", e.getMessage());
+            LOGGER.warn("Failed to remove memory entries: {}", e.getMessage());
             return 0;
         }
     }
@@ -124,7 +124,7 @@ public class LocalFileMemoryProvider implements MemoryProvider {
         try {
             return Files.exists(path) ? Files.readString(path) : "";
         } catch (IOException e) {
-            logger.warn("Failed to read memory file {}: {}", path, e.getMessage());
+            LOGGER.warn("Failed to read memory file {}: {}", path, e.getMessage());
             return "";
         }
     }

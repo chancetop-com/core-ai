@@ -10,13 +10,13 @@ import java.util.logging.LogRecord;
  * @author stephen
  */
 final class JLineDebugHandler extends Handler {
-    private static final Logger logger = LoggerFactory.getLogger(JLineDebugHandler.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(JLineDebugHandler.class);
 
     @Override
     public void publish(LogRecord record) {
-        logger.debug("[jline] {}", record.getMessage());
+        LOGGER.debug("[jline] {}", record.getMessage());
         if (record.getThrown() != null) {
-            logger.debug("[jline] exception: {}", record.getThrown());
+            LOGGER.debug("[jline] exception: {}", record.getThrown());
         }
     }
 
