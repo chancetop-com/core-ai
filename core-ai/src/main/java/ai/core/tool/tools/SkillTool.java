@@ -41,17 +41,34 @@ public class SkillTool extends ToolCall {
         return new Builder();
     }
 
-    static String buildDescription(List<SkillMetadata> skills) {
+    static String buildDescription(List<SkillMetadata> skills, String workspaceDir) {
         if (skills == null || skills.isEmpty()) {
             return NO_SKILLS_DESC;
         }
-        var sb = new StringBuilder(BASE_DESC.length() + skills.size() * 100);
-        sb.append(BASE_DESC).append("\nAvailable skills:\n");
+        var sb = new StringBuilder(BASE_DESC.length() + skills.size() * 200);
+        sb.append(BASE_DESC).append("\n<available_skills>\n");
         for (var skill : skills) {
-            sb.append("- ").append(skill.getName()).append(": ").append(skill.getDescription()).append('\n');
+            sb.append("  <skill>\n");
+            sb.append("    <name>").append(skill.getName()).append("</name>\n");
+            sb.append("    <description>").append(skill.getDescription()).append("</description>\n");
+            if (skill.getSkillDir() != null) {
+                sb.append("    <location>").append(toDisplayPath(skill.getSkillDir(), workspaceDir)).append("</location>\n");
+            }
+            sb.append("  </skill>\n");
         }
-        sb.append("\nProvide the skill name to get full instructions and resources.");
+        sb.append("</available_skills>\n\nProvide the skill name to get full instructions and resources.");
         return sb.toString();
+    }
+
+    private static String toDisplayPath(String path, String workspaceDir) {
+        String home = System.getProperty("user.home");
+        if (workspaceDir != null && path.startsWith(workspaceDir)) {
+            return "." + path.substring(workspaceDir.length());
+        }
+        if (home != null && path.startsWith(home)) {
+            return "~" + path.substring(home.length());
+        }
+        return path;
     }
 
     private List<SkillMetadata> loadedSkills;
@@ -135,6 +152,7 @@ public class SkillTool extends ToolCall {
     public static class Builder extends ToolCall.Builder<Builder, SkillTool> {
         private List<SkillSource> sources;
         private int maxFileSize = 10 * 1024 * 1024;
+        private String workspaceDir;
 
         @Override
         protected Builder self() {
@@ -151,12 +169,17 @@ public class SkillTool extends ToolCall {
             return this;
         }
 
+        public Builder workspaceDir(String workspaceDir) {
+            this.workspaceDir = workspaceDir;
+            return this;
+        }
+
         public SkillTool build() {
             var loader = new SkillLoader(maxFileSize);
             List<SkillMetadata> skills = sources != null ? loader.loadAll(sources) : List.of();
 
             this.name(TOOL_NAME);
-            this.description(buildDescription(skills));
+            this.description(buildDescription(skills, workspaceDir));
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "name", "Skill name to use").required()
             ));

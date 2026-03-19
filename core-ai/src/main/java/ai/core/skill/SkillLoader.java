@@ -191,8 +191,14 @@ public class SkillLoader {
     }
 
     boolean validateSkillName(String name, String directoryName) {
-        if (!SkillMetadata.isValidName(name)) return false;
-        return name.equals(directoryName);
+        if (name == null || name.isBlank()) return false;
+        if (!SkillMetadata.isValidName(name)) {
+            LOGGER.warn("Skill name '{}' does not follow naming convention (expected: ^[a-z0-9]+(-[a-z0-9]+)*$), loading anyway", name);
+        }
+        if (!name.equals(directoryName)) {
+            LOGGER.warn("Skill name '{}' does not match directory name '{}', loading with skill name", name, directoryName);
+        }
+        return true;
     }
 
     @SuppressWarnings("unchecked")

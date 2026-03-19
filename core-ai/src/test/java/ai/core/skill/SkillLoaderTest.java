@@ -52,11 +52,11 @@ class SkillLoaderTest {
     }
 
     @Test
-    void loadFromSourceSkipsInvalidNameSkill() {
+    void loadFromSourceLoadsSkillWithMismatchedDirectoryName() {
         String skillsDir = getTestResourcePath("skills");
         var skills = loader.loadFromSource(skillsDir);
-        var invalid = skills.stream().filter(s -> "wrong-name-here".equals(s.getName())).findFirst().orElse(null);
-        assertNull(invalid);
+        var mismatch = skills.stream().filter(s -> "wrong-name-here".equals(s.getName())).findFirst().orElse(null);
+        assertNotNull(mismatch);
     }
 
     @Test
@@ -141,20 +141,25 @@ class SkillLoaderTest {
         assertTrue(loader.validateSkillName("code-review", "code-review"));
         assertTrue(loader.validateSkillName("a", "a"));
         assertTrue(loader.validateSkillName("arxiv-search-v2", "arxiv-search-v2"));
+        assertTrue(loader.validateSkillName("name-mismatch", "different-dir"));
     }
 
     @Test
     void validateSkillNameInvalid() {
         assertFalse(loader.validateSkillName(null, "test"));
         assertFalse(loader.validateSkillName("", ""));
-        assertFalse(loader.validateSkillName("-bad-name", "-bad-name"));
-        assertFalse(loader.validateSkillName("bad-name-", "bad-name-"));
-        assertFalse(loader.validateSkillName("web--research", "web--research"));
-        assertFalse(loader.validateSkillName("Web-Research", "Web-Research"));
-        assertFalse(loader.validateSkillName("web_research", "web_research"));
-        assertFalse(loader.validateSkillName("name-mismatch", "different-dir"));
+    }
+
+    @Test
+    void validateSkillNameNonConventionalLoadsWithWarning() {
+        assertTrue(loader.validateSkillName("-bad-name", "-bad-name"));
+        assertTrue(loader.validateSkillName("bad-name-", "bad-name-"));
+        assertTrue(loader.validateSkillName("web--research", "web--research"));
+        assertTrue(loader.validateSkillName("Web-Research", "Web-Research"));
+        assertTrue(loader.validateSkillName("web_research", "web_research"));
+        assertTrue(loader.validateSkillName("Self-Improving + Proactive Agent", "self-improving-1.2.16"));
         var longName = "a".repeat(65);
-        assertFalse(loader.validateSkillName(longName, longName));
+        assertTrue(loader.validateSkillName(longName, longName));
     }
 
     @Test

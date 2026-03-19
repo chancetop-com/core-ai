@@ -81,6 +81,7 @@ public class CliAgent {
         tools.add(SkillTool.builder()
                 .sources(skillConfig.getSources())
                 .maxFileSize(skillConfig.getMaxSkillFileSize())
+                .workspaceDir(config.workspace.toAbsolutePath().toString())
                 .build());
         return tools;
     }
