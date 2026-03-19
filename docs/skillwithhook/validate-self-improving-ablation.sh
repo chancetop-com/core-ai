@@ -18,7 +18,7 @@ set -e
 CLI="./build/core-ai-cli/install/core-ai-cli/bin/core-ai-cli"
 SKILL_SRC=".core-ai/skills/self-improvement"
 SCENARIO_IDS="T1 T2 T3 T4 T5 T6"
-RUNS=3
+RUNS=10
 
 get_query() {
     case "$1" in

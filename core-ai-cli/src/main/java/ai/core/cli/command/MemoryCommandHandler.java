@@ -29,7 +29,7 @@ public class MemoryCommandHandler {
                 ? trimmed.substring("/memory".length()).trim()
                 : "";
         if (args.isEmpty()) {
-            showSubMenu();
+            printUsage();
         } else if ("search".equals(args)) {
             promptSearch();
         } else if (args.startsWith("search ")) {
@@ -40,22 +40,6 @@ public class MemoryCommandHandler {
             openFolder();
         } else {
             printUsage();
-        }
-    }
-
-    private void showSubMenu() {
-        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Memory" + AnsiTheme.RESET + "\n");
-        var options = List.of(
-                "Edit    - Select a memory file to edit",
-                "Search  - Search memories by keyword",
-                "Open    - Open memory folder in file manager"
-        );
-        int idx = ui.pickIndex(options);
-        switch (idx) {
-            case 0 -> showAndPick(memory.listMemories());
-            case 1 -> promptSearch();
-            case 2 -> openFolder();
-            default -> { }
         }
     }
 
