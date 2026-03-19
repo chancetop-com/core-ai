@@ -281,7 +281,7 @@ public class Agent extends Node<Agent> {
         return funcMsg.toolCalls.stream().map(tool -> {
             var msg = new ArrayList<Message>();
             var result = getToolExecutor().execute(tool, getExecutionContext());
-            if (result.isDirectReturn() || Strings.isBlank(result.toResultForLLM())) {
+            if (result.isDirectReturn()) {
                 msg.add(AgentHelper.buildToolMessage(tool, result, true));
                 msg.add(Message.of(RoleType.ASSISTANT, result.toResultForLLM()));
             } else {
