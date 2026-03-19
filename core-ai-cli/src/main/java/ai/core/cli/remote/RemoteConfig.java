@@ -1,8 +1,9 @@
 package ai.core.cli.remote;
 
-import ai.core.cli.DebugLog;
 import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,6 +16,7 @@ public record RemoteConfig(@Property(name = "server_url") String serverUrl,
                            @Property(name = "api_key") String apiKey,
                            @Property(name = "agent_id") String agentId,
                            @Property(name = "name") String name) {
+    private static final Logger logger = LoggerFactory.getLogger(RemoteConfig.class);
     private static final Path CONFIG_PATH = Path.of(System.getProperty("user.home"), ".core-ai", "remote.json");
 
     public static RemoteConfig load() {
@@ -32,7 +34,7 @@ public record RemoteConfig(@Property(name = "server_url") String serverUrl,
             Files.createDirectories(CONFIG_PATH.getParent());
             Files.writeString(CONFIG_PATH, JsonUtil.toJson(this));
         } catch (IOException e) {
-            DebugLog.log("Failed to save remote config: " + e.getMessage());
+            logger.warn("Failed to save remote config: {}", e.getMessage());
         }
     }
 
@@ -40,7 +42,7 @@ public record RemoteConfig(@Property(name = "server_url") String serverUrl,
         try {
             Files.deleteIfExists(CONFIG_PATH);
         } catch (IOException e) {
-            DebugLog.log("Failed to clear remote config: " + e.getMessage());
+            logger.warn("Failed to clear remote config: {}", e.getMessage());
         }
     }
 }

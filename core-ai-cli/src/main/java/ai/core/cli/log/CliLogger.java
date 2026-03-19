@@ -4,7 +4,13 @@ import ai.core.cli.DebugLog;
 import org.slf4j.Marker;
 import org.slf4j.helpers.AbstractLogger;
 
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.io.Serial;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
@@ -12,12 +18,70 @@ import java.time.format.DateTimeFormatter;
  * @author stephen
  */
 public final class CliLogger extends AbstractLogger {
-    private static final long serialVersionUID = 1L;
+    @Serial
+    private static final long serialVersionUID = 7591457691679122691L;
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
     private static final PrintStream STDERR = System.err;
+    private static final Path LOGS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "logs");
+
+    private static volatile PrintWriter fileWriter;
+    private static volatile String currentSessionId = "default";
 
     CliLogger(String name) {
         this.name = name;
+    }
+
+    public static void initialize(String sessionId) {
+        currentSessionId = sessionId;
+        try {
+            Files.createDirectories(LOGS_DIR);
+        } catch (IOException e) {
+            System.err.println("Failed to create logs directory: " + e.getMessage());
+        }
+        closeFileWriter();
+        Path logFile = LOGS_DIR.resolve(sessionId + ".log");
+        try {
+            fileWriter = new PrintWriter(new FileWriter(logFile.toFile(), true), true);
+        } catch (IOException e) {
+            System.err.println("Failed to open log file: " + e.getMessage());
+            fileWriter = null;
+        }
+    }
+
+    public static void close() {
+        closeFileWriter();
+    }
+
+    private static void closeFileWriter() {
+        PrintWriter writer = fileWriter;
+        if (writer != null) {
+            synchronized (CliLogger.class) {
+                if (fileWriter != null) {
+                    fileWriter.close();
+                    fileWriter = null;
+                }
+            }
+        }
+    }
+
+    private static void writeToFile(String line, Throwable throwable) {
+        PrintWriter writer = fileWriter;
+        if (writer != null) {
+            synchronized (CliLogger.class) {
+                writer.println(line);
+                if (throwable != null) {
+                    throwable.printStackTrace(writer);
+                }
+            }
+        }
+    }
+
+    public static String getCurrentSessionId() {
+        return currentSessionId;
+    }
+
+    public static void setCurrentSessionId(String currentSessionId) {
+        CliLogger.currentSessionId = currentSessionId;
     }
 
     @Override
@@ -33,11 +97,17 @@ public final class CliLogger extends AbstractLogger {
         var timestamp = LocalTime.now().format(TIME_FMT);
         var line = "[" + level.name() + " " + timestamp + "] " + name + " - " + formatted;
 
-        STDERR.println(line);
-        if (throwable != null) {
-            throwable.printStackTrace(STDERR);
+        boolean writeToTerminal = level == org.slf4j.event.Level.ERROR || level == org.slf4j.event.Level.WARN;
+
+        writeToFile(line, throwable);
+
+        if (writeToTerminal) {
+            STDERR.println(line);
+            if (throwable != null) {
+                throwable.printStackTrace(STDERR);
+            }
+            STDERR.flush();
         }
-        STDERR.flush();
     }
 
     private boolean isMuted() {
@@ -48,7 +118,8 @@ public final class CliLogger extends AbstractLogger {
         if (isMuted()) return DebugLog.isEnabled();
         return switch (level) {
             case TRACE -> false;
-            case DEBUG, INFO -> DebugLog.isEnabled();
+            case DEBUG -> DebugLog.isEnabled();   // DEBUG: 仅 debug 模式启用
+            case INFO -> true;                    // INFO: 始终记录到文件
             case WARN, ERROR -> true;
         };
     }

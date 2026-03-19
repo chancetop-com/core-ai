@@ -1,6 +1,7 @@
 package ai.core.cli.hook;
 
-import ai.core.cli.DebugLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -8,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class ScriptHookRunner {
+    private static final Logger logger = LoggerFactory.getLogger(ScriptHookRunner.class);
     private static final long TIMEOUT_SECONDS = 10;
 
     private final Path workspace;
@@ -29,19 +31,19 @@ public class ScriptHookRunner {
             boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                DebugLog.log("Hook script timed out: " + command);
+                logger.warn("Hook script timed out: {}", command);
                 return "";
             }
 
             int exitCode = process.exitValue();
             if (exitCode != 0) {
-                DebugLog.log("Hook script exited with code " + exitCode + ": " + command);
+                logger.warn("Hook script exited with code {}: {}", exitCode, command);
                 return "";
             }
 
             return stdout.strip();
         } catch (IOException | InterruptedException e) {
-            DebugLog.log("Hook script failed: " + command + " - " + e.getMessage());
+            logger.warn("Hook script failed: {} - {}", command, e.getMessage());
             return "";
         }
     }

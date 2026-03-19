@@ -1,6 +1,7 @@
 package ai.core.cli.ui;
 
-import ai.core.cli.DebugLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
@@ -9,11 +10,13 @@ import java.util.logging.LogRecord;
  * @author stephen
  */
 final class JLineDebugHandler extends Handler {
+    private static final Logger logger = LoggerFactory.getLogger(JLineDebugHandler.class);
+
     @Override
     public void publish(LogRecord record) {
-        DebugLog.log("[jline] " + record.getMessage());
+        logger.debug("[jline] {}", record.getMessage());
         if (record.getThrown() != null) {
-            DebugLog.log("[jline] exception: " + record.getThrown());
+            logger.debug("[jline] exception: {}", record.getThrown());
         }
     }
 

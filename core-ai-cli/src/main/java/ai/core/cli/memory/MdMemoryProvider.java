@@ -1,6 +1,7 @@
 package ai.core.cli.memory;
 
-import ai.core.cli.DebugLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -13,6 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MdMemoryProvider {
+    private static final Logger logger = LoggerFactory.getLogger(MdMemoryProvider.class);
 
     private static final Pattern FRONTMATTER_PATTERN = Pattern.compile(
             "^---\\s*\\n(.*?)\\n---\\s*\\n", Pattern.DOTALL);
@@ -47,7 +49,7 @@ public class MdMemoryProvider {
                       .append(content.strip()).append('\n');
                 }
             } catch (IOException e) {
-                DebugLog.log("Failed to load memory files: " + e.getMessage());
+                logger.warn("Failed to load memory files: {}", e.getMessage());
             }
         }
         return sb.toString();
@@ -78,7 +80,7 @@ public class MdMemoryProvider {
                 }
             }
         } catch (IOException e) {
-            DebugLog.log("Failed to list memory files: " + e.getMessage());
+            logger.warn("Failed to list memory files: {}", e.getMessage());
         }
         return entries;
     }
@@ -144,7 +146,7 @@ public class MdMemoryProvider {
         try {
             return Files.exists(path) ? Files.readString(path) : "";
         } catch (IOException e) {
-            DebugLog.log("Failed to read file " + path + ": " + e.getMessage());
+            logger.warn("Failed to read file {}: {}", path, e.getMessage());
             return "";
         }
     }

@@ -1,9 +1,10 @@
 package ai.core.cli.remote;
 
-import ai.core.cli.DebugLog;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.utils.JsonUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -15,6 +16,8 @@ import java.util.Map;
  * @author stephen
  */
 public class RemoteCommandHandler {
+    private static final Logger logger = LoggerFactory.getLogger(RemoteCommandHandler.class);
+
     private final TerminalUI ui;
 
     public RemoteCommandHandler(TerminalUI ui) {
@@ -48,18 +51,18 @@ public class RemoteCommandHandler {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote Server Setup" + AnsiTheme.RESET + "\n\n");
 
         var serverUrl = ui.readRawLine("  Server URL [http://localhost:8080]: ");
-        DebugLog.log("serverUrl input: [" + serverUrl + "] (null=" + (serverUrl == null) + ")");
+        logger.debug("serverUrl input: [{}] (null={})", serverUrl, serverUrl == null);
         if (serverUrl == null) return null;
         serverUrl = serverUrl.trim();
         if (serverUrl.isEmpty()) serverUrl = "http://localhost:8080";
         if (serverUrl.endsWith("/")) serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
 
         var email = ui.readRawLine("  Email: ");
-        DebugLog.log("email input: [" + email + "] (null=" + (email == null) + ")");
+        logger.debug("email input: [{}] (null={})", email, email == null);
         if (email == null || email.isBlank()) return null;
 
         var password = ui.readRawLine("  Password: ");
-        DebugLog.log("password input: [" + password + "] (null=" + (password == null) + ")");
+        logger.debug("password input: [{}] (null={})", password != null ? "***" : null, password == null);
         if (password == null || password.isBlank()) return null;
 
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Logging in..." + AnsiTheme.RESET);
@@ -83,7 +86,7 @@ public class RemoteCommandHandler {
         try {
             var body = JsonUtil.toJson(Map.of("email", email, "password", password));
             var uri = URI.create(serverUrl + "/api/auth/login");
-            DebugLog.log("login request: uri=" + uri + ", body=" + body);
+            logger.debug("login request: uri={}, body={}", uri, body);
             var request = HttpRequest.newBuilder()
                     .uri(uri)
                     .header("Content-Type", "application/json")
@@ -91,8 +94,8 @@ public class RemoteCommandHandler {
                     .build();
             var httpClient = HttpClient.newBuilder().build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            DebugLog.log("login response: status=" + response.statusCode() + ", body=" + response.body()
-                    + ", uri=" + response.uri());
+            logger.debug("login response: status={}, body={}, uri={}",
+                    response.statusCode(), response.body(), response.uri());
             if (response.statusCode() != 200) {
                 ui.printStreamingChunk("\n" + AnsiTheme.ERROR + "  ✗ Login failed: " + response.body() + AnsiTheme.RESET + "\n");
                 return null;

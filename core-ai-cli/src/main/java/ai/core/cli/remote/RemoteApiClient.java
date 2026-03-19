@@ -1,7 +1,8 @@
 package ai.core.cli.remote;
 
-import ai.core.cli.DebugLog;
 import ai.core.utils.JsonUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -13,6 +14,8 @@ import java.util.Map;
  * @author stephen
  */
 public class RemoteApiClient {
+    private static final Logger logger = LoggerFactory.getLogger(RemoteApiClient.class);
+
     private final String serverUrl;
     private final String apiKey;
     private final HttpClient sseClient;
@@ -97,7 +100,7 @@ public class RemoteApiClient {
         try {
             var response = apiClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
-                DebugLog.log("API error: " + response.statusCode() + " " + response.body());
+                logger.warn("API error: {} {}", response.statusCode(), response.body());
                 var message = parseErrorMessage(response.statusCode(), response.body());
                 throw new RemoteApiException(response.statusCode(), message);
             }
@@ -105,7 +108,7 @@ public class RemoteApiClient {
         } catch (RemoteApiException e) {
             throw e;
         } catch (Exception e) {
-            DebugLog.log("API request failed: " + e.getMessage());
+            logger.warn("API request failed: {}", e.getMessage());
             return null;
         }
     }

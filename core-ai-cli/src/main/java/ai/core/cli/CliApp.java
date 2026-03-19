@@ -11,6 +11,7 @@ import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
+import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.remote.HttpAgentSession;
 import ai.core.cli.remote.RemoteApiClient;
@@ -29,6 +30,8 @@ import ai.core.tool.tools.GrepFileTool;
 import ai.core.tool.tools.MemoryTool;
 import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.WriteTodosTool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -41,6 +44,8 @@ import java.util.List;
  * @author stephen
  */
 public class CliApp {
+    private static final Logger logger = LoggerFactory.getLogger(CliApp.class);
+
     private static final Path DEFAULT_CONFIG = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
     private static final String SESSIONS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "sessions").toString();
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -67,13 +72,13 @@ public class CliApp {
 
         InteractiveConfigSetup.setupIfNeeded();
 
-        DebugLog.log("loading config from " + configFile);
+        logger.info("loading config from {}", configFile);
         var props = PropertiesFileSource.fromFile(configFile);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
         clearLoading();
-        DebugLog.log("bootstrap initialized");
+        logger.info("bootstrap initialized");
 
         restoreActiveProvider(props, result.llmProviders);
 
@@ -87,6 +92,8 @@ public class CliApp {
         if (currentSessionId == null) {
             currentSessionId = "cli-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
         }
+
+        CliLogger.initialize(currentSessionId);
 
         var permissionStore = whiteToolsPermissionStore();
         var noteMemory = new MdMemoryProvider(workspace);
@@ -114,6 +121,7 @@ public class CliApp {
             }
             ui.printStreamingChunk("Goodbye!\n");
         } finally {
+            CliLogger.close();
             closeQuietly(ui);
             closeShutdownResources(result);
         }

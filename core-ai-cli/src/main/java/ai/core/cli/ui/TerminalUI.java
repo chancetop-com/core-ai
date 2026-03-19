@@ -9,6 +9,8 @@ import org.jline.reader.Reference;
 import org.jline.reader.impl.LineReaderImpl;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -20,12 +22,12 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * @author stephen
  */
 public class TerminalUI {
+    private static final Logger logger = LoggerFactory.getLogger(TerminalUI.class);
 
     private static boolean isDumbTerminal(Terminal t) {
         return t == null || Terminal.TYPE_DUMB.equals(t.getType()) || Terminal.TYPE_DUMB_COLOR.equals(t.getType());
@@ -33,21 +35,21 @@ public class TerminalUI {
 
     private static Terminal buildTerminal() throws IOException {
         String os = System.getProperty("os.name", "");
-        DebugLog.log("terminal: os.name=" + os);
+        logger.debug("terminal: os.name={}", os);
         for (String providerName : new String[]{"ffm", "jni", "jansi"}) {
             try {
                 Terminal t = TerminalBuilder.builder().system(true).provider(providerName).build();
                 if (!isDumbTerminal(t)) {
-                    DebugLog.log("terminal: using provider=" + providerName);
+                    logger.debug("terminal: using provider={}", providerName);
                     return t;
                 }
-                DebugLog.log("terminal: provider " + providerName + " returned dumb terminal, skipping");
+                logger.debug("terminal: provider {} returned dumb terminal, skipping", providerName);
                 t.close();
             } catch (Exception e) {
-                DebugLog.log("terminal: provider " + providerName + " failed: " + e.getMessage());
+                logger.debug("terminal: provider {} failed: {}", providerName, e.getMessage());
             }
         }
-        DebugLog.log("terminal: all providers failed, falling back to default");
+        logger.debug("terminal: all providers failed, falling back to default");
         return TerminalBuilder.builder().system(true).build();
     }
 
@@ -69,9 +71,9 @@ public class TerminalUI {
         try {
             this.terminal = buildTerminal();
             isDumb = isDumbTerminal(terminal);
-            DebugLog.log("terminal built: type=" + terminal.getType() + ", class=" + terminal.getClass().getName());
+            logger.debug("terminal built: type={}, class={}", terminal.getType(), terminal.getClass().getName());
         } catch (IOException e) {
-            DebugLog.log("terminal build failed: " + e.getMessage());
+            logger.warn("terminal build failed: {}", e.getMessage());
             isDumb = true;
         }
 
@@ -112,7 +114,7 @@ public class TerminalUI {
     }
 
     public void showStatus(SessionStatus status) {
-        DebugLog.log("status: " + status);
+        logger.debug("status: {}", status);
     }
 
     public void showError(String message) {
@@ -213,7 +215,7 @@ public class TerminalUI {
     public int pickIndex(List<String> items) {
         if (items.isEmpty()) return -1;
         if (terminal == null || isDumbTerminal(terminal)) {
-            DebugLog.log("picker: dumb terminal, falling back to numeric selection");
+            logger.debug("picker: dumb terminal, falling back to numeric selection");
             return pickIndexNumeric(items);
         }
         var savedAttrs = terminal.enterRawMode();
@@ -270,9 +272,9 @@ public class TerminalUI {
 
     private void initDebugLogging() {
         boolean isDebug = DebugLog.isEnabled();
-        Logger.getLogger("org.jline").setLevel(isDebug ? Level.FINE : Level.SEVERE);
+        java.util.logging.Logger.getLogger("org.jline").setLevel(isDebug ? Level.FINE : Level.SEVERE);
         if (isDebug) {
-            Logger.getLogger("org.jline").addHandler(new JLineDebugHandler());
+            java.util.logging.Logger.getLogger("org.jline").addHandler(new JLineDebugHandler());
         }
     }
 

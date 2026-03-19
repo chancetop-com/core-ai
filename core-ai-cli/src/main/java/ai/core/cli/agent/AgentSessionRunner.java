@@ -1,7 +1,6 @@
 package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
-import ai.core.cli.DebugLog;
 import ai.core.cli.command.McpCommandHandler;
 import ai.core.cli.command.MemoryCommandHandler;
 import ai.core.cli.command.ReplCommandHandler;
@@ -24,6 +23,8 @@ import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
 import ai.core.session.ToolPermissionStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author stephen
  */
 public class AgentSessionRunner {
+    private static final Logger logger = LoggerFactory.getLogger(AgentSessionRunner.class);
 
     private static final String POISON_PILL = "\0__EXIT__";
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -96,8 +98,8 @@ public class AgentSessionRunner {
 
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), modelName);
-        DebugLog.log("terminal: type=" + ui.getTerminalType()
-                + ", jline=" + ui.isJLineEnabled() + ", ansi=" + ui.isAnsiSupported());
+        logger.debug("terminal: type={}, jline={}, ansi={}",
+                ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
     }
 
     private void printSessionHistory() {
@@ -130,12 +132,12 @@ public class AgentSessionRunner {
                 while (true) {
                     String msg = queue.take();
                     if (POISON_PILL.equals(msg)) break;
-                    DebugLog.log("sending message: " + msg);
+                    logger.debug("sending message: {}", msg);
                     listener.prepareTurn();
                     session.sendMessage(msg);
-                    DebugLog.log("waiting for turn...");
+                    logger.debug("waiting for turn...");
                     listener.waitForTurn();
-                    DebugLog.log("turn finished");
+                    logger.debug("turn finished");
                     readyForInput.release();
                 }
             } catch (InterruptedException e) {

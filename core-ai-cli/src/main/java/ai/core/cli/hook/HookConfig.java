@@ -1,8 +1,9 @@
 package ai.core.cli.hook;
 
-import ai.core.cli.DebugLog;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class HookConfig {
+    private static final Logger logger = LoggerFactory.getLogger(HookConfig.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public static HookConfig load(Path workspace) {
@@ -25,7 +27,7 @@ public final class HookConfig {
             String content = Files.readString(file);
             return parse(content, workspace);
         } catch (IOException e) {
-            DebugLog.log("Failed to load hooks.json: " + e.getMessage());
+            logger.warn("Failed to load hooks.json: {}", e.getMessage());
             return new HookConfig(Collections.emptyMap());
         }
     }
