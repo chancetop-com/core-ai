@@ -1,10 +1,13 @@
 package ai.core.session.permission;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 public class PermissionRule {
+    private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "command", "directory");
+
     public static String buildPattern(String toolName, Map<String, Object> arguments) {
         var primaryArg = extractPrimaryArg(arguments);
         return primaryArg.map(s -> toolName + "(" + s + ")").orElse(toolName);
@@ -12,6 +15,10 @@ public class PermissionRule {
 
     public static Optional<String> extractPrimaryArg(Map<String, Object> arguments) {
         if (arguments == null || arguments.isEmpty()) return Optional.empty();
+        for (String key : PRIMARY_KEYS) {
+            var val = arguments.get(key);
+            if (val != null) return Optional.of(val.toString());
+        }
         return arguments.keySet().stream()
                 .sorted()
                 .map(arguments::get)

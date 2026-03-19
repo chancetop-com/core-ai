@@ -102,7 +102,16 @@ class PermissionRuleTest {
     }
 
     @Test
-    void extractPrimaryArgUsesFirstValue() {
+    void extractPrimaryArgPrefersFilePathOverContent() {
+        var result = PermissionRule.extractPrimaryArg(Map.of(
+                "content", "very long file content...",
+                "file_path", "/home/user/a.java"));
+        assertTrue(result.isPresent());
+        assertEquals("/home/user/a.java", result.get());
+    }
+
+    @Test
+    void extractPrimaryArgFallsBackToSorted() {
         var result = PermissionRule.extractPrimaryArg(Map.of("pattern", "*.java"));
         assertTrue(result.isPresent());
         assertEquals("*.java", result.get());

@@ -67,9 +67,13 @@ public final class DiffGenerator {
         }
         String[] lines = content.split("\n", -1);
         var displayLines = new ArrayList<DisplayLine>();
-        int limit = Math.min(lines.length, MAX_DISPLAY_LINES);
+        boolean truncated = lines.length > MAX_DISPLAY_LINES;
+        int limit = truncated ? MAX_DISPLAY_LINES : lines.length;
         for (int i = 0; i < limit; i++) {
             displayLines.add(new DisplayLine(i + 1, Tag.INSERT, lines[i]));
+        }
+        if (truncated) {
+            displayLines.add(new DisplayLine(0, Tag.EQUAL, "... (" + (lines.length - MAX_DISPLAY_LINES) + " more lines)"));
         }
         return new DiffResult(lines.length, 0, displayLines);
     }
@@ -116,11 +120,21 @@ public final class DiffGenerator {
 
         int additions = 0;
         int deletions = 0;
+        for (DiffEntry entry : diff) {
+            if (entry.tag == Tag.INSERT) additions++;
+            if (entry.tag == Tag.DELETE) deletions++;
+        }
+
         var displayLines = new ArrayList<DisplayLine>();
         int totalLines = 0;
-
+        boolean truncated = false;
+        outer:
         for (int[] hunk : hunks) {
-            for (int i = hunk[0]; i < hunk[1] && totalLines < MAX_DISPLAY_LINES; i++) {
+            for (int i = hunk[0]; i < hunk[1]; i++) {
+                if (totalLines >= MAX_DISPLAY_LINES) {
+                    truncated = true;
+                    break outer;
+                }
                 DiffEntry entry = diff.get(i);
                 int lineNum = switch (entry.tag) {
                     case DELETE -> entry.oldIdx + 1;
@@ -128,10 +142,12 @@ public final class DiffGenerator {
                     case EQUAL -> entry.newIdx + 1;
                 };
                 displayLines.add(new DisplayLine(lineNum, entry.tag, entry.content));
-                if (entry.tag == Tag.INSERT) additions++;
-                if (entry.tag == Tag.DELETE) deletions++;
                 totalLines++;
             }
+        }
+
+        if (truncated) {
+            displayLines.add(new DisplayLine(0, Tag.EQUAL, "... (diff truncated)"));
         }
 
         return new DiffResult(additions, deletions, displayLines);
