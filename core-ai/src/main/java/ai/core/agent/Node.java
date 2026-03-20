@@ -342,7 +342,7 @@ public abstract class Node<T extends Node<T>> {
         return (R) tracer;
     }
 
-    void setExecutionContext(ExecutionContext executionContext) {
+    public void setExecutionContext(ExecutionContext executionContext) {
         this.executionContext = executionContext;
     }
 

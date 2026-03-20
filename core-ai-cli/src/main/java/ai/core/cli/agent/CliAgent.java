@@ -1,6 +1,8 @@
 package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
+import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.cli.hook.HookConfig;
@@ -21,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -45,11 +48,15 @@ public class CliAgent {
             }
         }
 
+        var exploreAgent = DefaultExploreAgent.of(config.providers.getDefaultProvider());
+        var exploreSubAgent = exploreAgent.toSubAgentToolCall(DefaultExploreAgent.ExploreAgentContext.class);
+
         var builder = Agent.builder()
                 .llmProvider(config.providers.getDefaultProvider())
                 .systemPrompt(systemPrompt)
                 .maxTurn(config.maxTurn)
                 .toolCalls(tools)
+                .subAgents(List.of(exploreSubAgent))
                 .temperature(0.8);
 
         if (hookLifecycle != null) {
@@ -64,7 +71,11 @@ public class CliAgent {
         if (config.modelOverride != null) {
             builder.model(config.modelOverride);
         }
-        return builder.build();
+        var agent = builder.build();
+        agent.setExecutionContext(ExecutionContext.builder()
+                .customVariables(Map.of("workspace", config.workspace.toAbsolutePath().toString()))
+                .build());
+        return agent;
     }
 
     private static SkillConfig buildSkillConfig(Config config) {
