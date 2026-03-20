@@ -106,7 +106,7 @@ final class TerminalPicker {
             writer.print("\n\u001B[2K");
             String text = truncateToFit(items.get(i), 3);
             if (i == selected) {
-                writer.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + text);
+                writer.print(AnsiTheme.PROMPT + " ▸ " + AnsiTheme.RESET + text);
             } else {
                 writer.print("   " + AnsiTheme.MUTED + text + AnsiTheme.RESET);
             }

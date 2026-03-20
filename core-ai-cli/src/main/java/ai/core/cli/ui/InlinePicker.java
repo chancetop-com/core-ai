@@ -22,7 +22,7 @@ public class InlinePicker {
     private static final int MAX_VISIBLE = 10;
     private static final String KEYMAP_NAME = "picker";
     private static final String CLEAR_LINE = "\u001B[2K";
-    private static final int PROMPT_DISPLAY_WIDTH = 3; // "❯  " = 3 visible chars
+    private static final int PROMPT_DISPLAY_WIDTH = 3; // "▸  " = 3 visible chars
 
     private final LineReaderImpl reader;
     private final List<String> items = new ArrayList<>();
@@ -126,7 +126,7 @@ public class InlinePicker {
         for (int i = 0; i < limit; i++) {
             tw.print("\n" + CLEAR_LINE);
             if (i == selectedIndex) {
-                tw.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + items.get(i));
+                tw.print(AnsiTheme.PROMPT + " ▸ " + AnsiTheme.RESET + items.get(i));
             } else {
                 tw.print("   " + AnsiTheme.MUTED + items.get(i) + AnsiTheme.RESET);
             }
