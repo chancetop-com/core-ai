@@ -2,6 +2,8 @@ package ai.core.llm;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.internal.AgentHelper;
+import ai.core.agent.streaming.AsyncStreamingCallback;
+import ai.core.agent.streaming.BufferedStreamingCallback;
 import ai.core.agent.streaming.DefaultStreamingCallback;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.domain.CaptionImageRequest;
@@ -107,14 +109,21 @@ public abstract class LLMProvider {
         if (request.getExtraBody() != null && config.getRequestExtraBody() != null) {
             LOGGER.warn("both request and provider config set extra body, provider config extra body will be ignored, request extra body={}, config extra body={}", request.getExtraBody(), config.getRequestExtraBody());
         }
+        var wrappedCallback = wrapCallback(callback);
         CompletionResponse response;
         if (tracer != null) {
-            response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, callback));
+            response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback));
         } else {
-            response = doCompletionStream(request, callback);
+            response = doCompletionStream(request, wrappedCallback);
         }
         postprocess(request, response);
         return response;
+    }
+
+    private StreamingCallback wrapCallback(StreamingCallback callback) {
+        int bufferSize = config.getStreamBufferSize();
+        if (bufferSize <= 0) return callback;
+        return new BufferedStreamingCallback(new AsyncStreamingCallback(callback), bufferSize);
     }
 
     public void preprocess(CompletionRequest dto) {

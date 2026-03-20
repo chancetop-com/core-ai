@@ -297,6 +297,7 @@ public class AgentBootstrap {
         props.property(prefix + ".request.extra_body").ifPresent(config::setRequestExtraBody);
         props.property(prefix + ".timeout.seconds").ifPresent(v -> config.setTimeout(Long.parseLong(v)));
         props.property(prefix + ".connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.parseLong(v)));
+        props.property(prefix + ".stream.buffer.size").ifPresent(v -> config.setStreamBufferSize(Integer.parseInt(v)));
     }
 
     private void injectTracerIfAvailable(LLMProvider provider) {

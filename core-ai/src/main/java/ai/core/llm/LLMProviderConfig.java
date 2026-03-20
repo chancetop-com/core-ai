@@ -14,6 +14,7 @@ public class LLMProviderConfig {
     private Object requestExtraBody;
     private Duration timeout = Duration.ofSeconds(60);
     private Duration connectTimeout = Duration.ofSeconds(3);
+    private int streamBufferSize = 0;
 
     public LLMProviderConfig(String model, Double temperature, String embeddingModel) {
         this.model = model;
@@ -28,6 +29,7 @@ public class LLMProviderConfig {
         this.requestExtraBody = other.requestExtraBody;
         this.timeout = other.timeout;
         this.connectTimeout = other.connectTimeout;
+        this.streamBufferSize = other.streamBufferSize;
     }
 
     public Duration getConnectTimeout() {
@@ -76,5 +78,13 @@ public class LLMProviderConfig {
 
     public void setRequestExtraBody(String requestExtraBody) {
         this.requestExtraBody = JsonUtil.fromJson(Object.class, requestExtraBody);
+    }
+
+    public int getStreamBufferSize() {
+        return streamBufferSize;
+    }
+
+    public void setStreamBufferSize(int streamBufferSize) {
+        this.streamBufferSize = streamBufferSize;
     }
 }
