@@ -92,12 +92,13 @@ final class TerminalPicker {
     }
 
     private String truncateToFit(String text, int prefixLen) {
+        String singleLine = text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ");
         int termWidth = terminal.getWidth();
         if (termWidth <= 0) termWidth = 80;
         int maxTextLen = termWidth - prefixLen - 1;
         if (maxTextLen <= 0) return "";
-        if (text.length() <= maxTextLen) return text;
-        return text.substring(0, maxTextLen - 3) + "...";
+        if (singleLine.length() <= maxTextLen) return singleLine;
+        return singleLine.substring(0, maxTextLen - 3) + "...";
     }
 
     private void renderPickerList(List<String> items, int selected, int limit) {
