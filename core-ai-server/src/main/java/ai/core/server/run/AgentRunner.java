@@ -10,7 +10,9 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
+import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.skill.SkillRegistry;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -51,6 +53,9 @@ public class AgentRunner {
 
     @Inject
     ToolRegistryService toolRegistryService;
+
+    @Inject
+    MongoSkillProvider mongoSkillProvider;
 
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
@@ -196,6 +201,13 @@ public class AgentRunner {
         if (model != null) builder.model(model);
         if (temperature != null) builder.temperature(temperature);
         if (maxTurns != null) builder.maxTurn(maxTurns);
+
+        var skillIds = config != null ? config.skillIds : definition.skillIds;
+        if (skillIds != null && !skillIds.isEmpty()) {
+            var skillRegistry = new SkillRegistry();
+            skillRegistry.addProvider(mongoSkillProvider);
+            builder.skillRegistry(skillRegistry);
+        }
 
         var agent = builder.build();
         agent.setAuthenticated(true);

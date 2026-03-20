@@ -5,6 +5,8 @@ import ai.core.api.server.agent.GenerateAgentDraftResponse;
 import ai.core.api.server.session.ApproveToolCallRequest;
 import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
+import ai.core.api.server.session.LoadSkillsRequest;
+import ai.core.api.server.session.LoadSkillsResponse;
 import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
@@ -113,6 +115,17 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var loadedTools = sessionManager.loadTools(sessionId, request.toolIds);
         var response = new LoadToolsResponse();
         response.loadedTools = loadedTools;
+        return response;
+    }
+
+    @Override
+    public LoadSkillsResponse loadSkills(String sessionId, LoadSkillsRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
+        var loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
+        var response = new LoadSkillsResponse();
+        response.loadedSkills = loadedSkills;
         return response;
     }
 

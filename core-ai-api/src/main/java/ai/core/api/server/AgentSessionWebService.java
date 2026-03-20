@@ -4,6 +4,8 @@ import ai.core.api.server.agent.GenerateAgentDraftResponse;
 import ai.core.api.server.session.ApproveToolCallRequest;
 import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
+import ai.core.api.server.session.LoadSkillsRequest;
+import ai.core.api.server.session.LoadSkillsResponse;
 import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
@@ -54,6 +56,11 @@ public interface AgentSessionWebService {
     @Path("/api/sessions/:sessionId/tools")
     @ResponseStatus(HTTPStatus.CREATED)
     LoadToolsResponse loadTools(@PathParam("sessionId") String sessionId, LoadToolsRequest request);
+
+    @POST
+    @Path("/api/sessions/:sessionId/skills")
+    @ResponseStatus(HTTPStatus.CREATED)
+    LoadSkillsResponse loadSkills(@PathParam("sessionId") String sessionId, LoadSkillsRequest request);
 
     @DELETE
     @Path("/api/sessions/:sessionId")

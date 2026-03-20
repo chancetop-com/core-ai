@@ -6,6 +6,7 @@ import ai.core.api.server.FileWebService;
 import ai.core.api.server.AgentRunWebService;
 import ai.core.api.server.AgentScheduleWebService;
 import ai.core.api.server.AgentSessionWebService;
+import ai.core.api.server.SkillWebService;
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.UserWebService;
 import ai.core.server.agent.AgentDefinitionService;
@@ -24,9 +25,14 @@ import ai.core.server.schedule.AgentScheduleService;
 import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.skill.MongoSkillProvider;
+import ai.core.server.skill.SkillRepoSyncJob;
+import ai.core.server.skill.SkillService;
+import ai.core.server.skill.SkillUploadController;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.user.UserService;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
+import ai.core.server.web.SkillWebServiceImpl;
 import ai.core.server.web.webhook.WebhookController;
 import ai.core.server.web.AgentRunWebServiceImpl;
 import ai.core.server.web.AgentScheduleWebServiceImpl;
@@ -67,8 +73,8 @@ public class ServerModule extends Module {
 
         var toolRegistry = bind(ToolRegistryService.class);
 
-        var storagePath = property("sys.file.storagePath").orElse("./data/files");
-        bind(new FileService(Path.of(storagePath)));
+        registerFile();
+        registerSkill();
 
         bind(LLMCallExecutor.class);
         bind(AgentRunner.class);
@@ -99,11 +105,7 @@ public class ServerModule extends Module {
         api().service(AgentDefinitionWebService.class, bind(AgentDefinitionWebServiceImpl.class));
         api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
         api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
-        api().service(FileWebService.class, bind(FileWebServiceImpl.class));
-
         http().route(HTTPMethod.POST, "/api/webhooks/:agentId", bind(WebhookController.class));
-        http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
-        http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));
 
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
 
@@ -111,6 +113,22 @@ public class ServerModule extends Module {
 
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
+    }
+
+    private void registerFile() {
+        var storagePath = property("sys.file.storagePath").orElse("./data/files");
+        bind(new FileService(Path.of(storagePath)));
+        api().service(FileWebService.class, bind(FileWebServiceImpl.class));
+        http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
+        http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));
+    }
+
+    private void registerSkill() {
+        bind(MongoSkillProvider.class);
+        bind(SkillService.class);
+        api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
+        http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));
+//        schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class), Duration.ofHours(1));
     }
 
     private void registerTrace() {

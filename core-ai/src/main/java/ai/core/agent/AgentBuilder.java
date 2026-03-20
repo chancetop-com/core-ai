@@ -25,6 +25,8 @@ import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.skill.SkillRegistry;
+import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.tool.tools.ToolActivationTool;
 import ai.core.tool.tools.WriteTodosTool;
@@ -64,6 +66,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     // Memory configuration
     private Memory memory;
     private MemoryConfig memoryConfig;
+
+    // Skill configuration
+    private SkillRegistry skillRegistry;
 
     // SubAgent configuration
     private List<SubAgentToolCall> subAgents = Lists.newArrayList();
@@ -194,6 +199,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return this;
     }
 
+    public AgentBuilder skillRegistry(SkillRegistry skillRegistry) {
+        this.skillRegistry = skillRegistry;
+        return this;
+    }
+
     public AgentBuilder ragConfig(RagConfig ragConfig) {
         this.ragConfig = ragConfig;
         return this;
@@ -299,6 +309,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
         // Fetch prompts from Langfuse if configured
         fetchLangfusePromptsIfConfigured();
+        configureSkills();
         configureToolDiscovery();
         copyValue(agent);
 
@@ -387,6 +398,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
                 compression = new Compression(this.llmProvider, this.model);
             }
             agentLifecycles.add(new CompressionLifecycle(compression));
+        }
+    }
+
+    private void configureSkills() {
+        if (skillRegistry == null) return;
+        var skills = skillRegistry.listAll();
+        if (skills.isEmpty()) return;
+        boolean hasSkillTool = toolCalls.stream().anyMatch(t -> SkillTool.TOOL_NAME.equals(t.getName()));
+        if (!hasSkillTool) {
+            toolCalls.add(SkillTool.builder().registry(skillRegistry).build());
         }
     }
 

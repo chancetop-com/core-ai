@@ -1,7 +1,9 @@
 package ai.core.tool.tools;
 
-import ai.core.skill.SkillLoader;
+import ai.core.skill.FilesystemSkillProvider;
+import ai.core.skill.SkillLoadException;
 import ai.core.skill.SkillMetadata;
+import ai.core.skill.SkillRegistry;
 import ai.core.skill.SkillSource;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
@@ -10,10 +12,6 @@ import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -49,7 +47,7 @@ public class SkillTool extends ToolCall {
         sb.append(BASE_DESC).append("\n<available_skills>\n");
         for (var skill : skills) {
             sb.append("  <skill>\n");
-            sb.append("    <name>").append(skill.getName()).append("</name>\n");
+            sb.append("    <name>").append(skill.getQualifiedName()).append("</name>\n");
             sb.append("    <description>").append(skill.getDescription()).append("</description>\n");
             if (skill.getSkillDir() != null) {
                 sb.append("    <location>").append(toDisplayPath(skill.getSkillDir(), workspaceDir)).append("</location>\n");
@@ -71,8 +69,7 @@ public class SkillTool extends ToolCall {
         return path;
     }
 
-    private List<SkillMetadata> loadedSkills;
-    private int maxFileSize;
+    private SkillRegistry registry;
 
     @Override
     public ToolCallResult execute(String arguments) {
@@ -92,7 +89,7 @@ public class SkillTool extends ToolCall {
     }
 
     private ToolCallResult loadSkill(String name, long startTime) {
-        SkillMetadata skill = findSkill(name);
+        SkillMetadata skill = registry != null ? registry.find(name) : null;
         if (skill == null) {
             return ToolCallResult.failed("Skill '" + name + "' not found. Available skills: " + skillNameList())
                     .withDuration(System.currentTimeMillis() - startTime);
@@ -101,29 +98,17 @@ public class SkillTool extends ToolCall {
             String content = readSkillContent(skill);
             return ToolCallResult.completed(content)
                     .withDuration(System.currentTimeMillis() - startTime);
-        } catch (IOException e) {
-            LOGGER.warn("Failed to read skill content: {}", skill.getPath(), e);
+        } catch (SkillLoadException e) {
+            LOGGER.warn("Failed to read skill content: {}", skill.getQualifiedName(), e);
             return ToolCallResult.failed("Failed to read skill '" + name + "': " + e.getMessage())
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
-    private SkillMetadata findSkill(String name) {
-        if (loadedSkills == null) return null;
-        for (var skill : loadedSkills) {
-            if (skill.getName().equals(name)) return skill;
-        }
-        return null;
-    }
-
-    private String readSkillContent(SkillMetadata skill) throws IOException {
-        byte[] bytes = Files.readAllBytes(Path.of(skill.getPath()));
-        if (bytes.length > maxFileSize) {
-            throw new IOException("Skill file exceeds max size: " + bytes.length + " > " + maxFileSize);
-        }
-        String skillMd = new String(bytes, StandardCharsets.UTF_8);
+    private String readSkillContent(SkillMetadata skill) throws SkillLoadException {
+        String skillMd = registry.readContent(skill);
         var sb = new StringBuilder(skillMd.length() + 256);
-        sb.append("<skill name=\"").append(skill.getName()).append('"');
+        sb.append("<skill name=\"").append(skill.getQualifiedName()).append('"');
         if (skill.getSkillDir() != null) {
             sb.append(" base_dir=\"").append(skill.getSkillDir()).append('"');
         }
@@ -140,22 +125,30 @@ public class SkillTool extends ToolCall {
     }
 
     private String skillNameList() {
-        if (loadedSkills == null || loadedSkills.isEmpty()) return "(none)";
+        if (registry == null) return "(none)";
+        var skills = registry.listAll();
+        if (skills.isEmpty()) return "(none)";
         var sb = new StringBuilder();
-        for (int i = 0; i < loadedSkills.size(); i++) {
+        for (int i = 0; i < skills.size(); i++) {
             if (i > 0) sb.append(", ");
-            sb.append(loadedSkills.get(i).getName());
+            sb.append(skills.get(i).getQualifiedName());
         }
         return sb.toString();
     }
 
     public static class Builder extends ToolCall.Builder<Builder, SkillTool> {
+        private SkillRegistry registry;
         private List<SkillSource> sources;
         private int maxFileSize = 10 * 1024 * 1024;
         private String workspaceDir;
 
         @Override
         protected Builder self() {
+            return this;
+        }
+
+        public Builder registry(SkillRegistry registry) {
+            this.registry = registry;
             return this;
         }
 
@@ -175,8 +168,17 @@ public class SkillTool extends ToolCall {
         }
 
         public SkillTool build() {
-            var loader = new SkillLoader(maxFileSize);
-            List<SkillMetadata> skills = sources != null ? loader.loadAll(sources) : List.of();
+            if (registry == null) {
+                registry = new SkillRegistry();
+                if (sources != null) {
+                    for (var source : sources) {
+                        registry.addProvider(new FilesystemSkillProvider(
+                            source.name(), source.path(), source.priority(), maxFileSize));
+                    }
+                }
+            }
+
+            List<SkillMetadata> skills = registry.listAll();
 
             this.name(TOOL_NAME);
             this.description(buildDescription(skills, workspaceDir));
@@ -186,8 +188,7 @@ public class SkillTool extends ToolCall {
 
             var tool = new SkillTool();
             build(tool);
-            tool.loadedSkills = skills;
-            tool.maxFileSize = this.maxFileSize;
+            tool.registry = this.registry;
             return tool;
         }
     }

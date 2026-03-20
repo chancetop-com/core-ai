@@ -1,5 +1,6 @@
 package ai.core.cli.remote;
 
+import ai.core.api.server.session.LoadSkillsRequest;
 import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.cli.DebugLog;
@@ -12,9 +13,11 @@ import ai.core.utils.JsonUtil;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
@@ -30,6 +33,7 @@ public class RemoteSessionRunner {
         new SlashCommand("/build-agent", "Build agent from conversation"),
         new SlashCommand("/agents", "Switch agent or manage agents"),
         new SlashCommand("/tools", "List and load available tools"),
+        new SlashCommand("/skill", "Browse and load server skills"),
         new SlashCommand("/mcp", "Manage MCP server connections"),
         new SlashCommand("/debug", "Toggle debug mode"),
         new SlashCommand("/clear", "Clear screen"),
@@ -56,6 +60,8 @@ public class RemoteSessionRunner {
     private volatile HttpAgentSession session;
     private volatile RemoteEventListener listener;
     private volatile String currentPrompt;
+    private final Set<String> loadedToolIds = new HashSet<>();
+    private final Set<String> loadedSkillIds = new HashSet<>();
 
     public RemoteSessionRunner(TerminalUI ui, HttpAgentSession session, RemoteApiClient api, String name, String agentId) {
         this.ui = ui;
@@ -91,6 +97,8 @@ public class RemoteSessionRunner {
             listener = new RemoteEventListener(ui, session);
             session.onEvent(listener);
             currentPrompt = promptPrefix + ":" + agentName + "> ";
+            loadedToolIds.clear();
+            loadedSkillIds.clear();
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Session: " + session.id() + AnsiTheme.RESET + "\n\n");
         } catch (RuntimeException e) {
             ui.showError("failed to switch agent: " + e.getMessage());
@@ -165,6 +173,7 @@ public class RemoteSessionRunner {
                 }
             }
             case "/tools" -> handleTools();
+            case "/skill" -> handleSkills();
             case "/mcp" -> new McpServerCommandHandler(ui, api).handle();
             case "/debug" -> {
                 if (DebugLog.isEnabled()) {
@@ -180,8 +189,7 @@ public class RemoteSessionRunner {
             default -> {
                 if (lower.startsWith("/stats") || lower.startsWith("/model")
                         || lower.startsWith("/undo") || lower.startsWith("/compact") || lower.startsWith("/export")
-                        || lower.startsWith("/copy") || lower.startsWith("/resume") || lower.startsWith("/memory")
-                        || lower.startsWith("/skill")) {
+                        || lower.startsWith("/copy") || lower.startsWith("/resume") || lower.startsWith("/memory")) {
                     ui.printStreamingChunk(AnsiTheme.MUTED + "  Not available in remote mode.\n" + AnsiTheme.RESET);
                     break;
                 }
@@ -197,6 +205,7 @@ public class RemoteSessionRunner {
                 {"/build-agent", "Build agent from current conversation, so it can be scheduled periodically on the server"},
                 {"/agents", "Switch agent or manage agents"},
                 {"/tools", "List and load available tools"},
+                {"/skill", "Browse and load server skills"},
                 {"/mcp", "Manage MCP server connections (add, enable, disable, edit, delete)"},
                 {"/debug", "Toggle debug mode"},
                 {"/clear", "Clear screen"},
@@ -232,6 +241,65 @@ public class RemoteSessionRunner {
         return tools;
     }
 
+    @SuppressWarnings("unchecked")
+    private void handleSkills() {
+        String json;
+        try {
+            json = api.get("/api/skills");
+        } catch (RemoteApiException e) {
+            ui.showError(e.getMessage());
+            return;
+        }
+        if (json == null) {
+            ui.showError("failed to fetch skills");
+            return;
+        }
+        Map<String, Object> response = JsonUtil.fromJson(Map.class, json);
+        var skills = (List<Map<String, Object>>) response.get("skills");
+        if (skills == null || skills.isEmpty()) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  No skills on server.\n" + AnsiTheme.RESET);
+            return;
+        }
+
+        ui.printStreamingChunk(String.format("%n  %sServer Skills (%d)%s%n", AnsiTheme.PROMPT, skills.size(), AnsiTheme.RESET));
+        var labels = new ArrayList<String>();
+        for (var skill : skills) {
+            var id = (String) skill.get("id");
+            var qualifiedName = (String) skill.get("qualified_name");
+            var desc = (String) skill.get("description");
+            var label = qualifiedName != null ? qualifiedName : (String) skill.get("name");
+            if (loadedSkillIds.contains(id)) label += AnsiTheme.SUCCESS + " (loaded)" + AnsiTheme.RESET;
+            if (desc != null && !desc.isBlank()) label += AnsiTheme.MUTED + " - " + truncate(desc, 40) + AnsiTheme.RESET;
+            labels.add(label);
+        }
+
+        int selected = ui.pickIndex(labels);
+        if (selected < 0) return;
+
+        var skill = skills.get(selected);
+        var skillId = (String) skill.get("id");
+        var skillName = (String) skill.get("qualified_name");
+        if (skillId == null) return;
+
+        loadSkillToSession(skillId, skillName);
+    }
+
+    private void loadSkillToSession(String skillId, String skillName) {
+        try {
+            var request = new LoadSkillsRequest();
+            request.skillIds = List.of(skillId);
+            var resultJson = api.post("/api/sessions/" + session.id() + "/skills", request);
+            if (resultJson != null) {
+                loadedSkillIds.add(skillId);
+                ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Loaded skill: " + skillName + AnsiTheme.RESET + "\n");
+            } else {
+                ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "Skill was not loaded." + AnsiTheme.RESET + "\n");
+            }
+        } catch (RemoteApiException e) {
+            ui.showError(e.getMessage());
+        }
+    }
+
     private void handleTools() {
         var tools = fetchTools();
         if (tools == null) return;
@@ -256,11 +324,13 @@ public class RemoteSessionRunner {
     private List<String> buildToolLabels(List<Map<String, Object>> tools) {
         var labels = new ArrayList<String>();
         for (var tool : tools) {
+            var id = (String) tool.get("id");
             var name = (String) tool.get("name");
             var type = (String) tool.get("type");
             var category = (String) tool.get("category");
             var desc = (String) tool.get("description");
-            var sb = new StringBuilder(name != null ? name : (String) tool.get("id"));
+            var sb = new StringBuilder(name != null ? name : id);
+            if (loadedToolIds.contains(id)) sb.append(AnsiTheme.SUCCESS + " (loaded)" + AnsiTheme.RESET);
             if (type != null) sb.append(" [").append(type).append(']');
             if (category != null) sb.append(" (").append(category).append(')');
             if (desc != null && !desc.isBlank()) sb.append(" - ").append(truncate(desc, 40));
@@ -295,6 +365,7 @@ public class RemoteSessionRunner {
             }
             var result = JsonUtil.fromJson(LoadToolsResponse.class, resultJson);
             if (result.loadedTools != null && !result.loadedTools.isEmpty()) {
+                loadedToolIds.add(toolId);
                 ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Loaded: " + String.join(", ", result.loadedTools) + AnsiTheme.RESET + "\n");
             } else {
                 ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "Tool was not loaded." + AnsiTheme.RESET + "\n");

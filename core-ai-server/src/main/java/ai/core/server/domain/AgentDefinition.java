@@ -46,6 +46,9 @@ public class AgentDefinition {
     @Field(name = "tool_ids")
     public List<String> toolIds;
 
+    @Field(name = "skill_ids")
+    public List<String> skillIds;
+
     @Field(name = "input_template")
     public String inputTemplate;
 

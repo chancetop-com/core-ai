@@ -4,11 +4,18 @@ import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * @author stephen
@@ -88,6 +95,44 @@ public class RemoteApiClient {
                 .DELETE()
                 .build();
         send(request);
+    }
+
+    public String postMultipart(String path, Map<String, Path> files) {
+        var boundary = UUID.randomUUID().toString();
+        try {
+            var parts = new ArrayList<byte[]>();
+            for (var entry : files.entrySet()) {
+                var fieldName = entry.getKey();
+                var file = entry.getValue();
+                var fileName = file.getFileName().toString();
+                var header = ("--" + boundary + "\r\n"
+                    + "Content-Disposition: form-data; name=\"" + fieldName + "\"; filename=\"" + fileName + "\"\r\n"
+                    + "Content-Type: application/octet-stream\r\n\r\n");
+                parts.add(header.getBytes(StandardCharsets.UTF_8));
+                parts.add(Files.readAllBytes(file));
+                parts.add("\r\n".getBytes(StandardCharsets.UTF_8));
+            }
+            parts.add(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+
+            int totalLen = parts.stream().mapToInt(b -> b.length).sum();
+            var body = new byte[totalLen];
+            int offset = 0;
+            for (var part : parts) {
+                System.arraycopy(part, 0, body, offset, part.length);
+                offset += part.length;
+            }
+
+            var request = HttpRequest.newBuilder()
+                .uri(URI.create(serverUrl + path))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build();
+            return send(request);
+        } catch (IOException e) {
+            LOGGER.warn("failed to read files for multipart upload", e);
+            return null;
+        }
     }
 
     public HttpRequest.Builder putRequest(String path) {

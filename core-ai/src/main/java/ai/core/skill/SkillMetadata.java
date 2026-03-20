@@ -22,11 +22,12 @@ public final class SkillMetadata {
         return new Builder(name, description, path);
     }
 
+    private final String namespace;
     private final String name;
     private final String description;
     private final String path;
     private final String skillDir;
-    //todo delete useless var
+    private final String content;
     private final String license;
     private final String compatibility;
     private final Map<String, String> metadata;
@@ -34,10 +35,12 @@ public final class SkillMetadata {
     private final List<String> resources;
 
     private SkillMetadata(Builder builder) {
+        this.namespace = builder.namespace;
         this.name = builder.name;
         this.description = builder.description;
         this.path = builder.path;
         this.skillDir = builder.skillDir;
+        this.content = builder.content;
         this.license = builder.license;
         this.compatibility = builder.compatibility;
         this.metadata = Collections.unmodifiableMap(new LinkedHashMap<>(builder.metadata));
@@ -45,8 +48,17 @@ public final class SkillMetadata {
         this.resources = List.copyOf(builder.resources);
     }
 
+    public String getNamespace() {
+        return namespace;
+    }
+
     public String getName() {
         return name;
+    }
+
+    public String getQualifiedName() {
+        if (namespace == null || namespace.isEmpty()) return name;
+        return namespace + "/" + name;
     }
 
     public String getDescription() {
@@ -59,6 +71,10 @@ public final class SkillMetadata {
 
     public String getSkillDir() {
         return skillDir;
+    }
+
+    public String getContent() {
+        return content;
     }
 
     public List<String> getResources() {
@@ -85,7 +101,9 @@ public final class SkillMetadata {
         private final String name;
         private final String description;
         private final String path;
+        private String namespace;
         private String skillDir;
+        private String content;
         private String license;
         private String compatibility;
         private Map<String, String> metadata = Collections.emptyMap();
@@ -98,8 +116,18 @@ public final class SkillMetadata {
             this.path = path;
         }
 
+        public Builder namespace(String namespace) {
+            this.namespace = namespace;
+            return this;
+        }
+
         public Builder skillDir(String skillDir) {
             this.skillDir = skillDir;
+            return this;
+        }
+
+        public Builder content(String content) {
+            this.content = content;
             return this;
         }
 

@@ -42,7 +42,7 @@ public class SkillLoader {
         for (var source : sorted) {
             var skills = loadFromSource(source.path());
             for (var skill : skills) {
-                skillMap.put(skill.getName(), skill);
+                skillMap.put(skill.getQualifiedName(), skill);
             }
         }
         return new ArrayList<>(skillMap.values());
@@ -63,18 +63,44 @@ public class SkillLoader {
             for (var entry : stream) {
                 if (!Files.isDirectory(entry)) continue;
                 var skillFile = entry.resolve(SKILL_FILE_NAME);
+                if (Files.exists(skillFile)) {
+                    if (!isWithinDirectory(skillFile, realDir)) {
+                        LOGGER.warn("Skill file path escapes source directory: {}", skillFile);
+                        continue;
+                    }
+                    var skill = loadSkillFile(skillFile, entry.getFileName().toString(), null);
+                    if (skill != null) {
+                        skills.add(skill);
+                    }
+                } else {
+                    skills.addAll(loadNamespaceDirectory(entry, realDir));
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Failed to scan skill source directory: {}", sourcePath, e);
+        }
+        return skills;
+    }
+
+    private List<SkillMetadata> loadNamespaceDirectory(Path namespaceDir, Path rootDir) {
+        String namespace = namespaceDir.getFileName().toString();
+        List<SkillMetadata> skills = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(namespaceDir)) {
+            for (var entry : stream) {
+                if (!Files.isDirectory(entry)) continue;
+                var skillFile = entry.resolve(SKILL_FILE_NAME);
                 if (!Files.exists(skillFile)) continue;
-                if (!isWithinDirectory(skillFile, realDir)) {
+                if (!isWithinDirectory(skillFile, rootDir)) {
                     LOGGER.warn("Skill file path escapes source directory: {}", skillFile);
                     continue;
                 }
-                var skill = loadSkillFile(skillFile, entry.getFileName().toString());
+                var skill = loadSkillFile(skillFile, entry.getFileName().toString(), namespace);
                 if (skill != null) {
                     skills.add(skill);
                 }
             }
         } catch (IOException e) {
-            LOGGER.warn("Failed to scan skill source directory: {}", sourcePath, e);
+            LOGGER.warn("Failed to scan namespace directory: {}", namespaceDir, e);
         }
         return skills;
     }
@@ -97,7 +123,7 @@ public class SkillLoader {
         }
     }
 
-    private SkillMetadata loadSkillFile(Path skillFile, String directoryName) {
+    private SkillMetadata loadSkillFile(Path skillFile, String directoryName, String namespace) {
         try {
             byte[] bytes = Files.readAllBytes(skillFile);
             if (bytes.length > maxSkillFileSize) {
@@ -110,6 +136,7 @@ public class SkillLoader {
             SkillMetadata base = parseSkillMd(content, skillFile.toAbsolutePath().toString(), directoryName);
             if (base == null) return null;
             return SkillMetadata.builder(base.getName(), base.getDescription(), base.getPath())
+                    .namespace(namespace)
                     .skillDir(skillDir.toAbsolutePath().toString())
                     .resources(resources)
                     .license(base.getLicense())
@@ -143,7 +170,7 @@ public class SkillLoader {
         return result;
     }
 
-    SkillMetadata parseSkillMd(String content, String filePath, String directoryName) {
+    public SkillMetadata parseSkillMd(String content, String filePath, String directoryName) {
         var matcher = FRONTMATTER_PATTERN.matcher(content);
         if (!matcher.find()) {
             LOGGER.warn("No YAML frontmatter in {}", filePath);

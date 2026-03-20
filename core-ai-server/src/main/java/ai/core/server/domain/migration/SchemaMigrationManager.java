@@ -50,7 +50,8 @@ public class SchemaMigrationManager {
         return List.of(
             new SchemaMigrationVInitialize(),
             new SchemaMigrationVDefaultAgent(),
-            new SchemaMigrationVTraceIndexes()
+            new SchemaMigrationVTraceIndexes(),
+            new SchemaMigrationVSkillIndexes()
         );
     }
 }

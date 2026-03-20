@@ -6,8 +6,12 @@ import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.skill.MongoSkillProvider;
+import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.skill.SkillRegistry;
 import ai.core.session.InProcessAgentSession;
+import ai.core.tool.tools.SkillTool;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
@@ -33,6 +37,12 @@ public class AgentSessionManager {
 
     @Inject
     ToolRegistryService toolRegistryService;
+
+    @Inject
+    MongoSkillProvider mongoSkillProvider;
+
+    @Inject
+    SkillService skillService;
 
     public String createSession(SessionConfig config, String userId) {
         var sessionId = UUID.randomUUID().toString();
@@ -88,6 +98,19 @@ public class AgentSessionManager {
         return tools.stream().map(ToolCall::getName).toList();
     }
 
+    public List<String> loadSkills(String sessionId, List<String> skillIds) {
+        var session = getSession(sessionId);
+        var skills = skillService.resolveSkills(skillIds);
+        if (skills.isEmpty()) {
+            throw new NotFoundException("no skills found for ids: " + skillIds);
+        }
+        var registry = new SkillRegistry();
+        registry.addProvider(mongoSkillProvider);
+        var skillTool = SkillTool.builder().registry(registry).build();
+        session.loadTools(List.of(skillTool));
+        return skills.stream().map(s -> s.getQualifiedName()).toList();
+    }
+
     private SessionConfig toSessionConfig(AgentDefinition definition) {
         var config = new SessionConfig();
         var source = definition.publishedConfig != null ? definition.publishedConfig : null;
@@ -119,6 +142,10 @@ public class AgentSessionManager {
         if (context != null) {
             builder.executionContext(context);
         }
+
+        var skillRegistry = new SkillRegistry();
+        skillRegistry.addProvider(mongoSkillProvider);
+        builder.skillRegistry(skillRegistry);
 
         var provider = persistenceProviders.getDefaultPersistenceProvider();
         if (provider != null) {
