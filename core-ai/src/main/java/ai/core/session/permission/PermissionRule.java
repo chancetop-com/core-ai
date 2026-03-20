@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class PermissionRule {
-    private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "command", "directory");
+    private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "command", "directory", "script_path");
 
     public static String buildPattern(String toolName, Map<String, Object> arguments) {
         var primaryArg = extractPrimaryArg(arguments);
@@ -24,7 +24,14 @@ public class PermissionRule {
                 .map(arguments::get)
                 .filter(Objects::nonNull)
                 .map(Object::toString)
-                .findFirst();
+                .findFirst()
+                .map(s -> {
+                    if (s.length() > 20) {
+                        return s.substring(0, 20) + "...";
+                    }
+                    return s;
+                });
+
     }
 
     public static boolean matches(String pattern, String toolName, Map<String, Object> arguments) {
