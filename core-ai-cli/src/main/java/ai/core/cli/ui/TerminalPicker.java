@@ -30,7 +30,6 @@ final class TerminalPicker {
 
     private final Terminal terminal;
     private final PrintWriter writer;
-    private int lastRenderedLines;
 
     TerminalPicker(Terminal terminal, PrintWriter writer) {
         this.terminal = terminal;
@@ -92,54 +91,35 @@ final class TerminalPicker {
         return keyMap;
     }
 
-    private int getTerminalWidth() {
-        int w = terminal.getWidth();
-        return w > 0 ? w : 80;
-    }
-
-    private int displayLines(String text, int prefixLen) {
-        int totalLen = prefixLen + text.length();
-        int termWidth = getTerminalWidth();
-        return Math.max(1, (totalLen + termWidth - 1) / termWidth);
+    private String truncateToFit(String text, int prefixLen) {
+        int termWidth = terminal.getWidth();
+        if (termWidth <= 0) termWidth = 80;
+        int maxTextLen = termWidth - prefixLen - 1;
+        if (maxTextLen <= 0) return "";
+        if (text.length() <= maxTextLen) return text;
+        return text.substring(0, maxTextLen - 3) + "...";
     }
 
     private void renderPickerList(List<String> items, int selected, int limit) {
-        int totalLines = 0;
-        for (int i = 0; i < limit; i++) {
-            totalLines += displayLines(items.get(i), 3);
-        }
-
-        // pre-clear all lines (covers both previous render residue and wrapped lines)
-        int linesToClear = Math.max(lastRenderedLines, totalLines);
-        for (int i = 0; i < linesToClear; i++) {
-            writer.print("\n\u001B[2K");
-        }
-        writer.print("\u001B[" + linesToClear + "A");
-
-        // render items; terminal wraps naturally onto pre-cleared lines
         for (int i = 0; i < limit; i++) {
             writer.print("\n\u001B[2K");
+            String text = truncateToFit(items.get(i), 3);
             if (i == selected) {
-                writer.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + items.get(i));
+                writer.print(AnsiTheme.PROMPT + " ❯ " + AnsiTheme.RESET + text);
             } else {
-                writer.print("   " + AnsiTheme.MUTED + items.get(i) + AnsiTheme.RESET);
+                writer.print("   " + AnsiTheme.MUTED + text + AnsiTheme.RESET);
             }
         }
-
-        // cursor up by actual display lines (explicit \n count + wrap-induced lines = totalLines)
-        writer.print("\u001B[" + totalLines + "A");
+        writer.print("\u001B[" + limit + "A");
         writer.flush();
-        lastRenderedLines = totalLines;
     }
 
     private void clearPickerList(int limit) {
-        int linesToClear = Math.max(lastRenderedLines, limit);
-        for (int i = 0; i < linesToClear; i++) {
+        for (int i = 0; i < limit; i++) {
             writer.print("\n\u001B[2K");
         }
-        writer.print("\u001B[" + linesToClear + "A");
+        writer.print("\u001B[" + limit + "A");
         writer.flush();
-        lastRenderedLines = 0;
     }
 
 }
