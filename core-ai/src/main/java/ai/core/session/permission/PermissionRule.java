@@ -7,13 +7,14 @@ import java.util.Optional;
 
 public class PermissionRule {
     private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "command", "directory", "script_path");
+    private static final Integer PATTERN_LIMIT = 30;
 
     public static String buildPattern(String toolName, Map<String, Object> arguments) {
         var primaryArg = extractPrimaryArg(arguments);
         return primaryArg.map(s -> toolName + "(" + s + ")").orElse(toolName);
     }
 
-    public static Optional<String> extractPrimaryArg(Map<String, Object> arguments) {
+    private static Optional<String> extractPrimaryArgSupport(Map<String, Object> arguments) {
         if (arguments == null || arguments.isEmpty()) return Optional.empty();
         for (String key : PRIMARY_KEYS) {
             var val = arguments.get(key);
@@ -24,14 +25,13 @@ public class PermissionRule {
                 .map(arguments::get)
                 .filter(Objects::nonNull)
                 .map(Object::toString)
-                .findFirst()
-                .map(s -> {
-                    if (s.length() > 20) {
-                        return s.substring(0, 20) + "...";
-                    }
-                    return s;
-                });
+                .findFirst();
 
+    }
+
+    public static Optional<String> extractPrimaryArg(Map<String, Object> arguments) {
+        var primaryArg = extractPrimaryArgSupport(arguments);
+        return primaryArg.map(s -> s.length() > PATTERN_LIMIT ? s.substring(0, PATTERN_LIMIT) + "..." : s);
     }
 
     public static boolean matches(String pattern, String toolName, Map<String, Object> arguments) {
