@@ -294,7 +294,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             description = "assistant agent that help with user";
         }
         build(agent);
-        configureSubAgents(agent);
+        configureSubAgents();
         configureToolCallPruning();
         configureMemory();
         configureDoomLoop();
@@ -318,12 +318,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private void afterAgentBuildLifecycle(Agent agent) {
         agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
     }
-    private void configureSubAgents(Agent agent) {
+    private void configureSubAgents() {
         if (this.subAgents != null && !this.subAgents.isEmpty()) {
-            for (var subAgent : this.subAgents) {
-                subAgent.getSubAgent().setParentNode(agent);
-                toolCalls.add(subAgent);
-            }
+            toolCalls.addAll(this.subAgents);
         }
     }
 

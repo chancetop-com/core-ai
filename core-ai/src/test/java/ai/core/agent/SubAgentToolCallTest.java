@@ -20,9 +20,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -96,9 +99,9 @@ class SubAgentToolCallTest {
         // Verify subagents are converted to tools
         assertEquals(2, coordinator.getToolCalls().size());
 
-        // Verify parent-child relationship
-        assertEquals(coordinator, researcher.getSubAgent().getParentNode());
-        assertEquals(coordinator, writer.getSubAgent().getParentNode());
+        // Sub-agents should not have parent set (isolation: no message bubbling)
+        assertEquals(null, researcher.getSubAgent().getParentNode());
+        assertEquals(null, writer.getSubAgent().getParentNode());
     }
 
     @Test
@@ -249,4 +252,110 @@ class SubAgentToolCallTest {
         var result2 = toolCall.execute("{}", ExecutionContext.empty());
         assertTrue(result2.isFailed());
     }
+
+    @Test
+    void testFactoryModeCreation() {
+        var callCount = new AtomicInteger(0);
+
+        var toolCall = SubAgentToolCall.builder()
+                .agentFactory("factory-agent", "Agent created via factory", () -> {
+                    callCount.incrementAndGet();
+                    return Agent.builder()
+                            .name("factory-agent")
+                            .description("Agent created via factory")
+                            .systemPrompt("You are a test agent")
+                            .llmProvider(subAgentLlmProvider)
+                            .build();
+                })
+                .build();
+
+        assertEquals("factory-agent", toolCall.getName());
+        assertEquals("Agent created via factory", toolCall.getDescription());
+        assertTrue(toolCall.isSubAgent());
+        assertNull(toolCall.getSubAgent());
+        assertEquals(0, callCount.get());
+    }
+
+    @Test
+    void testFactoryModeEachCallCreatesNewInstance() {
+        var subAgentResponse = CompletionResponse.of(
+                List.of(Choice.of(
+                        FinishReason.STOP,
+                        Message.of(RoleType.ASSISTANT, "result")
+                )),
+                new Usage(10, 10, 20)
+        );
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class)))
+                .thenReturn(subAgentResponse);
+
+        var callCount = new AtomicInteger(0);
+
+        var toolCall = SubAgentToolCall.builder()
+                .agentFactory("factory-agent", "Factory agent", () -> {
+                    callCount.incrementAndGet();
+                    return Agent.builder()
+                            .name("factory-agent")
+                            .systemPrompt("You are a test agent")
+                            .llmProvider(subAgentLlmProvider)
+                            .build();
+                })
+                .build();
+
+        toolCall.execute("{\"query\": \"first call\"}", ExecutionContext.empty());
+        toolCall.execute("{\"query\": \"second call\"}", ExecutionContext.empty());
+
+        assertEquals(2, callCount.get());
+    }
+
+    @Test
+    void testBuilderRequiresSubAgentOrFactory() {
+        assertThrows(RuntimeException.class, () ->
+                SubAgentToolCall.builder()
+                        .name("no-agent")
+                        .description("Missing both subAgent and factory")
+                        .build()
+        );
+    }
+
+    @Test
+    void testMessageIsolation() {
+        // sub-agent responds with a tool call then a final answer
+        var subAgentResponse = CompletionResponse.of(
+                List.of(Choice.of(
+                        FinishReason.STOP,
+                        Message.of(RoleType.ASSISTANT, "Search result: found 3 files")
+                )),
+                new Usage(10, 10, 20)
+        );
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class)))
+                .thenReturn(subAgentResponse);
+
+        var subAgent = Agent.builder()
+                .name("explorer")
+                .description("Explores code")
+                .systemPrompt("You are an explorer")
+                .llmProvider(subAgentLlmProvider)
+                .build();
+
+        // simulate parent agent having some messages
+        var parentAgent = Agent.builder()
+                .name("parent")
+                .description("Parent agent")
+                .systemPrompt("You are a parent")
+                .llmProvider(llmProvider)
+                .subAgents(List.of(subAgent.toSubAgentToolCall()))
+                .build();
+
+        int parentMessageCountBefore = parentAgent.getMessages().size();
+
+        var toolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
+        var result = toolCall.execute("{\"query\": \"search files\"}", ExecutionContext.empty());
+
+        assertTrue(result.isCompleted());
+
+        // parent messages should not contain sub-agent's ASSISTANT/TOOL messages
+        int parentMessageCountAfter = parentAgent.getMessages().size();
+        assertEquals(parentMessageCountBefore, parentMessageCountAfter);
+    }
+
 }

@@ -12,6 +12,7 @@ import core.framework.json.JSON;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * @author stephen
@@ -24,6 +25,7 @@ public class SubAgentToolCall extends ToolCall {
     }
 
     private Agent subAgent;
+    private Supplier<Agent> agentFactory;
 
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
@@ -35,16 +37,21 @@ public class SubAgentToolCall extends ToolCall {
                 return ToolCallResult.failed("Parameter 'query' is required for subagent " + getName());
             }
 
-            var result = subAgent.run(query, context);
+            Agent agent = resolveAgent();
+
+            // isolate: prevent message bubbling to parent
+            // setting parent to null is sufficient — useGroupContext also checks parent != null
+            agent.setParentNode(null);
+
+            var result = agent.run(query, context);
 
             // Handle subagent status propagation
-            var subAgentStatus = subAgent.getNodeStatus();
+            var subAgentStatus = agent.getNodeStatus();
 
             if (subAgentStatus == NodeStatus.WAITING_FOR_USER_INPUT) {
-                // Propagate waiting for user input status
-                return ToolCallResult.waitingForInput(subAgent.getId(), result)
+                return ToolCallResult.waitingForInput(agent.getId(), result)
                         .withToolName(getName())
-                        .withStats("subagent_name", subAgent.getName())
+                        .withStats("subagent_name", agent.getName())
                         .withStats("subagent_status", subAgentStatus.name());
             }
 
@@ -55,8 +62,8 @@ public class SubAgentToolCall extends ToolCall {
 
             return ToolCallResult.completed(result)
                     .withToolName(getName())
-                    .withStats("subagent_name", subAgent.getName())
-                    .withStats("subagent_token_usage", subAgent.getCurrentTokenUsage());
+                    .withStats("subagent_name", agent.getName())
+                    .withStats("subagent_token_usage", agent.getCurrentTokenUsage());
 
         } catch (Exception e) {
             return ToolCallResult.failed("Subagent '" + getName() + "' execution error: " + e.getMessage(), e)
@@ -69,11 +76,17 @@ public class SubAgentToolCall extends ToolCall {
         throw new AgentRuntimeException("SUB_AGENT_ENTRY_POINT_ERROR", "SubAgentToolCall requires ExecutionContext for execution");
     }
 
+    private Agent resolveAgent() {
+        if (agentFactory != null) return agentFactory.get();
+        return this.subAgent;
+    }
+
     public Agent getSubAgent() {
         return subAgent;
     }
 
     public NodeStatus getSubAgentStatus() {
+        if (subAgent == null) return null;
         return subAgent.getNodeStatus();
     }
 
@@ -89,6 +102,9 @@ public class SubAgentToolCall extends ToolCall {
 
     public static class Builder extends ToolCall.Builder<Builder, SubAgentToolCall> {
         private Agent subAgent;
+        private Supplier<Agent> agentFactory;
+
+        // singleton mode
 
         public Builder subAgent(Agent subAgent, Class<?>... classes) {
             return subAgent(subAgent, ToolCallParameters.of(classes));
@@ -105,13 +121,27 @@ public class SubAgentToolCall extends ToolCall {
 
         public Builder subAgent(Agent subAgent, List<ToolCallParameter> parameters) {
             this.subAgent = subAgent;
-            // Use agent's name and description as tool name and description
             name(subAgent.getName());
             description(subAgent.getDescription());
-            // Define the query parameter
             parameters(parameters);
             return this;
         }
+
+        // factory mode
+
+        public Builder agentFactory(String name, String description, Supplier<Agent> factory) {
+            this.agentFactory = factory;
+            name(name);
+            description(description);
+            parameters(List.of(ToolCallParameter.builder()
+                    .name("query")
+                    .description("The query or instruction to send to the sub-agent.")
+                    .required(true)
+                    .build()
+            ));
+            return this;
+        }
+
 
         @Override
         protected Builder self() {
@@ -119,12 +149,13 @@ public class SubAgentToolCall extends ToolCall {
         }
 
         public SubAgentToolCall build() {
-            if (subAgent == null) {
-                throw new RuntimeException("subAgent is required for SubAgentToolCall");
+            if (subAgent == null && agentFactory == null) {
+                throw new RuntimeException("Either subAgent or agentFactory is required for SubAgentToolCall");
             }
             var toolCall = new SubAgentToolCall();
             super.build(toolCall);
             toolCall.subAgent = this.subAgent;
+            toolCall.agentFactory = this.agentFactory;
             return toolCall;
         }
     }
