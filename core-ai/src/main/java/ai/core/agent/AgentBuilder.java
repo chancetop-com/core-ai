@@ -16,6 +16,7 @@ import ai.core.memory.Memory;
 import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryLifecycle;
 import ai.core.prompt.SystemVariables;
+import ai.core.prompt.langfuse.LangfusePrompt;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
 import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.rag.RagConfig;
@@ -63,17 +64,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private int doomLoopWindowSize = 4;
     private int doomLoopThreshold = 3;
 
-    // Memory configuration
     private Memory memory;
     private MemoryConfig memoryConfig;
-
-    // Skill configuration
     private SkillRegistry skillRegistry;
-
-    // SubAgent configuration
     private List<SubAgentToolCall> subAgents = Lists.newArrayList();
-
-    // Langfuse prompt integration (simplified - just names needed)
     private String langfuseSystemPromptName;
     private String langfusePromptTemplateName;
     private Integer langfusePromptVersion;
@@ -293,7 +287,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         beforeAgentBuildLifecycle();
         var agent = new Agent();
         this.nodeType = NodeType.AGENT;
-        // default name and description
         if (name == null) {
             name = "assistant";
         }
@@ -322,13 +315,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private void beforeAgentBuildLifecycle() {
         agentLifecycles.forEach(alc -> alc.beforeAgentBuild(this));
     }
-
     private void afterAgentBuildLifecycle(Agent agent) {
         agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
     }
-
     private void configureSubAgents(Agent agent) {
-        // Process subAgents: convert to SubAgentToolCall and add to toolCalls
         if (this.subAgents != null && !this.subAgents.isEmpty()) {
             for (var subAgent : this.subAgents) {
                 subAgent.getSubAgent().setParentNode(agent);
@@ -391,7 +381,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agentLifecycles.add(new DoomLoopLifecycle(strategies));
         }
     }
-
     private void configureCompression() {
         if (compressionEnabled) {
             if (compression == null) {
@@ -403,10 +392,8 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     private void configureSkills() {
         if (skillRegistry == null) return;
-        var skills = skillRegistry.listAll();
-        if (skills.isEmpty()) return;
-        boolean hasSkillTool = toolCalls.stream().anyMatch(t -> SkillTool.TOOL_NAME.equals(t.getName()));
-        if (!hasSkillTool) {
+        if (skillRegistry.listAll().isEmpty()) return;
+        if (toolCalls.stream().noneMatch(t -> SkillTool.TOOL_NAME.equals(t.getName()))) {
             toolCalls.add(SkillTool.builder().registry(skillRegistry).build());
         }
     }
@@ -422,47 +409,38 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     private void configureMemory() {
-        if (this.memory == null) {
-            return;
-        }
-        var config = this.memoryConfig != null
-                ? this.memoryConfig
-                : MemoryConfig.defaultConfig();
-
+        if (this.memory == null) return;
+        var config = this.memoryConfig != null ? this.memoryConfig : MemoryConfig.defaultConfig();
         var lifecycle = new MemoryLifecycle(this.memory, config.getMaxRecallRecords());
         agentLifecycles.add(lifecycle);
-
-        // Only auto-register MemoryRecallTool if autoRecall is enabled
         if (config.isAutoRecall()) {
-            var memoryRecallTool = lifecycle.getMemoryRecallTool();
-            toolCalls.add(memoryRecallTool);
+            toolCalls.add(lifecycle.getMemoryRecallTool());
         }
     }
 
     private void fetchLangfusePromptsIfConfigured() {
-        // Check if any Langfuse prompts are requested
-        if (langfuseSystemPromptName == null && langfusePromptTemplateName == null) {
-            return;
-        }
-
-        // Get provider from registry
+        if (langfuseSystemPromptName == null && langfusePromptTemplateName == null) return;
         var provider = LangfusePromptProviderRegistry.getProvider();
         if (provider == null) {
-            throw new IllegalStateException("Langfuse prompts are configured but Langfuse provider is not initialized. " + "Please configure langfuse.prompt.base.url in your properties file.");
+            throw new IllegalStateException("Langfuse prompts are configured but Langfuse provider is not initialized. "
+                    + "Please configure langfuse.prompt.base.url in your properties file.");
         }
-
         try {
             if (langfuseSystemPromptName != null) {
-                var prompt = langfusePromptVersion != null ? provider.getPrompt(langfuseSystemPromptName, langfusePromptVersion) : langfusePromptLabel != null ? provider.getPromptByLabel(langfuseSystemPromptName, langfusePromptLabel) : provider.getPrompt(langfuseSystemPromptName);
-                this.systemPrompt = prompt.getPromptContent();
+                this.systemPrompt = fetchLangfusePrompt(provider, langfuseSystemPromptName).getPromptContent();
             }
             if (langfusePromptTemplateName != null) {
-                var prompt = langfusePromptVersion != null ? provider.getPrompt(langfusePromptTemplateName, langfusePromptVersion) : langfusePromptLabel != null ? provider.getPromptByLabel(langfusePromptTemplateName, langfusePromptLabel) : provider.getPrompt(langfusePromptTemplateName);
-                this.promptTemplate = prompt.getPromptContent();
+                this.promptTemplate = fetchLangfusePrompt(provider, langfusePromptTemplateName).getPromptContent();
             }
         } catch (LangfusePromptProvider.LangfusePromptException e) {
             throw new RuntimeException("Failed to fetch prompts from Langfuse", e);
         }
+    }
+
+    private LangfusePrompt fetchLangfusePrompt(LangfusePromptProvider provider, String name) throws LangfusePromptProvider.LangfusePromptException {
+        if (langfusePromptVersion != null) return provider.getPrompt(name, langfusePromptVersion);
+        if (langfusePromptLabel != null) return provider.getPromptByLabel(name, langfusePromptLabel);
+        return provider.getPrompt(name);
     }
 
     @Override

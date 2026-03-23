@@ -3,7 +3,6 @@ package ai.core.skill;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,7 +59,7 @@ public class SkillRegistry {
         return null;
     }
 
-    public String readContent(SkillMetadata skill) throws SkillLoadException {
+    public String readContent(SkillMetadata skill) {
         if (skill.getContent() != null) {
             return skill.getContent();
         }
@@ -71,7 +70,7 @@ public class SkillRegistry {
         return provider.readContent(skill);
     }
 
-    public String readResource(SkillMetadata skill, String resourcePath) throws SkillLoadException {
+    public String readResource(SkillMetadata skill, String resourcePath) {
         var provider = skillOwnerMap.get(skill.getQualifiedName());
         if (provider == null) {
             throw new SkillLoadException("no provider found for skill: " + skill.getQualifiedName());

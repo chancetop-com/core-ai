@@ -46,9 +46,8 @@ public class SkillTool extends ToolCall {
         var sb = new StringBuilder(BASE_DESC.length() + skills.size() * 200);
         sb.append(BASE_DESC).append("\n<available_skills>\n");
         for (var skill : skills) {
-            sb.append("  <skill>\n");
-            sb.append("    <name>").append(skill.getQualifiedName()).append("</name>\n");
-            sb.append("    <description>").append(skill.getDescription()).append("</description>\n");
+            sb.append("  <skill>\n    <name>").append(skill.getQualifiedName())
+              .append("</name>\n    <description>").append(skill.getDescription()).append("</description>\n");
             if (skill.getSkillDir() != null) {
                 sb.append("    <location>").append(toDisplayPath(skill.getSkillDir(), workspaceDir)).append("</location>\n");
             }
@@ -105,7 +104,7 @@ public class SkillTool extends ToolCall {
         }
     }
 
-    private String readSkillContent(SkillMetadata skill) throws SkillLoadException {
+    private String readSkillContent(SkillMetadata skill) {
         String skillMd = registry.readContent(skill);
         var sb = new StringBuilder(skillMd.length() + 256);
         sb.append("<skill name=\"").append(skill.getQualifiedName()).append('"');

@@ -1,7 +1,5 @@
 package ai.core.skill;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -13,8 +11,6 @@ import java.util.List;
  * @author stephen
  */
 public class FilesystemSkillProvider implements SkillProvider {
-    private static final Logger LOGGER = LoggerFactory.getLogger(FilesystemSkillProvider.class);
-
     private final String name;
     private final String path;
     private final int priority;
@@ -43,7 +39,7 @@ public class FilesystemSkillProvider implements SkillProvider {
     }
 
     @Override
-    public String readContent(SkillMetadata skill)  {
+    public String readContent(SkillMetadata skill) {
         if (skill.getPath() == null) {
             throw new SkillLoadException("skill has no filesystem path: " + skill.getName());
         }
@@ -59,7 +55,7 @@ public class FilesystemSkillProvider implements SkillProvider {
     }
 
     @Override
-    public String readResource(SkillMetadata skill, String resourcePath)  {
+    public String readResource(SkillMetadata skill, String resourcePath) {
         if (skill.getSkillDir() == null) {
             throw new SkillLoadException("skill has no directory: " + skill.getName());
         }

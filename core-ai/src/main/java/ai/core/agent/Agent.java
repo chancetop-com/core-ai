@@ -57,7 +57,6 @@ public class Agent extends Node<Agent> {
 
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
     private volatile boolean cancelled = false;
-
     String systemPrompt;
     String promptTemplate;
     LLMProvider llmProvider;
@@ -74,10 +73,9 @@ public class Agent extends Node<Agent> {
     Compression compression;
     ReasoningEffort reasoningEffort;
     List<SubAgentToolCall> subAgents = new ArrayList<>();
-
     @Override
     String execute(String query, Map<String, Object> variables) {
-        var activeTracer = getActiveTracer();
+        var activeTracer = (AgentTracer) getTracer();
         if (activeTracer != null) {
             var execContext = getExecutionContext();
             var context = AgentTraceContext.builder()
@@ -92,7 +90,6 @@ public class Agent extends Node<Agent> {
 
             return activeTracer.traceAgentExecution(context, () -> {
                 var result = doExecute(query, variables, false);
-                // Update context with execution results for tracing
                 context.setOutput(getOutput());
                 context.setStatus(getNodeStatus().name());
                 context.setMessageCount(getMessages().size());
@@ -109,7 +106,6 @@ public class Agent extends Node<Agent> {
     private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
-
         if (ragConfig.useRag()) {
             rag(getInput(), context);
             prompt += RagConfig.AGENT_RAG_CONTEXT_TEMPLATE;
@@ -292,7 +288,7 @@ public class Agent extends Node<Agent> {
 
     private ToolExecutor getToolExecutor() {
         if (toolExecutor == null) {
-            toolExecutor = new ToolExecutor(toolCalls, agentLifecycles, getActiveTracer(), this::updateNodeStatus);
+            toolExecutor = new ToolExecutor(toolCalls, agentLifecycles, getTracer(), this::updateNodeStatus);
         }
         toolExecutor.setAuthenticated(authenticated);
         return toolExecutor;
@@ -406,10 +402,6 @@ public class Agent extends Node<Agent> {
 
     public void setLlmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
-    }
-
-    private AgentTracer getActiveTracer() {
-        return getTracer();
     }
 
     public List<SubAgentToolCall> getSubAgents() {
