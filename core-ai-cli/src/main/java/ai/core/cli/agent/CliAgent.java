@@ -109,7 +109,7 @@ public class CliAgent {
                 <workspace>
                 %s
                 </workspace>
-
+                
                 Always use the workspace directory as the working directory when executing shell commands or scripts.
                 """.formatted(workspaceInfo));
 
@@ -120,26 +120,24 @@ public class CliAgent {
 
         var mdMemoryProvider = new MdMemoryProvider(config.workspace);
         var mdMemoryContent = mdMemoryProvider.load();
-        if (!mdMemoryContent.isBlank()) {
-            sb.append("""
-
+        sb.append("""
+                
                 ## Memory
-
-                You have a persistent structured memory system. All current memories are loaded below.
-                Index file: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
-
-                Reading: memories are already in context below. Use grep_file/read_file to access remaining files if content was truncated.
-                Writing: use write_file/edit_file to create or update .core-ai/memory/ topic files, \
-                each with YAML frontmatter (name, description, type: user/feedback/project/reference). \
-                Update .core-ai/MEMORY.md index when adding or removing files.
-                Before writing, check existing memories to avoid duplicates. \
-                If related content already exists, merge new information into the existing file instead of creating a new one.
-
+                
+                Persistent structured memory at .core-ai/memory/.
+                Index: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
+                Each topic file has YAML frontmatter (name, description, type: user/feedback/project/reference).
+                
+                Reading: use md_memory_tool to search/get, or read_file for full content.
+                Writing: use write_file/edit_file to create/update topic files. \
+                Update MEMORY.md index when adding or removing files. \
+                Check existing memories first to avoid duplicates; merge into existing files when possible.
+                
                 <memories>
                 %s
                 </memories>
-                """.formatted(mdMemoryContent));
-        }
+                """.formatted(mdMemoryContent.isBlank() ? "(empty - initialize when user shares preferences or asks to remember)" : mdMemoryContent));
+
         return sb.toString();
     }
 
