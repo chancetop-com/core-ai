@@ -13,7 +13,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -105,9 +104,9 @@ public class RemoteApiClient {
                 var fieldName = entry.getKey();
                 var file = entry.getValue();
                 var fileName = file.getFileName().toString();
-                var header = ("--" + boundary + "\r\n"
+                var header = "--" + boundary + "\r\n"
                     + "Content-Disposition: form-data; name=\"" + fieldName + "\"; filename=\"" + fileName + "\"\r\n"
-                    + "Content-Type: application/octet-stream\r\n\r\n");
+                    + "Content-Type: application/octet-stream\r\n\r\n";
                 parts.add(header.getBytes(StandardCharsets.UTF_8));
                 parts.add(Files.readAllBytes(file));
                 parts.add("\r\n".getBytes(StandardCharsets.UTF_8));

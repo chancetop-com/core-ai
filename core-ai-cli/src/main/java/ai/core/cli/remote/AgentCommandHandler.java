@@ -55,7 +55,7 @@ public class AgentCommandHandler {
     }
 
     @SuppressWarnings("unchecked")
-    public AgentSwitch handle() {
+    public AgentAction handle() {
         List<Map<String, Object>> agents;
         try {
             var json = api.get("/api/agents");
@@ -130,14 +130,14 @@ public class AgentCommandHandler {
         }
     }
 
-    private AgentSwitch handleAgentAction(String agentId, String agentName, boolean isLLMCall, boolean isDefault) {
+    private AgentAction handleAgentAction(String agentId, String agentName, boolean isLLMCall, boolean isDefault) {
         List<String> actions;
         if (isLLMCall) {
             actions = List.of("Test", "Edit", "Back");
         } else if (isDefault) {
-            actions = List.of("Chat", "Back");
+            actions = List.of("Chat", "Load as SubAgent", "Back");
         } else {
-            actions = List.of("Chat", "Edit", "Trigger run", "Schedule", "Back");
+            actions = List.of("Chat", "Load as SubAgent", "Edit", "Trigger run", "Schedule", "Back");
         }
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Action:" + AnsiTheme.RESET + "\n");
         int actionIdx = ui.pickIndex(actions);
@@ -151,17 +151,19 @@ public class AgentCommandHandler {
             }
             return null;
         }
+        var name = agentName != null ? agentName : agentId;
         return switch (actionIdx) {
-            case 0 -> new AgentSwitch(agentId, agentName != null ? agentName : agentId);
-            case 1 -> {
+            case 0 -> new AgentSwitch(agentId, name);
+            case 1 -> new LoadAsSubAgent(agentId, name);
+            case 2 -> {
                 new AgentEditHandler(ui, api).edit(agentId, false);
                 yield null;
             }
-            case 2 -> {
+            case 3 -> {
                 triggerRun(agentId);
                 yield null;
             }
-            case 3 -> {
+            case 4 -> {
                 manageSchedule(agentId);
                 yield null;
             }
@@ -332,5 +334,7 @@ public class AgentCommandHandler {
         ui.printStreamingChunk(String.format("  %s%-15s%s %s%n", AnsiTheme.MUTED, label + ":", AnsiTheme.RESET, value));
     }
 
-    record AgentSwitch(String agentId, String agentName) { }
+    sealed interface AgentAction permits AgentSwitch, LoadAsSubAgent { }
+    record AgentSwitch(String agentId, String agentName) implements AgentAction { }
+    record LoadAsSubAgent(String agentId, String agentName) implements AgentAction { }
 }

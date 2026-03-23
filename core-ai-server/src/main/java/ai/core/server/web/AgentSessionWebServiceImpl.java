@@ -7,6 +7,8 @@ import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
 import ai.core.api.server.session.LoadSkillsRequest;
 import ai.core.api.server.session.LoadSkillsResponse;
+import ai.core.api.server.session.LoadSubAgentsRequest;
+import ai.core.api.server.session.LoadSubAgentsResponse;
 import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
@@ -126,6 +128,20 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
         var response = new LoadSkillsResponse();
         response.loadedSkills = loadedSkills;
+        return response;
+    }
+
+    @Override
+    public LoadSubAgentsResponse loadSubAgents(String sessionId, LoadSubAgentsRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
+        var definitions = request.agentIds.stream()
+                .map(agentDefinitionService::getEntity)
+                .toList();
+        var loadedSubAgents = sessionManager.loadSubAgents(sessionId, definitions);
+        var response = new LoadSubAgentsResponse();
+        response.loadedSubAgents = loadedSubAgents;
         return response;
     }
 

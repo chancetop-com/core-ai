@@ -9,9 +9,11 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.tools.SkillTool;
+import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
@@ -70,7 +72,7 @@ public class AgentSessionManager {
         var sessionId = UUID.randomUUID().toString();
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
-        var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
+        var autoApproveAll = Boolean.TRUE.equals(config.autoApproveAll);
         var permissionStore = new InMemoryToolPermissionStore();
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
         sessions.put(sessionId, session);
@@ -108,7 +110,48 @@ public class AgentSessionManager {
         registry.addProvider(mongoSkillProvider);
         var skillTool = SkillTool.builder().registry(registry).build();
         session.loadTools(List.of(skillTool));
-        return skills.stream().map(s -> s.getQualifiedName()).toList();
+        return skills.stream().map(SkillMetadata::getQualifiedName).toList();
+    }
+
+    public List<String> loadSubAgents(String sessionId, List<AgentDefinition> definitions) {
+        var session = getSession(sessionId);
+        var names = new java.util.ArrayList<String>();
+        for (var definition : definitions) {
+            var subAgent = buildSubAgent(definition);
+            var subAgentToolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
+            session.loadTools(List.of(subAgentToolCall));
+            names.add(definition.name);
+        }
+        return names;
+    }
+
+    private Agent buildSubAgent(AgentDefinition definition) {
+        var config = toSessionConfig(definition);
+        var toolIds = definition.publishedConfig != null ? definition.publishedConfig.toolIds : definition.toolIds;
+        var tools = toolRegistryService.resolveTools(toolIds);
+
+        var builder = Agent.builder()
+                .name(definition.name.replaceAll("\\s+", "-"))
+                .description(definition.description != null ? definition.description : definition.name)
+                .llmProvider(llmProviders.getProvider())
+                .toolCalls(tools.isEmpty() ? BuiltinTools.ALL : tools)
+                .temperature(config.temperature != null ? config.temperature : 0.8);
+
+        if (config.systemPrompt != null) {
+            builder.systemPrompt(config.systemPrompt);
+        }
+        if (config.model != null) {
+            builder.model(config.model);
+        }
+        if (config.maxTurns != null) {
+            builder.maxTurn(config.maxTurns);
+        }
+
+        var skillRegistry = new SkillRegistry();
+        skillRegistry.addProvider(mongoSkillProvider);
+        builder.skillRegistry(skillRegistry);
+
+        return builder.build();
     }
 
     private SessionConfig toSessionConfig(AgentDefinition definition) {

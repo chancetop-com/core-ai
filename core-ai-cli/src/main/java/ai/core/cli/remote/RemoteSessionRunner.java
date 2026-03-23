@@ -1,6 +1,8 @@
 package ai.core.cli.remote;
 
 import ai.core.api.server.session.LoadSkillsRequest;
+import ai.core.api.server.session.LoadSubAgentsRequest;
+import ai.core.api.server.session.LoadSubAgentsResponse;
 import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.cli.DebugLog;
@@ -62,6 +64,7 @@ public class RemoteSessionRunner {
     private volatile String currentPrompt;
     private final Set<String> loadedToolIds = new HashSet<>();
     private final Set<String> loadedSkillIds = new HashSet<>();
+    private final Set<String> loadedSubAgentIds = new HashSet<>();
 
     public RemoteSessionRunner(TerminalUI ui, HttpAgentSession session, RemoteApiClient api, String name, String agentId) {
         this.ui = ui;
@@ -99,6 +102,7 @@ public class RemoteSessionRunner {
             currentPrompt = promptPrefix + ":" + agentName + "> ";
             loadedToolIds.clear();
             loadedSkillIds.clear();
+            loadedSubAgentIds.clear();
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Session: " + session.id() + AnsiTheme.RESET + "\n\n");
         } catch (RuntimeException e) {
             ui.showError("failed to switch agent: " + e.getMessage());
@@ -167,9 +171,11 @@ public class RemoteSessionRunner {
             case "/help" -> printHelp();
             case "/build-agent" -> new CreateAgentCommandHandler(ui, api, session.id()).handle();
             case "/agents" -> {
-                var switchReq = new AgentCommandHandler(ui, api).handle();
-                if (switchReq != null) {
-                    switchAgent(switchReq.agentId(), switchReq.agentName());
+                var action = new AgentCommandHandler(ui, api).handle();
+                if (action instanceof AgentCommandHandler.AgentSwitch s) {
+                    switchAgent(s.agentId(), s.agentName());
+                } else if (action instanceof AgentCommandHandler.LoadAsSubAgent s) {
+                    loadSubAgentToSession(s.agentId());
                 }
             }
             case "/tools" -> handleTools();
@@ -267,10 +273,10 @@ public class RemoteSessionRunner {
             var id = (String) skill.get("id");
             var qualifiedName = (String) skill.get("qualified_name");
             var desc = (String) skill.get("description");
-            var label = qualifiedName != null ? qualifiedName : (String) skill.get("name");
-            if (loadedSkillIds.contains(id)) label += AnsiTheme.SUCCESS + " (loaded)" + AnsiTheme.RESET;
-            if (desc != null && !desc.isBlank()) label += AnsiTheme.MUTED + " - " + truncate(desc, 40) + AnsiTheme.RESET;
-            labels.add(label);
+            var sb = new StringBuilder(qualifiedName != null ? qualifiedName : (String) skill.get("name"));
+            if (loadedSkillIds.contains(id)) sb.append(AnsiTheme.SUCCESS).append(" (loaded)").append(AnsiTheme.RESET);
+            if (desc != null && !desc.isBlank()) sb.append(AnsiTheme.MUTED).append(" - ").append(truncate(desc, 40)).append(AnsiTheme.RESET);
+            labels.add(sb.toString());
         }
 
         int selected = ui.pickIndex(labels);
@@ -300,6 +306,27 @@ public class RemoteSessionRunner {
         }
     }
 
+    private void loadSubAgentToSession(String agentId) {
+        try {
+            var request = new LoadSubAgentsRequest();
+            request.agentIds = List.of(agentId);
+            var resultJson = api.post("/api/sessions/" + session.id() + "/subagents", request);
+            if (resultJson != null) {
+                var result = JsonUtil.fromJson(LoadSubAgentsResponse.class, resultJson);
+                if (result.loadedSubAgents != null && !result.loadedSubAgents.isEmpty()) {
+                    loadedSubAgentIds.add(agentId);
+                    ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Loaded subagent: " + String.join(", ", result.loadedSubAgents) + AnsiTheme.RESET + "\n\n");
+                } else {
+                    ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "SubAgent was not loaded." + AnsiTheme.RESET + "\n\n");
+                }
+            } else {
+                ui.showError("failed to load subagent");
+            }
+        } catch (RemoteApiException e) {
+            ui.showError(e.getMessage());
+        }
+    }
+
     private void handleTools() {
         var tools = fetchTools();
         if (tools == null) return;
@@ -318,7 +345,7 @@ public class RemoteSessionRunner {
         int actionIdx = ui.pickIndex(actions);
         if (actionIdx != 0) return;
 
-        loadToolToSession((String) tool.get("id"), (String) tool.get("name"));
+        loadToolToSession((String) tool.get("id"));
     }
 
     private List<String> buildToolLabels(List<Map<String, Object>> tools) {
@@ -350,7 +377,7 @@ public class RemoteSessionRunner {
         }
     }
 
-    private void loadToolToSession(String toolId, String toolName) {
+    private void loadToolToSession(String toolId) {
         if (toolId == null) {
             ui.showError("tool has no id");
             return;

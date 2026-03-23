@@ -6,6 +6,8 @@ import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
 import ai.core.api.server.session.LoadSkillsRequest;
 import ai.core.api.server.session.LoadSkillsResponse;
+import ai.core.api.server.session.LoadSubAgentsRequest;
+import ai.core.api.server.session.LoadSubAgentsResponse;
 import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
@@ -61,6 +63,11 @@ public interface AgentSessionWebService {
     @Path("/api/sessions/:sessionId/skills")
     @ResponseStatus(HTTPStatus.CREATED)
     LoadSkillsResponse loadSkills(@PathParam("sessionId") String sessionId, LoadSkillsRequest request);
+
+    @POST
+    @Path("/api/sessions/:sessionId/subagents")
+    @ResponseStatus(HTTPStatus.CREATED)
+    LoadSubAgentsResponse loadSubAgents(@PathParam("sessionId") String sessionId, LoadSubAgentsRequest request);
 
     @DELETE
     @Path("/api/sessions/:sessionId")

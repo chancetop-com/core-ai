@@ -26,7 +26,6 @@ import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.skill.MongoSkillProvider;
-import ai.core.server.skill.SkillRepoSyncJob;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillUploadController;
 import ai.core.server.tool.ToolRegistryService;
