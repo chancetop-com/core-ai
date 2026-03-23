@@ -2,7 +2,6 @@ package ai.core.agent;
 
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.document.Tokenizer;
@@ -13,11 +12,6 @@ import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.SystemVariables;
 import ai.core.rag.LongQueryHandler;
-import ai.core.task.Task;
-import ai.core.task.TaskArtifact;
-import ai.core.task.TaskMessage;
-import ai.core.task.TaskRoleType;
-import ai.core.task.TaskStatus;
 import ai.core.telemetry.Tracer;
 import ai.core.termination.Termination;
 import core.framework.util.Lists;
@@ -53,13 +47,11 @@ public abstract class Node<T extends Node<T>> {
     private Integer maxRound;
     private Node<?> parent;
     private Node<?> next;
-    private Task task;
     private Boolean streaming;
     private StreamingCallback streamingCallback;
     private Tracer tracer;
     private ExecutionContext executionContext;
     private final List<Termination> terminations;
-    private final Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
     private final List<Message> messages;
     private final Usage currentTokenUsage = new Usage();
     private final Map<String, Object> systemVariables = Maps.newHashMap();
@@ -70,27 +62,14 @@ public abstract class Node<T extends Node<T>> {
         this.nodeStatus = NodeStatus.INITED;
         this.messages = Lists.newArrayList();
         this.terminations = Lists.newArrayList();
-        this.statusChangedEventListeners = Maps.newConcurrentHashMap();
-    }
-
-    public void addStatusChangedEventListener(NodeStatus status, ChainNodeStatusChangedEventListener<T> eventListener) {
-        if (eventListener == null) return;
-        statusChangedEventListeners.put(status, eventListener);
-    }
-
-    public void addStatusChangedEventListeners(Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> listeners) {
-        if (listeners == null || listeners.isEmpty()) return;
-        statusChangedEventListeners.putAll(listeners);
     }
 
     public void setMessageUpdatedEventListener(MessageUpdatedEventListener<T> listener) {
         messageUpdatedEventListener = listener;
     }
 
-    @SuppressWarnings("unchecked")
     public void updateNodeStatus(NodeStatus nodeStatus) {
         this.nodeStatus = nodeStatus;
-        getStatusChangedEventListener(nodeStatus).ifPresent(listener -> listener.eventHandler((T) this));
     }
 
     public boolean notTerminated() {
@@ -99,10 +78,6 @@ public abstract class Node<T extends Node<T>> {
 
     void setNodeStatus(NodeStatus nodeStatus) {
         this.nodeStatus = nodeStatus;
-    }
-
-    public Optional<ChainNodeStatusChangedEventListener<T>> getStatusChangedEventListener(NodeStatus status) {
-        return Optional.ofNullable(statusChangedEventListeners.get(status));
     }
 
     public Optional<MessageUpdatedEventListener<T>> getMessageUpdatedEventListener() {
@@ -193,10 +168,6 @@ public abstract class Node<T extends Node<T>> {
         this.systemVariables.put(key, value);
     }
 
-    public Task getTask() {
-        return this.task;
-    }
-
     void setInput(String input) {
         this.input = input;
     }
@@ -270,25 +241,6 @@ public abstract class Node<T extends Node<T>> {
                 this.name, this.id, e.getMessage(), getInput(), getFailedMessage()), e);
         }
     }
-    public final void run(Task task) {
-        if (task == null) throw new IllegalArgumentException("Task cannot be null");
-        if (this.task == null) this.task = task;
-        var lastMessage = task.getLastMessage();
-        if (task.getStatus() == TaskStatus.INPUT_REQUIRED && lastMessage.getRole() != TaskRoleType.USER) {
-            throw new IllegalArgumentException("Task is waiting for user input, please submit the query first");
-        }
-        task.setStatus(TaskStatus.WORKING);
-        var rst = run(lastMessage.getTextPart().getText());
-        task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
-        task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
-        task.setStatus(nodeStatus == NodeStatus.WAITING_FOR_USER_INPUT ? TaskStatus.INPUT_REQUIRED : TaskStatus.COMPLETED);
-    }
-
-    public final void run(Task task, ExecutionContext context) {
-        this.executionContext = context;
-        run(task);
-    }
-
     private String getFailedMessage() {
         var content = getRawOutput() == null ? getOutput() : getRawOutput();
         var lastToolCalls = getMessages().getLast().toolCalls;
@@ -388,16 +340,6 @@ public abstract class Node<T extends Node<T>> {
     void removeMessage(Message message) {
         this.messages.remove(message);
     }
-    void addTaskHistoriesToMessages() {
-        if (this.task == null) return;
-        var histories = this.task.getHistory();
-        if (histories.size() <= 1) return;
-        var subHistories = histories.subList(0, histories.size() - 1);
-        addMessages(subHistories.stream().map(m -> Message.of(
-            m.getRole() == TaskRoleType.USER ? RoleType.USER : RoleType.ASSISTANT,
-            m.getTextPart().getText())).toList());
-    }
-
     void clearMessages() {
         this.messages.clear();
     }

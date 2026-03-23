@@ -2,7 +2,6 @@ package ai.core.agent;
 
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.agent.listener.ChainNodeStatusChangedEventListener;
 import ai.core.agent.listener.MessageUpdatedEventListener;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.persistence.Persistence;
@@ -16,7 +15,6 @@ import ai.core.termination.Termination;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -29,7 +27,6 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
     List<Termination> terminations;
     NodeType nodeType;
     MessageUpdatedEventListener<T> messageUpdatedEventListener;
-    Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners;
     Persistence<T> persistence;
     PersistenceProvider persistenceProvider;
     LongQueryHandler longQueryHandler;
@@ -77,11 +74,6 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
 
     public B messageUpdatedEventListener(MessageUpdatedEventListener<T> messageUpdatedEventListener) {
         this.messageUpdatedEventListener = messageUpdatedEventListener;
-        return self();
-    }
-
-    public B statusChangedEventListeners(Map<NodeStatus, ChainNodeStatusChangedEventListener<T>> statusChangedEventListeners) {
-        this.statusChangedEventListeners = statusChangedEventListeners;
         return self();
     }
 
@@ -149,7 +141,6 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         node.setNodeType(this.nodeType);
         node.addTerminations(this.terminations);
         node.setMaxRound(this.maxRound);
-        node.addStatusChangedEventListeners(this.statusChangedEventListeners);
         node.setMessageUpdatedEventListener(this.messageUpdatedEventListener);
         node.setPersistence(this.persistence);
         node.setPersistenceProvider(this.persistenceProvider);

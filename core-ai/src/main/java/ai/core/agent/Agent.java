@@ -2,6 +2,7 @@ package ai.core.agent;
 
 import ai.core.agent.internal.AgentHelper;
 import ai.core.agent.slashcommand.SlashCommandParser;
+import ai.core.context.Compression;
 import ai.core.defaultagents.DefaultRagQueryRewriteAgent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
@@ -15,7 +16,6 @@ import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
-import ai.core.context.Compression;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
@@ -34,7 +34,6 @@ import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
 import core.framework.util.Maps;
-import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -302,7 +301,6 @@ public class Agent extends Node<Agent> {
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
-            addTaskHistoriesToMessages();
         }
 
         if (isUseGroupContext() && getParentNode() != null) {

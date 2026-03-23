@@ -12,11 +12,6 @@ import ai.core.persistence.Persistence;
 import ai.core.telemetry.FlowTracer;
 import ai.core.telemetry.TracerRegistry;
 import ai.core.vectorstore.VectorStores;
-import ai.core.task.Task;
-import ai.core.task.TaskArtifact;
-import ai.core.task.TaskMessage;
-import ai.core.task.TaskRoleType;
-import ai.core.task.TaskStatus;
 import core.framework.util.Strings;
 
 import java.util.List;
@@ -27,7 +22,10 @@ import java.util.stream.Collectors;
 
 /**
  * @author stephen
+ *
+ * This feature is not being used and will be removed later.  @lim
  */
+
 public class Flow {
     public static Builder builder() {
         return new Builder();
@@ -44,8 +42,6 @@ public class Flow {
     Map<String, Object> currentVariables = Map.of();
     FlowNodeChangedEventListener flowNodeChangedEventListener;
     FlowNodeOutputUpdatedEventListener flowNodeOutputUpdatedEventListener;
-    private Task task;
-    private FlowStatus status;
     private LLMProviders llmProviders;
     private VectorStores vectorStores;
     private FlowTracer tracer;
@@ -85,41 +81,9 @@ public class Flow {
         }
     }
 
-    public void run(String nodeId, Task task, Map<String, Object> variables) {
-        if (task == null) throw new IllegalArgumentException("Task cannot be null");
-        if (this.task == null) this.task = task;
-        var lastMessage = task.getLastMessage();
-        // need user input but new query not yet submitted, return and wait
-        if (task.getStatus() == TaskStatus.INPUT_REQUIRED && lastMessage.getRole() != TaskRoleType.USER) {
-            throw new IllegalArgumentException("Task is waiting for user input, please submit the query first");
-        }
-        // task is completed, failed, canceled or unknown
-        if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.FAILED || task.getStatus() == TaskStatus.CANCELED || task.getStatus() == TaskStatus.UNKNOWN) {
-            throw new IllegalArgumentException("Task is already completed, failed, canceled or unknown");
-        }
-        task.setStatus(TaskStatus.WORKING);
-        try {
-            var rst = execute(nodeId, lastMessage.getTextPart().getText(), variables);
-            task.addHistories(List.of(TaskMessage.of(TaskRoleType.AGENT, rst)));
-            task.addArtifacts(List.of(TaskArtifact.of(this.getName(), null, null, rst, true, true)));
-            if (status == FlowStatus.WAITING_FOR_USER_INPUT) {
-                task.setStatus(TaskStatus.INPUT_REQUIRED);
-            } else {
-                task.setStatus(TaskStatus.COMPLETED);
-            }
-        } catch (Exception e) {
-            task.setStatus(TaskStatus.FAILED);
-        }
-    }
-
     public String run(String nodeId, String input, ExecutionContext context) {
         this.executionContext = context;
         return run(nodeId, input, context != null ? context.getCustomVariables() : null);
-    }
-
-    public void run(String nodeId, Task task, ExecutionContext context) {
-        this.executionContext = context;
-        run(nodeId, task, context != null ? context.getCustomVariables() : null);
     }
 
     public ExecutionContext getExecutionContext() {
@@ -162,7 +126,6 @@ public class Flow {
                 FlowNodeType.OPERATOR_FILTER).contains(currentNode.type)) {
             rst = currentNode.execute(input, variables);
             if (currentNode instanceof AgentFlowNode agentFlowNode && agentFlowNode.getAgent().getNodeStatus() == NodeStatus.WAITING_FOR_USER_INPUT) {
-                status = FlowStatus.WAITING_FOR_USER_INPUT;
                 return rst.text();
             }
         }
@@ -173,7 +136,6 @@ public class Flow {
 
         var nextNodes = getNextNodes(currentNode);
         if (nextNodes.isEmpty()) {
-            status = FlowStatus.SUCCESS;
             return rst.text();
         }
 
