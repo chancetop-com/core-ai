@@ -22,6 +22,10 @@ public class MemoryCommandHandler {
         this.memory = memory;
     }
 
+    public MdMemoryProvider getMemoryProvider() {
+        return memory;
+    }
+
     public void handle(String trimmed) {
         if (memory == null) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory not available.\n" + AnsiTheme.RESET);

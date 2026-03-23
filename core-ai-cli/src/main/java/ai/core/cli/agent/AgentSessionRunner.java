@@ -20,6 +20,7 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.memory.SessionMemoryExtractor;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
 import ai.core.session.ToolPermissionStore;
@@ -89,12 +90,28 @@ public class AgentSessionRunner {
         readInputLoop(commands, messageQueue, readyForInput);
 
         session.close();
+        extractSessionMemories();
         return switchSessionId.get();
     }
 
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
     }
+    private void extractSessionMemories() {
+        try {
+            var messages = agent.getMessages();
+            if (messages.size() < 4) return;
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Extracting memories..." + AnsiTheme.RESET + "\n");
+            var extractor = new SessionMemoryExtractor(
+                    memoryCommand.getMemoryProvider(),
+                    agent.getLLMProvider(),
+                    agent.getModel());
+            extractor.extract(messages);
+        } catch (Exception e) {
+            LOGGER.warn("Memory extraction failed: {}", e.getMessage());
+        }
+    }
+
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), modelName);
         LOGGER.debug("terminal: type={}, jline={}, ansi={}",
