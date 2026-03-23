@@ -34,6 +34,16 @@ public class SessionMemoryExtractor {
     private static final int MIN_MESSAGES_FOR_EXTRACTION = 4;
     private static final DateTimeFormatter FILE_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 
+    private static String stripMarkdownCodeBlock(String text) {
+        var stripped = text.strip();
+        if (stripped.startsWith("```")) {
+            int firstNewline = stripped.indexOf('\n');
+            if (firstNewline > 0) stripped = stripped.substring(firstNewline + 1);
+            if (stripped.endsWith("```")) stripped = stripped.substring(0, stripped.length() - 3).strip();
+        }
+        return stripped;
+    }
+
     private final MdMemoryProvider memoryProvider;
     private final LLMProvider llmProvider;
     private final String model;
@@ -42,6 +52,14 @@ public class SessionMemoryExtractor {
         this.memoryProvider = memoryProvider;
         this.llmProvider = llmProvider;
         this.model = model;
+    }
+
+    public Thread extractAsync(List<Message> messages) {
+        var copy = new ArrayList<>(messages);
+        var thread = new Thread(() -> extract(copy), "memory-extractor");
+        thread.setDaemon(false);
+        thread.start();
+        return thread;
     }
 
     public void extract(List<Message> messages) {
@@ -101,9 +119,16 @@ public class SessionMemoryExtractor {
         }
 
         try {
-            var result = JsonUtil.fromJson(ExtractionResponse.class, choice.message.content);
-            if (result.memories == null) return List.of();
-            return result.memories.stream()
+            String json = stripMarkdownCodeBlock(choice.message.content);
+            List<ExtractedMemory> memories;
+            if (json.stripLeading().startsWith("[")) {
+                memories = JsonUtil.fromJson(new com.fasterxml.jackson.core.type.TypeReference<>() { }, json);
+            } else {
+                var result = JsonUtil.fromJson(ExtractionResponse.class, json);
+                memories = result.memories;
+            }
+            if (memories == null) return List.of();
+            return memories.stream()
                     .filter(m -> m.content != null && !m.content.isBlank())
                     .filter(m -> m.importance == null || m.importance >= 0.5)
                     .toList();
