@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -43,7 +44,7 @@ public class SessionMemoryExtractor {
         this.model = model;
     }
 
-    public void extract(java.util.List<ai.core.llm.domain.Message> messages) {
+    public void extract(List<Message> messages) {
         var userAssistantMessages = messages.stream()
                 .filter(m -> m.role == RoleType.USER || m.role == RoleType.ASSISTANT)
                 .toList();
@@ -68,7 +69,7 @@ public class SessionMemoryExtractor {
         }
     }
 
-    private String formatConversation(java.util.List<ai.core.llm.domain.Message> messages) {
+    private String formatConversation(List<Message> messages) {
         var sb = new StringBuilder();
         for (var msg : messages) {
             String text = msg.getTextContent();
@@ -82,44 +83,45 @@ public class SessionMemoryExtractor {
         return sb.toString();
     }
 
-    private java.util.List<ExtractedMemory> callLLMForExtraction(String conversation) {
+    private List<ExtractedMemory> callLLMForExtraction(String conversation) {
         String prompt = String.format(Prompts.MEMORY_EXTRACTION_PROMPT, conversation);
         var request = CompletionRequest.of(
-                java.util.List.of(Message.of(RoleType.USER, prompt)),
+                List.of(Message.of(RoleType.USER, prompt)),
                 null, 0.3, model, "memory-extractor");
         request.responseFormat = ResponseFormat.of(ExtractionResponse.class);
 
         CompletionResponse response = llmProvider.completion(request);
         if (response == null || response.choices == null || response.choices.isEmpty()) {
-            return java.util.List.of();
+            return List.of();
         }
 
         var choice = response.choices.getFirst();
         if (choice.message == null || choice.message.content == null) {
-            return java.util.List.of();
+            return List.of();
         }
 
         try {
             var result = JsonUtil.fromJson(ExtractionResponse.class, choice.message.content);
-            if (result.memories == null) return java.util.List.of();
+            if (result.memories == null) return List.of();
             return result.memories.stream()
                     .filter(m -> m.content != null && !m.content.isBlank())
                     .filter(m -> m.importance == null || m.importance >= 0.5)
                     .toList();
         } catch (Exception e) {
             LOGGER.warn("Failed to parse extraction response", e);
-            return java.util.List.of();
+            return List.of();
         }
     }
 
-    private void writeMemories(java.util.List<ExtractedMemory> memories) throws IOException {
+    private void writeMemories(List<ExtractedMemory> memories) throws IOException {
         Path memoryDir = memoryProvider.getMemoryDir();
         Files.createDirectories(memoryDir);
 
         var existingMemories = memoryProvider.load();
         var newMemories = new ArrayList<ExtractedMemory>();
         for (var mem : memories) {
-            if (!existingMemories.toLowerCase(Locale.ROOT).contains(mem.content.toLowerCase(Locale.ROOT).substring(0, Math.min(30, mem.content.length())))) {
+            String prefix = mem.content.toLowerCase(Locale.ROOT).substring(0, Math.min(30, mem.content.length()));
+            if (!existingMemories.toLowerCase(Locale.ROOT).contains(prefix)) {
                 newMemories.add(mem);
             }
         }
@@ -132,19 +134,14 @@ public class SessionMemoryExtractor {
         String fileName = "extracted-" + timestamp + ".md";
         Path filePath = memoryDir.resolve(fileName);
 
-        var sb = new StringBuilder();
-        sb.append("---\n");
-        sb.append("name: session-extraction-").append(timestamp).append('\n');
-        sb.append("description: Auto-extracted memories from session conversation\n");
-        sb.append("type: project\n");
-        sb.append("---\n\n");
-
+        var sb = new StringBuilder(256);
+        sb.append("---\nname: session-extraction-").append(timestamp)
+          .append("\ndescription: Auto-extracted memories from session conversation\ntype: project\n---\n\n");
         for (var mem : newMemories) {
             sb.append("- ").append(mem.content).append('\n');
         }
 
         Files.writeString(filePath, sb.toString());
-
         updateIndex(fileName);
     }
 
@@ -159,7 +156,7 @@ public class SessionMemoryExtractor {
 
     public static class ExtractionResponse {
         @Property(name = "memories")
-        public java.util.List<ExtractedMemory> memories;
+        public List<ExtractedMemory> memories;
     }
 
     public static class ExtractedMemory {

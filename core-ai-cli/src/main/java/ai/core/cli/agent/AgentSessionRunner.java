@@ -90,26 +90,17 @@ public class AgentSessionRunner {
         readInputLoop(commands, messageQueue, readyForInput);
 
         session.close();
-        extractSessionMemories();
+        try {
+            new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel())
+                    .extract(agent.getMessages());
+        } catch (Exception e) {
+            LOGGER.warn("Memory extraction failed: {}", e.getMessage());
+        }
         return switchSessionId.get();
     }
 
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
-    }
-    private void extractSessionMemories() {
-        try {
-            var messages = agent.getMessages();
-            if (messages.size() < 4) return;
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  Extracting memories..." + AnsiTheme.RESET + "\n");
-            var extractor = new SessionMemoryExtractor(
-                    memoryCommand.getMemoryProvider(),
-                    agent.getLLMProvider(),
-                    agent.getModel());
-            extractor.extract(messages);
-        } catch (Exception e) {
-            LOGGER.warn("Memory extraction failed: {}", e.getMessage());
-        }
     }
 
     private void printBanner() {
@@ -141,8 +132,7 @@ public class AgentSessionRunner {
         }
     }
 
-    private void startSenderThread(BlockingQueue<String> queue, CliEventListener listener,
-                                   InProcessAgentSession session, Semaphore readyForInput) {
+    private void startSenderThread(BlockingQueue<String> queue, CliEventListener listener, InProcessAgentSession session, Semaphore readyForInput) {
         Thread senderThread = new Thread(() -> {
             try {
                 while (true) {
@@ -308,19 +298,15 @@ public class AgentSessionRunner {
             agent.setLlmProvider(llmProviders.getProvider(resolvedType));
             new ProviderConfigurator(ui, llmProviders, modelRegistry).saveActiveModel(resolvedType, newModel);
         } else {
-            ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET
-                    + " Model not in registry, using current provider.\n");
+            ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET + " Model not in registry, using current provider.\n");
         }
         agent.setModel(newModel);
-        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                + " Model switched: " + currentModel + " → "
-                + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
+        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model switched: "
+                + currentModel + " → " + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
     }
 
     private String getCurrentModelName() {
-        return agent.getModel() != null
-                ? agent.getModel()
-                : agent.getLLMProvider().config.getModel();
+        return agent.getModel() != null ? agent.getModel() : agent.getLLMProvider().config.getModel();
     }
 
     private void handleStats() {
@@ -338,9 +324,7 @@ public class AgentSessionRunner {
         var tools = agent.getToolCalls();
         ui.printStreamingChunk(String.format("%n  %sAvailable Tools (%d)%s%n", AnsiTheme.PROMPT, tools.size(), AnsiTheme.RESET));
         for (var tool : tools) {
-            String desc = tool.getDescription();
-            String summary = formatToolSummary(desc);
-            ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + tool.getName() + AnsiTheme.RESET + summary + "\n");
+            ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + tool.getName() + AnsiTheme.RESET + formatToolSummary(tool.getDescription()) + "\n");
         }
         ui.printStreamingChunk("\n");
     }
@@ -384,8 +368,7 @@ public class AgentSessionRunner {
         try {
             var selection = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
             selection.setContents(new java.awt.datatransfer.StringSelection(lastAssistant), null);
-            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Copied to clipboard ("
-                    + lastAssistant.length() + " chars)\n\n");
+            ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Copied to clipboard (" + lastAssistant.length() + " chars)\n\n");
         } catch (Exception e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to copy: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
@@ -407,8 +390,8 @@ public class AgentSessionRunner {
             messages.addAll(compressed);
             if (agent.hasPersistenceProvider()) agent.save(sessionId);
         }
-        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                + " Compacted: " + beforeCount + " → " + messages.size() + " messages\n\n");
+        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Compacted: "
+                + beforeCount + " → " + messages.size() + " messages\n\n");
     }
 
     private void handleUndo() {
@@ -424,8 +407,8 @@ public class AgentSessionRunner {
         int removed = messages.size() - idx;
         messages.subList(idx, messages.size()).clear();
         if (agent.hasPersistenceProvider()) agent.save(sessionId);
-        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                + " Undone " + removed + " message(s): " + AnsiTheme.MUTED + preview + AnsiTheme.RESET + "\n\n");
+        ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Undone " + removed
+                + " message(s): " + AnsiTheme.MUTED + preview + AnsiTheme.RESET + "\n\n");
     }
 
     private String showSessionPicker() {
@@ -446,8 +429,8 @@ public class AgentSessionRunner {
                 : session.id();
             labels.add(display + " (" + timeStr + ")" + marker);
         }
-        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions:" + AnsiTheme.RESET
-                + AnsiTheme.MUTED + " (↑↓ select, Enter confirm, q/Esc cancel)" + AnsiTheme.RESET + "\n");
+        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions:" + AnsiTheme.RESET + AnsiTheme.MUTED
+                + " (↑↓ select, Enter confirm, q/Esc cancel)" + AnsiTheme.RESET + "\n");
         int choice = ui.pickIndex(labels);
         if (choice < 0) return null;
         var picked = sessions.get(choice).id();
