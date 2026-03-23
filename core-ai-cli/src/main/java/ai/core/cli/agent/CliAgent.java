@@ -8,7 +8,6 @@ import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
-import ai.core.cli.memory.LocalFileMemoryProvider;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.skill.SkillConfig;
@@ -17,7 +16,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
-import ai.core.tool.tools.MemoryTool;
 import ai.core.tool.tools.SkillTool;
 
 import java.io.IOException;
@@ -90,7 +88,6 @@ public class CliAgent {
     private static List<ToolCall> buildTools(Config config, SkillConfig skillConfig) {
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
-        tools.add(MemoryTool.builder().provider(new LocalFileMemoryProvider(config.workspace)).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
         tools.add(SkillTool.builder()
                 .sources(skillConfig.getSources())
@@ -128,19 +125,19 @@ public class CliAgent {
 
                 ## Memory
 
-                You have a persistent memory system via the `memory_tool`. Current memories:
+                You have a persistent structured memory system. All current memories are loaded below.
+                Index file: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
+
+                Reading: memories are already in context below. Use grep_file/read_file to access remaining files if content was truncated.
+                Writing: use write_file/edit_file to create or update .core-ai/memory/ topic files, \
+                each with YAML frontmatter (name, description, type: user/feedback/project/reference). \
+                Update .core-ai/MEMORY.md index when adding or removing files.
+                Before writing, check existing memories to avoid duplicates. \
+                If related content already exists, merge new information into the existing file instead of creating a new one.
 
                 <memories>
                 %s
                 </memories>
-
-                Proactively use `memory_tool` (action=save) when you notice:
-                - User preferences (language, coding style, tools, workflows)
-                - Project facts (tech stack, architecture, conventions)
-                - Behavior corrections the user wants remembered
-                - Explicit "remember this" requests
-                Do NOT save transient or session-specific information.
-                Use `memory_tool` (action=forget) when the user asks to stop remembering something.
                 """.formatted(mdMemoryContent));
         }
         return sb.toString();

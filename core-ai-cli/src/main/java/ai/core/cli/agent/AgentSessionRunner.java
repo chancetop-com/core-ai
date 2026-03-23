@@ -20,6 +20,7 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.memory.SessionMemoryExtractor;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
 import ai.core.session.ToolPermissionStore;
@@ -89,6 +90,12 @@ public class AgentSessionRunner {
         readInputLoop(commands, messageQueue, readyForInput);
 
         session.close();
+        try {
+            new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel())
+                    .extract(agent.getMessages());
+        } catch (Exception e) {
+            LOGGER.warn("Memory extraction failed: {}", e.getMessage());
+        }
         return switchSessionId.get();
     }
 
@@ -271,6 +278,7 @@ public class AgentSessionRunner {
             switchModel(currentModel, input, null);
         }
     }
+
     private List<ModelRegistry.ModelEntry> buildModelEntryList(String currentModel) {
         var entries = new java.util.ArrayList<>(modelRegistry.getAllEntries());
         if (entries.stream().noneMatch(e -> e.model().equals(currentModel))) {
@@ -320,6 +328,7 @@ public class AgentSessionRunner {
         }
         ui.printStreamingChunk("\n");
     }
+
     private void handleExport(String trimmed) {
         String[] parts = trimmed.split("\\s+", 2);
         String filePath = parts.length > 1 ? parts[1].trim() : "session-" + sessionId + ".md";
@@ -336,6 +345,7 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
+
     private String formatToolSummary(String desc) {
         if (desc == null || desc.isBlank()) return "";
         String line = desc.lines().findFirst().orElse("").trim();
@@ -383,6 +393,7 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Compacted: "
                 + beforeCount + " → " + messages.size() + " messages\n\n");
     }
+
     private void handleUndo() {
         var messages = agent.getMessages();
         int idx = messages.size() - 1;
