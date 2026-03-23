@@ -31,6 +31,12 @@ public class SkillCommandHandler {
     private static final String SERVER_ENTRY = "core-ai-server (list and install skills from server)";
     private static final Path USER_SKILLS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "skills");
 
+    private static String truncate(String text, int max) {
+        if (text == null) return "";
+        var clean = text.replaceAll("[\\r\\n]+", " ").strip();
+        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
+    }
+
     private final TerminalUI ui;
 
     public SkillCommandHandler(TerminalUI ui) {
@@ -59,8 +65,7 @@ public class SkillCommandHandler {
 
     public String loadSkillContent(String name) {
         for (var skill : scanSkills()) {
-            if (!skill.name.equals(name)) continue;
-            return loadSkillContentFromEntry(skill);
+            if (skill.name.equals(name)) return loadSkillContentFromEntry(skill);
         }
         ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "!" + AnsiTheme.RESET
                 + " Skill '" + name + "' not found.\n\n");
@@ -92,7 +97,7 @@ public class SkillCommandHandler {
         }
 
         var api = new RemoteApiClient(config.serverUrl(), config.apiKey());
-        var files = new LinkedHashMap<String, java.nio.file.Path>();
+        var files = new LinkedHashMap<String, Path>();
         files.put("skill_file", skillFile);
 
         var resources = scanResources(skill.dirPath);
@@ -177,12 +182,12 @@ public class SkillCommandHandler {
             var qualifiedName = (String) skill.get("qualified_name");
             var desc = (String) skill.get("description");
             boolean installed = isInstalled(qualifiedName);
-            var label = qualifiedName;
-            if (installed) label += AnsiTheme.SUCCESS + " (installed)" + AnsiTheme.RESET;
+            var sb = new StringBuilder(qualifiedName);
+            if (installed) sb.append(AnsiTheme.SUCCESS).append(" (installed)").append(AnsiTheme.RESET);
             if (desc != null && !desc.isBlank()) {
-                label += AnsiTheme.MUTED + " - " + truncate(desc, 40) + AnsiTheme.RESET;
+                sb.append(AnsiTheme.MUTED).append(" - ").append(truncate(desc, 40)).append(AnsiTheme.RESET);
             }
-            labels.add(label);
+            labels.add(sb.toString());
         }
 
         ui.printStreamingChunk(String.format("%n  %sServer Skills (%d)%s%n", AnsiTheme.PROMPT, skills.size(), AnsiTheme.RESET));
@@ -262,12 +267,10 @@ public class SkillCommandHandler {
             return;
         }
         try (var walk = Files.walk(skillDir)) {
-            walk.sorted(java.util.Comparator.reverseOrder())
-                .forEach(path -> {
-                    try {
-                        Files.delete(path);
-                    } catch (IOException ignored) { }
-                });
+            var paths = walk.sorted(java.util.Comparator.reverseOrder()).toList();
+            for (var path : paths) {
+                Files.deleteIfExists(path);
+            }
         } catch (IOException e) {
             ui.showError("failed to remove: " + e.getMessage());
             return;
@@ -319,7 +322,9 @@ public class SkillCommandHandler {
                       if (name == null) name = p.getFileName().toString();
                       result.add(new SkillEntry(namespace + "/" + name, p, source));
                   });
-        } catch (IOException ignored) { }
+        } catch (IOException ignored) {
+            // skip unreadable namespace directories
+        }
     }
 
     private String parseFrontmatterName(Path skillFile) {
@@ -355,12 +360,6 @@ public class SkillCommandHandler {
         }
         result.sort(String::compareTo);
         return result;
-    }
-
-    private static String truncate(String text, int max) {
-        if (text == null) return "";
-        var clean = text.replaceAll("[\\r\\n]+", " ").strip();
-        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
     }
 
     private record SkillEntry(String name, Path dirPath, String source) {
