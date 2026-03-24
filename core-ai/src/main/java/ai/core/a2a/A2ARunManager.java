@@ -1,0 +1,147 @@
+package ai.core.a2a;
+
+import ai.core.agent.Agent;
+import ai.core.api.a2a.AgentCard;
+import ai.core.api.a2a.SendMessageRequest;
+import ai.core.api.a2a.Task;
+import ai.core.api.a2a.TaskState;
+import ai.core.api.server.session.ApprovalDecision;
+import ai.core.session.InProcessAgentSession;
+import ai.core.session.ToolPermissionStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+/**
+ * @author stephen
+ */
+public class A2ARunManager {
+    private static final Logger LOGGER = LoggerFactory.getLogger(A2ARunManager.class);
+
+    private static String truncate(String text) {
+        return text.length() > 100 ? text.substring(0, 100) + "..." : text;
+    }
+
+    private final Supplier<Agent> agentFactory;
+    private final boolean autoApproveAll;
+    private final ToolPermissionStore permissionStore;
+    private final ConcurrentMap<String, A2ATaskState> tasks = new ConcurrentHashMap<>();
+
+    public A2ARunManager(Supplier<Agent> agentFactory, boolean autoApproveAll, ToolPermissionStore permissionStore) {
+        this.agentFactory = agentFactory;
+        this.autoApproveAll = autoApproveAll;
+        this.permissionStore = permissionStore;
+    }
+
+    public AgentCard getAgentCard() {
+        var card = new AgentCard();
+        card.name = "core-ai";
+        card.description = "AI coding assistant with file operations and shell access";
+        card.version = "1.0.0";
+        var caps = new AgentCard.AgentCapabilities();
+        caps.streaming = true;
+        caps.pushNotifications = false;
+        card.capabilities = caps;
+        card.skills = List.of(
+                AgentCard.Skill.of("code-generation", "Generate and modify code"),
+                AgentCard.Skill.of("file-operations", "Read, write, search files"),
+                AgentCard.Skill.of("shell-execution", "Execute shell commands")
+        );
+        card.defaultInputModes = List.of("text/plain");
+        card.defaultOutputModes = List.of("text/plain");
+        return card;
+    }
+
+    public Task createSyncTask(SendMessageRequest request) {
+        var taskId = UUID.randomUUID().toString();
+        var agent = agentFactory.get();
+        var session = new InProcessAgentSession(taskId, agent, autoApproveAll, permissionStore);
+
+        var state = new A2ATaskState(taskId, taskId, session);
+        state.setState(TaskState.WORKING);
+        tasks.put(taskId, state);
+
+        var future = new CompletableFuture<Task>();
+        var adapter = new A2AEventAdapter(taskId, state, null, future);
+        session.onEvent(adapter);
+
+        var userText = request.extractUserText();
+        LOGGER.info("creating sync task, taskId={}, message={}", taskId, truncate(userText));
+        session.sendMessage(userText);
+
+        try {
+            return future.get(5, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            state.setState(TaskState.FAILED);
+            state.errorMessage = e.getMessage();
+            return state.toTask();
+        }
+    }
+
+    public A2ATaskState createStreamingTask(SendMessageRequest request, Consumer<String> sseSender) {
+        var taskId = UUID.randomUUID().toString();
+        var agent = agentFactory.get();
+        var session = new InProcessAgentSession(taskId, agent, autoApproveAll, permissionStore);
+
+        var state = new A2ATaskState(taskId, taskId, session);
+        state.setState(TaskState.WORKING);
+        tasks.put(taskId, state);
+
+        var adapter = new A2AEventAdapter(taskId, state, sseSender, null);
+        session.onEvent(adapter);
+
+        var userText = request.extractUserText();
+        LOGGER.info("creating streaming task, taskId={}, message={}", taskId, truncate(userText));
+        session.sendMessage(userText);
+
+        return state;
+    }
+
+    public Task getTask(String taskId) {
+        var state = tasks.get(taskId);
+        if (state == null) return null;
+        return state.toTask();
+    }
+
+    public void resumeTask(String taskId, String decision, String callId) {
+        var state = tasks.get(taskId);
+        if (state == null) throw new IllegalArgumentException("task not found: " + taskId);
+        if (state.getState() != TaskState.INPUT_REQUIRED) throw new IllegalStateException("task is not awaiting input: " + taskId);
+
+        var resolvedCallId = callId != null ? callId : state.getAwaitCallId();
+        if (resolvedCallId == null) throw new IllegalStateException("no callId available for resume");
+
+        var approvalDecision = "deny".equalsIgnoreCase(decision) ? ApprovalDecision.DENY : ApprovalDecision.APPROVE;
+        LOGGER.info("resuming task, taskId={}, callId={}, decision={}", taskId, resolvedCallId, approvalDecision);
+
+        state.setState(TaskState.WORKING);
+        state.clearAwait();
+        state.session.approveToolCall(resolvedCallId, approvalDecision);
+    }
+
+    public void cancelTask(String taskId) {
+        var state = tasks.get(taskId);
+        if (state == null) throw new IllegalArgumentException("task not found: " + taskId);
+        LOGGER.info("cancelling task, taskId={}", taskId);
+        state.session.cancelTurn();
+    }
+
+    public void close() {
+        for (var state : tasks.values()) {
+            try {
+                state.session.close();
+            } catch (Exception e) {
+                LOGGER.debug("failed to close session, taskId={}", state.taskId, e);
+            }
+        }
+        tasks.clear();
+    }
+}

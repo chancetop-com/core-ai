@@ -1,15 +1,18 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Activity, BookText, LayoutDashboard, Moon, Sun } from 'lucide-react';
+import { Activity, BookText, LayoutDashboard, MessageCircle, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
-
-const navItems = [
-  { to: '/', icon: Activity, label: 'Traces' },
-  { to: '/prompts', icon: BookText, label: 'Prompts' },
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-];
+import { useCapabilities } from '../api/capabilities';
 
 export default function Layout() {
   const { dark, toggle } = useTheme();
+  const caps = useCapabilities();
+
+  const navItems = [
+    { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
+    { to: '/', icon: Activity, label: 'Traces', show: caps.traces },
+    { to: '/prompts', icon: BookText, label: 'Prompts', show: caps.prompts },
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', show: caps.dashboard },
+  ].filter(item => item.show);
 
   return (
     <div className="flex h-screen">
@@ -17,11 +20,11 @@ export default function Layout() {
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         <div className="p-4 flex items-center gap-2 border-b" style={{ borderColor: 'var(--color-border)' }}>
           <Activity size={22} style={{ color: 'var(--color-primary)' }} />
-          <span className="font-semibold text-lg">Core AI Trace</span>
+          <span className="font-semibold text-lg">Core AI</span>
         </div>
         <nav className="flex-1 p-2 flex flex-col gap-1">
           {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to} end={to === '/'}
+            <NavLink key={to} to={to} end={to === '/' || to === '/chat'}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isActive ? 'font-medium' : ''}`
               }

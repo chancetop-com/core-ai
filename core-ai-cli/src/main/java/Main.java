@@ -65,13 +65,25 @@ public class Main implements Callable<Integer> {
     @Option(names = "--agent-id", description = "Agent ID to use on remote server (default: default-assistant)")
     String agentId;
 
+    @Option(names = "--serve", description = "Start A2A web server mode")
+    boolean serve;
+
+    @Option(names = "--port", description = "A2A server port (default: 9527)", defaultValue = "9527")
+    int port;
+
+    @Option(names = "--headless", description = "A2A server without opening browser")
+    boolean headless;
+
     @Override
     public Integer call() {
         if (debug) {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
-        if (serverUrl != null) {
+        if (serve) {
+            new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace)
+                    .startServe(port, !headless);
+        } else if (serverUrl != null) {
             new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace)
                     .startRemote(serverUrl, apiKey, agentId);
         } else {

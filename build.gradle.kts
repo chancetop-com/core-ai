@@ -154,6 +154,8 @@ project(":core-ai-cli") {
         // picocli for CLI arg parsing (GraalVM native-image friendly)
         implementation("info.picocli:picocli:${Versions.PICOCLI_VERSION}")
         annotationProcessor("info.picocli:picocli-codegen:${Versions.PICOCLI_VERSION}")
+        // Undertow for embedded ACP web server (--serve mode)
+        implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
         // GraalVM SDK for native-image Feature (compile-time only)
         compileOnly("org.graalvm.sdk:nativeimage:${Versions.GRAALVM_SDK_VERSION}")
     }
@@ -164,6 +166,28 @@ project(":core-ai-cli") {
         System.getProperty("core.ai.debug")?.let { systemProperty("core.ai.debug", it) }
         outputs.upToDateWhen { false }
     }
+    tasks.register<Exec>("npmInstall") {
+        group = "build"
+        workingDir = rootDir.resolve("core-ai-frontend")
+        commandLine(Frontend.commandLine(listOf("npm", "install", "--legacy-peer-deps")))
+    }
+    tasks.register<Exec>("buildFrontend") {
+        group = "build"
+        dependsOn("npmInstall")
+        workingDir = rootDir.resolve("core-ai-frontend")
+        commandLine(Frontend.commandLine(listOf("npm", "run", "build")))
+    }
+    tasks.register<Copy>("copyFrontend") {
+        group = "build"
+        dependsOn("buildFrontend")
+        from(rootDir.resolve("core-ai-frontend/build/dist"))
+        into(layout.buildDirectory.dir("resources/main/web"))
+    }
+    tasks.named("processResources") {
+        dependsOn("copyFrontend")
+    }
+}
+
 project(":core-ai-benchmark") {
     version = ProjectVersions.CORE_AI_BENCHMARK_VERSION
     apply(plugin = "app")
@@ -176,5 +200,4 @@ project(":core-ai-benchmark") {
     tasks.withType<Test> {
         setProperty("failOnNoDiscoveredTests", false)
     }
-}
 }

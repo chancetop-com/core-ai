@@ -7,6 +7,8 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.a2a.A2ARunManager;
+import ai.core.cli.a2a.A2AServer;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
@@ -49,6 +51,23 @@ public class CliApp {
     private static final Path DEFAULT_CONFIG = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
     private static final String SESSIONS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "sessions").toString();
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+    private static void openBrowser(String url) {
+        try {
+            var os = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT);
+            ProcessBuilder pb;
+            if (os.contains("win")) {
+                pb = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url);
+            } else if (os.contains("mac")) {
+                pb = new ProcessBuilder("open", url);
+            } else {
+                pb = new ProcessBuilder("xdg-open", url);
+            }
+            pb.start();
+        } catch (Exception e) {
+            LOGGER.warn("failed to open browser: {}", e.getMessage());
+        }
+    }
 
     private final Path configFile;
     private final String modelOverride;
@@ -228,6 +247,56 @@ public class CliApp {
             ui.showError(e.getMessage());
         } finally {
             closeQuietly(ui);
+        }
+    }
+
+    @SuppressWarnings("PMD.SystemPrintln")
+    public void startServe(int port, boolean openBrowser) {
+        System.setProperty("core.appName", "core-ai-cli");
+
+        InteractiveConfigSetup.setupIfNeeded();
+
+        LOGGER.info("loading config from {}", configFile);
+        var props = PropertiesFileSource.fromFile(configFile);
+        var bootstrap = new AgentBootstrap(props);
+        registerMcpLoadingListener();
+        var result = bootstrap.initialize();
+        clearLoading();
+        LOGGER.info("bootstrap initialized for ACP serve mode");
+
+        restoreActiveProvider(props, result.llmProviders);
+
+        int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
+        var sessionPersistence = new FileSessionPersistence(SESSIONS_DIR);
+        var permissionStore = whiteToolsPermissionStore();
+
+        var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
+            LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
+            return "(user input not available in web mode)";
+        });
+
+        var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore);
+        var server = new A2AServer(port, runManager);
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            server.stop();
+            closeShutdownResources(result);
+        }));
+
+        server.start();
+        var url = "http://localhost:" + port;
+        System.out.println("A2A server running at " + url);
+
+        if (openBrowser) {
+            openBrowser(url);
+        } else {
+            System.out.println("Headless mode - use any A2A client to connect");
+        }
+
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

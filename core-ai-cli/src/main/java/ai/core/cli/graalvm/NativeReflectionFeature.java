@@ -30,6 +30,7 @@ public class NativeReflectionFeature implements Feature {
         "ai/core/llm/domain",
         "ai/core/api/jsonschema",
         "ai/core/api/server/session",
+        "ai/core/api/a2a",
         "io/modelcontextprotocol/spec",
         "io/modelcontextprotocol/json/jackson",
         "io/modelcontextprotocol/json/schema/jackson"
