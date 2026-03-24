@@ -114,9 +114,19 @@ public class CliAgent {
                 """.formatted(workspaceInfo));
 
         var instructions = loadProjectInstructions(config.workspace);
-        if (!instructions.isEmpty()) {
-            sb.append("\n<project-instructions>\n").append(instructions).append("</project-instructions>\n");
-        }
+        sb.append("""
+
+                ## Project Instructions
+
+                File: .core-ai/instructions.md
+                Use this file for project facts, conventions, build commands, and rules that apply to all interactions.
+
+                <project-instructions>
+                %s
+                </project-instructions>
+                """.formatted(instructions.isEmpty()
+                ? "(empty - create .core-ai/instructions.md when project conventions or rules need to persist across sessions)"
+                : instructions));
 
         var mdMemoryProvider = new MdMemoryProvider(config.workspace);
         var mdMemoryContent = mdMemoryProvider.load();
