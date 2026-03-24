@@ -44,7 +44,7 @@ public class PermissionRule {
         if (!patternTool.equals(toolName)) return false;
 
         String argPattern = pattern.substring(parenOpen + 1, pattern.length() - 1);
-        String primaryArg = extractPrimaryArg(arguments).orElse("");
+        String primaryArg = extractPrimaryArgSupport(arguments).orElse("");
         return globMatch(argPattern, primaryArg);
     }
 
