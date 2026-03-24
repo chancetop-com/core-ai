@@ -8,8 +8,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
@@ -20,7 +18,6 @@ import java.util.Map;
  */
 public class TaskTool extends ToolCall {
     public static final String TOOL_NAME = "task";
-    private static final Logger LOGGER = LoggerFactory.getLogger(TaskTool.class);
     private static final String TOOL_DESC = """
             Launch a new agent to handle complex, multistep tasks autonomously.
             
@@ -81,6 +78,7 @@ public class TaskTool extends ToolCall {
         return new Builder();
     }
 
+    @Override
     public long getTimeoutMs() {
         return 30 * 60 * 1000L;
     }
