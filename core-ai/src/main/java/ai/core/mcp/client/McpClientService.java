@@ -1,7 +1,5 @@
 package ai.core.mcp.client;
 
-import ai.core.api.jsonschema.JsonSchema;
-import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import ai.core.utils.SystemUtil;
@@ -20,7 +18,6 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -45,9 +42,8 @@ public class McpClientService implements AutoCloseable {
         this.client = createClient(transport, config);
     }
 
-    public List<Tool> listTools(List<String> namespaces) {
-        var result = client.listTools();
-        var tools = convertTools(result.tools());
+    public List<McpSchema.Tool> listTools(List<String> namespaces) {
+        var tools = listToolsRaw();
 
         if (namespaces == null || namespaces.isEmpty()) {
             return tools;
@@ -55,12 +51,18 @@ public class McpClientService implements AutoCloseable {
 
         return tools.stream()
             .filter(tool -> namespaces.stream()
-                .anyMatch(ns -> tool.name.startsWith(ns + "_") || tool.name.startsWith(ns + "/")))
+                .anyMatch(ns -> tool.name().startsWith(ns + "_") || tool.name().startsWith(ns + "/")))
             .toList();
     }
 
-    public List<Tool> listTools() {
+    public List<McpSchema.Tool> listTools() {
         return listTools(null);
+    }
+
+    public List<McpSchema.Tool> listToolsRaw() {
+        var result = client.listTools();
+        var tools = result.tools();
+        return tools != null ? tools : List.of();
     }
 
     public ToolCallResult callToolWithResult(String name, String text) {
@@ -303,91 +305,6 @@ public class McpClientService implements AutoCloseable {
         }
 
         return builder.build();
-    }
-
-    private List<Tool> convertTools(List<McpSchema.Tool> mcpTools) {
-        if (mcpTools == null) return List.of();
-        return mcpTools.stream()
-            .map(this::convertTool)
-            .toList();
-    }
-
-    private Tool convertTool(McpSchema.Tool mcpTool) {
-        var tool = new Tool();
-        tool.name = mcpTool.name();
-        tool.description = mcpTool.description();
-        tool.inputSchema = convertInputSchema(mcpTool.inputSchema());
-        return tool;
-    }
-
-    private JsonSchema convertInputSchema(McpSchema.JsonSchema jsonSchema) {
-        if (jsonSchema == null) {
-            return null;
-        }
-        var schema = new JsonSchema();
-        schema.type = convertPropertyType(jsonSchema.type());
-        schema.properties = convertProperties(jsonSchema.properties());
-        schema.required = jsonSchema.required();
-        return schema;
-    }
-
-    private JsonSchema.PropertyType convertPropertyType(String type) {
-        if (type == null) {
-            return JsonSchema.PropertyType.OBJECT;
-        }
-        return switch (type.toLowerCase(Locale.ROOT)) {
-            case "string" -> JsonSchema.PropertyType.STRING;
-            case "number" -> JsonSchema.PropertyType.NUMBER;
-            case "integer" -> JsonSchema.PropertyType.INTEGER;
-            case "boolean" -> JsonSchema.PropertyType.BOOLEAN;
-            case "array" -> JsonSchema.PropertyType.ARRAY;
-            case "null" -> JsonSchema.PropertyType.NULL;
-            default -> JsonSchema.PropertyType.OBJECT;
-        };
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, JsonSchema> convertProperties(Map<String, Object> properties) {
-        if (properties == null) {
-            return null;
-        }
-        var result = new HashMap<String, JsonSchema>();
-        for (var entry : properties.entrySet()) {
-            if (entry.getValue() instanceof Map<?, ?> propMap) {
-                result.put(entry.getKey(), convertPropertySchema((Map<String, Object>) propMap));
-            }
-        }
-        return result;
-    }
-
-    @SuppressWarnings("unchecked")
-    private JsonSchema convertPropertySchema(Map<String, Object> propMap) {
-        var prop = new JsonSchema();
-        prop.type = convertPropertyType((String) propMap.get("type"));
-        prop.description = (String) propMap.get("description");
-        prop.format = (String) propMap.get("format");
-
-        if (propMap.get("enum") instanceof List<?> enumList) {
-            prop.enums = (List<String>) enumList;
-        }
-
-        if (propMap.get("required") instanceof List<?> requiredList) {
-            prop.required = (List<String>) requiredList;
-        }
-
-        if (propMap.get("properties") instanceof Map<?, ?> nestedProps) {
-            prop.properties = convertProperties((Map<String, Object>) nestedProps);
-        }
-
-        if (propMap.get("items") instanceof Map<?, ?> itemsMap) {
-            prop.items = convertPropertySchema((Map<String, Object>) itemsMap);
-        }
-
-        if (propMap.get("additionalProperties") instanceof Boolean additionalProps) {
-            prop.additionalProperties = additionalProps;
-        }
-
-        return prop;
     }
 
     private ToolCallResult extractToolCallResult(McpSchema.CallToolResult result) {

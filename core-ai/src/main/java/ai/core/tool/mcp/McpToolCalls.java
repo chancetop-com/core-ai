@@ -1,15 +1,16 @@
 package ai.core.tool.mcp;
 
-import ai.core.api.jsonschema.JsonSchema;
-import ai.core.api.mcp.schema.tool.Tool;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientService;
 import ai.core.tool.ToolCallParameter;
-import ai.core.utils.JsonSchemaUtil;
+import io.modelcontextprotocol.spec.McpSchema;
 
 import java.io.Serial;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -36,52 +37,122 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientService client, String serverName, List<String> includes, List<String> excludes) {
         var tools = client.listTools();
         for (var tool : tools) {
-            if (includes != null && includes.stream().noneMatch(t -> Pattern.compile(t).matcher(tool.name).matches())) continue;
-            if (excludes != null && excludes.stream().anyMatch(t -> Pattern.compile(t).matcher(tool.name).matches())) continue;
+            if (includes != null && includes.stream().noneMatch(t -> Pattern.compile(t).matcher(tool.name()).matches())) continue;
+            if (excludes != null && excludes.stream().anyMatch(t -> Pattern.compile(t).matcher(tool.name()).matches())) continue;
             mcpToolCalls.add(buildToolCall(tool, client, serverName));
         }
     }
 
-    private static McpToolCall buildToolCall(Tool tool, McpClientService client, String serverName) {
+    private static McpToolCall buildToolCall(McpSchema.Tool tool, McpClientService client, String serverName) {
         return McpToolCall.builder()
-                .name(tool.name)
+                .name(tool.name())
                 .namespace(serverName)
-                .description(tool.description)
-                .needAuth(tool.needAuth)
-                .parameters(buildParameters(tool.inputSchema))
+                .description(tool.description())
+                .needAuth(false)  // SDK Tool doesn't have needAuth field
+                .parameters(buildParameters(tool.inputSchema()))
                 .mcpClientService(client)
                 .build();
     }
 
-    private static List<ToolCallParameter> buildParameters(JsonSchema inputSchema) {
+    private static List<ToolCallParameter> buildParameters(McpSchema.JsonSchema inputSchema) {
+        if (inputSchema == null) return List.of();
+        
+        var schemaMap = jsonSchemaToMap(inputSchema);
+        return buildParametersFromMap(schemaMap);
+    }
+    
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> jsonSchemaToMap(McpSchema.JsonSchema jsonSchema) {
+        var map = new HashMap<String, Object>();
+        map.put("type", jsonSchema.type());
+        map.put("properties", jsonSchema.properties());
+        map.put("required", jsonSchema.required());
+        return map;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<ToolCallParameter> buildParametersFromMap(Map<String, Object> schemaMap) {
         var parameters = new ArrayList<ToolCallParameter>();
-        var properties = inputSchema.properties;
+        var properties = (Map<String, Object>) schemaMap.get("properties");
         if (properties == null || properties.isEmpty()) return parameters;
 
         for (var entry : properties.entrySet()) {
-            parameters.addAll(buildParameters(entry.getKey(), entry.getValue(), inputSchema));
+            var propValue = entry.getValue();
+            if (propValue instanceof Map<?, ?> propMap) {
+                var prop = (Map<String, Object>) propMap;
+                parameters.addAll(buildParameters(entry.getKey(), prop, schemaMap));
+            }
         }
         return parameters;
     }
-
-    public static List<ToolCallParameter> buildParameters(String name, JsonSchema property, JsonSchema json) {
+    
+    @SuppressWarnings("unchecked")
+    private static List<ToolCallParameter> buildParameters(String name, Map<String, Object> property, Map<String, Object> json) {
+        var type = getString(property, "type");
+        var description = getString(property, "description");
+        var format = getString(property, "format");
+        var required = json.get("required");
+        boolean isRequired = required instanceof List<?> reqList && reqList.contains(name);
+        
+        List<String> enums = null;
+        var enumValue = property.get("enum");
+        if (enumValue instanceof List<?> enumList) {
+            enums = new ArrayList<>();
+            for (var e : enumList) {
+                if (e != null) enums.add(e.toString());
+            }
+        }
+        
         var parameter = ToolCallParameter.builder()
                 .name(name)
-                .description(property.description)
-                .classType(JsonSchemaUtil.mapType(property.type))
-                .format(property.format)
-                .required(json.required != null && json.required.contains(name))
-                .enums(property.enums)
+                .description(description)
+                .classType(mapSchemaType(type))
+                .format(format)
+                .required(isRequired)
+                .enums(enums)
                 .build();
-        if (property.type == JsonSchema.PropertyType.ARRAY) {
-            parameter.setItemType(JsonSchemaUtil.mapType(property.items.type));
-            if (property.items.enums != null && !property.items.enums.isEmpty()) {
-                parameter.setItemEnums(property.items.enums);
-            }
-            if (property.items.type == JsonSchema.PropertyType.OBJECT) {
-                parameter.setItems(buildParameters(property.items));
+        
+        if ("array".equalsIgnoreCase(type)) {
+            var itemsValue = property.get("items");
+            if (itemsValue instanceof Map<?, ?> itemsMap) {
+                var items = (Map<String, Object>) itemsMap;
+                var itemType = getString(items, "type");
+                parameter.setItemType(mapSchemaType(itemType));
+                
+                var itemEnumValue = items.get("enum");
+                if (itemEnumValue instanceof List<?> itemEnumList) {
+                    var itemEnums = new ArrayList<String>();
+                    for (var e : itemEnumList) {
+                        if (e != null) itemEnums.add(e.toString());
+                    }
+                    if (!itemEnums.isEmpty()) {
+                        parameter.setItemEnums(itemEnums);
+                    }
+                }
+                
+                if ("object".equalsIgnoreCase(itemType)) {
+                    parameter.setItems(buildParametersFromMap(items));
+                }
             }
         }
         return List.of(parameter);
+    }
+    
+    private static String getString(Map<String, Object> map, String key) {
+        var value = map.get(key);
+        return value != null ? value.toString() : null;
+    }
+    
+    private static Class<?> mapSchemaType(String type) {
+        if (type == null) return Object.class;
+        return switch (type.toLowerCase(Locale.ROOT)) {
+            case "string" -> String.class;
+            case "number" -> Double.class;
+            case "integer" -> Long.class;
+            case "boolean" -> Boolean.class;
+            case "array" -> List.class;
+            case "object" -> Map.class;
+            default -> Object.class;
+        };
     }
 }

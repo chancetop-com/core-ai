@@ -8,6 +8,7 @@ import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.mcp.McpToolCalls;
 import core.framework.json.JSON;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -97,7 +98,7 @@ public class AddMcpServerTool extends ToolCall {
         }
         return ToolCallResult.completed("Connected to MCP server '" + name + "'. "
                         + tools.size() + " tools now available: "
-                        + tools.stream().map(t -> t.name).toList())
+                        + tools.stream().map(McpSchema.Tool::name).toList())
                 .withDuration(System.currentTimeMillis() - startTime)
                 .withStats("server", name)
                 .withStats("toolCount", tools.size());
