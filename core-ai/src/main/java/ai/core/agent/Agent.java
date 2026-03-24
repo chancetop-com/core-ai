@@ -73,6 +73,7 @@ public class Agent extends Node<Agent> {
     Compression compression;
     ReasoningEffort reasoningEffort;
     List<SubAgentToolCall> subAgents = new ArrayList<>();
+
     @Override
     String execute(String query, Map<String, Object> variables) {
         var activeTracer = (AgentTracer) getTracer();
@@ -445,6 +446,8 @@ public class Agent extends Node<Agent> {
         var context = super.getExecutionContext();
         context.setLlmProvider(llmProvider);
         context.setModel(model);
+        context.setStreamingCallback(getStreamingCallback());
+        context.setLifecycles(agentLifecycles);
         return context;
     }
 }

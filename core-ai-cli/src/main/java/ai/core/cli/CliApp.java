@@ -31,6 +31,7 @@ import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
 import ai.core.tool.tools.MemoryTool;
 import ai.core.tool.tools.ReadFileTool;
+import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WriteTodosTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,6 +150,7 @@ public class CliApp {
                 GrepFileTool.TOOL_NAME
         ), workspace.toString());
         permissionStore.allow(WriteTodosTool.WT_TOOL_NAME);
+        permissionStore.allow(TaskTool.TOOL_NAME);
         permissionStore.allow(AskUserTool.TOOL_NAME);
         permissionStore.allow(MemoryTool.TOOL_NAME);
         return permissionStore;

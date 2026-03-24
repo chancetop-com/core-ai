@@ -9,6 +9,7 @@ import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.tool.tools.TaskTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,7 +86,7 @@ public class CliEventListener extends BaseEventListener {
         panel.stopSpinnerIfActive();
         panel.getMarkdownRenderer().flush();
         showSkillHintIfApplicable(event);
-        panel.toolStart(event.toolName, event.arguments, event.diff);
+        super.onToolStart(event);
     }
 
     private void showSkillHintIfApplicable(ToolStartEvent event) {

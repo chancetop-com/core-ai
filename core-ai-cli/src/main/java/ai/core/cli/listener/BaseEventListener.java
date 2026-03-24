@@ -14,6 +14,7 @@ import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.tool.tools.TaskTool;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
@@ -56,11 +57,20 @@ public class BaseEventListener implements AgentEventListener {
     @Override
     public void onToolStart(ToolStartEvent event) {
         panel.toolStart(event.toolName, event.arguments, event.diff);
+        if (TaskTool.TOOL_NAME.equals(event.toolName)) {
+            panel.enterTask(event.toolName);
+        }
     }
 
     @Override
     public void onToolResult(ToolResultEvent event) {
-        panel.toolResult(event.status, event.result);
+        if (TaskTool.TOOL_NAME.equals(event.toolName)) {
+            panel.exitTask();
+            panel.toolResult(event.status, "Done");
+        } else {
+            panel.toolResult(event.status, event.result);
+        }
+
     }
 
     @Override

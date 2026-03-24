@@ -2,13 +2,12 @@ package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
-import ai.core.defaultagents.DefaultExploreAgent;
-import ai.core.llm.LLMProviders;
-import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.llm.LLMProviders;
+import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.skill.SkillConfig;
 import ai.core.tool.BuiltinTools;
@@ -17,6 +16,7 @@ import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.SkillTool;
+import ai.core.tool.tools.TaskTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -47,16 +47,11 @@ public class CliAgent {
                 systemPrompt += "\n\n" + sessionStartOutput;
             }
         }
-
-        var exploreAgent = DefaultExploreAgent.of(config.providers.getDefaultProvider());
-        var exploreSubAgent = exploreAgent.toSubAgentToolCall(DefaultExploreAgent.ExploreAgentContext.class);
-
         var builder = Agent.builder()
                 .llmProvider(config.providers.getDefaultProvider())
                 .systemPrompt(systemPrompt)
                 .maxTurn(config.maxTurn)
                 .toolCalls(tools)
-                .subAgents(List.of(exploreSubAgent))
                 .temperature(0.8);
 
         if (hookLifecycle != null) {
@@ -89,6 +84,7 @@ public class CliAgent {
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
+        tools.add(TaskTool.builder().build());
         tools.add(SkillTool.builder()
                 .sources(skillConfig.getSources())
                 .maxFileSize(skillConfig.getMaxSkillFileSize())

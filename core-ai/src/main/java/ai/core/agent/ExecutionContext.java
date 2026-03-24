@@ -1,10 +1,13 @@
 package ai.core.agent;
 
+import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import core.framework.util.Maps;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -27,6 +30,8 @@ public final class ExecutionContext {
     private final PersistenceProvider persistenceProvider;
     private LLMProvider llmProvider;
     private String model;
+    private StreamingCallback streamingCallback;
+    private List<AbstractLifecycle> lifecycles;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
@@ -41,6 +46,7 @@ public final class ExecutionContext {
     public String getSessionId() {
         return sessionId;
     }
+
 
     public String getUserId() {
         return userId;
@@ -85,6 +91,22 @@ public final class ExecutionContext {
 
     public void setModel(String model) {
         this.model = model;
+    }
+
+    public StreamingCallback getStreamingCallback() {
+        return streamingCallback;
+    }
+
+    public void setStreamingCallback(StreamingCallback streamingCallback) {
+        this.streamingCallback = streamingCallback;
+    }
+
+    public List<AbstractLifecycle> getLifecycle() {
+        return lifecycles;
+    }
+
+    public void setLifecycles(List<AbstractLifecycle> lifecycles) {
+        this.lifecycles = lifecycles;
     }
 
     public PersistenceProvider getPersistenceProvider() {

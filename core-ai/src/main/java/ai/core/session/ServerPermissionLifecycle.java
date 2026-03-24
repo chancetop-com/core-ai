@@ -11,6 +11,7 @@ import ai.core.session.permission.PermissionRule;
 import ai.core.tool.DiffGenerator;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.EditFileTool;
+import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WriteFileTool;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
@@ -20,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -64,7 +66,9 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
             logger.debug("auto-approve enabled, skipping approval for tool={}, callId={}", toolName, callId);
             return;
         }
-
+        if (Objects.nonNull(executionContext.getSessionId()) && executionContext.getSessionId().contains("subagent")) {
+            return;
+        }
         if (permissionStore != null) {
             var result = permissionStore.checkPermission(toolName, argMap);
             if (result.isPresent() && result.get()) {

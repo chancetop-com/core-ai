@@ -71,12 +71,17 @@ public class OutputPanel {
         if (argsMap.size() == 1) {
             return String.valueOf(argsMap.values().iterator().next());
         }
-        for (String key : List.of("command", "file_path", "pattern", "query", "prompt", "path", "url")) {
+        String result = null;
+        for (String key : List.of("description", "command", "script_path", "file_path", "path", "url", "pattern", "query", "prompt")) {
             if (argsMap.containsKey(key)) {
-                return String.valueOf(argsMap.get(key));
+                result = String.valueOf(argsMap.get(key));
+                break;
             }
         }
-        return null;
+        if (argsMap.containsKey("subagent_type")) {
+            result = argsMap.get("subagent_type") + ":" + result;
+        }
+        return result;
     }
 
     private final PrintWriter writer;
@@ -86,6 +91,7 @@ public class OutputPanel {
 
     private volatile boolean textStarted;
     private volatile boolean reasoningShown;
+    private volatile String activeTaskName;
 
     public OutputPanel(PrintWriter writer, boolean smartTerminal, java.util.function.IntSupplier terminalWidth) {
         this.writer = writer;
@@ -96,11 +102,29 @@ public class OutputPanel {
     public void beginTurn() {
         textStarted = false;
         reasoningShown = false;
+        activeTaskName = null;
         mdRenderer.reset();
         spinner.resetTimer();
     }
 
+    public void enterTask(String taskName) {
+        this.activeTaskName = taskName;
+        textStarted = false;
+        reasoningShown = false;
+    }
+
+    public void exitTask() {
+        this.activeTaskName = null;
+        textStarted = false;
+        reasoningShown = false;
+    }
+
+    public boolean isInTask() {
+        return activeTaskName != null;
+    }
+
     public void streamText(String chunk) {
+        if (isInTask()) return;
         stopSpinnerIfActive();
         if (!textStarted) {
             textStarted = true;
@@ -114,6 +138,7 @@ public class OutputPanel {
     }
 
     public void streamReasoning(String chunk) {
+        if (isInTask()) return;
         stopSpinnerIfActive();
         if (!reasoningShown) {
             reasoningShown = true;
@@ -130,16 +155,24 @@ public class OutputPanel {
         stopSpinnerIfActive();
         mdRenderer.flush();
         String summary = formatToolSummary(toolName, arguments);
-        writer.println("\n" + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " " + summary);
-
-        var diffResult = DiffGenerator.DiffResult.deserialize(diff);
-        if (diffResult != null) {
-            renderDiff(diffResult);
+        if (isInTask()) {
+            writer.println(INDENT + AnsiTheme.MUTED + "\u23BF" + AnsiTheme.RESET + " " + AnsiTheme.MUTED + summary + AnsiTheme.RESET);
+        } else {
+            writer.println("\n" + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " " + summary);
+            var diffResult = DiffGenerator.DiffResult.deserialize(diff);
+            if (diffResult != null) {
+                renderDiff(diffResult);
+            }
         }
         writer.flush();
+        resetShown();
+        startSpinner();
+
     }
 
     public void toolResult(String status, String result) {
+        if (isInTask()) return;
+        stopSpinnerIfActive();
         String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
         writer.print(INDENT + icon + "\u23BF" + AnsiTheme.RESET + "  ");
         if (result != null && !result.isBlank()) {
@@ -158,9 +191,14 @@ public class OutputPanel {
             writer.println(AnsiTheme.MUTED + "Done" + AnsiTheme.RESET);
         }
         writer.flush();
+        resetShown();
+        startSpinner();
+
+    }
+
+    private void resetShown() {
         reasoningShown = false;
         textStarted = false;
-        startSpinner();
     }
 
     private void renderDiff(DiffGenerator.DiffResult diff) {
@@ -175,11 +213,11 @@ public class OutputPanel {
             String num = String.format(numFmt, line.lineNumber());
             switch (line.tag()) {
                 case DELETE -> writer.println(
-                    INDENT + "  " + AnsiTheme.SYN_DIFF_DEL + num + " -" + line.content() + AnsiTheme.RESET);
+                        INDENT + "  " + AnsiTheme.SYN_DIFF_DEL + num + " -" + line.content() + AnsiTheme.RESET);
                 case INSERT -> writer.println(
-                    INDENT + "  " + AnsiTheme.SYN_DIFF_ADD + num + " +" + line.content() + AnsiTheme.RESET);
+                        INDENT + "  " + AnsiTheme.SYN_DIFF_ADD + num + " +" + line.content() + AnsiTheme.RESET);
                 default -> writer.println(
-                    INDENT + "  " + AnsiTheme.MUTED + num + "  " + line.content() + AnsiTheme.RESET);
+                        INDENT + "  " + AnsiTheme.MUTED + num + "  " + line.content() + AnsiTheme.RESET);
             }
         }
     }

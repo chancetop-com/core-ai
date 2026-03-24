@@ -1,6 +1,8 @@
 package ai.core.defaultagents;
 
 import ai.core.agent.Agent;
+import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
@@ -22,8 +24,15 @@ public class DefaultExploreAgent {
             """;
 
     public static Agent of(LLMProvider llmProvider) {
+        return of(llmProvider, "", null, List.of());
+    }
+
+    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles) {
         return Agent.builder()
                 .name(AGENT_NAME)
+                .streamingCallback(streamingCallback)
+                .model(model)
+                .agentLifecycle(lifecycles)
                 .description(AGENT_DESCRIPTION)
                 .systemPrompt(Strings.format("""
                         You are a file search specialist for CoreAI. You excel at thoroughly navigating and exploring workspace.
