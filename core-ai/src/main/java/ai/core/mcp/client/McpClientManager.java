@@ -1,11 +1,9 @@
 package ai.core.mcp.client;
 
-import ai.core.api.mcp.schema.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serial;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -179,19 +177,6 @@ public class McpClientManager implements AutoCloseable {
 
     public Map<String, McpClientService> getAllClients() {
         return Map.copyOf(clients);
-    }
-
-    public Map<String, List<Tool>> listAllTools() {
-        var result = new HashMap<String, List<Tool>>();
-        for (var entry : clients.entrySet()) {
-            try {
-                result.put(entry.getKey(), entry.getValue().listTools());
-            } catch (Exception e) {
-                LOGGER.error("Failed to list tools from server: {}", entry.getKey(), e);
-                result.put(entry.getKey(), List.of());
-            }
-        }
-        return result;
     }
 
     public void addListener(ConnectionStateListener listener) {
