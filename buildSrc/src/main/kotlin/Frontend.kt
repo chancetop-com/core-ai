@@ -7,7 +7,11 @@ object Frontend {
     fun commandLine(commands: List<String>): List<String> {
         val commandLine = ArrayList<String>()
         val isWindows = OperatingSystem.current().isWindows
-        if (isWindows) commandLine.addAll(listOf("cmd", "/c"))
+        if (isWindows) {
+            commandLine.addAll(listOf("cmd", "/c"))
+        } else {
+            commandLine.addAll(listOf("/usr/bin/env"))
+        }
         commandLine.addAll(commands)
         return commandLine
     }
