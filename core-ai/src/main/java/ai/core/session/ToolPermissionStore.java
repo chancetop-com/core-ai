@@ -15,8 +15,9 @@ public interface ToolPermissionStore {
     Optional<Boolean> checkPermission(String toolName, Map<String, Object> arguments);
 
     default void allowDir(String toolName, String dirPath) {
-        String normalizedDir = dirPath.endsWith("/") ? dirPath : dirPath + "/";
-        allow(toolName + "(" + normalizedDir + "**)");
+        String normalized = dirPath.replace('\\', '/');
+        if (!normalized.endsWith("/")) normalized += "/";
+        allow(toolName + "(" + normalized + "**)");
     }
 
     default void allowDirs(List<String> toolNames, String dirPath) {

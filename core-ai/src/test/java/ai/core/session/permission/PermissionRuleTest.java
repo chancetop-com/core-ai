@@ -122,4 +122,32 @@ class PermissionRuleTest {
         assertFalse(PermissionRule.extractPrimaryArg(Map.of()).isPresent());
         assertFalse(PermissionRule.extractPrimaryArg(null).isPresent());
     }
+
+    @Test
+    void matchesWindowsBackslashPath() {
+        assertTrue(PermissionRule.matches(
+                "read_file(C:/Users/project/**)", "read_file",
+                Map.of("file_path", "C:\\Users\\project\\src\\Main.java")));
+    }
+
+    @Test
+    void matchesWindowsPatternWithBackslash() {
+        assertTrue(PermissionRule.matches(
+                "read_file(C:\\Users\\project\\**)", "read_file",
+                Map.of("file_path", "C:\\Users\\project\\src\\Main.java")));
+    }
+
+    @Test
+    void matchesMixedSeparators() {
+        assertTrue(PermissionRule.matches(
+                "read_file(C:\\Users\\project/**)", "read_file",
+                Map.of("file_path", "C:/Users/project/src/Main.java")));
+    }
+
+    @Test
+    void matchesWindowsExactPath() {
+        assertTrue(PermissionRule.matches(
+                "read_file(C:\\Users\\project\\a.txt)", "read_file",
+                Map.of("file_path", "C:/Users/project/a.txt")));
+    }
 }

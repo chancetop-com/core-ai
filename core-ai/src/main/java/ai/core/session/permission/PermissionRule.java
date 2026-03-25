@@ -49,15 +49,21 @@ public class PermissionRule {
     }
 
     static boolean globMatch(String pattern, String text) {
-        if ("*".equals(pattern)) return true;
-        if (pattern.endsWith("**")) {
-            String prefix = pattern.substring(0, pattern.length() - 2);
-            return text.startsWith(prefix);
+        String normalizedPattern = normalizePath(pattern);
+        String normalizedText = normalizePath(text);
+        if ("*".equals(normalizedPattern)) return true;
+        if (normalizedPattern.endsWith("**")) {
+            String prefix = normalizedPattern.substring(0, normalizedPattern.length() - 2);
+            return normalizedText.startsWith(prefix);
         }
-        if (pattern.endsWith("*")) {
-            String prefix = pattern.substring(0, pattern.length() - 1);
-            return text.startsWith(prefix);
+        if (normalizedPattern.endsWith("*")) {
+            String prefix = normalizedPattern.substring(0, normalizedPattern.length() - 1);
+            return normalizedText.startsWith(prefix);
         }
-        return pattern.equals(text);
+        return normalizedPattern.equals(normalizedText);
+    }
+
+    private static String normalizePath(String path) {
+        return path.replace('\\', '/');
     }
 }
