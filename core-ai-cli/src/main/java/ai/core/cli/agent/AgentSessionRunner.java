@@ -23,6 +23,7 @@ import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.SessionMemoryExtractor;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
+import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +60,7 @@ public class AgentSessionRunner {
     private final ToolPermissionStore permissionStore;
     private final ModelRegistry modelRegistry;
     private final MemoryCommandHandler memoryCommand;
+    private final SessionPersistence sessionPersistence;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
 
@@ -73,6 +75,7 @@ public class AgentSessionRunner {
         this.permissionStore = config.permissionStore;
         this.modelRegistry = config.modelRegistry;
         this.memoryCommand = new MemoryCommandHandler(ui, config.memory);
+        this.sessionPersistence = config.sessionPersistence;
     }
 
     public String run() {
@@ -85,20 +88,19 @@ public class AgentSessionRunner {
         Semaphore readyForInput = new Semaphore(1);
 
         printBanner();
+        extractPreviousSession();
         printSessionHistory();
         startSenderThread(messageQueue, listener, session, readyForInput);
         readInputLoop(commands, messageQueue, readyForInput);
 
         session.close();
-        try {
-            new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel())
-                    .extract(agent.getMessages());
-        } catch (Exception e) {
-            LOGGER.warn("Memory extraction failed: {}", e.getMessage());
-        }
         return switchSessionId.get();
     }
 
+    private void extractPreviousSession() {
+        new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel(), sessionPersistence)
+                .extractPreviousSessionAsync(sessionId, ui);
+    }
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
     }
@@ -184,7 +186,8 @@ public class AgentSessionRunner {
                 continue;
             }
             showFrame = true;
-            queue.offer(FileReferenceExpander.expand(input));
+            String expanded = ui.getPasteBuffer().expand(input);
+            queue.offer(FileReferenceExpander.expand(expanded));
         }
     }
     private void dispatchCommand(String trimmed, ReplCommandHandler commands, BlockingQueue<String> queue) {
@@ -286,7 +289,6 @@ public class AgentSessionRunner {
         }
         return entries;
     }
-
     private void switchModel(String currentModel, String newModel, LLMProviderType providerType) {
         var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
         if (currentModel.equals(newModel) && (providerType == null || providerType == currentProviderType)) {
@@ -328,7 +330,6 @@ public class AgentSessionRunner {
         }
         ui.printStreamingChunk("\n");
     }
-
     private void handleExport(String trimmed) {
         String[] parts = trimmed.split("\\s+", 2);
         String filePath = parts.length > 1 ? parts[1].trim() : "session-" + sessionId + ".md";
@@ -444,6 +445,7 @@ public class AgentSessionRunner {
 
     public record Config(String modelName, boolean autoApproveAll, String sessionId,
                          SessionManager sessionManager, ToolPermissionStore permissionStore,
-                         MdMemoryProvider memory, ModelRegistry modelRegistry) {
+                         MdMemoryProvider memory, ModelRegistry modelRegistry,
+                         SessionPersistence sessionPersistence) {
     }
 }

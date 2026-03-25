@@ -122,7 +122,7 @@ public class CliApp {
                     return ui.readRawLine();
                 });
                 var agent = CliAgent.of(agentConfig);
-                var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory, modelRegistry);
+                var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory, modelRegistry, sessionPersistence);
                 var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
                 String nextSessionId = runner.run();
                 var remote = runner.getRemoteConfig();

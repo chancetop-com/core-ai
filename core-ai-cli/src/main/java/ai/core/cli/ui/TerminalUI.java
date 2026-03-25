@@ -59,10 +59,13 @@ public class TerminalUI {
         return new PrintWriter(new CrLfFilterWriter(delegate), true);
     }
 
+    private static final String PASTE_END_MARKER = "\u001B[201~";
+
     private final PrintWriter writer;
     private final LineReader jlineReader;
     private final SlashCommandCompleter slashCompleter;
     private final BufferedReader simpleReader;
+    private final PasteBuffer pasteBuffer = new PasteBuffer();
     private Terminal terminal;
 
     public TerminalUI() {
@@ -266,6 +269,10 @@ public class TerminalUI {
         return terminal;
     }
 
+    public PasteBuffer getPasteBuffer() {
+        return pasteBuffer;
+    }
+
     public void close() throws IOException {
         if (terminal != null) terminal.close();
     }
@@ -290,6 +297,7 @@ public class TerminalUI {
         reader.setOpt(LineReader.Option.AUTO_LIST);
         reader.setOpt(LineReader.Option.AUTO_MENU);
         reader.setOpt(LineReader.Option.LIST_PACKED);
+        reader.setOpt(LineReader.Option.BRACKETED_PASTE);
         reader.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference(LineReader.MENU_COMPLETE), "\t");
         registerSlashWidget(reader);
@@ -402,5 +410,42 @@ public class TerminalUI {
                 .bind(new Reference("backspace-refresh"), "\u007F");
         impl.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference("backspace-refresh"), "\u0008");
+
+        impl.getWidgets().put("bracketed-paste", () -> {
+            String pasted = readBracketedPaste();
+            String normalized = pasted.replace("\r\n", "\n").replace("\r", "\n");
+            if (pasteBuffer.isLarge(normalized)) {
+                impl.getBuffer().write(pasteBuffer.store(normalized));
+            } else {
+                impl.getBuffer().write(normalized);
+            }
+            impl.redrawLine();
+            return true;
+        });
+        impl.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference("bracketed-paste"), "\u001B[200~");
+    }
+
+    private String readBracketedPaste() {
+        if (terminal == null) return "";
+        StringBuilder sb = new StringBuilder();
+        int maxChars = 500_000;
+        try {
+            var reader = terminal.reader();
+            while (sb.length() < maxChars) {
+                int c = reader.read(200L);
+                if (c < 0) break;
+                sb.append((char) c);
+                int len = sb.length();
+                if (len >= PASTE_END_MARKER.length()
+                        && sb.substring(len - PASTE_END_MARKER.length()).equals(PASTE_END_MARKER)) {
+                    sb.delete(len - PASTE_END_MARKER.length(), len);
+                    break;
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.debug("bracketed paste read error: {}", e.getMessage());
+        }
+        return sb.toString();
     }
 }
