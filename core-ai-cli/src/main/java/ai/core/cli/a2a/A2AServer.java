@@ -9,11 +9,14 @@ import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.handlers.PathTemplateHandler;
 import io.undertow.server.handlers.resource.ClassPathResourceManager;
+import io.undertow.server.handlers.resource.FileResourceManager;
 import io.undertow.server.handlers.resource.ResourceHandler;
 import io.undertow.util.HttpString;
 import io.undertow.util.Methods;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.nio.file.Path;
 
 /**
  * @author stephen
@@ -26,11 +29,17 @@ public class A2AServer {
     private static final HttpString ACCESS_CONTROL_ALLOW_HEADERS = new HttpString("Access-Control-Allow-Headers");
     private static final HttpString ACCESS_CONTROL_MAX_AGE = new HttpString("Access-Control-Max-Age");
 
+    private static void silenceUndertowLogs() {
+        for (String name : new String[]{"io.undertow", "org.xnio", "org.jboss.threads"}) {
+            java.util.logging.Logger.getLogger(name).setLevel(java.util.logging.Level.OFF);
+        }
+    }
+
     private final Undertow server;
     private final A2ARunManager runManager;
     private final int port;
 
-    public A2AServer(int port, A2ARunManager runManager) {
+    public A2AServer(int port, A2ARunManager runManager, Path webDir) {
         silenceUndertowLogs();
         this.port = port;
         this.runManager = runManager;
@@ -40,7 +49,7 @@ public class A2AServer {
         var taskHandler = new TaskHandler(runManager);
         var capabilitiesHandler = new CapabilitiesHandler();
 
-        var pathHandler = new PathTemplateHandler(staticFileHandler());
+        var pathHandler = new PathTemplateHandler(staticFileHandler(webDir));
         pathHandler.add("/.well-known/agent-card.json", agentCardHandler);
         pathHandler.add("/message/send", messageHandler);
         pathHandler.add("/tasks/{taskId}", taskHandler);
@@ -59,25 +68,20 @@ public class A2AServer {
         LOGGER.info("A2A server started on port {}", port);
     }
 
-    private static void silenceUndertowLogs() {
-        for (String name : new String[]{"io.undertow", "org.xnio", "org.jboss.threads"}) {
-            java.util.logging.Logger.getLogger(name).setLevel(java.util.logging.Level.OFF);
-        }
-    }
-
     public void stop() {
         runManager.close();
         server.stop();
         LOGGER.info("A2A server stopped");
     }
 
-    public int port() {
-        return port;
-    }
-
-    private HttpHandler staticFileHandler() {
-        var resourceManager = new ClassPathResourceManager(Thread.currentThread().getContextClassLoader(), "web");
-        var resourceHandler = new ResourceHandler(resourceManager);
+    private HttpHandler staticFileHandler(Path webDir) {
+        ResourceHandler resourceHandler;
+        if (webDir != null) {
+            LOGGER.info("serving frontend from local directory: {}", webDir);
+            resourceHandler = new ResourceHandler(new FileResourceManager(webDir.toFile()));
+        } else {
+            resourceHandler = new ResourceHandler(new ClassPathResourceManager(Thread.currentThread().getContextClassLoader(), "web"));
+        }
         resourceHandler.setWelcomeFiles("index.html");
         return resourceHandler;
     }

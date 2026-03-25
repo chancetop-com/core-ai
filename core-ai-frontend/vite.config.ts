@@ -10,10 +10,10 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': 'http://localhost:3824',
-      '/.well-known': 'http://localhost:3824',
-      '/message': 'http://localhost:3824',
-      '/tasks': 'http://localhost:3824',
+      '/api': 'http://localhost:9527',
+      '/.well-known': 'http://localhost:9527',
+      '/message': 'http://localhost:9527',
+      '/tasks': 'http://localhost:9527',
       '/v1': 'http://localhost:8080',
     },
   },

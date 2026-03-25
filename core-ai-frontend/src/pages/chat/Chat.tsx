@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench } from 'lucide-react';
 import { a2aApi } from '../../api/a2a';
 import type { StreamEvent } from '../../api/a2a';
 
@@ -12,6 +12,7 @@ interface AwaitInfo {
 interface ChatMessage {
   role: 'user' | 'agent';
   content: string;
+  thinking?: string;
   tools?: ToolEvent[];
   approval?: AwaitInfo;
 }
@@ -25,6 +26,76 @@ interface ToolEvent {
   resultStatus?: string;
 }
 
+function ThinkingBlock({ thinking, isStreaming }: { thinking: string; isStreaming: boolean }) {
+  const [expanded, setExpanded] = useState(isStreaming);
+
+  return (
+    <div className="mb-2 rounded-xl border text-xs"
+      style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-1.5 w-full px-3 py-2 cursor-pointer"
+        style={{ color: 'var(--color-text-secondary)' }}>
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <Brain size={14} />
+        <span className="font-medium">Thinking</span>
+        {isStreaming && <Loader2 size={12} className="animate-spin ml-1" />}
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
+          <pre className="whitespace-pre-wrap font-mono opacity-70 leading-relaxed"
+            style={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}>
+            {thinking}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="mb-2 rounded-xl border text-xs"
+      style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-1.5 w-full px-3 py-2 cursor-pointer"
+        style={{ color: 'var(--color-text-secondary)' }}>
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <Wrench size={14} />
+        <span className="font-medium">Tools ({tools.length})</span>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2 border-t flex flex-col gap-1" style={{ borderColor: 'var(--color-border)' }}>
+          {tools.map((t, j) => (
+            <div key={j} className="rounded-lg px-3 py-2"
+              style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}>
+              <span className="font-mono font-medium" style={{ color: 'var(--color-primary)' }}>
+                {t.tool}
+              </span>
+              {t.type === 'start' && t.arguments && (
+                <span className="ml-2 opacity-70">{t.arguments.length > 80 ? t.arguments.slice(0, 80) + '...' : t.arguments}</span>
+              )}
+              {t.type === 'result' && (
+                <span className="ml-2" style={{ color: t.resultStatus === 'COMPLETED' ? 'var(--color-success)' : 'var(--color-error)' }}>
+                  {t.resultStatus === 'COMPLETED' ? 'done' : t.resultStatus}
+                  {t.result && (
+                    <span className="opacity-70 ml-1">
+                      {t.result.length > 60 ? t.result.slice(0, 60) + '...' : t.result}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -34,6 +105,7 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef('');
+  const streamingThinkingRef = useRef('');
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -55,8 +127,9 @@ export default function Chat() {
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setStatus('running');
     streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
 
-    setMessages(prev => [...prev, { role: 'agent', content: '', tools: [] }]);
+    setMessages(prev => [...prev, { role: 'agent', content: '', thinking: '', tools: [] }]);
 
     try {
       await a2aApi.sendMessageStream(text, (event: StreamEvent) => {
@@ -92,6 +165,23 @@ export default function Chat() {
                   const tools = [...(last.tools || [])];
                   tools.push({ type: 'start', tool: meta.tool, callId: meta.call_id, arguments: meta.arguments });
                   updated[updated.length - 1] = { ...last, tools };
+                }
+                return updated;
+              });
+            } else if (meta.event === 'reasoning') {
+              const chunk = meta.chunk || '';
+              if (chunk) {
+                if (streamingThinkingRef.current === '' && chunk.startsWith('\n')) {
+                  streamingThinkingRef.current += chunk.slice(1);
+                } else {
+                  streamingThinkingRef.current += chunk;
+                }
+              }
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last?.role === 'agent') {
+                  updated[updated.length - 1] = { ...last, thinking: streamingThinkingRef.current };
                 }
                 return updated;
               });
@@ -237,6 +327,8 @@ export default function Chat() {
                 </div>
               )}
               <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
+                {msg.thinking && <ThinkingBlock thinking={msg.thinking} isStreaming={status === 'running' && i === messages.length - 1 && !msg.content} />}
+                {msg.tools && msg.tools.length > 0 && <ToolsBlock tools={msg.tools} />}
                 <div className="rounded-xl px-4 py-3 text-sm"
                   style={{
                     background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
@@ -244,30 +336,10 @@ export default function Chat() {
                     border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
                   }}>
                   <pre className="whitespace-pre-wrap font-[inherit] m-0">{msg.content}</pre>
-                  {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && !msg.content && (
+                  {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && (
                     <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-text-secondary)' }} />
                   )}
                 </div>
-                {msg.tools && msg.tools.length > 0 && (
-                  <div className="mt-2 flex flex-col gap-1">
-                    {msg.tools.map((t, j) => (
-                      <div key={j} className="text-xs rounded-lg px-3 py-2"
-                        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                        <span className="font-mono font-medium" style={{ color: 'var(--color-primary)' }}>
-                          {t.tool}
-                        </span>
-                        {t.type === 'start' && t.arguments && (
-                          <span className="ml-2 opacity-70">{t.arguments.length > 80 ? t.arguments.slice(0, 80) + '...' : t.arguments}</span>
-                        )}
-                        {t.type === 'result' && (
-                          <span className="ml-2" style={{ color: t.resultStatus === 'COMPLETED' ? 'var(--color-success)' : 'var(--color-error)' }}>
-                            {t.resultStatus === 'COMPLETED' ? 'done' : t.resultStatus}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
                 {msg.approval && (
                   <div className="mt-2 rounded-xl border px-4 py-3"
                     style={{ borderColor: 'var(--color-warning)', background: 'var(--color-bg-secondary)' }}>

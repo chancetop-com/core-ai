@@ -74,6 +74,9 @@ public class Main implements Callable<Integer> {
     @Option(names = "--headless", description = "A2A server without opening browser")
     boolean headless;
 
+    @Option(names = "--web-dir", description = "Serve frontend from local directory (for dev)")
+    Path webDir;
+
     @Override
     public Integer call() {
         if (debug) {
@@ -82,7 +85,7 @@ public class Main implements Callable<Integer> {
         }
         if (serve) {
             new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace)
-                    .startServe(port, !headless);
+                    .startServe(port, !headless, webDir);
         } else if (serverUrl != null) {
             new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace)
                     .startRemote(serverUrl, apiKey, agentId);

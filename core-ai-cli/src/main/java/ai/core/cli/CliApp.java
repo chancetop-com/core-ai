@@ -253,7 +253,7 @@ public class CliApp {
     }
 
     @SuppressWarnings("PMD.SystemPrintln")
-    public void startServe(int port, boolean openBrowser) {
+    public void startServe(int port, boolean openBrowser, Path webDir) {
         System.setProperty("core.appName", "core-ai-cli");
 
         InteractiveConfigSetup.setupIfNeeded();
@@ -278,7 +278,7 @@ public class CliApp {
         });
 
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore);
-        var server = new A2AServer(port, runManager);
+        var server = new A2AServer(port, runManager, webDir);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();
