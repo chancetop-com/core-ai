@@ -122,7 +122,7 @@ public abstract class LLMProvider {
 
     private StreamingCallback wrapCallback(StreamingCallback callback) {
         int bufferSize = config.getStreamBufferSize();
-        if (bufferSize <= 0) return callback;
+        if (bufferSize <= 0) return new AsyncStreamingCallback(callback);
         return new BufferedStreamingCallback(new AsyncStreamingCallback(callback), bufferSize);
     }
 
@@ -164,6 +164,7 @@ public abstract class LLMProvider {
     protected abstract CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback);
 
     public abstract EmbeddingResponse embeddings(EmbeddingRequest request);
+
     public abstract RerankingResponse rerankings(RerankingRequest request);
 
     public abstract CaptionImageResponse captionImage(CaptionImageRequest request);

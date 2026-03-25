@@ -142,10 +142,11 @@ public class OutputPanel {
         stopSpinnerIfActive();
         if (!reasoningShown) {
             reasoningShown = true;
-            if (!textStarted) {
-                writer.print("\n" + AnsiTheme.MUTED + "\u25CF" + AnsiTheme.SYN_NUMBER + " Thinking: " + AnsiTheme.RESET);
-                writer.flush();
+            if (textStarted) {
+                mdRenderer.flush();
             }
+            writer.print("\n" + AnsiTheme.MUTED + "\u25CF" + AnsiTheme.SYN_NUMBER + " Thinking: " + AnsiTheme.RESET);
+            writer.flush();
         }
         writer.print(AnsiTheme.MUTED + AnsiTheme.REASONING + indentAfterNewline(chunk) + AnsiTheme.RESET);
         writer.flush();

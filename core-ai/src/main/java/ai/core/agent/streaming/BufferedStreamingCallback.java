@@ -20,6 +20,7 @@ public class BufferedStreamingCallback implements StreamingCallback {
 
     @Override
     public void onChunk(String chunk) {
+        flushReasoningBuffer();
         chunkBuffer.append(chunk);
         if (chunkBuffer.length() >= bufferSize) {
             flushChunkBuffer();
