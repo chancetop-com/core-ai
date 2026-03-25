@@ -140,6 +140,7 @@ project(":core-ai-cli") {
     apply(plugin = "application")
     apply(plugin = "native-app")
     the<JavaApplication>().mainClass.set("Main")
+    the<JavaApplication>().applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
     dependencies {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
