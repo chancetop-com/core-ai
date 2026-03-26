@@ -4,13 +4,47 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 public class PermissionRule {
     private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "script_path", "directory", "command");
+    private static final String MODE_READ = "read";
+    private static final String MODE_WRITE = "write";
+    private static final Set<String> MODE_SUPPORTED_TOOLS = Set.of("run_bash_command");
 
     public static String buildPattern(String toolName, Map<String, Object> arguments) {
         var primaryArg = extractPrimaryArg(arguments);
         return primaryArg.map(s -> toolName + "(" + s + ")").orElse(toolName);
+    }
+
+    /**
+     * Checks if the tool call is a read-only operation based on the mode parameter.
+     *
+     * @param toolName  the name of the tool
+     * @param arguments the tool arguments
+     * @return true if the operation is read-only (mode is "read"), false otherwise
+     */
+    public static boolean isReadOnly(String toolName, Map<String, Object> arguments) {
+        if (!MODE_SUPPORTED_TOOLS.contains(toolName)) {
+            return false;
+        }
+        var mode = (String) arguments.get("mode");
+        return MODE_READ.equalsIgnoreCase(mode);
+    }
+
+    /**
+     * Checks if the tool call explicitly requires write permission (mode is "write").
+     *
+     * @param toolName  the name of the tool
+     * @param arguments the tool arguments
+     * @return true if the operation explicitly requires write permission, false otherwise
+     */
+    public static boolean isWriteOperation(String toolName, Map<String, Object> arguments) {
+        if (!MODE_SUPPORTED_TOOLS.contains(toolName)) {
+            return true; // Unknown tools require permission by default
+        }
+        var mode = (String) arguments.get("mode");
+        return MODE_WRITE.equalsIgnoreCase(mode);
     }
 
     private static Optional<String> extractPrimaryArgSupport(Map<String, Object> arguments) {

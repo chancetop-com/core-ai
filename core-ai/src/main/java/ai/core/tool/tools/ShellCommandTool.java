@@ -35,18 +35,21 @@ public class ShellCommandTool extends ToolCall {
     private static final String TOOL_DESC = """
             Executes a given bash command or shell script in a persistent shell session with optional
             timeout, ensuring proper handling and security measures.
-            
-            
+
+
             Before executing the command, please follow these steps:
-            
-            
+
+
             1. Directory Verification:
              - If the command will create new directories or files, first use the LS tool to verify the parent directory exists and is the correct location
              - For example, before running "mkdir foo/bar", first use LS to check that "foo" exists and is the intended parent directory
-            
+
             2. Command Execution:
              - Provide a command string via 'command' parameter OR a script file path via 'script_path' parameter.
              - If both 'command' and 'script_path' are provided, 'command' takes precedence.
+             - The 'mode' parameter indicates whether this is a read or write operation:
+               - "read": Only reads data, no modifications (e.g., ls, cat, grep, find without -delete). Permission may be auto-approved.
+               - "write": Modifies files or system state (e.g., rm, mkdir, echo >, sed -i). Requires explicit approval.
              - Always quote file paths that contain spaces with double quotes (e.g., cd "path with spaces/file.txt")
              - Examples of proper quoting:
                - cd "/Users/name/My Documents" (correct)
@@ -55,7 +58,7 @@ public class ShellCommandTool extends ToolCall {
                - python /path/with spaces/script.py (incorrect - will fail)
              - After ensuring proper quoting, execute the command.
              - Capture the output of the command.
-            
+
             Usage notes:
             - Either 'command' or 'script_path' parameter is required.
             - You can specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). If not specified, commands will timeout after 30 seconds.
@@ -422,6 +425,7 @@ public class ShellCommandTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "workspace_dir", "Working directory for command execution"),
                     ToolCallParameters.ParamSpec.of(String.class, "command", "Command string to execute. Either 'command' or 'script_path' is required."),
                     ToolCallParameters.ParamSpec.of(String.class, "script_path", "Path to a shell script file to execute. Either 'command' or 'script_path' is required."),
+                    ToolCallParameters.ParamSpec.of(String.class, "mode", "Operation mode: 'read' for read-only operations, 'write' for operations that modify files or system state. This helps with permission control."),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "async", "Set to true to run the command asynchronously. Use 'async_task_output' tool to check progress.")
             ));
             var tool = new ShellCommandTool();

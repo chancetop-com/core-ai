@@ -25,6 +25,11 @@ public class InMemoryToolPermissionStore implements ToolPermissionStore {
 
     @Override
     public Optional<Boolean> checkPermission(String toolName, Map<String, Object> arguments) {
+        // Auto-allow read-only operations
+        if (PermissionRule.isReadOnly(toolName, arguments)) {
+            return Optional.of(true);
+        }
+
         if (allowedPatterns.stream().anyMatch(p -> PermissionRule.matches(p, toolName, arguments))) {
             return Optional.of(true);
         }
