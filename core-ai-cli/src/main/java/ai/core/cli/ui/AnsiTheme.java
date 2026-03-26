@@ -87,8 +87,19 @@ public final class AnsiTheme {
 
     public static int displayWidth(String text) {
         int width = 0;
+        boolean inEscape = false;
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
+            if (c == '\033') {
+                inEscape = true;
+                continue;
+            }
+            if (inEscape) {
+                if (c == 'm') {
+                    inEscape = false;
+                }
+                continue;
+            }
             if (c >= 0x4E00 && c <= 0x9FFF || c >= 0x3000 && c <= 0x303F
                     || c >= 0xFF00 && c <= 0xFFEF || c >= 0xAC00 && c <= 0xD7AF) {
                 width += 2;

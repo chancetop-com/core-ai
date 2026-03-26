@@ -77,7 +77,8 @@ public final class TableRenderer {
         int[] widths = new int[cols];
         for (String[] row : parsed) {
             for (int i = 0; i < row.length && i < cols; i++) {
-                widths[i] = Math.max(widths[i], AnsiTheme.displayWidth(row[i]));
+                String rendered = MarkdownLineRenderer.renderInline(row[i]);
+                widths[i] = Math.max(widths[i], AnsiTheme.displayWidth(rendered));
             }
         }
         for (int i = 0; i < cols; i++) {
@@ -123,7 +124,8 @@ public final class TableRenderer {
         sb.append(TC).append('│').append(R);
         for (int i = 0; i < cols; i++) {
             String cell = i < cells.length ? cells[i] : "";
-            sb.append(' ').append(MarkdownLineRenderer.renderInline(pad(cell, widths[i]))).append(' ');
+            String rendered = MarkdownLineRenderer.renderInline(cell);
+            sb.append(' ').append(pad(rendered, widths[i])).append(' ');
             sb.append(TC).append('│').append(R);
         }
         return sb.toString();
