@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, Plus } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, Plus, PanelLeft } from 'lucide-react';
 import { a2aApi } from '../../api/a2a';
 import type { StreamEvent } from '../../api/a2a';
 
@@ -108,10 +108,11 @@ function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [status, setStatus] = useState<'idle' | 'running' | 'awaiting'>('idle');
+  const [status, setStatus] = useState<'idle' | 'running'>('idle');
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [awaitInfo, setAwaitInfo] = useState<AwaitInfo | null>(null);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef('');
@@ -232,7 +233,7 @@ export default function Chat() {
               tool: event.metadata.tool,
               arguments: event.metadata.arguments || '',
             };
-            setStatus('awaiting');
+            setStatus('running');
             setAwaitInfo(info);
             setMessages(prev => {
               const updated = [...prev];
@@ -346,42 +347,59 @@ export default function Chat() {
   return (
     <div className="flex h-full">
       {/* Left sidebar - Session History */}
-      <div className="w-64 border-r flex flex-col shrink-0"
-        style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        {/* New Chat button */}
-        <div className="p-3">
+      <div className="border-r flex flex-col shrink-0 transition-all duration-200"
+        style={{ 
+          width: sidebarCollapsed ? '48px' : '256px',
+          borderColor: 'var(--color-border)', 
+          background: 'var(--color-bg-secondary)' 
+        }}>
+        {/* Collapse toggle */}
+        <div className="p-2">
           <button
-            onClick={() => window.location.reload()}
-            className="w-full flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors"
-            style={{ background: 'var(--color-primary)', color: 'white' }}>
-            <Plus size={18} />
-            New Chat
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="w-9 h-9 flex items-center justify-center rounded-lg cursor-pointer transition-colors"
+            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <PanelLeft size={18} />
           </button>
         </div>
 
-        {/* Session list */}
-        <div className="flex-1 overflow-auto px-2 pb-2">
-          <div className="text-xs font-medium px-3 py-2" style={{ color: 'var(--color-text-secondary)' }}>
-            History
-          </div>
-          {sessions.length === 0 ? (
-            <div className="text-center py-8 px-3" style={{ color: 'var(--color-text-tertiary)' }}>
-              <p className="text-sm">No sessions yet</p>
+        {!sidebarCollapsed && (
+          <>
+            {/* New Chat button */}
+            <div className="p-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors"
+                style={{ background: 'var(--color-primary)', color: 'white' }}>
+                <Plus size={18} />
+                New Chat
+              </button>
             </div>
-          ) : (
-            <div className="flex flex-col gap-0.5">
-              {sessions.map(session => (
-                <button
-                  key={session.id}
-                  onClick={() => handleSelectSession(session.id)}
-                  className="w-full text-left p-3 rounded-lg cursor-pointer transition-colors"
-                  style={{
-                    background: session.isCurrent ? 'var(--color-bg-tertiary)' : 'transparent',
-                    color: 'var(--color-text)',
-                  }}>
-                  <div className="text-sm truncate" style={{
-                    color: session.isCurrent ? 'var(--color-primary)' : 'var(--color-text)',
-                  }}>
+
+            {/* Session list */}
+            <div className="flex-1 overflow-auto px-2 pb-2">
+              <div className="text-xs font-medium px-3 py-2" style={{ color: 'var(--color-text-secondary)' }}>
+                History
+              </div>
+              {sessions.length === 0 ? (
+                <div className="text-center py-8 px-3" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <p className="text-sm">No sessions yet</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-0.5">
+                  {sessions.map(session => (
+                    <button
+                      key={session.id}
+                      onClick={() => handleSelectSession(session.id)}
+                      className="w-full text-left p-3 rounded-lg cursor-pointer transition-colors"
+                      style={{
+                        background: session.isCurrent ? 'var(--color-bg-tertiary)' : 'transparent',
+                        color: 'var(--color-text)',
+                      }}>
+                      <div className="text-sm truncate" style={{
+                        color: session.isCurrent ? 'var(--color-primary)' : 'var(--color-text)',
+                      }}>
                     {session.firstMessage || '(empty)'}
                   </div>
                   <div className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -392,6 +410,8 @@ export default function Chat() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* Right content area */}
