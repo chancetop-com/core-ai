@@ -270,14 +270,23 @@ public class CliApp {
 
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
         var sessionPersistence = new FileSessionPersistence(SESSIONS_DIR);
+        var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = whiteToolsPermissionStore();
+
+        var currentSessionId = resolveSessionIdForServe(sessionManager);
+        if (currentSessionId != null) {
+            LOGGER.info("Resuming session: {}", currentSessionId);
+        } else {
+            currentSessionId = "serve-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+            LOGGER.info("Starting new session: {}", currentSessionId);
+        }
 
         var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
         });
 
-        var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore);
+        var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
         var server = new A2AServer(port, runManager, webDir);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -288,6 +297,9 @@ public class CliApp {
         server.start();
         var url = "http://localhost:" + port;
         System.out.println("A2A server running at " + url);
+        if (!currentSessionId.startsWith("serve-")) {
+            System.out.println("Session: " + currentSessionId);
+        }
 
         if (openBrowser) {
             openBrowser(url);
@@ -300,6 +312,55 @@ public class CliApp {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private String resolveSessionIdForServe(SessionManager sessionManager) {
+        if (continueSession) {
+            var sessions = sessionManager.listSessions();
+            if (sessions.isEmpty()) {
+                System.out.println("No previous sessions found. Starting new session.");
+                return null;
+            }
+            var sessionId = sessions.getFirst().id();
+            System.out.println("Resuming most recent session: " + sessionId);
+            return sessionId;
+        }
+        if (resume) {
+            var sessions = sessionManager.listSessions();
+            if (sessions.isEmpty()) {
+                System.out.println("No previous sessions found. Starting new session.");
+                return null;
+            }
+            System.out.println("\nRecent sessions:");
+            int limit = Math.min(sessions.size(), 10);
+            for (int i = 0; i < limit; i++) {
+                var session = sessions.get(i);
+                String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
+                String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
+                System.out.printf("  %2d) %s (%s)%n", i + 1, title, timeStr);
+            }
+            System.out.println();
+            System.out.print("Select session (1-" + limit + "), or 'n' for new: ");
+            var scanner = new java.util.Scanner(System.in);
+            while (true) {
+                var input = scanner.nextLine();
+                if ("n".equalsIgnoreCase(input.trim())) {
+                    return null;
+                }
+                try {
+                    int choice = Integer.parseInt(input.trim());
+                    if (choice >= 1 && choice <= limit) {
+                        var sessionId = sessions.get(choice - 1).id();
+                        System.out.println("Resuming session: " + sessionId);
+                        return sessionId;
+                    }
+                } catch (NumberFormatException ignored) {
+                    // fall through to re-prompt
+                }
+                System.out.println("Invalid selection. Enter 1-" + limit + " or 'n' for new: ");
+            }
+        }
+        return null;
     }
 
     private void runRemoteSession(TerminalUI ui, RemoteConfig config) {

@@ -64,7 +64,10 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.cli.log.CliLoggerServiceProvider",
         // SessionMemoryExtractor inner classes for Jackson deserialization in native image
         "ai.core.cli.memory.SessionMemoryExtractor$ExtractionResponse",
-        "ai.core.cli.memory.SessionMemoryExtractor$ExtractedMemory"
+        "ai.core.cli.memory.SessionMemoryExtractor$ExtractedMemory",
+        // SessionsHandler class for JSON serialization in native image
+        "ai.core.cli.a2a.handler.SessionsHandler$SessionItem",
+        "ai.core.cli.a2a.handler.SessionMessagesHandler$MessageDto"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes

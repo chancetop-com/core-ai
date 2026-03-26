@@ -6,11 +6,14 @@ import ai.core.api.a2a.SendMessageRequest;
 import ai.core.api.a2a.Task;
 import ai.core.api.a2a.TaskState;
 import ai.core.api.server.session.ApprovalDecision;
+import ai.core.session.FileSessionPersistence;
 import ai.core.session.InProcessAgentSession;
+import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -34,11 +37,21 @@ public class A2ARunManager {
     private final boolean autoApproveAll;
     private final ToolPermissionStore permissionStore;
     private final ConcurrentMap<String, A2ATaskState> tasks = new ConcurrentHashMap<>();
+    private final String persistentSessionId;
+    private InProcessAgentSession persistentSession;
 
     public A2ARunManager(Supplier<Agent> agentFactory, boolean autoApproveAll, ToolPermissionStore permissionStore) {
+        this(agentFactory, autoApproveAll, permissionStore, null);
+    }
+
+    public A2ARunManager(Supplier<Agent> agentFactory, boolean autoApproveAll, ToolPermissionStore permissionStore, String sessionId) {
         this.agentFactory = agentFactory;
         this.autoApproveAll = autoApproveAll;
         this.permissionStore = permissionStore;
+        this.persistentSessionId = sessionId;
+        if (sessionId != null) {
+            this.persistentSession = createSession(sessionId);
+        }
     }
 
     public AgentCard getAgentCard() {
@@ -61,10 +74,8 @@ public class A2ARunManager {
     }
 
     public Task createSyncTask(SendMessageRequest request) {
-        var taskId = UUID.randomUUID().toString();
-        var agent = agentFactory.get();
-        var session = new InProcessAgentSession(taskId, agent, autoApproveAll, permissionStore);
-
+        var session = getOrCreateSession();
+        var taskId = session.id();
         var state = new A2ATaskState(taskId, taskId, session);
         state.setState(TaskState.WORKING);
         tasks.put(taskId, state);
@@ -87,10 +98,8 @@ public class A2ARunManager {
     }
 
     public A2ATaskState createStreamingTask(SendMessageRequest request, Consumer<String> sseSender) {
-        var taskId = UUID.randomUUID().toString();
-        var agent = agentFactory.get();
-        var session = new InProcessAgentSession(taskId, agent, autoApproveAll, permissionStore);
-
+        var session = getOrCreateSession();
+        var taskId = session.id();
         var state = new A2ATaskState(taskId, taskId, session);
         state.setState(TaskState.WORKING);
         tasks.put(taskId, state);
@@ -103,6 +112,18 @@ public class A2ARunManager {
         session.sendMessage(userText);
 
         return state;
+    }
+
+    private InProcessAgentSession getOrCreateSession() {
+        if (persistentSession != null) {
+            return persistentSession;
+        }
+        return createSession(UUID.randomUUID().toString());
+    }
+
+    private InProcessAgentSession createSession(String sessionId) {
+        var agent = agentFactory.get();
+        return new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
     }
 
     public Task getTask(String taskId) {
@@ -135,6 +156,13 @@ public class A2ARunManager {
     }
 
     public void close() {
+        if (persistentSession != null) {
+            try {
+                persistentSession.close();
+            } catch (Exception e) {
+                LOGGER.debug("failed to close persistent session", e);
+            }
+        }
         for (var state : tasks.values()) {
             try {
                 state.session.close();
@@ -143,5 +171,13 @@ public class A2ARunManager {
             }
         }
         tasks.clear();
+    }
+
+    public String getSessionId() {
+        return persistentSessionId;
+    }
+
+    public List<SessionPersistence.SessionInfo> listSessions(FileSessionPersistence sessionPersistence) {
+        return sessionPersistence.listSessions();
     }
 }

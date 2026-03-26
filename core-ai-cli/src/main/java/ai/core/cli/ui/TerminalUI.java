@@ -95,6 +95,27 @@ public class TerminalUI {
             this.slashCompleter = new SlashCommandCompleter();
             this.jlineReader = buildJLineReader();
             this.simpleReader = null;
+            // Enable Bracketed Paste Mode for Windows Terminal
+            enableBracketedPaste();
+        }
+    }
+
+    // Bracketed Paste Mode sequences: ESC[?2004h to enable, ESC[?2004l to disable
+    private static final String BRACKETED_PASTE_ON = "\u001B[?2004h";
+    private static final String BRACKETED_PASTE_OFF = "\u001B[?2004l";
+
+    private void enableBracketedPaste() {
+        if (terminal != null) {
+            terminal.writer().print(BRACKETED_PASTE_ON);
+            terminal.writer().flush();
+            LOGGER.debug("bracketed paste mode enabled");
+        }
+    }
+
+    private void disableBracketedPaste() {
+        if (terminal != null) {
+            terminal.writer().print(BRACKETED_PASTE_OFF);
+            terminal.writer().flush();
         }
     }
 
@@ -302,6 +323,7 @@ public class TerminalUI {
     }
 
     public void close() throws IOException {
+        disableBracketedPaste();
         if (terminal != null) terminal.close();
     }
 

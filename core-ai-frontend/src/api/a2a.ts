@@ -43,6 +43,18 @@ export interface Task {
   history?: Message[];
 }
 
+export interface SessionItem {
+  id: string;
+  time: string;
+  firstMessage: string;
+  isCurrent: boolean;
+}
+
+export interface SessionMessage {
+  role: 'user' | 'agent';
+  content: string;
+}
+
 export interface StreamEvent {
   type: 'status' | 'artifact';
   taskId: string;
@@ -130,5 +142,15 @@ export const a2aApi = {
 
   cancelTask: async (taskId: string): Promise<void> => {
     await fetch(`${BASE}/tasks/${taskId}/cancel`, { method: 'POST' });
+  },
+
+  listSessions: async (): Promise<SessionItem[]> => {
+    const res = await fetch(`${BASE}/api/sessions`);
+    return res.json();
+  },
+
+  getSessionMessages: async (sessionId: string): Promise<SessionMessage[]> => {
+    const res = await fetch(`${BASE}/api/sessions/${sessionId}/messages`);
+    return res.json();
   },
 };

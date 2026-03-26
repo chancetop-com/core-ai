@@ -4,6 +4,8 @@ import ai.core.a2a.A2ARunManager;
 import ai.core.cli.a2a.handler.AgentCardHandler;
 import ai.core.cli.a2a.handler.CapabilitiesHandler;
 import ai.core.cli.a2a.handler.MessageHandler;
+import ai.core.cli.a2a.handler.SessionMessagesHandler;
+import ai.core.cli.a2a.handler.SessionsHandler;
 import ai.core.cli.a2a.handler.TaskHandler;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
@@ -48,6 +50,8 @@ public class A2AServer {
         var messageHandler = new MessageHandler(runManager);
         var taskHandler = new TaskHandler(runManager);
         var capabilitiesHandler = new CapabilitiesHandler();
+        var sessionsHandler = new SessionsHandler(runManager);
+        var sessionMessagesHandler = new SessionMessagesHandler();
 
         var pathHandler = new PathTemplateHandler(staticFileHandler(webDir));
         pathHandler.add("/.well-known/agent-card.json", agentCardHandler);
@@ -56,6 +60,8 @@ public class A2AServer {
         pathHandler.add("/tasks/{taskId}/cancel", taskHandler);
         pathHandler.add("/tasks/{taskId}/message/send", taskHandler);
         pathHandler.add("/api/capabilities", capabilitiesHandler);
+        pathHandler.add("/api/sessions", sessionsHandler);
+        pathHandler.add("/api/sessions/{sessionId}/messages", sessionMessagesHandler);
 
         this.server = Undertow.builder()
                 .addHttpListener(port, "0.0.0.0")
