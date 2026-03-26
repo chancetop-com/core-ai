@@ -4,6 +4,7 @@ import ai.core.McpServerModule;
 import ai.core.MultiAgentModule;
 import ai.core.server.apimcp.mcp.McpModule;
 import ai.core.server.apimcp.serviceapi.ServiceApiModule;
+import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
@@ -57,5 +58,8 @@ public class ServerApp extends App {
         mongo.collection(Trace.class);
         mongo.collection(Span.class);
         mongo.collection(PromptTemplate.class);
+
+        // service api collection
+        mongo.collection(ServiceApi.class);
     }
 }
