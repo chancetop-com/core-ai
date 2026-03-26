@@ -10,6 +10,8 @@ public enum ApprovalDecision {
     APPROVE,
     @Property(name = "APPROVE_ALWAYS")
     APPROVE_ALWAYS,
+    @Property(name = "APPROVE_SESSION")
+    APPROVE_SESSION,
     @Property(name = "DENY")
     DENY,
     @Property(name = "DENY_ALWAYS")

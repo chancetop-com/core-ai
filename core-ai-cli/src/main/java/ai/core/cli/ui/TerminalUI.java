@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.logging.Level;
 
 /**
@@ -149,12 +150,28 @@ public class TerminalUI {
         }
     }
 
+    private static final Set<String> EDIT_TOOLS = Set.of("edit_file", "write_file");
+
     public ApprovalDecision askPermission(String toolName, String arguments, String suggestedPattern) {
+        if (EDIT_TOOLS.contains(toolName)) {
+            var options = List.of(
+                    "Yes",
+                    "Yes, allow all edits during this session",
+                    "No"
+            );
+            int choice = pickIndex(options);
+            return switch (choice) {
+                case 0 -> ApprovalDecision.APPROVE;
+                case 1 -> ApprovalDecision.APPROVE_SESSION;
+                default -> ApprovalDecision.DENY;
+            };
+        }
+        String displayPattern = truncatePattern(suggestedPattern, 60);
         var options = List.of(
                 "Yes",
-                "Yes, and don't ask again for: " + suggestedPattern,
+                "Yes, and don't ask again for: " + displayPattern,
                 "No",
-                "No, and always deny: " + suggestedPattern
+                "No, and always deny: " + displayPattern
         );
         int choice = pickIndex(options);
         return switch (choice) {
@@ -163,6 +180,17 @@ public class TerminalUI {
             case 3 -> ApprovalDecision.DENY_ALWAYS;
             default -> ApprovalDecision.DENY;
         };
+    }
+
+    static String truncatePattern(String pattern, int limit) {
+        if (pattern == null || pattern.length() <= limit) return pattern;
+        int paren = pattern.indexOf('(');
+        if (paren < 0) return pattern;
+        String tool = pattern.substring(0, paren + 1);
+        String arg = pattern.substring(paren + 1, pattern.length() - 1);
+        int maxArg = limit - tool.length() - 4;
+        if (maxArg <= 0) return pattern;
+        return tool + arg.substring(0, Math.min(arg.length(), maxArg)) + "..." + ")";
     }
 
     public void showToolStart(String toolName, String arguments) {

@@ -23,9 +23,11 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
+ * Lifecycle management for server-side tool call permissions.
  * @author stephen
  */
 public class ServerPermissionLifecycle extends AbstractLifecycle {
@@ -37,6 +39,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     private final PermissionGate permissionGate;
     private final boolean autoApproveAll;
     private final ToolPermissionStore permissionStore;
+    private final Set<String> sessionAllowedTools = ConcurrentHashMap.newKeySet();
 
     public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
@@ -67,6 +70,10 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
             return;
         }
         if (Objects.nonNull(executionContext.getSessionId()) && executionContext.getSessionId().contains("subagent")) {
+            return;
+        }
+        if (sessionAllowedTools.contains(toolName)) {
+            logger.debug("session-allowed for tool={}, callId={}", toolName, callId);
             return;
         }
         if (permissionStore != null) {
@@ -102,6 +109,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
                     permissionStore.allow(pattern);
                 }
             }
+            case APPROVE_SESSION -> sessionAllowedTools.add(toolName);
             default -> {
                 // APPROVE: single-time, no persistence
             }

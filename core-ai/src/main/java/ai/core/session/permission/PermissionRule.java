@@ -6,8 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class PermissionRule {
-    private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "command", "directory", "script_path");
-    private static final Integer PATTERN_LIMIT = 30;
+    private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "script_path", "directory", "command");
 
     public static String buildPattern(String toolName, Map<String, Object> arguments) {
         var primaryArg = extractPrimaryArg(arguments);
@@ -16,22 +15,23 @@ public class PermissionRule {
 
     private static Optional<String> extractPrimaryArgSupport(Map<String, Object> arguments) {
         if (arguments == null || arguments.isEmpty()) return Optional.empty();
-        for (String key : PRIMARY_KEYS) {
-            var val = arguments.get(key);
-            if (val != null) return Optional.of(val.toString());
-        }
+        var matched = PRIMARY_KEYS.stream()
+                .map(arguments::get)
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .sorted(java.util.Comparator.comparingInt(String::length))
+                .toList();
+        if (!matched.isEmpty()) return Optional.of(matched.getFirst());
         return arguments.keySet().stream()
                 .sorted()
                 .map(arguments::get)
                 .filter(Objects::nonNull)
                 .map(Object::toString)
                 .findFirst();
-
     }
 
     public static Optional<String> extractPrimaryArg(Map<String, Object> arguments) {
-        var primaryArg = extractPrimaryArgSupport(arguments);
-        return primaryArg.map(s -> s.length() > PATTERN_LIMIT ? s.substring(0, PATTERN_LIMIT) + "..." : s);
+        return extractPrimaryArgSupport(arguments);
     }
 
     public static boolean matches(String pattern, String toolName, Map<String, Object> arguments) {
