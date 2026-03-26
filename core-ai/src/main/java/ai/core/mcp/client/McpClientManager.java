@@ -254,7 +254,7 @@ public class McpClientManager implements AutoCloseable {
             try {
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
             } catch (IllegalStateException e) {
-                LOGGER.warn("Failed to remove shutdown hook, JVM is shutting down");
+                LOGGER.info("Failed to remove shutdown hook, JVM is shutting down");
             }
             shutdownHook = null;
         }
