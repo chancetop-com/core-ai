@@ -84,8 +84,7 @@ public class SessionMemoryExtractor {
                 int count = extract(messages);
                 markExtracted(targetSessionId);
                 if (count > 0) {
-                    ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
-                            + " Extracted " + count + " memories from last session\n");
+                    LOGGER.debug("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Extracted {} memories from last session\n", count);
                 }
             } catch (Exception e) {
                 LOGGER.warn("Background memory extraction failed: {}", e.getMessage());
