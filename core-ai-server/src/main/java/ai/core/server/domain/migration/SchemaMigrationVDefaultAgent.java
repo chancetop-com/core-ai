@@ -64,6 +64,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
 
             Supported primitive types: String, Integer, Long, Double, Boolean, LocalDate, ZonedDateTime
             Use "List" with "typeParams" for arrays, reference other type names for nested objects/enums.
+            If response_schema_json is configured, remind the user that the LLM must support this feature.
 
             ## Important
             - Always test before publishing

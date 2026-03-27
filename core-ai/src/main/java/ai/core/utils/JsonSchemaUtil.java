@@ -167,16 +167,28 @@ public class JsonSchemaUtil {
         property.format = p.getFormat();
         if (property.type == JsonSchema.PropertyType.ARRAY) {
             property.items = buildArrayItemSchema(p);
-        } else if (property.type == JsonSchema.PropertyType.OBJECT && isCustomObjectType(p.getClassType())) {
-            var nestedSchema = toJsonSchema(p.getClassType());
-            property.properties = nestedSchema.properties;
-            property.required = nestedSchema.required;
+        } else if (property.type == JsonSchema.PropertyType.OBJECT && (isCustomObjectType(p.getClassType()) || hasNestedItems(p))) {
+            if (p.getItems() != null && !p.getItems().isEmpty()) {
+                // Use items directly to build nested schema (for ApiDefinitionType-based schemas)
+                var nestedSchema = buildSchema(p.getItems(), p);
+                property.properties = nestedSchema.properties;
+                property.required = nestedSchema.required;
+            } else {
+                // Use classType for reflection-based schemas
+                var nestedSchema = toJsonSchema(p.getClassType());
+                property.properties = nestedSchema.properties;
+                property.required = nestedSchema.required;
+            }
         }
         if (p.getClassType() != null && p.getClassType().isEnum()) {
             property.type = JsonSchema.PropertyType.STRING;
             property.enums = getEnumValues(p.getClassType());
         }
         return property;
+    }
+
+    private static boolean hasNestedItems(ToolCallParameter p) {
+        return p.getItems() != null && !p.getItems().isEmpty();
     }
 
     private static JsonSchema buildArrayItemSchema(ToolCallParameter p) {

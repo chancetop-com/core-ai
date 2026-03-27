@@ -128,6 +128,65 @@ public class AgentCommandHandler {
         if (prompt != null && !prompt.isBlank()) {
             printField("System Prompt", truncate(prompt, 80));
         }
+        var responseSchema = agent.get("response_schema");
+        if (responseSchema != null) {
+            printResponseSchema(responseSchema);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void printResponseSchema(Object responseSchema) {
+        ui.printStreamingChunk(String.format("  %s%-15s%s%n", AnsiTheme.MUTED, "Response Schema:", AnsiTheme.RESET));
+        try {
+            var schemaJson = JsonUtil.toJson(responseSchema);
+            var formatted = formatJson(schemaJson);
+            for (var line : formatted.split("\n")) {
+                ui.printStreamingChunk("  " + line + "\n");
+            }
+        } catch (Exception e) {
+            ui.printStreamingChunk("  " + AnsiTheme.WARNING + "(failed to format schema)" + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    private String formatJson(String json) {
+        if (json == null || json.isBlank()) return "";
+        var sb = new StringBuilder();
+        int indent = 0;
+        boolean inString = false;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '"' && (i == 0 || json.charAt(i - 1) != '\\')) {
+                inString = !inString;
+                sb.append(c);
+            } else if (!inString) {
+                switch (c) {
+                    case '{', '[' -> {
+                        sb.append(c);
+                        sb.append('\n');
+                        indent += 2;
+                        sb.append("  ".repeat(indent));
+                    }
+                    case '}', ']' -> {
+                        sb.append('\n');
+                        indent -= 2;
+                        sb.append("  ".repeat(Math.max(0, indent)));
+                        sb.append(c);
+                    }
+                    case ',' -> {
+                        sb.append(c);
+                        sb.append('\n');
+                        sb.append("  ".repeat(Math.max(0, indent)));
+                    }
+                    case ':' -> sb.append(": ");
+                    default -> {
+                        if (!Character.isWhitespace(c)) sb.append(c);
+                    }
+                }
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private AgentAction handleAgentAction(String agentId, String agentName, boolean isLLMCall, boolean isDefault) {
