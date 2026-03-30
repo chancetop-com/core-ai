@@ -90,7 +90,8 @@ public class CliApp {
         // set core.appName before any core-ng class loads to suppress LogManager warning
         System.setProperty("core.appName", "core-ai-cli");
 
-        InteractiveConfigSetup.setupIfNeeded();
+        var ui = new TerminalUI();
+        InteractiveConfigSetup.setupIfNeeded(ui);
 
         LOGGER.info("loading config from {}", configFile);
         var props = PropertiesFileSource.fromFile(configFile);
@@ -106,7 +107,6 @@ public class CliApp {
 
         var sessionPersistence = new FileSessionPersistence(SESSIONS_DIR);
         var sessionManager = new SessionManager(sessionPersistence);
-        var ui = new TerminalUI();
         var modelName = modelOverride != null ? modelOverride : result.llmProviders.getDefaultProvider().config.getModel();
         String currentSessionId = resolveOrCreateSessionId(sessionManager, ui);
         CliLogger.initialize(currentSessionId);
@@ -255,8 +255,6 @@ public class CliApp {
     @SuppressWarnings("PMD.SystemPrintln")
     public void startServe(int port, boolean openBrowser, Path webDir) {
         System.setProperty("core.appName", "core-ai-cli");
-
-        InteractiveConfigSetup.setupIfNeeded();
 
         LOGGER.info("loading config from {}", configFile);
         var props = PropertiesFileSource.fromFile(configFile);
