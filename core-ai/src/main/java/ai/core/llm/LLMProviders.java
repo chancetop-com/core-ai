@@ -13,7 +13,7 @@ public class LLMProviders {
         return switch (type) {
             case AZURE_INFERENCE -> "gpt-5-mini";
             case DEEPSEEK -> "deepseek-chat";
-            case OPENROUTER -> "minimax/minimax-m2.7";
+            case OPENROUTER -> "minimax/minimax-m2.5";
             default -> "gpt-4o";
         };
     }

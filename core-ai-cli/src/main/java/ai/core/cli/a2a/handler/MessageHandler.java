@@ -88,11 +88,9 @@ public class MessageHandler implements HttpHandler {
         });
 
         try {
-            while (true) {
-                if (completionLatch.await(1, TimeUnit.SECONDS)) break;
+            while (!completionLatch.await(1, TimeUnit.SECONDS)) {
                 var taskState = state.getState();
                 if (taskState == TaskState.COMPLETED || taskState == TaskState.FAILED || taskState == TaskState.CANCELED) break;
-                if (taskState == TaskState.INPUT_REQUIRED && !completionLatch.await(5, TimeUnit.MINUTES)) break;
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

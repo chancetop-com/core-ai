@@ -171,13 +171,14 @@ public class LiteLLMProvider extends LLMProvider {
             }
             return response;
         }
-        if (response == null && lastError != null) {
-            throw (RuntimeException) lastError;
+        if (response == null) {
+            if (lastError != null) throw (RuntimeException) lastError;
+            throw new RuntimeException("LLM returned empty response - no content received from model: " + config.getModel());
         }
-        if (!Objects.requireNonNull(response).choices.getFirst().message.reasoningContent.isEmpty()) {
+        if (!response.choices.getFirst().message.reasoningContent.isEmpty()) {
             callback.onReasoningComplete(response.choices.getFirst().message.reasoningContent);
         }
-        if (!Objects.requireNonNull(response).choices.getFirst().message.toolCalls.isEmpty()) {
+        if (!response.choices.getFirst().message.toolCalls.isEmpty()) {
             callback.onToolComplete(response.choices.getFirst().message.toolCalls);
         }
         callback.onComplete();

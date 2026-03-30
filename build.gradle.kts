@@ -187,6 +187,43 @@ project(":core-ai-cli") {
     tasks.named("processResources") {
         dependsOn("copyFrontend")
     }
+    tasks.register<Exec>("buildCli") {
+        group = "build"
+        dependsOn("npmInstall")
+        workingDir = rootDir.resolve("core-ai-frontend")
+        commandLine(Frontend.commandLine(listOf("npm", "run", "build:cli")))
+    }
+    tasks.register("packageDist") {
+        group = "distribution"
+        dependsOn("nativeCompile", "buildCli")
+        doLast {
+            val dist = rootDir.resolve("dist")
+            dist.mkdirs()
+            val nativeBin = layout.buildDirectory.dir("native/nativeCompile").get().asFile.resolve("core-ai-cli")
+            if (nativeBin.exists()) {
+                nativeBin.copyTo(dist.resolve("core-ai-backend"), overwrite = true)
+                dist.resolve("core-ai-backend").setExecutable(true)
+            }
+            val cliBundleDir = rootDir.resolve("core-ai-frontend/dist")
+            listOf("core-ai", "cli.mjs").forEach { name ->
+                val src = cliBundleDir.resolve(name)
+                if (src.exists()) {
+                    src.copyTo(dist.resolve(name), overwrite = true)
+                    dist.resolve(name).setExecutable(true)
+                }
+            }
+            // symlink node_modules for ESM imports
+            val nmLink = dist.resolve("node_modules")
+            val nmTarget = rootDir.resolve("core-ai-frontend/node_modules")
+            if (!nmLink.exists()) {
+                Runtime.getRuntime().exec(arrayOf("ln", "-s", nmTarget.absolutePath, nmLink.absolutePath))
+            }
+            println("Distribution packaged at: ${dist.absolutePath}")
+            println("  core-ai          <- CLI launcher")
+            println("  cli.mjs          <- bundled JS")
+            println("  core-ai-backend  <- Java native binary")
+        }
+    }
 }
 
 project(":core-ai-benchmark") {
