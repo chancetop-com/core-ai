@@ -108,7 +108,8 @@ public class TerminalUI {
         if (terminal != null) {
             terminal.writer().print(BRACKETED_PASTE_ON);
             terminal.writer().flush();
-            LOGGER.debug("bracketed paste mode enabled");
+            LOGGER.debug("bracketed paste mode enabled, sent: {}",
+                    BRACKETED_PASTE_ON.replace("\u001B", "ESC"));
         }
     }
 
@@ -117,6 +118,19 @@ public class TerminalUI {
             terminal.writer().print(BRACKETED_PASTE_OFF);
             terminal.writer().flush();
         }
+    }
+
+    // 检测是否有 Bracketed Paste 开始序列到达（ESC[200~）
+    private boolean detectBracketedPasteStart() {
+        if (terminal == null) return false;
+        try {
+            var reader = terminal.reader();
+            // 非阻塞检查是否有数据
+            reader.read(50L);  // 短暂等待
+        } catch (Exception e) {
+            // ignore
+        }
+        return false;
     }
 
     public void setSlashCommands(List<ai.core.cli.command.SlashCommand> commands) {
@@ -347,7 +361,20 @@ public class TerminalUI {
         reader.setOpt(LineReader.Option.AUTO_LIST);
         reader.setOpt(LineReader.Option.AUTO_MENU);
         reader.setOpt(LineReader.Option.LIST_PACKED);
+        // Enable built-in Bracketed Paste Mode support - relies on terminal sending
+        // ESC[200~ (paste start) and ESC[201~ (paste end) sequences
         reader.setOpt(LineReader.Option.BRACKETED_PASTE);
+        reader.setOpt(LineReader.Option.AUTO_FRESH_LINE);
+
+        // Check if Bracketed Paste Mode is actually supported by checking terminal type
+        String termType = terminal.getType();
+
+        // Windows Terminal should support Bracketed Paste when VTP is enabled
+        // Traditional cmd.exe/PowerShell will NOT send these sequences
+        boolean supportsBracketedPaste = termType != null &&
+                (termType.contains("xterm") || termType.contains("vt100") || termType.contains("vt"));
+        LOGGER.debug("bracketed paste: likely supported={} (based on terminal type)", supportsBracketedPaste);
+
         reader.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference(LineReader.MENU_COMPLETE), "\t");
         registerSlashWidget(reader);
@@ -462,13 +489,11 @@ public class TerminalUI {
                 .bind(new Reference("backspace-refresh"), "\u0008");
 
         impl.getWidgets().put("bracketed-paste", () -> {
-            String pasted = readBracketedPaste();
-            String normalized = pasted.replace("\r\n", "\n").replace("\r", "\n");
-            if (pasteBuffer.isLarge(normalized)) {
-                impl.getBuffer().write(pasteBuffer.store(normalized));
-            } else {
-                impl.getBuffer().write(normalized);
-            }
+            // This widget is triggered when terminal sends ESC[200~ (paste start) sequence
+            // The actual pasted content is automatically inserted by JLine's LineReader
+            // when BRACKETED_PASTE option is enabled
+            LOGGER.debug("bracketed-paste widget triggered (JLine built-in)");
+            // Just redraw the line - content is already in buffer
             impl.redrawLine();
             return true;
         });

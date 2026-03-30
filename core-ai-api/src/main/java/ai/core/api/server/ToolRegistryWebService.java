@@ -1,6 +1,7 @@
 package ai.core.api.server;
 
 import ai.core.api.server.tool.CreateMcpServerRequest;
+import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
@@ -48,4 +49,8 @@ public interface ToolRegistryWebService {
     @PUT
     @Path("/api/tools/mcp-servers/:id/disable")
     ToolRegistryView disableMcpServer(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/tools/service-api/apps")
+    ListApiAppsResponse listServiceApiApps();
 }

@@ -2,12 +2,14 @@ package ai.core.server.web;
 
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.tool.CreateMcpServerRequest;
+import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
 import ai.core.api.server.tool.ToolRegistryView;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.server.domain.ToolRegistry;
+import ai.core.server.tool.InternalApiToolLoader;
 import ai.core.server.tool.ToolRegistryService;
 import core.framework.inject.Inject;
 
@@ -62,6 +64,23 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     @Override
     public ToolRegistryView disableMcpServer(String id) {
         return toView(toolRegistryService.disableMcpServer(id));
+    }
+
+    @Override
+    public ListApiAppsResponse listServiceApiApps() {
+        var apps = toolRegistryService.listServiceApiApps();
+        var response = new ListApiAppsResponse();
+        response.apps = apps.stream().map(this::toApiAppView).toList();
+        return response;
+    }
+
+    private ListApiAppsResponse.ApiAppView toApiAppView(InternalApiToolLoader.ApiAppInfo info) {
+        var view = new ListApiAppsResponse.ApiAppView();
+        view.name = info.app();
+        view.baseUrl = info.baseUrl();
+        view.version = info.version();
+        view.description = info.description();
+        return view;
     }
 
     private ToolRegistryView toView(ToolRegistry entity) {

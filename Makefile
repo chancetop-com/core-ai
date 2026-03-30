@@ -1,4 +1,4 @@
-DOCKER_USER ?= $(DOCKER_USERNAME)
+DOCKER_USER = chancetop
 IMAGE_NAME = core-ai-server
 VERSION ?= latest
 FULL_IMAGE = $(DOCKER_USER)/$(IMAGE_NAME):$(VERSION)

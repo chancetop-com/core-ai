@@ -3,6 +3,7 @@ package ai.core.server.tool;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.mcp.client.McpServerConfig;
+import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
 import ai.core.server.domain.ToolRegistry;
 import ai.core.server.domain.ToolType;
 import ai.core.tool.BuiltinTools;
@@ -30,6 +31,7 @@ public class ToolRegistryService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryService.class);
     private static final String CONFIG_PREFIX = "config:";
     private static final String BUILTIN_PREFIX = "builtin:";
+    private static final String API_TOOL_ID = "builtin-service-api";
 
     private static final Map<String, List<ToolCall>> BUILTIN_TOOL_SETS = Map.of(
         "builtin-all", BuiltinTools.ALL,
@@ -42,14 +44,53 @@ public class ToolRegistryService {
 
     private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
     private final Map<String, ToolRegistry> tools = new ConcurrentHashMap<>();
+    private final Map<String, List<ToolCall>> apiToolCache = new ConcurrentHashMap<>();
 
     @Inject
     MongoCollection<ToolRegistry> toolRegistryCollection;
 
+    @Inject
+    ApiDefinitionService apiDefinitionService;
+
+    private InternalApiToolLoader internalApiToolLoader;
+
     public void initialize() {
         loadBuiltinTools();
+        loadServiceApiTools();
         loadConfigMcpServers();
         loadDatabaseTools();
+    }
+
+    private void loadServiceApiTools() {
+        try {
+            if (apiDefinitionService == null) {
+                LOGGER.warn("ApiDefinitionService not injected, skipping Service API tools");
+                return;
+            }
+            internalApiToolLoader = new InternalApiToolLoader(apiDefinitionService);
+            var apiTools = internalApiToolLoader.load();
+
+            // Register as a builtin tool entry
+            var registry = new ToolRegistry();
+            registry.id = API_TOOL_ID;
+            registry.name = "service-api";
+            registry.type = ToolType.API;
+            registry.category = "builtin";
+            registry.enabled = true;
+            registry.description = "Internal Service API tools loaded from configured API definitions";
+            var config = new HashMap<String, String>();
+            config.put("set", API_TOOL_ID);
+            registry.config = config;
+            tools.put(registry.id, registry);
+
+            // Cache the loaded tools
+            apiToolCache.put(API_TOOL_ID, apiTools);
+            dynamicToolSets.put(API_TOOL_ID, apiTools);
+
+            LOGGER.info("loaded {} Service API tools", apiTools.size());
+        } catch (Exception e) {
+            LOGGER.error("failed to load Service API tools", e);
+        }
     }
 
     private void loadBuiltinTools() {
@@ -112,24 +153,19 @@ public class ToolRegistryService {
     }
 
     private void loadDatabaseTools() {
-        var entries = toolRegistryCollection.find(Filters.eq("enabled", true));
-        for (var entry : entries) {
+        for (var entry : toolRegistryCollection.find(Filters.eq("enabled", true))) {
             if (tools.containsKey(entry.id)) {
-                LOGGER.debug("skipping duplicate tool from database: {}", entry.id);
+                LOGGER.debug("skipping duplicate tool: {}", entry.id);
                 continue;
             }
             tools.put(entry.id, entry);
-            if (entry.type == ToolType.MCP) {
-                registerMcpServer(entry);
-            }
+            if (entry.type == ToolType.MCP) registerMcpServer(entry);
         }
     }
 
     public List<ToolRegistry> listTools(String category) {
         if (category != null && !category.isBlank()) {
-            return tools.values().stream()
-                .filter(t -> category.equals(t.category))
-                .toList();
+            return tools.values().stream().filter(t -> category.equals(t.category)).toList();
         }
         return List.copyOf(tools.values());
     }
@@ -141,12 +177,7 @@ public class ToolRegistryService {
     }
 
     public List<String> listCategories() {
-        return tools.values().stream()
-            .map(t -> t.category)
-            .filter(c -> c != null && !c.isBlank())
-            .distinct()
-            .sorted()
-            .toList();
+        return tools.values().stream().map(t -> t.category).filter(c -> c != null && !c.isBlank()).distinct().sorted().toList();
     }
 
     public void registerToolSet(String name, List<ToolCall> toolCalls) {
@@ -274,46 +305,75 @@ public class ToolRegistryService {
 
         var result = new ArrayList<ToolCall>();
         for (var toolId : toolIds) {
-            var builtinSet = BUILTIN_TOOL_SETS.get(toolId);
-            if (builtinSet != null) {
-                result.addAll(builtinSet);
-                continue;
-            }
-            var dynamicSet = dynamicToolSets.get(toolId);
-            if (dynamicSet != null) {
-                result.addAll(dynamicSet);
-                continue;
-            }
+            if (resolveBuiltinTool(toolId, result)) continue;
+            if (resolveDynamicTool(toolId, result)) continue;
 
             var entry = tools.get(toolId);
             if (entry == null) continue;
 
-            switch (entry.type) {
-                case MCP -> {
-                    var mcpManager = McpClientManagerRegistry.getManager();
-                    if (mcpManager != null && mcpManager.hasServer(entry.id)) {
-                        result.addAll(McpToolCalls.from(mcpManager, List.of(entry.id), null));
-                    } else if (entry.id.startsWith(CONFIG_PREFIX)) {
-                        var serverName = entry.id.substring(CONFIG_PREFIX.length());
-                        if (mcpManager != null && mcpManager.hasServer(serverName)) {
-                            result.addAll(McpToolCalls.from(mcpManager, List.of(serverName), null));
-                        }
-                    }
-                }
-                case BUILTIN -> {
-                    var setName = entry.config != null ? entry.config.get("set") : null;
-                    if (setName != null) {
-                        var set = BUILTIN_TOOL_SETS.get(setName);
-                        if (set != null) result.addAll(set);
-                    }
-                }
-                case API -> {
-                    // TODO: implement API tool resolution
-                }
-                default -> { }
-            }
+            resolveToolByType(entry, result);
         }
         return result;
+    }
+
+    private boolean resolveBuiltinTool(String toolId, List<ToolCall> result) {
+        var builtinSet = BUILTIN_TOOL_SETS.get(toolId);
+        if (builtinSet != null) {
+            result.addAll(builtinSet);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean resolveDynamicTool(String toolId, List<ToolCall> result) {
+        var dynamicSet = dynamicToolSets.get(toolId);
+        if (dynamicSet != null) {
+            result.addAll(dynamicSet);
+            return true;
+        }
+        return false;
+    }
+
+    private void resolveToolByType(ToolRegistry entry, List<ToolCall> result) {
+        switch (entry.type) {
+            case MCP -> resolveMcpTool(entry, result);
+            case BUILTIN -> {
+                var setName = entry.config != null ? entry.config.get("set") : null;
+                if (setName != null) result.addAll(BUILTIN_TOOL_SETS.get(setName));
+            }
+            case API -> resolveApiTool(entry, result);
+            default -> { }
+        }
+    }
+
+    private void resolveMcpTool(ToolRegistry entry, List<ToolCall> result) {
+        var mcpManager = McpClientManagerRegistry.getManager();
+        if (mcpManager != null && mcpManager.hasServer(entry.id)) {
+            result.addAll(McpToolCalls.from(mcpManager, List.of(entry.id), null));
+        } else if (entry.id.startsWith(CONFIG_PREFIX)) {
+            var serverName = entry.id.substring(CONFIG_PREFIX.length());
+            if (mcpManager != null && mcpManager.hasServer(serverName)) {
+                result.addAll(McpToolCalls.from(mcpManager, List.of(serverName), null));
+            }
+        }
+    }
+
+    private void resolveApiTool(ToolRegistry entry, List<ToolCall> result) {
+        if (API_TOOL_ID.equals(entry.id) && apiToolCache.containsKey(entry.id)) {
+            result.addAll(apiToolCache.get(entry.id));
+        } else if (entry.id.startsWith("api-app:") && internalApiToolLoader != null) {
+            var appName = entry.id.substring("api-app:".length());
+            result.addAll(internalApiToolLoader.loadApiAppTools(appName));
+        } else {
+            var cached = apiToolCache.get(entry.id);
+            if (cached != null) {
+                result.addAll(cached);
+            } else if (internalApiToolLoader != null) {
+                var apiTools = internalApiToolLoader.load();
+                apiToolCache.put(entry.id, apiTools);
+                result.addAll(apiTools);
+            }
+        }
     }
 
     private void registerMcpServer(ToolRegistry entry) {
@@ -362,5 +422,28 @@ public class ToolRegistryService {
             McpClientManagerRegistry.setManager(mcpManager);
         }
         return mcpManager;
+    }
+
+    public InternalApiToolLoader getInternalApiToolLoader() {
+        return internalApiToolLoader;
+    }
+
+    public List<InternalApiToolLoader.ApiAppInfo> listServiceApiApps() {
+        return internalApiToolLoader == null ? List.of() : internalApiToolLoader.listApiApps();
+    }
+
+    public void reloadApiTools() {
+        if (internalApiToolLoader == null) {
+            LOGGER.warn("InternalApiToolLoader not initialized, skipping reload");
+            return;
+        }
+        try {
+            var apiTools = internalApiToolLoader.load();
+            apiToolCache.put(API_TOOL_ID, apiTools);
+            dynamicToolSets.put(API_TOOL_ID, apiTools);
+            LOGGER.info("reloaded {} Service API tools", apiTools.size());
+        } catch (Exception e) {
+            LOGGER.error("failed to reload Service API tools", e);
+        }
     }
 }
