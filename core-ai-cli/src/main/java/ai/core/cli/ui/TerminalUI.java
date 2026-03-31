@@ -387,7 +387,63 @@ public class TerminalUI {
                 : AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET;
         if (jlineReader != null) {
             try {
-                return jlineReader.readLine(prompt);
+                String line = jlineReader.readLine(prompt);
+                if (line == null) return null;
+
+                // On Windows, ConPTY doesn't send bracketed paste sequences.
+                // JLine treats pasted newlines as Enter, returning only the first line.
+                // After readLine returns, check if more content is already buffered.
+                String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+                if (os.contains("win")) {
+                    LOGGER.debug("windows input: readLine returned '{}' ({} chars), checking for remaining...",
+                            line.length() > 50 ? line.substring(0, 50) + "..." : line, line.length());
+                    String remaining = drainRemainingPasteBuffer();
+                    if (remaining != null && !remaining.isEmpty()) {
+                        String result = line + "\n" + remaining;
+                        LOGGER.debug("windows paste: {} + {} = {} chars",
+                                line.length(), remaining.length(), result.length());
+
+                        // Echo multi-line paste content with truncation for readability
+                        writer.println();
+                        String[] allLines = result.split("\n", -1);
+                        int maxLines = 5;
+                        int terminalWidth = getTerminalWidth() - 4; // account for indent
+
+                        // If remaining content has no newlines but is very long,
+                        // it likely contains multiple lines that JLine stripped.
+                        // Split by terminal width for display.
+                        if (allLines.length <= 2 && remaining.length() > terminalWidth) {
+                            writer.println(AnsiTheme.MUTED + "  " + (line.length() > terminalWidth ? line.substring(0, terminalWidth - 3) + "..." : line) + AnsiTheme.RESET);
+                            String wrapped = wrapLongLine(remaining, terminalWidth);
+                            String[] wrappedLines = wrapped.split("\n", -1);
+                            int shown = 0;
+                            for (int i = 0; i < Math.min(wrappedLines.length, maxLines) && shown < maxLines; i++) {
+                                writer.println(AnsiTheme.MUTED + "  " + wrappedLines[i] + AnsiTheme.RESET);
+                                shown++;
+                            }
+                            int totalLines = estimateLineCount(remaining, terminalWidth) + 1;
+                            if (totalLines > maxLines) {
+                                writer.println(AnsiTheme.MUTED + "  \u2026 +" + (totalLines - maxLines) + " more lines" + AnsiTheme.RESET);
+                            }
+                        } else {
+                            for (int i = 0; i < Math.min(allLines.length, maxLines); i++) {
+                                String displayLine = allLines[i];
+                                if (displayLine.length() > terminalWidth) {
+                                    displayLine = displayLine.substring(0, terminalWidth - 3) + "...";
+                                }
+                                writer.println(AnsiTheme.MUTED + "  " + displayLine + AnsiTheme.RESET);
+                            }
+                            if (allLines.length > maxLines) {
+                                writer.println(AnsiTheme.MUTED + "  \u2026 +" + (allLines.length - maxLines) + " more lines" + AnsiTheme.RESET);
+                            }
+                        }
+                        writer.flush();
+                        return result;
+                    }
+                    LOGGER.debug("windows input: no remaining content found");
+                }
+
+                return line;
             } catch (org.jline.reader.UserInterruptException e) {
                 return "/exit";
             } catch (org.jline.reader.EndOfFileException e) {
@@ -399,6 +455,82 @@ public class TerminalUI {
         try {
             return simpleReader.readLine();
         } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Wrap a long string into multiple lines at terminal width,
+     * trying to break at word boundaries when possible.
+     */
+    private String wrapLongLine(String text, int width) {
+        if (text.length() <= width) return text;
+        StringBuilder sb = new StringBuilder();
+        int start = 0;
+        while (start < text.length()) {
+            int end = Math.min(start + width, text.length());
+            if (end < text.length()) {
+                // Try to find a space to break at word boundary
+                int space = text.lastIndexOf(' ', end);
+                if (space > start) {
+                    end = space;
+                }
+            }
+            sb.append(text, start, end);
+            if (end < text.length()) sb.append('\n');
+            start = end;
+            // Skip leading spaces for next line
+            while (start < text.length() && text.charAt(start) == ' ') start++;
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Estimate total visual line count when a long line is wrapped at terminal width.
+     */
+    private int estimateLineCount(String text, int width) {
+        int explicit = text.split("\n", -1).length;
+        if (text.length() <= width) return explicit;
+        int wrapped = 0;
+        for (String line : text.split("\n", -1)) {
+            wrapped += Math.max(1, (int) Math.ceil((double) line.length() / width));
+        }
+        return wrapped;
+    }
+
+    /**
+     * After JLine readLine returns on Windows, check if there's remaining
+     * buffered content from a paste operation. Uses 50ms timeout to catch
+     * data that arrives slightly after readLine returns.
+     * Returns null if no remaining content found.
+     */
+    private String drainRemainingPasteBuffer() {
+        try {
+            var reader = terminal.reader();
+            // 50ms timeout: catch data that arrives slightly after readLine returns
+            int c = reader.read(50L);
+            if (c < 0) {
+                LOGGER.debug("drain paste buffer: no content (timeout)");
+                return null;
+            }
+
+            LOGGER.debug("drain paste buffer: first char = {} (0x{:02x})", c, c);
+            StringBuilder sb = new StringBuilder();
+            sb.append((char) c);
+            while (sb.length() < 500_000) {
+                int ch = reader.read(50L);
+                if (ch < 0) {
+                    LOGGER.debug("drain paste buffer: read timeout after {} chars", sb.length());
+                    break;
+                }
+                if (ch == '\r') continue; // normalize line endings
+                sb.append((char) ch);
+            }
+            String result = sb.toString().trim();
+            LOGGER.debug("drain paste buffer: collected {} chars", result.length());
+            return result;
+        } catch (Exception e) {
+            LOGGER.debug("drain paste buffer error: {}", e.getMessage());
             return null;
         }
     }
