@@ -9,6 +9,7 @@ import ai.core.utils.JsonSchemaUtil;
 import ai.core.utils.JsonUtil;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -142,6 +143,21 @@ public abstract class ToolCall {
 
     public JsonSchema toJsonSchema() {
         return JsonSchemaUtil.toJsonSchema(parameters);
+    }
+
+    public List<String> findMissingRequiredParams(String arguments) {
+        if (parameters == null || parameters.isEmpty()) return List.of();
+        var required = parameters.stream().filter(p -> Boolean.TRUE.equals(p.isRequired())).toList();
+        if (required.isEmpty()) return List.of();
+        try {
+            var args = JsonUtil.fromJson(Map.class, arguments);
+            return required.stream()
+                    .filter(p -> !args.containsKey(p.getName()) || args.get(p.getName()) == null)
+                    .map(ToolCallParameter::getName)
+                    .toList();
+        } catch (Exception e) {
+            return List.of("(arguments is not valid JSON)");
+        }
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {

@@ -71,6 +71,13 @@ public class ToolExecutor {
             return ToolCallResult.failed("This tool call requires user authentication, please ask user to confirm it.");
         }
 
+        var missingParams = tool.findMissingRequiredParams(functionCall.function.arguments);
+        if (!missingParams.isEmpty()) {
+            LOGGER.warn("tool [{}] call rejected: missing required parameters: {}", tool.getName(), missingParams);
+            return ToolCallResult.failed(Strings.format("Tool [{}] call failed: missing required parameters: [{}]. Please provide all required parameters and retry.",
+                    tool.getName(), String.join(", ", missingParams)));
+        }
+
         LOGGER.debug("tool {}: {}", functionCall.function.name, functionCall.function.arguments);
         var startTime = System.currentTimeMillis();
 
