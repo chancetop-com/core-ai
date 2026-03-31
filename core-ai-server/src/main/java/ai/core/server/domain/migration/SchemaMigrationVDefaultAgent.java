@@ -76,7 +76,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
 
     @Override
     public String version() {
-        return "20260306002";
+        return "20260306003";
     }
 
     @Override
