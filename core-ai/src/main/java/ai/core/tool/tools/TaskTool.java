@@ -117,6 +117,7 @@ public class TaskTool extends ToolCall {
         subContext.setModel(context.getModel());
         subContext.setStreamingCallback(context.getStreamingCallback());
         subContext.setLifecycles(context.getLifecycle());
+        subContext.setTokenCostCallback(context.getTokenCostCallback());
         return subContext;
     }
 

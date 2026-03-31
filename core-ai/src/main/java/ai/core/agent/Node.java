@@ -304,7 +304,8 @@ public abstract class Node<T extends Node<T>> {
         if (persistenceProvider != null) {
             builder.persistenceProvider(persistenceProvider);
         }
-        return builder.build();
+        executionContext = builder.build();
+        return executionContext;
     }
 
     public void setRound(Integer round) {
@@ -352,6 +353,8 @@ public abstract class Node<T extends Node<T>> {
         this.currentTokenUsage.setPromptTokens(this.currentTokenUsage.getPromptTokens() + cost.getPromptTokens());
         this.currentTokenUsage.setTotalTokens(this.currentTokenUsage.getTotalTokens() + cost.getTotalTokens());
         if (this.parent != null) this.parent.addTokenCost(cost);
+        var ctx = this.executionContext;
+        if (ctx != null && ctx.getTokenCostCallback() != null) ctx.getTokenCostCallback().accept(cost);
     }
 
     public void setParentNode(Node<?> parent) {

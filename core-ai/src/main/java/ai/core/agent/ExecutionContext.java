@@ -3,12 +3,14 @@ package ai.core.agent;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
+import ai.core.llm.domain.Usage;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import core.framework.util.Maps;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * @author stephen
@@ -32,6 +34,7 @@ public final class ExecutionContext {
     private String model;
     private StreamingCallback streamingCallback;
     private List<AbstractLifecycle> lifecycles;
+    private Consumer<Usage> tokenCostCallback;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
@@ -111,6 +114,14 @@ public final class ExecutionContext {
 
     public PersistenceProvider getPersistenceProvider() {
         return persistenceProvider;
+    }
+
+    public Consumer<Usage> getTokenCostCallback() {
+        return tokenCostCallback;
+    }
+
+    public void setTokenCostCallback(Consumer<Usage> tokenCostCallback) {
+        this.tokenCostCallback = tokenCostCallback;
     }
 
     public static class Builder {

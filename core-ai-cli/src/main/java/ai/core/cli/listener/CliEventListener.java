@@ -2,6 +2,7 @@ package ai.core.cli.listener;
 
 import ai.core.agent.Agent;
 import ai.core.api.server.session.AgentSession;
+import ai.core.llm.domain.Usage;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
@@ -50,12 +51,14 @@ public class CliEventListener extends BaseEventListener {
         turnTokensBefore = usage.getTotalTokens();
         turnInputBefore = usage.getPromptTokens();
         turnOutputBefore = usage.getCompletionTokens();
+        var subagentUsage = new Usage();
+        agent.getExecutionContext().setTokenCostCallback(subagentUsage::add);
         panel.getSpinner().setStatsSupplier(() -> {
             var u = agent.getCurrentTokenUsage();
-            long tokens = u.getTotalTokens() - turnTokensBefore;
+            long tokens = u.getTotalTokens() - turnTokensBefore + subagentUsage.getTotalTokens();
             if (tokens == 0) return null;
-            long input = u.getPromptTokens() - turnInputBefore;
-            long output = u.getCompletionTokens() - turnOutputBefore;
+            long input = u.getPromptTokens() - turnInputBefore + subagentUsage.getPromptTokens();
+            long output = u.getCompletionTokens() - turnOutputBefore + subagentUsage.getCompletionTokens();
             return String.format("%,d tokens (\u2191 %,d \u2193 %,d)", tokens, input, output);
         });
         startEscReader();
