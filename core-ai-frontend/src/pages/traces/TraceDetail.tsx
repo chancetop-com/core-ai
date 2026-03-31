@@ -1,10 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Zap, ChevronRight, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { ArrowLeft, Clock, Zap, ChevronRight, ChevronDown, ChevronsUpDown, X, Bot, Brain, Wrench, GitBranch, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Trace, Span } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
-import SpanTypeIcon from '../../components/SpanTypeIcon';
 
 interface SpanNode extends Span {
   children: SpanNode[];
@@ -48,77 +47,53 @@ function collectAllIds(nodes: SpanNode[]): string[] {
   return ids;
 }
 
-function JsonView({ data, label }: { data: string; label: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const parsed = useMemo(() => {
-    try { return JSON.parse(data); } catch { return null; }
-  }, [data]);
+const SPAN_COLORS: Record<string, string> = {
+  LLM: '#8b5cf6',
+  AGENT: '#6366f1',
+  TOOL: '#f59e0b',
+  FLOW: '#06b6d4',
+  GROUP: '#ec4899',
+};
 
-  const isJson = parsed !== null && typeof parsed === 'object';
-  const formatted = isJson ? JSON.stringify(parsed, null, 2) : data;
-  const isLong = formatted.length > 300;
-  const displayText = !expanded && isLong ? formatted.slice(0, 300) + '...' : formatted;
+const SPAN_ICONS: Record<string, React.ComponentType<{ size?: number; style?: React.CSSProperties }>> = {
+  LLM: Brain,
+  AGENT: Bot,
+  TOOL: Wrench,
+  FLOW: GitBranch,
+  GROUP: Users,
+};
 
-  return (
-    <div className="mt-2 rounded-lg text-xs overflow-hidden" style={{ background: 'var(--color-bg-tertiary)' }}>
-      <div className="flex items-center justify-between px-3 py-1.5 cursor-pointer select-none"
-        style={{ borderBottom: '1px solid var(--color-border)' }}
-        onClick={() => setExpanded(!expanded)}>
-        <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
-        <div className="flex items-center gap-2">
-          {isJson && (
-            <span className="px-1.5 py-0.5 rounded text-xs"
-              style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
-              JSON
-            </span>
-          )}
-          {isLong && (
-            <span style={{ color: 'var(--color-text-secondary)' }}>
-              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            </span>
-          )}
-        </div>
-      </div>
-      <pre className="px-3 py-2 whitespace-pre-wrap break-words overflow-auto" style={{ maxHeight: expanded ? '500px' : '200px' }}>
-        {isJson ? <JsonHighlight text={displayText} /> : displayText}
-      </pre>
-    </div>
-  );
+function tryParseJson(str: string): unknown | null {
+  try { return JSON.parse(str); } catch { return null; }
 }
 
-function JsonHighlight({ text }: { text: string }) {
-  const parts = text.split(/("(?:[^"\\]|\\.)*")\s*:/g);
-  const result: React.ReactNode[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    if (i % 2 === 1) {
-      result.push(<span key={i} style={{ color: '#6366f1' }}>{parts[i]}</span>);
-      result.push(':');
-    } else {
-      const valueParts = parts[i].split(/("(?:[^"\\]|\\.)*")/g);
-      valueParts.forEach((vp, j) => {
-        if (j % 2 === 1) {
-          result.push(<span key={`${i}-${j}`} style={{ color: '#22c55e' }}>{vp}</span>);
-        } else {
-          const numParts = vp.split(/\b(\d+\.?\d*)\b/g);
-          numParts.forEach((np, k) => {
-            if (k % 2 === 1) {
-              result.push(<span key={`${i}-${j}-${k}`} style={{ color: '#f59e0b' }}>{np}</span>);
-            } else {
-              const boolParts = np.split(/\b(true|false|null)\b/g);
-              boolParts.forEach((bp, l) => {
-                if (l % 2 === 1) {
-                  result.push(<span key={`${i}-${j}-${k}-${l}`} style={{ color: '#ef4444' }}>{bp}</span>);
-                } else {
-                  result.push(bp);
-                }
-              });
-            }
-          });
-        }
-      });
-    }
+function extractMessages(input: string): { role: string; content: string }[] {
+  const parsed = tryParseJson(input);
+  if (parsed && typeof parsed === 'object' && 'messages' in (parsed as Record<string, unknown>)) {
+    const msgs = (parsed as { messages: unknown[] }).messages;
+    return msgs.map((m: unknown) => {
+      const msg = m as Record<string, unknown>;
+      let content = '';
+      if (typeof msg.content === 'string') content = msg.content;
+      else if (Array.isArray(msg.content)) {
+        content = msg.content.map((c: unknown) => (c as Record<string, unknown>).text || '').join('');
+      }
+      return { role: String(msg.role || 'unknown'), content };
+    });
   }
-  return <>{result}</>;
+  return [];
+}
+
+function extractAssistantContent(output: string): { content: string; reasoning?: string } {
+  const parsed = tryParseJson(output);
+  if (parsed && typeof parsed === 'object') {
+    const obj = parsed as Record<string, unknown>;
+    return {
+      content: String(obj.content || output),
+      reasoning: obj.reasoning_content ? String(obj.reasoning_content) : undefined,
+    };
+  }
+  return { content: output };
 }
 
 export default function TraceDetail() {
@@ -129,6 +104,7 @@ export default function TraceDetail() {
   const [selected, setSelected] = useState<Span | null>(null);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [detailTab, setDetailTab] = useState<'overview' | 'messages' | 'attributes'>('overview');
 
   useEffect(() => {
     if (!id) return;
@@ -171,31 +147,46 @@ export default function TraceDetail() {
           <h1 className="text-xl font-semibold">{trace.name || trace.traceId}</h1>
           <StatusBadge status={trace.status} />
         </div>
-        <div className="flex gap-6 text-sm flex-wrap" style={{ color: 'var(--color-text-secondary)' }}>
-          <span className="flex items-center gap-1"><Clock size={14} /> {trace.durationMs ? `${(trace.durationMs / 1000).toFixed(2)}s` : '-'}</span>
-          <span className="flex items-center gap-1">
-            <Zap size={14} />
-            {trace.totalTokens ? `${trace.totalTokens.toLocaleString()} tokens` : '0 tokens'}
-            {(trace.inputTokens > 0 || trace.outputTokens > 0) && (
-              <span className="text-xs ml-1">({trace.inputTokens?.toLocaleString() || 0} in / {trace.outputTokens?.toLocaleString() || 0} out)</span>
-            )}
-          </span>
-          {trace.sessionId && <span>Session: {trace.sessionId}</span>}
-          {trace.userId && <span>User: {trace.userId}</span>}
+        {/* Stat pills */}
+        <div className="flex gap-3 flex-wrap">
+          <StatPill icon={<Clock size={13} />} label="Duration" value={trace.durationMs ? `${(trace.durationMs / 1000).toFixed(2)}s` : '-'} />
+          <StatPill icon={<Zap size={13} />} label="Tokens"
+            value={trace.totalTokens ? `${trace.totalTokens.toLocaleString()}` : '0'}
+            sub={`${trace.inputTokens?.toLocaleString() || 0} in / ${trace.outputTokens?.toLocaleString() || 0} out`} />
+          <StatPill icon={<Bot size={13} />} label="Spans" value={String(spans.length)} />
+          {trace.sessionId && <StatPill label="Session" value={trace.sessionId} mono />}
+          {trace.userId && <StatPill label="User" value={trace.userId} />}
         </div>
         {trace.startedAt && (
-          <div className="flex gap-6 text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            <span>Started: {new Date(trace.startedAt).toLocaleString()}</span>
-            {trace.completedAt && <span>Completed: {new Date(trace.completedAt).toLocaleString()}</span>}
+          <div className="text-xs mt-3" style={{ color: 'var(--color-text-secondary)' }}>
+            {new Date(trace.startedAt).toLocaleString()}
+            {trace.completedAt && ` → ${new Date(trace.completedAt).toLocaleString()}`}
           </div>
         )}
-        {trace.input && <JsonView data={trace.input} label="Input" />}
-        {trace.output && <JsonView data={trace.output} label="Output" />}
       </div>
 
-      {/* Waterfall */}
-      <div className="flex gap-4">
-        <div className="flex-1 rounded-xl border overflow-hidden"
+      {/* I/O */}
+      {(trace.input || trace.output) && (
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          {trace.input && (
+            <div className="rounded-xl border p-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+              <div className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>Input</div>
+              <pre className="text-sm whitespace-pre-wrap overflow-auto max-h-32">{trace.input}</pre>
+            </div>
+          )}
+          {trace.output && (
+            <div className="rounded-xl border p-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+              <div className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>Output</div>
+              <pre className="text-sm whitespace-pre-wrap overflow-auto max-h-32">{trace.output}</pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Waterfall + Detail */}
+      <div className="grid gap-4" style={{ minHeight: '400px', gridTemplateColumns: selected ? '1fr 1fr' : '1fr' }}>
+        {/* Waterfall */}
+        <div className="rounded-xl border overflow-hidden min-w-0"
           style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
           <div className="px-4 py-3 border-b font-medium text-sm flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
             <span>Spans ({spans.length})</span>
@@ -214,116 +205,363 @@ export default function TraceDetail() {
             const startOffset = span.startedAt && trace.startedAt
               ? (new Date(span.startedAt).getTime() - new Date(trace.startedAt).getTime()) / totalDuration * 100
               : 0;
-            const width = Math.max((span.durationMs || 0) / totalDuration * 100, 1);
+            const width = Math.max((span.durationMs || 0) / totalDuration * 100, 2);
             const hasChildren = span.children.length > 0;
             const isCollapsed = collapsed.has(span.spanId);
+            const isSelected = selected?.spanId === span.spanId;
+            const color = SPAN_COLORS[span.type] || '#94a3b8';
+            const Icon = SPAN_ICONS[span.type] || Bot;
 
             return (
               <div key={span.spanId}
-                onClick={() => setSelected(span)}
-                className="flex items-center px-4 py-2 border-t cursor-pointer transition-colors text-sm"
+                onClick={() => { setSelected(span); setDetailTab('overview'); }}
+                className="flex items-center px-3 py-1.5 border-t cursor-pointer transition-all"
                 style={{
                   borderColor: 'var(--color-border)',
-                  background: selected?.spanId === span.spanId ? 'var(--color-bg-tertiary)' : 'transparent',
-                  paddingLeft: `${span.depth * 20 + 16}px`,
+                  background: isSelected ? `${color}10` : 'transparent',
+                  borderLeft: isSelected ? `3px solid ${color}` : '3px solid transparent',
+                  paddingLeft: `${span.depth * 16 + 8}px`,
                 }}
-                onMouseEnter={e => { if (selected?.spanId !== span.spanId) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
-                onMouseLeave={e => { if (selected?.spanId !== span.spanId) e.currentTarget.style.background = 'transparent'; }}>
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
+                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}>
 
-                {/* Collapse toggle */}
                 <span className="w-4 flex-shrink-0 flex items-center justify-center"
                   onClick={e => { if (hasChildren) { e.stopPropagation(); toggleCollapse(span.spanId); } }}>
                   {hasChildren ? (
-                    isCollapsed ? <ChevronRight size={12} style={{ color: 'var(--color-text-secondary)' }} />
-                      : <ChevronDown size={12} style={{ color: 'var(--color-text-secondary)' }} />
+                    isCollapsed ? <ChevronRight size={11} style={{ color: 'var(--color-text-secondary)' }} />
+                      : <ChevronDown size={11} style={{ color: 'var(--color-text-secondary)' }} />
                   ) : null}
                 </span>
 
-                <SpanTypeIcon type={span.type} size={14} />
-                <span className="ml-2 truncate flex-shrink-0" style={{ width: '180px' }}>{span.name}</span>
-                <div className="flex-1 mx-3 h-5 rounded relative" style={{ background: 'var(--color-bg-tertiary)' }}>
-                  <div className="absolute h-full rounded"
+                <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ml-0.5" style={{ background: `${color}20` }}>
+                  <Icon size={10} style={{ color }} />
+                </div>
+
+                <span className="ml-1.5 truncate flex-shrink-0 text-xs font-medium" style={{ maxWidth: '120px' }}>{span.name}</span>
+
+                <div className="flex-1 mx-2 h-3 rounded-full relative" style={{ background: 'var(--color-bg-tertiary)', minWidth: '40px' }}>
+                  <div className="absolute h-full rounded-full"
                     style={{
                       left: `${startOffset}%`,
                       width: `${width}%`,
-                      background: span.status === 'ERROR' ? 'var(--color-error)' : 'var(--color-primary)',
-                      opacity: 0.7,
+                      background: span.status === 'ERROR' ? 'var(--color-error)' : color,
+                      opacity: 0.6,
                     }} />
                 </div>
-                <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-secondary)', width: '120px', textAlign: 'right' }}>
-                  {(span.inputTokens > 0 || span.outputTokens > 0) && (
-                    <span className="mr-2">{(span.inputTokens || 0) + (span.outputTokens || 0)}t</span>
-                  )}
+
+                <span className="text-xs flex-shrink-0 text-right tabular-nums" style={{ color: 'var(--color-text-secondary)', width: '48px' }}>
                   {span.durationMs ? `${span.durationMs}ms` : '-'}
                 </span>
               </div>
             );
           })}
           {flat.length === 0 && (
-            <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>No spans</div>
+            <div className="px-4 py-12 text-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>No spans recorded</div>
           )}
         </div>
 
         {/* Span detail panel */}
-        {selected && (
-          <div className="w-96 rounded-xl border p-4 flex-shrink-0 self-start sticky top-6"
-            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <SpanTypeIcon type={selected.type} />
-                <span className="font-medium">{selected.name}</span>
-              </div>
-              <StatusBadge status={selected.status} />
+        {selected && <SpanDetail span={selected} tab={detailTab} setTab={setDetailTab} onClose={() => setSelected(null)} />}
+      </div>
+    </div>
+  );
+}
+
+function StatPill({ icon, label, value, sub, mono }: { icon?: React.ReactNode; label: string; value: string; sub?: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
+      style={{ background: 'var(--color-bg-tertiary)' }}>
+      {icon && <span style={{ color: 'var(--color-text-secondary)' }}>{icon}</span>}
+      <span style={{ color: 'var(--color-text-secondary)' }}>{label}:</span>
+      <span className={`font-medium ${mono ? 'font-mono text-xs' : ''}`}>{value}</span>
+      {sub && <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>({sub})</span>}
+    </div>
+  );
+}
+
+function SpanDetail({ span, tab, setTab, onClose }: {
+  span: Span;
+  tab: 'overview' | 'messages' | 'attributes';
+  setTab: (t: 'overview' | 'messages' | 'attributes') => void;
+  onClose: () => void;
+}) {
+  const color = SPAN_COLORS[span.type] || '#94a3b8';
+  const Icon = SPAN_ICONS[span.type] || Bot;
+
+  const messages = useMemo(() => span.input ? extractMessages(span.input) : [], [span.input]);
+  const assistantOutput = useMemo(() => span.output ? extractAssistantContent(span.output) : null, [span.output]);
+  const hasMessages = messages.length > 0 || assistantOutput;
+
+  const attrCount = span.attributes ? Object.keys(span.attributes).length : 0;
+
+  const tabs = [
+    { key: 'overview' as const, label: 'Overview' },
+    ...(hasMessages ? [{ key: 'messages' as const, label: `Messages${messages.length > 0 ? ` (${messages.length + (assistantOutput ? 1 : 0)})` : ''}` }] : []),
+    ...(attrCount > 0 ? [{ key: 'attributes' as const, label: `Attributes (${attrCount})` }] : []),
+  ];
+
+  return (
+    <div className="rounded-xl border self-start sticky top-6 overflow-hidden min-w-0"
+      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+
+      {/* Header */}
+      <div className="p-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${color}20` }}>
+              <Icon size={15} style={{ color }} />
             </div>
-            <dl className="text-sm space-y-2">
-              <div className="flex justify-between">
-                <dt style={{ color: 'var(--color-text-secondary)' }}>Type</dt>
-                <dd>{selected.type}</dd>
-              </div>
-              {selected.model && (
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--color-text-secondary)' }}>Model</dt>
-                  <dd className="font-mono text-xs">{selected.model}</dd>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <dt style={{ color: 'var(--color-text-secondary)' }}>Duration</dt>
-                <dd>{selected.durationMs ? `${selected.durationMs}ms` : '-'}</dd>
-              </div>
-              {(selected.inputTokens > 0 || selected.outputTokens > 0) && (
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--color-text-secondary)' }}>Tokens</dt>
-                  <dd>{selected.inputTokens} in / {selected.outputTokens} out</dd>
-                </div>
-              )}
-              {selected.startedAt && (
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--color-text-secondary)' }}>Started</dt>
-                  <dd className="text-xs">{new Date(selected.startedAt).toLocaleString()}</dd>
-                </div>
-              )}
-            </dl>
-
-            {/* Attributes */}
-            {selected.attributes && Object.keys(selected.attributes).length > 0 && (
-              <div className="mt-3">
-                <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Attributes</div>
-                <div className="rounded-lg p-2 text-xs space-y-1" style={{ background: 'var(--color-bg-tertiary)' }}>
-                  {Object.entries(selected.attributes).map(([k, v]) => (
-                    <div key={k} className="flex gap-2">
-                      <span className="font-mono flex-shrink-0" style={{ color: '#6366f1' }}>{k}:</span>
-                      <span className="break-all">{v}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {selected.input && <JsonView data={selected.input} label="Input" />}
-            {selected.output && <JsonView data={selected.output} label="Output" />}
+            <div>
+              <div className="font-semibold text-sm">{span.name}</div>
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{span.type}</div>
+            </div>
           </div>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={span.status} />
+            <button onClick={onClose} className="cursor-pointer p-1 rounded hover:bg-gray-100"
+              style={{ color: 'var(--color-text-secondary)' }}>
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Quick stats */}
+        <div className="flex gap-2 flex-wrap">
+          {span.model && (
+            <span className="text-xs px-2 py-1 rounded-md font-mono"
+              style={{ background: `${color}15`, color }}>
+              {span.model}
+            </span>
+          )}
+          {span.durationMs && (
+            <span className="text-xs px-2 py-1 rounded-md flex items-center gap-1"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+              <Clock size={11} /> {span.durationMs}ms
+            </span>
+          )}
+          {(span.inputTokens || span.outputTokens) ? (
+            <span className="text-xs px-2 py-1 rounded-md flex items-center gap-1"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+              <Zap size={11} /> {span.inputTokens || 0} in / {span.outputTokens || 0} out
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b" style={{ borderColor: 'var(--color-border)' }}>
+        {tabs.map(t => (
+          <button key={t.key}
+            onClick={() => setTab(t.key)}
+            className="px-4 py-2 text-xs font-medium cursor-pointer transition-colors"
+            style={{
+              color: tab === t.key ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              borderBottom: tab === t.key ? '2px solid var(--color-primary)' : '2px solid transparent',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="p-4 overflow-auto" style={{ maxHeight: '500px' }}>
+        {tab === 'overview' && <OverviewTab span={span} />}
+        {tab === 'messages' && <MessagesTab messages={messages} output={assistantOutput} inputRaw={span.input} outputRaw={span.output} />}
+        {tab === 'attributes' && <AttributesTab attributes={span.attributes} />}
+      </div>
+    </div>
+  );
+}
+
+function OverviewTab({ span }: { span: Span }) {
+  return (
+    <div className="space-y-3">
+      <InfoRow label="Span ID" value={span.spanId} mono />
+      <InfoRow label="Trace ID" value={span.traceId} mono />
+      {span.parentSpanId && <InfoRow label="Parent" value={span.parentSpanId} mono />}
+      {span.model && <InfoRow label="Model" value={span.model} />}
+      <InfoRow label="Duration" value={span.durationMs ? `${span.durationMs}ms (${(span.durationMs / 1000).toFixed(2)}s)` : '-'} />
+      {(span.inputTokens || span.outputTokens) ? (
+        <>
+          <InfoRow label="Input Tokens" value={String(span.inputTokens || 0)} />
+          <InfoRow label="Output Tokens" value={String(span.outputTokens || 0)} />
+          <InfoRow label="Total Tokens" value={String((span.inputTokens || 0) + (span.outputTokens || 0))} />
+        </>
+      ) : null}
+      {span.startedAt && <InfoRow label="Started" value={new Date(span.startedAt).toLocaleString()} />}
+      {span.completedAt && <InfoRow label="Completed" value={new Date(span.completedAt).toLocaleString()} />}
+
+      {/* Raw I/O for non-LLM spans */}
+      {span.type !== 'LLM' && span.input && (
+        <CollapsibleText label="Input" text={span.input} />
+      )}
+      {span.type !== 'LLM' && span.output && (
+        <CollapsibleText label="Output" text={span.output} />
+      )}
+    </div>
+  );
+}
+
+function MessagesTab({ messages, output, inputRaw, outputRaw }: {
+  messages: { role: string; content: string }[];
+  output: { content: string; reasoning?: string } | null;
+  inputRaw: string;
+  outputRaw: string;
+}) {
+  const ROLE_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+    system: { bg: '#8b5cf615', color: '#8b5cf6', label: 'System' },
+    user: { bg: '#3b82f615', color: '#3b82f6', label: 'User' },
+    assistant: { bg: '#22c55e15', color: '#22c55e', label: 'Assistant' },
+    tool: { bg: '#f59e0b15', color: '#f59e0b', label: 'Tool' },
+  };
+
+  if (messages.length === 0 && !output) {
+    return (
+      <div className="space-y-3">
+        {inputRaw && <CollapsibleText label="Raw Input" text={inputRaw} />}
+        {outputRaw && <CollapsibleText label="Raw Output" text={outputRaw} />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {messages.map((m, i) => {
+        const style = ROLE_STYLES[m.role] || ROLE_STYLES.user;
+        return (
+          <div key={i} className="rounded-lg overflow-hidden" style={{ border: `1px solid ${style.color}30` }}>
+            <div className="px-3 py-1.5 text-xs font-medium" style={{ background: style.bg, color: style.color }}>
+              {style.label}
+            </div>
+            <div className="px-3 py-2">
+              <pre className="text-xs whitespace-pre-wrap">{m.content || '(empty)'}</pre>
+            </div>
+          </div>
+        );
+      })}
+      {output && (
+        <div className="rounded-lg overflow-hidden" style={{ border: '1px solid #22c55e30' }}>
+          <div className="px-3 py-1.5 text-xs font-medium" style={{ background: '#22c55e15', color: '#22c55e' }}>
+            Assistant Response
+          </div>
+          <div className="px-3 py-2">
+            {output.reasoning && (
+              <details className="mb-2">
+                <summary className="text-xs cursor-pointer font-medium" style={{ color: '#8b5cf6' }}>
+                  Reasoning
+                </summary>
+                <pre className="text-xs whitespace-pre-wrap mt-1 p-2 rounded" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                  {output.reasoning}
+                </pre>
+              </details>
+            )}
+            <pre className="text-xs whitespace-pre-wrap">{output.content}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AttributesTab({ attributes }: { attributes: Record<string, string> }) {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
+  if (!attributes || Object.keys(attributes).length === 0) {
+    return <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>No attributes</div>;
+  }
+
+  const toggleKey = (k: string) => {
+    setExpandedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  };
+
+  // Group attributes by prefix
+  const groups: Record<string, [string, string][]> = {};
+  Object.entries(attributes).forEach(([k, v]) => {
+    const prefix = k.includes('.') ? k.split('.')[0] : 'other';
+    if (!groups[prefix]) groups[prefix] = [];
+    groups[prefix].push([k, v]);
+  });
+
+  const shortKey = (k: string) => {
+    const parts = k.split('.');
+    return parts.length > 1 ? parts.slice(1).join('.') : k;
+  };
+
+  return (
+    <div className="space-y-3">
+      {Object.entries(groups).map(([group, entries]) => (
+        <div key={group}>
+          <div className="text-xs font-medium mb-1.5 capitalize" style={{ color: 'var(--color-text-secondary)' }}>
+            {group} <span className="font-normal">({entries.length})</span>
+          </div>
+          <div className="rounded-lg overflow-hidden" style={{ background: 'var(--color-bg-tertiary)' }}>
+            {entries.map(([k, v], i) => {
+              const isLong = v.length > 80;
+              const isExpanded = expandedKeys.has(k);
+              return (
+                <div key={k}
+                  className={`px-3 py-1.5 text-xs ${isLong ? 'cursor-pointer' : ''}`}
+                  style={{ borderTop: i > 0 ? '1px solid var(--color-border)' : undefined }}
+                  onClick={() => isLong && toggleKey(k)}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono flex-shrink-0 truncate" style={{ color: 'var(--color-primary)', maxWidth: '45%' }} title={k}>
+                      {shortKey(k)}
+                    </span>
+                    {!isLong && <span className="truncate ml-2 text-right" style={{ maxWidth: '50%' }} title={v}>{v}</span>}
+                    {isLong && !isExpanded && <span className="truncate ml-2 text-right" style={{ maxWidth: '50%', color: 'var(--color-text-secondary)' }}>{v.slice(0, 50)}...</span>}
+                    {isLong && isExpanded && <ChevronDown size={10} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />}
+                  </div>
+                  {isLong && isExpanded && (
+                    <pre className="mt-1.5 p-2 rounded text-xs whitespace-pre-wrap break-all overflow-auto"
+                      style={{ background: 'var(--color-bg-secondary)', maxHeight: '200px' }}>
+                      {(() => { try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; } })()}
+                    </pre>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between items-start text-xs">
+      <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+      <span className={`text-right max-w-[60%] truncate ${mono ? 'font-mono' : ''}`} title={value}>{value}</span>
+    </div>
+  );
+}
+
+function CollapsibleText({ label, text }: { label: string; text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const formatted = useMemo(() => {
+    try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
+  }, [text]);
+  const isLong = formatted.length > 200;
+  const display = !expanded && isLong ? formatted.slice(0, 200) + '...' : formatted;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+        {isLong && (
+          <button onClick={() => setExpanded(!expanded)} className="text-xs cursor-pointer" style={{ color: 'var(--color-primary)' }}>
+            {expanded ? 'Collapse' : 'Expand'}
+          </button>
         )}
       </div>
+      <pre className="text-xs whitespace-pre-wrap p-2.5 rounded-lg overflow-auto"
+        style={{ background: 'var(--color-bg-tertiary)', maxHeight: expanded ? '400px' : '150px' }}>
+        {display}
+      </pre>
     </div>
   );
 }
