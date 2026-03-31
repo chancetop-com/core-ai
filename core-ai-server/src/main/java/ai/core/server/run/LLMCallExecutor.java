@@ -11,6 +11,7 @@ import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
+import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.inject.Inject;
@@ -27,13 +28,16 @@ public class LLMCallExecutor {
     @Inject
     LLMProviders llmProviders;
 
+    @Inject
+    SystemPromptService systemPromptService;
+
     public Result execute(AgentDefinition definition, String input) {
         return execute(definition, input, null);
     }
 
     public Result execute(AgentDefinition definition, String input, List<LLMCallRequest.Attachment> attachments) {
         var config = definition.publishedConfig;
-        var systemPrompt = resolveField(config, definition.systemPrompt);
+        var systemPrompt = resolveSystemPrompt(config, definition);
         var model = resolveModel(config, definition.model);
         var temperature = resolveTemperature(config, definition.temperature);
         var timeoutSeconds = resolveTimeout(config, definition);
@@ -79,8 +83,12 @@ public class LLMCallExecutor {
         return AgentHelper.buildUserMessage(input, attachedContent);
     }
 
-    private String resolveField(AgentPublishedConfig config, String fallback) {
-        return config != null ? config.systemPrompt : fallback;
+    private String resolveSystemPrompt(AgentPublishedConfig config, AgentDefinition definition) {
+        var promptId = config != null ? config.systemPromptId : definition.systemPromptId;
+        if (promptId != null) {
+            return systemPromptService.resolveContent(promptId);
+        }
+        return config != null ? config.systemPrompt : definition.systemPrompt;
     }
 
     private String resolveModel(AgentPublishedConfig config, String fallback) {

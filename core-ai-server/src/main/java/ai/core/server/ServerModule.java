@@ -43,6 +43,8 @@ import ai.core.server.web.FileWebServiceImpl;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
 import ai.core.server.web.AuthWebServiceImpl;
 import ai.core.server.web.UserWebServiceImpl;
+import ai.core.server.systemprompt.SystemPromptController;
+import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.trace.service.IngestService;
 import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.PromptService;
@@ -75,6 +77,7 @@ public class ServerModule extends Module {
         registerFile();
         registerSkill();
 
+        bind(SystemPromptService.class);
         bind(LLMCallExecutor.class);
         bind(AgentRunner.class);
         bind(AgentScheduler.class);
@@ -109,6 +112,7 @@ public class ServerModule extends Module {
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
 
         registerTrace();
+        registerSystemPrompt();
 
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
@@ -128,6 +132,19 @@ public class ServerModule extends Module {
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));
 //        schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class), Duration.ofHours(1));
+    }
+
+    private void registerSystemPrompt() {
+        var controller = bind(SystemPromptController.class);
+
+        http().route(HTTPMethod.GET, "/api/system-prompts", controller::list);
+        http().route(HTTPMethod.POST, "/api/system-prompts", controller::create);
+        http().route(HTTPMethod.GET, "/api/system-prompts/:promptId", controller::get);
+        http().route(HTTPMethod.PUT, "/api/system-prompts/:promptId", controller::update);
+        http().route(HTTPMethod.DELETE, "/api/system-prompts/:promptId", controller::delete);
+        http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions", controller::versions);
+        http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions/:version", controller::getVersion);
+        http().route(HTTPMethod.POST, "/api/system-prompts/:promptId/test", controller::test);
     }
 
     private void registerTrace() {

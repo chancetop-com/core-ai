@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.llm.LLMProviders;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
@@ -11,6 +12,7 @@ import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.skill.MongoSkillProvider;
+import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.skill.SkillRegistry;
 import com.mongodb.client.model.Filters;
@@ -56,6 +58,9 @@ public class AgentRunner {
 
     @Inject
     MongoSkillProvider mongoSkillProvider;
+
+    @Inject
+    SystemPromptService systemPromptService;
 
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
@@ -137,7 +142,7 @@ public class AgentRunner {
             tokenUsage.output = result.outputTokens();
 
             var config = definition.publishedConfig;
-            var systemPrompt = config != null ? config.systemPrompt : definition.systemPrompt;
+            var systemPrompt = resolveSystemPrompt(config, definition);
 
             runEntity.status = RunStatus.COMPLETED;
             runEntity.output = result.output();
@@ -192,7 +197,7 @@ public class AgentRunner {
             .llmProvider(llmProviders.getProvider())
             .toolCalls(tools);
 
-        var systemPrompt = config != null ? config.systemPrompt : definition.systemPrompt;
+        var systemPrompt = resolveSystemPrompt(config, definition);
         var model = config != null ? config.model : definition.model;
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
@@ -260,6 +265,14 @@ public class AgentRunner {
         entity.input = input;
         entity.startedAt = ZonedDateTime.now();
         return entity;
+    }
+
+    private String resolveSystemPrompt(AgentPublishedConfig config, AgentDefinition definition) {
+        var promptId = config != null ? config.systemPromptId : definition.systemPromptId;
+        if (promptId != null) {
+            return systemPromptService.resolveContent(promptId);
+        }
+        return config != null ? config.systemPrompt : definition.systemPrompt;
     }
 
     private Throwable unwrapCause(Throwable e) {

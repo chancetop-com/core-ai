@@ -12,6 +12,9 @@ public class AgentPublishedConfig {
     @Field(name = "system_prompt")
     public String systemPrompt;
 
+    @Field(name = "system_prompt_id")
+    public String systemPromptId;
+
     @Field(name = "model")
     public String model;
 

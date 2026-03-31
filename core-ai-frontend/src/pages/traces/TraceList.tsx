@@ -71,9 +71,9 @@ export default function TraceList() {
   };
 
   const formatTokens = (t: Trace) => {
-    if (!t.total_tokens) return '-';
-    const input = t.input_tokens || 0;
-    const output = t.output_tokens || 0;
+    if (!t.totalTokens) return '-';
+    const input = t.inputTokens || 0;
+    const output = t.outputTokens || 0;
     return `${input.toLocaleString()} / ${output.toLocaleString()}`;
   };
 
@@ -224,32 +224,32 @@ export default function TraceList() {
               </td></tr>
             ) : traces.map(t => (
               <tr key={t.id}
-                onClick={() => navigate(`/traces/${t.id}`)}
+                onClick={() => navigate(`/traces/${t.traceId || t.id}`)}
                 className="cursor-pointer transition-colors border-t"
                 style={{ borderColor: 'var(--color-border)' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                 <td className="px-4 py-3">
-                  <div className="font-medium truncate" style={{ maxWidth: '300px' }}>{t.name || t.trace_id}</div>
+                  <div className="font-medium truncate" style={{ maxWidth: '300px' }}>{t.name || t.traceId}</div>
                   <div className="flex gap-2 mt-0.5">
-                    {t.session_id && (
+                    {t.sessionId && (
                       <span className="text-xs px-1.5 py-0.5 rounded"
                         style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
-                        {t.session_id}
+                        {t.sessionId}
                       </span>
                     )}
-                    {t.user_id && (
+                    {t.userId && (
                       <span className="text-xs px-1.5 py-0.5 rounded"
                         style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
-                        {t.user_id}
+                        {t.userId}
                       </span>
                     )}
                   </div>
                 </td>
                 <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatDuration(t.duration_ms)}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatDuration(t.durationMs)}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTokens(t)}</td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(t.started_at || t.created_at)}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(t.startedAt || t.createdAt)}</td>
               </tr>
             ))}
           </tbody>

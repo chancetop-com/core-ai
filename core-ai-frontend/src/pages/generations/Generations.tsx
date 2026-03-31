@@ -88,8 +88,8 @@ export default function Generations() {
             ) : spans.length === 0 ? (
               <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No LLM generations found</td></tr>
             ) : spans.map(s => (
-              <tr key={s.span_id}
-                onClick={() => navigate(`/traces/${s.trace_id}`)}
+              <tr key={s.spanId}
+                onClick={() => navigate(`/traces/${s.traceId}`)}
                 className="cursor-pointer transition-colors border-t"
                 style={{ borderColor: 'var(--color-border)' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
@@ -97,7 +97,7 @@ export default function Generations() {
                 <td className="px-4 py-3">
                   <div className="font-medium truncate" style={{ maxWidth: '200px' }}>{s.name}</div>
                   <div className="text-xs mt-0.5 font-mono truncate" style={{ color: 'var(--color-text-secondary)', maxWidth: '200px' }}>
-                    {s.trace_id}
+                    {s.traceId}
                   </div>
                 </td>
                 <td className="px-4 py-3">
@@ -107,10 +107,10 @@ export default function Generations() {
                   </span>
                 </td>
                 <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatDuration(s.duration_ms)}</td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{(s.input_tokens || 0).toLocaleString()}</td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{(s.output_tokens || 0).toLocaleString()}</td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.started_at)}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatDuration(s.durationMs)}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{(s.inputTokens || 0).toLocaleString()}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{(s.outputTokens || 0).toLocaleString()}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.startedAt)}</td>
               </tr>
             ))}
           </tbody>

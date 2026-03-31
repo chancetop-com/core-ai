@@ -5,13 +5,15 @@ export interface Capabilities {
   traces: boolean;
   prompts: boolean;
   dashboard: boolean;
+  systemPrompts: boolean;
 }
 
 export const defaultCapabilities: Capabilities = {
-  chat: false,
-  traces: false,
-  prompts: false,
-  dashboard: false,
+  chat: true,
+  traces: true,
+  prompts: true,
+  dashboard: true,
+  systemPrompts: true,
 };
 
 export const CapabilitiesContext = createContext<Capabilities>(defaultCapabilities);
@@ -24,7 +26,8 @@ export async function fetchCapabilities(): Promise<Capabilities> {
   try {
     const res = await fetch('/api/capabilities');
     if (!res.ok) return defaultCapabilities;
-    return await res.json();
+    const caps = await res.json();
+    return { ...defaultCapabilities, ...caps, systemPrompts: caps.systemPrompts ?? caps.prompts ?? false };
   } catch {
     return defaultCapabilities;
   }

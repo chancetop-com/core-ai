@@ -43,6 +43,7 @@ public class AgentDefinitionService {
         entity.name = request.name;
         entity.description = request.description;
         entity.systemPrompt = request.systemPrompt;
+        entity.systemPromptId = request.systemPromptId;
         entity.model = request.model;
         entity.temperature = request.temperature;
         var isLLMCall = "LLM_CALL".equals(request.type);
@@ -92,6 +93,7 @@ public class AgentDefinitionService {
         if (request.name != null) entity.name = request.name;
         if (request.description != null) entity.description = request.description;
         if (request.systemPrompt != null) entity.systemPrompt = request.systemPrompt;
+        if (request.systemPromptId != null) entity.systemPromptId = request.systemPromptId;
         if (request.model != null) entity.model = request.model;
         if (request.temperature != null) entity.temperature = request.temperature;
         if (request.maxTurns != null) entity.maxTurns = request.maxTurns;
@@ -112,6 +114,7 @@ public class AgentDefinitionService {
 
         var config = new AgentPublishedConfig();
         config.systemPrompt = entity.systemPrompt;
+        config.systemPromptId = entity.systemPromptId;
         config.model = entity.model;
         config.temperature = entity.temperature;
         config.maxTurns = entity.maxTurns;
@@ -183,6 +186,7 @@ public class AgentDefinitionService {
         view.name = entity.name;
         view.description = entity.description;
         view.systemPrompt = entity.systemPrompt;
+        view.systemPromptId = entity.systemPromptId;
         view.model = entity.model;
         view.temperature = entity.temperature;
         view.maxTurns = entity.maxTurns;

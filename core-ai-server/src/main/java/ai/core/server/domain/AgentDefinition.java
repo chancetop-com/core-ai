@@ -55,6 +55,9 @@ public class AgentDefinition {
     @Field(name = "variables")
     public Map<String, String> variables;
 
+    @Field(name = "system_prompt_id")
+    public String systemPromptId;
+
     @Field(name = "webhook_secret")
     public String webhookSecret;
 

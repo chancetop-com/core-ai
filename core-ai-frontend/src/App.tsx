@@ -6,9 +6,14 @@ import TraceDetail from './pages/traces/TraceDetail';
 import PromptList from './pages/prompts/PromptList';
 import PromptEditor from './pages/prompts/PromptEditor';
 import Dashboard from './pages/dashboard/Dashboard';
+import AgentList from './pages/agents/AgentList';
+import AgentEditor from './pages/agents/AgentEditor';
+import RunDetail from './pages/agents/RunDetail';
 import Chat from './pages/chat/Chat';
 import Generations from './pages/generations/Generations';
 import Sessions from './pages/sessions/Sessions';
+import SystemPromptList from './pages/system-prompts/SystemPromptList';
+import SystemPromptEditor from './pages/system-prompts/SystemPromptEditor';
 import { CapabilitiesContext, fetchCapabilities, defaultCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
 
@@ -35,10 +40,15 @@ export default function App() {
             {caps.chat && <Route path="/chat" element={<Chat />} />}
             {caps.traces && <Route path="/" element={<TraceList />} />}
             {caps.traces && <Route path="/traces/:id" element={<TraceDetail />} />}
-            {caps.traces && <Route path="/generations" element={<Generations />} />}
+            {/* Generations removed - LLM calls visible in trace span detail */}
             {caps.traces && <Route path="/sessions" element={<Sessions />} />}
             {caps.prompts && <Route path="/prompts" element={<PromptList />} />}
             {caps.prompts && <Route path="/prompts/:id" element={<PromptEditor />} />}
+            <Route path="/agents" element={<AgentList />} />
+            <Route path="/agents/:id" element={<AgentEditor />} />
+            <Route path="/runs/:id" element={<RunDetail />} />
+            {caps.systemPrompts && <Route path="/system-prompts" element={<SystemPromptList />} />}
+            {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<SystemPromptEditor />} />}
             {caps.dashboard && <Route path="/dashboard" element={<Dashboard />} />}
             <Route path="*" element={<Navigate to={defaultPath} replace />} />
           </Route>

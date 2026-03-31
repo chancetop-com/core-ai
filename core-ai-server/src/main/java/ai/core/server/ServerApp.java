@@ -10,6 +10,7 @@ import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.ToolRegistry;
 import ai.core.server.domain.User;
 import ai.core.server.domain.migration.SchemaVersion;
@@ -53,6 +54,8 @@ public class ServerApp extends App {
         mongo.collection(FileRecord.class);
         mongo.collection(SkillDefinition.class);
         mongo.collection(SchemaVersion.class);
+
+        mongo.collection(SystemPrompt.class);
 
         // trace collections
         mongo.collection(Trace.class);

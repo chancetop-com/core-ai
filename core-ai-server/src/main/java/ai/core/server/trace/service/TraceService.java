@@ -61,7 +61,32 @@ public class TraceService {
     }
 
     public Trace get(String traceId) {
-        return traceCollection.get(traceId).orElse(null);
+        Trace trace = traceCollection.get(traceId).orElse(null);
+        if (trace == null) {
+            var query = new Query();
+            query.filter = Filters.eq("trace_id", traceId);
+            query.limit = 1;
+            var results = traceCollection.find(query);
+            trace = results.isEmpty() ? null : results.getFirst();
+        }
+        if (trace != null) {
+            enrichTokensFromSpans(trace);
+        }
+        return trace;
+    }
+
+    private void enrichTokensFromSpans(Trace trace) {
+        if (trace.totalTokens != null && trace.totalTokens > 0) return;
+        var spans = spans(trace.traceId);
+        long inputTokens = 0;
+        long outputTokens = 0;
+        for (var span : spans) {
+            if (span.inputTokens != null) inputTokens += span.inputTokens;
+            if (span.outputTokens != null) outputTokens += span.outputTokens;
+        }
+        trace.inputTokens = inputTokens;
+        trace.outputTokens = outputTokens;
+        trace.totalTokens = inputTokens + outputTokens;
     }
 
     public List<Span> spans(String traceId) {

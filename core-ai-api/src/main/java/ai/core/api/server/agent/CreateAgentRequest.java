@@ -21,6 +21,9 @@ public class CreateAgentRequest {
     @Property(name = "system_prompt")
     public String systemPrompt;
 
+    @Property(name = "system_prompt_id")
+    public String systemPromptId;
+
     @Property(name = "model")
     public String model;
 

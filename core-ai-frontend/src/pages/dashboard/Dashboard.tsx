@@ -15,10 +15,10 @@ export default function Dashboard() {
   }, []);
 
   const totalTraces = traces.length;
-  const totalInputTokens = traces.reduce((sum, t) => sum + (t.input_tokens || 0), 0);
-  const totalOutputTokens = traces.reduce((sum, t) => sum + (t.output_tokens || 0), 0);
+  const totalInputTokens = traces.reduce((sum, t) => sum + (t.inputTokens || 0), 0);
+  const totalOutputTokens = traces.reduce((sum, t) => sum + (t.outputTokens || 0), 0);
   const totalTokens = totalInputTokens + totalOutputTokens;
-  const avgDuration = totalTraces > 0 ? traces.reduce((sum, t) => sum + (t.duration_ms || 0), 0) / totalTraces : 0;
+  const avgDuration = totalTraces > 0 ? traces.reduce((sum, t) => sum + (t.durationMs || 0), 0) / totalTraces : 0;
   const errorRate = totalTraces > 0 ? traces.filter(t => t.status === 'ERROR').length / totalTraces * 100 : 0;
 
   const statusData = ['COMPLETED', 'RUNNING', 'ERROR'].map(status => ({
@@ -28,10 +28,10 @@ export default function Dashboard() {
 
   const tokensByDay = Object.entries(
     traces.reduce((acc, t) => {
-      const day = (t.started_at || t.created_at) ? new Date(t.started_at || t.created_at).toLocaleDateString() : 'Unknown';
+      const day = (t.startedAt || t.createdAt) ? new Date(t.startedAt || t.createdAt).toLocaleDateString() : 'Unknown';
       if (!acc[day]) acc[day] = { input: 0, output: 0 };
-      acc[day].input += (t.input_tokens || 0);
-      acc[day].output += (t.output_tokens || 0);
+      acc[day].input += (t.inputTokens || 0);
+      acc[day].output += (t.outputTokens || 0);
       return acc;
     }, {} as Record<string, { input: number; output: number }>)
   ).map(([date, tokens]) => ({ date, input: tokens.input, output: tokens.output })).slice(-7);

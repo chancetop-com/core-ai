@@ -14,10 +14,10 @@ interface SpanNode extends Span {
 function buildTree(spans: Span[]): SpanNode[] {
   const map = new Map<string, SpanNode>();
   const roots: SpanNode[] = [];
-  spans.forEach(s => map.set(s.span_id, { ...s, children: [], depth: 0 }));
+  spans.forEach(s => map.set(s.spanId, { ...s, children: [], depth: 0 }));
   map.forEach(node => {
-    if (node.parent_span_id && map.has(node.parent_span_id)) {
-      const parent = map.get(node.parent_span_id)!;
+    if (node.parentSpanId && map.has(node.parentSpanId)) {
+      const parent = map.get(node.parentSpanId)!;
       node.depth = parent.depth + 1;
       parent.children.push(node);
     } else {
@@ -32,7 +32,7 @@ function flattenTree(nodes: SpanNode[], collapsed: Set<string>): SpanNode[] {
   function walk(list: SpanNode[]) {
     list.forEach(n => {
       result.push(n);
-      if (!collapsed.has(n.span_id)) walk(n.children);
+      if (!collapsed.has(n.spanId)) walk(n.children);
     });
   }
   walk(nodes);
@@ -42,7 +42,7 @@ function flattenTree(nodes: SpanNode[], collapsed: Set<string>): SpanNode[] {
 function collectAllIds(nodes: SpanNode[]): string[] {
   const ids: string[] = [];
   function walk(list: SpanNode[]) {
-    list.forEach(n => { if (n.children.length > 0) ids.push(n.span_id); walk(n.children); });
+    list.forEach(n => { if (n.children.length > 0) ids.push(n.spanId); walk(n.children); });
   }
   walk(nodes);
   return ids;
@@ -142,7 +142,7 @@ export default function TraceDetail() {
 
   const tree = buildTree(spans);
   const flat = flattenTree(tree, collapsed);
-  const totalDuration = trace.duration_ms || 1;
+  const totalDuration = trace.durationMs || 1;
   const allParentIds = collectAllIds(tree);
 
   const toggleCollapse = (spanId: string) => {
@@ -168,25 +168,25 @@ export default function TraceDetail() {
       <div className="rounded-xl border p-5 mb-6"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-semibold">{trace.name || trace.trace_id}</h1>
+          <h1 className="text-xl font-semibold">{trace.name || trace.traceId}</h1>
           <StatusBadge status={trace.status} />
         </div>
         <div className="flex gap-6 text-sm flex-wrap" style={{ color: 'var(--color-text-secondary)' }}>
-          <span className="flex items-center gap-1"><Clock size={14} /> {trace.duration_ms ? `${(trace.duration_ms / 1000).toFixed(2)}s` : '-'}</span>
+          <span className="flex items-center gap-1"><Clock size={14} /> {trace.durationMs ? `${(trace.durationMs / 1000).toFixed(2)}s` : '-'}</span>
           <span className="flex items-center gap-1">
             <Zap size={14} />
-            {trace.total_tokens ? `${trace.total_tokens.toLocaleString()} tokens` : '0 tokens'}
-            {(trace.input_tokens > 0 || trace.output_tokens > 0) && (
-              <span className="text-xs ml-1">({trace.input_tokens?.toLocaleString() || 0} in / {trace.output_tokens?.toLocaleString() || 0} out)</span>
+            {trace.totalTokens ? `${trace.totalTokens.toLocaleString()} tokens` : '0 tokens'}
+            {(trace.inputTokens > 0 || trace.outputTokens > 0) && (
+              <span className="text-xs ml-1">({trace.inputTokens?.toLocaleString() || 0} in / {trace.outputTokens?.toLocaleString() || 0} out)</span>
             )}
           </span>
-          {trace.session_id && <span>Session: {trace.session_id}</span>}
-          {trace.user_id && <span>User: {trace.user_id}</span>}
+          {trace.sessionId && <span>Session: {trace.sessionId}</span>}
+          {trace.userId && <span>User: {trace.userId}</span>}
         </div>
-        {trace.started_at && (
+        {trace.startedAt && (
           <div className="flex gap-6 text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            <span>Started: {new Date(trace.started_at).toLocaleString()}</span>
-            {trace.completed_at && <span>Completed: {new Date(trace.completed_at).toLocaleString()}</span>}
+            <span>Started: {new Date(trace.startedAt).toLocaleString()}</span>
+            {trace.completedAt && <span>Completed: {new Date(trace.completedAt).toLocaleString()}</span>}
           </div>
         )}
         {trace.input && <JsonView data={trace.input} label="Input" />}
@@ -211,28 +211,28 @@ export default function TraceDetail() {
             )}
           </div>
           {flat.map(span => {
-            const startOffset = span.started_at && trace.started_at
-              ? (new Date(span.started_at).getTime() - new Date(trace.started_at).getTime()) / totalDuration * 100
+            const startOffset = span.startedAt && trace.startedAt
+              ? (new Date(span.startedAt).getTime() - new Date(trace.startedAt).getTime()) / totalDuration * 100
               : 0;
-            const width = Math.max((span.duration_ms || 0) / totalDuration * 100, 1);
+            const width = Math.max((span.durationMs || 0) / totalDuration * 100, 1);
             const hasChildren = span.children.length > 0;
-            const isCollapsed = collapsed.has(span.span_id);
+            const isCollapsed = collapsed.has(span.spanId);
 
             return (
-              <div key={span.span_id}
+              <div key={span.spanId}
                 onClick={() => setSelected(span)}
                 className="flex items-center px-4 py-2 border-t cursor-pointer transition-colors text-sm"
                 style={{
                   borderColor: 'var(--color-border)',
-                  background: selected?.span_id === span.span_id ? 'var(--color-bg-tertiary)' : 'transparent',
+                  background: selected?.spanId === span.spanId ? 'var(--color-bg-tertiary)' : 'transparent',
                   paddingLeft: `${span.depth * 20 + 16}px`,
                 }}
-                onMouseEnter={e => { if (selected?.span_id !== span.span_id) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
-                onMouseLeave={e => { if (selected?.span_id !== span.span_id) e.currentTarget.style.background = 'transparent'; }}>
+                onMouseEnter={e => { if (selected?.spanId !== span.spanId) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
+                onMouseLeave={e => { if (selected?.spanId !== span.spanId) e.currentTarget.style.background = 'transparent'; }}>
 
                 {/* Collapse toggle */}
                 <span className="w-4 flex-shrink-0 flex items-center justify-center"
-                  onClick={e => { if (hasChildren) { e.stopPropagation(); toggleCollapse(span.span_id); } }}>
+                  onClick={e => { if (hasChildren) { e.stopPropagation(); toggleCollapse(span.spanId); } }}>
                   {hasChildren ? (
                     isCollapsed ? <ChevronRight size={12} style={{ color: 'var(--color-text-secondary)' }} />
                       : <ChevronDown size={12} style={{ color: 'var(--color-text-secondary)' }} />
@@ -251,10 +251,10 @@ export default function TraceDetail() {
                     }} />
                 </div>
                 <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-secondary)', width: '120px', textAlign: 'right' }}>
-                  {(span.input_tokens > 0 || span.output_tokens > 0) && (
-                    <span className="mr-2">{(span.input_tokens || 0) + (span.output_tokens || 0)}t</span>
+                  {(span.inputTokens > 0 || span.outputTokens > 0) && (
+                    <span className="mr-2">{(span.inputTokens || 0) + (span.outputTokens || 0)}t</span>
                   )}
-                  {span.duration_ms ? `${span.duration_ms}ms` : '-'}
+                  {span.durationMs ? `${span.durationMs}ms` : '-'}
                 </span>
               </div>
             );
@@ -288,18 +288,18 @@ export default function TraceDetail() {
               )}
               <div className="flex justify-between">
                 <dt style={{ color: 'var(--color-text-secondary)' }}>Duration</dt>
-                <dd>{selected.duration_ms ? `${selected.duration_ms}ms` : '-'}</dd>
+                <dd>{selected.durationMs ? `${selected.durationMs}ms` : '-'}</dd>
               </div>
-              {(selected.input_tokens > 0 || selected.output_tokens > 0) && (
+              {(selected.inputTokens > 0 || selected.outputTokens > 0) && (
                 <div className="flex justify-between">
                   <dt style={{ color: 'var(--color-text-secondary)' }}>Tokens</dt>
-                  <dd>{selected.input_tokens} in / {selected.output_tokens} out</dd>
+                  <dd>{selected.inputTokens} in / {selected.outputTokens} out</dd>
                 </div>
               )}
-              {selected.started_at && (
+              {selected.startedAt && (
                 <div className="flex justify-between">
                   <dt style={{ color: 'var(--color-text-secondary)' }}>Started</dt>
-                  <dd className="text-xs">{new Date(selected.started_at).toLocaleString()}</dd>
+                  <dd className="text-xs">{new Date(selected.startedAt).toLocaleString()}</dd>
                 </div>
               )}
             </dl>
