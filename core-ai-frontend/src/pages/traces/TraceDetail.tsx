@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Zap } from 'lucide-react';
+import { ArrowLeft, Clock, Zap, ChevronRight, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Trace, Span } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -27,13 +27,98 @@ function buildTree(spans: Span[]): SpanNode[] {
   return roots;
 }
 
-function flattenTree(nodes: SpanNode[]): SpanNode[] {
+function flattenTree(nodes: SpanNode[], collapsed: Set<string>): SpanNode[] {
   const result: SpanNode[] = [];
   function walk(list: SpanNode[]) {
-    list.forEach(n => { result.push(n); walk(n.children); });
+    list.forEach(n => {
+      result.push(n);
+      if (!collapsed.has(n.span_id)) walk(n.children);
+    });
   }
   walk(nodes);
   return result;
+}
+
+function collectAllIds(nodes: SpanNode[]): string[] {
+  const ids: string[] = [];
+  function walk(list: SpanNode[]) {
+    list.forEach(n => { if (n.children.length > 0) ids.push(n.span_id); walk(n.children); });
+  }
+  walk(nodes);
+  return ids;
+}
+
+function JsonView({ data, label }: { data: string; label: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const parsed = useMemo(() => {
+    try { return JSON.parse(data); } catch { return null; }
+  }, [data]);
+
+  const isJson = parsed !== null && typeof parsed === 'object';
+  const formatted = isJson ? JSON.stringify(parsed, null, 2) : data;
+  const isLong = formatted.length > 300;
+  const displayText = !expanded && isLong ? formatted.slice(0, 300) + '...' : formatted;
+
+  return (
+    <div className="mt-2 rounded-lg text-xs overflow-hidden" style={{ background: 'var(--color-bg-tertiary)' }}>
+      <div className="flex items-center justify-between px-3 py-1.5 cursor-pointer select-none"
+        style={{ borderBottom: '1px solid var(--color-border)' }}
+        onClick={() => setExpanded(!expanded)}>
+        <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+        <div className="flex items-center gap-2">
+          {isJson && (
+            <span className="px-1.5 py-0.5 rounded text-xs"
+              style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
+              JSON
+            </span>
+          )}
+          {isLong && (
+            <span style={{ color: 'var(--color-text-secondary)' }}>
+              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+          )}
+        </div>
+      </div>
+      <pre className="px-3 py-2 whitespace-pre-wrap break-words overflow-auto" style={{ maxHeight: expanded ? '500px' : '200px' }}>
+        {isJson ? <JsonHighlight text={displayText} /> : displayText}
+      </pre>
+    </div>
+  );
+}
+
+function JsonHighlight({ text }: { text: string }) {
+  const parts = text.split(/("(?:[^"\\]|\\.)*")\s*:/g);
+  const result: React.ReactNode[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 1) {
+      result.push(<span key={i} style={{ color: '#6366f1' }}>{parts[i]}</span>);
+      result.push(':');
+    } else {
+      const valueParts = parts[i].split(/("(?:[^"\\]|\\.)*")/g);
+      valueParts.forEach((vp, j) => {
+        if (j % 2 === 1) {
+          result.push(<span key={`${i}-${j}`} style={{ color: '#22c55e' }}>{vp}</span>);
+        } else {
+          const numParts = vp.split(/\b(\d+\.?\d*)\b/g);
+          numParts.forEach((np, k) => {
+            if (k % 2 === 1) {
+              result.push(<span key={`${i}-${j}-${k}`} style={{ color: '#f59e0b' }}>{np}</span>);
+            } else {
+              const boolParts = np.split(/\b(true|false|null)\b/g);
+              boolParts.forEach((bp, l) => {
+                if (l % 2 === 1) {
+                  result.push(<span key={`${i}-${j}-${k}-${l}`} style={{ color: '#ef4444' }}>{bp}</span>);
+                } else {
+                  result.push(bp);
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+  }
+  return <>{result}</>;
 }
 
 export default function TraceDetail() {
@@ -43,6 +128,7 @@ export default function TraceDetail() {
   const [spans, setSpans] = useState<Span[]>([]);
   const [selected, setSelected] = useState<Span | null>(null);
   const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!id) return;
@@ -55,8 +141,20 @@ export default function TraceDetail() {
   if (!trace) return <div className="p-6">Trace not found</div>;
 
   const tree = buildTree(spans);
-  const flat = flattenTree(tree);
+  const flat = flattenTree(tree, collapsed);
   const totalDuration = trace.duration_ms || 1;
+  const allParentIds = collectAllIds(tree);
+
+  const toggleCollapse = (spanId: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(spanId)) next.delete(spanId); else next.add(spanId);
+      return next;
+    });
+  };
+
+  const collapseAll = () => setCollapsed(new Set(allParentIds));
+  const expandAll = () => setCollapsed(new Set());
 
   return (
     <div className="p-6">
@@ -73,7 +171,7 @@ export default function TraceDetail() {
           <h1 className="text-xl font-semibold">{trace.name || trace.trace_id}</h1>
           <StatusBadge status={trace.status} />
         </div>
-        <div className="flex gap-6 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+        <div className="flex gap-6 text-sm flex-wrap" style={{ color: 'var(--color-text-secondary)' }}>
           <span className="flex items-center gap-1"><Clock size={14} /> {trace.duration_ms ? `${(trace.duration_ms / 1000).toFixed(2)}s` : '-'}</span>
           <span className="flex items-center gap-1">
             <Zap size={14} />
@@ -82,8 +180,8 @@ export default function TraceDetail() {
               <span className="text-xs ml-1">({trace.input_tokens?.toLocaleString() || 0} in / {trace.output_tokens?.toLocaleString() || 0} out)</span>
             )}
           </span>
-          <span>Session: {trace.session_id || '-'}</span>
-          <span>User: {trace.user_id || '-'}</span>
+          {trace.session_id && <span>Session: {trace.session_id}</span>}
+          {trace.user_id && <span>User: {trace.user_id}</span>}
         </div>
         {trace.started_at && (
           <div className="flex gap-6 text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
@@ -91,32 +189,34 @@ export default function TraceDetail() {
             {trace.completed_at && <span>Completed: {new Date(trace.completed_at).toLocaleString()}</span>}
           </div>
         )}
-        {trace.input && (
-          <div className="mt-3 p-3 rounded-lg text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
-            <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Input</div>
-            <pre className="whitespace-pre-wrap break-words">{trace.input}</pre>
-          </div>
-        )}
-        {trace.output && (
-          <div className="mt-2 p-3 rounded-lg text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
-            <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Output</div>
-            <pre className="whitespace-pre-wrap break-words">{trace.output}</pre>
-          </div>
-        )}
+        {trace.input && <JsonView data={trace.input} label="Input" />}
+        {trace.output && <JsonView data={trace.output} label="Output" />}
       </div>
 
       {/* Waterfall */}
       <div className="flex gap-4">
         <div className="flex-1 rounded-xl border overflow-hidden"
           style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-          <div className="px-4 py-3 border-b font-medium text-sm" style={{ borderColor: 'var(--color-border)' }}>
-            Spans ({spans.length})
+          <div className="px-4 py-3 border-b font-medium text-sm flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
+            <span>Spans ({spans.length})</span>
+            {allParentIds.length > 0 && (
+              <button onClick={collapsed.size === allParentIds.length ? expandAll : collapseAll}
+                className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded"
+                style={{ color: 'var(--color-text-secondary)' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                <ChevronsUpDown size={12} />
+                {collapsed.size === allParentIds.length ? 'Expand All' : 'Collapse All'}
+              </button>
+            )}
           </div>
           {flat.map(span => {
             const startOffset = span.started_at && trace.started_at
               ? (new Date(span.started_at).getTime() - new Date(trace.started_at).getTime()) / totalDuration * 100
               : 0;
             const width = Math.max((span.duration_ms || 0) / totalDuration * 100, 1);
+            const hasChildren = span.children.length > 0;
+            const isCollapsed = collapsed.has(span.span_id);
 
             return (
               <div key={span.span_id}
@@ -125,10 +225,20 @@ export default function TraceDetail() {
                 style={{
                   borderColor: 'var(--color-border)',
                   background: selected?.span_id === span.span_id ? 'var(--color-bg-tertiary)' : 'transparent',
-                  paddingLeft: `${span.depth * 24 + 16}px`,
+                  paddingLeft: `${span.depth * 20 + 16}px`,
                 }}
                 onMouseEnter={e => { if (selected?.span_id !== span.span_id) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
                 onMouseLeave={e => { if (selected?.span_id !== span.span_id) e.currentTarget.style.background = 'transparent'; }}>
+
+                {/* Collapse toggle */}
+                <span className="w-4 flex-shrink-0 flex items-center justify-center"
+                  onClick={e => { if (hasChildren) { e.stopPropagation(); toggleCollapse(span.span_id); } }}>
+                  {hasChildren ? (
+                    isCollapsed ? <ChevronRight size={12} style={{ color: 'var(--color-text-secondary)' }} />
+                      : <ChevronDown size={12} style={{ color: 'var(--color-text-secondary)' }} />
+                  ) : null}
+                </span>
+
                 <SpanTypeIcon type={span.type} size={14} />
                 <span className="ml-2 truncate flex-shrink-0" style={{ width: '180px' }}>{span.name}</span>
                 <div className="flex-1 mx-3 h-5 rounded relative" style={{ background: 'var(--color-bg-tertiary)' }}>
@@ -156,7 +266,7 @@ export default function TraceDetail() {
 
         {/* Span detail panel */}
         {selected && (
-          <div className="w-96 rounded-xl border p-4 flex-shrink-0"
+          <div className="w-96 rounded-xl border p-4 flex-shrink-0 self-start sticky top-6"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -173,7 +283,7 @@ export default function TraceDetail() {
               {selected.model && (
                 <div className="flex justify-between">
                   <dt style={{ color: 'var(--color-text-secondary)' }}>Model</dt>
-                  <dd>{selected.model}</dd>
+                  <dd className="font-mono text-xs">{selected.model}</dd>
                 </div>
               )}
               <div className="flex justify-between">
@@ -186,19 +296,31 @@ export default function TraceDetail() {
                   <dd>{selected.input_tokens} in / {selected.output_tokens} out</dd>
                 </div>
               )}
+              {selected.started_at && (
+                <div className="flex justify-between">
+                  <dt style={{ color: 'var(--color-text-secondary)' }}>Started</dt>
+                  <dd className="text-xs">{new Date(selected.started_at).toLocaleString()}</dd>
+                </div>
+              )}
             </dl>
-            {selected.input && (
-              <div className="mt-3 p-3 rounded-lg text-xs" style={{ background: 'var(--color-bg-tertiary)' }}>
-                <div className="font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Input</div>
-                <pre className="whitespace-pre-wrap break-words max-h-40 overflow-auto">{selected.input}</pre>
+
+            {/* Attributes */}
+            {selected.attributes && Object.keys(selected.attributes).length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Attributes</div>
+                <div className="rounded-lg p-2 text-xs space-y-1" style={{ background: 'var(--color-bg-tertiary)' }}>
+                  {Object.entries(selected.attributes).map(([k, v]) => (
+                    <div key={k} className="flex gap-2">
+                      <span className="font-mono flex-shrink-0" style={{ color: '#6366f1' }}>{k}:</span>
+                      <span className="break-all">{v}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            {selected.output && (
-              <div className="mt-2 p-3 rounded-lg text-xs" style={{ background: 'var(--color-bg-tertiary)' }}>
-                <div className="font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Output</div>
-                <pre className="whitespace-pre-wrap break-words max-h-40 overflow-auto">{selected.output}</pre>
-              </div>
-            )}
+
+            {selected.input && <JsonView data={selected.input} label="Input" />}
+            {selected.output && <JsonView data={selected.output} label="Output" />}
           </div>
         )}
       </div>

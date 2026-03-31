@@ -8,6 +8,8 @@ import core.framework.web.Response;
 
 import ai.core.server.trace.service.TraceService;
 
+import java.time.ZonedDateTime;
+
 /**
  * @author Xander
  */
@@ -21,7 +23,13 @@ public class TraceController {
         var params = request.queryParams();
         int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
         int limit = Integer.parseInt(params.getOrDefault("limit", "20"));
-        var traces = traceService.list(offset, limit);
+        String name = params.get("name");
+        String status = params.get("status");
+        String sessionId = params.get("sessionId");
+        String userId = params.get("userId");
+        ZonedDateTime startFrom = parseDateTime(params.get("startFrom"));
+        ZonedDateTime startTo = parseDateTime(params.get("startTo"));
+        var traces = traceService.list(offset, limit, name, status, sessionId, userId, startFrom, startTo);
         return jsonResponse(traces);
     }
 
@@ -38,6 +46,28 @@ public class TraceController {
         String traceId = request.pathParam("traceId");
         var spans = traceService.spans(traceId);
         return jsonResponse(spans);
+    }
+
+    public Response generations(Request request) {
+        var params = request.queryParams();
+        int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
+        int limit = Integer.parseInt(params.getOrDefault("limit", "20"));
+        String model = params.get("model");
+        var spans = traceService.generations(offset, limit, model);
+        return jsonResponse(spans);
+    }
+
+    public Response sessions(Request request) {
+        var params = request.queryParams();
+        int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
+        int limit = Integer.parseInt(params.getOrDefault("limit", "20"));
+        var sessions = traceService.sessions(offset, limit);
+        return jsonResponse(sessions);
+    }
+
+    private ZonedDateTime parseDateTime(String value) {
+        if (value == null || value.isEmpty()) return null;
+        return ZonedDateTime.parse(value);
     }
 
     private Response jsonResponse(Object data) {

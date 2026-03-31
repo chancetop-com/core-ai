@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useState } from 'react';
-import { Activity, BookText, LayoutDashboard, MessageCircle, Moon, Sun, PanelLeft } from 'lucide-react';
+import { Activity, BookText, LayoutDashboard, MessageCircle, Moon, Sun, PanelLeft, Cpu, Users } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 
@@ -12,6 +12,8 @@ export default function Layout() {
   const navItems = [
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
     { to: '/', icon: Activity, label: 'Traces', show: caps.traces },
+    { to: '/generations', icon: Cpu, label: 'Generations', show: caps.traces },
+    { to: '/sessions', icon: Users, label: 'Sessions', show: caps.traces },
     { to: '/prompts', icon: BookText, label: 'Prompts', show: caps.prompts },
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', show: caps.dashboard },
   ].filter(item => item.show);

@@ -65,12 +65,44 @@ export interface PromptTemplate {
   updated_at?: string;
 }
 
+export interface TraceFilter {
+  name?: string;
+  status?: string;
+  sessionId?: string;
+  userId?: string;
+  startFrom?: string;
+  startTo?: string;
+}
+
+export interface SessionSummary {
+  session_id: string;
+  trace_count: number;
+  total_tokens: number;
+  total_duration_ms: number;
+  error_count: number;
+  user_id: string;
+  last_trace_at: string;
+  first_trace_at: string;
+}
+
 export const api = {
   traces: {
-    list: (offset = 0, limit = 20) =>
-      request<Trace[]>(`/api/traces?offset=${offset}&limit=${limit}`),
+    list: (offset = 0, limit = 20, filters?: TraceFilter) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+      }
+      return request<Trace[]>(`/api/traces?${params}`);
+    },
     get: (id: string) => request<Trace>(`/api/traces/${id}`),
     spans: (id: string) => request<Span[]>(`/api/traces/${id}/spans`),
+    generations: (offset = 0, limit = 20, model?: string) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (model) params.set('model', model);
+      return request<Span[]>(`/api/traces/generations?${params}`);
+    },
+    sessions: (offset = 0, limit = 20) =>
+      request<SessionSummary[]>(`/api/traces/sessions?offset=${offset}&limit=${limit}`),
   },
   prompts: {
     list: (offset = 0, limit = 20) =>

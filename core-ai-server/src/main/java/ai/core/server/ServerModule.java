@@ -142,6 +142,8 @@ public class ServerModule extends Module {
         var ingestController = bind(IngestController.class);
 
         http().route(HTTPMethod.GET, "/api/traces", traceController::list);
+        http().route(HTTPMethod.GET, "/api/traces/generations", traceController::generations);
+        http().route(HTTPMethod.GET, "/api/traces/sessions", traceController::sessions);
         http().route(HTTPMethod.GET, "/api/traces/:traceId", traceController::get);
         http().route(HTTPMethod.GET, "/api/traces/:traceId/spans", traceController::spans);
 
