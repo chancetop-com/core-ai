@@ -14,6 +14,7 @@ import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.cli.ui.ThinkingSpinner;
 import ai.core.tool.tools.TaskTool;
 
 import java.util.concurrent.CompletableFuture;
@@ -28,6 +29,8 @@ public class BaseEventListener implements AgentEventListener {
     protected final OutputPanel panel;
     protected volatile CompletableFuture<Void> turnFuture;
     private final AtomicReference<TurnCompleteEvent> lastTurnComplete = new AtomicReference<>();
+    private volatile long taskStartTime;
+    private volatile int taskToolCallCount;
 
     protected BaseEventListener(TerminalUI ui, AgentSession session) {
         this.ui = ui;
@@ -56,9 +59,14 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onToolStart(ToolStartEvent event) {
+        if (panel.isInTask()) {
+            taskToolCallCount++;
+        }
         panel.toolStart(event.toolName, event.arguments, event.diff);
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
             panel.enterTask(event.toolName);
+            taskStartTime = System.currentTimeMillis();
+            taskToolCallCount = 0;
         }
     }
 
@@ -66,11 +74,19 @@ public class BaseEventListener implements AgentEventListener {
     public void onToolResult(ToolResultEvent event) {
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
             panel.exitTask();
-            panel.toolResult(event.status, "Done");
+            panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - taskStartTime, taskToolCallCount));
         } else {
             panel.toolResult(event.status, event.result);
         }
+    }
 
+    private String buildTaskDoneSummary(long elapsedMs, int toolCallCount) {
+        var sb = new StringBuilder("Done");
+        sb.append(" | ").append(ThinkingSpinner.formatElapsed(elapsedMs));
+        if (toolCallCount > 0) {
+            sb.append(" | ").append(toolCallCount).append(toolCallCount == 1 ? " tool" : " tools");
+        }
+        return sb.toString();
     }
 
     @Override
