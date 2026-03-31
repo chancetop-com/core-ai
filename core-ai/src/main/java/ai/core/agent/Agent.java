@@ -267,10 +267,25 @@ public class Agent extends Node<Agent> {
 
     private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
+        var resp = callLLM(func, request);
+
+        for (var lifecycle : agentLifecycles) {
+            var retryMessages = lifecycle.onModelResponse(request, resp, getExecutionContext());
+            if (retryMessages != null && !retryMessages.isEmpty()) {
+                retryMessages.forEach(this::addMessage);
+                resp = callLLM(func, request);
+                break;
+            }
+        }
+
+        return resp.choices.getFirst();
+    }
+
+    private CompletionResponse callLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         var resp = func.apply(request);
         addTokenCost(resp.usage);
         agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
-        return resp.choices.getFirst();
+        return resp;
     }
 
     public List<Message> handleFunc(Message funcMsg) {

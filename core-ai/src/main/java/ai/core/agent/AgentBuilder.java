@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.doomloop.DoomLoopLifecycle;
+import ai.core.agent.lifecycle.ResponseValidationLifecycle;
 import ai.core.agent.doomloop.DoomLoopStrategy;
 import ai.core.agent.doomloop.RepetitiveCallStrategy;
 import ai.core.agent.doomloop.TodoReminderStrategy;
@@ -298,6 +299,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         configureToolCallPruning();
         configureMemory();
         configureDoomLoop();
+        configureResponseValidation();
         configureCompression();
 
         // Fetch prompts from Langfuse if configured
@@ -378,6 +380,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agentLifecycles.add(new DoomLoopLifecycle(strategies));
         }
     }
+    private void configureResponseValidation() {
+        agentLifecycles.add(new ResponseValidationLifecycle());
+    }
+
     private void configureCompression() {
         if (compressionEnabled) {
             if (compression == null) {

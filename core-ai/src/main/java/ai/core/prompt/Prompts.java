@@ -40,6 +40,7 @@ public class Prompts {
 
               </system-reminder>
             """;
+    public static final String EMPTY_RESPONSE_REMINDER = "Your previous response was empty. Please provide a complete response.";
     public static final String COMPRESSION_SUMMARY_PREFIX = "[Previous Conversation Summary]\n";
     public static final String COMPRESSION_SUMMARY_SUFFIX = "\n[End Summary]";
     public static final String COMPRESSION_PROMPT = """
