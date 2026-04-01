@@ -147,11 +147,10 @@ export default function Chat() {
         case 'text_chunk': {
           const chunk = data.text || data.chunk || '';
           if (chunk) {
-            streamingContentRef.current += chunk;
             setMessages(prev => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
-              if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: streamingContentRef.current };
+              if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: (last.content || '') + chunk };
               return updated;
             });
           }
@@ -160,11 +159,10 @@ export default function Chat() {
         case 'reasoning_chunk': {
           const chunk = data.text || data.chunk || '';
           if (chunk) {
-            streamingThinkingRef.current += chunk;
             setMessages(prev => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
-              if (last?.role === 'agent') updated[updated.length - 1] = { ...last, thinking: streamingThinkingRef.current };
+              if (last?.role === 'agent') updated[updated.length - 1] = { ...last, thinking: (last.thinking || '') + chunk };
               return updated;
             });
           }
@@ -234,17 +232,27 @@ export default function Chat() {
     }
   }, []);
 
+  // Reconnect SSE if returning with existing session
+  useEffect(() => {
+    if (sessionId && !sseControllerRef.current) {
+      const controller = sessionApi.connectSSE(sessionId, handleSSEEvent, (err) => {
+        console.error('SSE reconnect error:', err);
+      });
+      sseControllerRef.current = controller;
+    }
+    return () => {
+      sseControllerRef.current?.abort();
+      sseControllerRef.current = null;
+    };
+  }, [sessionId, handleSSEEvent]);
+
   const ensureSession = async (): Promise<string> => {
     if (sessionId) return sessionId;
     const res = await sessionApi.create(selectedAgentId);
     const id = res.sessionId;
-    setSessionId(id);
-
-    // Connect SSE
-    const controller = sessionApi.connectSSE(id, handleSSEEvent, (err) => {
-      console.error('SSE error:', err);
-    });
-    sseControllerRef.current = controller;
+    setSessionId(id); // triggers useEffect to connect SSE
+    // Wait for SSE to connect
+    await new Promise(resolve => setTimeout(resolve, 500));
     return id;
   };
 
