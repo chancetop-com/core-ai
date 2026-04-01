@@ -1,5 +1,7 @@
 package ai.core.api.server;
 
+import ai.core.api.server.run.AgentCallRequest;
+import ai.core.api.server.run.AgentCallResponse;
 import ai.core.api.server.run.AgentRunDetailView;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.api.server.run.LLMCallResponse;
@@ -38,4 +40,8 @@ public interface AgentRunWebService {
     @POST
     @Path("/api/llm/:id/call")
     LLMCallResponse llmCall(@PathParam("id") String id, LLMCallRequest request);
+
+    @POST
+    @Path("/api/agents/:agentId/call")
+    AgentCallResponse call(@PathParam("agentId") String agentId, AgentCallRequest request);
 }

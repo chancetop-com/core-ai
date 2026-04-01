@@ -359,9 +359,17 @@ export default function AgentEditor() {
 
 function ApiUsagePanel({ agentId }: { agentId: string }) {
   const [copied, setCopied] = useState('');
-  const [tab, setTab] = useState<'trigger' | 'session'>('trigger');
+  const [tab, setTab] = useState<'call' | 'trigger' | 'session'>('call');
   const apiKey = localStorage.getItem('apiKey') || '<YOUR_API_KEY>';
   const baseUrl = window.location.origin;
+
+  const callCurl = `curl -X POST '${baseUrl}/api/agents/${agentId}/call' \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer ${apiKey}' \\
+  -d '{"input": "Hello, what can you do?"}'
+
+# Response:
+# {"output": "...", "token_usage": {"input": 27, "output": 42}, "run_id": "..."}`;
 
   const triggerCurl = `curl -X POST '${baseUrl}/api/runs/agent/${agentId}/trigger' \\
   -H 'Content-Type: application/json' \\
@@ -392,11 +400,12 @@ curl -X POST "${baseUrl}/api/sessions/$SESSION_ID/messages" \\
   };
 
   const tabs = [
-    { key: 'trigger' as const, label: 'Trigger Run' },
-    { key: 'session' as const, label: 'Session (Streaming)' },
+    { key: 'call' as const, label: 'Call (Sync)' },
+    { key: 'trigger' as const, label: 'Trigger (Async)' },
+    { key: 'session' as const, label: 'Session (Stream)' },
   ];
 
-  const currentCode = tab === 'trigger' ? triggerCurl : sessionCurl;
+  const currentCode = tab === 'call' ? callCurl : tab === 'trigger' ? triggerCurl : sessionCurl;
 
   return (
     <div className="rounded-xl border overflow-hidden"

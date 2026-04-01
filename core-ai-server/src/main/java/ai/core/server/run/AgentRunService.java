@@ -1,5 +1,7 @@
 package ai.core.server.run;
 
+import ai.core.api.server.run.AgentCallRequest;
+import ai.core.api.server.run.AgentCallResponse;
 import ai.core.api.server.run.AgentRunDetailView;
 import ai.core.api.server.run.AgentRunView;
 import ai.core.api.server.run.LLMCallRequest;
@@ -92,6 +94,43 @@ public class AgentRunService {
             "output", result.outputTokens()
         );
         return response;
+    }
+
+    public AgentCallResponse call(String agentId, AgentCallRequest request) {
+        var definition = agentDefinitionCollection.get(agentId)
+            .orElseThrow(() -> new RuntimeException("agent not found, id=" + agentId));
+
+        var input = request.input;
+
+        if (definition.type == DefinitionType.LLM_CALL) {
+            var result = llmCallExecutor.execute(definition, input);
+            var response = new AgentCallResponse();
+            response.output = result.output();
+            response.tokenUsage = Map.of("input", result.inputTokens(), "output", result.outputTokens());
+            return response;
+        }
+
+        // Sync agent execution: create run record, execute, return result
+        var runId = agentRunner.run(definition, input, TriggerType.MANUAL);
+        // Wait for completion
+        var maxWait = 600;
+        for (int i = 0; i < maxWait; i++) {
+            var run = agentRunCollection.get(runId).orElse(null);
+            if (run != null && run.status != RunStatus.RUNNING && run.status != RunStatus.PENDING) {
+                var response = new AgentCallResponse();
+                response.runId = runId;
+                response.output = run.output != null ? run.output : run.error;
+                if (run.tokenUsage != null) {
+                    response.tokenUsage = Map.of(
+                        "input", run.tokenUsage.input != null ? run.tokenUsage.input : 0L,
+                        "output", run.tokenUsage.output != null ? run.tokenUsage.output : 0L
+                    );
+                }
+                return response;
+            }
+            try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+        }
+        throw new RuntimeException("agent call timed out after " + maxWait + "s, runId=" + runId);
     }
 
     public void cancel(String id) {

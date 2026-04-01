@@ -1,6 +1,8 @@
 package ai.core.server.web;
 
 import ai.core.api.server.AgentRunWebService;
+import ai.core.api.server.run.AgentCallRequest;
+import ai.core.api.server.run.AgentCallResponse;
 import ai.core.api.server.run.AgentRunDetailView;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.api.server.run.LLMCallResponse;
@@ -45,6 +47,14 @@ public class AgentRunWebServiceImpl implements AgentRunWebService {
     public LLMCallResponse llmCall(String id, LLMCallRequest request) {
         ActionLogContext.put("llm_call_id", id);
         return agentRunService.llmCall(id, request);
+    }
+
+    @Override
+    public AgentCallResponse call(String agentId, AgentCallRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("agent_id", agentId);
+        return agentRunService.call(agentId, request);
     }
 
     @Override
