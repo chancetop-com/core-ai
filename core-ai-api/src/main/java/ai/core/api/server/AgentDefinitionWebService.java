@@ -31,6 +31,10 @@ public interface AgentDefinitionWebService {
     @Path("/api/agents/:id")
     AgentDefinitionView get(@PathParam("id") String id);
 
+    @GET
+    @Path("/api/agents/name/:name")
+    AgentDefinitionView getByName(@PathParam("name") String name);
+
     @PUT
     @Path("/api/agents/:id")
     AgentDefinitionView update(@PathParam("id") String id, UpdateAgentRequest request);

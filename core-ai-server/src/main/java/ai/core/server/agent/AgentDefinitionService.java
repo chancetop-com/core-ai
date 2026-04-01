@@ -37,6 +37,12 @@ public class AgentDefinitionService {
     AgentSessionManager sessionManager;
 
     public AgentDefinitionView create(CreateAgentRequest request, String userId) {
+        var existing = agentDefinitionCollection.findOne(Filters.and(
+                Filters.eq("user_id", userId),
+                Filters.eq("name", request.name)));
+        if (existing.isPresent()) {
+            throw new RuntimeException("agent name already exists: " + request.name);
+        }
         var entity = new AgentDefinition();
         entity.id = UUID.randomUUID().toString();
         entity.userId = userId;
@@ -78,6 +84,14 @@ public class AgentDefinitionService {
     public AgentDefinitionView get(String id) {
         var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+        return toView(entity);
+    }
+
+    public AgentDefinitionView getByName(String name, String userId) {
+        var entity = agentDefinitionCollection.findOne(Filters.and(
+                Filters.eq("user_id", userId),
+                Filters.eq("name", name)))
+                .orElseThrow(() -> new RuntimeException("agent not found, name=" + name));
         return toView(entity);
     }
 

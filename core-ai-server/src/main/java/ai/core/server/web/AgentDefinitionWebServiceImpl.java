@@ -40,6 +40,12 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     }
 
     @Override
+    public AgentDefinitionView getByName(String name) {
+        var userId = AuthContext.userId(webContext);
+        return agentDefinitionService.getByName(name, userId);
+    }
+
+    @Override
     public AgentDefinitionView update(String id, UpdateAgentRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
