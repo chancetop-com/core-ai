@@ -1,5 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { useState } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { Activity, Bot, LayoutDashboard, MessageCircle, Moon, Sun, PanelLeft, Users, FileText, LogOut } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
@@ -10,6 +10,28 @@ export default function Layout() {
   const caps = useCapabilities();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      '/chat': 'Chat',
+      '/': 'Traces',
+      '/traces': 'Traces',
+      '/sessions': 'Sessions',
+      '/agents': 'Agents',
+      '/system-prompts': 'System Prompts',
+      '/dashboard': 'Dashboard',
+      '/login': 'Login',
+    };
+    const path = location.pathname;
+    const title = titles[path]
+      || (path.startsWith('/agents/') ? 'Agent Detail' : null)
+      || (path.startsWith('/traces/') ? 'Trace Detail' : null)
+      || (path.startsWith('/runs/') ? 'Run Detail' : null)
+      || (path.startsWith('/system-prompts/') ? 'System Prompt' : null)
+      || 'Core AI';
+    document.title = `${title} - Core AI`;
+  }, [location.pathname]);
 
   const navItems = [
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },

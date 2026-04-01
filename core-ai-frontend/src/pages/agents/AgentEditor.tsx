@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -279,6 +279,11 @@ export default function AgentEditor() {
             </dl>
           </div>
 
+          {/* API Usage */}
+          {agent.status === 'PUBLISHED' && (
+            <ApiUsagePanel agentId={agent.id} />
+          )}
+
           {/* Trigger Run */}
           {agent.status === 'PUBLISHED' && (
             <div className="rounded-xl border p-4"
@@ -348,6 +353,81 @@ export default function AgentEditor() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ApiUsagePanel({ agentId }: { agentId: string }) {
+  const [copied, setCopied] = useState('');
+  const [tab, setTab] = useState<'trigger' | 'session'>('trigger');
+  const apiKey = localStorage.getItem('apiKey') || '<YOUR_API_KEY>';
+  const baseUrl = window.location.origin;
+
+  const triggerCurl = `curl -X POST '${baseUrl}/api/runs/agent/${agentId}/trigger' \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer ${apiKey}' \\
+  -d '{"input": "Hello, what can you do?"}'`;
+
+  const sessionCurl = `# 1. Create session
+SESSION_ID=$(curl -s -X POST '${baseUrl}/api/sessions' \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer ${apiKey}' \\
+  -d '{"agent_id": "${agentId}"}' | jq -r '.sessionId')
+
+# 2. Connect SSE (in another terminal)
+curl -N -X PUT "${baseUrl}/api/sessions/events?sessionId=$SESSION_ID" \\
+  -H 'Authorization: Bearer ${apiKey}' \\
+  -H 'Accept: text/event-stream'
+
+# 3. Send message
+curl -X POST "${baseUrl}/api/sessions/$SESSION_ID/messages" \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer ${apiKey}' \\
+  -d '{"message": "Hello!"}'`;
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(''), 2000);
+  };
+
+  const tabs = [
+    { key: 'trigger' as const, label: 'Trigger Run' },
+    { key: 'session' as const, label: 'Session (Streaming)' },
+  ];
+
+  const currentCode = tab === 'trigger' ? triggerCurl : sessionCurl;
+
+  return (
+    <div className="rounded-xl border overflow-hidden"
+      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="flex items-center gap-2">
+          <Code size={14} style={{ color: 'var(--color-primary)' }} />
+          <h3 className="font-medium text-sm">API Usage</h3>
+        </div>
+        <button onClick={() => handleCopy(currentCode, tab)}
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded cursor-pointer"
+          style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
+          {copied === tab ? <><Check size={12} style={{ color: 'var(--color-success)' }} /> Copied</> : <><Copy size={12} /> Copy</>}
+        </button>
+      </div>
+      <div className="flex border-b" style={{ borderColor: 'var(--color-border)' }}>
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="px-4 py-1.5 text-xs font-medium cursor-pointer"
+            style={{
+              color: tab === t.key ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              borderBottom: tab === t.key ? '2px solid var(--color-primary)' : '2px solid transparent',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <pre className="px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap"
+        style={{ maxHeight: '200px', color: 'var(--color-text-secondary)' }}>
+        {currentCode}
+      </pre>
     </div>
   );
 }
