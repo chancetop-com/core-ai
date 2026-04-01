@@ -160,7 +160,7 @@ export default function Dashboard() {
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }} tickFormatter={formatNum} />
                 <Tooltip
                   contentStyle={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 12 }}
-                  formatter={(value: number) => formatNum(value)} />
+                  formatter={(value) => formatNum(Number(value))} />
                 <Area type="monotone" dataKey="input" stroke="#6366f1" strokeWidth={2} fill="url(#inputGrad)" name="Input" />
                 <Area type="monotone" dataKey="output" stroke="#f59e0b" strokeWidth={2} fill="url(#outputGrad)" name="Output" />
               </AreaChart>

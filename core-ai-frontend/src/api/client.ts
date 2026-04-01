@@ -1,14 +1,40 @@
 const BASE = '';
 
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const apiKey = localStorage.getItem('apiKey');
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+  return headers;
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     ...options,
   });
+  if (res.status === 401) {
+    localStorage.removeItem('apiKey');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
+
+export interface LoginResponse {
+  api_key: string;
+  user_id: string;
+  name: string;
+}
+
+export const authApi = {
+  login: (email: string, password: string) =>
+    request<LoginResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  register: (email: string, password: string, name?: string) =>
+    request<{ api_key: string; user_id: string }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
+};
 
 export interface Trace {
   id: string;

@@ -32,13 +32,7 @@ public class AuthInterceptor implements Interceptor {
                 || path.startsWith("/api/webhooks/")
                 || path.startsWith("/api/public/otel/")
                 || path.startsWith("/api/ingest/")
-                || path.startsWith("/api/traces")
-                || path.startsWith("/api/prompts")
-                || path.startsWith("/api/system-prompts")
-                || path.startsWith("/api/agents")
-                || path.startsWith("/api/runs")
-                || path.startsWith("/api/tools")) {
-            invocation.context().put(AuthContext.USER_ID_KEY, "anonymous");
+                || path.startsWith("/api/capabilities")) {
             return invocation.proceed();
         }
 
