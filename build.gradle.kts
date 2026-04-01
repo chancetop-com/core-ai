@@ -116,6 +116,26 @@ project(":core-ai-api") {
 project(":core-ai-server") {
     version = ProjectVersions.CORE_AI_SERVER_VERSION
     apply(plugin = "app")
+    tasks.register<Exec>("npmInstallServer") {
+        group = "build"
+        workingDir = rootDir.resolve("core-ai-frontend")
+        commandLine(Frontend.commandLine(listOf("npm", "install", "--legacy-peer-deps")))
+    }
+    tasks.register<Exec>("buildFrontendServer") {
+        group = "build"
+        dependsOn("npmInstallServer")
+        workingDir = rootDir.resolve("core-ai-frontend")
+        commandLine(Frontend.commandLine(listOf("npm", "run", "build")))
+    }
+    tasks.register<Copy>("copyFrontendServer") {
+        group = "build"
+        dependsOn("buildFrontendServer")
+        from(rootDir.resolve("core-ai-frontend/build/dist"))
+        into(layout.buildDirectory.dir("install/core-ai-server/web"))
+    }
+    tasks.named("installDist") {
+        finalizedBy("copyFrontendServer")
+    }
     dependencies {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))

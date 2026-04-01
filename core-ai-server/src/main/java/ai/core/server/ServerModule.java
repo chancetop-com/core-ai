@@ -45,6 +45,7 @@ import ai.core.server.web.AuthWebServiceImpl;
 import ai.core.server.web.UserWebServiceImpl;
 import ai.core.server.systemprompt.SystemPromptController;
 import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.server.web.StaticFileController;
 import ai.core.server.trace.service.IngestService;
 import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.PromptService;
@@ -116,6 +117,30 @@ public class ServerModule extends Module {
 
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
+
+        registerStaticFiles();
+    }
+
+    private void registerStaticFiles() {
+        var webPath = System.getProperty("core.webPath");
+        if (webPath == null) return;
+        var webDir = Path.of(webPath);
+        if (!webDir.toFile().exists()) return;
+        var controller = new StaticFileController(webDir);
+        // static assets
+        http().route(HTTPMethod.GET, "/favicon.svg", controller::serve);
+        http().route(HTTPMethod.GET, "/icons.svg", controller::serve);
+        http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
+        // SPA routes (return index.html for all frontend paths)
+        for (var path : new String[]{"/", "/login", "/chat", "/agents", "/sessions",
+                "/system-prompts", "/dashboard", "/traces"}) {
+            http().route(HTTPMethod.GET, path, controller::serve);
+        }
+        // SPA dynamic routes
+        http().route(HTTPMethod.GET, "/agents/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/runs/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/system-prompts/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/traces/:id", controller::serve);
     }
 
     private void registerFile() {

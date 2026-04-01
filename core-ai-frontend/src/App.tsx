@@ -43,7 +43,7 @@ export default function App() {
 
   if (loading) return null;
 
-  const defaultPath = caps.chat ? '/chat' : '/';
+  const defaultPath = '/dashboard';
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
