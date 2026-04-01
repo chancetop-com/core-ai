@@ -620,17 +620,16 @@ public class TerminalUI {
         impl.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference("backspace-refresh"), "\u0008");
 
-        impl.getWidgets().put("bracketed-paste", () -> {
-            // This widget is triggered when terminal sends ESC[200~ (paste start) sequence
-            // The actual pasted content is automatically inserted by JLine's LineReader
-            // when BRACKETED_PASTE option is enabled
-            LOGGER.debug("bracketed-paste widget triggered (JLine built-in)");
-            // Just redraw the line - content is already in buffer
-            impl.redrawLine();
-            return true;
-        });
-        impl.getKeyMaps().get(LineReader.MAIN)
-                .bind(new Reference("bracketed-paste"), "\u001B[200~");
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (os.contains("win")) {
+            impl.getWidgets().put("bracketed-paste", () -> {
+                LOGGER.debug("bracketed-paste widget triggered (JLine built-in)");
+                impl.redrawLine();
+                return true;
+            });
+            impl.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference("bracketed-paste"), "\u001B[200~");
+        }
     }
 
     private String readBracketedPaste() {
