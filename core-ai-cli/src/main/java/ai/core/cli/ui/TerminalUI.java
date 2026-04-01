@@ -622,13 +622,21 @@ public class TerminalUI {
         impl.getKeyMaps().get(LineReader.MAIN)
                 .bind(new Reference("backspace-refresh"), "\u0008");
 
+        impl.getWidgets().put("bracketed-paste", () -> {
+            LOGGER.debug("bracketed-paste widget triggered (JLine built-in)");
+            String pasted = readBracketedPaste();
+            String normalized = pasted.replace("\r\n", "\n").replace("\r", "\n");
+            if (pasteBuffer.isLarge(normalized)) {
+                impl.getBuffer().write(pasteBuffer.store(normalized));
+            } else {
+                impl.getBuffer().write(normalized);
+            }
+            impl.redrawLine();
+            return true;
+        });
+
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
-            impl.getWidgets().put("bracketed-paste", () -> {
-                LOGGER.debug("bracketed-paste widget triggered (JLine built-in)");
-                impl.redrawLine();
-                return true;
-            });
             impl.getKeyMaps().get(LineReader.MAIN)
                     .bind(new Reference("bracketed-paste"), "\u001B[200~");
         }
