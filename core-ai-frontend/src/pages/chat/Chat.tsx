@@ -90,15 +90,17 @@ function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
 }
 
 export default function Chat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try { const s = sessionStorage.getItem('chat_messages'); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<'idle' | 'running'>('idle');
   const [awaitInfo, setAwaitInfo] = useState<AwaitInfo | null>(null);
 
   // Agent selection
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(() => sessionStorage.getItem('chat_agentId') || '');
+  const [sessionId, setSessionId] = useState<string | null>(() => sessionStorage.getItem('chat_sessionId'));
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -113,13 +115,26 @@ export default function Chat() {
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
   useEffect(() => { if (status === 'idle') inputRef.current?.focus(); }, [status]);
 
+  // Persist chat state
+  useEffect(() => {
+    if (messages.length > 0) sessionStorage.setItem('chat_messages', JSON.stringify(messages));
+    else sessionStorage.removeItem('chat_messages');
+  }, [messages]);
+  useEffect(() => {
+    if (sessionId) sessionStorage.setItem('chat_sessionId', sessionId);
+    else sessionStorage.removeItem('chat_sessionId');
+  }, [sessionId]);
+  useEffect(() => {
+    if (selectedAgentId) sessionStorage.setItem('chat_agentId', selectedAgentId);
+  }, [selectedAgentId]);
+
   // Load published agents
   useEffect(() => {
     api.agents.list().then(res => {
       const published = (res.agents || []).filter(a => a.status === 'PUBLISHED');
       setAgents(published);
-      if (published.length > 0 && !selectedAgentId) {
-        setSelectedAgentId(published[0].id);
+      if (published.length > 0) {
+        setSelectedAgentId(prev => prev || published[0].id);
       }
     }).catch(console.error);
   }, []);
@@ -280,7 +295,6 @@ export default function Chat() {
   };
 
   const handleNewChat = () => {
-    // Close existing SSE and session
     sseControllerRef.current?.abort();
     sseControllerRef.current = null;
     if (sessionId) sessionApi.close(sessionId).catch(() => {});
@@ -288,6 +302,10 @@ export default function Chat() {
     setMessages([]);
     setStatus('idle');
     setAwaitInfo(null);
+    streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
+    sessionStorage.removeItem('chat_messages');
+    sessionStorage.removeItem('chat_sessionId');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

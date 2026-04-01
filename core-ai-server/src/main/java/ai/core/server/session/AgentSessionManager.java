@@ -48,7 +48,7 @@ public class AgentSessionManager {
 
     public String createSession(SessionConfig config, String userId) {
         var sessionId = UUID.randomUUID().toString();
-        var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
+        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, null, context);
         var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
         var permissionStore = new InMemoryToolPermissionStore();
@@ -70,7 +70,7 @@ public class AgentSessionManager {
         var tools = toolRegistryService.resolveTools(toolIds);
 
         var sessionId = UUID.randomUUID().toString();
-        var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
+        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
         var autoApproveAll = Boolean.TRUE.equals(config.autoApproveAll);
         var permissionStore = new InMemoryToolPermissionStore();

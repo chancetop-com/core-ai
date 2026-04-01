@@ -26,6 +26,9 @@ export default function AgentEditor() {
     if (!id) return;
     api.agents.get(id).then(setAgent).catch(console.error).finally(() => setLoading(false));
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
+    // auto-load runs
+    setRunsLoading(true);
+    api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id]);
 
   const loadRuns = async () => {
@@ -88,6 +91,9 @@ export default function AgentEditor() {
       await api.agents.trigger(id, runInput);
       setRunInput('');
       loadRuns();
+      // Refresh again after a delay since run may still be in progress
+      setTimeout(loadRuns, 3000);
+      setTimeout(loadRuns, 8000);
     } finally {
       setTriggering(false);
     }
