@@ -26,6 +26,7 @@ public final class CliLogger extends AbstractLogger {
 
     private static volatile PrintWriter fileWriter;
     private static volatile String currentSessionId = "default";
+    private static volatile PrintWriter terminalWriter;
 
     public static void initialize(String sessionId) {
         currentSessionId = sessionId;
@@ -85,6 +86,10 @@ public final class CliLogger extends AbstractLogger {
         CliLogger.currentSessionId = currentSessionId;
     }
 
+    public static void setTerminalWriter(PrintWriter writer) {
+        terminalWriter = writer;
+    }
+
     CliLogger(String name) {
         this.name = name;
     }
@@ -108,11 +113,9 @@ public final class CliLogger extends AbstractLogger {
 
         writeToFile(line, throwable);
 
-        if (writeToTerminal) {
+        if (writeToTerminal && terminalWriter == null) {
             STDERR.println(line);
-            if (throwable != null) {
-                throwable.printStackTrace(STDERR);
-            }
+            if (throwable != null) throwable.printStackTrace(STDERR);
             STDERR.flush();
         }
     }

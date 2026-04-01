@@ -3,6 +3,7 @@ package ai.core.cli.ui;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.cli.DebugLog;
+import ai.core.cli.log.CliLogger;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.Reference;
@@ -98,6 +99,7 @@ public class TerminalUI {
             // Enable Bracketed Paste Mode for Windows Terminal
             enableBracketedPaste();
         }
+        CliLogger.setTerminalWriter(this.writer);
     }
 
     // Bracketed Paste Mode sequences: ESC[?2004h to enable, ESC[?2004l to disable
