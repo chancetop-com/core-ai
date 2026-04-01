@@ -29,33 +29,33 @@ public class TraceService {
     @Inject
     MongoCollection<Span> spanCollection;
 
-    public List<Trace> list(int offset, int limit, String name, String status, String sessionId, String userId, ZonedDateTime startFrom, ZonedDateTime startTo) {
+    public List<Trace> list(TraceListFilter filter) {
         var query = new Query();
-        query.skip = offset;
-        query.limit = limit;
+        query.skip = filter.offset;
+        query.limit = filter.limit;
         query.sort = Sorts.descending("created_at");
 
-        List<Bson> filters = new ArrayList<>();
-        if (name != null && !name.isEmpty()) {
-            filters.add(Filters.regex("name", name, "i"));
+        List<Bson> bsonFilters = new ArrayList<>();
+        if (filter.name != null && !filter.name.isEmpty()) {
+            bsonFilters.add(Filters.regex("name", filter.name, "i"));
         }
-        if (status != null && !status.isEmpty()) {
-            filters.add(Filters.eq("status", TraceStatus.valueOf(status)));
+        if (filter.status != null && !filter.status.isEmpty()) {
+            bsonFilters.add(Filters.eq("status", TraceStatus.valueOf(filter.status)));
         }
-        if (sessionId != null && !sessionId.isEmpty()) {
-            filters.add(Filters.eq("session_id", sessionId));
+        if (filter.sessionId != null && !filter.sessionId.isEmpty()) {
+            bsonFilters.add(Filters.eq("session_id", filter.sessionId));
         }
-        if (userId != null && !userId.isEmpty()) {
-            filters.add(Filters.eq("user_id", userId));
+        if (filter.userId != null && !filter.userId.isEmpty()) {
+            bsonFilters.add(Filters.eq("user_id", filter.userId));
         }
-        if (startFrom != null) {
-            filters.add(Filters.gte("started_at", startFrom));
+        if (filter.startFrom != null) {
+            bsonFilters.add(Filters.gte("started_at", filter.startFrom));
         }
-        if (startTo != null) {
-            filters.add(Filters.lte("started_at", startTo));
+        if (filter.startTo != null) {
+            bsonFilters.add(Filters.lte("started_at", filter.startTo));
         }
-        if (!filters.isEmpty()) {
-            query.filter = filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
+        if (!bsonFilters.isEmpty()) {
+            query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
         }
         return traceCollection.find(query);
     }
@@ -150,5 +150,16 @@ public class TraceService {
 
     public void saveSpan(Span span) {
         spanCollection.insert(span);
+    }
+
+    public static class TraceListFilter {
+        public int offset;
+        public int limit = 20;
+        public String name;
+        public String status;
+        public String sessionId;
+        public String userId;
+        public ZonedDateTime startFrom;
+        public ZonedDateTime startTo;
     }
 }

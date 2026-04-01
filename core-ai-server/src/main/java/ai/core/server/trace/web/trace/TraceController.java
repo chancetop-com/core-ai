@@ -21,15 +21,16 @@ public class TraceController {
 
     public Response list(Request request) {
         var params = request.queryParams();
-        int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
-        int limit = Integer.parseInt(params.getOrDefault("limit", "20"));
-        String name = params.get("name");
-        String status = params.get("status");
-        String sessionId = params.get("sessionId");
-        String userId = params.get("userId");
-        ZonedDateTime startFrom = parseDateTime(params.get("startFrom"));
-        ZonedDateTime startTo = parseDateTime(params.get("startTo"));
-        var traces = traceService.list(offset, limit, name, status, sessionId, userId, startFrom, startTo);
+        var filter = new TraceService.TraceListFilter();
+        filter.offset = Integer.parseInt(params.getOrDefault("offset", "0"));
+        filter.limit = Integer.parseInt(params.getOrDefault("limit", "20"));
+        filter.name = params.get("name");
+        filter.status = params.get("status");
+        filter.sessionId = params.get("sessionId");
+        filter.userId = params.get("userId");
+        filter.startFrom = parseDateTime(params.get("startFrom"));
+        filter.startTo = parseDateTime(params.get("startTo"));
+        var traces = traceService.list(filter);
         return jsonResponse(traces);
     }
 

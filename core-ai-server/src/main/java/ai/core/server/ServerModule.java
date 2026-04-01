@@ -132,8 +132,11 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/icons.svg", controller::serve);
         http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
         // SPA routes (return index.html for all frontend paths)
-        for (var path : new String[]{"/", "/login", "/chat", "/agents", "/sessions",
-                "/system-prompts", "/dashboard", "/traces"}) {
+        var spaRoutes = new String[]{
+            "/", "/login", "/chat", "/agents", "/sessions",
+            "/system-prompts", "/dashboard", "/traces"
+        };
+        for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);
         }
         // SPA dynamic routes
