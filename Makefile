@@ -37,10 +37,9 @@ CLI_BUILD_DIR = build/core-ai-cli/native/nativeCompile
 docker:
 	@test -n "$(DOCKER_USER)" || (echo "ERROR: set DOCKER_USERNAME env var" && exit 1)
 	$(GRADLEW) :core-ai-server:docker
-	docker build -t $(FULL_IMAGE) $(DOCKER_DIR)
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(FULL_IMAGE) --push $(DOCKER_DIR)
 
 push: docker
-	docker push $(FULL_IMAGE)
 
 cli:
 	$(GRADLEW) :core-ai-cli:nativeCompile
