@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -125,22 +125,6 @@ export default function AgentEditor() {
     URL.revokeObjectURL(url);
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !agent) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result as string);
-        setAgent({ ...agent, ...data, id: agent.id, status: agent.status } as AgentDefinition);
-      } catch {
-        alert('Invalid JSON file');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
   const inputStyle = {
     background: 'var(--color-bg-tertiary)',
     borderColor: 'var(--color-border)',
@@ -175,11 +159,6 @@ export default function AgentEditor() {
             style={{ borderColor: 'var(--color-border)' }}>
             <Download size={14} /> Export
           </button>
-          <label className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
-            style={{ borderColor: 'var(--color-border)' }}>
-            <FileUp size={14} /> Import
-            <input type="file" accept=".json" className="hidden" onChange={handleImport} />
-          </label>
           <button onClick={handlePublish}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
             style={{ borderColor: 'var(--color-border)' }}>

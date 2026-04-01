@@ -1,26 +1,115 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Bot } from 'lucide-react';
+import { Plus, Bot, Download, FileUp, Check } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 
+const EXPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
+  'max_turns', 'timeout_seconds', 'tool_ids', 'input_template', 'variables', 'response_schema'] as const;
+
+function toExportData(a: AgentDefinition): Record<string, unknown> {
+  const raw = a as unknown as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  for (const key of EXPORT_FIELDS) {
+    if (raw[key] != null) data[key] = raw[key];
+  }
+  return data;
+}
+
 export default function AgentList() {
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
     api.agents.list().then(res => setAgents(res.agents || [])).finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(load, []);
+
+  const userAgents = agents.filter(a => !a.system_default);
 
   const handleCreate = async () => {
     const name = `New Agent ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
-    const created = await api.agents.create({
-      name,
-      type: 'AGENT',
-    });
+    const created = await api.agents.create({ name, type: 'AGENT' });
     if (created?.id) navigate(`/agents/${created.id}`);
+  };
+
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === userAgents.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(userAgents.map(a => a.id)));
+    }
+  };
+
+  const handleExport = () => {
+    const toExport = userAgents.filter(a => selected.has(a.id));
+    if (toExport.length === 0) return;
+    const exportData = toExport.map(toExportData);
+    const json = JSON.stringify(exportData.length === 1 ? exportData[0] : exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const fileName = toExport.length === 1
+      ? `${toExport[0].name.replace(/\s+/g, '-').toLowerCase()}.agent.json`
+      : `agents-export-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const items = Array.isArray(data) ? data : [data];
+      const existingNames = new Set(agents.map(a => a.name));
+      let created = 0;
+      for (const item of items) {
+        if (!item.name) continue;
+        let name = item.name;
+        let suffix = 1;
+        while (existingNames.has(name)) {
+          name = `${item.name} (${suffix++})`;
+        }
+        existingNames.add(name);
+        try {
+          await api.agents.create({ ...item, name });
+          created++;
+        } catch (err) {
+          console.error(`Failed to import agent "${name}":`, err);
+        }
+      }
+      alert(`Imported ${created} of ${items.length} agent(s)`);
+      load();
+    } catch {
+      alert('Invalid JSON file');
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
   };
 
   const formatTime = (iso: string) => {
@@ -43,30 +132,83 @@ export default function AgentList() {
             Create and manage your AI agents
           </p>
         </div>
-        <button onClick={handleCreate}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-          style={{ background: 'var(--color-primary)' }}>
-          <Plus size={16} /> New Agent
-        </button>
+        <div className="flex items-center gap-2">
+          {selectMode ? (
+            <>
+              <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                {selected.size} selected
+              </span>
+              <button onClick={toggleSelectAll}
+                className="px-3 py-2 rounded-lg text-sm border cursor-pointer"
+                style={{ borderColor: 'var(--color-border)' }}>
+                {selected.size === userAgents.length ? 'Deselect All' : 'Select All'}
+              </button>
+              <button onClick={handleExport} disabled={selected.size === 0}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
+                style={{ background: 'var(--color-primary)' }}>
+                <Download size={14} /> Export ({selected.size})
+              </button>
+              <button onClick={() => { setSelectMode(false); setSelected(new Set()); }}
+                className="px-3 py-2 rounded-lg text-sm border cursor-pointer"
+                style={{ borderColor: 'var(--color-border)' }}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              {userAgents.length > 0 && (
+                <button onClick={() => setSelectMode(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+                  style={{ borderColor: 'var(--color-border)' }}>
+                  <Download size={14} /> Export
+                </button>
+              )}
+              <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+                style={{ borderColor: 'var(--color-border)', opacity: importing ? 0.5 : 1 }}>
+                <FileUp size={14} /> {importing ? 'Importing...' : 'Import'}
+                <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} disabled={importing} />
+              </label>
+              <button onClick={handleCreate}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                style={{ background: 'var(--color-primary)' }}>
+                <Plus size={16} /> New Agent
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4">
         {loading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
-        ) : agents.length === 0 ? (
+        ) : userAgents.length === 0 ? (
           <div className="text-center py-12 rounded-xl border"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-            No agents yet. Click "New Agent" to create one.
+            No agents yet. Click "New Agent" to create one, or import from a JSON file.
           </div>
-        ) : agents.filter(a => !a.system_default).map(a => (
-          <div key={a.id} onClick={() => navigate(`/agents/${a.id}`)}
+        ) : userAgents.map(a => (
+          <div key={a.id}
+            onClick={() => selectMode ? toggleSelect(a.id, { stopPropagation: () => {} } as React.MouseEvent) : navigate(`/agents/${a.id}`)}
             className="rounded-xl border p-4 cursor-pointer transition-colors"
-            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}>
+            style={{
+              background: selected.has(a.id) ? 'var(--color-bg-tertiary)' : 'var(--color-bg-secondary)',
+              borderColor: selected.has(a.id) ? 'var(--color-primary)' : 'var(--color-border)',
+            }}
+            onMouseEnter={e => { if (!selected.has(a.id)) e.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
+            onMouseLeave={e => { if (!selected.has(a.id)) e.currentTarget.style.background = selected.has(a.id) ? 'var(--color-bg-tertiary)' : 'var(--color-bg-secondary)'; }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Bot size={18} style={{ color: 'var(--color-primary)' }} />
+                {selectMode ? (
+                  <div className="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0"
+                    style={{
+                      borderColor: selected.has(a.id) ? 'var(--color-primary)' : 'var(--color-border)',
+                      background: selected.has(a.id) ? 'var(--color-primary)' : 'transparent',
+                    }}>
+                    {selected.has(a.id) && <Check size={12} color="white" />}
+                  </div>
+                ) : (
+                  <Bot size={18} style={{ color: 'var(--color-primary)' }} />
+                )}
                 <span className="font-medium">{a.name}</span>
                 <StatusBadge status={a.status} />
                 <span className="px-2 py-0.5 rounded text-xs"
@@ -84,7 +226,6 @@ export default function AgentList() {
             <div className="flex items-center gap-4 mt-2 ml-8 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               {a.model && <span>Model: {a.model}</span>}
               {a.max_turns && <span>Max turns: {a.max_turns}</span>}
-              {a.system_default && <span className="px-2 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>System Default</span>}
             </div>
           </div>
         ))}
