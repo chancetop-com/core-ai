@@ -155,6 +155,7 @@ export interface AgentDefinition {
   webhook_secret: string;
   system_default: boolean;
   type: string;
+  response_schema: unknown;
   created_by: string;
   status: string;
   published_at: string;

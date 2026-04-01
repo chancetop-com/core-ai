@@ -15,8 +15,9 @@ export default function AgentList() {
   }, []);
 
   const handleCreate = async () => {
+    const name = `New Agent ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
     const created = await api.agents.create({
-      name: 'New Agent',
+      name,
       type: 'AGENT',
     });
     if (created?.id) navigate(`/agents/${created.id}`);

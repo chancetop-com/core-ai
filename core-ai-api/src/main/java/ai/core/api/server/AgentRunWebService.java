@@ -42,6 +42,6 @@ public interface AgentRunWebService {
     LLMCallResponse llmCall(@PathParam("id") String id, LLMCallRequest request);
 
     @POST
-    @Path("/api/agents/:agentId/call")
-    AgentCallResponse call(@PathParam("agentId") String agentId, AgentCallRequest request);
+    @Path("/api/agents/:id/call")
+    AgentCallResponse call(@PathParam("id") String agentId, AgentCallRequest request);
 }

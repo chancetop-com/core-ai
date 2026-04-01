@@ -65,6 +65,7 @@ export default function AgentEditor() {
         tool_ids: agent.tool_ids,
         input_template: agent.input_template,
         variables: agent.variables,
+        response_schema: agent.response_schema,
       });
       setAgent(updated);
     } finally {
@@ -260,6 +261,13 @@ export default function AgentEditor() {
               style={inputStyle}
               placeholder="Input template with {{variable}} placeholders..." />
           </div>
+
+          {/* Response Schema */}
+          <ResponseSchemaEditor
+            value={agent.response_schema}
+            onChange={v => update('response_schema', v)}
+            inputStyle={inputStyle}
+          />
         </div>
 
         {/* Right: info + run */}
@@ -353,6 +361,77 @@ export default function AgentEditor() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ResponseSchemaEditor({ value, onChange, inputStyle }: {
+  value: unknown;
+  onChange: (v: unknown) => void;
+  inputStyle: React.CSSProperties;
+}) {
+  const [text, setText] = useState(() => {
+    if (!value) return '';
+    try { return JSON.stringify(value, null, 2); } catch { return String(value); }
+  });
+  const [error, setError] = useState('');
+
+  const handleChange = (raw: string) => {
+    setText(raw);
+    if (!raw.trim()) {
+      setError('');
+      onChange(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      setError('');
+      onChange(parsed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Invalid JSON');
+    }
+  };
+
+  const handleFormat = () => {
+    if (!text.trim()) return;
+    try {
+      const parsed = JSON.parse(text);
+      setText(JSON.stringify(parsed, null, 2));
+      setError('');
+      onChange(parsed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Invalid JSON');
+    }
+  };
+
+  // Sync external value changes
+  useEffect(() => {
+    if (!value) { setText(''); return; }
+    try {
+      const newText = JSON.stringify(value, null, 2);
+      if (newText !== text) setText(newText);
+    } catch { /* ignore */ }
+  }, [value]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-sm font-medium">Response Schema</label>
+        <button onClick={handleFormat}
+          className="text-xs px-2 py-0.5 rounded cursor-pointer"
+          style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
+          Format JSON
+        </button>
+      </div>
+      <textarea value={text}
+        onChange={e => handleChange(e.target.value)}
+        rows={6}
+        className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
+        style={{ ...inputStyle, borderColor: error ? 'var(--color-error)' : inputStyle.borderColor }}
+        placeholder='[{"name": "result", "type": "object", "fields": [...]}]' />
+      {error && (
+        <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{error}</p>
+      )}
     </div>
   );
 }
