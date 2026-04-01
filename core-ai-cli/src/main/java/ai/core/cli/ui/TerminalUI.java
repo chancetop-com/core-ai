@@ -122,19 +122,6 @@ public class TerminalUI {
         }
     }
 
-    // 检测是否有 Bracketed Paste 开始序列到达（ESC[200~）
-    private boolean detectBracketedPasteStart() {
-        if (terminal == null) return false;
-        try {
-            var reader = terminal.reader();
-            // 非阻塞检查是否有数据
-            reader.read(50L);  // 短暂等待
-        } catch (Exception e) {
-            // ignore
-        }
-        return false;
-    }
-
     public void setSlashCommands(List<ai.core.cli.command.SlashCommand> commands) {
         if (slashCompleter != null) slashCompleter.setCommands(commands);
     }
@@ -146,16 +133,6 @@ public class TerminalUI {
     public void printStreamingChunk(String chunk) {
         writer.print(chunk);
         writer.flush();
-    }
-
-    public void printSeparator() {
-        String line = "─".repeat(getTerminalWidth());
-        writer.println("\n" + AnsiTheme.SEPARATOR + line + AnsiTheme.RESET);
-        writer.flush();
-    }
-
-    public void showStatus(SessionStatus status) {
-        LOGGER.debug("status: {}", status);
     }
 
     public void showError(String message) {
@@ -230,33 +207,6 @@ public class TerminalUI {
         return tool + arg.substring(0, Math.min(arg.length(), maxArg)) + "..." + ")";
     }
 
-    public void showToolStart(String toolName, String arguments) {
-        String summary = OutputPanel.formatToolSummary(toolName, arguments);
-        writer.println("\n" + AnsiTheme.SEPARATOR + "\u23FA" + AnsiTheme.RESET + " " + summary);
-        writer.flush();
-    }
-
-    public void showToolResult(String toolName, String status, String result) {
-        String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
-        writer.print("  " + icon + "\u23BF" + AnsiTheme.RESET + "  ");
-        if (result != null && !result.isBlank()) {
-            String[] lines = result.split("\n");
-            int limit = Math.min(lines.length, 3);
-            for (int i = 0; i < limit; i++) {
-                String line = lines[i];
-                if (line.length() > 120) line = line.substring(0, 120) + "...";
-                if (i > 0) writer.print("     ");
-                writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
-            }
-            if (lines.length > 3) {
-                writer.println(AnsiTheme.MUTED + "     \u2026 +" + (lines.length - 3) + " lines" + AnsiTheme.RESET);
-            }
-        } else {
-            writer.println(AnsiTheme.MUTED + "Done" + AnsiTheme.RESET);
-        }
-        writer.flush();
-    }
-
     public String readRawLine() {
         return readRawLine(null);
     }
@@ -294,11 +244,6 @@ public class TerminalUI {
         }
     }
 
-    public void endStreaming() {
-        writer.println();
-        writer.flush();
-    }
-
     public int getTerminalWidth() {
         if (terminal != null) {
             int width = terminal.getWidth();
@@ -328,10 +273,6 @@ public class TerminalUI {
 
     public PrintWriter getWriter() {
         return writer;
-    }
-
-    public Terminal getTerminal() {
-        return terminal;
     }
 
     public PasteBuffer getPasteBuffer() {
@@ -461,10 +402,6 @@ public class TerminalUI {
         }
     }
 
-    /**
-     * Wrap a long string into multiple lines at terminal width,
-     * trying to break at word boundaries when possible.
-     */
     private String wrapLongLine(String text, int width) {
         if (text.length() <= width) return text;
         StringBuilder sb = new StringBuilder();
@@ -487,9 +424,6 @@ public class TerminalUI {
         return sb.toString();
     }
 
-    /**
-     * Estimate total visual line count when a long line is wrapped at terminal width.
-     */
     private int estimateLineCount(String text, int width) {
         int explicit = text.split("\n", -1).length;
         if (text.length() <= width) return explicit;
@@ -500,12 +434,6 @@ public class TerminalUI {
         return wrapped;
     }
 
-    /**
-     * After JLine readLine returns on Windows, check if there's remaining
-     * buffered content from a paste operation. Uses 50ms timeout to catch
-     * data that arrives slightly after readLine returns.
-     * Returns null if no remaining content found.
-     */
     private String drainRemainingPasteBuffer() {
         try {
             var reader = terminal.reader();
