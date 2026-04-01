@@ -29,8 +29,11 @@ export interface HistoryMessage {
 }
 
 export const sessionApi = {
-  create: (agentId: string) =>
-    request<{ sessionId: string }>('/api/sessions', { method: 'POST', body: JSON.stringify({ agent_id: agentId }) }),
+  create: (agentId: string, config?: Record<string, unknown>) =>
+    request<{ sessionId: string }>('/api/sessions', {
+      method: 'POST',
+      body: JSON.stringify(agentId ? { agent_id: agentId } : { config }),
+    }),
 
   sendMessage: (sessionId: string, message: string) =>
     request<void>(`/api/sessions/${sessionId}/messages`, { method: 'POST', body: JSON.stringify({ message }) }),

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Play, Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Play, Clock, ChevronDown, ChevronRight, Square, Loader2 } from 'lucide-react';
 import { api } from '../../api/client';
-import type { SystemPrompt, SystemPromptVersion, SystemPromptTestResult } from '../../api/client';
+import type { SystemPrompt, SystemPromptVersion } from '../../api/client';
+import { sessionApi } from '../../api/session';
 
 export default function SystemPromptEditor() {
   const { promptId } = useParams<{ promptId: string }>();
@@ -21,8 +22,10 @@ export default function SystemPromptEditor() {
   const [testModel, setTestModel] = useState('');
   const [testMessage, setTestMessage] = useState('');
   const [testVariables, setTestVariables] = useState<Record<string, string>>({});
-  const [testResult, setTestResult] = useState<SystemPromptTestResult | null>(null);
+  const [testOutput, setTestOutput] = useState('');
   const [testing, setTesting] = useState(false);
+  const testControllerRef = useRef<AbortController | null>(null);
+  const testOutputRef = useRef('');
 
   useEffect(() => {
     if (!promptId) return;
@@ -76,22 +79,71 @@ export default function SystemPromptEditor() {
     navigate('/system-prompts');
   };
 
+  const resolvePromptVariables = (content: string, vars: Record<string, string>): string => {
+    let resolved = content;
+    for (const [k, v] of Object.entries(vars)) {
+      resolved = resolved.replaceAll(`{{${k}}}`, v);
+    }
+    return resolved;
+  };
+
   const handleTest = async () => {
-    if (!promptId || !testMessage.trim()) return;
+    if (!prompt || !testMessage.trim()) return;
     setTesting(true);
-    setTestResult(null);
+    setTestOutput('');
+    testOutputRef.current = '';
+
+    const resolvedPrompt = Object.keys(testVariables).length > 0
+      ? resolvePromptVariables(prompt.content, testVariables)
+      : prompt.content;
+
     try {
-      const result = await api.systemPrompts.test(promptId, {
-        model: testModel,
-        userMessage: testMessage,
-        variables: Object.keys(testVariables).length > 0 ? testVariables : undefined,
+      const config: Record<string, unknown> = { systemPrompt: resolvedPrompt };
+      if (testModel.trim()) config.model = testModel;
+      config.maxTurns = 1;
+
+      const res = await sessionApi.create('', config);
+      const sid = res.sessionId;
+
+      const controller = sessionApi.connectSSE(sid, (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (event.type === 'text_chunk') {
+            const chunk = data.text || data.chunk || '';
+            testOutputRef.current += chunk;
+            setTestOutput(testOutputRef.current);
+          } else if (event.type === 'turn_complete') {
+            setTesting(false);
+            sessionApi.close(sid).catch(() => {});
+          } else if (event.type === 'error') {
+            testOutputRef.current += `\n\nError: ${data.message || data.error}`;
+            setTestOutput(testOutputRef.current);
+            setTesting(false);
+            sessionApi.close(sid).catch(() => {});
+          }
+        } catch { /* ignore */ }
+      }, () => {
+        setTesting(false);
       });
-      setTestResult(result);
+      testControllerRef.current = controller;
+
+      // Wait a bit for SSE to connect, then send message
+      setTimeout(() => {
+        sessionApi.sendMessage(sid, testMessage).catch(err => {
+          setTestOutput(`Error: ${err}`);
+          setTesting(false);
+        });
+      }, 500);
     } catch (e) {
-      setTestResult({ output: `Error: ${e instanceof Error ? e.message : String(e)}`, inputTokens: 0, outputTokens: 0, resolvedPrompt: '' });
-    } finally {
+      setTestOutput(`Error: ${e instanceof Error ? e.message : String(e)}`);
       setTesting(false);
     }
+  };
+
+  const handleStopTest = () => {
+    testControllerRef.current?.abort();
+    testControllerRef.current = null;
+    setTesting(false);
   };
 
   const inputStyle = {
@@ -270,35 +322,32 @@ export default function SystemPromptEditor() {
                   placeholder="Enter a test message..." />
               </div>
 
-              <button onClick={handleTest} disabled={testing || !testMessage.trim()}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-                style={{ background: 'var(--color-success)' }}>
-                <Play size={14} /> {testing ? 'Testing...' : 'Run Test'}
-              </button>
+              {!testing ? (
+                <button onClick={handleTest} disabled={!testMessage.trim()}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
+                  style={{ background: 'var(--color-success)' }}>
+                  <Play size={14} /> Run Test
+                </button>
+              ) : (
+                <button onClick={handleStopTest}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                  style={{ background: 'var(--color-error)' }}>
+                  <Square size={14} /> Stop
+                </button>
+              )}
 
-              {testResult && (
+              {(testOutput || testing) && (
                 <div className="mt-2">
-                  {testResult.resolvedPrompt && (
-                    <details className="mb-2">
-                      <summary className="text-xs cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
-                        Resolved Prompt
-                      </summary>
-                      <pre className="text-xs mt-1 p-2 rounded overflow-auto max-h-32"
-                        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                        {testResult.resolvedPrompt}
-                      </pre>
-                    </details>
-                  )}
                   <div className="rounded-lg p-3 text-sm"
                     style={{ background: 'var(--color-bg-tertiary)' }}>
-                    <pre className="whitespace-pre-wrap text-sm">{testResult.output}</pre>
+                    <pre className="whitespace-pre-wrap text-sm">
+                      {testOutput || ''}
+                      {testing && !testOutput && <Loader2 size={14} className="animate-spin inline" />}
+                    </pre>
+                    {testing && testOutput && (
+                      <span className="inline-block w-1.5 h-4 ml-0.5 animate-pulse" style={{ background: 'var(--color-primary)' }} />
+                    )}
                   </div>
-                  {(testResult.inputTokens > 0 || testResult.outputTokens > 0) && (
-                    <div className="flex gap-4 mt-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                      <span>Input: {testResult.inputTokens} tokens</span>
-                      <span>Output: {testResult.outputTokens} tokens</span>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
