@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -100,6 +100,47 @@ export default function AgentEditor() {
     }
   };
 
+  const handleExport = (a: AgentDefinition) => {
+    const exportData = {
+      name: a.name,
+      description: a.description,
+      type: a.type,
+      system_prompt: a.system_prompt,
+      model: a.model,
+      temperature: a.temperature,
+      max_turns: a.max_turns,
+      timeout_seconds: a.timeout_seconds,
+      tool_ids: a.tool_ids,
+      input_template: a.input_template,
+      variables: a.variables,
+      response_schema: a.response_schema,
+    };
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${a.name.replace(/\s+/g, '-').toLowerCase()}.agent.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !agent) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string);
+        setAgent({ ...agent, ...data, id: agent.id, status: agent.status } as AgentDefinition);
+      } catch {
+        alert('Invalid JSON file');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const inputStyle = {
     background: 'var(--color-bg-tertiary)',
     borderColor: 'var(--color-border)',
@@ -129,6 +170,16 @@ export default function AgentEditor() {
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}>
             <Trash2 size={14} /> Delete
           </button>
+          <button onClick={() => handleExport(agent)}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)' }}>
+            <Download size={14} /> Export
+          </button>
+          <label className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)' }}>
+            <FileUp size={14} /> Import
+            <input type="file" accept=".json" className="hidden" onChange={handleImport} />
+          </label>
           <button onClick={handlePublish}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
             style={{ borderColor: 'var(--color-border)' }}>
