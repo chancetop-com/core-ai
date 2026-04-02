@@ -14,7 +14,7 @@ public class PasteBuffer {
     private static final int CHAR_THRESHOLD = 1000;
     private static final int LINE_THRESHOLD = 10;
     private static final Pattern PLACEHOLDER =
-            Pattern.compile("\\[Pasted Content \\d+ chars #(\\d+)]");
+            Pattern.compile("\\[Pasted \\d+ chars, \\d+ lines #(\\d+)]");
 
     private final Map<String, String> contents = new ConcurrentHashMap<>();
     private final AtomicInteger idGen = new AtomicInteger();
@@ -27,7 +27,8 @@ public class PasteBuffer {
     public String store(String text) {
         String id = String.valueOf(idGen.incrementAndGet());
         contents.put(id, text);
-        return "[Pasted Content " + text.length() + " chars #" + id + "]";
+        int lines = (int) text.chars().filter(c -> c == '\n').count() + 1;
+        return "[Pasted " + text.length() + " chars, " + lines + " lines #" + id + "]";
     }
 
     public String expand(String input) {

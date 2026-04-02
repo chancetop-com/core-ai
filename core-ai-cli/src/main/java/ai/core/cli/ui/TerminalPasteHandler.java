@@ -55,26 +55,10 @@ class TerminalPasteHandler {
         }
         String result = line + "\n" + remaining;
         LOGGER.debug("windows paste: {} + {} = {} chars", line.length(), remaining.length(), result.length());
-        displayPastedContent(result, terminalWidth);
-        return result;
-    }
-
-    private void displayPastedContent(String result, int terminalWidth) {
-        writer.println();
-        String[] allLines = result.split("\n", -1);
-        int maxLines = 5;
-        int width = terminalWidth - 4;
-        for (int i = 0; i < Math.min(allLines.length, maxLines); i++) {
-            String displayLine = allLines[i];
-            if (displayLine.length() > width) {
-                displayLine = displayLine.substring(0, width - 3) + "...";
-            }
-            writer.println(AnsiTheme.MUTED + "  " + displayLine + AnsiTheme.RESET);
-        }
-        if (allLines.length > maxLines) {
-            writer.println(AnsiTheme.MUTED + "  \u2026 +" + (allLines.length - maxLines) + " more lines" + AnsiTheme.RESET);
-        }
+        int lines = (int) result.chars().filter(c -> c == '\n').count() + 1;
+        writer.println(AnsiTheme.MUTED + "  [Pasted " + result.length() + " chars, " + lines + " lines]" + AnsiTheme.RESET);
         writer.flush();
+        return result;
     }
 
     String drainRemainingPasteBuffer() {
