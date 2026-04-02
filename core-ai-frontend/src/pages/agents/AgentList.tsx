@@ -229,6 +229,7 @@ export default function AgentList() {
             <div className="flex items-center gap-4 mt-2 ml-8 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               {a.model && <span>Model: {a.model}</span>}
               {a.max_turns && <span>Max turns: {a.max_turns}</span>}
+              {a.created_by && <span>By: {a.created_by}</span>}
             </div>
           </div>
         ))}
