@@ -44,6 +44,7 @@ export default function Layout() {
       || (path.startsWith('/traces/') ? 'Trace Detail' : null)
       || (path.startsWith('/runs/') ? 'Run Detail' : null)
       || (path.startsWith('/system-prompts/') ? 'System Prompt' : null)
+      || (path.startsWith('/api-tools/') ? 'API Tool Detail' : null)
       || 'Core AI';
     document.title = `${title} - Core AI`;
   }, [location.pathname]);

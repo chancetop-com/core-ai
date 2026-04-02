@@ -6,6 +6,7 @@ export interface Capabilities {
   prompts: boolean;
   dashboard: boolean;
   systemPrompts: boolean;
+  authRequired: boolean;
 }
 
 export const defaultCapabilities: Capabilities = {
@@ -14,6 +15,7 @@ export const defaultCapabilities: Capabilities = {
   prompts: true,
   dashboard: true,
   systemPrompts: true,
+  authRequired: false,
 };
 
 export const CapabilitiesContext = createContext<Capabilities>(defaultCapabilities);

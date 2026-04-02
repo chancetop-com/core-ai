@@ -9,6 +9,7 @@ public class A2ACapabilities {
     public static A2ACapabilities cliMode() {
         var caps = new A2ACapabilities();
         caps.chat = true;
+        caps.authRequired = false;
         return caps;
     }
 
@@ -18,6 +19,7 @@ public class A2ACapabilities {
         caps.traces = true;
         caps.prompts = true;
         caps.dashboard = true;
+        caps.authRequired = false;
         return caps;
     }
 
@@ -32,4 +34,7 @@ public class A2ACapabilities {
 
     @Property(name = "dashboard")
     public Boolean dashboard;
+
+    @Property(name = "auth_required")
+    public Boolean authRequired;
 }

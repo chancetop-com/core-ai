@@ -12,6 +12,7 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      '/service-api': API_TARGET,
       '/api': API_TARGET,
       '/.well-known': API_TARGET,
       '/message': API_TARGET,

@@ -19,7 +19,9 @@ import Tasks from './pages/tasks/Tasks';
 import Mcp from './pages/mcp/Mcp';
 import Tools from './pages/tools/Tools';
 import ApiTools from './pages/api-tools/ApiTools';
-import Skills from './pages/skills/Skills';
+import ApiToolDetail from './pages/api-tools/ApiToolDetail';
+import SkillList from './pages/skills/SkillList';
+import SkillDetail from './pages/skills/SkillDetail';
 import { CapabilitiesContext, fetchCapabilities, defaultCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
@@ -33,6 +35,11 @@ export default function App() {
   useEffect(() => {
     fetchCapabilities().then(c => {
       setCaps(c);
+      // Skip auth for local modes (cli serve / local server)
+      if (!c.authRequired && !getStoredUser()) {
+        storeUser('local', 'local', 'Local');
+        setUser({ apiKey: 'local', userId: 'local', name: 'Local' });
+      }
       setLoading(false);
     });
   }, []);
@@ -49,15 +56,17 @@ export default function App() {
 
   if (loading) return null;
 
-  const defaultPath = '/dashboard';
+  const defaultPath = caps.dashboard ? '/dashboard' : caps.chat ? '/chat' : '/agents';
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
       <CapabilitiesContext.Provider value={caps}>
         <BrowserRouter>
           <Routes>
-            <Route path="/login" element={user ? <Navigate to={defaultPath} replace /> : <Login />} />
-            {!user ? (
+            {caps.authRequired && (
+              <Route path="/login" element={user ? <Navigate to={defaultPath} replace /> : <Login />} />
+            )}
+            {!user && caps.authRequired ? (
               <Route path="*" element={<Navigate to="/login" replace />} />
             ) : (
               <Route element={<Layout />}>
@@ -78,7 +87,9 @@ export default function App() {
                 <Route path="/mcp" element={<Mcp />} />
                 <Route path="/tools" element={<Tools />} />
                 <Route path="/api-tools" element={<ApiTools />} />
-                <Route path="/skills" element={<Skills />} />
+                <Route path="/api-tools/:id" element={<ApiToolDetail />} />
+                <Route path="/skills" element={<SkillList />} />
+                <Route path="/skills/:id" element={<SkillDetail />} />
                 <Route path="*" element={<Navigate to={defaultPath} replace />} />
               </Route>
             )}

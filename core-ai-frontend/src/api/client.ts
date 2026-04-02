@@ -205,6 +205,171 @@ export interface ListRunsResponse {
   total: number;
 }
 
+export interface SkillDefinition {
+  id: string;
+  namespace: string;
+  name: string;
+  qualified_name: string;
+  description: string;
+  source_type: 'UPLOAD' | 'REPO';
+  allowed_tools: string[];
+  metadata: Record<string, string>;
+  version: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListSkillsResponse {
+  skills: SkillDefinition[];
+  total: number;
+}
+
+export interface SkillDownloadResponse {
+  name: string;
+  namespace: string;
+  content: string;
+  resources: { path: string; content: string }[];
+}
+
+export interface ToolRegistryView {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  category: string;
+  config: Record<string, string>;
+  enabled: boolean;
+}
+
+export interface ListToolsResponse {
+  tools: ToolRegistryView[];
+  total: number;
+}
+
+export interface ListToolCategoriesResponse {
+  categories: string[];
+}
+
+export interface ApiAppView {
+  name: string;
+  base_url: string;
+  version: string;
+  description: string;
+}
+
+export interface ListApiAppsResponse {
+  apps: ApiAppView[];
+}
+
+// Service API types
+export interface OperationAdditionalView {
+  name: string;
+  description?: string;
+  example?: string;
+  enabled?: boolean;
+  need_auth?: boolean;
+  path_param_additional?: PathParamAdditionalView[];
+}
+
+export interface PathParamAdditionalView {
+  name: string;
+  description?: string;
+  example?: string;
+}
+
+export interface ServiceAdditionalView {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  operation_additional?: OperationAdditionalView[];
+}
+
+export interface FieldAdditionalView {
+  name: string;
+  description?: string;
+  example?: string;
+}
+
+export interface TypeAdditionalView {
+  name: string;
+  description?: string;
+  field_additional?: FieldAdditionalView[];
+}
+
+export interface ServiceApiView {
+  id: string;
+  name: string;
+  enabled: boolean;
+  description: string;
+  base_url: string;
+  url: string;
+  version: string;
+  payload: string;
+  service_additional: ServiceAdditionalView[];
+  type_additional: TypeAdditionalView[];
+  created_by: string;
+  created_at: string;
+  updated_by: string;
+  updated_at: string;
+}
+
+// Parsed payload types (from ServiceApi.payload JSON)
+export interface ApiPayloadPathParam {
+  name: string;
+  description: string;
+  example: string;
+  type: string;
+}
+
+export interface ApiPayloadOperation {
+  name: string;
+  description: string;
+  need_auth: boolean;
+  example: string;
+  method: string;
+  path: string;
+  pathParams: ApiPayloadPathParam[];
+  requestType: string;
+  responseType: string;
+  optional: boolean;
+  deprecated: boolean;
+}
+
+export interface ApiPayloadService {
+  name: string;
+  description: string;
+  operations: ApiPayloadOperation[];
+}
+
+export interface ApiPayloadTypeField {
+  name: string;
+  description: string;
+  example: string;
+  type: string;
+  typeParams: string[];
+  constraints: Record<string, unknown>;
+}
+
+export interface ApiPayloadType {
+  name: string;
+  type: string;
+  fields: ApiPayloadTypeField[];
+  enumConstants: { name: string; value: string }[];
+}
+
+export interface ApiPayload {
+  app: string;
+  base_url: string;
+  version: string;
+  services: ApiPayloadService[];
+  types: ApiPayloadType[];
+}
+
+export interface ListServiceApiResponse {
+  service_apis: ServiceApiView[];
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -274,5 +439,64 @@ export const api = {
       request<SystemPrompt>(`/api/system-prompts/${promptId}/versions/${version}`),
     test: (promptId: string, data: { model: string; userMessage: string; variables?: Record<string, string> }) =>
       request<SystemPromptTestResult>(`/api/system-prompts/${promptId}/test`, { method: 'POST', body: JSON.stringify(data) }),
+  },
+  skills: {
+    list: (namespace?: string, sourceType?: string, q?: string) => {
+      const params = new URLSearchParams();
+      if (namespace) params.set('namespace', namespace);
+      if (sourceType) params.set('source_type', sourceType);
+      if (q) params.set('q', q);
+      return request<ListSkillsResponse>(`/api/skills${params.toString() ? `?${params}` : ''}`);
+    },
+    get: (id: string) =>
+      request<SkillDefinition>(`/api/skills/${id}`),
+    delete: (id: string) =>
+      request<void>(`/api/skills/${id}`, { method: 'DELETE' }),
+    sync: (id: string) =>
+      request<SkillDefinition>(`/api/skills/${id}/sync`, { method: 'POST' }),
+    download: (id: string) =>
+      request<SkillDownloadResponse>(`/api/skills/${id}/download`),
+  },
+  tools: {
+    list: (category?: string) => {
+      const params = category ? `?category=${category}` : '';
+      return request<ListToolsResponse>(`/api/tools${params}`);
+    },
+    categories: () =>
+      request<ListToolCategoriesResponse>('/api/tools/categories'),
+    get: (id: string) =>
+      request<ToolRegistryView>(`/api/tools/${id}`),
+    createMcpServer: (data: { name: string; description?: string; category?: string; config: Record<string, string>; enabled?: boolean }) =>
+      request<ToolRegistryView>('/api/tools/mcp-servers', { method: 'POST', body: JSON.stringify(data) }),
+    updateMcpServer: (id: string, data: { name?: string; description?: string; category?: string; config?: Record<string, string>; enabled?: boolean }) =>
+      request<ToolRegistryView>(`/api/tools/mcp-servers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteMcpServer: (id: string) =>
+      request<void>(`/api/tools/mcp-servers/${id}`, { method: 'DELETE' }),
+    enableMcpServer: (id: string) =>
+      request<ToolRegistryView>(`/api/tools/mcp-servers/${id}/enable`, { method: 'PUT' }),
+    disableMcpServer: (id: string) =>
+      request<ToolRegistryView>(`/api/tools/mcp-servers/${id}/disable`, { method: 'PUT' }),
+    listApiApps: () =>
+      request<ListApiAppsResponse>('/api/tools/service-api/apps'),
+  },
+  serviceApis: {
+    list: () =>
+      request<ListServiceApiResponse>('/service-api'),
+    get: (id: string) =>
+      request<ServiceApiView>(`/service-api/${id}`),
+    create: (data: { name: string; description?: string; operator: string }) =>
+      request<void>('/service-api', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { enabled?: boolean; description?: string; url?: string; base_url?: string; payload?: string; service_additional?: ServiceAdditionalView[]; type_additional?: TypeAdditionalView[]; operator: string }) =>
+      request<void>(`/service-api/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/service-api/${id}`, { method: 'DELETE' }),
+    updateFromSysApi: (id: string, url: string, operator: string) =>
+      request<void>(`/service-api/${id}/update-from-sys-api`, { method: 'PUT', body: JSON.stringify({ url, operator }) }),
+    updateAllFromSysApi: (operator: string) =>
+      request<void>('/service-api/update-all-from-sys-api', { method: 'PUT', body: JSON.stringify({ operator }) }),
+    enable: (id: string, operator: string) =>
+      request<void>(`/service-api/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: true, operator }) }),
+    disable: (id: string, operator: string) =>
+      request<void>(`/service-api/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: false, operator }) }),
   },
 };
