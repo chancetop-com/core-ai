@@ -18,6 +18,12 @@ import java.util.Set;
  * @author stephen
  */
 public class RemoteSessionCommandHandler {
+    private static String truncate(String text, int max) {
+        if (text == null) return "";
+        var clean = text.replaceAll("[\\r\\n]+", " ").strip();
+        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
+    }
+
     private final TerminalUI ui;
     private final RemoteApiClient api;
     private final String sessionId;
@@ -153,7 +159,7 @@ public class RemoteSessionCommandHandler {
 
         // Special handling for service-api: show API apps for selection
         if ("builtin-service-api".equals(toolId) || "service-api".equals(toolName)) {
-            handleServiceApiTool(toolId);
+            handleServiceApiTool();
             return;
         }
 
@@ -168,7 +174,7 @@ public class RemoteSessionCommandHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private void handleServiceApiTool(String toolId) {
+    private void handleServiceApiTool() {
         // Fetch API apps from server
         String json;
         try {
@@ -290,12 +296,6 @@ public class RemoteSessionCommandHandler {
     private void printField(String label, Object value) {
         if (value == null) return;
         ui.printStreamingChunk(String.format("  %s%-15s%s %s%n", AnsiTheme.MUTED, label + ":", AnsiTheme.RESET, value));
-    }
-
-    private static String truncate(String text, int max) {
-        if (text == null) return "";
-        var clean = text.replaceAll("[\\r\\n]+", " ").strip();
-        return clean.length() <= max ? clean : clean.substring(0, max) + "...";
     }
 
     public void handleBuildAgent() {

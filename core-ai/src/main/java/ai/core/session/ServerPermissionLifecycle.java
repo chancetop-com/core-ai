@@ -3,6 +3,7 @@ package ai.core.session;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.AgentEvent;
+import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
@@ -11,7 +12,6 @@ import ai.core.session.permission.PermissionRule;
 import ai.core.tool.DiffGenerator;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.EditFileTool;
-import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WriteFileTool;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
@@ -58,35 +58,10 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         logger.debug("beforeTool: tool={}, callId={}", toolName, callId);
 
         Map<String, Object> argMap = parseArguments(arguments);
-
-        var startEvent = ToolStartEvent.of(sessionId, callId, toolName, arguments);
-        startEvent.diff = generatePreviewDiff(toolName, argMap);
-        dispatcher.accept(startEvent);
+        dispatchStartEvent(callId, toolName, arguments, argMap);
 
         String pattern = PermissionRule.buildPattern(toolName, argMap);
-
-        if (autoApproveAll) {
-            logger.debug("auto-approve enabled, skipping approval for tool={}, callId={}", toolName, callId);
-            return;
-        }
-        if (Objects.nonNull(executionContext.getSessionId()) && executionContext.getSessionId().contains("subagent")) {
-            return;
-        }
-        if (sessionAllowedTools.contains(toolName)) {
-            logger.debug("session-allowed for tool={}, callId={}", toolName, callId);
-            return;
-        }
-        if (permissionStore != null) {
-            var result = permissionStore.checkPermission(toolName, argMap);
-            if (result.isPresent() && result.get()) {
-                logger.debug("rule matched ALLOW for tool={}, callId={}", toolName, callId);
-                return;
-            }
-            if (result.isPresent()) {
-                logger.debug("rule matched DENY for tool={}, callId={}", toolName, callId);
-                throw new ToolCallDeniedException(toolName);
-            }
-        }
+        if (shouldSkipApproval(toolName, argMap, executionContext)) return;
 
         permissionGate.prepare(callId);
         logger.debug("dispatching approval request: tool={}, callId={}", toolName, callId);
@@ -95,24 +70,39 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         logger.debug("waiting for approval: tool={}, callId={}", toolName, callId);
         var decision = permissionGate.waitForApproval(callId, 300_000);
         logger.debug("approval received: tool={}, callId={}, decision={}", toolName, callId, decision);
+        applyDecision(decision, toolName, pattern);
+    }
 
+    private void dispatchStartEvent(String callId, String toolName, String arguments, Map<String, Object> argMap) {
+        var startEvent = ToolStartEvent.of(sessionId, callId, toolName, arguments);
+        startEvent.diff = generatePreviewDiff(toolName, argMap);
+        dispatcher.accept(startEvent);
+    }
+
+    private boolean shouldSkipApproval(String toolName, Map<String, Object> argMap, ExecutionContext executionContext) {
+        if (autoApproveAll) return true;
+        if (Objects.nonNull(executionContext.getSessionId()) && executionContext.getSessionId().contains("subagent")) return true;
+        if (sessionAllowedTools.contains(toolName)) return true;
+        if (permissionStore != null) {
+            var result = permissionStore.checkPermission(toolName, argMap);
+            if (result.isPresent() && result.get()) return true;
+            if (result.isPresent()) throw new ToolCallDeniedException(toolName);
+        }
+        return false;
+    }
+
+    private void applyDecision(ApprovalDecision decision, String toolName, String pattern) {
         switch (decision) {
             case DENY -> throw new ToolCallDeniedException(toolName);
             case DENY_ALWAYS -> {
-                if (permissionStore != null) {
-                    permissionStore.deny(pattern);
-                }
+                if (permissionStore != null) permissionStore.deny(pattern);
                 throw new ToolCallDeniedException(toolName);
             }
             case APPROVE_ALWAYS -> {
-                if (permissionStore != null) {
-                    permissionStore.allow(pattern);
-                }
+                if (permissionStore != null) permissionStore.allow(pattern);
             }
             case APPROVE_SESSION -> sessionAllowedTools.add(toolName);
-            default -> {
-                // APPROVE: single-time, no persistence
-            }
+            default -> { }
         }
     }
 

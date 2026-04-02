@@ -56,11 +56,33 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
 
     private static List<ToolCallParameter> buildParameters(McpSchema.JsonSchema inputSchema) {
         if (inputSchema == null) return List.of();
-        
         var schemaMap = jsonSchemaToMap(inputSchema);
         return buildParametersFromMap(schemaMap);
     }
-    
+
+    @SuppressWarnings("unchecked")
+    private static List<ToolCallParameter> buildParameters(String name, Map<String, Object> property, Map<String, Object> json) {
+        var type = getString(property, "type");
+        var description = getString(property, "description");
+        var format = getString(property, "format");
+        var required = json.get("required");
+        boolean isRequired = required instanceof List<?> reqList && reqList.contains(name);
+
+        var parameter = ToolCallParameter.builder()
+                .name(name)
+                .description(description)
+                .classType(mapSchemaType(type))
+                .format(format)
+                .required(isRequired)
+                .enums(extractEnums(property.get("enum")))
+                .build();
+
+        if ("array".equalsIgnoreCase(type)) {
+            applyArrayItemSchema(parameter, property);
+        }
+        return List.of(parameter);
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> jsonSchemaToMap(McpSchema.JsonSchema jsonSchema) {
         var map = new HashMap<String, Object>();
@@ -75,7 +97,6 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         var parameters = new ArrayList<ToolCallParameter>();
         var properties = (Map<String, Object>) schemaMap.get("properties");
         if (properties == null || properties.isEmpty()) return parameters;
-
         for (var entry : properties.entrySet()) {
             var propValue = entry.getValue();
             if (propValue instanceof Map<?, ?> propMap) {
@@ -85,57 +106,28 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         }
         return parameters;
     }
-    
+
+    private static List<String> extractEnums(Object enumValue) {
+        if (!(enumValue instanceof List<?> enumList)) return null;
+        var enums = new ArrayList<String>();
+        for (var e : enumList) {
+            if (e != null) enums.add(e.toString());
+        }
+        return enums.isEmpty() ? null : enums;
+    }
+
     @SuppressWarnings("unchecked")
-    private static List<ToolCallParameter> buildParameters(String name, Map<String, Object> property, Map<String, Object> json) {
-        var type = getString(property, "type");
-        var description = getString(property, "description");
-        var format = getString(property, "format");
-        var required = json.get("required");
-        boolean isRequired = required instanceof List<?> reqList && reqList.contains(name);
-        
-        List<String> enums = null;
-        var enumValue = property.get("enum");
-        if (enumValue instanceof List<?> enumList) {
-            enums = new ArrayList<>();
-            for (var e : enumList) {
-                if (e != null) enums.add(e.toString());
-            }
+    private static void applyArrayItemSchema(ToolCallParameter parameter, Map<String, Object> property) {
+        var itemsValue = property.get("items");
+        if (!(itemsValue instanceof Map<?, ?> itemsMap)) return;
+        var items = (Map<String, Object>) itemsMap;
+        var itemType = getString(items, "type");
+        parameter.setItemType(mapSchemaType(itemType));
+        var itemEnums = extractEnums(items.get("enum"));
+        if (itemEnums != null) parameter.setItemEnums(itemEnums);
+        if ("object".equalsIgnoreCase(itemType)) {
+            parameter.setItems(buildParametersFromMap(items));
         }
-        
-        var parameter = ToolCallParameter.builder()
-                .name(name)
-                .description(description)
-                .classType(mapSchemaType(type))
-                .format(format)
-                .required(isRequired)
-                .enums(enums)
-                .build();
-        
-        if ("array".equalsIgnoreCase(type)) {
-            var itemsValue = property.get("items");
-            if (itemsValue instanceof Map<?, ?> itemsMap) {
-                var items = (Map<String, Object>) itemsMap;
-                var itemType = getString(items, "type");
-                parameter.setItemType(mapSchemaType(itemType));
-                
-                var itemEnumValue = items.get("enum");
-                if (itemEnumValue instanceof List<?> itemEnumList) {
-                    var itemEnums = new ArrayList<String>();
-                    for (var e : itemEnumList) {
-                        if (e != null) itemEnums.add(e.toString());
-                    }
-                    if (!itemEnums.isEmpty()) {
-                        parameter.setItemEnums(itemEnums);
-                    }
-                }
-                
-                if ("object".equalsIgnoreCase(itemType)) {
-                    parameter.setItems(buildParametersFromMap(items));
-                }
-            }
-        }
-        return List.of(parameter);
     }
     
     private static String getString(Map<String, Object> map, String key) {

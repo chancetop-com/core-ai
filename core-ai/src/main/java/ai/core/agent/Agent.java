@@ -151,15 +151,12 @@ public class Agent extends Node<Agent> {
         setRound(currentRound);
         if (reflectionListener != null)
             reflectionListener.onReflectionStart(this, getInput(), reflectionConfig.evaluationCriteria());
-
         while (currentRound <= reflectionConfig.maxRound()) {
             setRound(currentRound);
             Instant roundStart = Instant.now();
             String solutionToEvaluate = getOutput();
             logger.debug("Reflection round: {}/{}, agent: {}", currentRound, reflectionConfig.maxRound(), getName());
-
             if (reflectionListener != null) reflectionListener.onBeforeRound(this, currentRound, solutionToEvaluate);
-
             var evalRequest = new ReflectionEvaluator.EvaluationRequest(
                     getInput(), getOutput(), getName(), getLLMProvider(),
                     getTemperature(), getModel(), reflectionConfig, variables);
@@ -167,7 +164,6 @@ public class Agent extends Node<Agent> {
             addTokenCost(evalResult.usage());
             String evaluationJson = evalResult.evaluationJson();
             ReflectionEvaluation evaluation = JSON.fromJSON(ReflectionEvaluation.class, evaluationJson);
-
             if (!AgentHelper.isValidEvaluation(evaluation)) {
                 logger.error("Invalid evaluation score: {}, terminating reflection", evaluation.getScore());
                 history.complete(ReflectionStatus.FAILED);
@@ -175,34 +171,27 @@ public class Agent extends Node<Agent> {
                         new IllegalStateException("Invalid evaluation score: " + evaluation.getScore()));
                 return;
             }
-
             logger.debug("Round {} evaluation: score={}, pass={}, continue={}",
                     currentRound, evaluation.getScore(), evaluation.isPass(), evaluation.isShouldContinue());
-
             history.addRound(new ReflectionHistory.ReflectionRound(currentRound, solutionToEvaluate, evaluationJson,
                     evaluation, Duration.between(roundStart, Instant.now()), (long) getCurrentTokenUsage().getTotalTokens()));
-
             if (AgentHelper.shouldTerminateReflection(reflectionConfig, evaluation, currentRound)) {
                 logger.debug("Reflection terminating: score={}, pass={}", evaluation.getScore(), evaluation.isPass());
                 notifyTerminationReason(evaluation, currentRound);
                 break;
             }
-
             doExecute(ReflectionEvaluator.buildImprovementPrompt(evaluationJson, evaluation), variables, true);
             if (reflectionListener != null)
                 reflectionListener.onAfterRound(this, currentRound, getOutput(), evaluation);
             currentRound++;
         }
-
         if (currentRound > reflectionConfig.maxRound() && reflectionListener != null) {
             int finalScore = history.getRounds().isEmpty() ? 0 : history.getRounds().getLast().getEvaluation().getScore();
             reflectionListener.onMaxRoundsReached(this, finalScore);
         }
-
         history.complete(determineCompletionStatus(history));
         if (reflectionListener != null) reflectionListener.onReflectionComplete(this, history);
     }
-
     private void notifyTerminationReason(ReflectionEvaluation eval, int round) {
         if (reflectionListener == null) return;
         if (eval.isPass() && eval.getScore() >= 8) reflectionListener.onScoreAchieved(this, eval.getScore(), round);
@@ -387,47 +376,36 @@ public class Agent extends Node<Agent> {
     public void setModel(String model) {
         this.model = model;
     }
-
     public String getSystemPrompt() {
         return systemPrompt;
     }
-
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
     }
-
     public Double getTemperature() {
         return temperature;
     }
-
     public String getModel() {
         return model;
     }
-
     public LLMProvider getLLMProvider() {
         return llmProvider;
     }
-
     public Compression getCompression() {
         return compression;
     }
-
     public void setAuthenticated(boolean authenticated) {
         this.authenticated = authenticated;
     }
-
     public void setLlmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
     }
-
     public List<SubAgentToolCall> getSubAgents() {
         return subAgents;
     }
-
     void setSubAgents(List<SubAgentToolCall> subAgents) {
         this.subAgents = subAgents;
     }
-
     public boolean hasSubAgents() {
         return subAgents != null && !subAgents.isEmpty();
     }

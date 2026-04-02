@@ -84,6 +84,11 @@ public class TaskTool extends ToolCall {
     }
 
     @Override
+    public ToolCallResult execute(String text) {
+        throw new AgentRuntimeException("TASK_TOOL_FAILED", "TaskTool requires ExecutionContext");
+    }
+
+    @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {
@@ -95,8 +100,6 @@ public class TaskTool extends ToolCall {
             agent.run(prompt, subContext);
             return ToolCallResult.completed(agent.getMessages().getLast().content.getFirst().text)
                     .withDuration(System.currentTimeMillis() - startTime);
-
-
         } catch (Exception e) {
             var error = "Failed to parse write file arguments: " + e.getMessage();
             return ToolCallResult.failed(error, e)
@@ -127,12 +130,6 @@ public class TaskTool extends ToolCall {
         }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
     }
-
-    @Override
-    public ToolCallResult execute(String text) {
-        throw new AgentRuntimeException("TASK_TOOL_FAILED", "TaskTool requires ExecutionContext");
-    }
-
 
     public static class Builder extends ToolCall.Builder<Builder, TaskTool> {
         @Override
