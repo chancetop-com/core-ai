@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Bot, Download, FileUp, Check } from 'lucide-react';
+import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -23,6 +23,8 @@ export default function AgentList() {
   const [importing, setImporting] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(10);
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -34,6 +36,7 @@ export default function AgentList() {
   useEffect(load, []);
 
   const userAgents = agents.filter(a => !a.system_default);
+  const pagedAgents = userAgents.slice(offset, offset + limit);
 
   const handleCreate = async () => {
     const name = `New Agent ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
@@ -186,7 +189,7 @@ export default function AgentList() {
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
             No agents yet. Click "New Agent" to create one, or import from a JSON file.
           </div>
-        ) : userAgents.map(a => (
+        ) : pagedAgents.map(a => (
           <div key={a.id}
             onClick={() => selectMode ? toggleSelect(a.id, { stopPropagation: () => {} } as React.MouseEvent) : navigate(`/agents/${a.id}`)}
             className="rounded-xl border p-4 cursor-pointer transition-colors"
@@ -230,6 +233,34 @@ export default function AgentList() {
           </div>
         ))}
       </div>
+
+      {userAgents.length > 0 && (
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center gap-3">
+            <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              Showing {offset + 1}-{Math.min(offset + limit, userAgents.length)} of {userAgents.length}
+            </span>
+            <select value={limit}
+              onChange={e => { setLimit(Number(e.target.value)); setOffset(0); }}
+              className="px-2 py-1 rounded-lg border text-xs"
+              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+              {[10, 20, 50].map(n => <option key={n} value={n}>{n} / page</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0}
+              className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+              <ChevronLeft size={14} /> Prev
+            </button>
+            <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= userAgents.length}
+              className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+              Next <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
