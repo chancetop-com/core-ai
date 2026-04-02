@@ -2,6 +2,7 @@ package ai.core.server.web.sse;
 
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.SessionState;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
 import core.framework.web.sse.Channel;
@@ -13,7 +14,8 @@ import org.slf4j.LoggerFactory;
  * @author stephen
  */
 public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent> {
-    private static final String SESSION_ID_KEY = "sessionId";
+    private static final String SESSION_ID_KEY = "agent-session-id";
+    private static final String SESSION_STATE_KEY = "agent-session-state";
     private final Logger logger = LoggerFactory.getLogger(AgentSessionChannelListener.class);
 
     @Inject
@@ -31,7 +33,7 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
 
         logger.info("SSE client connected, sessionId={}", sessionId);
         sessionChannelService.connect(channel, sessionId);
-        var session = sessionManager.getSession(sessionId);
+        var session = sessionManager.getSession(sessionId, resolveSessionState(request, sessionId));
         channel.context().put(SESSION_ID_KEY, sessionId);
         channel.join(sessionId);
         session.onEvent(new SseEventBridge(sessionId, sessionChannelService));
@@ -44,5 +46,11 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
         if (sessionId != null) {
             sessionChannelService.close(sessionId);
         }
+    }
+
+    private SessionState resolveSessionState(Request request, String sessionId) {
+        var httpSession = request.session();
+        var json = httpSession.get(SESSION_STATE_KEY + ":" + sessionId).orElse(null);
+        return SessionState.fromJson(json);
     }
 }

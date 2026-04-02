@@ -78,6 +78,9 @@ public class ServerModule extends Module {
         registerFile();
         registerSkill();
 
+        site().session().timeout(Duration.ofHours(24));
+        site().session().cookie("CoreAIServerSessionId", null);
+
         bind(SystemPromptService.class);
         bind(LLMCallExecutor.class);
         bind(AgentRunner.class);
@@ -101,13 +104,7 @@ public class ServerModule extends Module {
         onStartup(builderTools::initialize);
         onStartup(authService::initialize);
 
-        api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
-        api().service(UserWebService.class, bind(UserWebServiceImpl.class));
-        api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
-        api().service(ToolRegistryWebService.class, bind(ToolRegistryWebServiceImpl.class));
-        api().service(AgentDefinitionWebService.class, bind(AgentDefinitionWebServiceImpl.class));
-        api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
-        api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
+        bindWebService();
         http().route(HTTPMethod.POST, "/api/webhooks/:agentId", bind(WebhookController.class));
 
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
@@ -119,6 +116,16 @@ public class ServerModule extends Module {
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
 
         registerStaticFiles();
+    }
+
+    private void bindWebService() {
+        api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
+        api().service(UserWebService.class, bind(UserWebServiceImpl.class));
+        api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
+        api().service(ToolRegistryWebService.class, bind(ToolRegistryWebServiceImpl.class));
+        api().service(AgentDefinitionWebService.class, bind(AgentDefinitionWebServiceImpl.class));
+        api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
+        api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
     }
 
     private void registerStaticFiles() {

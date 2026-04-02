@@ -19,6 +19,8 @@ import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
 import core.framework.web.exception.NotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.UUID;
@@ -29,6 +31,7 @@ import java.util.concurrent.ConcurrentMap;
  * @author stephen
  */
 public class AgentSessionManager {
+    private final Logger logger = LoggerFactory.getLogger(AgentSessionManager.class);
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
 
     @Inject
@@ -80,9 +83,62 @@ public class AgentSessionManager {
     }
 
     public InProcessAgentSession getSession(String sessionId) {
+        return getSession(sessionId, null);
+    }
+
+    public InProcessAgentSession getSession(String sessionId, SessionState state) {
         var session = sessions.get(sessionId);
-        if (session == null) throw new NotFoundException("session not found, sessionId=" + sessionId);
-        return session;
+        if (session != null) return session;
+
+        // Try to rebuild from session state if available
+        if (state != null) {
+            logger.info("session not found locally, attempting to rebuild from state, sessionId={}", sessionId);
+            session = rebuildSession(sessionId, state);
+            if (session != null) {
+                sessions.put(sessionId, session);
+                logger.info("session rebuilt successfully, sessionId={}", sessionId);
+                return session;
+            }
+        }
+
+        throw new NotFoundException("session not found, sessionId=" + sessionId);
+    }
+
+    private InProcessAgentSession rebuildSession(String sessionId, SessionState state) {
+        try {
+            if (state.fromAgent && state.agentConfig != null) {
+                return rebuildFromSnapshot(sessionId, state.agentConfig, state.userId);
+            } else {
+                return rebuildFromConfig(sessionId, state.config, state.userId);
+            }
+        } catch (Exception e) {
+            logger.warn("failed to rebuild session, sessionId={}, error={}", sessionId, e.getMessage());
+            return null;
+        }
+    }
+
+    private InProcessAgentSession rebuildFromSnapshot(String sessionId, SessionState.AgentConfigSnapshot snapshot, String userId) {
+        var config = new SessionConfig();
+        config.systemPrompt = snapshot.systemPrompt;
+        config.model = snapshot.model;
+        config.temperature = snapshot.temperature;
+        config.maxTurns = snapshot.maxTurns;
+        config.autoApproveAll = snapshot.autoApproveAll;
+
+        var tools = toolRegistryService.resolveTools(snapshot.toolIds);
+        var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
+        var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
+        var autoApproveAll = Boolean.TRUE.equals(config.autoApproveAll);
+        var permissionStore = new InMemoryToolPermissionStore();
+        return new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+    }
+
+    private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId) {
+        var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
+        var agent = buildAgent(config, null, context);
+        var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
+        var permissionStore = new InMemoryToolPermissionStore();
+        return new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
     }
 
     public void closeSession(String sessionId) {

@@ -107,8 +107,7 @@ public class AgentSessionRunner {
 
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), modelName);
-        LOGGER.debug("terminal: type={}, jline={}, ansi={}",
-                ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
+        LOGGER.debug("terminal: type={}, jline={}, ansi={}", ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
     }
 
     private void printSessionHistory() {

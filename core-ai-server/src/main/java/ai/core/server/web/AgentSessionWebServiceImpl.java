@@ -19,8 +19,10 @@ import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.SessionState;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
+import core.framework.web.Session;
 import core.framework.web.WebContext;
 
 import java.util.ArrayList;
@@ -29,6 +31,8 @@ import java.util.ArrayList;
  * @author stephen
  */
 public class AgentSessionWebServiceImpl implements AgentSessionWebService {
+    private static final String SESSION_STATE_KEY = "agent-session-state";
+
     @Inject
     WebContext webContext;
     @Inject
@@ -44,11 +48,35 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("user_id", userId);
 
         String sessionId;
+        var state = new SessionState();
+        state.userId = userId;
+        state.config = request.config;
+
         if (request.agentId != null) {
             var agent = agentDefinitionService.getEntity(request.agentId);
             sessionId = sessionManager.createSessionFromAgent(agent, request.config, userId);
+            state.fromAgent = true;
+            var toolIds = agent.publishedConfig != null ? agent.publishedConfig.toolIds : agent.toolIds;
+            var snapshot = new SessionState.AgentConfigSnapshot();
+            snapshot.systemPrompt = agent.publishedConfig != null && agent.publishedConfig.systemPrompt != null
+                    ? agent.publishedConfig.systemPrompt : agent.systemPrompt;
+            snapshot.model = agent.publishedConfig != null && agent.publishedConfig.model != null
+                    ? agent.publishedConfig.model : agent.model;
+            snapshot.temperature = agent.publishedConfig != null && agent.publishedConfig.temperature != null
+                    ? agent.publishedConfig.temperature : agent.temperature;
+            snapshot.maxTurns = agent.publishedConfig != null && agent.publishedConfig.maxTurns != null
+                    ? agent.publishedConfig.maxTurns : agent.maxTurns;
+            snapshot.toolIds = toolIds;
+            state.agentConfig = snapshot;
         } else {
             sessionId = sessionManager.createSession(request.config, userId);
+            state.fromAgent = false;
+        }
+        state.sessionId = sessionId;
+
+        var httpSession = webContext.request().session();
+        if (httpSession != null) {
+            httpSession.set(SESSION_STATE_KEY + ":" + sessionId, state.toJson());
         }
 
         var response = new CreateSessionResponse();
@@ -61,7 +89,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var session = sessionManager.getSession(sessionId);
+        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         session.sendMessage(request.message);
     }
 
@@ -70,13 +98,13 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var session = sessionManager.getSession(sessionId);
+        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         session.approveToolCall(request.callId, request.decision);
     }
 
     @Override
     public SessionHistoryResponse history(String sessionId) {
-        sessionManager.getSession(sessionId);
+        sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         var response = new SessionHistoryResponse();
         response.messages = new ArrayList<>();
         return response;
@@ -84,7 +112,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     @Override
     public SessionStatusResponse status(String sessionId) {
-        sessionManager.getSession(sessionId);
+        sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         var response = new SessionStatusResponse();
         response.sessionId = sessionId;
         response.status = SessionStatus.IDLE;
@@ -96,7 +124,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var session = sessionManager.getSession(sessionId);
+        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         session.cancelTurn();
     }
 
@@ -105,7 +133,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var session = sessionManager.getSession(sessionId);
+        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         return agentDraftGenerator.generate(session);
     }
 
@@ -151,5 +179,12 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
         sessionManager.closeSession(sessionId);
+    }
+
+    private SessionState resolveSessionState(String sessionId) {
+        Session httpSession = webContext.request().session();
+        if (httpSession == null) return null;
+        var json = httpSession.get(SESSION_STATE_KEY + ":" + sessionId).orElse(null);
+        return SessionState.fromJson(json);
     }
 }
