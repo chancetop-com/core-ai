@@ -12,7 +12,7 @@ public class LLMProviderConfig {
     private Double temperature;
     private String embeddingModel;
     private Object requestExtraBody;
-    private Duration timeout = Duration.ofSeconds(60);
+    private Duration timeout = Duration.ofSeconds(300);
     private Duration connectTimeout = Duration.ofSeconds(3);
     private int streamBufferSize = 0;
 
