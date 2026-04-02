@@ -72,7 +72,7 @@ public final class HttpAgentSession implements AgentSession {
     private void connectSse() {
         sseThread = new Thread(() -> {
             try {
-                var request = api.putRequest("/api/sessions/events?sessionId=" + sessionId)
+                var request = api.putRequest("/api/sessions/events?agent-session-id=" + sessionId)
                         .header("Accept", "text/event-stream")
                         .method("PUT", HttpRequest.BodyPublishers.noBody())
                         .build();
