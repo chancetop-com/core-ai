@@ -320,12 +320,12 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private void afterAgentBuildLifecycle(Agent agent) {
         agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
     }
+
     private void configureSubAgents() {
         if (this.subAgents != null && !this.subAgents.isEmpty()) {
             toolCalls.addAll(this.subAgents);
         }
     }
-
     private void copyValue(Agent agent) {
         agent.systemPrompt = this.systemPrompt == null ? "you are a helpful assistant" : this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
@@ -338,13 +338,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
         agent.toolCalls = new CopyOnWriteArrayList<>(this.toolCalls);
         agent.subAgents = this.subAgents;
-
         agent.ragConfig = this.ragConfig;
         agent.reflectionConfig = this.reflectionConfig;
         agent.reflectionListener = this.reflectionListener;
         agent.useGroupContext = this.useGroupContext;
         agent.setPersistence(new AgentPersistence());
         agent.agentLifecycles = new ArrayList<>(agentLifecycles);
+        agent.compression = this.compression;
         agent.reasoningEffort = this.reasoningEffort;
         if (this.enableReflection && this.reflectionConfig == null) {
             agent.reflectionConfig = ReflectionConfig.defaultReflectionConfig();
@@ -383,7 +383,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private void configureResponseValidation() {
         agentLifecycles.add(new ResponseValidationLifecycle());
     }
-
     private void configureCompression() {
         if (compressionEnabled) {
             if (compression == null) {
@@ -392,7 +391,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agentLifecycles.add(new CompressionLifecycle(compression));
         }
     }
-
     private void configureSkills() {
         if (skillRegistry == null) return;
         if (skillRegistry.listAll().isEmpty()) return;
@@ -400,7 +398,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             toolCalls.add(SkillTool.builder().registry(skillRegistry).build());
         }
     }
-
     private void configureToolDiscovery() {
         var discoverableTools = toolCalls.stream().filter(ToolCall::isDiscoverable).toList();
         if (!discoverableTools.isEmpty()) {

@@ -86,10 +86,14 @@ public class Compression {
             return messages;
         }
         LOGGER.debug("Force compressing messages: count={}", messages.size());
-        return doCompress(messages);
+        return doCompress(messages, true);
     }
 
     private List<Message> doCompress(List<Message> messages) {
+        return doCompress(messages, false);
+    }
+
+    private List<Message> doCompress(List<Message> messages, boolean force) {
         var systemMsg = extractSystemMessage(messages);
         var conversationMsgs = extractConversationMessages(messages);
 
@@ -104,28 +108,20 @@ public class Compression {
             return messages;
         }
 
-        int keepFromIndex = calculateKeepFromIndex(conversationMsgs, lastUserIndex);
+        int keepFromIndex;
+        if (force) {
+            // Force mode: only keep messages from the last user message onward
+            keepFromIndex = lastUserIndex;
+        } else {
+            keepFromIndex = calculateKeepFromIndex(conversationMsgs, lastUserIndex);
+        }
         if (keepFromIndex <= 0) {
             LOGGER.warn("No messages to compress after calculation");
             return messages;
         }
 
-        Message preservedUserMsg = null;
-        List<Message> toCompress;
-        List<Message> toKeep;
-
-        if (keepFromIndex > lastUserIndex) {
-            preservedUserMsg = conversationMsgs.get(lastUserIndex);
-            toCompress = new ArrayList<>();
-            for (int i = 0; i < keepFromIndex; i++) {
-                if (i != lastUserIndex) {
-                    toCompress.add(conversationMsgs.get(i));
-                }
-            }
-        } else {
-            toCompress = new ArrayList<>(conversationMsgs.subList(0, keepFromIndex));
-        }
-        toKeep = new ArrayList<>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
+        List<Message> toCompress = new ArrayList<>(conversationMsgs.subList(0, keepFromIndex));
+        List<Message> toKeep = new ArrayList<>(conversationMsgs.subList(keepFromIndex, conversationMsgs.size()));
 
         if (toCompress.isEmpty()) {
             LOGGER.debug("Nothing to compress, keeping all messages");
@@ -138,7 +134,7 @@ public class Compression {
             return messages;
         }
 
-        var result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
+        var result = buildCompressedResult(systemMsg, summary, null, toKeep);
         var newTokens = MessageTokenCounterUtil.count(result);
         LOGGER.debug("Compression complete: {} -> {} tokens, {} -> {} messages", MessageTokenCounterUtil.count(messages), newTokens, messages.size(), result.size());
 
