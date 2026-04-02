@@ -7,10 +7,10 @@ import { useAuth } from '../api/auth';
 
 interface NavItem {
   to: string;
-  icon?: React.ComponentType<{ size: number }>;
+  icon?: React.ComponentType<{ size: number; className?: string }>;
   label: string;
   show: boolean;
-  children?: { to: string; icon?: React.ComponentType<{ size: number }>; label: string; show: boolean }[];
+  children?: { to: string; icon?: React.ComponentType<{ size: number; className?: string }>; label: string; show: boolean }[];
 }
 
 export default function Layout() {
@@ -19,6 +19,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const titles: Record<string, string> = {
@@ -139,7 +140,7 @@ export default function Layout() {
                             background: isActive ? 'var(--color-bg-tertiary)' : 'transparent',
                             color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                           })}>
-                          {ChildIcon && <ChildIcon size={14} style={{ opacity: 0.7 }} />}
+                          {ChildIcon && <ChildIcon size={14} className="opacity-70" />}
                           {child.label}
                         </NavLink>
                       );
