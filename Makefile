@@ -32,12 +32,22 @@ endif
 CLI_BINARY = $(CLI_NAME)-$(DETECTED_OS)-$(ARCH)$(CLI_EXT)
 CLI_BUILD_DIR = build/core-ai-cli/native/nativeCompile
 
-.PHONY: docker push cli release
+.PHONY: docker push cli release builder
 
-docker:
+docker: builder
 	@test -n "$(DOCKER_USER)" || (echo "ERROR: set DOCKER_USERNAME env var" && exit 1)
 	$(GRADLEW) :core-ai-server:docker
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(FULL_IMAGE) --push $(DOCKER_DIR)
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(FULL_IMAGE) \
+		--push \
+		$(DOCKER_DIR)
+
+builder:
+	@if ! docker buildx ls | grep multi-builder > /dev/null 2>&1; then \
+		docker buildx create --name multi-builder --driver docker-container --use; \
+	fi
+	docker buildx inspect --bootstrap
 
 push: docker
 
