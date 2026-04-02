@@ -52,7 +52,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVDefaultAgent(),
             new SchemaMigrationVTraceIndexes(),
             new SchemaMigrationVSkillIndexes(),
-            new SchemaMigrationVSystemPromptIndexes()
+            new SchemaMigrationVSystemPromptIndexes(),
+            new SchemaMigrationVServiceApiIndexes()
         );
     }
 }
