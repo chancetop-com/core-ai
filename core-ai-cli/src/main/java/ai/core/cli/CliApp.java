@@ -36,6 +36,7 @@ import ai.core.tool.tools.WriteTodosTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
@@ -312,6 +313,7 @@ public class CliApp {
         }
     }
 
+    @SuppressWarnings("PMD.SystemPrintln")
     private String resolveSessionIdForServe(SessionManager sessionManager) {
         if (continueSession) {
             var sessions = sessionManager.listSessions();
@@ -339,7 +341,7 @@ public class CliApp {
             }
             System.out.println();
             System.out.print("Select session (1-" + limit + "), or 'n' for new: ");
-            var scanner = new java.util.Scanner(System.in);
+            var scanner = new java.util.Scanner(System.in, StandardCharsets.UTF_8);
             while (true) {
                 var input = scanner.nextLine();
                 if ("n".equalsIgnoreCase(input.trim())) {

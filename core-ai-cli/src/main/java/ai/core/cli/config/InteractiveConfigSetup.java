@@ -2,19 +2,10 @@ package ai.core.cli.config;
 
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
-import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Properties;
 
 /**
@@ -71,47 +62,6 @@ public class InteractiveConfigSetup {
         ui.printStreamingChunk("\n");
     }
 
-    private static List<String> fetchModels(String apiKey) throws Exception {
-        var client = HttpClient.newHttpClient();
-        var req = HttpRequest.newBuilder()
-                .uri(URI.create(LITELLM_API_BASE + "/models"))
-                .header("Authorization", "Bearer " + apiKey)
-                .GET()
-                .build();
-        var response = client.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        JsonNode json = JsonUtil.OBJECT_MAPPER.readTree(response.body());
-        JsonNode data = json.get("data");
-        List<String> models = new ArrayList<>();
-        if (data != null && data.isArray()) {
-            for (JsonNode item : data) {
-                JsonNode id = item.get("id");
-                if (id != null && !id.isNull()) {
-                    models.add(id.asText());
-                }
-            }
-        }
-        models.sort(String::compareTo);
-        return models.isEmpty() ? List.of("openrouter/minimax/minimax-m2.7") : models;
-    }
-
-    private static String selectModel(TerminalUI ui, List<String> models) {
-        ui.printStreamingChunk("  Available models:\n\n");
-        for (int i = 0; i < models.size(); i++) {
-            ui.printStreamingChunk(String.format("  %s%d)%s %s%n", AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET, models.get(i)));
-        }
-        ui.printStreamingChunk("\n");
-        while (true) {
-            String line = ui.readRawLine("  Select model (1-" + models.size() + "): ");
-            if (line == null) return models.getFirst();
-            try {
-                int idx = Integer.parseInt(line.trim());
-                if (idx >= 1 && idx <= models.size()) return models.get(idx - 1);
-            } catch (NumberFormatException ignored) {
-                // invalid input
-            }
-            ui.printStreamingChunk(AnsiTheme.ERROR + "  Invalid selection, please enter a number between 1 and " + models.size() + "." + AnsiTheme.RESET + "\n");
-        }
-    }
 
     private static String promptRequired(TerminalUI ui, String label) {
         while (true) {

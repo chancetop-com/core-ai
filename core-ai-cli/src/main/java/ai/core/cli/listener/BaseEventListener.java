@@ -81,8 +81,8 @@ public class BaseEventListener implements AgentEventListener {
     }
 
     private String buildTaskDoneSummary(long elapsedMs, int toolCallCount) {
-        var sb = new StringBuilder("Done");
-        sb.append(" | ").append(ThinkingSpinner.formatElapsed(elapsedMs));
+        var sb = new StringBuilder(50);
+        sb.append("Done | ").append(ThinkingSpinner.formatElapsed(elapsedMs));
         if (toolCallCount > 0) {
             sb.append(" | ").append(toolCallCount).append(toolCallCount == 1 ? " tool" : " tools");
         }

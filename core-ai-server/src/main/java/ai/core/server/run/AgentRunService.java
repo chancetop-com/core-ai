@@ -128,7 +128,12 @@ public class AgentRunService {
                 }
                 return response;
             }
-            try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
         throw new RuntimeException("agent call timed out after " + maxWait + "s, runId=" + runId);
     }

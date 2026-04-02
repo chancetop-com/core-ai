@@ -161,21 +161,15 @@ public class AgentCommandHandler {
             } else if (!inString) {
                 switch (c) {
                     case '{', '[' -> {
-                        sb.append(c);
-                        sb.append('\n');
                         indent += 2;
-                        sb.append("  ".repeat(indent));
+                        sb.append(c).append('\n').append("  ".repeat(indent));
                     }
                     case '}', ']' -> {
-                        sb.append('\n');
                         indent -= 2;
-                        sb.append("  ".repeat(Math.max(0, indent)));
-                        sb.append(c);
+                        sb.append('\n').append("  ".repeat(Math.max(0, indent))).append(c);
                     }
                     case ',' -> {
-                        sb.append(c);
-                        sb.append('\n');
-                        sb.append("  ".repeat(Math.max(0, indent)));
+                        sb.append(c).append('\n').append("  ".repeat(Math.max(0, indent)));
                     }
                     case ':' -> sb.append(": ");
                     default -> {
@@ -254,8 +248,8 @@ public class AgentCommandHandler {
             }
             var tokenUsage = (Map<String, Object>) result.get("token_usage");
             if (tokenUsage != null) {
-                ui.printStreamingChunk(AnsiTheme.MUTED + "  tokens: input=" + tokenUsage.get("input")
-                    + " output=" + tokenUsage.get("output") + AnsiTheme.RESET + "\n");
+                var sb = AnsiTheme.MUTED + "  tokens: input=" + tokenUsage.get("input") + " output=" + tokenUsage.get("output") + AnsiTheme.RESET + '\n';
+                ui.printStreamingChunk(sb);
             }
             ui.printStreamingChunk("\n");
         } catch (RemoteApiException e) {
@@ -308,9 +302,14 @@ public class AgentCommandHandler {
                 var enabled = Boolean.TRUE.equals(schedule.get("enabled"));
                 var tz = schedule.get("timezone");
                 var statusTag = enabled ? AnsiTheme.SUCCESS + "enabled" : AnsiTheme.MUTED + "disabled";
-                ui.printStreamingChunk("  " + AnsiTheme.CMD_NAME + cron + AnsiTheme.RESET
-                        + " [" + statusTag + AnsiTheme.RESET + "]"
-                        + (tz != null ? AnsiTheme.MUTED + " (" + tz + ")" + AnsiTheme.RESET : "") + "\n");
+                var sb = new StringBuilder(100);
+                sb.append("  ").append(AnsiTheme.CMD_NAME).append(cron).append(AnsiTheme.RESET)
+                  .append(" [").append(statusTag).append(AnsiTheme.RESET).append(']');
+                if (tz != null) {
+                    sb.append(AnsiTheme.MUTED).append(" (").append(tz).append(')').append(AnsiTheme.RESET);
+                }
+                sb.append('\n');
+                ui.printStreamingChunk(sb.toString());
             }
         }
 
@@ -366,7 +365,6 @@ public class AgentCommandHandler {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private void deleteSchedule(List<Map<String, Object>> schedules) {
         var labels = new ArrayList<String>();
         for (var s : schedules) {
