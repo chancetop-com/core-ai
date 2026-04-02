@@ -14,6 +14,12 @@ import Sessions from './pages/sessions/Sessions';
 import SystemPromptList from './pages/system-prompts/SystemPromptList';
 import SystemPromptEditor from './pages/system-prompts/SystemPromptEditor';
 import Login from './pages/login/Login';
+import Scheduler from './pages/scheduler/Scheduler';
+import Tasks from './pages/tasks/Tasks';
+import Mcp from './pages/mcp/Mcp';
+import Tools from './pages/tools/Tools';
+import ApiTools from './pages/api-tools/ApiTools';
+import Skills from './pages/skills/Skills';
 import { CapabilitiesContext, fetchCapabilities, defaultCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
@@ -67,6 +73,12 @@ export default function App() {
                 {caps.systemPrompts && <Route path="/system-prompts" element={<SystemPromptList />} />}
                 {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<SystemPromptEditor />} />}
                 {caps.dashboard && <Route path="/dashboard" element={<Dashboard />} />}
+                <Route path="/scheduler" element={<Scheduler />} />
+                <Route path="/tasks" element={<Tasks />} />
+                <Route path="/mcp" element={<Mcp />} />
+                <Route path="/tools" element={<Tools />} />
+                <Route path="/api-tools" element={<ApiTools />} />
+                <Route path="/skills" element={<Skills />} />
                 <Route path="*" element={<Navigate to={defaultPath} replace />} />
               </Route>
             )}

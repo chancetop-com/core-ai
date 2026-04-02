@@ -1,9 +1,17 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, LayoutDashboard, MessageCircle, Moon, Sun, PanelLeft, Users, FileText, LogOut } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Key, LayoutDashboard, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, Users, FileText, LogOut, Wrench } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
+
+interface NavItem {
+  to: string;
+  icon?: React.ComponentType<{ size: number }>;
+  label: string;
+  show: boolean;
+  children?: { to: string; icon?: React.ComponentType<{ size: number }>; label: string; show: boolean }[];
+}
 
 export default function Layout() {
   const { dark, toggle } = useTheme();
@@ -22,6 +30,12 @@ export default function Layout() {
       '/system-prompts': 'System Prompts',
       '/dashboard': 'Dashboard',
       '/login': 'Login',
+      '/scheduler': 'Scheduler',
+      '/tasks': 'Tasks',
+      '/mcp': 'MCP',
+      '/tools': 'Tools',
+      '/api-tools': 'API Tools',
+      '/skills': 'Skills',
     };
     const path = location.pathname;
     const title = titles[path]
@@ -33,13 +47,22 @@ export default function Layout() {
     document.title = `${title} - Core AI`;
   }, [location.pathname]);
 
-  const navItems = [
+  const [expandedNav, setExpandedNav] = useState<string | null>(null);
+
+  const navItems: NavItem[] = [
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
     { to: '/', icon: Activity, label: 'Traces', show: caps.traces },
     { to: '/sessions', icon: Users, label: 'Sessions', show: caps.traces },
     { to: '/agents', icon: Bot, label: 'Agents', show: true },
     { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts },
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', show: caps.dashboard },
+    { to: '/scheduler', icon: Calendar, label: 'Scheduler', show: true },
+    { to: '/tasks', icon: ListChecks, label: 'Tasks', show: true },
+    { to: '/tools', icon: Wrench, label: 'Tools', show: true, children: [
+      { to: '/mcp', icon: Network, label: 'MCP', show: true },
+      { to: '/api-tools', icon: Key, label: 'API Tools', show: true },
+    ]},
+    { to: '/skills', icon: Sparkles, label: 'Skills', show: true },
   ].filter(item => item.show);
 
   return (
@@ -66,19 +89,64 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 p-2 flex flex-col gap-1 overflow-y-auto">
-          {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to} end={to === '/' || to === '/chat'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isActive ? 'font-medium' : ''} ${collapsed ? 'justify-center' : ''}`
-              }
-              style={({ isActive }) => ({
-                background: isActive ? 'var(--color-bg-tertiary)' : 'transparent',
-                color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              })}>
-              <Icon size={18} />
-              {!collapsed && label}
-            </NavLink>
-          ))}
+          {navItems.map(({ to, icon: Icon, label, children }) => {
+            const hasChildren = children && children.length > 0;
+            const isExpanded = expandedNav === to;
+            const anyChildActive = hasChildren && children.some(c => location.pathname === c.to);
+            return (
+              <div key={to}>
+                <div
+                  onClick={() => {
+                    if (hasChildren) {
+                      setExpandedNav(isExpanded ? null : to);
+                      navigate(to);
+                    }
+                  }}
+                  role={hasChildren ? 'button' : undefined}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${hasChildren ? 'cursor-pointer' : ''} ${collapsed ? 'justify-center' : ''}`}
+                  style={{
+                    background: anyChildActive || (location.pathname === to && to !== '/') ? 'var(--color-bg-tertiary)' : 'transparent',
+                    color: anyChildActive || (location.pathname === to && to !== '/') ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  }}>
+                  {Icon && <Icon size={18} />}
+                  {!collapsed && (
+                    <>
+                      <NavLink to={to} end={to === '/'} className="flex-1"
+                        onClick={e => {
+                          if (hasChildren) e.preventDefault();
+                        }}>
+                        {label}
+                      </NavLink>
+                      {hasChildren && (
+                        <ChevronRight size={14}
+                          className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                      )}
+                    </>
+                  )}
+                </div>
+                {!collapsed && hasChildren && isExpanded && (
+                  <div className="ml-6 mt-1 flex flex-col gap-0.5">
+                    {children.filter(c => c.show).map(child => {
+                      const ChildIcon = child.icon;
+                      return (
+                        <NavLink key={child.to} to={child.to}
+                          className={({ isActive }) =>
+                            `flex items-center gap-2 pl-5 pr-3 py-1.5 rounded-lg text-sm transition-colors ${isActive ? 'font-medium' : ''}`
+                          }
+                          style={({ isActive }) => ({
+                            background: isActive ? 'var(--color-bg-tertiary)' : 'transparent',
+                            color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                          })}>
+                          {ChildIcon && <ChildIcon size={14} style={{ opacity: 0.7 }} />}
+                          {child.label}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         {/* Footer */}
