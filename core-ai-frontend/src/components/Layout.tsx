@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Key, LayoutDashboard, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, Users, FileText, LogOut, Wrench } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, Users, FileText, LogOut, Wrench } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -55,7 +55,6 @@ export default function Layout() {
     { to: '/sessions', icon: Users, label: 'Sessions', show: caps.traces },
     { to: '/agents', icon: Bot, label: 'Agents', show: true },
     { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts },
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', show: caps.dashboard },
     { to: '/scheduler', icon: Calendar, label: 'Scheduler', show: true },
     { to: '/tasks', icon: ListChecks, label: 'Tasks', show: true },
     { to: '/tools', icon: Wrench, label: 'Tools', show: true, children: [
@@ -83,7 +82,10 @@ export default function Layout() {
             <PanelLeft size={18} />
           </button>
           {!collapsed && (
-            <span className="font-semibold text-lg">Core AI</span>
+            <NavLink to="/dashboard" className="font-semibold text-lg cursor-pointer"
+              style={{ color: 'var(--color-text)' }}>
+              Core AI
+            </NavLink>
           )}
         </div>
 
