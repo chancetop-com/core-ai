@@ -5,6 +5,7 @@ import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
+import org.jetbrains.annotations.NotNull;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
@@ -139,7 +140,6 @@ public class WebFetchTool extends ToolCall {
                 : HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8);
 
         switch (httpMethod) {
-            case "GET" -> requestBuilder.GET();
             case "POST" -> requestBuilder.POST(bodyPublisher);
             case "PUT" -> requestBuilder.PUT(bodyPublisher);
             case "DELETE" -> requestBuilder.DELETE();
@@ -193,7 +193,7 @@ public class WebFetchTool extends ToolCall {
         var sb = new StringBuilder();
         NodeTraversor.traverse(new NodeVisitor() {
             @Override
-            public void head(Node node, int depth) {
+            public void head(@NotNull Node node, int depth) {
                 if (node instanceof TextNode text) {
                     var t = text.text();
                     if (!t.isBlank()) sb.append(t);
@@ -221,7 +221,7 @@ public class WebFetchTool extends ToolCall {
             }
 
             @Override
-            public void tail(Node node, int depth) {
+            public void tail(@NotNull Node node, int depth) {
                 if (node instanceof Element el) {
                     switch (el.tagName()) {
                         case "h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "li", "tr" -> sb.append("\n");

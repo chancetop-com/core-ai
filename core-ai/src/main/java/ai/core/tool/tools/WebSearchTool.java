@@ -4,7 +4,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.search.BingSearchProvider;
-import ai.core.tool.tools.search.BingScrapingSearchProvider;
+import ai.core.tool.tools.search.ExaSearchProvider;
 import ai.core.tool.tools.search.SearchProvider;
 import ai.core.tool.tools.search.SearchResult;
 import core.framework.json.JSON;
@@ -68,13 +68,16 @@ public class WebSearchTool extends ToolCall {
             var query = (String) argsMap.get("query");
             var allowedDomains = (List<String>) argsMap.get("allowed_domains");
             var blockedDomains = (List<String>) argsMap.get("blocked_domains");
+            var numResults = argsMap.get("num_results") instanceof Number n
+                    ? Math.min(n.intValue(), maxResults)
+                    : maxResults;
 
             if (Strings.isBlank(query)) {
                 return ToolCallResult.failed("Error: query parameter is required")
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            var results = searchProvider.search(query, allowedDomains, blockedDomains, maxResults);
+            var results = searchProvider.search(query, allowedDomains, blockedDomains, numResults);
             var formatted = formatSearchResults(results);
 
             return ToolCallResult.completed(formatted)
@@ -92,6 +95,11 @@ public class WebSearchTool extends ToolCall {
     private String formatSearchResults(List<SearchResult> results) {
         if (results.isEmpty()) {
             return "No search results found.";
+        }
+
+        // Exa MCP returns a single pre-formatted text block (no URL)
+        if (results.size() == 1 && Strings.isBlank(results.getFirst().url())) {
+            return results.getFirst().snippet();
         }
 
         var sb = new StringBuilder(64);
@@ -139,18 +147,19 @@ public class WebSearchTool extends ToolCall {
             this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "query", "The search query to use").required(),
+                    ToolCallParameters.ParamSpec.of(Integer.class, "num_results", "Number of search results to return (default: 10)"),
                     ToolCallParameters.ParamSpec.of(List.class, "allowed_domains", "Only include search results from these domains"),
                     ToolCallParameters.ParamSpec.of(List.class, "blocked_domains", "Never include search results from these domains")
             ));
             var tool = new WebSearchTool();
             tool.maxResults = this.maxResults;
-            // auto-detect provider: use Bing API if apiKey configured, otherwise Bing scraping
+            // provider priority: Bing API key → Exa MCP (free default)
             if (!Strings.isBlank(this.apiKey)) {
                 LOGGER.debug("WebSearchTool using BingSearchProvider (API key)");
                 tool.searchProvider = new BingSearchProvider(this.searchApiEndpoint, this.apiKey);
             } else {
-                LOGGER.debug("WebSearchTool using BingScrapingSearchProvider (no API key)");
-                tool.searchProvider = new BingScrapingSearchProvider();
+                LOGGER.debug("WebSearchTool using ExaSearchProvider (MCP, free)");
+                tool.searchProvider = new ExaSearchProvider();
             }
             build(tool);
             return tool;
