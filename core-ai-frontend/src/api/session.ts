@@ -58,7 +58,7 @@ export const sessionApi = {
   ): AbortController => {
     const controller = new AbortController();
 
-    fetch(`${BASE}/api/sessions/events?sessionId=${sessionId}`, {
+    fetch(`${BASE}/api/sessions/events?agent-session-id=${sessionId}`, {
       method: 'PUT',
       headers: {
         ...getAuthHeaders(),

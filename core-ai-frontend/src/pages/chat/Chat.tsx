@@ -469,7 +469,7 @@ export default function Chat() {
           {planTodos && planTodos.length > 0 && (
             <PlanUpdateBlock todos={planTodos} />
           )}
-          {messages.filter(msg => msg.role === 'user' || msg.content?.trim() || msg.thinking || (msg.tools && msg.tools.length > 0) || msg.approval).map((msg, i) => (
+          {messages.filter((msg, idx) => msg.role === 'user' || msg.content?.trim() || msg.thinking || (msg.tools && msg.tools.length > 0) || msg.approval || (status === 'running' && msg.role === 'agent' && idx === messages.length - 1)).map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'agent' && (
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
@@ -489,8 +489,14 @@ export default function Chat() {
                   <div className="whitespace-pre-wrap font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit]">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                   </div>
-                  {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && !msg.content && (
-                    <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-text-secondary)' }} />
+                  {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && !msg.content && !msg.thinking && !(msg.tools && msg.tools.length > 0) && (
+                    <div className="flex items-center gap-2 py-1">
+                      <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+                      <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Thinking...</span>
+                    </div>
+                  )}
+                  {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && msg.content && (
+                    <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
                   )}
                 </div>
                 {msg.approval && (

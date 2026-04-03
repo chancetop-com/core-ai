@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2 } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SystemPrompt, AgentRun } from '../../api/client';
+import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail } from '../../api/client';
+import { sessionApi } from '../../api/session';
 import StatusBadge from '../../components/StatusBadge';
 
 export default function AgentEditor() {
@@ -20,22 +21,29 @@ export default function AgentEditor() {
   // system prompts for dropdown
   const [systemPrompts, setSystemPrompts] = useState<SystemPrompt[]>([]);
 
-  // run
-  const [runInput, setRunInput] = useState('');
-  const [triggering, setTriggering] = useState(false);
+  // test panel
+  const [testInput, setTestInput] = useState('');
+  const [testOutput, setTestOutput] = useState('');
+  const [testing, setTesting] = useState(false);
+  const testControllerRef = useRef<AbortController | null>(null);
+  const testOutputRef = useRef('');
+
+  // runs
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [expandedRunDetail, setExpandedRunDetail] = useState<AgentRunDetail | null>(null);
+  const [modalRunDetail, setModalRunDetail] = useState<AgentRunDetail | null>(null);
 
   useEffect(() => {
     if (!id) return;
     api.agents.get(id).then(setAgent).catch(console.error).finally(() => setLoading(false));
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
-    // auto-load runs
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id]);
 
-  const loadRuns = async () => {
+  const loadRuns = useCallback(async () => {
     if (!id) return;
     setRunsLoading(true);
     try {
@@ -44,7 +52,7 @@ export default function AgentEditor() {
     } finally {
       setRunsLoading(false);
     }
-  };
+  }, [id]);
 
   if (loading) return <div className="p-6" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>;
   if (!agent) return <div className="p-6">Agent not found</div>;
@@ -103,38 +111,128 @@ export default function AgentEditor() {
     navigate('/agents');
   };
 
-  const handleTrigger = async () => {
-    if (!id || !runInput.trim()) return;
-    setTriggering(true);
+  const handleTest = async () => {
+    if (!testInput.trim()) return;
+    setTesting(true);
+    setTestOutput('');
+    testOutputRef.current = '';
+
     try {
-      await api.agents.trigger(id, runInput);
-      setRunInput('');
-      loadRuns();
-      // Refresh again after a delay since run may still be in progress
-      setTimeout(loadRuns, 3000);
-      setTimeout(loadRuns, 8000);
-    } finally {
-      setTriggering(false);
+      // Resolve system prompt
+      let systemPrompt = agent.system_prompt || '';
+      if (agent.system_prompt_id) {
+        const sp = systemPrompts.find(s => s.promptId === agent.system_prompt_id);
+        if (sp) systemPrompt = sp.content;
+      }
+
+      const config: Record<string, unknown> = { systemPrompt };
+      if (agent.model) config.model = agent.model;
+      if (agent.temperature != null) config.temperature = agent.temperature;
+      if (agent.max_turns) config.maxTurns = agent.max_turns;
+
+      const res = await sessionApi.create('', config);
+      const sid = res.sessionId;
+
+      const controller = sessionApi.connectSSE(sid, (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (event.type === 'text_chunk') {
+            const chunk = data.text || data.chunk || '';
+            testOutputRef.current += chunk;
+            setTestOutput(testOutputRef.current);
+          } else if (event.type === 'turn_complete') {
+            setTesting(false);
+            sessionApi.close(sid).catch(() => {});
+          } else if (event.type === 'error') {
+            testOutputRef.current += `\nError: ${data.message || data.error}`;
+            setTestOutput(testOutputRef.current);
+            setTesting(false);
+            sessionApi.close(sid).catch(() => {});
+          }
+        } catch { /* ignore */ }
+      }, () => { setTesting(false); });
+      testControllerRef.current = controller;
+
+      setTimeout(() => {
+        sessionApi.sendMessage(sid, testInput).catch(err => {
+          setTestOutput(`Error: ${err}`);
+          setTesting(false);
+        });
+      }, 500);
+    } catch (e) {
+      setTestOutput(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      setTesting(false);
+    }
+  };
+
+  const handleStopTest = () => {
+    testControllerRef.current?.abort();
+    testControllerRef.current = null;
+    setTesting(false);
+  };
+
+  const handleTriggerRun = async () => {
+    if (!id || !testInput.trim()) return;
+    setTesting(true);
+    setTestOutput('');
+    try {
+      const res = await api.agents.trigger(id, testInput);
+      setTestOutput(`Run triggered: ${res.run_id}\nWaiting for result...`);
+      // Poll for result
+      const poll = async (attempts: number) => {
+        if (attempts <= 0) { setTesting(false); return; }
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const detail = await api.agents.getRun(res.run_id);
+          if (detail.status === 'COMPLETED' || detail.status === 'FAILED' || detail.status === 'ERROR') {
+            setTestOutput(detail.output || detail.error || 'No output');
+            setTesting(false);
+            loadRuns();
+          } else {
+            poll(attempts - 1);
+          }
+        } catch { poll(attempts - 1); }
+      };
+      poll(30);
+    } catch (e) {
+      setTestOutput(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      setTesting(false);
+    }
+  };
+
+  const toggleRunDetail = async (runId: string) => {
+    if (expandedRunId === runId) {
+      setExpandedRunId(null);
+      setExpandedRunDetail(null);
+      return;
+    }
+    setExpandedRunId(runId);
+    setExpandedRunDetail(null);
+    try {
+      const detail = await api.agents.getRun(runId);
+      setExpandedRunDetail(detail);
+    } catch (e) {
+      console.error('Failed to load run detail:', e);
+    }
+  };
+
+  const openRunModal = async (runId: string) => {
+    try {
+      const detail = await api.agents.getRun(runId);
+      setModalRunDetail(detail);
+    } catch (e) {
+      console.error('Failed to load run detail:', e);
     }
   };
 
   const handleExport = (a: AgentDefinition) => {
     const exportData = {
-      name: a.name,
-      description: a.description,
-      type: a.type,
-      system_prompt: a.system_prompt,
-      model: a.model,
-      temperature: a.temperature,
-      max_turns: a.max_turns,
-      timeout_seconds: a.timeout_seconds,
-      tool_ids: a.tool_ids,
-      input_template: a.input_template,
-      variables: a.variables,
-      response_schema: a.response_schema,
+      name: a.name, description: a.description, type: a.type,
+      system_prompt: a.system_prompt, model: a.model, temperature: a.temperature,
+      max_turns: a.max_turns, timeout_seconds: a.timeout_seconds, tool_ids: a.tool_ids,
+      input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
     };
-    const json = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -334,7 +432,7 @@ export default function AgentEditor() {
           />
         </div>
 
-        {/* Right: info + run */}
+        {/* Right: info + test + runs */}
         <div className="space-y-4">
           {/* Info */}
           <div className="rounded-xl border p-4"
@@ -346,39 +444,71 @@ export default function AgentEditor() {
               <div className="flex justify-between"><dt>Created by</dt><dd>{agent.created_by || '-'}</dd></div>
               <div className="flex justify-between"><dt>Timeout</dt><dd>{agent.timeout_seconds || 600}s</dd></div>
               <div className="flex justify-between"><dt>Published</dt><dd>{agent.published_at ? new Date(agent.published_at).toLocaleString() : '-'}</dd></div>
-              <div className="flex justify-between"><dt>Created</dt><dd>{agent.created_at ? new Date(agent.created_at).toLocaleString() : '-'}</dd></div>
-              <div className="flex justify-between"><dt>Updated</dt><dd>{agent.updated_at ? new Date(agent.updated_at).toLocaleString() : '-'}</dd></div>
             </dl>
           </div>
 
-          {/* API Usage */}
-          {agent.status === 'PUBLISHED' && (
-            <ApiUsagePanel agentId={agent.id} />
-          )}
-
-          {/* Trigger Run */}
-          {agent.status === 'PUBLISHED' && (
-            <div className="rounded-xl border p-4"
-              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-              <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
-                <Play size={16} style={{ color: 'var(--color-success)' }} /> Trigger Run
-              </h3>
-              <div className="space-y-3">
-                <textarea value={runInput} onChange={e => setRunInput(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none resize-y"
-                  style={inputStyle}
-                  placeholder="Enter input for the agent..." />
-                <button onClick={handleTrigger} disabled={triggering || !runInput.trim()}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-                  style={{ background: 'var(--color-success)' }}>
-                  <Play size={14} /> {triggering ? 'Triggering...' : 'Run'}
-                </button>
+          {/* Test Panel - always available */}
+          <div className="rounded-xl border p-4"
+            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+              <Play size={16} style={{ color: 'var(--color-success)' }} /> Test
+            </h3>
+            <div className="space-y-3">
+              <textarea value={testInput} onChange={e => setTestInput(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none resize-y"
+                style={inputStyle}
+                placeholder="Enter test input..." />
+              <div className="flex gap-2">
+                {!testing ? (
+                  <>
+                    <button onClick={handleTest} disabled={!testInput.trim()}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
+                      style={{ background: 'var(--color-success)' }}>
+                      <Play size={14} /> Test
+                    </button>
+                    {agent.status === 'PUBLISHED' && (
+                      <button onClick={handleTriggerRun} disabled={!testInput.trim()}
+                        className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 border"
+                        style={{ borderColor: 'var(--color-border)' }}>
+                        Run
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <button onClick={handleStopTest}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                    style={{ background: 'var(--color-error)' }}>
+                    <Square size={14} /> Stop
+                  </button>
+                )}
               </div>
+              <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                Test uses current config directly. Run uses published config.
+              </p>
+
+              {/* Test output */}
+              {(testOutput || testing) && (
+                <div className="rounded-lg p-3 text-sm overflow-auto"
+                  style={{ background: 'var(--color-bg-tertiary)', maxHeight: '400px' }}>
+                  <pre className="whitespace-pre-wrap text-sm">
+                    {testOutput || ''}
+                    {testing && !testOutput && <Loader2 size={14} className="animate-spin inline" />}
+                  </pre>
+                  {testing && testOutput && (
+                    <span className="inline-block w-1.5 h-4 ml-0.5 animate-pulse" style={{ background: 'var(--color-primary)' }} />
+                  )}
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* API Usage - collapsible */}
+          {agent.status === 'PUBLISHED' && (
+            <CollapsibleApiUsage agentId={agent.id} />
           )}
 
-          {/* Recent Runs */}
+          {/* Recent Runs - inline expandable */}
           <div className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between mb-3">
@@ -390,33 +520,27 @@ export default function AgentEditor() {
               </button>
             </div>
             {runs.length === 0 ? (
-              <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                No runs yet. {agent.status !== 'PUBLISHED' ? 'Publish the agent first.' : 'Trigger a run above.'}
-              </p>
+              <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>No runs yet.</p>
             ) : (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
+              <div className="space-y-2 max-h-[500px] overflow-y-auto">
                 {runs.map(r => (
-                  <div key={r.id} className="p-2 rounded-lg border text-xs cursor-pointer"
-                    style={{ borderColor: 'var(--color-border)' }}
-                    onClick={() => navigate(`/runs/${r.id}`)}>
-                    <div className="flex items-center justify-between">
-                      <StatusBadge status={r.status} />
+                  <div key={r.id} className="rounded-lg border text-xs"
+                    style={{ borderColor: 'var(--color-border)' }}>
+                    <button className="w-full p-2 text-left cursor-pointer flex items-center justify-between"
+                      onClick={() => toggleRunDetail(r.id)}>
+                      <div className="flex items-center gap-2">
+                        {expandedRunId === r.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <StatusBadge status={r.status} />
+                        <span className="truncate max-w-32" style={{ color: 'var(--color-text-secondary)' }}>
+                          {r.input || '-'}
+                        </span>
+                      </div>
                       <span style={{ color: 'var(--color-text-secondary)' }}>
-                        {r.started_at ? new Date(r.started_at).toLocaleString() : '-'}
+                        {r.started_at ? new Date(r.started_at).toLocaleTimeString() : '-'}
                       </span>
-                    </div>
-                    {r.input && (
-                      <p className="mt-1 truncate" style={{ color: 'var(--color-text-secondary)' }}>
-                        Input: {r.input}
-                      </p>
-                    )}
-                    {r.output && (
-                      <p className="mt-1 truncate">Output: {r.output}</p>
-                    )}
-                    {r.error && (
-                      <p className="mt-1 truncate" style={{ color: 'var(--color-error)' }}>
-                        Error: {r.error}
-                      </p>
+                    </button>
+                    {expandedRunId === r.id && (
+                      <RunInlineDetail run={r} detail={expandedRunDetail} onViewFull={() => openRunModal(r.id)} />
                     )}
                   </div>
                 ))}
@@ -425,6 +549,202 @@ export default function AgentEditor() {
           </div>
         </div>
       </div>
+
+      {/* Run Detail Modal */}
+      {modalRunDetail && (
+        <RunDetailModal detail={modalRunDetail} onClose={() => setModalRunDetail(null)} />
+      )}
+    </div>
+  );
+}
+
+function RunDetailModal({ detail, onClose }: { detail: AgentRunDetail; onClose: () => void }) {
+  const [copied, setCopied] = useState('');
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(''), 2000);
+  };
+
+  const duration = detail.started_at && detail.completed_at
+    ? (new Date(detail.completed_at).getTime() - new Date(detail.started_at).getTime()) / 1000
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="rounded-xl border shadow-2xl w-[90vw] max-w-4xl max-h-[85vh] overflow-hidden flex flex-col"
+        style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold">Run Detail</h2>
+            <StatusBadge status={detail.status} />
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              {detail.started_at ? new Date(detail.started_at).toLocaleString() : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex gap-4 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              {duration !== null && <span>{duration < 1 ? `${(duration * 1000).toFixed(0)}ms` : `${duration.toFixed(1)}s`}</span>}
+              <span>{(detail.token_usage?.input || 0) + (detail.token_usage?.output || 0)} tokens</span>
+            </div>
+            <button onClick={onClose} className="cursor-pointer p-1 rounded hover:bg-[var(--color-bg-tertiary)]">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-auto p-6 space-y-4">
+          {/* I/O */}
+          <div className="grid grid-cols-2 gap-4">
+            {detail.input && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium">Input</span>
+                  <button onClick={() => handleCopy(detail.input, 'in')}
+                    className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer"
+                    style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
+                    {copied === 'in' ? <><Check size={10} style={{ color: 'var(--color-success)' }} /> Copied</> : <><Copy size={10} /> Copy</>}
+                  </button>
+                </div>
+                <pre className="text-sm whitespace-pre-wrap p-3 rounded-lg overflow-auto max-h-40"
+                  style={{ background: 'var(--color-bg-tertiary)' }}>{detail.input}</pre>
+              </div>
+            )}
+            {detail.output && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium">Output</span>
+                  <button onClick={() => handleCopy(detail.output, 'out')}
+                    className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer"
+                    style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
+                    {copied === 'out' ? <><Check size={10} style={{ color: 'var(--color-success)' }} /> Copied</> : <><Copy size={10} /> Copy</>}
+                  </button>
+                </div>
+                <pre className="text-sm whitespace-pre-wrap p-3 rounded-lg overflow-auto max-h-40"
+                  style={{ background: 'var(--color-bg-tertiary)' }}>{detail.output}</pre>
+              </div>
+            )}
+          </div>
+          {detail.error && (
+            <pre className="text-sm whitespace-pre-wrap p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--color-error)' }}>
+              {detail.error}
+            </pre>
+          )}
+
+          {/* Transcript */}
+          {detail.transcript && detail.transcript.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium mb-2">Transcript ({detail.transcript.length})</h3>
+              <div className="space-y-2">
+                {detail.transcript.map((entry, i) => (
+                  <div key={i} className="p-3 rounded-lg border text-sm"
+                    style={{ borderColor: 'var(--color-border)' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-medium px-1.5 py-0.5 rounded"
+                        style={{
+                          background: entry.role === 'user' ? 'rgba(59,130,246,0.1)' : entry.role === 'assistant' ? 'rgba(34,197,94,0.1)' : entry.role === 'tool' ? 'rgba(245,158,11,0.1)' : 'rgba(139,92,246,0.1)',
+                          color: entry.role === 'user' ? '#3b82f6' : entry.role === 'assistant' ? '#22c55e' : entry.role === 'tool' ? '#f59e0b' : '#8b5cf6',
+                        }}>
+                        {entry.role}
+                      </span>
+                      {entry.name && <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>{entry.name}</span>}
+                      {entry.ts && <span className="text-xs ml-auto" style={{ color: 'var(--color-text-secondary)' }}>{new Date(entry.ts).toLocaleTimeString()}</span>}
+                    </div>
+                    {entry.content && (
+                      <pre className="text-xs whitespace-pre-wrap mt-1" style={{ color: 'var(--color-text)' }}>{entry.content}</pre>
+                    )}
+                    {entry.args && (
+                      <pre className="text-xs whitespace-pre-wrap mt-1 p-2 rounded overflow-auto max-h-24"
+                        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                        {tryFormatJson(entry.args)}
+                      </pre>
+                    )}
+                    {entry.result && (
+                      <pre className="text-xs whitespace-pre-wrap mt-1 p-2 rounded overflow-auto max-h-24"
+                        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                        {tryFormatJson(entry.result)}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function tryFormatJson(str: string): string {
+  try { return JSON.stringify(JSON.parse(str), null, 2); } catch { return str; }
+}
+
+function RunInlineDetail({ run, detail, onViewFull }: {
+  run: AgentRun;
+  detail: AgentRunDetail | null;
+  onViewFull: () => void;
+}) {
+  const [copied, setCopied] = useState('');
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(''), 2000);
+  };
+
+  return (
+    <div className="border-t p-3 space-y-2" style={{ borderColor: 'var(--color-border)' }}>
+      {run.input && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Input</span>
+            <button onClick={() => handleCopy(run.input, 'in')}
+              className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
+              {copied === 'in' ? <><Check size={10} style={{ color: 'var(--color-success)' }} /> Copied</> : <><Copy size={10} /> Copy</>}
+            </button>
+          </div>
+          <pre className="text-xs whitespace-pre-wrap p-2 rounded-lg overflow-auto max-h-24"
+            style={{ background: 'var(--color-bg-tertiary)' }}>{run.input}</pre>
+        </div>
+      )}
+      {run.output && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Output</span>
+            <button onClick={() => handleCopy(run.output, 'out')}
+              className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
+              {copied === 'out' ? <><Check size={10} style={{ color: 'var(--color-success)' }} /> Copied</> : <><Copy size={10} /> Copy</>}
+            </button>
+          </div>
+          <pre className="text-xs whitespace-pre-wrap p-2 rounded-lg overflow-auto max-h-48"
+            style={{ background: 'var(--color-bg-tertiary)' }}>{run.output}</pre>
+        </div>
+      )}
+      {run.error && (
+        <pre className="text-xs whitespace-pre-wrap p-2 rounded-lg" style={{ color: 'var(--color-error)' }}>
+          {run.error}
+        </pre>
+      )}
+      {detail && (
+        <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+          <span>Tokens: {(detail.token_usage?.input || 0) + (detail.token_usage?.output || 0)}</span>
+          {detail.started_at && detail.completed_at && (
+            <span className="ml-3">
+              Duration: {((new Date(detail.completed_at).getTime() - new Date(detail.started_at).getTime()) / 1000).toFixed(1)}s
+            </span>
+          )}
+        </div>
+      )}
+      <button onClick={onViewFull}
+        className="text-xs px-2 py-1 rounded cursor-pointer"
+        style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
+        View Full Detail →
+      </button>
     </div>
   );
 }
@@ -442,11 +762,7 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
 
   const handleChange = (raw: string) => {
     setText(raw);
-    if (!raw.trim()) {
-      setError('');
-      onChange(null);
-      return;
-    }
+    if (!raw.trim()) { setError(''); onChange(null); return; }
     try {
       const parsed = JSON.parse(raw);
       setError('');
@@ -468,7 +784,6 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
     }
   };
 
-  // Sync external value changes
   useEffect(() => {
     if (!value) { setText(''); return; }
     try {
@@ -500,6 +815,28 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
   );
 }
 
+function CollapsibleApiUsage({ agentId }: { agentId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border"
+      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between p-4 cursor-pointer text-left">
+        <div className="flex items-center gap-2">
+          <Code size={14} style={{ color: 'var(--color-text-secondary)' }} />
+          <h3 className="font-medium text-sm">API Usage</h3>
+        </div>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {open && (
+        <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+          <ApiUsagePanel agentId={agentId} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApiUsagePanel({ agentId }: { agentId: string }) {
   const [copied, setCopied] = useState('');
   const [tab, setTab] = useState<'call' | 'trigger' | 'session'>('call');
@@ -526,7 +863,7 @@ SESSION_ID=$(curl -s -X POST '${baseUrl}/api/sessions' \\
   -d '{"agent_id": "${agentId}"}' | jq -r '.sessionId')
 
 # 2. Connect SSE (in another terminal)
-curl -N -X PUT "${baseUrl}/api/sessions/events?sessionId=$SESSION_ID" \\
+curl -N -X PUT "${baseUrl}/api/sessions/events?agent-session-id=$SESSION_ID" \\
   -H 'Authorization: Bearer ${apiKey}' \\
   -H 'Accept: text/event-stream'
 
@@ -551,13 +888,9 @@ curl -X POST "${baseUrl}/api/sessions/$SESSION_ID/messages" \\
   const currentCode = tab === 'call' ? callCurl : tab === 'trigger' ? triggerCurl : sessionCurl;
 
   return (
-    <div className="rounded-xl border overflow-hidden"
-      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
-        <div className="flex items-center gap-2">
-          <Code size={14} style={{ color: 'var(--color-primary)' }} />
-          <h3 className="font-medium text-sm">API Usage</h3>
-        </div>
+    <div>
+      <div className="flex items-center justify-between px-4 py-3">
+        <div />
         <button onClick={() => handleCopy(currentCode, tab)}
           className="flex items-center gap-1 text-xs px-2 py-1 rounded cursor-pointer"
           style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
