@@ -34,14 +34,14 @@ public interface ServiceApiWebService {
     void updateFromSysApi(@PathParam("id") String id, UpdateFromSysApiRequest request);
 
     @GET
-    @Path("/service-api/:id")
+    @Path("/api/service-api/:id")
     ServiceApiView get(@PathParam("id") String id);
 
     @GET
-    @Path("/service-api")
+    @Path("/api/service-api")
     ListServiceApiResponse list();
 
     @PUT
-    @Path("/service-api/update-all-from-sys-api")
+    @Path("/api/service-api/update-all-from-sys-api")
     void updateAllFromSysApi(UpdateAllFromSysApiRequest request);
 }
