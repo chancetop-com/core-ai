@@ -749,14 +749,54 @@ function RunInlineDetail({ run, detail, onViewFull }: {
   );
 }
 
+interface SchemaConstraints {
+  notNull?: boolean;
+  notBlank?: boolean;
+  min?: number | null;
+  max?: number | null;
+  sizeMin?: number | null;
+  sizeMax?: number | null;
+  pattern?: string;
+}
+
 interface SchemaField {
   name: string;
   type: string;
   description: string;
-  required: boolean;
+  constraints: SchemaConstraints;
 }
 
 const FIELD_TYPES = ['String', 'Integer', 'Long', 'Double', 'Boolean', 'List', 'Map', 'Object'];
+
+function parseConstraints(c: Record<string, unknown> | undefined): SchemaConstraints {
+  if (!c) return {};
+  const size = c.size as Record<string, unknown> | undefined;
+  return {
+    notNull: c.notNull as boolean | undefined,
+    notBlank: c.notBlank as boolean | undefined,
+    min: c.min as number | null | undefined,
+    max: c.max as number | null | undefined,
+    sizeMin: size?.min as number | null | undefined,
+    sizeMax: size?.max as number | null | undefined,
+    pattern: c.pattern as string | undefined,
+  };
+}
+
+function buildConstraintsJson(c: SchemaConstraints): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (c.notNull) result.notNull = true;
+  if (c.notBlank) result.notBlank = true;
+  if (c.min != null) result.min = c.min;
+  if (c.max != null) result.max = c.max;
+  if (c.sizeMin != null || c.sizeMax != null) {
+    const size: Record<string, unknown> = {};
+    if (c.sizeMin != null) size.min = c.sizeMin;
+    if (c.sizeMax != null) size.max = c.sizeMax;
+    result.size = size;
+  }
+  if (c.pattern) result.pattern = c.pattern;
+  return result;
+}
 
 function parseSchemaToForm(value: unknown): { typeName: string; fields: SchemaField[] } {
   if (!value) return { typeName: '', fields: [] };
@@ -768,7 +808,7 @@ function parseSchemaToForm(value: unknown): { typeName: string; fields: SchemaFi
         name: (f.name as string) || '',
         type: (f.type as string) || 'String',
         description: (f.description as string) || '',
-        required: !!(f.constraints && (f.constraints as Record<string, unknown>).notNull),
+        constraints: parseConstraints(f.constraints as Record<string, unknown> | undefined),
       }));
       return { typeName: first.name || '', fields: fs };
     }
@@ -786,7 +826,7 @@ function buildSchemaJson(name: string, fs: SchemaField[]): unknown[] | null {
       name: f.name,
       type: f.type,
       description: f.description || undefined,
-      constraints: { notNull: f.required || undefined },
+      constraints: buildConstraintsJson(f.constraints),
     })),
   }];
 }
@@ -816,14 +856,21 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
     setJsonText(schema ? JSON.stringify(schema, null, 2) : '');
   };
 
-  const updateField = (idx: number, key: keyof SchemaField, val: string | boolean) => {
-    const updated = fields.map((f, i) => i === idx ? { ...f, [key]: val } : f);
+  const updateField = (idx: number, key: string, val: unknown) => {
+    const updated = fields.map((f, i) => {
+      if (i !== idx) return f;
+      if (key.startsWith('constraints.')) {
+        const cKey = key.split('.')[1];
+        return { ...f, constraints: { ...f.constraints, [cKey]: val } };
+      }
+      return { ...f, [key]: val };
+    });
     setFields(updated);
     handleFormChange(typeName, updated);
   };
 
   const addField = () => {
-    const updated = [...fields, { name: '', type: 'String', description: '', required: false }];
+    const updated = [...fields, { name: '', type: 'String', description: '', constraints: {} }];
     setFields(updated);
   };
 
@@ -896,12 +943,12 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
           <div>
             <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Fields</label>
             <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
-              <div className="grid grid-cols-[1fr_100px_1fr_50px_36px] gap-0 text-xs font-medium px-2 py-1.5"
+              <div className="grid grid-cols-[1fr_90px_1fr_44px_36px] gap-0 text-xs font-medium px-2 py-1.5"
                 style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                 <span>Name</span><span>Type</span><span>Description</span><span>Req</span><span />
               </div>
               {fields.map((f, i) => (
-                <div key={i} className="grid grid-cols-[1fr_100px_1fr_50px_36px] gap-0 items-center border-t"
+                <div key={i} className="grid grid-cols-[1fr_90px_1fr_44px_36px] gap-0 items-center border-t"
                   style={{ borderColor: 'var(--color-border)' }}>
                   <input value={f.name} onChange={e => updateField(i, 'name', e.target.value)}
                     className="px-2 py-1.5 text-xs outline-none border-r" style={{ ...inputStyle, borderColor: 'var(--color-border)' }}
@@ -914,7 +961,7 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
                     className="px-2 py-1.5 text-xs outline-none border-r" style={{ ...inputStyle, borderColor: 'var(--color-border)' }}
                     placeholder="optional" />
                   <div className="flex justify-center border-r" style={{ borderColor: 'var(--color-border)' }}>
-                    <input type="checkbox" checked={f.required} onChange={e => updateField(i, 'required', e.target.checked)}
+                    <input type="checkbox" checked={!!f.constraints.notNull} onChange={e => updateField(i, 'constraints.notNull', e.target.checked || undefined)}
                       className="cursor-pointer" />
                   </div>
                   <button onClick={() => removeField(i)} className="flex justify-center cursor-pointer text-xs"
