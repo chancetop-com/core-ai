@@ -179,4 +179,8 @@ public class A2ARunManager {
     public List<SessionPersistence.SessionInfo> listSessions(FileSessionPersistence sessionPersistence) {
         return sessionPersistence.listSessions();
     }
+
+    public Supplier<Agent> getAgentFactory() {
+        return agentFactory;
+    }
 }

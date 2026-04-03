@@ -15,6 +15,7 @@ interface ResourcePickerProps {
   items: PickerItem[];
   loading: boolean;
   loadedIds: Set<string>;
+  pendingIds?: Set<string>;
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
   onLoad: () => void;
@@ -26,6 +27,7 @@ export default function ResourcePicker({
   items,
   loading,
   loadedIds,
+  pendingIds = new Set(),
   selectedIds,
   onToggle,
   onLoad,
@@ -109,6 +111,7 @@ export default function ResourcePicker({
             <div className="flex flex-col gap-1">
               {filtered.map(item => {
                 const isLoaded = loadedIds.has(item.id);
+                const isPending = pendingIds.has(item.id);
                 const isSelected = selectedIds.has(item.id);
                 return (
                   <button
@@ -120,19 +123,28 @@ export default function ResourcePicker({
                     style={{
                       background: isSelected
                         ? 'var(--color-primary)' + '18'
-                        : isLoaded
-                          ? 'var(--color-success)' + '10'
-                          : 'transparent',
+                        : isPending
+                          ? 'var(--color-warning)' + '10'
+                          : isLoaded
+                            ? 'var(--color-success)' + '10'
+                            : 'transparent',
                       border: isSelected
                         ? '1px solid var(--color-primary)'
-                        : '1px solid transparent',
+                        : isPending
+                          ? '1px dashed var(--color-warning)'
+                          : '1px solid transparent',
                     }}
                   >
-                    <div className="mt-0.5 shrink-0">
+                    <div className="mt-0.5 shrink-0 w-4 flex items-center justify-center">
                       {isLoaded ? (
                         <span className="text-xs font-medium px-1.5 py-0.5 rounded"
                           style={{ color: 'var(--color-success)', background: 'var(--color-success)' + '18' }}>
                           loaded
+                        </span>
+                      ) : isPending ? (
+                        <span className="text-xs font-medium px-1.5 py-0.5 rounded"
+                          style={{ color: 'var(--color-warning)', background: 'var(--color-warning)' + '18' }}>
+                          pending
                         </span>
                       ) : isSelected ? (
                         <Check size={16} style={{ color: 'var(--color-primary)' }} />

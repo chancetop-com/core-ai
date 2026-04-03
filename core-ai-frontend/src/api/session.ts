@@ -28,6 +28,12 @@ export interface HistoryMessage {
   metadata: Record<string, string>;
 }
 
+export interface CreateSessionResponse {
+  sessionId: string;
+  loaded_tools?: string[];
+  loaded_skills?: string[];
+}
+
 export interface LoadToolsResponse {
   loaded_tools: string[];
 }
@@ -43,12 +49,27 @@ export interface SessionInfo {
   loaded_skill_ids?: string[];
 }
 
+export interface CreateSessionOptions {
+  config?: Record<string, unknown>;
+  tool_ids?: string[];
+  skill_ids?: string[];
+}
+
 export const sessionApi = {
-  create: (agentId: string, config?: Record<string, unknown>) =>
-    request<{ sessionId: string }>('/api/sessions', {
+  create: (agentId: string, options?: CreateSessionOptions | Record<string, unknown>) => {
+    // Support legacy call signature: create(agentId, config)
+    let body: Record<string, unknown>;
+    if (options && ('config' in options || 'tool_ids' in options || 'skill_ids' in options)) {
+      const opts = options as CreateSessionOptions;
+      body = { agent_id: agentId, ...opts };
+    } else {
+      body = agentId ? { agent_id: agentId, config: options } : { config: options };
+    }
+    return request<CreateSessionResponse>('/api/sessions', {
       method: 'POST',
-      body: JSON.stringify(agentId ? { agent_id: agentId } : { config }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
 
   sendMessage: (sessionId: string, message: string) =>
     request<void>(`/api/sessions/${sessionId}/messages`, { method: 'POST', body: JSON.stringify({ message }) }),

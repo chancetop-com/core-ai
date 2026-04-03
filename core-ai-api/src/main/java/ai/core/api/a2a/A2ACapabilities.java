@@ -19,7 +19,7 @@ public class A2ACapabilities {
         caps.traces = true;
         caps.prompts = true;
         caps.dashboard = true;
-        caps.authRequired = false;
+        caps.authRequired = true;
         return caps;
     }
 

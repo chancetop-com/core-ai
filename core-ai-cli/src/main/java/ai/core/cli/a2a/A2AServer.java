@@ -3,10 +3,15 @@ package ai.core.cli.a2a;
 import ai.core.a2a.A2ARunManager;
 import ai.core.cli.a2a.handler.AgentCardHandler;
 import ai.core.cli.a2a.handler.CapabilitiesHandler;
+import ai.core.cli.a2a.handler.LocalAgentHandler;
+import ai.core.cli.a2a.handler.LocalSkillHandler;
+import ai.core.cli.a2a.handler.LocalToolHandler;
 import ai.core.cli.a2a.handler.MessageHandler;
-import ai.core.cli.a2a.handler.SessionMessagesHandler;
-import ai.core.cli.a2a.handler.SessionsHandler;
 import ai.core.cli.a2a.handler.TaskHandler;
+import ai.core.cli.a2a.handler.chat.ChatSessionActionHandler;
+import ai.core.cli.a2a.handler.chat.ChatSessionCreateHandler;
+import ai.core.cli.a2a.handler.chat.ChatSessionSSEHandler;
+import ai.core.cli.session.LocalChatSessionManager;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.handlers.PathTemplateHandler;
@@ -39,19 +44,27 @@ public class A2AServer {
 
     private final Undertow server;
     private final A2ARunManager runManager;
+    private final LocalChatSessionManager chatSessionManager;
     private final int port;
 
-    public A2AServer(int port, A2ARunManager runManager, Path webDir) {
+    public A2AServer(int port, A2ARunManager runManager, LocalChatSessionManager chatSessionManager, Path webDir) {
         silenceUndertowLogs();
         this.port = port;
         this.runManager = runManager;
+        this.chatSessionManager = chatSessionManager;
 
         var agentCardHandler = new AgentCardHandler(runManager);
         var messageHandler = new MessageHandler(runManager);
         var taskHandler = new TaskHandler(runManager);
         var capabilitiesHandler = new CapabilitiesHandler();
-        var sessionsHandler = new SessionsHandler(runManager);
-        var sessionMessagesHandler = new SessionMessagesHandler();
+
+        // Chat session REST API handlers (for web frontend compatibility)
+        var chatSessionCreateHandler = new ChatSessionCreateHandler(chatSessionManager);
+        var chatSessionActionHandler = new ChatSessionActionHandler(chatSessionManager);
+        var chatSessionSSEHandler = new ChatSessionSSEHandler(chatSessionManager);
+        var localAgentHandler = new LocalAgentHandler(runManager.getAgentFactory());
+        var localToolHandler = new LocalToolHandler();
+        var localSkillHandler = new LocalSkillHandler();
 
         var pathHandler = new PathTemplateHandler(staticFileHandler(webDir));
         pathHandler.add("/.well-known/agent-card.json", agentCardHandler);
@@ -60,8 +73,23 @@ public class A2AServer {
         pathHandler.add("/tasks/{taskId}/cancel", taskHandler);
         pathHandler.add("/tasks/{taskId}/message/send", taskHandler);
         pathHandler.add("/api/capabilities", capabilitiesHandler);
-        pathHandler.add("/api/sessions", sessionsHandler);
-        pathHandler.add("/api/sessions/{sessionId}/messages", sessionMessagesHandler);
+
+        // Chat session web API endpoints (replaces old A2A-style session endpoints)
+        pathHandler.add("/api/sessions", chatSessionCreateHandler);
+        pathHandler.add("/api/sessions/{sessionId}", chatSessionActionHandler);
+        pathHandler.add("/api/sessions/{sessionId}/history", chatSessionActionHandler);
+        pathHandler.add("/api/sessions/{sessionId}/messages", chatSessionActionHandler);
+        pathHandler.add("/api/sessions/{sessionId}/approve", chatSessionActionHandler);
+        pathHandler.add("/api/sessions/{sessionId}/cancel", chatSessionActionHandler);
+        pathHandler.add("/api/sessions/{sessionId}/tools", chatSessionActionHandler);
+        pathHandler.add("/api/sessions/{sessionId}/skills", chatSessionActionHandler);
+        pathHandler.add("/api/sessions/events", chatSessionSSEHandler);
+
+        // Local agent/tools/skills endpoints (for web frontend agent picker)
+        pathHandler.add("/api/agents", localAgentHandler);
+        pathHandler.add("/api/agents/{id}", localAgentHandler);
+        pathHandler.add("/api/tools", localToolHandler);
+        pathHandler.add("/api/skills", localSkillHandler);
 
         this.server = Undertow.builder()
                 .addHttpListener(port, "0.0.0.0")
@@ -75,6 +103,7 @@ public class A2AServer {
     }
 
     public void stop() {
+        chatSessionManager.closeAll();
         runManager.close();
         server.stop();
         LOGGER.info("A2A server stopped");

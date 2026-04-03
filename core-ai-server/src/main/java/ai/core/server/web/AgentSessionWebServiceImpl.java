@@ -26,6 +26,7 @@ import core.framework.web.Session;
 import core.framework.web.WebContext;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author stephen
@@ -74,13 +75,23 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         }
         state.sessionId = sessionId;
 
-        var httpSession = webContext.request().session();
-        if (httpSession != null) {
-            httpSession.set(SESSION_STATE_KEY + ":" + sessionId, state.toJson());
+        // Load additional tools/skills requested at session creation time
+        List<String> loadedTools = null;
+        List<String> loadedSkills = null;
+        if (request.toolIds != null && !request.toolIds.isEmpty()) {
+            loadedTools = sessionManager.loadTools(sessionId, request.toolIds);
         }
+        if (request.skillIds != null && !request.skillIds.isEmpty()) {
+            loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
+        }
+
+        var httpSession = webContext.request().session();
+        httpSession.set(SESSION_STATE_KEY + ":" + sessionId, state.toJson());
 
         var response = new CreateSessionResponse();
         response.sessionId = sessionId;
+        response.loadedTools = loadedTools;
+        response.loadedSkills = loadedSkills;
         return response;
     }
 

@@ -164,9 +164,12 @@ export default function Chat() {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(() => sessionStorage.getItem('chat_agentId') || '');
   const [sessionId, setSessionId] = useState<string | null>(() => sessionStorage.getItem('chat_sessionId'));
 
-  // Loaded tools/skills
+  // Loaded tools/skills (confirmed on server)
   const [loadedToolIds, setLoadedToolIds] = useState<Set<string>>(new Set());
   const [loadedSkillIds, setLoadedSkillIds] = useState<Set<string>>(new Set());
+  // Pre-session selections (shown as chips, will be sent on session create)
+  const [preToolIds, setPreToolIds] = useState<Set<string>>(new Set());
+  const [preSkillIds, setPreSkillIds] = useState<Set<string>>(new Set());
   const [availableTools, setAvailableTools] = useState<ToolRegistryView[]>([]);
   const [availableSkills, setAvailableSkills] = useState<SkillDefinition[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
@@ -353,10 +356,30 @@ export default function Chat() {
       }
       return sessionId;
     }
-    // New session - useEffect will handle SSE connection via sessionId change
-    const res = await sessionApi.create(selectedAgentId);
+
+    // Pass pre-selected tools/skills to session creation
+    const preToolIdsArr = Array.from(preToolIds);
+    const preSkillIdsArr = Array.from(preSkillIds);
+    const res = await sessionApi.create(selectedAgentId, {
+      tool_ids: preToolIdsArr.length > 0 ? preToolIdsArr : undefined,
+      skill_ids: preSkillIdsArr.length > 0 ? preSkillIdsArr : undefined,
+    });
     const id = res.sessionId;
     setSessionId(id);
+
+    // Update loaded state from server response
+    if (res.loaded_tools && res.loaded_tools.length > 0) {
+      setLoadedToolIds(new Set(res.loaded_tools));
+      showToast(`Loaded ${res.loaded_tools.length} tool(s)`);
+    }
+    if (res.loaded_skills && res.loaded_skills.length > 0) {
+      setLoadedSkillIds(new Set(res.loaded_skills));
+      showToast(`Loaded ${res.loaded_skills.length} skill(s)`);
+    }
+    setPreToolIds(new Set());
+    setPreSkillIds(new Set());
+
+    // Wait for SSE to connect
     await new Promise(resolve => setTimeout(resolve, 500));
     return id;
   };
@@ -418,6 +441,8 @@ export default function Chat() {
     setPlanTodos(null);
     setLoadedToolIds(new Set());
     setLoadedSkillIds(new Set());
+    setPreToolIds(new Set());
+    setPreSkillIds(new Set());
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     sessionStorage.removeItem('chat_messages');
@@ -458,17 +483,17 @@ export default function Chat() {
 
   // Open tool picker
   const openToolPicker = useCallback(() => {
-    setSelectedToolIds(new Set());
+    setSelectedToolIds(sessionId ? loadedToolIds : preToolIds);
     fetchTools();
     setShowToolPicker(true);
-  }, [fetchTools]);
+  }, [sessionId, loadedToolIds, preToolIds, fetchTools]);
 
   // Open skill picker
   const openSkillPicker = useCallback(() => {
-    setSelectedSkillIds(new Set());
+    setSelectedSkillIds(sessionId ? loadedSkillIds : preSkillIds);
     fetchSkills();
     setShowSkillPicker(true);
-  }, [fetchSkills]);
+  }, [sessionId, loadedSkillIds, preSkillIds, fetchSkills]);
 
   // Toggle tool selection
   const toggleTool = useCallback((id: string) => {
@@ -490,9 +515,22 @@ export default function Chat() {
     });
   }, []);
 
-  // Load selected tools into session
+  // Confirm tool selection — save as pre-session or call API directly
   const loadSelectedTools = useCallback(async () => {
-    if (!sessionId || selectedToolIds.size === 0) return;
+    if (selectedToolIds.size === 0) {
+      setShowToolPicker(false);
+      return;
+    }
+
+    if (!sessionId) {
+      // No session yet — save as pre-session selections
+      setPreToolIds(new Set(selectedToolIds));
+      showToast(`Selected ${selectedToolIds.size} tool(s), will load on first message`);
+      setShowToolPicker(false);
+      setSelectedToolIds(new Set());
+      return;
+    }
+
     try {
       const res = await sessionApi.loadTools(sessionId, Array.from(selectedToolIds));
       if (res.loaded_tools && res.loaded_tools.length > 0) {
@@ -511,9 +549,22 @@ export default function Chat() {
     }
   }, [sessionId, selectedToolIds, showToast]);
 
-  // Load selected skills into session
+  // Confirm skill selection — save as pre-session or call API directly
   const loadSelectedSkills = useCallback(async () => {
-    if (!sessionId || selectedSkillIds.size === 0) return;
+    if (selectedSkillIds.size === 0) {
+      setShowSkillPicker(false);
+      return;
+    }
+
+    if (!sessionId) {
+      // No session yet — save as pre-session selections
+      setPreSkillIds(new Set(selectedSkillIds));
+      showToast(`Selected ${selectedSkillIds.size} skill(s), will load on first message`);
+      setShowSkillPicker(false);
+      setSelectedSkillIds(new Set());
+      return;
+    }
+
     try {
       const res = await sessionApi.loadSkills(sessionId, Array.from(selectedSkillIds));
       if (res.loaded_skills && res.loaded_skills.length > 0) {
@@ -659,8 +710,8 @@ export default function Chat() {
       {/* Input area */}
       <div className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
         <div className="max-w-4xl mx-auto">
-          {/* Loaded tools/skills chips */}
-          {(loadedToolIds.size > 0 || loadedSkillIds.size > 0) && (
+          {/* Loaded / pre-selected tools/skills chips */}
+          {(loadedToolIds.size > 0 || loadedSkillIds.size > 0 || preToolIds.size > 0 || preSkillIds.size > 0) && (
             <div className="flex flex-wrap gap-1.5 mb-2 min-h-[24px]">
               {Array.from(loadedToolIds).map(name => (
                 <span key={`t-${name}`}
@@ -672,6 +723,19 @@ export default function Chat() {
                   }}>
                   <Wrench size={10} />
                   {name}
+                </span>
+              ))}
+              {Array.from(preToolIds).map(name => (
+                <span key={`pt-${name}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                  style={{
+                    background: 'var(--color-primary)' + '08',
+                    color: 'var(--color-text-muted)',
+                    border: '1px dashed var(--color-border)',
+                  }}>
+                  <Wrench size={10} />
+                  {name}
+                  <span className="ml-0.5 opacity-60">(pending)</span>
                 </span>
               ))}
               {Array.from(loadedSkillIds).map(name => (
@@ -686,34 +750,46 @@ export default function Chat() {
                   {name}
                 </span>
               ))}
+              {Array.from(preSkillIds).map(name => (
+                <span key={`ps-${name}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                  style={{
+                    background: 'var(--color-warning)' + '08',
+                    color: 'var(--color-text-muted)',
+                    border: '1px dashed var(--color-border)',
+                  }}>
+                  <Sparkles size={10} />
+                  {name}
+                  <span className="ml-0.5 opacity-60">(pending)</span>
+                </span>
+              ))}
             </div>
           )}
 
           <div className="flex gap-2 items-end">
-            {/* Tool picker button */}
+            {/* Tool picker button — enabled when agent is selected */}
             <button
               onClick={openToolPicker}
-              disabled={status !== 'idle' || !sessionId}
+              disabled={!selectedAgentId || status === 'running'}
               className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
               style={{
-                background: loadedToolIds.size > 0 ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
-                borderColor: 'var(--color-border)',
+                background: (loadedToolIds.size > 0 || preToolIds.size > 0) ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
                 border: '1px solid var(--color-border)',
-                color: loadedToolIds.size > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                color: (loadedToolIds.size > 0 || preToolIds.size > 0) ? 'var(--color-primary)' : 'var(--color-text-secondary)',
               }}
               title="Load tools">
               <Wrench size={18} />
             </button>
 
-            {/* Skill picker button */}
+            {/* Skill picker button — enabled when agent is selected */}
             <button
               onClick={openSkillPicker}
-              disabled={status !== 'idle' || !sessionId}
+              disabled={!selectedAgentId || status === 'running'}
               className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
               style={{
-                background: loadedSkillIds.size > 0 ? 'var(--color-warning)' + '20' : 'var(--color-bg-tertiary)',
+                background: (loadedSkillIds.size > 0 || preSkillIds.size > 0) ? 'var(--color-warning)' + '20' : 'var(--color-bg-tertiary)',
                 border: '1px solid var(--color-border)',
-                color: loadedSkillIds.size > 0 ? 'var(--color-warning)' : 'var(--color-text-secondary)',
+                color: (loadedSkillIds.size > 0 || preSkillIds.size > 0) ? 'var(--color-warning)' : 'var(--color-text-secondary)',
               }}
               title="Load skills">
               <Sparkles size={18} />
@@ -773,6 +849,7 @@ export default function Chat() {
           }))}
           loading={toolsLoading}
           loadedIds={loadedToolIds}
+          pendingIds={preToolIds}
           selectedIds={selectedToolIds}
           onToggle={toggleTool}
           onLoad={loadSelectedTools}
@@ -792,6 +869,7 @@ export default function Chat() {
           }))}
           loading={skillsLoading}
           loadedIds={loadedSkillIds}
+          pendingIds={preSkillIds}
           selectedIds={selectedSkillIds}
           onToggle={toggleSkill}
           onLoad={loadSelectedSkills}

@@ -45,6 +45,7 @@ import ai.core.server.web.AuthWebServiceImpl;
 import ai.core.server.web.UserWebServiceImpl;
 import ai.core.server.systemprompt.SystemPromptController;
 import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.server.web.CapabilitiesController;
 import ai.core.server.web.StaticFileController;
 import ai.core.server.trace.service.IngestService;
 import ai.core.server.trace.service.OTLPIngestService;
@@ -111,6 +112,7 @@ public class ServerModule extends Module {
 
         registerTrace();
         registerSystemPrompt();
+        registerCapabilities();
 
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
@@ -180,6 +182,12 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions", controller::versions);
         http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions/:version", controller::getVersion);
         http().route(HTTPMethod.POST, "/api/system-prompts/:promptId/test", controller::test);
+    }
+
+    private void registerCapabilities() {
+        var controller = bind(CapabilitiesController.class);
+        controller.authDisabled = property("sys.auth.disabled").orElse("false").equals("true");
+        http().route(HTTPMethod.GET, "/api/capabilities", controller::get);
     }
 
     private void registerTrace() {

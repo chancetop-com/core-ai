@@ -26,6 +26,7 @@ import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence.SessionInfo;
 import ai.core.session.FileRuleBasedPermissionStore;
 import ai.core.session.ToolPermissionStore;
+import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
@@ -290,7 +291,8 @@ public class CliApp {
         });
 
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
-        var server = new A2AServer(port, runManager, webDir);
+        var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore);
+        var server = new A2AServer(port, runManager, chatSessionManager, webDir);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();
