@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, Plus } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, Plus, ListTodo } from 'lucide-react';
 import { sessionApi } from '../../api/session';
 import type { SseEvent } from '../../api/session';
 import { api } from '../../api/client';
@@ -28,6 +28,11 @@ interface ToolEvent {
   arguments?: string;
   result?: string;
   resultStatus?: string;
+}
+
+interface PlanTodo {
+  content: string;
+  status: string;
 }
 
 function ThinkingBlock({ thinking, isStreaming }: { thinking: string; isStreaming: boolean }) {
@@ -89,6 +94,61 @@ function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
   );
 }
 
+function PlanUpdateBlock({ todos }: { todos: PlanTodo[] }) {
+  const [expanded, setExpanded] = useState(true);
+  const statusColor = (status: string) => {
+    switch (status) {
+      case 'COMPLETED': return 'var(--color-success)';
+      case 'IN_PROGRESS': return 'var(--color-warning)';
+      default: return 'var(--color-text-muted)';
+    }
+  };
+  const statusLabel = (status: string) => {
+    switch (status) {
+      case 'COMPLETED': return 'Done';
+      case 'IN_PROGRESS': return 'In Progress';
+      default: return 'Pending';
+    }
+  };
+
+  return (
+    <div className="mb-3 rounded-xl border text-xs"
+      style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
+      <button onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-1.5 w-full px-3 py-2 cursor-pointer"
+        style={{ color: 'var(--color-text-secondary)' }}>
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <ListTodo size={14} />
+        <span className="font-medium">Planning ({todos.filter(t => t.status === 'COMPLETED').length}/{todos.length})</span>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+          <table className="w-full text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            <thead>
+              <tr style={{ color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)' }}>
+                <th className="text-left py-1.5 pr-3 font-medium">Status</th>
+                <th className="text-left py-1.5 font-medium">Task</th>
+              </tr>
+            </thead>
+            <tbody>
+              {todos.map((t, j) => (
+                <tr key={j} className="border-b" style={{ borderColor: 'var(--color-border)' }}>
+                  <td className="py-1.5 pr-3 whitespace-nowrap">
+                    <span style={{ color: statusColor(t.status) }}>
+                      {t.status === 'COMPLETED' ? '\u2713 ' : t.status === 'IN_PROGRESS' ? '\u25B6 ' : '\u25CB '}{statusLabel(t.status)}
+                    </span>
+                  </td>
+                  <td className="py-1.5" style={{ color: 'var(--color-text)' }}>{t.content}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try { const s = sessionStorage.getItem('chat_messages'); return s ? JSON.parse(s) : []; } catch { return []; }
@@ -96,6 +156,7 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<'idle' | 'running'>('idle');
   const [awaitInfo, setAwaitInfo] = useState<AwaitInfo | null>(null);
+  const [planTodos, setPlanTodos] = useState<PlanTodo[] | null>(null);
 
   // Agent selection
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
@@ -226,6 +287,12 @@ export default function Chat() {
           setStatus('idle');
           break;
         }
+        case 'plan_update': {
+          if (data.todos && Array.isArray(data.todos)) {
+            setPlanTodos(data.todos);
+          }
+          break;
+        }
       }
     } catch {
       // ignore parse errors
@@ -310,6 +377,7 @@ export default function Chat() {
     setMessages([]);
     setStatus('idle');
     setAwaitInfo(null);
+    setPlanTodos(null);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     sessionStorage.removeItem('chat_messages');
@@ -366,6 +434,9 @@ export default function Chat() {
           </div>
         )}
         <div className="max-w-4xl mx-auto flex flex-col gap-4">
+          {planTodos && planTodos.length > 0 && (
+            <PlanUpdateBlock todos={planTodos} />
+          )}
           {messages.filter(msg => msg.role === 'user' || msg.content?.trim() || msg.thinking || (msg.tools && msg.tools.length > 0) || msg.approval).map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'agent' && (

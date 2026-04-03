@@ -2,6 +2,8 @@ package ai.core.session;
 
 import ai.core.agent.Agent;
 import ai.core.agent.MaxTurnsExceededException;
+import ai.core.agent.lifecycle.PlanUpdateLifecycle;
+import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.AgentSession;
@@ -52,6 +54,7 @@ public class InProcessAgentSession implements AgentSession {
 
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
         agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
+        agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
 
         if (agent.hasPersistenceProvider()) {
@@ -180,6 +183,7 @@ public class InProcessAgentSession implements AgentSession {
                 else if (event instanceof ErrorEvent e) listener.onError(e);
                 else if (event instanceof StatusChangeEvent e) listener.onStatusChange(e);
                 else if (event instanceof OnToolEvent e) listener.onOnTool(e);
+                else if (event instanceof PlanUpdateEvent e) listener.onPlanUpdate(e);
             } catch (Exception e) {
                 logger.error("failed to dispatch event to listener, event={}, sessionId={}", event.getClass().getSimpleName(), sessionId, e);
             }

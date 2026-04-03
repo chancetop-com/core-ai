@@ -6,6 +6,7 @@ import ai.core.api.server.session.AgentSession;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.EventType;
+import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.StatusChangeEvent;
@@ -18,10 +19,13 @@ import ai.core.cli.DebugLog;
 import ai.core.utils.JsonUtil;
 
 import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -50,7 +54,7 @@ public final class HttpAgentSession implements AgentSession {
 
     @SuppressWarnings("unchecked")
     private static String createSession(RemoteApiClient api, String agentId) {
-        var bodyMap = new java.util.LinkedHashMap<String, Object>();
+        var bodyMap = new LinkedHashMap<String, Object>();
         if (agentId != null) bodyMap.put("agent_id", agentId);
         var json = api.post("/api/sessions", bodyMap);
         if (json == null) throw new RuntimeException("failed to create session");
@@ -90,7 +94,7 @@ public final class HttpAgentSession implements AgentSession {
         sseThread.start();
     }
 
-    private void readSseStream(HttpResponse<java.io.InputStream> response) throws java.io.IOException {
+    private void readSseStream(HttpResponse<InputStream> response) throws IOException {
         try (var reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
             for (String line = reader.readLine(); line != null; line = reader.readLine()) {
                 if (line.startsWith("data:")) {
@@ -152,6 +156,7 @@ public final class HttpAgentSession implements AgentSession {
             case TURN_COMPLETE -> JsonUtil.fromJson(TurnCompleteEvent.class, dataJson);
             case ERROR -> JsonUtil.fromJson(ErrorEvent.class, dataJson);
             case STATUS_CHANGE -> JsonUtil.fromJson(StatusChangeEvent.class, dataJson);
+            case PLAN_UPDATE -> JsonUtil.fromJson(PlanUpdateEvent.class, dataJson);
         };
     }
 

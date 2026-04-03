@@ -1,5 +1,6 @@
 package ai.core.cli.ui;
 
+import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.tool.DiffGenerator;
 import ai.core.utils.JsonUtil;
 
@@ -88,6 +89,7 @@ public class OutputPanel {
     private final StreamingMarkdownRenderer mdRenderer;
     private final ThinkingSpinner spinner;
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
+    private final java.util.function.IntSupplier terminalWidth;
 
     private volatile boolean textStarted;
     private volatile boolean reasoningShown;
@@ -97,6 +99,7 @@ public class OutputPanel {
         this.writer = writer;
         this.mdRenderer = new StreamingMarkdownRenderer(writer, smartTerminal, terminalWidth);
         this.spinner = new ThinkingSpinner(writer, terminalWidth);
+        this.terminalWidth = terminalWidth;
     }
 
     public void beginTurn() {
@@ -270,6 +273,96 @@ public class OutputPanel {
         sb.append(AnsiTheme.RESET);
         writer.println(sb.toString());
         writer.flush();
+    }
+
+    public void planUpdate(List<PlanUpdateEvent.TodoItem> todos) {
+        if (todos == null || todos.isEmpty()) return;
+        stopSpinnerIfActive();
+        mdRenderer.flush();
+
+        writer.println("\n" + AnsiTheme.CMD_NAME + "\u25CF Planning:" + AnsiTheme.RESET);
+
+        // Calculate column widths
+        int statusWidth = 13; // "IN PROGRESS"
+        int contentWidth = Math.max(20, (terminalWidth.getAsInt() / 2) - statusWidth - 6);
+
+        printHeader(statusWidth, contentWidth);
+
+        // Rows
+        for (var todo : todos) {
+            String statusIcon = switch (todo.status) {
+                case "COMPLETED" -> AnsiTheme.SUCCESS + "\u2713";
+                case "IN_PROGRESS" -> AnsiTheme.WARNING + "\u25B6";
+                default -> AnsiTheme.MUTED + "\u25CB";
+            };
+            String statusText = statusIcon + " " + formatStatus(todo.status) + AnsiTheme.RESET;
+            String content = wrapContent(todo.content, contentWidth);
+
+            String[] contentLines = content.split("\n");
+            for (int i = 0; i < contentLines.length; i++) {
+                writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u2502");
+                if (i == 0) {
+                    writer.printf(" %-13s ", statusText);
+                } else {
+                    writer.print(" ".repeat(statusWidth + 2));
+                    writer.print(" ");
+                }
+                writer.print("\u2502");
+                writer.printf(" %-" + contentWidth + "s ", contentLines[i]);
+                writer.println("\u2502" + AnsiTheme.RESET);
+            }
+        }
+
+        printFooter(statusWidth, contentWidth);
+
+        writer.flush();
+        resetShown();
+        startSpinner();
+    }
+
+    private void printFooter(int statusWidth, int contentWidth) {
+        // Footer
+        writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u2570");
+        writer.print("\u2500".repeat(statusWidth + 2));
+        writer.print("\u2534");
+        writer.print("\u2500".repeat(contentWidth + 2));
+        writer.println("\u256F" + AnsiTheme.RESET);
+    }
+
+    private void printHeader(int statusWidth, int contentWidth) {
+
+        // Header
+        writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u256D");
+        writer.print("\u2500".repeat(statusWidth + 2));
+        writer.print("\u252C");
+        writer.print("\u2500".repeat(contentWidth + 2));
+        writer.println("\u256E" + AnsiTheme.RESET);
+
+        writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u2502");
+        writer.printf(" %-13s ", "STATUS");
+        writer.print("\u2502");
+        writer.printf(" %-" + contentWidth + "s ", "TASK");
+        writer.println("\u2502" + AnsiTheme.RESET);
+
+        writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u251C");
+        writer.print("\u2500".repeat(statusWidth + 2));
+        writer.print("\u253C");
+        writer.print("\u2500".repeat(contentWidth + 2));
+        writer.println("\u2524" + AnsiTheme.RESET);
+    }
+
+    private String formatStatus(String status) {
+        return switch (status) {
+            case "COMPLETED" -> "Done";
+            case "IN_PROGRESS" -> "In Progress";
+            default -> "Pending";
+        };
+    }
+
+    private String wrapContent(String content, int width) {
+        if (content == null) return "";
+        if (content.length() <= width) return content;
+        return content.substring(0, width - 3) + "...";
     }
 
     public void endTurn() {

@@ -3,6 +3,7 @@ package ai.core.server.web.sse;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.EventType;
+import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.StatusChangeEvent;
@@ -67,5 +68,10 @@ public class SseEventBridge implements AgentEventListener {
     @Override
     public void onStatusChange(StatusChangeEvent event) {
         sessionChannelService.send(sessionId, EventType.STATUS_CHANGE, event);
+    }
+
+    @Override
+    public void onPlanUpdate(PlanUpdateEvent event) {
+        sessionChannelService.send(sessionId, EventType.PLAN_UPDATE, event);
     }
 }

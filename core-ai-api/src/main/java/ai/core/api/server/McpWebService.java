@@ -8,6 +8,6 @@ import core.framework.api.web.service.Path;
  */
 public interface McpWebService {
     @PUT
-    @Path("/mcp/reload")
+    @Path("/api/service-api/mcp/reload")
     void reload();
 }

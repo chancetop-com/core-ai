@@ -32,4 +32,6 @@ public interface AgentEventListener {
     }
     default void onOnTool(OnToolEvent event) {
     }
+    default void onPlanUpdate(PlanUpdateEvent event) {
+    }
 }

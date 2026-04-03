@@ -18,19 +18,19 @@ import core.framework.api.web.service.PathParam;
  */
 public interface ServiceApiWebService {
     @POST
-    @Path("/service-api")
+    @Path("/api/service-api")
     void create(CreateApiRequest request);
 
     @DELETE
-    @Path("/service-api/:id")
+    @Path("/api/service-api/:id")
     void delete(@PathParam("id") String id);
 
     @PUT
-    @Path("/service-api/:id")
+    @Path("/api/service-api/:id")
     void update(@PathParam("id") String id, UpdateApiRequest request);
 
     @PUT
-    @Path("/service-api/:id/update-from-sys-api")
+    @Path("/api/service-api/:id/update-from-sys-api")
     void updateFromSysApi(@PathParam("id") String id, UpdateFromSysApiRequest request);
 
     @GET
