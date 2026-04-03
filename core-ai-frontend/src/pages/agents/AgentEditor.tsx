@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -12,6 +12,10 @@ export default function AgentEditor() {
   const [agent, setAgent] = useState<AgentDefinition | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [publishSuccess, setPublishSuccess] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
 
   // system prompts for dropdown
   const [systemPrompts, setSystemPrompts] = useState<SystemPrompt[]>([]);
@@ -52,10 +56,12 @@ export default function AgentEditor() {
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
+    setSaveError('');
     try {
       const updated = await api.agents.update(id, {
         name: agent.name,
         description: agent.description,
+        type: agent.type,
         system_prompt: agent.system_prompt,
         system_prompt_id: agent.system_prompt_id,
         model: agent.model,
@@ -68,6 +74,8 @@ export default function AgentEditor() {
         response_schema: agent.response_schema,
       });
       setAgent(updated);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -75,8 +83,18 @@ export default function AgentEditor() {
 
   const handlePublish = async () => {
     if (!id) return;
-    const published = await api.agents.publish(id);
-    setAgent(published);
+    setPublishing(true);
+    setPublishSuccess(false);
+    try {
+      const published = await api.agents.publish(id);
+      setAgent(published);
+      setPublishSuccess(true);
+      setTimeout(() => setPublishSuccess(false), 3000);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Publish failed');
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -159,10 +177,13 @@ export default function AgentEditor() {
             style={{ borderColor: 'var(--color-border)' }}>
             <Download size={14} /> Export
           </button>
-          <button onClick={handlePublish}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
-            style={{ borderColor: 'var(--color-border)' }}>
-            <Upload size={14} /> Publish
+          <button onClick={handlePublish} disabled={publishing}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50"
+            style={{
+              borderColor: publishSuccess ? 'var(--color-success)' : 'var(--color-border)',
+              color: publishSuccess ? 'var(--color-success)' : undefined,
+            }}>
+            {publishSuccess ? <><Check size={14} /> Published!</> : <><Upload size={14} /> {publishing ? 'Publishing...' : 'Publish'}</>}
           </button>
           <button onClick={handleSave} disabled={saving}
             className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
@@ -171,6 +192,12 @@ export default function AgentEditor() {
           </button>
         </div>
       </div>
+
+      {saveError && (
+        <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--color-error)' }}>
+          {saveError}
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-6">
         {/* Left: config */}
@@ -241,12 +268,19 @@ export default function AgentEditor() {
 
               {!agent.system_prompt_id && (
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                    Inline System Prompt
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                      Inline System Prompt
+                    </label>
+                    <button onClick={() => setPromptExpanded(!promptExpanded)}
+                      className="text-xs px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
+                      style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
+                      {promptExpanded ? <><Minimize2 size={12} /> Collapse</> : <><Maximize2 size={12} /> Expand</>}
+                    </button>
+                  </div>
                   <textarea value={agent.system_prompt || ''}
                     onChange={e => update('system_prompt', e.target.value)}
-                    rows={8}
+                    rows={promptExpanded ? 30 : 8}
                     className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
                     style={inputStyle}
                     placeholder="Enter system prompt directly..." />

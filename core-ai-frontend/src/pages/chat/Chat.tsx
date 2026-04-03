@@ -299,27 +299,59 @@ export default function Chat() {
     }
   }, []);
 
-  // Reconnect SSE if returning with existing session
+  // Connect/reconnect SSE
+  const connectSSE = useCallback((sid: string) => {
+    if (sseControllerRef.current) {
+      sseControllerRef.current.abort();
+      sseControllerRef.current = null;
+    }
+    const controller = sessionApi.connectSSE(
+      sid,
+      handleSSEEvent,
+      (err) => {
+        console.error('SSE error:', err);
+        sseControllerRef.current = null;
+        // Auto-reconnect after 1s if session still active
+        setTimeout(() => {
+          if (sessionId === sid && !sseControllerRef.current) {
+            console.log('SSE reconnecting...');
+            connectSSE(sid);
+          }
+        }, 1000);
+      },
+      () => {
+        // SSE stream closed
+        sseControllerRef.current = null;
+      },
+    );
+    sseControllerRef.current = controller;
+  }, [handleSSEEvent, sessionId]);
+
   useEffect(() => {
     if (sessionId && !sseControllerRef.current) {
-      const controller = sessionApi.connectSSE(sessionId, handleSSEEvent, (err) => {
-        console.error('SSE reconnect error:', err);
-      });
-      sseControllerRef.current = controller;
+      connectSSE(sessionId);
     }
     return () => {
       sseControllerRef.current?.abort();
       sseControllerRef.current = null;
     };
-  }, [sessionId, handleSSEEvent]);
+  }, [sessionId, connectSSE]);
 
   const ensureSession = async (): Promise<string> => {
-    if (sessionId) return sessionId;
+    if (sessionId) {
+      // Ensure SSE is connected for existing session
+      if (!sseControllerRef.current) {
+        connectSSE(sessionId);
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+      return sessionId;
+    }
     const res = await sessionApi.create(selectedAgentId);
     const id = res.sessionId;
-    setSessionId(id); // triggers useEffect to connect SSE
-    // Wait for SSE to connect
-    await new Promise(resolve => setTimeout(resolve, 500));
+    setSessionId(id);
+    // Connect SSE immediately instead of waiting for useEffect
+    connectSSE(id);
+    await new Promise(resolve => setTimeout(resolve, 300));
     return id;
   };
 

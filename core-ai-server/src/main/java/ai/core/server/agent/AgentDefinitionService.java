@@ -116,6 +116,7 @@ public class AgentDefinitionService {
         if (request.inputTemplate != null) entity.inputTemplate = request.inputTemplate;
         if (request.variables != null) entity.variables = request.variables;
         if (request.responseSchema != null) entity.responseSchema = serializeResponseSchema(request.responseSchema);
+        if (request.type != null) entity.type = DefinitionType.valueOf(request.type);
         entity.updatedAt = ZonedDateTime.now();
 
         agentDefinitionCollection.replace(entity);

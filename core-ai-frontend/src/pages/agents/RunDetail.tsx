@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bot, User, Wrench, Settings, Zap, Clock } from 'lucide-react';
+import { ArrowLeft, Bot, User, Wrench, Settings, Zap, Clock, Copy, Check } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentRunDetail, AgentDefinition } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -12,6 +12,7 @@ export default function RunDetail() {
   const [run, setRun] = useState<AgentRunDetail | null>(null);
   const [agent, setAgent] = useState<AgentDefinition | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState('');
 
   useEffect(() => {
     if (!runId) return;
@@ -32,6 +33,12 @@ export default function RunDetail() {
 
   const inputTokens = run.token_usage?.input || 0;
   const outputTokens = run.token_usage?.output || 0;
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(''), 2000);
+  };
 
   const roleIcon = (role: string) => {
     switch (role) {
@@ -221,8 +228,15 @@ export default function RunDetail() {
             <h3 className="font-medium text-sm mb-3">I/O Summary</h3>
             {run.input && (
               <div className="mb-3">
-                <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Input</span>
-                <pre className="text-xs whitespace-pre-wrap p-2 rounded-lg mt-1 overflow-auto max-h-32"
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Input</span>
+                  <button onClick={() => handleCopy(run.input, 'input')}
+                    className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer"
+                    style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
+                    {copied === 'input' ? <><Check size={10} style={{ color: 'var(--color-success)' }} /> Copied</> : <><Copy size={10} /> Copy</>}
+                  </button>
+                </div>
+                <pre className="text-xs whitespace-pre-wrap p-2 rounded-lg overflow-auto max-h-32"
                   style={{ background: 'var(--color-bg-tertiary)' }}>
                   {run.input}
                 </pre>
@@ -230,8 +244,15 @@ export default function RunDetail() {
             )}
             {run.output && (
               <div>
-                <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Output</span>
-                <pre className="text-xs whitespace-pre-wrap p-2 rounded-lg mt-1 overflow-auto max-h-32"
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Output</span>
+                  <button onClick={() => handleCopy(run.output, 'output')}
+                    className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer"
+                    style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
+                    {copied === 'output' ? <><Check size={10} style={{ color: 'var(--color-success)' }} /> Copied</> : <><Copy size={10} /> Copy</>}
+                  </button>
+                </div>
+                <pre className="text-xs whitespace-pre-wrap p-2 rounded-lg overflow-auto max-h-32"
                   style={{ background: 'var(--color-bg-tertiary)' }}>
                   {run.output}
                 </pre>

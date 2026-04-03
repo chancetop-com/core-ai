@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Play, Clock, ChevronDown, ChevronRight, Square, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Play, Clock, ChevronDown, ChevronRight, Square, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SystemPrompt, SystemPromptVersion } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -26,6 +26,9 @@ export default function SystemPromptEditor() {
   const [testing, setTesting] = useState(false);
   const testControllerRef = useRef<AbortController | null>(null);
   const testOutputRef = useRef('');
+
+  // layout
+  const [contentExpanded, setContentExpanded] = useState(false);
 
   useEffect(() => {
     if (!promptId) return;
@@ -127,7 +130,6 @@ export default function SystemPromptEditor() {
       });
       testControllerRef.current = controller;
 
-      // Wait a bit for SSE to connect, then send message
       setTimeout(() => {
         sessionApi.sendMessage(sid, testMessage).catch(err => {
           setTestOutput(`Error: ${err}`);
@@ -182,9 +184,9 @@ export default function SystemPromptEditor() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Left: editor */}
-        <div className="col-span-2 space-y-4">
+      {/* Top: name, description, tags, changelog */}
+      <div className="space-y-4 mb-6">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Name</label>
             <input value={prompt.name} onChange={e => setPrompt({ ...prompt, name: e.target.value })}
@@ -197,162 +199,162 @@ export default function SystemPromptEditor() {
               className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
               style={inputStyle} />
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">System Prompt Content</label>
-            <textarea value={prompt.content || ''} onChange={e => setPrompt({ ...prompt, content: e.target.value })}
-              rows={16}
-              className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
+            <label className="block text-sm font-medium mb-1">Tags (comma separated)</label>
+            <input value={prompt.tags?.join(', ') || ''}
+              onChange={e => setPrompt({ ...prompt, tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+              style={inputStyle} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Changelog</label>
+            <input value={changelog} onChange={e => setChangelog(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
               style={inputStyle}
-              placeholder="Enter your system prompt. Use {{variable}} for variables." />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Tags (comma separated)</label>
-              <input value={prompt.tags?.join(', ') || ''}
-                onChange={e => setPrompt({ ...prompt, tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                style={inputStyle} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Changelog</label>
-              <input value={changelog} onChange={e => setChangelog(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                style={inputStyle}
-                placeholder="What changed in this version?" />
-            </div>
+              placeholder="What changed in this version?" />
           </div>
         </div>
+      </div>
 
-        {/* Right: panels */}
-        <div className="space-y-4">
-          {/* Variables */}
-          <div className="rounded-xl border p-4"
-            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-            <h3 className="font-medium text-sm mb-3">Variables</h3>
-            {variables.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {variables.map(v => (
-                  <span key={v} className="px-2 py-1 rounded text-xs font-mono"
-                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-primary)' }}>
-                    {`{{${v}}}`}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                Use {'{{variable}}'} syntax in content
-              </p>
-            )}
-          </div>
-
-          {/* Version History */}
-          <div className="rounded-xl border"
-            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-            <button onClick={loadVersions}
-              className="w-full flex items-center justify-between p-4 cursor-pointer text-left">
-              <div className="flex items-center gap-2">
-                <Clock size={16} style={{ color: 'var(--color-text-secondary)' }} />
-                <h3 className="font-medium text-sm">Version History</h3>
-              </div>
-              {versionsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      {/* Main: prompt editor (left) + test panel (right) side by side */}
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        {/* Left: prompt content editor */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-sm font-medium">System Prompt Content</label>
+            <button onClick={() => setContentExpanded(!contentExpanded)}
+              className="text-xs px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
+              style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
+              {contentExpanded ? <><Minimize2 size={12} /> Collapse</> : <><Maximize2 size={12} /> Expand</>}
             </button>
-            {versionsOpen && (
-              <div className="border-t px-4 pb-4 max-h-60 overflow-y-auto" style={{ borderColor: 'var(--color-border)' }}>
-                {versions.map(v => (
-                  <div key={v.version} className="flex items-center justify-between py-2 border-b last:border-0"
-                    style={{ borderColor: 'var(--color-border)' }}>
-                    <div>
-                      <span className="text-sm font-mono">v{v.version}</span>
-                      {v.changelog && (
-                        <span className="text-xs ml-2" style={{ color: 'var(--color-text-secondary)' }}>{v.changelog}</span>
-                      )}
-                      <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                        {new Date(v.createdAt).toLocaleString()}
-                      </div>
-                    </div>
-                    {v.version !== prompt.version && (
-                      <button onClick={() => restoreVersion(v)}
-                        className="text-xs px-2 py-1 rounded cursor-pointer"
-                        style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
-                        Restore
-                      </button>
-                    )}
+          </div>
+          <textarea value={prompt.content || ''} onChange={e => setPrompt({ ...prompt, content: e.target.value })}
+            rows={contentExpanded ? 32 : 18}
+            className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
+            style={inputStyle}
+            placeholder="Enter your system prompt. Use {{variable}} for variables." />
+          {variables.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {variables.map(v => (
+                <span key={v} className="px-2 py-1 rounded text-xs font-mono"
+                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-primary)' }}>
+                  {`{{${v}}}`}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right: test panel */}
+        <div className="rounded-xl border p-4 flex flex-col"
+          style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+          <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+            <Play size={16} style={{ color: 'var(--color-success)' }} /> Test Prompt
+          </h3>
+          <div className="space-y-3 flex-1 flex flex-col">
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Model</label>
+              <input value={testModel} onChange={e => setTestModel(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none"
+                style={inputStyle}
+                placeholder="leave empty to use default model" />
+            </div>
+
+            {variables.length > 0 && (
+              <div>
+                <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Variables</label>
+                {variables.map(v => (
+                  <div key={v} className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-mono w-24 shrink-0" style={{ color: 'var(--color-primary)' }}>{v}</span>
+                    <input value={testVariables[v] || ''} onChange={e => setTestVariables({ ...testVariables, [v]: e.target.value })}
+                      className="flex-1 px-2 py-1 rounded border text-xs outline-none"
+                      style={inputStyle}
+                      placeholder={`Value for ${v}`} />
                   </div>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Test Panel */}
-          <div className="rounded-xl border p-4"
-            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-            <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
-              <Play size={16} style={{ color: 'var(--color-success)' }} /> Test Prompt
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Model</label>
-                <input value={testModel} onChange={e => setTestModel(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none"
-                  style={inputStyle}
-                  placeholder="leave empty to use default model" />
-              </div>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>User Message</label>
+              <textarea value={testMessage} onChange={e => setTestMessage(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none resize-y"
+                style={inputStyle}
+                placeholder="Enter a test message..." />
+            </div>
 
-              {variables.length > 0 && (
-                <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Variables</label>
-                  {variables.map(v => (
-                    <div key={v} className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-mono w-24 shrink-0" style={{ color: 'var(--color-primary)' }}>{v}</span>
-                      <input value={testVariables[v] || ''} onChange={e => setTestVariables({ ...testVariables, [v]: e.target.value })}
-                        className="flex-1 px-2 py-1 rounded border text-xs outline-none"
-                        style={inputStyle}
-                        placeholder={`Value for ${v}`} />
-                    </div>
-                  ))}
-                </div>
-              )}
+            {!testing ? (
+              <button onClick={handleTest} disabled={!testMessage.trim()}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
+                style={{ background: 'var(--color-success)' }}>
+                <Play size={14} /> Run Test
+              </button>
+            ) : (
+              <button onClick={handleStopTest}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                style={{ background: 'var(--color-error)' }}>
+                <Square size={14} /> Stop
+              </button>
+            )}
 
-              <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>User Message</label>
-                <textarea value={testMessage} onChange={e => setTestMessage(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none resize-y"
-                  style={inputStyle}
-                  placeholder="Enter a test message..." />
-              </div>
-
-              {!testing ? (
-                <button onClick={handleTest} disabled={!testMessage.trim()}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-                  style={{ background: 'var(--color-success)' }}>
-                  <Play size={14} /> Run Test
-                </button>
-              ) : (
-                <button onClick={handleStopTest}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-                  style={{ background: 'var(--color-error)' }}>
-                  <Square size={14} /> Stop
-                </button>
-              )}
-
+            {/* Test output - takes remaining space */}
+            <div className="flex-1 min-h-0">
               {(testOutput || testing) && (
-                <div className="mt-2">
-                  <div className="rounded-lg p-3 text-sm"
-                    style={{ background: 'var(--color-bg-tertiary)' }}>
-                    <pre className="whitespace-pre-wrap text-sm">
-                      {testOutput || ''}
-                      {testing && !testOutput && <Loader2 size={14} className="animate-spin inline" />}
-                    </pre>
-                    {testing && testOutput && (
-                      <span className="inline-block w-1.5 h-4 ml-0.5 animate-pulse" style={{ background: 'var(--color-primary)' }} />
-                    )}
-                  </div>
+                <div className="rounded-lg p-3 text-sm overflow-auto"
+                  style={{ background: 'var(--color-bg-tertiary)', maxHeight: '300px' }}>
+                  <pre className="whitespace-pre-wrap text-sm">
+                    {testOutput || ''}
+                    {testing && !testOutput && <Loader2 size={14} className="animate-spin inline" />}
+                  </pre>
+                  {testing && testOutput && (
+                    <span className="inline-block w-1.5 h-4 ml-0.5 animate-pulse" style={{ background: 'var(--color-primary)' }} />
+                  )}
                 </div>
               )}
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Bottom: Version History */}
+      <div className="rounded-xl border"
+        style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+        <button onClick={loadVersions}
+          className="w-full flex items-center justify-between p-4 cursor-pointer text-left">
+          <div className="flex items-center gap-2">
+            <Clock size={16} style={{ color: 'var(--color-text-secondary)' }} />
+            <h3 className="font-medium text-sm">Version History</h3>
+          </div>
+          {versionsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
+        {versionsOpen && (
+          <div className="border-t px-4 pb-4 max-h-60 overflow-y-auto" style={{ borderColor: 'var(--color-border)' }}>
+            {versions.map(v => (
+              <div key={v.version} className="flex items-center justify-between py-2 border-b last:border-0"
+                style={{ borderColor: 'var(--color-border)' }}>
+                <div>
+                  <span className="text-sm font-mono">v{v.version}</span>
+                  {v.changelog && (
+                    <span className="text-xs ml-2" style={{ color: 'var(--color-text-secondary)' }}>{v.changelog}</span>
+                  )}
+                  <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    {new Date(v.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                {v.version !== prompt.version && (
+                  <button onClick={() => restoreVersion(v)}
+                    className="text-xs px-2 py-1 rounded cursor-pointer"
+                    style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
+                    Restore
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

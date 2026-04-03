@@ -45,4 +45,7 @@ public class UpdateAgentRequest {
 
     @Property(name = "response_schema")
     public List<ApiDefinitionType> responseSchema;
+
+    @Property(name = "type")
+    public String type;
 }
