@@ -49,8 +49,6 @@ builder:
 	fi
 	docker buildx inspect --bootstrap
 
-push: docker
-
 cli:
 	$(GRADLEW) :core-ai-cli:nativeCompile
 	cp $(CLI_BUILD_DIR)/core-ai-cli$(CLI_EXT) $(CLI_BUILD_DIR)/$(CLI_BINARY)
