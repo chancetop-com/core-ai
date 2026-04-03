@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, Plus, ListTodo } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, Plus, ListTodo, Sparkles } from 'lucide-react';
 import { sessionApi } from '../../api/session';
 import type { SseEvent } from '../../api/session';
 import { api } from '../../api/client';
-import type { AgentDefinition } from '../../api/client';
+import type { AgentDefinition, ToolRegistryView, SkillDefinition } from '../../api/client';
+import ResourcePicker from './ResourcePicker';
 
 interface AwaitInfo {
   callId: string;
@@ -162,6 +163,19 @@ export default function Chat() {
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>(() => sessionStorage.getItem('chat_agentId') || '');
   const [sessionId, setSessionId] = useState<string | null>(() => sessionStorage.getItem('chat_sessionId'));
+
+  // Loaded tools/skills
+  const [loadedToolIds, setLoadedToolIds] = useState<Set<string>>(new Set());
+  const [loadedSkillIds, setLoadedSkillIds] = useState<Set<string>>(new Set());
+  const [availableTools, setAvailableTools] = useState<ToolRegistryView[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<SkillDefinition[]>([]);
+  const [toolsLoading, setToolsLoading] = useState(false);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [showToolPicker, setShowToolPicker] = useState(false);
+  const [showSkillPicker, setShowSkillPicker] = useState(false);
+  const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set());
+  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -395,11 +409,121 @@ export default function Chat() {
     setStatus('idle');
     setAwaitInfo(null);
     setPlanTodos(null);
+    setLoadedToolIds(new Set());
+    setLoadedSkillIds(new Set());
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     sessionStorage.removeItem('chat_messages');
     sessionStorage.removeItem('chat_sessionId');
   };
+
+  // Show a brief toast notification
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  // Fetch available tools for picker
+  const fetchTools = useCallback(async () => {
+    setToolsLoading(true);
+    try {
+      const res = await api.tools.list();
+      setAvailableTools((res.tools || []).filter(t => t.enabled));
+    } catch (err) {
+      console.error('Failed to fetch tools:', err);
+    } finally {
+      setToolsLoading(false);
+    }
+  }, []);
+
+  // Fetch available skills for picker
+  const fetchSkills = useCallback(async () => {
+    setSkillsLoading(true);
+    try {
+      const res = await api.skills.list();
+      setAvailableSkills(res.skills || []);
+    } catch (err) {
+      console.error('Failed to fetch skills:', err);
+    } finally {
+      setSkillsLoading(false);
+    }
+  }, []);
+
+  // Open tool picker
+  const openToolPicker = useCallback(() => {
+    setSelectedToolIds(new Set());
+    fetchTools();
+    setShowToolPicker(true);
+  }, [fetchTools]);
+
+  // Open skill picker
+  const openSkillPicker = useCallback(() => {
+    setSelectedSkillIds(new Set());
+    fetchSkills();
+    setShowSkillPicker(true);
+  }, [fetchSkills]);
+
+  // Toggle tool selection
+  const toggleTool = useCallback((id: string) => {
+    setSelectedToolIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Toggle skill selection
+  const toggleSkill = useCallback((id: string) => {
+    setSelectedSkillIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Load selected tools into session
+  const loadSelectedTools = useCallback(async () => {
+    if (!sessionId || selectedToolIds.size === 0) return;
+    try {
+      const res = await sessionApi.loadTools(sessionId, Array.from(selectedToolIds));
+      if (res.loaded_tools && res.loaded_tools.length > 0) {
+        setLoadedToolIds(prev => {
+          const next = new Set(prev);
+          for (const name of res.loaded_tools) next.add(name);
+          return next;
+        });
+        showToast(`Loaded ${res.loaded_tools.length} tool(s)`);
+      }
+      setShowToolPicker(false);
+      setSelectedToolIds(new Set());
+    } catch (err) {
+      console.error('Failed to load tools:', err);
+      showToast('Failed to load tools');
+    }
+  }, [sessionId, selectedToolIds, showToast]);
+
+  // Load selected skills into session
+  const loadSelectedSkills = useCallback(async () => {
+    if (!sessionId || selectedSkillIds.size === 0) return;
+    try {
+      const res = await sessionApi.loadSkills(sessionId, Array.from(selectedSkillIds));
+      if (res.loaded_skills && res.loaded_skills.length > 0) {
+        setLoadedSkillIds(prev => {
+          const next = new Set(prev);
+          for (const name of res.loaded_skills) next.add(name);
+          return next;
+        });
+        showToast(`Loaded ${res.loaded_skills.length} skill(s)`);
+      }
+      setShowSkillPicker(false);
+      setSelectedSkillIds(new Set());
+    } catch (err) {
+      console.error('Failed to load skills:', err);
+      showToast('Failed to load skills');
+    }
+  }, [sessionId, selectedSkillIds, showToast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -527,38 +651,146 @@ export default function Chat() {
 
       {/* Input area */}
       <div className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
-        <div className="max-w-4xl mx-auto flex gap-3 items-end">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={selectedAgentId ? 'Send a message...' : 'Select an agent first'}
-            rows={1}
-            className="flex-1 rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none"
-            style={{
-              background: 'var(--color-bg-secondary)',
-              borderColor: 'var(--color-border)',
-              color: 'var(--color-text)',
-            }}
-            disabled={status !== 'idle' || !selectedAgentId}
-          />
-          {status === 'idle' ? (
-            <button onClick={handleSend}
-              disabled={!input.trim() || !selectedAgentId}
-              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-40"
-              style={{ background: 'var(--color-primary)', color: 'white' }}>
-              <Send size={18} />
-            </button>
-          ) : (
-            <button onClick={handleCancel}
-              className="p-3 rounded-xl cursor-pointer transition-colors"
-              style={{ background: 'var(--color-error)', color: 'white' }}>
-              <Square size={18} />
-            </button>
+        <div className="max-w-4xl mx-auto">
+          {/* Loaded tools/skills chips */}
+          {(loadedToolIds.size > 0 || loadedSkillIds.size > 0) && (
+            <div className="flex flex-wrap gap-1.5 mb-2 min-h-[24px]">
+              {Array.from(loadedToolIds).map(name => (
+                <span key={`t-${name}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                  style={{
+                    background: 'var(--color-primary)' + '18',
+                    color: 'var(--color-primary)',
+                    border: '1px solid var(--color-primary)' + '30',
+                  }}>
+                  <Wrench size={10} />
+                  {name}
+                </span>
+              ))}
+              {Array.from(loadedSkillIds).map(name => (
+                <span key={`s-${name}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                  style={{
+                    background: 'var(--color-warning)' + '18',
+                    color: 'var(--color-warning)',
+                    border: '1px solid var(--color-warning)' + '30',
+                  }}>
+                  <Sparkles size={10} />
+                  {name}
+                </span>
+              ))}
+            </div>
           )}
+
+          <div className="flex gap-2 items-end">
+            {/* Tool picker button */}
+            <button
+              onClick={openToolPicker}
+              disabled={status !== 'idle' || !sessionId}
+              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
+              style={{
+                background: loadedToolIds.size > 0 ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
+                borderColor: 'var(--color-border)',
+                border: '1px solid var(--color-border)',
+                color: loadedToolIds.size > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              }}
+              title="Load tools">
+              <Wrench size={18} />
+            </button>
+
+            {/* Skill picker button */}
+            <button
+              onClick={openSkillPicker}
+              disabled={status !== 'idle' || !sessionId}
+              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
+              style={{
+                background: loadedSkillIds.size > 0 ? 'var(--color-warning)' + '20' : 'var(--color-bg-tertiary)',
+                border: '1px solid var(--color-border)',
+                color: loadedSkillIds.size > 0 ? 'var(--color-warning)' : 'var(--color-text-secondary)',
+              }}
+              title="Load skills">
+              <Sparkles size={18} />
+            </button>
+
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={selectedAgentId ? 'Send a message...' : 'Select an agent first'}
+              rows={1}
+              className="flex-1 rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none"
+              style={{
+                background: 'var(--color-bg-secondary)',
+                borderColor: 'var(--color-border)',
+                color: 'var(--color-text)',
+              }}
+              disabled={status !== 'idle' || !selectedAgentId}
+            />
+            {status === 'idle' ? (
+              <button onClick={handleSend}
+                disabled={!input.trim() || !selectedAgentId}
+                className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-40"
+                style={{ background: 'var(--color-primary)', color: 'white' }}>
+                <Send size={18} />
+              </button>
+            ) : (
+              <button onClick={handleCancel}
+                className="p-3 rounded-xl cursor-pointer transition-colors"
+                style={{ background: 'var(--color-error)', color: 'white' }}>
+                <Square size={18} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm shadow-lg"
+          style={{ background: 'var(--color-bg)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+          {toast}
+        </div>
+      )}
+
+      {/* Tool Picker Modal */}
+      {showToolPicker && (
+        <ResourcePicker
+          title="Load Tools"
+          items={availableTools.map(t => ({
+            id: t.id,
+            name: t.name,
+            description: t.description,
+            type: t.type,
+            category: t.category,
+          }))}
+          loading={toolsLoading}
+          loadedIds={loadedToolIds}
+          selectedIds={selectedToolIds}
+          onToggle={toggleTool}
+          onLoad={loadSelectedTools}
+          onClose={() => setShowToolPicker(false)}
+        />
+      )}
+
+      {/* Skill Picker Modal */}
+      {showSkillPicker && (
+        <ResourcePicker
+          title="Load Skills"
+          items={availableSkills.map(s => ({
+            id: s.id,
+            name: s.qualified_name,
+            description: s.description,
+            type: s.source_type,
+          }))}
+          loading={skillsLoading}
+          loadedIds={loadedSkillIds}
+          selectedIds={selectedSkillIds}
+          onToggle={toggleSkill}
+          onLoad={loadSelectedSkills}
+          onClose={() => setShowSkillPicker(false)}
+        />
+      )}
     </div>
   );
 }

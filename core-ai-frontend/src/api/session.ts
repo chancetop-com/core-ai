@@ -28,6 +28,21 @@ export interface HistoryMessage {
   metadata: Record<string, string>;
 }
 
+export interface LoadToolsResponse {
+  loaded_tools: string[];
+}
+
+export interface LoadSkillsResponse {
+  loaded_skills: string[];
+}
+
+export interface SessionInfo {
+  id: string;
+  agent_id: string;
+  loaded_tool_ids?: string[];
+  loaded_skill_ids?: string[];
+}
+
 export const sessionApi = {
   create: (agentId: string, config?: Record<string, unknown>) =>
     request<{ sessionId: string }>('/api/sessions', {
@@ -49,6 +64,21 @@ export const sessionApi = {
 
   history: (sessionId: string) =>
     request<{ messages: HistoryMessage[] }>(`/api/sessions/${sessionId}/history`),
+
+  loadTools: (sessionId: string, toolIds: string[]) =>
+    request<LoadToolsResponse>(`/api/sessions/${sessionId}/tools`, {
+      method: 'POST',
+      body: JSON.stringify({ tool_ids: toolIds }),
+    }),
+
+  loadSkills: (sessionId: string, skillIds: string[]) =>
+    request<LoadSkillsResponse>(`/api/sessions/${sessionId}/skills`, {
+      method: 'POST',
+      body: JSON.stringify({ skill_ids: skillIds }),
+    }),
+
+  getInfo: (sessionId: string) =>
+    request<SessionInfo>(`/api/sessions/${sessionId}`),
 
   connectSSE: (
     sessionId: string,
