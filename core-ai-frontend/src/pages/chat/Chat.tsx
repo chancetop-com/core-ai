@@ -345,11 +345,18 @@ export default function Chat() {
   }, [sessionId, doConnectSSE]);
 
   const ensureSession = async (): Promise<string> => {
-    if (sessionId) return sessionId;
+    if (sessionId) {
+      // Reconnect SSE if connection was dropped (e.g. server closed after idle)
+      if (!sseControllerRef.current) {
+        doConnectSSE(sessionId);
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+      return sessionId;
+    }
+    // New session - useEffect will handle SSE connection via sessionId change
     const res = await sessionApi.create(selectedAgentId);
     const id = res.sessionId;
-    setSessionId(id); // triggers useEffect to connect SSE
-    // Wait for useEffect to establish SSE connection
+    setSessionId(id);
     await new Promise(resolve => setTimeout(resolve, 500));
     return id;
   };
