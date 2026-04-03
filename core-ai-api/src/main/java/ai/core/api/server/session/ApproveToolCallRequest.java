@@ -8,7 +8,7 @@ import core.framework.api.validate.NotNull;
  */
 public class ApproveToolCallRequest {
     @NotNull
-    @Property(name = "callId")
+    @Property(name = "call_id")
     public String callId;
 
     @NotNull
