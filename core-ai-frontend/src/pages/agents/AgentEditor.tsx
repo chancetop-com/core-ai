@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Image, Link, Trash } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -36,6 +36,9 @@ export default function AgentEditor() {
   const [imageAttachments, setImageAttachments] = useState<{ url?: string; data?: string; mediaType?: string; preview: string }[]>([]);
   const [showImageUrlInput, setShowImageUrlInput] = useState(false);
   const [imageUrlValue, setImageUrlValue] = useState('');
+  const [showBase64Input, setShowBase64Input] = useState(false);
+  const [base64Value, setBase64Value] = useState('');
+  const [base64MediaType, setBase64MediaType] = useState('image/png');
   const imageFileRef = useRef<HTMLInputElement>(null);
 
   // runs
@@ -140,6 +143,15 @@ export default function AgentEditor() {
     setImageAttachments(prev => [...prev, { url: imageUrlValue.trim(), preview: imageUrlValue.trim() }]);
     setImageUrlValue('');
     setShowImageUrlInput(false);
+  };
+
+  const handleAddBase64 = () => {
+    if (!base64Value.trim()) return;
+    const raw = base64Value.trim().replace(/^data:[^;]+;base64,/, '');
+    const preview = `data:${base64MediaType};base64,${raw}`;
+    setImageAttachments(prev => [...prev, { data: raw, mediaType: base64MediaType, preview }]);
+    setBase64Value('');
+    setShowBase64Input(false);
   };
 
   const handleTest = async () => {
@@ -616,10 +628,15 @@ export default function AgentEditor() {
                       style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
                       <Upload size={12} /> Upload
                     </button>
-                    <button onClick={() => setShowImageUrlInput(!showImageUrlInput)}
+                    <button onClick={() => { setShowImageUrlInput(!showImageUrlInput); setShowBase64Input(false); }}
                       className="flex items-center gap-1 px-2 py-1 rounded-md text-xs cursor-pointer border"
                       style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
                       <Link size={12} /> URL
+                    </button>
+                    <button onClick={() => { setShowBase64Input(!showBase64Input); setShowImageUrlInput(false); }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs cursor-pointer border"
+                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                      <Code size={12} /> Base64
                     </button>
                     {imageAttachments.length > 0 && (
                       <button onClick={() => setImageAttachments([])}
@@ -641,6 +658,30 @@ export default function AgentEditor() {
                         style={{ background: 'var(--color-primary)' }}>
                         Add
                       </button>
+                    </div>
+                  )}
+                  {showBase64Input && (
+                    <div className="mt-1.5 space-y-1.5">
+                      <div className="flex gap-1.5">
+                        <select value={base64MediaType} onChange={e => setBase64MediaType(e.target.value)}
+                          className="px-2 py-1 rounded-md border text-xs outline-none"
+                          style={inputStyle}>
+                          <option value="image/png">PNG</option>
+                          <option value="image/jpeg">JPEG</option>
+                          <option value="image/webp">WebP</option>
+                          <option value="image/gif">GIF</option>
+                        </select>
+                        <button onClick={handleAddBase64} disabled={!base64Value.trim()}
+                          className="px-2 py-1 rounded-md text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+                          style={{ background: 'var(--color-primary)' }}>
+                          Add
+                        </button>
+                      </div>
+                      <textarea value={base64Value} onChange={e => setBase64Value(e.target.value)}
+                        rows={3}
+                        className="w-full px-2 py-1 rounded-md border text-xs font-mono outline-none resize-y"
+                        style={inputStyle}
+                        placeholder="Paste base64 string or data URI (data:image/png;base64,...)" />
                     </div>
                   )}
                 </div>
