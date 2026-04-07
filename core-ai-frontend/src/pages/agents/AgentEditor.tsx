@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Plus, Search } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail } from '../../api/client';
+import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import StatusBadge from '../../components/StatusBadge';
 
@@ -20,6 +20,10 @@ export default function AgentEditor() {
 
   // system prompts for dropdown
   const [systemPrompts, setSystemPrompts] = useState<SystemPrompt[]>([]);
+
+  // tools
+  const [allTools, setAllTools] = useState<ToolRegistryView[]>([]);
+  const [toolSearch, setToolSearch] = useState('');
 
   // test panel
   const [testInput, setTestInput] = useState('');
@@ -39,6 +43,7 @@ export default function AgentEditor() {
     if (!id) return;
     api.agents.get(id).then(setAgent).catch(console.error).finally(() => setLoading(false));
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
+    api.tools.list().then(res => setAllTools(res.tools || [])).catch(console.error);
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id]);
@@ -430,6 +435,87 @@ export default function AgentEditor() {
             onChange={v => update('response_schema', v)}
             inputStyle={inputStyle}
           />
+
+          {/* Tools */}
+          <div className="rounded-xl border p-4"
+            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+              <Wrench size={16} style={{ color: '#f59e0b' }} /> Tools
+            </h3>
+
+            {/* Selected tools */}
+            {agent.tool_ids && agent.tool_ids.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {agent.tool_ids.map(tid => {
+                  const tool = allTools.find(t => t.id === tid);
+                  return (
+                    <span key={tid}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                      style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full"
+                        style={{ background: tool?.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }} />
+                      <span className="font-medium">{tool?.name || tid}</span>
+                      {tool?.type && (
+                        <span className="text-[10px] px-1 rounded"
+                          style={{ background: tool.type === 'MCP' ? '#8b5cf615' : '#f59e0b15',
+                            color: tool.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }}>
+                          {tool.type}
+                        </span>
+                      )}
+                      <button onClick={() => update('tool_ids', agent.tool_ids.filter((i: string) => i !== tid))}
+                        className="cursor-pointer ml-0.5 rounded hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ color: 'var(--color-text-secondary)' }}>
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>No tools selected</p>
+            )}
+
+            {/* Add tools */}
+            <div className="relative">
+              <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-sm"
+                style={inputStyle}>
+                <Search size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+                <input value={toolSearch} onChange={e => setToolSearch(e.target.value)}
+                  className="flex-1 bg-transparent outline-none text-sm"
+                  placeholder="Search tools to add..." />
+              </div>
+              {toolSearch && (
+                <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
+                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
+                  {allTools
+                    .filter(t => !agent.tool_ids?.includes(t.id))
+                    .filter(t => t.name.toLowerCase().includes(toolSearch.toLowerCase()) || t.type?.toLowerCase().includes(toolSearch.toLowerCase()))
+                    .map(t => (
+                      <button key={t.id}
+                        onClick={() => { update('tool_ids', [...(agent.tool_ids || []), t.id]); setToolSearch(''); }}
+                        className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ background: t.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }} />
+                        <span className="font-medium">{t.name}</span>
+                        <span className="text-[10px] px-1 rounded ml-auto"
+                          style={{ background: t.type === 'MCP' ? '#8b5cf615' : '#f59e0b15',
+                            color: t.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }}>
+                          {t.type}
+                        </span>
+                        {t.category && (
+                          <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{t.category}</span>
+                        )}
+                      </button>
+                    ))}
+                  {allTools.filter(t => !agent.tool_ids?.includes(t.id))
+                    .filter(t => t.name.toLowerCase().includes(toolSearch.toLowerCase())).length === 0 && (
+                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching tools</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Right: info + test + runs */}

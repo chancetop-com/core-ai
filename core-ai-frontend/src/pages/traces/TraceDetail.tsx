@@ -67,7 +67,15 @@ function tryParseJson(str: string): unknown | null {
   try { return JSON.parse(str); } catch { return null; }
 }
 
-function extractMessages(input: string): { role: string; content: string }[] {
+interface ExtractedMessage {
+  role: string;
+  content: string;
+  tool_calls?: { id: string; function: { name: string; arguments: string } }[];
+  tool_call_id?: string;
+  name?: string;
+}
+
+function extractMessages(input: string): ExtractedMessage[] {
   const parsed = tryParseJson(input);
   if (parsed && typeof parsed === 'object' && 'messages' in (parsed as Record<string, unknown>)) {
     const msgs = (parsed as { messages: unknown[] }).messages;
@@ -78,20 +86,30 @@ function extractMessages(input: string): { role: string; content: string }[] {
       else if (Array.isArray(msg.content)) {
         content = msg.content.map((c: unknown) => (c as Record<string, unknown>).text || '').join('');
       }
-      return { role: String(msg.role || 'unknown'), content };
+      const result: ExtractedMessage = { role: String(msg.role || 'unknown'), content };
+      if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+        result.tool_calls = msg.tool_calls as ExtractedMessage['tool_calls'];
+      }
+      if (msg.tool_call_id) result.tool_call_id = String(msg.tool_call_id);
+      if (msg.name) result.name = String(msg.name);
+      return result;
     });
   }
   return [];
 }
 
-function extractAssistantContent(output: string): { content: string; reasoning?: string } {
+function extractAssistantContent(output: string): { content: string; reasoning?: string; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } {
   const parsed = tryParseJson(output);
   if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>;
-    return {
+    const result: { content: string; reasoning?: string; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } = {
       content: String(obj.content || output),
       reasoning: obj.reasoning_content ? String(obj.reasoning_content) : undefined,
     };
+    if (Array.isArray(obj.tool_calls) && obj.tool_calls.length > 0) {
+      result.tool_calls = obj.tool_calls as typeof result.tool_calls;
+    }
+    return result;
   }
   return { content: output };
 }
@@ -403,8 +421,8 @@ function OverviewTab({ span }: { span: Span }) {
 }
 
 function MessagesTab({ messages, output, inputRaw, outputRaw }: {
-  messages: { role: string; content: string }[];
-  output: { content: string; reasoning?: string } | null;
+  messages: ExtractedMessage[];
+  output: { content: string; reasoning?: string; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } | null;
   inputRaw: string;
   outputRaw: string;
 }) {
@@ -424,17 +442,42 @@ function MessagesTab({ messages, output, inputRaw, outputRaw }: {
     );
   }
 
+  const formatArgs = (args: string) => {
+    try { return JSON.stringify(JSON.parse(args), null, 2); } catch { return args; }
+  };
+
   return (
     <div className="space-y-2">
       {messages.map((m, i) => {
         const style = ROLE_STYLES[m.role] || ROLE_STYLES.user;
         return (
           <div key={i} className="rounded-lg overflow-hidden" style={{ border: `1px solid ${style.color}30` }}>
-            <div className="px-3 py-1.5 text-xs font-medium" style={{ background: style.bg, color: style.color }}>
-              {style.label}
+            <div className="px-3 py-1.5 text-xs font-medium flex items-center gap-2" style={{ background: style.bg, color: style.color }}>
+              {m.role === 'tool' && m.name ? `Tool: ${m.name}` : style.label}
+              {m.tool_call_id && (
+                <span className="font-mono text-[10px] opacity-60">{m.tool_call_id}</span>
+              )}
             </div>
             <div className="px-3 py-2">
-              <pre className="text-xs whitespace-pre-wrap">{m.content || '(empty)'}</pre>
+              {m.content && <pre className="text-xs whitespace-pre-wrap">{m.content}</pre>}
+              {!m.content && !m.tool_calls && <pre className="text-xs whitespace-pre-wrap opacity-50">(empty)</pre>}
+              {m.tool_calls && m.tool_calls.length > 0 && (
+                <div className="space-y-1.5 mt-1">
+                  {m.tool_calls.map((tc, j) => (
+                    <div key={j} className="rounded-md overflow-hidden" style={{ border: '1px solid #f59e0b30' }}>
+                      <div className="px-2.5 py-1 text-[11px] font-medium flex items-center gap-1.5"
+                        style={{ background: '#f59e0b10', color: '#f59e0b' }}>
+                        <Wrench size={11} /> {tc.function.name}
+                        {tc.id && <span className="font-mono text-[10px] opacity-60 ml-auto">{tc.id}</span>}
+                      </div>
+                      <pre className="px-2.5 py-1.5 text-[11px] whitespace-pre-wrap overflow-auto"
+                        style={{ background: 'var(--color-bg-tertiary)', maxHeight: '120px' }}>
+                        {formatArgs(tc.function.arguments)}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         );
@@ -455,7 +498,24 @@ function MessagesTab({ messages, output, inputRaw, outputRaw }: {
                 </pre>
               </details>
             )}
-            <pre className="text-xs whitespace-pre-wrap">{output.content}</pre>
+            {output.content && <pre className="text-xs whitespace-pre-wrap">{output.content}</pre>}
+            {output.tool_calls && output.tool_calls.length > 0 && (
+              <div className="space-y-1.5 mt-1">
+                {output.tool_calls.map((tc, j) => (
+                  <div key={j} className="rounded-md overflow-hidden" style={{ border: '1px solid #f59e0b30' }}>
+                    <div className="px-2.5 py-1 text-[11px] font-medium flex items-center gap-1.5"
+                      style={{ background: '#f59e0b10', color: '#f59e0b' }}>
+                      <Wrench size={11} /> {tc.function.name}
+                      {tc.id && <span className="font-mono text-[10px] opacity-60 ml-auto">{tc.id}</span>}
+                    </div>
+                    <pre className="px-2.5 py-1.5 text-[11px] whitespace-pre-wrap overflow-auto"
+                      style={{ background: 'var(--color-bg-tertiary)', maxHeight: '120px' }}>
+                      {formatArgs(tc.function.arguments)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
