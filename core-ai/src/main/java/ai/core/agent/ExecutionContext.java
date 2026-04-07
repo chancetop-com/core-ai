@@ -6,6 +6,8 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Usage;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.tool.ToolCallAsyncTaskManager;
+import ai.core.tool.subagent.SubagentOutputSinkFactory;
+import ai.core.tool.subagent.SubagentTaskRegistry;
 import core.framework.util.Maps;
 
 import java.util.List;
@@ -30,6 +32,8 @@ public final class ExecutionContext {
     private final ToolCallAsyncTaskManager asyncTaskManager;
     private final AttachedContent attachedContent;
     private final PersistenceProvider persistenceProvider;
+    private final SubagentTaskRegistry subagentTaskRegistry;
+    private final SubagentOutputSinkFactory subagentOutputSinkFactory;
     private LLMProvider llmProvider;
     private String model;
     private StreamingCallback streamingCallback;
@@ -44,6 +48,8 @@ public final class ExecutionContext {
         this.customVariables.putAll(builder.customVariables);
         this.asyncTaskManager = builder.asyncTaskManager;
         this.persistenceProvider = builder.persistenceProvider;
+        this.subagentTaskRegistry = builder.subagentTaskRegistry;
+        this.subagentOutputSinkFactory = builder.subagentOutputSinkFactory;
     }
 
     public String getSessionId() {
@@ -61,6 +67,14 @@ public final class ExecutionContext {
 
     public ToolCallAsyncTaskManager getAsyncTaskManager() {
         return asyncTaskManager;
+    }
+
+    public SubagentTaskRegistry getSubagentTaskRegistry() {
+        return subagentTaskRegistry;
+    }
+
+    public SubagentOutputSinkFactory getSubagentOutputSinkFactory() {
+        return subagentOutputSinkFactory;
     }
 
     public Object getCustomVariable(String key) {
@@ -130,6 +144,8 @@ public final class ExecutionContext {
         private ToolCallAsyncTaskManager asyncTaskManager;
         private AttachedContent attachedContent;
         private PersistenceProvider persistenceProvider;
+        private SubagentTaskRegistry subagentTaskRegistry;
+        private SubagentOutputSinkFactory subagentOutputSinkFactory;
         private final Map<String, Object> customVariables = Maps.newHashMap();
 
         public Builder sessionId(String sessionId) {
@@ -166,6 +182,16 @@ public final class ExecutionContext {
 
         public Builder persistenceProvider(PersistenceProvider persistenceProvider) {
             this.persistenceProvider = persistenceProvider;
+            return this;
+        }
+
+        public Builder subagentTaskRegistry(SubagentTaskRegistry subagentTaskRegistry) {
+            this.subagentTaskRegistry = subagentTaskRegistry;
+            return this;
+        }
+
+        public Builder subagentOutputSinkFactory(SubagentOutputSinkFactory subagentOutputSinkFactory) {
+            this.subagentOutputSinkFactory = subagentOutputSinkFactory;
             return this;
         }
 

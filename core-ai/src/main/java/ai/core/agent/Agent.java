@@ -192,6 +192,7 @@ public class Agent extends Node<Agent> {
         history.complete(determineCompletionStatus(history));
         if (reflectionListener != null) reflectionListener.onReflectionComplete(this, history);
     }
+
     private void notifyTerminationReason(ReflectionEvaluation eval, int round) {
         if (reflectionListener == null) return;
         if (eval.isPass() && eval.getScore() >= 8) reflectionListener.onScoreAchieved(this, eval.getScore(), round);
@@ -208,22 +209,35 @@ public class Agent extends Node<Agent> {
 
     protected void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         buildUserQueryToMessage(query, variables);
+        var context = getExecutionContext();
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
             if (cancelled) break;
+            injectBeforeTurnMessages(context);
             var turnMsgList = turn(getMessages(), AgentHelper.toReqTools(toolCalls), constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
             currentIteCount++;
-        } while (AgentHelper.lastIsToolMsg(getMessages()) && currentIteCount < maxTurnNumber);
+        } while ((AgentHelper.lastIsToolMsg(getMessages()) || lifecyclesShouldContinueTurns(context))
+                && currentIteCount < maxTurnNumber);
 
         setOutput(agentOut.toString());
         if (currentIteCount >= maxTurnNumber) {
             logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
             throw new MaxTurnsExceededException(maxTurnNumber);
         }
+    }
+
+    private void injectBeforeTurnMessages(ExecutionContext context) {
+        agentLifecycles.stream()
+                .flatMap(lc -> lc.beforeTurn(context).stream())
+                .forEach(this::addMessage);
+    }
+
+    private boolean lifecyclesShouldContinueTurns(ExecutionContext context) {
+        return agentLifecycles.stream().anyMatch(lc -> lc.shouldContinueTurns(context));
     }
 
     private Choice constructionFakeSlashCommandAssistantMsg(List<Message> messages, List<Tool> tools) {
@@ -376,36 +390,47 @@ public class Agent extends Node<Agent> {
     public void setModel(String model) {
         this.model = model;
     }
+
     public String getSystemPrompt() {
         return systemPrompt;
     }
+
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
     }
+
     public Double getTemperature() {
         return temperature;
     }
+
     public String getModel() {
         return model;
     }
+
     public LLMProvider getLLMProvider() {
         return llmProvider;
     }
+
     public Compression getCompression() {
         return compression;
     }
+
     public void setAuthenticated(boolean authenticated) {
         this.authenticated = authenticated;
     }
+
     public void setLlmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
     }
+
     public List<SubAgentToolCall> getSubAgents() {
         return subAgents;
     }
+
     void setSubAgents(List<SubAgentToolCall> subAgents) {
         this.subAgents = subAgents;
     }
+
     public boolean hasSubAgents() {
         return subAgents != null && !subAgents.isEmpty();
     }

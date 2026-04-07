@@ -174,6 +174,15 @@ public class OutputPanel {
 
     }
 
+    public void asyncTaskLaunched(String summary) {
+        stopSpinnerIfActive();
+        writer.print(INDENT + AnsiTheme.SUCCESS + "\u23BF" + AnsiTheme.RESET + "  ");
+        writer.println(AnsiTheme.MUTED + summary + AnsiTheme.RESET);
+        writer.flush();
+        resetShown();
+        startSpinner();
+    }
+
     public void toolResult(String status, String result) {
         if (isInTask()) return;
         stopSpinnerIfActive();

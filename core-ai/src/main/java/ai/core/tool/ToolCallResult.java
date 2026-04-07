@@ -49,6 +49,19 @@ public final class ToolCallResult {
         return r;
     }
 
+    public static ToolCallResult asyncLaunched(String taskId, String outputRef, String description) {
+        var r = new ToolCallResult();
+        r.status = Status.ASYNC_LAUNCHED;
+        r.taskId = taskId;
+        r.result = core.framework.json.JSON.toJSON(java.util.Map.of(
+                "status", "async_launched",
+                "taskId", taskId,
+                "outputRef", outputRef != null ? outputRef : "",
+                "description", description != null ? description : ""
+        ));
+        return r;
+    }
+
     private Status status;
     private String taskId;
     private String result;
@@ -89,6 +102,10 @@ public final class ToolCallResult {
 
     public boolean isFailed() {
         return status == Status.FAILED;
+    }
+
+    public boolean isAsyncLaunched() {
+        return status == Status.ASYNC_LAUNCHED;
     }
 
     public boolean isTerminal() {
@@ -190,6 +207,7 @@ public final class ToolCallResult {
             case COMPLETED -> result;
             case PENDING -> formatPendingMessage();
             case WAITING_FOR_INPUT -> formatWaitingMessage();
+            case ASYNC_LAUNCHED -> result;
             case FAILED -> "Error: " + result;
         };
     }
@@ -219,6 +237,7 @@ public final class ToolCallResult {
         COMPLETED,
         PENDING,
         WAITING_FOR_INPUT,
+        ASYNC_LAUNCHED,
         FAILED
     }
 

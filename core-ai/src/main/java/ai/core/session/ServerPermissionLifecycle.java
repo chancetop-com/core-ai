@@ -110,7 +110,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
         var callId = functionCall.id;
         var toolName = functionCall.function.name;
-        var status = toolResult.isCompleted() ? "success" : "failure";
+        var status = toolResult.isCompleted() ? "success" : toolResult.isAsyncLaunched() ? "async_launched" : "failure";
         var result = toolResult.getResult();
 
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);

@@ -10,6 +10,7 @@ import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * author: lim chen
@@ -95,13 +96,35 @@ public class TaskTool extends ToolCall {
             var argsMap = JSON.fromJSON(Map.class, arguments);
             var prompt = (String) argsMap.get("prompt");
             var subagentType = (String) argsMap.get("subagent_type");
+            var description = (String) argsMap.get("description");
+            var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
+
+            var registry = context.getSubagentTaskRegistry();
+            var factory = context.getSubagentOutputSinkFactory();
+
+            if (runInBackground && registry != null && factory != null) {
+                var taskId = "sa-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+                var sink = factory.create(taskId);
+                var agent = createAgent(subagentType, context);
+                var subContext = buildSubContext(subagentType, context);
+                registry.submit(taskId, sink, () -> {
+                    agent.run(prompt, subContext);
+                    var lastContent = agent.getMessages().getLast().content;
+                    var result = lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
+                    sink.write(result != null ? result : "");
+                    return result;
+                });
+                return ToolCallResult.asyncLaunched(taskId, sink.getReference(), description)
+                        .withDuration(System.currentTimeMillis() - startTime);
+            }
+
             var agent = createAgent(subagentType, context);
             var subContext = buildSubContext(subagentType, context);
             agent.run(prompt, subContext);
             return ToolCallResult.completed(agent.getMessages().getLast().content.getFirst().text)
                     .withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
-            var error = "Failed to parse write file arguments: " + e.getMessage();
+            var error = "Failed to parse task tool arguments: " + e.getMessage();
             return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
@@ -144,7 +167,11 @@ public class TaskTool extends ToolCall {
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "description", "A short (3-5 words) description of the task").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "The task for the agent to perform").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "subagent_type", "The type of specialized agent to use for this task").required()
+                    ToolCallParameters.ParamSpec.of(String.class, "subagent_type", "The type of specialized agent to use for this task").required(),
+                    ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background",
+                            "Set to true to run this agent in the background. Returns immediately with a taskId. " +
+                            "You will receive a <task-notification> when the agent completes. " +
+                            "Launch multiple agents concurrently by calling task() with run_in_background=true multiple times in a single message.")
             ));
             var tool = new TaskTool();
             build(tool);

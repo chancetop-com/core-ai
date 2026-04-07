@@ -6,6 +6,7 @@ import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.persistence.PersistenceProvider;
@@ -13,6 +14,7 @@ import ai.core.skill.SkillConfig;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.tool.subagent.SubagentTaskRegistry;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.SkillTool;
@@ -67,8 +69,11 @@ public class CliAgent {
             builder.model(config.modelOverride);
         }
         var agent = builder.build();
+        var registry = new SubagentTaskRegistry();
         agent.setExecutionContext(ExecutionContext.builder()
                 .customVariables(Map.of("workspace", config.workspace.toAbsolutePath().toString()))
+                .subagentTaskRegistry(registry)
+                .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
                 .build());
         return agent;
     }

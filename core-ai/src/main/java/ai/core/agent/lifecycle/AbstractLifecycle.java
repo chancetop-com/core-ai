@@ -61,4 +61,20 @@ public abstract class AbstractLifecycle {
     public List<Message> onModelResponse(CompletionRequest completionRequest, CompletionResponse completionResponse, ExecutionContext executionContext) {
         return null;
     }
+
+    /**
+     * Called at the start of each chatTurns iteration, before the LLM call.
+     * Return messages to inject into conversation history for this turn.
+     */
+    public List<Message> beforeTurn(ExecutionContext executionContext) {
+        return List.of();
+    }
+
+    /**
+     * Called at the end of each chatTurns iteration to decide whether the loop should continue
+     * even when the last message is not a tool call.
+     */
+    public boolean shouldContinueTurns(ExecutionContext executionContext) {
+        return false;
+    }
 }

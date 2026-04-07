@@ -17,7 +17,9 @@ import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
 import ai.core.tool.tools.TaskTool;
+import ai.core.utils.JsonUtil;
 
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -60,6 +62,9 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onToolStart(ToolStartEvent event) {
+        if (TaskTool.TOOL_NAME.equals(event.toolName) && panel.isInTask()) {
+            panel.exitTask();
+        }
         if (panel.isInTask()) {
             taskToolCallCount++;
         }
@@ -74,8 +79,12 @@ public class BaseEventListener implements AgentEventListener {
     @Override
     public void onToolResult(ToolResultEvent event) {
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
-            panel.exitTask();
-            panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - taskStartTime, taskToolCallCount));
+            if ("async_launched".equals(event.status)) {
+                panel.asyncTaskLaunched(buildTaskAsyncSummary(event.result));
+            } else {
+                panel.exitTask();
+                panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - taskStartTime, taskToolCallCount));
+            }
         } else {
             panel.toolResult(event.status, event.result);
         }
@@ -90,6 +99,21 @@ public class BaseEventListener implements AgentEventListener {
         return sb.toString();
     }
 
+    @SuppressWarnings("unchecked")
+    private String buildTaskAsyncSummary(String resultJson) {
+        try {
+            var map = JsonUtil.fromJson(Map.class, resultJson);
+            var taskId = (String) map.get("taskId");
+            var description = (String) map.get("description");
+            var sb = new StringBuilder("Running in background");
+            if (taskId != null) sb.append(" | ").append(taskId);
+            if (description != null && !description.isBlank()) sb.append(" | ").append(description);
+            return sb.toString();
+        } catch (Exception e) {
+            return "Running in background";
+        }
+    }
+
     @Override
     public void onToolApprovalRequest(ToolApprovalRequestEvent event) {
         panel.stopSpinnerIfActive();
@@ -100,6 +124,7 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onTurnComplete(TurnCompleteEvent event) {
+        if (panel.isInTask()) panel.exitTask();
         panel.endTurn();
         if (Boolean.TRUE.equals(event.cancelled)) {
             panel.cancelled();
