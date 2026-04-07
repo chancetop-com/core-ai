@@ -183,6 +183,18 @@ public class OutputPanel {
         startSpinner();
     }
 
+    public void startAttributedTaskSection(String taskId, String description) {
+        stopSpinnerIfActive();
+        mdRenderer.flush();
+        var label = description != null && !description.isBlank()
+            ? taskId + " · " + description : taskId;
+        writer.println("\n" + INDENT + AnsiTheme.MUTED + "\u25B7 " + label + AnsiTheme.RESET);
+        writer.flush();
+        activeTaskName = taskId;
+        resetShown();
+        startSpinner();
+    }
+
     public void toolResult(String status, String result) {
         if (isInTask()) return;
         stopSpinnerIfActive();

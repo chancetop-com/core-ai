@@ -106,7 +106,7 @@ public class TaskTool extends ToolCall {
                 var taskId = "sa-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
                 var sink = factory.create(taskId);
                 var agent = createAgent(subagentType, context);
-                var subContext = buildSubContext(subagentType, context);
+                var subContext = buildSubContext(subagentType, context, taskId);
                 registry.submit(taskId, sink, () -> {
                     agent.run(prompt, subContext);
                     var lastContent = agent.getMessages().getLast().content;
@@ -119,7 +119,7 @@ public class TaskTool extends ToolCall {
             }
 
             var agent = createAgent(subagentType, context);
-            var subContext = buildSubContext(subagentType, context);
+            var subContext = buildSubContext(subagentType, context, null);
             agent.run(prompt, subContext);
             return ToolCallResult.completed(agent.getMessages().getLast().content.getFirst().text)
                     .withDuration(System.currentTimeMillis() - startTime);
@@ -130,7 +130,7 @@ public class TaskTool extends ToolCall {
         }
     }
 
-    private ExecutionContext buildSubContext(String subagentType, ExecutionContext context) {
+    private ExecutionContext buildSubContext(String subagentType, ExecutionContext context, String parentTaskId) {
         var subContext = ExecutionContext.builder()
                 .sessionId("subagent:" + subagentType + "-" + System.currentTimeMillis())
                 .userId(context.getUserId())
@@ -138,6 +138,7 @@ public class TaskTool extends ToolCall {
                 .asyncTaskManager(context.getAsyncTaskManager())
                 .attachedContent(context.getAttachedContent())
                 .persistenceProvider(context.getPersistenceProvider())
+                .parentTaskId(parentTaskId)
                 .build();
         subContext.setLlmProvider(context.getLlmProvider());
         subContext.setModel(context.getModel());

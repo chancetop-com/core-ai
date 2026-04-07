@@ -58,7 +58,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         logger.debug("beforeTool: tool={}, callId={}", toolName, callId);
 
         Map<String, Object> argMap = parseArguments(arguments);
-        dispatchStartEvent(callId, toolName, arguments, argMap);
+        dispatchStartEvent(callId, toolName, arguments, argMap, executionContext);
 
         String pattern = PermissionRule.buildPattern(toolName, argMap);
         if (shouldSkipApproval(toolName, argMap, executionContext)) return;
@@ -73,9 +73,10 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         applyDecision(decision, toolName, pattern);
     }
 
-    private void dispatchStartEvent(String callId, String toolName, String arguments, Map<String, Object> argMap) {
+    private void dispatchStartEvent(String callId, String toolName, String arguments, Map<String, Object> argMap, ExecutionContext context) {
         var startEvent = ToolStartEvent.of(sessionId, callId, toolName, arguments);
         startEvent.diff = generatePreviewDiff(toolName, argMap);
+        startEvent.parentTaskId = context.getParentTaskId();
         dispatcher.accept(startEvent);
     }
 

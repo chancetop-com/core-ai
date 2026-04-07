@@ -19,8 +19,10 @@ import ai.core.cli.ui.ThinkingSpinner;
 import ai.core.tool.tools.TaskTool;
 import ai.core.utils.JsonUtil;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -33,7 +35,9 @@ public class BaseEventListener implements AgentEventListener {
     protected volatile CompletableFuture<Void> turnFuture;
     private final AtomicReference<TurnCompleteEvent> lastTurnComplete = new AtomicReference<>();
     private volatile long taskStartTime;
-    private volatile int taskToolCallCount;
+    private final AtomicInteger taskToolCallCount = new AtomicInteger(0);
+    private volatile String currentAttributedTaskId;
+    private final Map<String, String> asyncTaskDescriptions = new LinkedHashMap<>();
 
     protected BaseEventListener(TerminalUI ui, AgentSession session) {
         this.ui = ui;
@@ -62,17 +66,31 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onToolStart(ToolStartEvent event) {
+        String parentTaskId = event.parentTaskId;
+        if (parentTaskId != null) {
+            if (!parentTaskId.equals(currentAttributedTaskId)) {
+                if (panel.isInTask()) panel.exitTask();
+                panel.startAttributedTaskSection(parentTaskId, asyncTaskDescriptions.get(parentTaskId));
+                currentAttributedTaskId = parentTaskId;
+            }
+            panel.toolStart(event.toolName, event.arguments, event.diff);
+            return;
+        }
+        if (currentAttributedTaskId != null) {
+            panel.exitTask();
+            currentAttributedTaskId = null;
+        }
         if (TaskTool.TOOL_NAME.equals(event.toolName) && panel.isInTask()) {
             panel.exitTask();
         }
         if (panel.isInTask()) {
-            taskToolCallCount++;
+            taskToolCallCount.incrementAndGet();
         }
         panel.toolStart(event.toolName, event.arguments, event.diff);
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
             panel.enterTask(event.toolName);
             taskStartTime = System.currentTimeMillis();
-            taskToolCallCount = 0;
+            taskToolCallCount.set(0);
         }
     }
 
@@ -80,10 +98,19 @@ public class BaseEventListener implements AgentEventListener {
     public void onToolResult(ToolResultEvent event) {
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
             if ("async_launched".equals(event.status)) {
+                try {
+                    var map = JsonUtil.fromJson(Map.class, event.result);
+                    var taskId = (String) map.get("taskId");
+                    var description = (String) map.get("description");
+                    if (taskId != null && description != null) {
+                        asyncTaskDescriptions.put(taskId, description);
+                    }
+                } catch (Exception ignored) {
+                }
                 panel.asyncTaskLaunched(buildTaskAsyncSummary(event.result));
             } else {
                 panel.exitTask();
-                panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - taskStartTime, taskToolCallCount));
+                panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - taskStartTime, taskToolCallCount.get()));
             }
         } else {
             panel.toolResult(event.status, event.result);
@@ -134,6 +161,8 @@ public class BaseEventListener implements AgentEventListener {
         }
         lastTurnComplete.set(event);
         printTurnSummary();
+        currentAttributedTaskId = null;
+        asyncTaskDescriptions.clear();
         if (turnFuture != null) turnFuture.complete(null);
     }
 

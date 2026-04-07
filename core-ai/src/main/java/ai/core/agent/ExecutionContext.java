@@ -28,6 +28,7 @@ public final class ExecutionContext {
 
     private final String sessionId;
     private final String userId;
+    private final String parentTaskId;
     private final Map<String, Object> customVariables;
     private final ToolCallAsyncTaskManager asyncTaskManager;
     private final AttachedContent attachedContent;
@@ -43,6 +44,7 @@ public final class ExecutionContext {
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
         this.userId = builder.userId;
+        this.parentTaskId = builder.parentTaskId;
         this.attachedContent = builder.attachedContent;
         this.customVariables = Maps.newHashMap();
         this.customVariables.putAll(builder.customVariables);
@@ -59,6 +61,10 @@ public final class ExecutionContext {
 
     public String getUserId() {
         return userId;
+    }
+
+    public String getParentTaskId() {
+        return parentTaskId;
     }
 
     public Map<String, Object> getCustomVariables() {
@@ -141,6 +147,7 @@ public final class ExecutionContext {
     public static class Builder {
         private String sessionId;
         private String userId;
+        private String parentTaskId;
         private ToolCallAsyncTaskManager asyncTaskManager;
         private AttachedContent attachedContent;
         private PersistenceProvider persistenceProvider;
@@ -155,6 +162,11 @@ public final class ExecutionContext {
 
         public Builder userId(String userId) {
             this.userId = userId;
+            return this;
+        }
+
+        public Builder parentTaskId(String parentTaskId) {
+            this.parentTaskId = parentTaskId;
             return this;
         }
 
