@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Plus, Search } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView } from '../../api/client';
 import { sessionApi } from '../../api/session';
