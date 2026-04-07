@@ -1,5 +1,7 @@
 package ai.core.cli.a2a.handler.chat;
 
+import ai.core.api.server.session.CreateSessionRequest;
+import ai.core.api.server.session.CreateSessionResponse;
 import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.utils.JsonUtil;
 import io.undertow.server.HttpHandler;
@@ -32,16 +34,18 @@ public class ChatSessionCreateHandler implements HttpHandler {
 
         try {
             String body = readBody(exchange);
-            String sessionId = null;
+            String agentId = null;
 
             if (body != null && !body.isEmpty()) {
                 var request = JsonUtil.fromJson(CreateSessionRequest.class, body);
                 // For local mode, agent_id is ignored - we always use the local agent
-                sessionId = request.agentId != null ? request.agentId : null;
+                agentId = request.agentId != null ? request.agentId : null;
             }
 
-            String id = sessionManager.createSession(sessionId);
-            sendJson(exchange, JsonUtil.toJson(new CreateSessionResponse(id)));
+            String id = sessionManager.createSession(agentId);
+            var response = new CreateSessionResponse();
+            response.sessionId = id;
+            sendJson(exchange, JsonUtil.toJson(response));
         } catch (Exception e) {
             LOGGER.error("failed to create session", e);
             exchange.setStatusCode(500);
@@ -62,17 +66,5 @@ public class ChatSessionCreateHandler implements HttpHandler {
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
         exchange.setStatusCode(201);
         exchange.getResponseSender().send(json);
-    }
-
-    public static class CreateSessionRequest {
-        public String agentId;
-    }
-
-    public static class CreateSessionResponse {
-        public String sessionId;
-
-        public CreateSessionResponse(String sessionId) {
-            this.sessionId = sessionId;
-        }
     }
 }

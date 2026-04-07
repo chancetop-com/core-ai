@@ -14,10 +14,12 @@ import ai.core.cli.a2a.handler.chat.ChatSessionSSEHandler;
 import ai.core.cli.session.LocalChatSessionManager;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
+import io.undertow.server.HttpServerExchange;
 import io.undertow.server.handlers.PathTemplateHandler;
 import io.undertow.server.handlers.resource.ClassPathResourceManager;
 import io.undertow.server.handlers.resource.FileResourceManager;
 import io.undertow.server.handlers.resource.ResourceHandler;
+import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.util.Methods;
 import org.slf4j.Logger;
@@ -66,34 +68,62 @@ public class A2AServer {
         var localToolHandler = new LocalToolHandler();
         var localSkillHandler = new LocalSkillHandler();
 
-        var pathHandler = new PathTemplateHandler(staticFileHandler(webDir));
-        pathHandler.add("/.well-known/agent-card.json", agentCardHandler);
-        pathHandler.add("/message/send", messageHandler);
-        pathHandler.add("/tasks/{taskId}", taskHandler);
-        pathHandler.add("/tasks/{taskId}/cancel", taskHandler);
-        pathHandler.add("/tasks/{taskId}/message/send", taskHandler);
-        pathHandler.add("/api/capabilities", capabilitiesHandler);
+        var apiPathHandler = new PathTemplateHandler(notFoundHandler());
+        apiPathHandler.add("/.well-known/agent-card.json", agentCardHandler);
+        apiPathHandler.add("/message/send", messageHandler);
+        apiPathHandler.add("/tasks/{taskId}", taskHandler);
+        apiPathHandler.add("/tasks/{taskId}/cancel", taskHandler);
+        apiPathHandler.add("/tasks/{taskId}/message/send", taskHandler);
+        apiPathHandler.add("/api/capabilities", capabilitiesHandler);
 
         // Chat session web API endpoints (replaces old A2A-style session endpoints)
-        pathHandler.add("/api/sessions", chatSessionCreateHandler);
-        pathHandler.add("/api/sessions/{sessionId}", chatSessionActionHandler);
-        pathHandler.add("/api/sessions/{sessionId}/history", chatSessionActionHandler);
-        pathHandler.add("/api/sessions/{sessionId}/messages", chatSessionActionHandler);
-        pathHandler.add("/api/sessions/{sessionId}/approve", chatSessionActionHandler);
-        pathHandler.add("/api/sessions/{sessionId}/cancel", chatSessionActionHandler);
-        pathHandler.add("/api/sessions/{sessionId}/tools", chatSessionActionHandler);
-        pathHandler.add("/api/sessions/{sessionId}/skills", chatSessionActionHandler);
-        pathHandler.add("/api/sessions/events", chatSessionSSEHandler);
+        apiPathHandler.add("/api/sessions", chatSessionCreateHandler);
+        apiPathHandler.add("/api/sessions/{sessionId}", chatSessionActionHandler);
+        apiPathHandler.add("/api/sessions/{sessionId}/history", chatSessionActionHandler);
+        apiPathHandler.add("/api/sessions/{sessionId}/messages", chatSessionActionHandler);
+        apiPathHandler.add("/api/sessions/{sessionId}/approve", chatSessionActionHandler);
+        apiPathHandler.add("/api/sessions/{sessionId}/cancel", chatSessionActionHandler);
+        apiPathHandler.add("/api/sessions/{sessionId}/tools", chatSessionActionHandler);
+        apiPathHandler.add("/api/sessions/{sessionId}/skills", chatSessionActionHandler);
+        apiPathHandler.add("/api/sessions/events", chatSessionSSEHandler);
 
         // Local agent/tools/skills endpoints (for web frontend agent picker)
-        pathHandler.add("/api/agents", localAgentHandler);
-        pathHandler.add("/api/agents/{id}", localAgentHandler);
-        pathHandler.add("/api/tools", localToolHandler);
-        pathHandler.add("/api/skills", localSkillHandler);
+        apiPathHandler.add("/api/agents", localAgentHandler);
+        apiPathHandler.add("/api/agents/{id}", localAgentHandler);
+        apiPathHandler.add("/api/tools", localToolHandler);
+        apiPathHandler.add("/api/skills", localSkillHandler);
+
+        var staticHandler = staticFileHandler(webDir);
+
+        var spaHandler = (HttpHandler) exchange -> {
+            var path = exchange.getRequestPath();
+            if ("/".equals(path) || path.isEmpty()) {
+                exchange.setStatusCode(302);
+                exchange.getResponseHeaders().put(Headers.LOCATION, "/chat");
+                exchange.endExchange();
+                return;
+            }
+            // SPA fallback: serve index.html for frontend routes (not API or static assets with extension)
+            if (!path.startsWith("/api/") && !path.startsWith("/message") && !path.startsWith("/tasks") && !path.startsWith("/.well-known") && !path.contains(".")) {
+                exchange.setStatusCode(200);
+                exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/html");
+                exchange.getResponseSender().send(loadIndexHtml(webDir));
+                return;
+            }
+            apiPathHandler.handleRequest(exchange);
+        };
 
         this.server = Undertow.builder()
                 .addHttpListener(port, "0.0.0.0")
-                .setHandler(corsWrapper(pathHandler))
+                .setHandler(corsWrapper(exchange -> {
+                    var path = exchange.getRequestPath();
+                    // Static assets: let ResourceHandler serve them
+                    if (path.contains(".")) {
+                        staticHandler.handleRequest(exchange);
+                    } else {
+                        spaHandler.handleRequest(exchange);
+                    }
+                }))
                 .build();
     }
 
@@ -119,6 +149,43 @@ public class A2AServer {
         }
         resourceHandler.setWelcomeFiles("index.html");
         return resourceHandler;
+    }
+
+    private HttpHandler notFoundHandler() {
+        return exchange -> {
+            exchange.setStatusCode(404);
+            exchange.getResponseSender().send("{\"error\":\"Not Found\"}");
+        };
+    }
+
+    private static String cachedIndexHtml;
+
+    private String loadIndexHtml(Path webDir) {
+        if (cachedIndexHtml != null) {
+            return cachedIndexHtml;
+        }
+        if (webDir != null) {
+            var file = webDir.resolve("index.html").toFile();
+            if (file.exists()) {
+                try {
+                    cachedIndexHtml = java.nio.file.Files.readString(file.toPath());
+                    return cachedIndexHtml;
+                } catch (Exception e) {
+                    LOGGER.warn("failed to load index.html: {}", e.getMessage());
+                }
+            }
+        }
+        // Fallback to classpath
+        try (var is = Thread.currentThread().getContextClassLoader().getResourceAsStream("web/index.html")) {
+            if (is != null) {
+                cachedIndexHtml = new String(is.readAllBytes());
+                return cachedIndexHtml;
+            }
+        } catch (Exception e) {
+            LOGGER.warn("failed to load index.html from classpath: {}", e.getMessage());
+        }
+        cachedIndexHtml = "<!DOCTYPE html><html><body><h1>index.html not found</h1></body></html>";
+        return cachedIndexHtml;
     }
 
     private HttpHandler corsWrapper(HttpHandler next) {

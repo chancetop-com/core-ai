@@ -2,6 +2,7 @@ package ai.core.cli.a2a.handler.chat;
 
 import ai.core.agent.AgentPersistence;
 import ai.core.api.server.session.ApproveToolCallRequest;
+import ai.core.api.server.session.SendMessageRequest;
 import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.llm.domain.RoleType;
 import ai.core.session.FileSessionPersistence;
@@ -55,7 +56,6 @@ public class ChatSessionActionHandler implements HttpHandler {
         var path = exchange.getRelativePath();
 
         try {
-            // Route based on path suffix
             if (path.endsWith("/history") && Methods.GET.equals(method)) {
                 handleHistory(exchange, sessionId);
             } else if (path.endsWith("/messages") && Methods.GET.equals(method)) {
@@ -67,7 +67,6 @@ public class ChatSessionActionHandler implements HttpHandler {
             } else if (path.endsWith("/cancel") && Methods.POST.equals(method)) {
                 handleCancel(exchange, sessionId);
             } else if (path.endsWith("/tools") && Methods.POST.equals(method)) {
-                // Local mode: tools are always available, return success
                 handleLoadTools(exchange, sessionId);
             } else if (path.endsWith("/skills") && Methods.POST.equals(method)) {
                 handleLoadSkills(exchange, sessionId);
@@ -93,7 +92,6 @@ public class ChatSessionActionHandler implements HttpHandler {
         info.agentId = "local";
 
         if (chatSession != null) {
-            // Try to get loaded tools/skills from the agent
             info.loadedToolIds = new ArrayList<>();
             info.loadedSkillIds = new ArrayList<>();
         }
@@ -104,7 +102,6 @@ public class ChatSessionActionHandler implements HttpHandler {
     private void handleHistory(HttpServerExchange exchange, String sessionId) {
         Optional<String> data = filePersistence.load(sessionId);
         if (data.isEmpty()) {
-            // Session might not be persisted yet (in-memory only)
             sendJson(exchange, "{\"messages\":[]}");
             return;
         }
@@ -180,7 +177,6 @@ public class ChatSessionActionHandler implements HttpHandler {
             return;
         }
 
-        // Send message to the session (non-blocking - agent runs asynchronously)
         chatSession.session.sendMessage(request.message);
         sendJson(exchange, "{}");
     }
@@ -237,7 +233,6 @@ public class ChatSessionActionHandler implements HttpHandler {
             sendJson(exchange, "{\"error\":\"session not found\"}");
             return;
         }
-        // In local mode, all tools are already available on the agent
         sendJson(exchange, "{\"loaded_tools\":[]}");
     }
 
@@ -286,10 +281,6 @@ public class ChatSessionActionHandler implements HttpHandler {
         public HistoryResponse(List<HistoryMessage> messages) {
             this.messages = messages;
         }
-    }
-
-    public static class SendMessageRequest {
-        public String message;
     }
 
     public static class SimpleMessage {

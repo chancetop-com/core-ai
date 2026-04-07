@@ -135,7 +135,7 @@ public class ChatSessionSSEHandler implements HttpHandler {
 
     private void drainEventQueue(HttpServerExchange exchange, BlockingQueue<String> eventQueue, String sessionId) {
         while (true) {
-            String frame = pollEvent(eventQueue, sessionId);
+            String frame = pollEvent(eventQueue);
             if (frame == null) {
                 continue;
             }
@@ -148,14 +148,9 @@ public class ChatSessionSSEHandler implements HttpHandler {
         }
     }
 
-    private String pollEvent(BlockingQueue<String> eventQueue, String sessionId) {
+    private String pollEvent(BlockingQueue<String> eventQueue) {
         try {
-            String frame = eventQueue.poll(30, TimeUnit.SECONDS);
-            if (frame == null) {
-                LOGGER.warn("[SSE] poll timeout, sessionId={}", sessionId);
-                return null;
-            }
-            return frame;
+            return eventQueue.poll(30, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return SSE_CLOSE_MARKER;
@@ -218,7 +213,6 @@ public class ChatSessionSSEHandler implements HttpHandler {
 
         @Override
         public void onTextChunk(TextChunkEvent event) {
-            logChunk("onTextChunk", event.chunk);
             enqueueSseEvent("text_chunk", toMap(
                 "text", event.chunk,
                 "is_final_chunk", false
@@ -227,7 +221,6 @@ public class ChatSessionSSEHandler implements HttpHandler {
 
         @Override
         public void onReasoningChunk(ReasoningChunkEvent event) {
-            logChunk("onReasoningChunk", event.chunk);
             enqueueSseEvent("reasoning_chunk", toMap("text", event.chunk));
         }
 
@@ -299,9 +292,7 @@ public class ChatSessionSSEHandler implements HttpHandler {
         void enqueueSseEvent(String eventType, Map<String, Object> data) {
             try {
                 String frame = buildSseEvent(eventType, data, sessionId);
-                boolean offered = eventQueue.offer(frame, 10, TimeUnit.SECONDS);
-                LOGGER.warn("[SSE] enqueued event: type={}, offered={}, queueSize={}, sessionId={}",
-                    eventType, offered, eventQueue.size(), sessionId);
+                eventQueue.offer(frame, 10, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 LOGGER.warn("[SSE] enqueue interrupted for session {}", sessionId);
@@ -314,11 +305,6 @@ public class ChatSessionSSEHandler implements HttpHandler {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-        }
-
-        private void logChunk(String method, String chunk) {
-            LOGGER.warn("[SSE] {}: sessionId={}, chunk={}", sessionId, method,
-                chunk != null && chunk.length() > 50 ? chunk.substring(0, 50) + "..." : chunk);
         }
 
         private String nullToEmpty(String value) {

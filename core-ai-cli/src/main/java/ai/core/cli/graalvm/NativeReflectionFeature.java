@@ -67,7 +67,12 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.cli.memory.SessionMemoryExtractor$ExtractedMemory",
         // SessionsHandler class for JSON serialization in native image
         "ai.core.cli.a2a.handler.SessionsHandler$SessionItem",
-        "ai.core.cli.a2a.handler.SessionMessagesHandler$MessageDto"
+        "ai.core.cli.a2a.handler.SessionMessagesHandler$MessageDto",
+        // ChatSessionActionHandler inner classes for JSON serialization in native image
+        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$SessionInfo",
+        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$HistoryMessage",
+        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$HistoryResponse",
+        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$SimpleMessage"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
@@ -116,7 +121,9 @@ public class NativeReflectionFeature implements Feature {
         File[] files = dir.listFiles();
         if (files == null) return;
         for (File file : files) {
-            if (file.getName().endsWith(".class")) {
+            if (file.isDirectory()) {
+                scanDirectory(access, file, pkg + "/" + file.getName());
+            } else if (file.getName().endsWith(".class")) {
                 String className = pkg.replace('/', '.') + "." + file.getName().replace(".class", "");
                 registerClass(access, className);
             }
@@ -135,7 +142,8 @@ public class NativeReflectionFeature implements Feature {
             while (entries.hasMoreElements()) {
                 var entry = entries.nextElement();
                 String name = entry.getName();
-                if (name.startsWith(prefix) && name.endsWith(".class") && !name.substring(prefix.length()).contains("/")) {
+                if (name.startsWith(prefix) && name.endsWith(".class")) {
+                    // register all classes including nested ones (e.g., agent/ListAgentsResponse)
                     String className = name.replace('/', '.').replace(".class", "");
                     registerClass(access, className);
                 }
