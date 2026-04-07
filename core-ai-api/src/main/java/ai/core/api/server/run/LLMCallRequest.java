@@ -18,14 +18,20 @@ public class LLMCallRequest {
     @Property(name = "attachments")
     public List<Attachment> attachments;
 
+    public enum AttachmentType {
+        @Property(name = "IMAGE")
+        IMAGE,
+        @Property(name = "PDF")
+        PDF
+    }
+
     public static class Attachment {
         @Property(name = "url")
         public String url;
 
         @NotNull
-        @NotBlank
         @Property(name = "type")
-        public String type;
+        public AttachmentType type;
 
         @Property(name = "data")
         public String data;

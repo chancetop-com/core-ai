@@ -78,7 +78,7 @@ public class LLMCallExecutor {
             return Message.of(RoleType.USER, input);
         }
         var attachment = attachments.getFirst();
-        var type = ExecutionContext.AttachedContent.AttachedContentType.valueOf(attachment.type);
+        var type = ExecutionContext.AttachedContent.AttachedContentType.valueOf(attachment.type.name());
         ExecutionContext.AttachedContent attachedContent;
         if (attachment.data != null) {
             attachedContent = ExecutionContext.AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
