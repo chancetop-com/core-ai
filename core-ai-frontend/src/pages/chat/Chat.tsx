@@ -63,6 +63,17 @@ function ThinkingBlock({ thinking, isStreaming }: { thinking: string; isStreamin
 
 function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
   const [expanded, setExpanded] = useState(true);
+  const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set());
+  const toggleResult = (idx: number) => {
+    setExpandedResults(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+  const formatJson = (s: string) => {
+    try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
+  };
   return (
     <div className="mb-2 rounded-xl border text-xs"
       style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
@@ -76,16 +87,37 @@ function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
       {expanded && (
         <div className="px-3 pb-2 border-t flex flex-col gap-1" style={{ borderColor: 'var(--color-border)' }}>
           {tools.map((t, j) => (
-            <div key={j} className="rounded-lg px-3 py-2"
-              style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}>
-              <span className="font-mono font-medium" style={{ color: 'var(--color-primary)' }}>{t.tool}</span>
-              {t.type === 'start' && t.arguments && (
-                <span className="ml-2 opacity-70">{t.arguments.length > 80 ? t.arguments.slice(0, 80) + '...' : t.arguments}</span>
-              )}
-              {t.type === 'result' && (
-                <span className="ml-2" style={{ color: t.resultStatus === 'COMPLETED' ? 'var(--color-success)' : 'var(--color-error)' }}>
-                  {t.resultStatus === 'COMPLETED' ? 'done' : t.resultStatus}
-                </span>
+            <div key={j} className="rounded-lg overflow-hidden"
+              style={{ background: 'var(--color-bg-secondary)' }}>
+              <div className="px-3 py-2 flex items-center gap-2"
+                style={{ color: 'var(--color-text-secondary)' }}>
+                <span className="font-mono font-medium" style={{ color: 'var(--color-primary)' }}>{t.tool}</span>
+                {t.type === 'start' && t.arguments && (
+                  <span className="opacity-70 truncate">{t.arguments.length > 80 ? t.arguments.slice(0, 80) + '...' : t.arguments}</span>
+                )}
+                {t.type === 'result' && (
+                  <>
+                    <span style={{ color: t.resultStatus === 'COMPLETED' ? 'var(--color-success)' : 'var(--color-error)' }}>
+                      {t.resultStatus === 'COMPLETED' ? '✓ done' : t.resultStatus}
+                    </span>
+                    {t.result && (
+                      <button onClick={() => toggleResult(j)}
+                        className="ml-auto flex items-center gap-0.5 cursor-pointer opacity-60 hover:opacity-100"
+                        style={{ color: 'var(--color-text-secondary)' }}>
+                        {expandedResults.has(j) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <span>detail</span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              {t.type === 'result' && t.result && expandedResults.has(j) && (
+                <div className="border-t px-3 py-2" style={{ borderColor: 'var(--color-border)' }}>
+                  <pre className="whitespace-pre-wrap font-mono overflow-auto"
+                    style={{ color: 'var(--color-text-secondary)', fontSize: '11px', maxHeight: '200px' }}>
+                    {formatJson(t.result)}
+                  </pre>
+                </div>
               )}
             </div>
           ))}
