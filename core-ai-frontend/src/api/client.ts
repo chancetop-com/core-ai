@@ -481,22 +481,22 @@ export const api = {
   },
   serviceApis: {
     list: () =>
-      request<ListServiceApiResponse>('/service-api'),
+      request<ListServiceApiResponse>('/api/service-api'),
     get: (id: string) =>
-      request<ServiceApiView>(`/service-api/${id}`),
+      request<ServiceApiView>(`/api/service-api/${id}`),
     create: (data: { name: string; description?: string; operator: string }) =>
-      request<void>('/service-api', { method: 'POST', body: JSON.stringify(data) }),
+      request<void>('/api/service-api', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: { enabled?: boolean; description?: string; url?: string; base_url?: string; payload?: string; service_additional?: ServiceAdditionalView[]; type_additional?: TypeAdditionalView[]; operator: string }) =>
-      request<void>(`/service-api/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      request<void>(`/api/service-api/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
-      request<void>(`/service-api/${id}`, { method: 'DELETE' }),
+      request<void>(`/api/service-api/${id}`, { method: 'DELETE' }),
     updateFromSysApi: (id: string, url: string, operator: string) =>
-      request<void>(`/service-api/${id}/update-from-sys-api`, { method: 'PUT', body: JSON.stringify({ url, operator }) }),
+      request<void>(`/api/service-api/${id}/update-from-sys-api`, { method: 'PUT', body: JSON.stringify({ url, operator }) }),
     updateAllFromSysApi: (operator: string) =>
-      request<void>('/service-api/update-all-from-sys-api', { method: 'PUT', body: JSON.stringify({ operator }) }),
+      request<void>('/api/service-api/update-all-from-sys-api', { method: 'PUT', body: JSON.stringify({ operator }) }),
     enable: (id: string, operator: string) =>
-      request<void>(`/service-api/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: true, operator }) }),
+      request<void>(`/api/service-api/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: true, operator }) }),
     disable: (id: string, operator: string) =>
-      request<void>(`/service-api/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: false, operator }) }),
+      request<void>(`/api/service-api/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: false, operator }) }),
   },
 };
