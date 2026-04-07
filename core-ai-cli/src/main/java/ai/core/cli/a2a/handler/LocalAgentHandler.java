@@ -1,6 +1,8 @@
 package ai.core.cli.a2a.handler;
 
 import ai.core.agent.Agent;
+import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.utils.JsonUtil;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
@@ -56,7 +58,9 @@ public class LocalAgentHandler implements HttpHandler {
         }
 
         var agentView = createAgentView(agent, true);
-        var response = new ListAgentsResponse(List.of(agentView), 1);
+        var response = new ListAgentsResponse();
+        response.agents = List.of(agentView);
+        response.total = 1L;
         sendJson(exchange, JsonUtil.toJson(response));
     }
 
@@ -72,8 +76,8 @@ public class LocalAgentHandler implements HttpHandler {
         sendJson(exchange, JsonUtil.toJson(agentView));
     }
 
-    private AgentView createAgentView(Agent agent, boolean published) {
-        var view = new AgentView();
+    private AgentDefinitionView createAgentView(Agent agent, boolean published) {
+        var view = new AgentDefinitionView();
         view.id = "local";
         view.name = "Local Agent";
         view.description = "Local CLI agent";
@@ -91,9 +95,9 @@ public class LocalAgentHandler implements HttpHandler {
         view.responseSchema = null;
         view.createdBy = "local";
         view.status = published ? "PUBLISHED" : "DRAFT";
-        view.publishedAt = "";
-        view.createdAt = "";
-        view.updatedAt = "";
+        view.publishedAt = null;
+        view.createdAt = null;
+        view.updatedAt = null;
 
         if (agent != null) {
             // Try to extract model name from agent config
@@ -117,39 +121,5 @@ public class LocalAgentHandler implements HttpHandler {
     private void sendJson(HttpServerExchange exchange, String json) {
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
         exchange.getResponseSender().send(json);
-    }
-
-    public static class AgentView {
-        public String id;
-        public String name;
-        public String description;
-        public String model;
-        public String systemPrompt;
-        public String systemPromptId;
-        public double temperature;
-        public int maxTurns;
-        public int timeoutSeconds;
-        public List<String> toolIds;
-        public String inputTemplate;
-        public Object variables;
-        public String webhookSecret;
-        public boolean systemDefault;
-        public String type;
-        public Object responseSchema;
-        public String createdBy;
-        public String status;
-        public String publishedAt;
-        public String createdAt;
-        public String updatedAt;
-    }
-
-    public static class ListAgentsResponse {
-        public List<AgentView> agents;
-        public int total;
-
-        public ListAgentsResponse(List<AgentView> agents, int total) {
-            this.agents = agents;
-            this.total = total;
-        }
     }
 }

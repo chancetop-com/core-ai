@@ -29,7 +29,7 @@ public class NativeReflectionFeature implements Feature {
     private static final String[] PACKAGES = {
         "ai/core/llm/domain",
         "ai/core/api/jsonschema",
-        "ai/core/api/server/session",
+        "ai/core/api/server",
         "ai/core/api/a2a",
         "io/modelcontextprotocol/spec",
         "io/modelcontextprotocol/json/jackson",
