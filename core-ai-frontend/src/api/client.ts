@@ -172,6 +172,11 @@ export interface TriggerRunResponse {
   run_id: string;
 }
 
+export interface LLMCallResponse {
+  output: string;
+  token_usage: Record<string, number>;
+}
+
 export interface AgentRun {
   id: string;
   agent_id: string;
@@ -421,6 +426,8 @@ export const api = {
       request<ListRunsResponse>(`/api/runs/agent/${agentId}/list`),
     getRun: (runId: string) =>
       request<AgentRunDetail>(`/api/runs/${runId}`),
+    llmCall: (id: string, input: string, attachments?: { url?: string; type: string; data?: string; media_type?: string }[]) =>
+      request<LLMCallResponse>(`/api/llm/${id}/call`, { method: 'POST', body: JSON.stringify({ input, attachments }) }),
   },
   systemPrompts: {
     list: (offset = 0, limit = 20) =>

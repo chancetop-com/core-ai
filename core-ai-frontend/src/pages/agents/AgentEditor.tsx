@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Image, Link, Trash } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -31,6 +31,12 @@ export default function AgentEditor() {
   const [testing, setTesting] = useState(false);
   const testControllerRef = useRef<AbortController | null>(null);
   const testOutputRef = useRef('');
+
+  // image attachments for LLM_CALL
+  const [imageAttachments, setImageAttachments] = useState<{ url?: string; data?: string; mediaType?: string; preview: string }[]>([]);
+  const [showImageUrlInput, setShowImageUrlInput] = useState(false);
+  const [imageUrlValue, setImageUrlValue] = useState('');
+  const imageFileRef = useRef<HTMLInputElement>(null);
 
   // runs
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -116,11 +122,49 @@ export default function AgentEditor() {
     navigate('/agents');
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(',')[1];
+      setImageAttachments(prev => [...prev, { data: base64, mediaType: file.type, preview: result }]);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleAddImageUrl = () => {
+    if (!imageUrlValue.trim()) return;
+    setImageAttachments(prev => [...prev, { url: imageUrlValue.trim(), preview: imageUrlValue.trim() }]);
+    setImageUrlValue('');
+    setShowImageUrlInput(false);
+  };
+
   const handleTest = async () => {
     if (!testInput.trim()) return;
     setTesting(true);
     setTestOutput('');
     testOutputRef.current = '';
+
+    // LLM_CALL: use direct API call with attachments
+    if (agent.type === 'LLM_CALL' && id) {
+      try {
+        const attachments = imageAttachments.length > 0
+          ? imageAttachments.map(img => img.data
+            ? { type: 'IMAGE', data: img.data, media_type: img.mediaType }
+            : { type: 'IMAGE', url: img.url })
+          : undefined;
+        const res = await api.agents.llmCall(id, testInput, attachments as Parameters<typeof api.agents.llmCall>[2]);
+        setTestOutput(res.output || '(empty)');
+      } catch (e) {
+        setTestOutput(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setTesting(false);
+      }
+      return;
+    }
 
     try {
       // Resolve system prompt
@@ -545,6 +589,63 @@ export default function AgentEditor() {
                 className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none resize-y"
                 style={inputStyle}
                 placeholder="Enter test input..." />
+
+              {/* Image attachments for LLM_CALL */}
+              {agent.type === 'LLM_CALL' && (
+                <div>
+                  {imageAttachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {imageAttachments.map((img, i) => (
+                        <div key={i} className="relative group">
+                          <img src={img.preview} alt="attachment"
+                            className="w-16 h-16 object-cover rounded-lg border"
+                            style={{ borderColor: 'var(--color-border)' }} />
+                          <button onClick={() => setImageAttachments(prev => prev.filter((_, j) => j !== i))}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ background: 'var(--color-error)', color: 'white' }}>
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <input ref={imageFileRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                    <button onClick={() => imageFileRef.current?.click()}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs cursor-pointer border"
+                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                      <Upload size={12} /> Upload
+                    </button>
+                    <button onClick={() => setShowImageUrlInput(!showImageUrlInput)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs cursor-pointer border"
+                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                      <Link size={12} /> URL
+                    </button>
+                    {imageAttachments.length > 0 && (
+                      <button onClick={() => setImageAttachments([])}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs cursor-pointer"
+                        style={{ color: 'var(--color-error)' }}>
+                        <Trash size={12} /> Clear
+                      </button>
+                    )}
+                  </div>
+                  {showImageUrlInput && (
+                    <div className="flex gap-1.5 mt-1.5">
+                      <input value={imageUrlValue} onChange={e => setImageUrlValue(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleAddImageUrl()}
+                        className="flex-1 px-2 py-1 rounded-md border text-xs outline-none"
+                        style={inputStyle}
+                        placeholder="https://example.com/image.png" />
+                      <button onClick={handleAddImageUrl} disabled={!imageUrlValue.trim()}
+                        className="px-2 py-1 rounded-md text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+                        style={{ background: 'var(--color-primary)' }}>
+                        Add
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex gap-2">
                 {!testing ? (
                   <>

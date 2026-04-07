@@ -19,8 +19,6 @@ public class LLMCallRequest {
     public List<Attachment> attachments;
 
     public static class Attachment {
-        @NotNull
-        @NotBlank
         @Property(name = "url")
         public String url;
 
@@ -28,5 +26,11 @@ public class LLMCallRequest {
         @NotBlank
         @Property(name = "type")
         public String type;
+
+        @Property(name = "data")
+        public String data;
+
+        @Property(name = "media_type")
+        public String mediaType;
     }
 }

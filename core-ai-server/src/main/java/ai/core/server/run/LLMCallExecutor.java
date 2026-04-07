@@ -79,7 +79,12 @@ public class LLMCallExecutor {
         }
         var attachment = attachments.getFirst();
         var type = ExecutionContext.AttachedContent.AttachedContentType.valueOf(attachment.type);
-        var attachedContent = ExecutionContext.AttachedContent.ofUrl(attachment.url, type);
+        ExecutionContext.AttachedContent attachedContent;
+        if (attachment.data != null) {
+            attachedContent = ExecutionContext.AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
+        } else {
+            attachedContent = ExecutionContext.AttachedContent.ofUrl(attachment.url, type);
+        }
         return AgentHelper.buildUserMessage(input, attachedContent);
     }
 
