@@ -178,6 +178,7 @@ public class LiteLLMProvider extends LLMProvider {
             callback.onReasoningComplete(response.choices.getFirst().message.reasoningContent);
         }
         if (!Objects.requireNonNull(response).choices.getFirst().message.toolCalls.isEmpty()) {
+            response.choices.getFirst().message.toolCalls.removeIf(Objects::isNull);
             callback.onToolComplete(response.choices.getFirst().message.toolCalls);
         }
         callback.onComplete();
