@@ -46,7 +46,10 @@ public class InProcessAgentSession implements AgentSession {
         this.permissionGate = new PermissionGate();
         this.commandQueue = new SessionCommandQueue();
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
-        BackgroundTaskMonitor taskMonitor = new BackgroundTaskMonitor(commandQueue);
+        var context = agent.getExecutionContext();
+        if (context.getSubagentOutputSinkFactory() != null) {
+            context.setBackgroundTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
+        }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
         agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));

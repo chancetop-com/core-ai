@@ -29,7 +29,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.skill.SkillRegistry;
 import ai.core.tool.tools.SkillTool;
-import ai.core.tool.subagent.SubagentNotificationLifecycle;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.tool.tools.ToolActivationTool;
 import ai.core.tool.tools.WriteTodosTool;
@@ -301,7 +300,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         configureMemory();
         configureDoomLoop();
         configureResponseValidation();
-        configureSubagentNotification();
         configureCompression();
 
         // Fetch prompts from Langfuse if configured
@@ -384,9 +382,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agentLifecycles.add(new ResponseValidationLifecycle());
     }
 
-    private void configureSubagentNotification() {
-        agentLifecycles.add(new SubagentNotificationLifecycle());
-    }
     private void configureCompression() {
         if (compressionEnabled) {
             if (compression == null) {

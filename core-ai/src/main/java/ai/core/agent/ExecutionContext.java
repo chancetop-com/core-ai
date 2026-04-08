@@ -5,10 +5,9 @@ import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Usage;
 import ai.core.persistence.PersistenceProvider;
-import ai.core.session.BackgroundTaskMonitor;
+import ai.core.session.BackgroundTaskManager;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
-import ai.core.tool.subagent.SubagentTaskRegistry;
 import core.framework.util.Maps;
 
 import java.util.List;
@@ -34,9 +33,8 @@ public final class ExecutionContext {
     private final ToolCallAsyncTaskManager asyncTaskManager;
     private final AttachedContent attachedContent;
     private final PersistenceProvider persistenceProvider;
-    private final SubagentTaskRegistry subagentTaskRegistry;
     private final SubagentOutputSinkFactory subagentOutputSinkFactory;
-    private BackgroundTaskMonitor backgroundTaskMonitor;
+    private BackgroundTaskManager backgroundTaskManager;
     private LLMProvider llmProvider;
     private String model;
     private StreamingCallback streamingCallback;
@@ -52,9 +50,8 @@ public final class ExecutionContext {
         this.customVariables.putAll(builder.customVariables);
         this.asyncTaskManager = builder.asyncTaskManager;
         this.persistenceProvider = builder.persistenceProvider;
-        this.subagentTaskRegistry = builder.subagentTaskRegistry;
         this.subagentOutputSinkFactory = builder.subagentOutputSinkFactory;
-        this.backgroundTaskMonitor = builder.backgroundTaskMonitor;
+        this.backgroundTaskManager = builder.backgroundTaskManager;
     }
 
     public String getSessionId() {
@@ -78,20 +75,16 @@ public final class ExecutionContext {
         return asyncTaskManager;
     }
 
-    public SubagentTaskRegistry getSubagentTaskRegistry() {
-        return subagentTaskRegistry;
-    }
-
     public SubagentOutputSinkFactory getSubagentOutputSinkFactory() {
         return subagentOutputSinkFactory;
     }
 
-    public BackgroundTaskMonitor getBackgroundTaskMonitor() {
-        return backgroundTaskMonitor;
+    public BackgroundTaskManager getBackgroundTaskManager() {
+        return backgroundTaskManager;
     }
 
-    public void setBackgroundTaskMonitor(BackgroundTaskMonitor backgroundTaskMonitor) {
-        this.backgroundTaskMonitor = backgroundTaskMonitor;
+    public void setBackgroundTaskManager(BackgroundTaskManager backgroundTaskManager) {
+        this.backgroundTaskManager = backgroundTaskManager;
     }
 
     public Object getCustomVariable(String key) {
@@ -162,9 +155,8 @@ public final class ExecutionContext {
         private ToolCallAsyncTaskManager asyncTaskManager;
         private AttachedContent attachedContent;
         private PersistenceProvider persistenceProvider;
-        private SubagentTaskRegistry subagentTaskRegistry;
         private SubagentOutputSinkFactory subagentOutputSinkFactory;
-        private BackgroundTaskMonitor backgroundTaskMonitor;
+        private BackgroundTaskManager backgroundTaskManager;
         private final Map<String, Object> customVariables = Maps.newHashMap();
 
         public Builder sessionId(String sessionId) {
@@ -209,18 +201,13 @@ public final class ExecutionContext {
             return this;
         }
 
-        public Builder subagentTaskRegistry(SubagentTaskRegistry subagentTaskRegistry) {
-            this.subagentTaskRegistry = subagentTaskRegistry;
-            return this;
-        }
-
         public Builder subagentOutputSinkFactory(SubagentOutputSinkFactory subagentOutputSinkFactory) {
             this.subagentOutputSinkFactory = subagentOutputSinkFactory;
             return this;
         }
 
-        public Builder backgroundTaskMonitor(BackgroundTaskMonitor backgroundTaskMonitor) {
-            this.backgroundTaskMonitor = backgroundTaskMonitor;
+        public Builder backgroundTaskManager(BackgroundTaskManager backgroundTaskManager) {
+            this.backgroundTaskManager = backgroundTaskManager;
             return this;
         }
 

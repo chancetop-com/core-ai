@@ -98,27 +98,19 @@ public class TaskTool extends ToolCall {
             var subagentType = (String) argsMap.get("subagent_type");
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
 
-            var registry = context.getSubagentTaskRegistry();
-            var factory = context.getSubagentOutputSinkFactory();
+            var taskManager = context.getBackgroundTaskManager();
 
-            if (runInBackground && registry != null && factory != null) {
+            if (runInBackground && taskManager != null) {
                 var description = (String) argsMap.get("description");
                 var taskId = "sa-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-                var sink = factory.create(taskId);
                 var agent = createAgent(subagentType, context);
                 var subContext = buildSubContext(subagentType, context, taskId);
-                var future = registry.submitWithFuture(taskId, sink, () -> {
+                var outputRef = taskManager.submit(taskId, () -> {
                     agent.run(prompt, subContext);
                     var lastContent = agent.getMessages().getLast().content;
-                    var result = lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
-                    sink.write(result != null ? result : "");
-                    return result;
+                    return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
                 });
-                var monitor = context.getBackgroundTaskMonitor();
-                if (monitor != null) {
-                    monitor.watch(taskId, future);
-                }
-                return ToolCallResult.asyncLaunched(taskId, sink.getReference(), description)
+                return ToolCallResult.asyncLaunched(taskId, outputRef, description)
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
@@ -142,7 +134,8 @@ public class TaskTool extends ToolCall {
                 .asyncTaskManager(context.getAsyncTaskManager())
                 .attachedContent(context.getAttachedContent())
                 .persistenceProvider(context.getPersistenceProvider())
-                .backgroundTaskMonitor(context.getBackgroundTaskMonitor())
+                .subagentOutputSinkFactory(context.getSubagentOutputSinkFactory())
+                .backgroundTaskManager(context.getBackgroundTaskManager())
                 .parentTaskId(parentTaskId)
                 .build();
         subContext.setLlmProvider(context.getLlmProvider());
