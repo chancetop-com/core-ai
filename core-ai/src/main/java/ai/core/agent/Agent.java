@@ -217,13 +217,12 @@ public class Agent extends Node<Agent> {
         var agentOut = new StringBuilder();
         do {
             if (cancelled) break;
-            injectBeforeTurnMessages(context);
             var turnMsgList = turn(getMessages(), AgentHelper.toReqTools(toolCalls), constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
             currentIteCount++;
-        } while ((AgentHelper.lastIsToolMsg(getMessages()) || lifecyclesShouldContinueTurns(context))
+        } while ((AgentHelper.lastIsToolMsg(getMessages()))
                 && currentIteCount < maxTurnNumber);
 
         setOutput(agentOut.toString());
@@ -233,17 +232,6 @@ public class Agent extends Node<Agent> {
         }
         return agentOut.toString();
     }
-
-    private void injectBeforeTurnMessages(ExecutionContext context) {
-        agentLifecycles.stream()
-                .flatMap(lc -> lc.beforeTurn(context).stream())
-                .forEach(this::addMessage);
-    }
-
-    private boolean lifecyclesShouldContinueTurns(ExecutionContext context) {
-        return agentLifecycles.stream().anyMatch(lc -> lc.shouldContinueTurns(context));
-    }
-
     private Choice constructionFakeSlashCommandAssistantMsg(List<Message> messages, List<Tool> tools) {
         logger.debug("all tools size is {}", tools.size());
         String query = messages.getLast().getTextContent();
