@@ -14,7 +14,8 @@ public class FileSubagentOutputSink implements SubagentOutputSink {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileSubagentOutputSink.class);
 
     private final Path filePath;
-    private BufferedWriter writer;
+    private final BufferedWriter writer;
+    private final Object lock = new Object();
 
     public FileSubagentOutputSink(Path baseDir, String taskId) throws IOException {
         Files.createDirectories(baseDir);
@@ -23,12 +24,14 @@ public class FileSubagentOutputSink implements SubagentOutputSink {
     }
 
     @Override
-    public synchronized void write(String content) {
-        try {
-            writer.write(content);
-            writer.flush();
-        } catch (IOException e) {
-            LOGGER.warn("Failed to write to subagent output sink: {}", filePath, e);
+    public void write(String content) {
+        synchronized (lock) {
+            try {
+                writer.write(content);
+                writer.flush();
+            } catch (IOException e) {
+                LOGGER.warn("Failed to write to subagent output sink: {}", filePath, e);
+            }
         }
     }
 
@@ -38,11 +41,13 @@ public class FileSubagentOutputSink implements SubagentOutputSink {
     }
 
     @Override
-    public synchronized void close() {
-        try {
-            writer.close();
-        } catch (IOException e) {
-            LOGGER.warn("Failed to close subagent output sink: {}", filePath, e);
+    public void close() {
+        synchronized (lock) {
+            try {
+                writer.close();
+            } catch (IOException e) {
+                LOGGER.warn("Failed to close subagent output sink: {}", filePath, e);
+            }
         }
     }
 }

@@ -67,12 +67,12 @@ public class BaseEventListener implements AgentEventListener {
     @Override
     public void onToolStart(ToolStartEvent event) {
         String parentTaskId = event.parentTaskId;
+        if (parentTaskId != null && !parentTaskId.equals(currentAttributedTaskId)) {
+            if (panel.isInTask()) panel.exitTask();
+            panel.startAttributedTaskSection(parentTaskId, asyncTaskDescriptions.get(parentTaskId));
+            currentAttributedTaskId = parentTaskId;
+        }
         if (parentTaskId != null) {
-            if (!parentTaskId.equals(currentAttributedTaskId)) {
-                if (panel.isInTask()) panel.exitTask();
-                panel.startAttributedTaskSection(parentTaskId, asyncTaskDescriptions.get(parentTaskId));
-                currentAttributedTaskId = parentTaskId;
-            }
             panel.toolStart(event.toolName, event.arguments, event.diff);
             return;
         }
@@ -96,22 +96,12 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onToolResult(ToolResultEvent event) {
-        if (TaskTool.TOOL_NAME.equals(event.toolName)) {
-            if ("async_launched".equals(event.status)) {
-                try {
-                    var map = JsonUtil.fromJson(Map.class, event.result);
-                    var taskId = (String) map.get("taskId");
-                    var description = (String) map.get("description");
-                    if (taskId != null && description != null) {
-                        asyncTaskDescriptions.put(taskId, description);
-                    }
-                } catch (Exception ignored) {
-                }
-                panel.asyncTaskLaunched(buildTaskAsyncSummary(event.result));
-            } else {
-                panel.exitTask();
-                panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - taskStartTime, taskToolCallCount.get()));
-            }
+        if (TaskTool.TOOL_NAME.equals(event.toolName) && "async_launched".equals(event.status)) {
+            parseAsyncTaskDescription(event.result);
+            panel.asyncTaskLaunched(buildTaskAsyncSummary(event.result));
+        } else if (TaskTool.TOOL_NAME.equals(event.toolName)) {
+            panel.exitTask();
+            panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - taskStartTime, taskToolCallCount.get()));
         } else {
             panel.toolResult(event.status, event.result);
         }
@@ -124,6 +114,19 @@ public class BaseEventListener implements AgentEventListener {
             sb.append(" | ").append(toolCallCount).append(toolCallCount == 1 ? " tool" : " tools");
         }
         return sb.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void parseAsyncTaskDescription(String resultJson) {
+        try {
+            var map = JsonUtil.fromJson(Map.class, resultJson);
+            var taskId = (String) map.get("taskId");
+            var description = (String) map.get("description");
+            if (taskId != null && description != null) {
+                asyncTaskDescriptions.put(taskId, description);
+            }
+        } catch (Exception ignored) { // best effort
+        }
     }
 
     @SuppressWarnings("unchecked")

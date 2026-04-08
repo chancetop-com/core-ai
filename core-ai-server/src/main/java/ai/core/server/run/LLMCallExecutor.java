@@ -11,13 +11,10 @@ import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.systemprompt.SystemPromptService;
-import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.inject.Inject;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author stephen

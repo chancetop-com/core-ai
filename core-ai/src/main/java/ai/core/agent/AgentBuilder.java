@@ -322,7 +322,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private void afterAgentBuildLifecycle(Agent agent) {
         agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
     }
-
     private void configureSubAgents() {
         if (this.subAgents != null && !this.subAgents.isEmpty()) {
             toolCalls.addAll(this.subAgents);
@@ -444,5 +443,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         return provider.getPrompt(name);
     }
     @Override
-    protected AgentBuilder self() { return this; }
+    protected AgentBuilder self() {
+        return this;
+    }
 }

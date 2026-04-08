@@ -15,20 +15,6 @@ import java.util.function.Supplier;
  * Held in ExecutionContext; shared between TaskTool (writer) and Agent (reader).
  */
 public class SubagentTaskRegistry {
-
-    public record SubagentResult(
-            String taskId,
-            String status,
-            String result,
-            String outputRef,
-            String error
-    ) { }
-
-    private record RunningTask(
-            CompletableFuture<SubagentResult> future,
-            SubagentOutputSink sink
-    ) { }
-
     private final Map<String, RunningTask> running = new ConcurrentHashMap<>();
     private final ExecutorService executor;
 
@@ -80,4 +66,17 @@ public class SubagentTaskRegistry {
     public void shutdown() {
         // executor is shared with AsyncToolTaskExecutor, do not shut it down here
     }
+
+    public record SubagentResult(
+            String taskId,
+            String status,
+            String result,
+            String outputRef,
+            String error
+    ) { }
+
+    private record RunningTask(
+            CompletableFuture<SubagentResult> future,
+            SubagentOutputSink sink
+    ) { }
 }

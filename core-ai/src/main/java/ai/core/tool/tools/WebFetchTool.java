@@ -60,6 +60,43 @@ public class WebFetchTool extends ToolCall {
         return new Builder();
     }
 
+    private static void appendHeadMarkdown(StringBuilder sb, Element el) {
+        switch (el.tagName()) {
+            case "h1" -> sb.append("\n# ");
+            case "h2" -> sb.append("\n## ");
+            case "h3" -> sb.append("\n### ");
+            case "h4" -> sb.append("\n#### ");
+            case "h5" -> sb.append("\n##### ");
+            case "h6" -> sb.append("\n###### ");
+            case "li" -> sb.append("\n- ");
+            case "br" -> sb.append('\n');
+            case "code" -> sb.append('`');
+            case "pre" -> sb.append("\n```\n");
+            case "a" -> {
+                var href = el.attr("abs:href");
+                if (!href.isEmpty()) sb.append('[');
+            }
+            case "strong", "b" -> sb.append("**");
+            case "em", "i" -> sb.append('*');
+            default -> { }
+        }
+    }
+
+    private static void appendTailMarkdown(StringBuilder sb, Element el) {
+        switch (el.tagName()) {
+            case "h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "li", "tr" -> sb.append('\n');
+            case "pre" -> sb.append("\n```\n");
+            case "code" -> sb.append('`');
+            case "a" -> {
+                var href = el.attr("abs:href");
+                if (!href.isEmpty()) sb.append("](").append(href).append(')');
+            }
+            case "strong", "b" -> sb.append("**");
+            case "em", "i" -> sb.append('*');
+            default -> { }
+        }
+    }
+
     private final HttpClient client = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(30))
@@ -178,43 +215,6 @@ public class WebFetchTool extends ToolCall {
             };
         }
         return responseBody;
-    }
-
-    private static void appendHeadMarkdown(StringBuilder sb, Element el) {
-        switch (el.tagName()) {
-            case "h1" -> sb.append("\n# ");
-            case "h2" -> sb.append("\n## ");
-            case "h3" -> sb.append("\n### ");
-            case "h4" -> sb.append("\n#### ");
-            case "h5" -> sb.append("\n##### ");
-            case "h6" -> sb.append("\n###### ");
-            case "li" -> sb.append("\n- ");
-            case "br" -> sb.append('\n');
-            case "code" -> sb.append('`');
-            case "pre" -> sb.append("\n```\n");
-            case "a" -> {
-                var href = el.attr("abs:href");
-                if (!href.isEmpty()) sb.append('[');
-            }
-            case "strong", "b" -> sb.append("**");
-            case "em", "i" -> sb.append('*');
-            default -> { }
-        }
-    }
-
-    private static void appendTailMarkdown(StringBuilder sb, Element el) {
-        switch (el.tagName()) {
-            case "h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "li", "tr" -> sb.append('\n');
-            case "pre" -> sb.append("\n```\n");
-            case "code" -> sb.append('`');
-            case "a" -> {
-                var href = el.attr("abs:href");
-                if (!href.isEmpty()) sb.append("](").append(href).append(')');
-            }
-            case "strong", "b" -> sb.append("**");
-            case "em", "i" -> sb.append('*');
-            default -> { }
-        }
     }
 
     private String extractText(String html) {

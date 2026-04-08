@@ -14,7 +14,6 @@ import ai.core.cli.a2a.handler.chat.ChatSessionSSEHandler;
 import ai.core.cli.session.LocalChatSessionManager;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
-import io.undertow.server.HttpServerExchange;
 import io.undertow.server.handlers.PathTemplateHandler;
 import io.undertow.server.handlers.resource.ClassPathResourceManager;
 import io.undertow.server.handlers.resource.FileResourceManager;
@@ -37,6 +36,7 @@ public class A2AServer {
     private static final HttpString ACCESS_CONTROL_ALLOW_METHODS = new HttpString("Access-Control-Allow-Methods");
     private static final HttpString ACCESS_CONTROL_ALLOW_HEADERS = new HttpString("Access-Control-Allow-Headers");
     private static final HttpString ACCESS_CONTROL_MAX_AGE = new HttpString("Access-Control-Max-Age");
+    private static String cachedIndexHtml;
 
     private static void silenceUndertowLogs() {
         for (String name : new String[]{"io.undertow", "org.xnio", "org.jboss.threads"}) {
@@ -55,47 +55,56 @@ public class A2AServer {
         this.runManager = runManager;
         this.chatSessionManager = chatSessionManager;
 
+        var apiPathHandler = buildApiRoutes(chatSessionManager);
+        var staticHandler = staticFileHandler(webDir);
+
+        var spaHandler = buildSpaHandler(apiPathHandler, webDir);
+
+        this.server = Undertow.builder()
+                .addHttpListener(port, "0.0.0.0")
+                .setHandler(corsWrapper(exchange -> {
+                    if (exchange.getRequestPath().contains(".")) {
+                        staticHandler.handleRequest(exchange);
+                    } else {
+                        spaHandler.handleRequest(exchange);
+                    }
+                }))
+                .build();
+    }
+
+    private PathTemplateHandler buildApiRoutes(LocalChatSessionManager chatSessionManager) {
         var agentCardHandler = new AgentCardHandler(runManager);
         var messageHandler = new MessageHandler(runManager);
         var taskHandler = new TaskHandler(runManager);
-        var capabilitiesHandler = new CapabilitiesHandler();
-
-        // Chat session REST API handlers (for web frontend compatibility)
         var chatSessionCreateHandler = new ChatSessionCreateHandler(chatSessionManager);
         var chatSessionActionHandler = new ChatSessionActionHandler(chatSessionManager);
         var chatSessionSSEHandler = new ChatSessionSSEHandler(chatSessionManager);
-        var localAgentHandler = new LocalAgentHandler(runManager.getAgentFactory());
-        var localToolHandler = new LocalToolHandler();
-        var localSkillHandler = new LocalSkillHandler();
 
-        var apiPathHandler = new PathTemplateHandler(notFoundHandler());
-        apiPathHandler.add("/.well-known/agent-card.json", agentCardHandler);
-        apiPathHandler.add("/message/send", messageHandler);
-        apiPathHandler.add("/tasks/{taskId}", taskHandler);
-        apiPathHandler.add("/tasks/{taskId}/cancel", taskHandler);
-        apiPathHandler.add("/tasks/{taskId}/message/send", taskHandler);
-        apiPathHandler.add("/api/capabilities", capabilitiesHandler);
+        var handler = new PathTemplateHandler(notFoundHandler());
+        handler.add("/.well-known/agent-card.json", agentCardHandler);
+        handler.add("/message/send", messageHandler);
+        handler.add("/tasks/{taskId}", taskHandler);
+        handler.add("/tasks/{taskId}/cancel", taskHandler);
+        handler.add("/tasks/{taskId}/message/send", taskHandler);
+        handler.add("/api/capabilities", new CapabilitiesHandler());
+        handler.add("/api/sessions", chatSessionCreateHandler);
+        handler.add("/api/sessions/{sessionId}", chatSessionActionHandler);
+        handler.add("/api/sessions/{sessionId}/history", chatSessionActionHandler);
+        handler.add("/api/sessions/{sessionId}/messages", chatSessionActionHandler);
+        handler.add("/api/sessions/{sessionId}/approve", chatSessionActionHandler);
+        handler.add("/api/sessions/{sessionId}/cancel", chatSessionActionHandler);
+        handler.add("/api/sessions/{sessionId}/tools", chatSessionActionHandler);
+        handler.add("/api/sessions/{sessionId}/skills", chatSessionActionHandler);
+        handler.add("/api/sessions/events", chatSessionSSEHandler);
+        handler.add("/api/agents", new LocalAgentHandler(runManager.getAgentFactory()));
+        handler.add("/api/agents/{id}", new LocalAgentHandler(runManager.getAgentFactory()));
+        handler.add("/api/tools", new LocalToolHandler());
+        handler.add("/api/skills", new LocalSkillHandler());
+        return handler;
+    }
 
-        // Chat session web API endpoints (replaces old A2A-style session endpoints)
-        apiPathHandler.add("/api/sessions", chatSessionCreateHandler);
-        apiPathHandler.add("/api/sessions/{sessionId}", chatSessionActionHandler);
-        apiPathHandler.add("/api/sessions/{sessionId}/history", chatSessionActionHandler);
-        apiPathHandler.add("/api/sessions/{sessionId}/messages", chatSessionActionHandler);
-        apiPathHandler.add("/api/sessions/{sessionId}/approve", chatSessionActionHandler);
-        apiPathHandler.add("/api/sessions/{sessionId}/cancel", chatSessionActionHandler);
-        apiPathHandler.add("/api/sessions/{sessionId}/tools", chatSessionActionHandler);
-        apiPathHandler.add("/api/sessions/{sessionId}/skills", chatSessionActionHandler);
-        apiPathHandler.add("/api/sessions/events", chatSessionSSEHandler);
-
-        // Local agent/tools/skills endpoints (for web frontend agent picker)
-        apiPathHandler.add("/api/agents", localAgentHandler);
-        apiPathHandler.add("/api/agents/{id}", localAgentHandler);
-        apiPathHandler.add("/api/tools", localToolHandler);
-        apiPathHandler.add("/api/skills", localSkillHandler);
-
-        var staticHandler = staticFileHandler(webDir);
-
-        var spaHandler = (HttpHandler) exchange -> {
+    private HttpHandler buildSpaHandler(PathTemplateHandler apiPathHandler, Path webDir) {
+        return exchange -> {
             var path = exchange.getRequestPath();
             if ("/".equals(path) || path.isEmpty()) {
                 exchange.setStatusCode(302);
@@ -103,8 +112,8 @@ public class A2AServer {
                 exchange.endExchange();
                 return;
             }
-            // SPA fallback: serve index.html for frontend routes (not API or static assets with extension)
-            if (!path.startsWith("/api/") && !path.startsWith("/message") && !path.startsWith("/tasks") && !path.startsWith("/.well-known") && !path.contains(".")) {
+            if (!path.startsWith("/api/") && !path.startsWith("/message") && !path.startsWith("/tasks")
+                    && !path.startsWith("/.well-known") && !path.contains(".")) {
                 exchange.setStatusCode(200);
                 exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/html");
                 exchange.getResponseSender().send(loadIndexHtml(webDir));
@@ -112,19 +121,6 @@ public class A2AServer {
             }
             apiPathHandler.handleRequest(exchange);
         };
-
-        this.server = Undertow.builder()
-                .addHttpListener(port, "0.0.0.0")
-                .setHandler(corsWrapper(exchange -> {
-                    var path = exchange.getRequestPath();
-                    // Static assets: let ResourceHandler serve them
-                    if (path.contains(".")) {
-                        staticHandler.handleRequest(exchange);
-                    } else {
-                        spaHandler.handleRequest(exchange);
-                    }
-                }))
-                .build();
     }
 
     public void start() {
@@ -158,8 +154,6 @@ public class A2AServer {
         };
     }
 
-    private static String cachedIndexHtml;
-
     private String loadIndexHtml(Path webDir) {
         if (cachedIndexHtml != null) {
             return cachedIndexHtml;
@@ -178,7 +172,7 @@ public class A2AServer {
         // Fallback to classpath
         try (var is = Thread.currentThread().getContextClassLoader().getResourceAsStream("web/index.html")) {
             if (is != null) {
-                cachedIndexHtml = new String(is.readAllBytes());
+                cachedIndexHtml = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
                 return cachedIndexHtml;
             }
         } catch (Exception e) {

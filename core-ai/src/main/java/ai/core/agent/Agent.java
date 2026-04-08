@@ -99,7 +99,6 @@ public class Agent extends Node<Agent> {
         }
         return doExecute(query, variables, false);
     }
-
     private void chatCommand(String query, Map<String, Object> variables) {
         chatTurns(query, variables, this::constructionFakeSlashCommandAssistantMsg);
     }
