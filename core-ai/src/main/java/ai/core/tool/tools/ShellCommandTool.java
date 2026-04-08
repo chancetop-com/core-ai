@@ -32,7 +32,7 @@ public class ShellCommandTool extends ToolCall {
     private static final long DEFAULT_TIMEOUT_SECONDS = 30;
     private static final long ASYNC_TIMEOUT_SECONDS = 600;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
-    private static final String TOOL_DESC = """
+    private static final String TOOL_DESC = Strings.format("""
             Executes a given bash command or shell script in a persistent shell session with optional
             timeout, ensuring proper handling and security measures.
 
@@ -60,6 +60,14 @@ public class ShellCommandTool extends ToolCall {
              - Capture the output of the command.
 
             Usage notes:
+            - Content search: Use {} (NOT grep or rg)
+            - File search: Use {} (NOT find or ls)
+            - Read files: Use {} (NOT cat/head/tail)
+            - Write files: Use {} (NOT echo >/cat <<EOF)
+            - Edit files: Use {} (NOT sed/awk)
+            - Communication: Output text directly (NOT echo/printf)
+            - DO NOT use newlines to separate commands (newlines are ok in quoted strings).
+            - Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of cd. You may use cd if the User explicitly requests it.
             - Either 'command' or 'script_path' parameter is required.
             - You can specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). If not specified, commands will timeout after 30 seconds.
             - Set 'async' to true for long-running commands. Use 'async_task_output' tool to check progress.
@@ -75,9 +83,16 @@ public class ShellCommandTool extends ToolCall {
               <bad-example>
               cd /foo/bar && pytest tests
               </bad-example>
-            
-            
-            
+            - If the commands are independent and can run in parallel, make multiple {} tool calls in a single message. Example: if you need to run "git status" and "git diff", send a single message with two {} tool calls in parallel.
+            - If the commands depend on each other and must run sequentially, use a single {} call with '&&' to chain them together.
+            - Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")
+            - Use ';' only when you need to run commands sequentially but don't care if earlier commands fail.
+            - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
+            - Do not sleep between commands that can run immediately — just run them.
+            - If you must poll an external process, use a check command (e.g. gh run view) rather than sleeping first.
+            - You may specify an optional timeout in milliseconds (up to {} minutes in async mode). By default, your command will timeout after {} minutes).
+            - If your command will create new directories or files, first use this tool to run ls to verify the parent directory exists and is the correct location.
+            - The working directory persists between commands, but shell state does not. The shell environment is initialized from the user's profile (bash or zsh).
             
             # Committing changes with git
             
@@ -198,20 +213,18 @@ public class ShellCommandTool extends ToolCall {
             
             </example>
             
-            
             Important:
-            
             - NEVER update the git config
-            
             - DO NOT use the TodoWrite or Task tools
-            
             - Return the PR URL when you're done, so the user can see it
-            
+            - IMPORTANT: Avoid using this tool to run ${READ_ONLY_SEARCHING_BASH_COMMANDS} commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:
             
             # Other common operations
             
             - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
-            """;
+            """, GrepFileTool.TOOL_NAME, GlobFileTool.TOOL_NAME, ReadFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME, EditFileTool.TOOL_NAME,
+            ShellCommandTool.TOOL_NAME, ShellCommandTool.TOOL_NAME, ShellCommandTool.TOOL_NAME,
+            ASYNC_TIMEOUT_SECONDS / 60, DEFAULT_TIMEOUT_SECONDS / 60);
 
     public static Builder builder() {
         return new Builder();
