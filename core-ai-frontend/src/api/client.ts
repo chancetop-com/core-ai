@@ -177,6 +177,11 @@ export interface LLMCallResponse {
   token_usage: Record<string, number>;
 }
 
+export interface ConvertJavaToSchemaResponse {
+  schema: unknown;
+  error: string | null;
+}
+
 export interface AgentRun {
   id: string;
   agent_id: string;
@@ -428,6 +433,8 @@ export const api = {
       request<AgentRunDetail>(`/api/runs/${runId}`),
     llmCall: (id: string, input: string, attachments?: { url?: string; type: string; data?: string; media_type?: string }[]) =>
       request<LLMCallResponse>(`/api/llm/${id}/call`, { method: 'POST', body: JSON.stringify({ input, attachments }) }),
+    javaToSchema: (javaCode: string) =>
+      request<ConvertJavaToSchemaResponse>('/api/utils/java-to-schema', { method: 'POST', body: JSON.stringify({ java_code: javaCode }) }),
   },
   systemPrompts: {
     list: (offset = 0, limit = 20) =>

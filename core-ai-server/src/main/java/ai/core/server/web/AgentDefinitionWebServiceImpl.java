@@ -2,11 +2,14 @@ package ai.core.server.web;
 
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.AgentDefinitionWebService;
+import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
+import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -20,6 +23,8 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     WebContext webContext;
     @Inject
     AgentDefinitionService agentDefinitionService;
+    @Inject
+    JavaToSchemaService javaToSchemaService;
 
     @Override
     public AgentDefinitionView create(CreateAgentRequest request) {
@@ -85,5 +90,10 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         agentDefinitionService.delete(id);
+    }
+
+    @Override
+    public ConvertJavaToSchemaResponse convertJavaToSchema(ConvertJavaToSchemaRequest request) {
+        return javaToSchemaService.convert(request.javaCode);
     }
 }

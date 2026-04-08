@@ -11,6 +11,7 @@ import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.UserWebService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.llmcall.LLMCallBuilderTools;
 import ai.core.server.web.auth.AuthInterceptor;
@@ -88,6 +89,7 @@ public class ServerModule extends Module {
         bind(AgentScheduler.class);
         bind(AgentSessionManager.class);
         bind(AgentDefinitionService.class);
+        bind(JavaToSchemaService.class);
         bind(AgentDraftGenerator.class);
         bind(AgentRunService.class);
         bind(AgentScheduleService.class);

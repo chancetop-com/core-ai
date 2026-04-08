@@ -993,13 +993,27 @@ const JSON_SCHEMA_PLACEHOLDER = `{
   "required": ["result", "score"]
 }`;
 
+const JAVA_CLASS_PLACEHOLDER = `public class SentimentResult {
+    @CoreAiParameter(description = "sentiment label")
+    public String sentiment;
+
+    @CoreAiParameter(description = "confidence 0-100")
+    public int confidence;
+
+    public List<String> keywords;
+}`;
+
 function ResponseSchemaEditor({ value, onChange, inputStyle }: {
   value: unknown;
   onChange: (v: unknown) => void;
   inputStyle: React.CSSProperties;
 }) {
+  const [mode, setMode] = useState<'json' | 'java'>('json');
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState('');
+  const [javaCode, setJavaCode] = useState('');
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState('');
 
   useEffect(() => {
     setJsonText(value ? JSON.stringify(value, null, 2) : '');
@@ -1017,25 +1031,78 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
     }
   };
 
+  const handleConvert = async () => {
+    if (!javaCode.trim()) return;
+    setConverting(true);
+    setConvertError('');
+    try {
+      const res = await api.agents.javaToSchema(javaCode);
+      if (res.error) {
+        setConvertError(res.error);
+      } else if (res.schema) {
+        const text = JSON.stringify(res.schema, null, 2);
+        setJsonText(text);
+        onChange(res.schema);
+        setMode('json');
+      }
+    } catch (e) {
+      setConvertError(e instanceof Error ? e.message : 'Convert failed');
+    } finally {
+      setConverting(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border p-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-medium text-sm">Response Schema</h3>
-        <span className="text-[10px] px-1.5 py-0.5 rounded"
-          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-          JSON Schema
-        </span>
+        <div className="flex gap-1">
+          {(['json', 'java'] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)}
+              className="text-xs px-2 py-1 rounded cursor-pointer"
+              style={{
+                background: mode === m ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+                color: mode === m ? 'white' : 'var(--color-text-secondary)',
+              }}>
+              {m === 'json' ? 'JSON Schema' : 'Java Class'}
+            </button>
+          ))}
+        </div>
       </div>
-      <textarea value={jsonText} onChange={e => handleJsonChange(e.target.value)}
-        rows={10}
-        className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
-        style={{ ...inputStyle, borderColor: jsonError ? 'var(--color-error)' : inputStyle.borderColor }}
-        placeholder={JSON_SCHEMA_PLACEHOLDER} />
-      {jsonError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{jsonError}</p>}
-      {!jsonText.trim() && (
-        <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          Optional. Use standard JSON Schema to define structured output format.
-        </p>
+
+      {mode === 'json' ? (
+        <>
+          <textarea value={jsonText} onChange={e => handleJsonChange(e.target.value)}
+            rows={10}
+            className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
+            style={{ ...inputStyle, borderColor: jsonError ? 'var(--color-error)' : inputStyle.borderColor }}
+            placeholder={JSON_SCHEMA_PLACEHOLDER} />
+          {jsonError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{jsonError}</p>}
+          {!jsonText.trim() && (
+            <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+              Optional. Use standard JSON Schema to define structured output format.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <textarea value={javaCode} onChange={e => setJavaCode(e.target.value)}
+            rows={10}
+            className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
+            style={inputStyle}
+            placeholder={JAVA_CLASS_PLACEHOLDER} />
+          <div className="flex items-center gap-2 mt-2">
+            <button onClick={handleConvert} disabled={!javaCode.trim() || converting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+              style={{ background: 'var(--color-primary)' }}>
+              {converting ? <><Loader2 size={12} className="animate-spin" /> Converting...</> : 'Convert to JSON Schema'}
+            </button>
+            <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>
+              Uses LLM to convert Java class to JSON Schema
+            </span>
+          </div>
+          {convertError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{convertError}</p>}
+        </>
       )}
     </div>
   );

@@ -1,6 +1,8 @@
 package ai.core.api.server;
 
 import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
+import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
@@ -59,4 +61,8 @@ public interface AgentDefinitionWebService {
     @DELETE
     @Path("/api/agents/:id")
     void delete(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/utils/java-to-schema")
+    ConvertJavaToSchemaResponse convertJavaToSchema(ConvertJavaToSchemaRequest request);
 }
