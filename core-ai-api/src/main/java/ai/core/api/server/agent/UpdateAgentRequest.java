@@ -1,6 +1,5 @@
 package ai.core.api.server.agent;
 
-import ai.core.api.jsonschema.JsonSchema;
 import core.framework.api.json.Property;
 
 import java.util.List;
@@ -44,7 +43,7 @@ public class UpdateAgentRequest {
     public Map<String, String> variables;
 
     @Property(name = "response_schema")
-    public JsonSchema responseSchema;
+    public String responseSchema;
 
     @Property(name = "type")
     public String type;

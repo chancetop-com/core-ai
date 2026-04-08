@@ -1016,16 +1016,20 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
   const [convertError, setConvertError] = useState('');
 
   useEffect(() => {
-    setJsonText(value ? JSON.stringify(value, null, 2) : '');
+    if (typeof value === 'string' && value) {
+      try { setJsonText(JSON.stringify(JSON.parse(value), null, 2)); } catch { setJsonText(value); }
+    } else {
+      setJsonText('');
+    }
   }, []);
 
   const handleJsonChange = (raw: string) => {
     setJsonText(raw);
     if (!raw.trim()) { setJsonError(''); onChange(null); return; }
     try {
-      const parsed = JSON.parse(raw);
+      JSON.parse(raw);
       setJsonError('');
-      onChange(parsed);
+      onChange(raw);
     } catch (e) {
       setJsonError(e instanceof Error ? e.message : 'Invalid JSON');
     }
@@ -1040,8 +1044,8 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
       if (res.error) {
         setConvertError(res.error);
       } else if (res.schema) {
-        const text = JSON.stringify(res.schema, null, 2);
-        setJsonText(text);
+        const formatted = JSON.stringify(JSON.parse(res.schema), null, 2);
+        setJsonText(formatted);
         onChange(res.schema);
         setMode('json');
       }

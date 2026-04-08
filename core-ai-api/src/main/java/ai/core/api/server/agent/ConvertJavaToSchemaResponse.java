@@ -1,6 +1,5 @@
 package ai.core.api.server.agent;
 
-import ai.core.api.jsonschema.JsonSchema;
 import core.framework.api.json.Property;
 
 /**
@@ -8,7 +7,7 @@ import core.framework.api.json.Property;
  */
 public class ConvertJavaToSchemaResponse {
     @Property(name = "schema")
-    public JsonSchema schema;
+    public String schema;
 
     @Property(name = "error")
     public String error;

@@ -1,6 +1,5 @@
 package ai.core.api.server.agent;
 
-import ai.core.api.jsonschema.JsonSchema;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
@@ -49,5 +48,5 @@ public class CreateAgentRequest {
     public String type;
 
     @Property(name = "response_schema")
-    public JsonSchema responseSchema;
+    public String responseSchema;
 }

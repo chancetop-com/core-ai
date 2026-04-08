@@ -6,8 +6,6 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.json.JSON;
 
 import java.util.Map;
@@ -57,7 +55,7 @@ public final class PublishLLMCallTool extends ToolCall {
 
             var schemaJson = (String) args.get("response_schema_json");
             if (schemaJson != null && !schemaJson.isBlank()) {
-                request.responseSchema = JsonUtil.fromJson(new TypeReference<>() { }, schemaJson);
+                request.responseSchema = schemaJson;
             }
 
             var userId = context != null ? context.getUserId() : null;

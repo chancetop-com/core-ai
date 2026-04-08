@@ -6,8 +6,6 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
-import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.inject.Inject;
 
 import java.util.List;
@@ -50,7 +48,7 @@ public class JavaToSchemaService {
             ));
             var result = provider.completion(request);
             var output = result.choices.getFirst().message.content;
-            response.schema = JsonUtil.fromJson(new TypeReference<>() { }, output);
+            response.schema = output;
         } catch (Exception e) {
             response.error = e.getMessage();
         }

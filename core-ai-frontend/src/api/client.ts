@@ -178,7 +178,7 @@ export interface LLMCallResponse {
 }
 
 export interface ConvertJavaToSchemaResponse {
-  schema: unknown;
+  schema: string | null;
   error: string | null;
 }
 

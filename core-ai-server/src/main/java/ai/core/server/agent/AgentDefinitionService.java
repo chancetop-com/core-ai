@@ -1,6 +1,5 @@
 package ai.core.server.agent;
 
-import ai.core.api.jsonschema.JsonSchema;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
@@ -13,8 +12,6 @@ import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.User;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.tool.ToolCall;
-import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -60,7 +57,7 @@ public class AgentDefinitionService {
         entity.inputTemplate = request.inputTemplate;
         entity.variables = request.variables;
         entity.type = request.type != null ? DefinitionType.valueOf(request.type) : DefinitionType.AGENT;
-        entity.responseSchema = request.responseSchema != null ? serializeResponseSchema(request.responseSchema) : null;
+        entity.responseSchema = request.responseSchema;
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -114,7 +111,7 @@ public class AgentDefinitionService {
         if (request.toolIds != null) entity.toolIds = request.toolIds;
         if (request.inputTemplate != null) entity.inputTemplate = request.inputTemplate;
         if (request.variables != null) entity.variables = request.variables;
-        if (request.responseSchema != null) entity.responseSchema = serializeResponseSchema(request.responseSchema);
+        if (request.responseSchema != null) entity.responseSchema = request.responseSchema;
         if (request.type != null) entity.type = DefinitionType.valueOf(request.type);
         entity.updatedAt = ZonedDateTime.now();
 
@@ -212,7 +209,7 @@ public class AgentDefinitionService {
         view.systemDefault = entity.systemDefault;
         view.createdBy = resolveUserName(entity.userId);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
-        view.responseSchema = entity.responseSchema != null ? deserializeResponseSchema(entity.responseSchema) : null;
+        view.responseSchema = entity.responseSchema;
         view.status = entity.status != null ? entity.status.name() : null;
         view.publishedAt = entity.publishedAt;
         view.createdAt = entity.createdAt;
@@ -225,11 +222,4 @@ public class AgentDefinitionService {
         return userCollection.get(userId).map(u -> u.name).orElse(userId);
     }
 
-    private String serializeResponseSchema(JsonSchema schema) {
-        return JsonUtil.toJson(schema);
-    }
-
-    private JsonSchema deserializeResponseSchema(String json) {
-        return JsonUtil.fromJson(new TypeReference<>() { }, json);
-    }
 }
