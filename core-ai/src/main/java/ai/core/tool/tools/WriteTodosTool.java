@@ -5,7 +5,8 @@ import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.ToolCall;
 import ai.core.tool.function.Functions;
-import core.framework.json.JSON;
+import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.annotation.JsonCreator;
 
 import java.util.List;
 
@@ -80,7 +81,7 @@ public class WriteTodosTool {
 
     @CoreAiMethod(name = WT_TOOL_NAME, description = WT_TOOL_DESC)
     public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos, ExecutionContext context) {
-        String todosJson = JSON.toJSON(todos);
+        String todosJson = JsonUtil.toJson(todos);
         return """
                   Todos have been modified successfully.
                   <system-reminder>
@@ -95,7 +96,18 @@ public class WriteTodosTool {
     }
 
     public enum Status {
-        PENDING, IN_PROGRESS, COMPLETED
+        PENDING, IN_PROGRESS, COMPLETED;
+
+        @JsonCreator
+        public static Status fromString(String value) {
+            if (value == null) return null;
+            return switch (value.toUpperCase()) {
+                case "PENDING" -> PENDING;
+                case "IN_PROGRESS" -> IN_PROGRESS;
+                case "COMPLETED" -> COMPLETED;
+                default -> throw new IllegalArgumentException("Unknown status: " + value);
+            };
+        }
     }
 
     public static class Todo {
