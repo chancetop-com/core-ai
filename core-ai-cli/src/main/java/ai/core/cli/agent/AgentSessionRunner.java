@@ -109,7 +109,6 @@ public class AgentSessionRunner {
         BannerPrinter.print(ui.getWriter(), modelName);
         LOGGER.debug("terminal: type={}, jline={}, ansi={}", ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
     }
-
     private void printSessionHistory() {
         var messages = agent.getMessages();
         boolean hasHistory = false;
@@ -302,7 +301,6 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model switched: "
                 + currentModel + " → " + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
     }
-
     private String getCurrentModelName() {
         return agent.getModel() != null ? agent.getModel() : agent.getLLMProvider().config.getModel();
     }
@@ -389,11 +387,13 @@ public class AgentSessionRunner {
         int beforeCount = messages.size();
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Compacting...\n" + AnsiTheme.RESET);
         var compressed = compression.forceCompress(messages);
-        if (compressed != messages) {
-            messages.clear();
-            messages.addAll(compressed);
-            if (agent.hasPersistenceProvider()) agent.save(sessionId);
+        if (compressed == messages) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
+            return;
         }
+        messages.clear();
+        messages.addAll(compressed);
+        if (agent.hasPersistenceProvider()) agent.save(sessionId);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Compacted: "
                 + beforeCount + " → " + messages.size() + " messages\n\n");
     }

@@ -126,7 +126,13 @@ public class Compression {
             toCompress.remove(preservedUserMsg);
         }
 
-        notifyListener(messages.size(), toCompress.size(), false);
+        int overhead = 2 + (preservedUserMsg != null ? 1 : 0) + (systemMsg != null ? 1 : 0);
+        if (toCompress.size() <= overhead) {
+            LOGGER.debug("Too few messages to compress effectively, skipping");
+            return messages;
+        }
+
+        if (!force) notifyListener(messages.size(), toCompress.size(), false);
         var summary = summarize(toCompress);
         if (summary.isBlank()) {
             LOGGER.warn("Summarization returned empty result, keeping original messages");
@@ -134,9 +140,12 @@ public class Compression {
         }
 
         var result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
-        notifyListener(messages.size(), result.size(), true);
+        if (result.size() >= messages.size()) {
+            LOGGER.debug("Compression did not reduce message count, keeping original");
+            return messages;
+        }
+        if (!force) notifyListener(messages.size(), result.size(), true);
         LOGGER.debug("Compression complete: {} -> {} messages", messages.size(), result.size());
-
         return result;
     }
 
@@ -278,18 +287,11 @@ public class Compression {
 
     private String summarize(List<Message> messagesToSummarize) {
         String content = formatMessages(messagesToSummarize);
-        if (content.isBlank()) {
-            return "";
-        }
-
+        if (content.isBlank()) return "";
         int targetTokens = Math.min(MAX_SUMMARY_TOKENS, Math.max(MIN_SUMMARY_TOKENS, maxContextTokens / 10));
-        int targetWords = (int) (targetTokens * 0.75);
-        String prompt = String.format(Prompts.COMPRESSION_PROMPT, targetWords, content);
-
+        String prompt = String.format(Prompts.COMPRESSION_PROMPT, (int) (targetTokens * 0.75), content);
         String summary = callLLM(prompt);
-        if (summary.isBlank()) {
-            return "";
-        }
+        if (summary.isBlank()) return "";
         return Prompts.COMPRESSION_SUMMARY_PREFIX + summary + Prompts.COMPRESSION_SUMMARY_SUFFIX;
     }
 
