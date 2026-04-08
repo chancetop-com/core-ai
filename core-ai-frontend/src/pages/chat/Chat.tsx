@@ -190,6 +190,7 @@ export default function Chat() {
   const [status, setStatus] = useState<'idle' | 'running'>('idle');
   const [awaitInfo, setAwaitInfo] = useState<AwaitInfo | null>(null);
   const [planTodos, setPlanTodos] = useState<PlanTodo[] | null>(null);
+  const [compressionInfo, setCompressionInfo] = useState<{ before: number; after: number } | null>(null);
 
   // Agent selection
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
@@ -339,6 +340,13 @@ export default function Chat() {
         case 'plan_update': {
           if (data.todos && Array.isArray(data.todos)) {
             setPlanTodos(data.todos);
+          }
+          break;
+        }
+        case 'compression': {
+          if (data.completed) {
+            setCompressionInfo({ before: data.before_count, after: data.after_count });
+            setTimeout(() => setCompressionInfo(null), 5000);
           }
           break;
         }
@@ -665,6 +673,13 @@ export default function Chat() {
           </div>
         )}
         <div className="max-w-4xl mx-auto flex flex-col gap-4">
+          {compressionInfo && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs animate-pulse"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
+              <Sparkles size={14} />
+              <span>Context compressed: {compressionInfo.before} → {compressionInfo.after} messages</span>
+            </div>
+          )}
           {planTodos && planTodos.length > 0 && (
             <PlanUpdateBlock todos={planTodos} />
           )}

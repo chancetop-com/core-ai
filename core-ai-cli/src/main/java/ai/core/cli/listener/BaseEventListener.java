@@ -45,6 +45,10 @@ public class BaseEventListener implements AgentEventListener {
         this.panel = new OutputPanel(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
     }
 
+    public OutputPanel getPanel() {
+        return panel;
+    }
+
     public void prepareTurn() {
         turnFuture = new CompletableFuture<>();
         panel.beginTurn();

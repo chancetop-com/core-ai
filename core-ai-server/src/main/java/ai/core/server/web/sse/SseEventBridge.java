@@ -1,6 +1,7 @@
 package ai.core.server.web.sse;
 
 import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.EventType;
 import ai.core.api.server.session.PlanUpdateEvent;
@@ -73,5 +74,10 @@ public class SseEventBridge implements AgentEventListener {
     @Override
     public void onPlanUpdate(PlanUpdateEvent event) {
         sessionChannelService.send(sessionId, EventType.PLAN_UPDATE, event);
+    }
+
+    @Override
+    public void onCompression(CompressionEvent event) {
+        sessionChannelService.send(sessionId, EventType.COMPRESSION, event);
     }
 }

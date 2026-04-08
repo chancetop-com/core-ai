@@ -6,6 +6,7 @@ import ai.core.agent.lifecycle.PlanUpdateLifecycle;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.AgentSession;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.ErrorEvent;
@@ -56,6 +57,7 @@ public class InProcessAgentSession implements AgentSession {
         agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
+        setupCompressionListener();
 
         if (agent.hasPersistenceProvider()) {
             agent.load(sessionId);
@@ -169,6 +171,13 @@ public class InProcessAgentSession implements AgentSession {
         logger.info("loaded {} tools to session, sessionId={}", tools.size(), sessionId);
     }
 
+    private void setupCompressionListener() {
+        var compression = agent.getCompression();
+        if (compression == null) return;
+        compression.setListener((beforeCount, afterCount, completed) ->
+            dispatch(CompressionEvent.of(sessionId, beforeCount, afterCount, completed)));
+    }
+
     private void dispatch(AgentEvent event) {
         logger.debug("dispatching event: {}, sessionId={}, thread={}", event.getClass().getSimpleName(), sessionId, Thread.currentThread().getName());
         for (AgentEventListener listener : listeners) {
@@ -184,6 +193,7 @@ public class InProcessAgentSession implements AgentSession {
                 else if (event instanceof StatusChangeEvent e) listener.onStatusChange(e);
                 else if (event instanceof OnToolEvent e) listener.onOnTool(e);
                 else if (event instanceof PlanUpdateEvent e) listener.onPlanUpdate(e);
+                else if (event instanceof CompressionEvent e) listener.onCompression(e);
             } catch (Exception e) {
                 logger.error("failed to dispatch event to listener, event={}, sessionId={}", event.getClass().getSimpleName(), sessionId, e);
             }

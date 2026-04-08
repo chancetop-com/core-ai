@@ -34,4 +34,7 @@ public interface AgentEventListener {
     }
     default void onPlanUpdate(PlanUpdateEvent event) {
     }
+
+    default void onCompression(CompressionEvent event) {
+    }
 }
