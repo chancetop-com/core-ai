@@ -10,8 +10,6 @@ import java.util.List;
  * @author stephen
  */
 public class LLMCallRequest {
-    @NotNull
-    @NotBlank
     @Property(name = "input")
     public String input;
 
