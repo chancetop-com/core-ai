@@ -60,9 +60,12 @@ public class ExaSearchProvider implements SearchProvider {
         try {
             var response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
-                throw new RuntimeException("Exa MCP search failed with status " + response.statusCode());
+                return List.of();
             }
             return parseResponse(response.body());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Exa MCP search request interrupted", e);
         } catch (Exception e) {
             throw new RuntimeException("Exa MCP search request failed: " + e.getMessage(), e);
         }

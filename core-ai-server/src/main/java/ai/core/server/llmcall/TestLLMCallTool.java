@@ -1,6 +1,5 @@
 package ai.core.server.llmcall;
 
-import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
@@ -10,12 +9,9 @@ import ai.core.server.run.ResponseSchemaConverter;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.json.JSON;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -49,8 +45,7 @@ public final class TestLLMCallTool extends ToolCall {
 
             ResponseFormat responseFormat = null;
             if (schemaJson != null && !schemaJson.isBlank()) {
-                List<ApiDefinitionType> schemaTypes = JsonUtil.fromJson(new TypeReference<>() { }, schemaJson);
-                responseFormat = ResponseSchemaConverter.toResponseFormat(schemaTypes);
+                responseFormat = ResponseSchemaConverter.fromJsonSchema(schemaJson);
             }
 
             var messages = new ArrayList<Message>();
@@ -98,7 +93,7 @@ public final class TestLLMCallTool extends ToolCall {
             description("Test an LLM Call definition with sample input. Sends the system prompt and test input to the LLM with the response schema, returns the structured output.");
             parameters(ToolCallParameters.of(
                 ToolCallParameters.ParamSpec.of(String.class, "system_prompt", "The system prompt for the LLM Call").required(),
-                ToolCallParameters.ParamSpec.of(String.class, "response_schema_json", "The response schema as JSON array of ApiDefinitionType (optional, omit for plain text output)"),
+                ToolCallParameters.ParamSpec.of(String.class, "response_schema_json", "The response schema as standard JSON Schema object (optional, omit for plain text output)"),
                 ToolCallParameters.ParamSpec.of(String.class, "test_input", "Sample user input to test with").required(),
                 ToolCallParameters.ParamSpec.of(String.class, "model", "LLM model to use (optional)")
             ));

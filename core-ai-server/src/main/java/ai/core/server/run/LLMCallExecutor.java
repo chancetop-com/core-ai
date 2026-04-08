@@ -2,7 +2,6 @@ package ai.core.server.run;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.internal.AgentHelper;
-import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
@@ -18,6 +17,7 @@ import core.framework.inject.Inject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -45,8 +45,7 @@ public class LLMCallExecutor {
 
         ResponseFormat responseFormat = null;
         if (responseSchemaJson != null) {
-            List<ApiDefinitionType> types = JsonUtil.fromJson(new TypeReference<>() { }, responseSchemaJson);
-            responseFormat = ResponseSchemaConverter.toResponseFormat(types);
+            responseFormat = ResponseSchemaConverter.fromJsonSchema(responseSchemaJson);
         }
 
         var messages = new ArrayList<Message>();

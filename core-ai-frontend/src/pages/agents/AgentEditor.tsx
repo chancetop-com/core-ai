@@ -93,7 +93,7 @@ export default function AgentEditor() {
         tool_ids: agent.tool_ids,
         input_template: agent.input_template,
         variables: agent.variables,
-        response_schema: agent.response_schema && !Array.isArray(agent.response_schema) ? [agent.response_schema] : agent.response_schema,
+        response_schema: agent.response_schema,
       });
       setAgent(updated);
     } catch (e) {
@@ -977,136 +977,33 @@ function RunInlineDetail({ run, detail, onViewFull }: {
   );
 }
 
-interface SchemaConstraints {
-  notNull?: boolean;
-  notBlank?: boolean;
-  min?: number | null;
-  max?: number | null;
-  sizeMin?: number | null;
-  sizeMax?: number | null;
-  pattern?: string;
-}
-
-interface SchemaField {
-  name: string;
-  type: string;
-  description: string;
-  constraints: SchemaConstraints;
-}
-
-const FIELD_TYPES = ['String', 'Integer', 'Long', 'Double', 'Boolean', 'List', 'Map', 'Object'];
-
-function parseConstraints(c: Record<string, unknown> | undefined): SchemaConstraints {
-  if (!c) return {};
-  const size = c.size as Record<string, unknown> | undefined;
-  return {
-    notNull: c.notNull as boolean | undefined,
-    notBlank: c.notBlank as boolean | undefined,
-    min: c.min as number | null | undefined,
-    max: c.max as number | null | undefined,
-    sizeMin: size?.min as number | null | undefined,
-    sizeMax: size?.max as number | null | undefined,
-    pattern: c.pattern as string | undefined,
-  };
-}
-
-function buildConstraintsJson(c: SchemaConstraints): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  if (c.notNull) result.notNull = true;
-  if (c.notBlank) result.notBlank = true;
-  if (c.min != null) result.min = c.min;
-  if (c.max != null) result.max = c.max;
-  if (c.sizeMin != null || c.sizeMax != null) {
-    const size: Record<string, unknown> = {};
-    if (c.sizeMin != null) size.min = c.sizeMin;
-    if (c.sizeMax != null) size.max = c.sizeMax;
-    result.size = size;
-  }
-  if (c.pattern) result.pattern = c.pattern;
-  return result;
-}
-
-function parseSchemaToForm(value: unknown): { typeName: string; fields: SchemaField[] } {
-  if (!value) return { typeName: '', fields: [] };
-  try {
-    const arr = Array.isArray(value) ? value : [value];
-    const first = arr[0];
-    if (first && typeof first === 'object') {
-      const fs = (first.fields || []).map((f: Record<string, unknown>) => ({
-        name: (f.name as string) || '',
-        type: (f.type as string) || 'String',
-        description: (f.description as string) || '',
-        constraints: parseConstraints(f.constraints as Record<string, unknown> | undefined),
-      }));
-      return { typeName: first.name || '', fields: fs };
+const JSON_SCHEMA_PLACEHOLDER = `{
+  "title": "Response",
+  "type": "object",
+  "properties": {
+    "result": {
+      "type": "string",
+      "description": "The result text"
+    },
+    "score": {
+      "type": "integer",
+      "description": "Confidence score 0-100"
     }
-  } catch { /* ignore */ }
-  return { typeName: '', fields: [] };
-}
-
-function buildSchemaJson(name: string, fs: SchemaField[]): unknown[] | null {
-  const validFields = fs.filter(f => f.name.trim());
-  if (!name.trim() && validFields.length === 0) return null;
-  return [{
-    name: name || 'Response',
-    type: 'object',
-    fields: validFields.map(f => ({
-      name: f.name,
-      type: f.type,
-      description: f.description || undefined,
-      constraints: buildConstraintsJson(f.constraints),
-    })),
-  }];
-}
+  },
+  "required": ["result", "score"]
+}`;
 
 function ResponseSchemaEditor({ value, onChange, inputStyle }: {
   value: unknown;
   onChange: (v: unknown) => void;
   inputStyle: React.CSSProperties;
 }) {
-  const [mode, setMode] = useState<'form' | 'json'>('form');
-  const [typeName, setTypeName] = useState('');
-  const [fields, setFields] = useState<SchemaField[]>([]);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState('');
 
-  // Parse existing value on mount
   useEffect(() => {
-    const { typeName: tn, fields: fs } = parseSchemaToForm(value);
-    setTypeName(tn);
-    setFields(fs.length > 0 ? fs : []);
     setJsonText(value ? JSON.stringify(value, null, 2) : '');
   }, []);
-
-  const handleFormChange = (name: string, fs: SchemaField[]) => {
-    const schema = buildSchemaJson(name, fs);
-    onChange(schema);
-    setJsonText(schema ? JSON.stringify(schema, null, 2) : '');
-  };
-
-  const updateField = (idx: number, key: string, val: unknown) => {
-    const updated = fields.map((f, i) => {
-      if (i !== idx) return f;
-      if (key.startsWith('constraints.')) {
-        const cKey = key.split('.')[1];
-        return { ...f, constraints: { ...f.constraints, [cKey]: val } };
-      }
-      return { ...f, [key]: val };
-    });
-    setFields(updated);
-    handleFormChange(typeName, updated);
-  };
-
-  const addField = () => {
-    const updated = [...fields, { name: '', type: 'String', description: '', constraints: {} }];
-    setFields(updated);
-  };
-
-  const removeField = (idx: number) => {
-    const updated = fields.filter((_, i) => i !== idx);
-    setFields(updated);
-    handleFormChange(typeName, updated);
-  };
 
   const handleJsonChange = (raw: string) => {
     setJsonText(raw);
@@ -1115,104 +1012,30 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
       const parsed = JSON.parse(raw);
       setJsonError('');
       onChange(parsed);
-      // Sync to form
-      const { typeName: tn, fields: fs } = parseSchemaToForm(parsed);
-      setTypeName(tn);
-      setFields(fs);
     } catch (e) {
       setJsonError(e instanceof Error ? e.message : 'Invalid JSON');
     }
-  };
-
-  const switchMode = (m: 'form' | 'json') => {
-    if (m === 'json' && mode === 'form') {
-      // Form → JSON: rebuild JSON from form
-      const schema = buildSchemaJson(typeName, fields);
-      setJsonText(schema ? JSON.stringify(schema, null, 2) : '');
-    } else if (m === 'form' && mode === 'json') {
-      // JSON → Form: parse JSON into form
-      try {
-        const parsed = jsonText.trim() ? JSON.parse(jsonText) : null;
-        const { typeName: tn, fields: fs } = parseSchemaToForm(parsed);
-        setTypeName(tn);
-        setFields(fs.length > 0 ? fs : []);
-      } catch { /* keep current form state */ }
-    }
-    setMode(m);
   };
 
   return (
     <div className="rounded-xl border p-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-medium text-sm">Response Schema</h3>
-        <div className="flex gap-1">
-          {(['form', 'json'] as const).map(m => (
-            <button key={m} onClick={() => switchMode(m)}
-              className="text-xs px-2 py-1 rounded cursor-pointer"
-              style={{
-                background: mode === m ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-                color: mode === m ? 'white' : 'var(--color-text-secondary)',
-              }}>
-              {m === 'form' ? 'Form' : 'JSON'}
-            </button>
-          ))}
-        </div>
+        <span className="text-[10px] px-1.5 py-0.5 rounded"
+          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+          JSON Schema
+        </span>
       </div>
-
-      {mode === 'form' ? (
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Type Name</label>
-            <input value={typeName} onChange={e => { setTypeName(e.target.value); handleFormChange(e.target.value, fields); }}
-              className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none"
-              style={inputStyle} placeholder="e.g. AnalysisResult" />
-          </div>
-
-          <div>
-            <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Fields</label>
-            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
-              <div className="grid grid-cols-[1fr_90px_1fr_44px_36px] gap-0 text-xs font-medium px-2 py-1.5"
-                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                <span>Name</span><span>Type</span><span>Description</span><span>Req</span><span />
-              </div>
-              {fields.map((f, i) => (
-                <div key={i} className="grid grid-cols-[1fr_90px_1fr_44px_36px] gap-0 items-center border-t"
-                  style={{ borderColor: 'var(--color-border)' }}>
-                  <input value={f.name} onChange={e => updateField(i, 'name', e.target.value)}
-                    className="px-2 py-1.5 text-xs outline-none border-r" style={{ ...inputStyle, borderColor: 'var(--color-border)' }}
-                    placeholder="field name" />
-                  <select value={f.type} onChange={e => updateField(i, 'type', e.target.value)}
-                    className="px-1 py-1.5 text-xs outline-none border-r" style={{ ...inputStyle, borderColor: 'var(--color-border)' }}>
-                    {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <input value={f.description} onChange={e => updateField(i, 'description', e.target.value)}
-                    className="px-2 py-1.5 text-xs outline-none border-r" style={{ ...inputStyle, borderColor: 'var(--color-border)' }}
-                    placeholder="optional" />
-                  <div className="flex justify-center border-r" style={{ borderColor: 'var(--color-border)' }}>
-                    <input type="checkbox" checked={!!f.constraints.notNull} onChange={e => updateField(i, 'constraints.notNull', e.target.checked || undefined)}
-                      className="cursor-pointer" />
-                  </div>
-                  <button onClick={() => removeField(i)} className="flex justify-center cursor-pointer text-xs"
-                    style={{ color: 'var(--color-error)' }}>✕</button>
-                </div>
-              ))}
-            </div>
-            <button onClick={addField}
-              className="mt-2 text-xs px-3 py-1 rounded cursor-pointer"
-              style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
-              + Add Field
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div>
-          <textarea value={jsonText} onChange={e => handleJsonChange(e.target.value)}
-            rows={8}
-            className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
-            style={{ ...inputStyle, borderColor: jsonError ? 'var(--color-error)' : inputStyle.borderColor }}
-            placeholder='[{"name": "Result", "type": "object", "fields": [...]}]' />
-          {jsonError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{jsonError}</p>}
-        </div>
+      <textarea value={jsonText} onChange={e => handleJsonChange(e.target.value)}
+        rows={10}
+        className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
+        style={{ ...inputStyle, borderColor: jsonError ? 'var(--color-error)' : inputStyle.borderColor }}
+        placeholder={JSON_SCHEMA_PLACEHOLDER} />
+      {jsonError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{jsonError}</p>}
+      {!jsonText.trim() && (
+        <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+          Optional. Use standard JSON Schema to define structured output format.
+        </p>
       )}
     </div>
   );

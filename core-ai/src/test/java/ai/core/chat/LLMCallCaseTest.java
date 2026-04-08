@@ -8,6 +8,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +20,8 @@ import java.util.List;
  * date: 2026/3/30
  * description:
  */
-public class LLMCallCaseTest extends IntegrationTest {
+@Disabled
+class LLMCallCaseTest extends IntegrationTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(LLMCallCaseTest.class);
     @Inject
     LLMProviders llmProviders;

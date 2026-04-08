@@ -372,9 +372,50 @@ public class Agent extends Node<Agent> {
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
     }
-
     public List<ToolCall> getToolCalls() {
         return this.toolCalls;
+    }
+    public void setModel(String model) {
+        this.model = model;
+    }
+    public String getSystemPrompt() {
+        return systemPrompt;
+    }
+    public void setSystemPrompt(String systemPrompt) {
+        this.systemPrompt = systemPrompt;
+    }
+    public Double getTemperature() {
+        return temperature;
+    }
+    public String getModel() {
+        return model;
+    }
+    public LLMProvider getLLMProvider() {
+        return llmProvider;
+    }
+    public Compression getCompression() {
+        return compression;
+    }
+    public void setAuthenticated(boolean authenticated) {
+        this.authenticated = authenticated;
+    }
+    public void setLlmProvider(LLMProvider llmProvider) {
+        this.llmProvider = llmProvider;
+    }
+    public List<SubAgentToolCall> getSubAgents() {
+        return subAgents;
+    }
+    void setSubAgents(List<SubAgentToolCall> subAgents) {
+        this.subAgents = subAgents;
+    }
+    public boolean hasSubAgents() {
+        return subAgents != null && !subAgents.isEmpty();
+    }
+    public SubAgentToolCall toSubAgentToolCall() {
+        return SubAgentToolCall.builder().subAgent(this).build();
+    }
+    public SubAgentToolCall toSubAgentToolCall(Class<?>... classes) {
+        return SubAgentToolCall.builder().subAgent(this, classes).build();
     }
 
     public void addTools(List<ToolCall> tools) {
@@ -382,83 +423,22 @@ public class Agent extends Node<Agent> {
         for (var tool : tools) {
             if (toolCalls.stream().noneMatch(t -> t.getName().equals(tool.getName()))) {
                 toolCalls.add(tool);
-                logger.debug("added tool: {}", tool.getName());
             }
         }
     }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public String getSystemPrompt() {
-        return systemPrompt;
-    }
-
-    public void setSystemPrompt(String systemPrompt) {
-        this.systemPrompt = systemPrompt;
-    }
-
-    public Double getTemperature() {
-        return temperature;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public LLMProvider getLLMProvider() {
-        return llmProvider;
-    }
-
-    public Compression getCompression() {
-        return compression;
-    }
-
-    public void setAuthenticated(boolean authenticated) {
-        this.authenticated = authenticated;
-    }
-
-    public void setLlmProvider(LLMProvider llmProvider) {
-        this.llmProvider = llmProvider;
-    }
-
-    public List<SubAgentToolCall> getSubAgents() {
-        return subAgents;
-    }
-
-    void setSubAgents(List<SubAgentToolCall> subAgents) {
-        this.subAgents = subAgents;
-    }
-
-    public boolean hasSubAgents() {
-        return subAgents != null && !subAgents.isEmpty();
-    }
-
-    public SubAgentToolCall toSubAgentToolCall() {
-        return SubAgentToolCall.builder().subAgent(this).build();
-    }
-
-    public SubAgentToolCall toSubAgentToolCall(Class<?>... classes) {
-        return SubAgentToolCall.builder().subAgent(this, classes).build();
-    }
-
     public void cancel() {
         this.cancelled = true;
         var cb = getStreamingCallback();
         if (cb != null) cb.cancelConnection();
     }
-
     public void resetCancellation() {
         this.cancelled = false;
         var cb = getStreamingCallback();
         if (cb != null) cb.reset();
     }
-
     public boolean isCancelled() {
         return cancelled;
     }
-
     @Override
     public ExecutionContext getExecutionContext() {
         var context = super.getExecutionContext();

@@ -25,7 +25,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
 
             2. **Generate the definition**: Based on the requirements, generate:
                - A clear system prompt that instructs the LLM
-               - A response schema using ApiDefinitionType format (JSON array), if structured output is needed. If the developer only needs plain text output, skip the schema.
+               - A response schema using standard JSON Schema format, if structured output is needed. If the developer only needs plain text output, skip the schema.
                - An input template if needed
 
             3. **Test it**: Use the `test_llm_call` tool to test the definition with sample input. Show the developer the result.
@@ -34,37 +34,35 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
 
             5. **Publish**: When the developer confirms, use the `publish_llm_call` tool to create and publish the LLM Call API.
 
-            ## ApiDefinitionType Schema Format
+            ## JSON Schema Format
 
-            The response_schema_json must be a JSON array of type definitions. The first element is the root response type.
+            The response_schema_json must be a standard JSON Schema object.
 
             Example for a sentiment analysis API:
             ```json
-            [
-              {
-                "name": "SentimentResult",
-                "type": "CLASS",
-                "fields": [
-                  {"name": "sentiment", "type": "Sentiment", "constraints": {"notNull": true}},
-                  {"name": "confidence", "type": "Integer", "description": "Confidence score 0-100", "constraints": {"notNull": true}},
-                  {"name": "keywords", "type": "List", "typeParams": ["String"], "description": "Key phrases", "constraints": {"notNull": true}}
-                ]
+            {
+              "title": "SentimentResult",
+              "type": "object",
+              "properties": {
+                "sentiment": {
+                  "type": "string",
+                  "enum": ["positive", "negative", "neutral"]
+                },
+                "confidence": {
+                  "type": "integer",
+                  "description": "Confidence score 0-100"
+                },
+                "keywords": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Key phrases"
+                }
               },
-              {
-                "name": "Sentiment",
-                "type": "ENUM",
-                "enumConstants": [
-                  {"name": "POSITIVE", "value": "positive"},
-                  {"name": "NEGATIVE", "value": "negative"},
-                  {"name": "NEUTRAL", "value": "neutral"}
-                ]
-              }
-            ]
+              "required": ["sentiment", "confidence", "keywords"]
+            }
             ```
 
-            Supported primitive types: String, Integer, Long, Double, Boolean, LocalDate, ZonedDateTime
-            Use "List" with "typeParams" for arrays, reference other type names for nested objects/enums.
-            If response_schema_json is configured, remind the user that the LLM must support this feature.
+            If response_schema_json is configured, remind the user that the LLM must support structured output.
 
             ## Important
             - Always test before publishing

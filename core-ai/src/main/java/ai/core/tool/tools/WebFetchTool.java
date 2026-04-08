@@ -180,6 +180,43 @@ public class WebFetchTool extends ToolCall {
         return responseBody;
     }
 
+    private static void appendHeadMarkdown(StringBuilder sb, Element el) {
+        switch (el.tagName()) {
+            case "h1" -> sb.append("\n# ");
+            case "h2" -> sb.append("\n## ");
+            case "h3" -> sb.append("\n### ");
+            case "h4" -> sb.append("\n#### ");
+            case "h5" -> sb.append("\n##### ");
+            case "h6" -> sb.append("\n###### ");
+            case "li" -> sb.append("\n- ");
+            case "br" -> sb.append('\n');
+            case "code" -> sb.append('`');
+            case "pre" -> sb.append("\n```\n");
+            case "a" -> {
+                var href = el.attr("abs:href");
+                if (!href.isEmpty()) sb.append('[');
+            }
+            case "strong", "b" -> sb.append("**");
+            case "em", "i" -> sb.append('*');
+            default -> { }
+        }
+    }
+
+    private static void appendTailMarkdown(StringBuilder sb, Element el) {
+        switch (el.tagName()) {
+            case "h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "li", "tr" -> sb.append('\n');
+            case "pre" -> sb.append("\n```\n");
+            case "code" -> sb.append('`');
+            case "a" -> {
+                var href = el.attr("abs:href");
+                if (!href.isEmpty()) sb.append("](").append(href).append(')');
+            }
+            case "strong", "b" -> sb.append("**");
+            case "em", "i" -> sb.append('*');
+            default -> { }
+        }
+    }
+
     private String extractText(String html) {
         var doc = Jsoup.parse(html);
         doc.select(String.join(", ", SKIP_TAGS)).remove();
@@ -190,52 +227,19 @@ public class WebFetchTool extends ToolCall {
         var doc = Jsoup.parse(html, baseUrl);
         doc.select(String.join(", ", SKIP_TAGS)).remove();
 
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(1024);
         NodeTraversor.traverse(new NodeVisitor() {
             @Override
             public void head(@NotNull Node node, int depth) {
                 if (node instanceof TextNode text) {
-                    var t = text.text();
-                    if (!t.isBlank()) sb.append(t);
+                    if (!text.text().isBlank()) sb.append(text.text());
                 } else if (node instanceof Element el) {
-                    switch (el.tagName()) {
-                        case "h1" -> sb.append("\n# ");
-                        case "h2" -> sb.append("\n## ");
-                        case "h3" -> sb.append("\n### ");
-                        case "h4" -> sb.append("\n#### ");
-                        case "h5" -> sb.append("\n##### ");
-                        case "h6" -> sb.append("\n###### ");
-                        case "li" -> sb.append("\n- ");
-                        case "br" -> sb.append("\n");
-                        case "code" -> sb.append("`");
-                        case "pre" -> sb.append("\n```\n");
-                        case "a" -> {
-                            var href = el.attr("abs:href");
-                            if (!href.isEmpty()) sb.append("[");
-                        }
-                        case "strong", "b" -> sb.append("**");
-                        case "em", "i" -> sb.append("*");
-                        default -> { }
-                    }
+                    appendHeadMarkdown(sb, el);
                 }
             }
-
             @Override
             public void tail(@NotNull Node node, int depth) {
-                if (node instanceof Element el) {
-                    switch (el.tagName()) {
-                        case "h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "li", "tr" -> sb.append("\n");
-                        case "pre" -> sb.append("\n```\n");
-                        case "code" -> sb.append("`");
-                        case "a" -> {
-                            var href = el.attr("abs:href");
-                            if (!href.isEmpty()) sb.append("](").append(href).append(")");
-                        }
-                        case "strong", "b" -> sb.append("**");
-                        case "em", "i" -> sb.append("*");
-                        default -> { }
-                    }
-                }
+                if (node instanceof Element el) appendTailMarkdown(sb, el);
             }
         }, doc.body());
 

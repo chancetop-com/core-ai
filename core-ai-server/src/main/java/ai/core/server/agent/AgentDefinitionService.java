@@ -1,6 +1,6 @@
 package ai.core.server.agent;
 
-import ai.core.api.apidefinition.ApiDefinitionType;
+import ai.core.api.jsonschema.JsonSchema;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
@@ -21,6 +21,7 @@ import core.framework.mongo.MongoCollection;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -226,11 +227,11 @@ public class AgentDefinitionService {
         return userCollection.get(userId).map(u -> u.name).orElse(userId);
     }
 
-    private String serializeResponseSchema(List<ApiDefinitionType> schema) {
+    private String serializeResponseSchema(JsonSchema schema) {
         return JsonUtil.toJson(schema);
     }
 
-    private List<ApiDefinitionType> deserializeResponseSchema(String json) {
+    private JsonSchema deserializeResponseSchema(String json) {
         return JsonUtil.fromJson(new TypeReference<>() { }, json);
     }
 }

@@ -367,7 +367,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agentLifecycles.addFirst(new ToolCallPruningLifecycle(new ToolCallPruning(pruningCfg.keepRecentSegments(), pruningCfg.excludeToolNames())));
         }
     }
-
     private void configureDoomLoop() {
         var strategies = new ArrayList<DoomLoopStrategy>();
         if (doomLoopEnabled) {
@@ -407,13 +406,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private void configureToolDiscovery() {
         var discoverableTools = toolCalls.stream().filter(ToolCall::isDiscoverable).toList();
         if (!discoverableTools.isEmpty()) {
-            for (var tool : discoverableTools) {
-                tool.setLlmVisible(false);
-            }
+            for (var tool : discoverableTools) tool.setLlmVisible(false);
             toolCalls.add(ToolActivationTool.builder().allToolCalls(toolCalls).build());
         }
     }
-
     private void configureMemory() {
         if (this.memory == null) return;
         var config = this.memoryConfig != null ? this.memoryConfig : MemoryConfig.defaultConfig();
@@ -423,7 +419,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             toolCalls.add(lifecycle.getMemoryRecallTool());
         }
     }
-
     private void fetchLangfusePromptsIfConfigured() {
         if (langfuseSystemPromptName == null && langfusePromptTemplateName == null) return;
         var provider = LangfusePromptProviderRegistry.getProvider();
@@ -448,9 +443,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (langfusePromptLabel != null) return provider.getPromptByLabel(name, langfusePromptLabel);
         return provider.getPrompt(name);
     }
-
     @Override
-    protected AgentBuilder self() {
-        return this;
-    }
+    protected AgentBuilder self() { return this; }
 }

@@ -96,13 +96,13 @@ public class TaskTool extends ToolCall {
             var argsMap = JSON.fromJSON(Map.class, arguments);
             var prompt = (String) argsMap.get("prompt");
             var subagentType = (String) argsMap.get("subagent_type");
-            var description = (String) argsMap.get("description");
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
 
             var registry = context.getSubagentTaskRegistry();
             var factory = context.getSubagentOutputSinkFactory();
 
             if (runInBackground && registry != null && factory != null) {
+                var description = (String) argsMap.get("description");
                 var taskId = "sa-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
                 var sink = factory.create(taskId);
                 var agent = createAgent(subagentType, context);
@@ -170,9 +170,9 @@ public class TaskTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "The task for the agent to perform").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "subagent_type", "The type of specialized agent to use for this task").required(),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background",
-                            "Set to true to run this agent in the background. Returns immediately with a taskId. " +
-                            "You will receive a <task-notification> when the agent completes. " +
-                            "Launch multiple agents concurrently by calling task() with run_in_background=true multiple times in a single message.")
+                            "Set to true to run this agent in the background. Returns immediately with a taskId. "
+                            + "You will receive a <task-notification> when the agent completes. "
+                            + "Launch multiple agents concurrently by calling task() with run_in_background=true multiple times in a single message.")
             ));
             var tool = new TaskTool();
             build(tool);

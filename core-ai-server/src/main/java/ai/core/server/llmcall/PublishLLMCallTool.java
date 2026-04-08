@@ -1,7 +1,6 @@
 package ai.core.server.llmcall;
 
 import ai.core.agent.ExecutionContext;
-import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.tool.ToolCall;
@@ -11,7 +10,6 @@ import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.json.JSON;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -59,8 +57,7 @@ public final class PublishLLMCallTool extends ToolCall {
 
             var schemaJson = (String) args.get("response_schema_json");
             if (schemaJson != null && !schemaJson.isBlank()) {
-                List<ApiDefinitionType> schemaTypes = JsonUtil.fromJson(new TypeReference<>() { }, schemaJson);
-                request.responseSchema = schemaTypes;
+                request.responseSchema = JsonUtil.fromJson(new TypeReference<>() { }, schemaJson);
             }
 
             var userId = context != null ? context.getUserId() : null;
@@ -103,7 +100,7 @@ public final class PublishLLMCallTool extends ToolCall {
                 ToolCallParameters.ParamSpec.of(String.class, "name", "Name of the LLM Call API").required(),
                 ToolCallParameters.ParamSpec.of(String.class, "description", "What this LLM Call does").required(),
                 ToolCallParameters.ParamSpec.of(String.class, "system_prompt", "The system prompt").required(),
-                ToolCallParameters.ParamSpec.of(String.class, "response_schema_json", "The response schema as JSON array of ApiDefinitionType (optional, omit for plain text output)"),
+                ToolCallParameters.ParamSpec.of(String.class, "response_schema_json", "The response schema as standard JSON Schema object (optional, omit for plain text output)"),
                 ToolCallParameters.ParamSpec.of(String.class, "input_template", "Input template with {{variable}} placeholders (optional)"),
                 ToolCallParameters.ParamSpec.of(String.class, "model", "LLM model (optional)"),
                 ToolCallParameters.ParamSpec.of(Double.class, "temperature", "Temperature 0-1 (optional)")

@@ -4,6 +4,7 @@ import ai.core.tool.async.AsyncToolTaskExecutor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -21,14 +22,14 @@ public class SubagentTaskRegistry {
             String result,
             String outputRef,
             String error
-    ) {}
+    ) { }
 
     private record RunningTask(
             CompletableFuture<SubagentResult> future,
             SubagentOutputSink sink
-    ) {}
+    ) { }
 
-    private final ConcurrentHashMap<String, RunningTask> running = new ConcurrentHashMap<>();
+    private final Map<String, RunningTask> running = new ConcurrentHashMap<>();
     private final ExecutorService executor;
 
     public SubagentTaskRegistry() {

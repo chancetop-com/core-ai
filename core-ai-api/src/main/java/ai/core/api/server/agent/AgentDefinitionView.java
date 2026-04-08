@@ -1,6 +1,6 @@
 package ai.core.api.server.agent;
 
-import ai.core.api.apidefinition.ApiDefinitionType;
+import ai.core.api.jsonschema.JsonSchema;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
@@ -60,7 +60,7 @@ public class AgentDefinitionView {
     public String type;
 
     @Property(name = "response_schema")
-    public List<ApiDefinitionType> responseSchema;
+    public JsonSchema responseSchema;
 
     @Property(name = "created_by")
     public String createdBy;
