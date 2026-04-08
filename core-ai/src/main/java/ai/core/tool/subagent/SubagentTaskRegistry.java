@@ -23,6 +23,11 @@ public class SubagentTaskRegistry {
     }
 
     public String submit(String taskId, SubagentOutputSink sink, Supplier<String> agentRunner) {
+        submitWithFuture(taskId, sink, agentRunner);
+        return taskId;
+    }
+
+    public CompletableFuture<SubagentResult> submitWithFuture(String taskId, SubagentOutputSink sink, Supplier<String> agentRunner) {
         var future = CompletableFuture.supplyAsync(() -> {
             try {
                 var result = agentRunner.get();
@@ -34,7 +39,7 @@ public class SubagentTaskRegistry {
             }
         }, executor);
         running.put(taskId, new RunningTask(future, sink));
-        return taskId;
+        return future;
     }
 
     public boolean hasPending() {

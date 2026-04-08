@@ -107,13 +107,17 @@ public class TaskTool extends ToolCall {
                 var sink = factory.create(taskId);
                 var agent = createAgent(subagentType, context);
                 var subContext = buildSubContext(subagentType, context, taskId);
-                registry.submit(taskId, sink, () -> {
+                var future = registry.submitWithFuture(taskId, sink, () -> {
                     agent.run(prompt, subContext);
                     var lastContent = agent.getMessages().getLast().content;
                     var result = lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
                     sink.write(result != null ? result : "");
                     return result;
                 });
+                var monitor = context.getBackgroundTaskMonitor();
+                if (monitor != null) {
+                    monitor.watch(taskId, future);
+                }
                 return ToolCallResult.asyncLaunched(taskId, sink.getReference(), description)
                         .withDuration(System.currentTimeMillis() - startTime);
             }
@@ -138,6 +142,7 @@ public class TaskTool extends ToolCall {
                 .asyncTaskManager(context.getAsyncTaskManager())
                 .attachedContent(context.getAttachedContent())
                 .persistenceProvider(context.getPersistenceProvider())
+                .backgroundTaskMonitor(context.getBackgroundTaskMonitor())
                 .parentTaskId(parentTaskId)
                 .build();
         subContext.setLlmProvider(context.getLlmProvider());

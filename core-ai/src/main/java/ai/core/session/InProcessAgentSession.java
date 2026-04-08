@@ -25,10 +25,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author stephen
@@ -39,24 +35,23 @@ public class InProcessAgentSession implements AgentSession {
     private final String sessionId;
     private final Agent agent;
     private final PermissionGate permissionGate;
-    private final ExecutorService executor;
+    private final SessionCommandQueue commandQueue;
+    private final TurnDriver turnDriver;
     private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
-    private final AtomicReference<Future<?>> currentTask = new AtomicReference<>();
+    private volatile Thread executingThread;
 
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
         this.agent = agent;
         this.permissionGate = new PermissionGate();
-        this.executor = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "agent-session-" + sessionId);
-            thread.setDaemon(true);
-            return thread;
-        });
-
+        this.commandQueue = new SessionCommandQueue();
+        this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
+        BackgroundTaskMonitor taskMonitor = new BackgroundTaskMonitor(commandQueue);
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
         agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
+        agent.getExecutionContext().setBackgroundTaskMonitor(taskMonitor);
         setupCompressionListener();
 
         if (agent.hasPersistenceProvider()) {
@@ -75,43 +70,24 @@ public class InProcessAgentSession implements AgentSession {
 
     @Override
     public void sendMessage(String message) {
-        dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
         agent.resetCancellation();
-        Future<?> future = executor.submit(() -> executeAgentRun(message));
-        currentTask.set(future);
+        commandQueue.enqueueUserInput(message);
     }
 
-    private void executeAgentRun(String message) {
+    private void executeCommands(SessionCommandQueue.CommandBatch batch) {
+        executingThread = Thread.currentThread();
+        dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
+
         var usageBefore = agent.getCurrentTokenUsage();
         long inputBefore = usageBefore.getPromptTokens();
         long outputBefore = usageBefore.getCompletionTokens();
+
         try {
-            debug("agent run starting");
-            var result = agent.run(message);
-            if (agent.isCancelled()) {
-                debug("agent run cancelled");
-                dispatch(TurnCompleteEvent.cancelled(sessionId));
-                dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
-                return;
+            if (batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT) {
+                executeUserInput(batch.values(), inputBefore, outputBefore);
+            } else if (batch.mode() == SessionCommandQueue.CommandMode.TASK_NOTIFICATION) {
+                executeTaskNotifications(batch.values(), inputBefore, outputBefore);
             }
-            if (agent.hasPersistenceProvider()) {
-                agent.save(sessionId);
-            }
-            debug("agent run completed");
-            var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
-            populateTokenUsage(turnComplete, inputBefore, outputBefore);
-            dispatch(turnComplete);
-            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
-        } catch (MaxTurnsExceededException e) {
-            debug("agent exceeded max turns: " + e.maxTurns);
-            if (agent.hasPersistenceProvider()) {
-                agent.save(sessionId);
-            }
-            var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
-            populateTokenUsage(turnComplete, inputBefore, outputBefore);
-            turnComplete.maxTurnsReached = true;
-            dispatch(turnComplete);
-            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
         } catch (ToolCallDeniedException e) {
             debug("tool call denied: " + e.getMessage());
             dispatch(TurnCompleteEvent.cancelled(sessionId));
@@ -128,8 +104,77 @@ public class InProcessAgentSession implements AgentSession {
             dispatch(ErrorEvent.of(sessionId, e.getMessage(), ""));
             dispatch(StatusChangeEvent.of(sessionId, SessionStatus.ERROR));
         } finally {
-            currentTask.compareAndSet(currentTask.get(), null);
+            executingThread = null;
         }
+    }
+
+    private void executeUserInput(List<String> values, long inputBefore, long outputBefore) {
+        var combined = String.join("\n", values);
+        debug("agent run starting");
+        String result;
+        try {
+            result = agent.run(combined);
+        } catch (MaxTurnsExceededException e) {
+            debug("agent exceeded max turns: " + e.maxTurns);
+            if (agent.hasPersistenceProvider()) {
+                agent.save(sessionId);
+            }
+            var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
+            populateTokenUsage(turnComplete, inputBefore, outputBefore);
+            turnComplete.maxTurnsReached = true;
+            dispatch(turnComplete);
+            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            return;
+        }
+        if (agent.isCancelled()) {
+            debug("agent run cancelled");
+            dispatch(TurnCompleteEvent.cancelled(sessionId));
+            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            return;
+        }
+        if (agent.hasPersistenceProvider()) {
+            agent.save(sessionId);
+        }
+        debug("agent run completed");
+        var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
+        populateTokenUsage(turnComplete, inputBefore, outputBefore);
+        dispatch(turnComplete);
+        dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+    }
+
+    private void executeTaskNotifications(List<String> values, long inputBefore, long outputBefore) {
+        var xml = String.join("\n", values);
+        debug("injecting task notifications");
+        String result;
+        try {
+            agent.injectUserMessage(xml);
+            result = agent.continueWithInjectedMessage();
+        } catch (MaxTurnsExceededException e) {
+            debug("agent exceeded max turns on notification: " + e.maxTurns);
+            if (agent.hasPersistenceProvider()) {
+                agent.save(sessionId);
+            }
+            var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
+            populateTokenUsage(turnComplete, inputBefore, outputBefore);
+            turnComplete.maxTurnsReached = true;
+            dispatch(turnComplete);
+            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            return;
+        }
+        if (agent.isCancelled()) {
+            debug("agent run cancelled");
+            dispatch(TurnCompleteEvent.cancelled(sessionId));
+            dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+            return;
+        }
+        if (agent.hasPersistenceProvider()) {
+            agent.save(sessionId);
+        }
+        debug("task notifications processed");
+        var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
+        populateTokenUsage(turnComplete, inputBefore, outputBefore);
+        dispatch(turnComplete);
+        dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
     }
 
     private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore) {
@@ -142,10 +187,9 @@ public class InProcessAgentSession implements AgentSession {
     public void cancelTurn() {
         debug("cancelling current turn");
         agent.cancel();
-        // interrupt thread as fallback for when SSE connection hasn't been established yet (thinking phase)
-        Future<?> task = currentTask.get();
-        if (task != null && !task.isDone()) {
-            task.cancel(true);
+        Thread t = executingThread;
+        if (t != null) {
+            t.interrupt();
         }
     }
 
@@ -163,7 +207,7 @@ public class InProcessAgentSession implements AgentSession {
     @Override
     public void close() {
         logger.debug("closing agent session, sessionId={}", sessionId);
-        executor.shutdownNow();
+        turnDriver.shutdown();
     }
 
     public void loadTools(List<ai.core.tool.ToolCall> tools) {

@@ -24,8 +24,7 @@ public class SubagentNotificationLifecycle extends AbstractLifecycle {
 
     @Override
     public boolean shouldContinueTurns(ExecutionContext context) {
-        var registry = context.getSubagentTaskRegistry();
-        return registry != null && registry.hasPending();
+        return false;
     }
 
     private Message buildNotificationMessage(SubagentTaskRegistry.SubagentResult result) {

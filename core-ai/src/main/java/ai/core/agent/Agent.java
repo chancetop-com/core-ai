@@ -208,6 +208,10 @@ public class Agent extends Node<Agent> {
 
     protected void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         buildUserQueryToMessage(query, variables);
+        runTurnsLoop(constructionAssistantMsg);
+    }
+
+    private String runTurnsLoop(BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         var context = getExecutionContext();
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
@@ -227,6 +231,7 @@ public class Agent extends Node<Agent> {
             logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
             throw new MaxTurnsExceededException(maxTurnNumber);
         }
+        return agentOut.toString();
     }
 
     private void injectBeforeTurnMessages(ExecutionContext context) {
@@ -425,6 +430,14 @@ public class Agent extends Node<Agent> {
             }
         }
     }
+    public void injectUserMessage(String content) {
+        addMessage(Message.of(RoleType.USER, content));
+    }
+
+    public String continueWithInjectedMessage() {
+        return runTurnsLoop(this::handLLM);
+    }
+
     public void cancel() {
         this.cancelled = true;
         var cb = getStreamingCallback();
