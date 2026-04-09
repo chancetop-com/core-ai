@@ -82,7 +82,8 @@ public final class CustomHTTPClientImpl implements HTTPClient {
             if (statusCode != 200 || contentType == null || !contentType.startsWith("text/event-stream")) {
                 byte[] body = body(httpResponse, statusCode);
                 logger.debug("[response] body={}", BodyLogParam.of(body, contentType == null ? null : ContentType.parse(contentType)));
-                throw new HTTPClientException(Strings.format("invalid sse response, statusCode={}, content-type={}", statusCode, contentType), "HTTP_REQUEST_FAILED");
+                String bodyText = new String(body, java.nio.charset.StandardCharsets.UTF_8);
+                throw new HTTPClientException(Strings.format("invalid sse response, statusCode={}, content-type={}, body={}", statusCode, contentType, bodyText), "HTTP_REQUEST_FAILED");
             }
 
             long elapsed = watch.elapsed();
