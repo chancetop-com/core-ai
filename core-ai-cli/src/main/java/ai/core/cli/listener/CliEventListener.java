@@ -10,6 +10,7 @@ import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
+import org.jline.utils.NonBlockingReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +37,7 @@ public class CliEventListener extends BaseEventListener {
     private volatile long turnInputBefore;
     private volatile long turnOutputBefore;
     private Thread escReaderThread;
+    private org.jline.terminal.Attributes savedTerminalAttributes;
 
     public CliEventListener(TerminalUI ui, AgentSession session, Agent agent) {
         super(ui, session);
@@ -46,6 +48,11 @@ public class CliEventListener extends BaseEventListener {
     public void prepareTurn() {
         super.prepareTurn();
         turnRunning.set(true);
+        var terminal = ui.getTerminal();
+        if (terminal != null) {
+            savedTerminalAttributes = terminal.getAttributes();
+            terminal.enterRawMode();
+        }
         var usage = agent.getCurrentTokenUsage();
         turnTokensBefore = usage.getTotalTokens();
         turnInputBefore = usage.getPromptTokens();
@@ -68,6 +75,10 @@ public class CliEventListener extends BaseEventListener {
         super.waitForTurn();
         turnRunning.set(false);
         stopEscReader();
+        var terminal = ui.getTerminal();
+        if (terminal != null && savedTerminalAttributes != null) {
+            terminal.setAttributes(savedTerminalAttributes);
+        }
     }
 
     @Override
@@ -126,14 +137,82 @@ public class CliEventListener extends BaseEventListener {
     }
 
     private void startEscReader() {
+        // Try JLine NonBlockingReader first (works on all platforms including Windows)
+        var terminal = ui.getTerminal();
+        if (terminal != null && ui.isJLineEnabled()) {
+            LOGGER.debug("ESC reader: using JLine, terminal type={}", terminal.getType());
+            startJLineEscReader(terminal);
+            return;
+        }
+        LOGGER.debug("ESC reader: JLine not available, terminal={}, jlineEnabled={}", terminal, ui.isJLineEnabled());
+        // Fallback to /dev/tty for Unix systems without JLine
         var ttyFile = new File("/dev/tty");
         if (!ttyFile.exists()) return;
+        startTtyEscReader(ttyFile);
+    }
+
+    private void startJLineEscReader(org.jline.terminal.Terminal terminal) {
+        escReaderThread = new Thread(() -> {
+            try {
+                var reader = terminal.reader();
+                LOGGER.debug("ESC reader: started, reader class={}", reader.getClass().getName());
+                while (turnRunning.get() && !Thread.currentThread().isInterrupted()) {
+                    int ch = reader.read(50L);
+                    if (ch == ESC) {
+                        // Check if it's a standalone ESC or part of an escape sequence.
+                        // A standalone ESC means the user pressed the Escape key.
+                        // Escape sequences (like arrow keys) start with ESC followed by
+                        // additional bytes quickly. We peek at the next byte with a short
+                        // timeout to distinguish.
+                        int next = reader.read(50L);
+                        if (next == NonBlockingReader.READ_EXPIRED) {
+                            // No more bytes within the timeout — this is a standalone ESC press
+                            LOGGER.debug("ESC pressed (jline), cancelling turn");
+                            session.cancelTurn();
+                            return;
+                        }
+                        // It was part of an escape sequence, drain the rest
+                        drainEscapeSequence(reader, next);
+                    } else if (ch != NonBlockingReader.EOF) {
+                        // Some other key was pressed, discard it
+                        LOGGER.debug("ESC reader: discarded ch={}", ch);
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.debug("jline esc reader error: {}", e.getMessage());
+            }
+        }, "esc-reader");
+        escReaderThread.setDaemon(true);
+        escReaderThread.start();
+    }
+
+    private void drainEscapeSequence(NonBlockingReader reader, int firstByte) {
+        // An escape sequence is typically ESC [ <params> <final_byte>
+        // Drain remaining bytes with a short timeout until we get the final byte
+        // or until no more bytes are available
+        try {
+            int ch = firstByte;
+            while (ch != NonBlockingReader.EOF) {
+                // CSI sequences: ESC [ ... final byte in 0x40-0x7E
+                // SS3 sequences: ESC O <final byte>
+                if (ch >= 0x40 && ch <= 0x7E) {
+                    break; // final byte of escape sequence
+                }
+                ch = reader.read(20L);
+            }
+        } catch (Exception e) {
+            // best effort drain
+        }
+    }
+
+    @SuppressWarnings("PMD.AvoidFileStream")
+    private void startTtyEscReader(File ttyFile) {
         escReaderThread = new Thread(() -> {
             stty("-icanon", "-echo");
             boolean escPressed = pollEscKey(ttyFile);
             stty("sane");
             if (escPressed) {
-                LOGGER.debug("ESC pressed, cancelling turn");
+                LOGGER.debug("ESC pressed (tty), cancelling turn");
                 session.cancelTurn();
             }
         }, "esc-reader");
@@ -168,7 +247,9 @@ public class CliEventListener extends BaseEventListener {
             escReaderThread.interrupt();
             escReaderThread = null;
         }
-        stty("sane");
+        if (new File("/dev/tty").exists()) {
+            stty("sane");
+        }
     }
 
     private void stty(String... args) {

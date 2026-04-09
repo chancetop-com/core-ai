@@ -224,6 +224,10 @@ public class TerminalUI {
         return jlineReader != null;
     }
 
+    public Terminal getTerminal() {
+        return terminal;
+    }
+
     public boolean isAnsiSupported() {
         String term = System.getenv("TERM");
         if (term != null && (term.contains("color") || term.contains("xterm") || term.contains("screen"))) {
