@@ -167,7 +167,7 @@ public class AgentRunService {
         view.id = entity.id;
         view.agentId = entity.agentId;
         view.triggeredBy = entity.triggeredBy.name();
-        view.status = entity.status.name();
+        view.status = ai.core.api.server.run.RunStatus.valueOf(entity.status.name());
         view.input = entity.input;
         view.output = entity.output;
         view.error = entity.error;

@@ -25,7 +25,7 @@ public class AgentRunDetailView {
 
     @NotNull
     @Property(name = "status")
-    public String status;
+    public RunStatus status;
 
     @Property(name = "input")
     public String input;
