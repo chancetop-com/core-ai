@@ -45,7 +45,7 @@ public class AgentRunService {
 
         var response = new TriggerRunResponse();
         response.runId = runId;
-        response.status = RunStatus.RUNNING.name();
+        response.status = ai.core.api.server.run.RunStatus.RUNNING;
         return response;
     }
 

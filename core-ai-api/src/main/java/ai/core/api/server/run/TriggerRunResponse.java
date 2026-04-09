@@ -13,5 +13,5 @@ public class TriggerRunResponse {
 
     @NotNull
     @Property(name = "status")
-    public String status;
+    public RunStatus status;
 }
