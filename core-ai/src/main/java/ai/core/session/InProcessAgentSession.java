@@ -3,6 +3,7 @@ package ai.core.session;
 import ai.core.agent.Agent;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.agent.lifecycle.PlanUpdateLifecycle;
+import ai.core.agent.lifecycle.TaskLifecycle;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
@@ -15,6 +16,8 @@ import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
+import ai.core.api.server.session.TaskCompletedEvent;
+import ai.core.api.server.session.TaskStartEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
@@ -48,11 +51,12 @@ public class InProcessAgentSession implements AgentSession {
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
         var context = agent.getExecutionContext();
         if (context.getSubagentOutputSinkFactory() != null) {
-            context.setBackgroundTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
+            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
         agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
+        agent.addLifecycle(new TaskLifecycle(this::dispatch));
         agent.setAuthenticated(true);
         agent.getExecutionContext().setBackgroundTaskMonitor(taskMonitor);
         setupCompressionListener();
@@ -240,6 +244,8 @@ public class InProcessAgentSession implements AgentSession {
                 else if (event instanceof StatusChangeEvent e) listener.onStatusChange(e);
                 else if (event instanceof OnToolEvent e) listener.onOnTool(e);
                 else if (event instanceof PlanUpdateEvent e) listener.onPlanUpdate(e);
+                else if (event instanceof TaskStartEvent e) listener.onTaskStart(e);
+                else if (event instanceof TaskCompletedEvent e) listener.onTaskCompleted(e);
                 else if (event instanceof CompressionEvent e) listener.onCompression(e);
             } catch (Exception e) {
                 logger.error("failed to dispatch event to listener, event={}, sessionId={}", event.getClass().getSimpleName(), sessionId, e);

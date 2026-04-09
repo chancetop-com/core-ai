@@ -21,7 +21,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -76,13 +75,13 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     private void dispatchStartEvent(String callId, String toolName, String arguments, Map<String, Object> argMap, ExecutionContext context) {
         var startEvent = ToolStartEvent.of(sessionId, callId, toolName, arguments);
         startEvent.diff = generatePreviewDiff(toolName, argMap);
-        startEvent.parentTaskId = context.getParentTaskId();
+        startEvent.taskId = context.getTaskId();
         dispatcher.accept(startEvent);
     }
 
     private boolean shouldSkipApproval(String toolName, Map<String, Object> argMap, ExecutionContext executionContext) {
         if (autoApproveAll) return true;
-        if (Objects.nonNull(executionContext.getSessionId()) && executionContext.getSessionId().contains("subagent")) return true;
+        if (executionContext.isSubagent()) return true;
         if (sessionAllowedTools.contains(toolName)) return true;
         if (permissionStore != null) {
             var result = permissionStore.checkPermission(toolName, argMap);

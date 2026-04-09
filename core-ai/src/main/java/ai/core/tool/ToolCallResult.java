@@ -1,5 +1,6 @@
 package ai.core.tool;
 
+import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
 
 import java.util.HashMap;
@@ -53,7 +54,7 @@ public final class ToolCallResult {
         var r = new ToolCallResult();
         r.status = Status.ASYNC_LAUNCHED;
         r.taskId = taskId;
-        r.result = core.framework.json.JSON.toJSON(Map.of(
+        r.result = JsonUtil.toJson(Map.of(
                 "status", "async_launched",
                 "taskId", taskId,
                 "outputRef", outputRef != null ? outputRef : "",

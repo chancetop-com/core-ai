@@ -37,4 +37,9 @@ public interface AgentEventListener {
 
     default void onCompression(CompressionEvent event) {
     }
+
+    default void onTaskStart(TaskStartEvent event) {
+    }
+    default void onTaskCompleted(TaskCompletedEvent event) {
+    }
 }

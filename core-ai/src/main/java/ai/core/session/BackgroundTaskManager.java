@@ -1,17 +1,19 @@
 package ai.core.session;
 
+import ai.core.agent.Task;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.function.Supplier;
 
-/**
- * Submits background subagent tasks and enqueues completion notifications
- * into SessionCommandQueue when tasks finish.
- */
 public class BackgroundTaskManager {
 
+    private final List<Task> tasks = new CopyOnWriteArrayList<>();
     private final SessionCommandQueue commandQueue;
     private final SubagentOutputSinkFactory sinkFactory;
     private final ExecutorService executor;
@@ -22,14 +24,12 @@ public class BackgroundTaskManager {
         this.executor = AsyncToolTaskExecutor.getInstance().getExecutor();
     }
 
-    /**
-     * Submits an agent task to run in the background.
-     * Returns the output reference for the caller to include in the tool response.
-     */
-    public String submit(String taskId, Supplier<String> agentRunner) {
+    public record TaskHandle(String outputRef, Future<?> future) {}
+
+    public TaskHandle submit(String taskId, Supplier<String> agentRunner) {
         var sink = sinkFactory.create(taskId);
         var outputRef = sink.getReference();
-        executor.submit(() -> {
+        var future = executor.submit(() -> {
             String status;
             String result = null;
             String error = null;
@@ -45,7 +45,23 @@ public class BackgroundTaskManager {
             }
             commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
         });
-        return outputRef;
+        return new TaskHandle(outputRef, future);
+    }
+
+    public void register(Task task) {
+        tasks.add(task);
+    }
+
+    public void cancelAll() {
+        tasks.forEach(Task::cancel);
+    }
+
+    public List<Task> getTasks() {
+        return Collections.unmodifiableList(tasks);
+    }
+
+    public BackgroundTaskManager createChild() {
+        return new BackgroundTaskManager(commandQueue, sinkFactory);
     }
 
     private String buildNotificationXml(String taskId, String status, String outputRef, String result, String error) {

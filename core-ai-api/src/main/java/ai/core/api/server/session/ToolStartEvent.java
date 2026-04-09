@@ -34,8 +34,8 @@ public class ToolStartEvent implements AgentEvent {
     @Property(name = "diff")
     public String diff;
 
-    @Property(name = "parentTaskId")
-    public String parentTaskId;
+    @Property(name = "taskId")
+    public String taskId;
 
     @Override
     public String sessionId() {

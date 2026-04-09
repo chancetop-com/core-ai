@@ -3,6 +3,7 @@ package ai.core.tool.tools;
 import ai.core.AgentRuntimeException;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.Task;
 import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
@@ -98,27 +99,30 @@ public class TaskTool extends ToolCall {
             var subagentType = (String) argsMap.get("subagent_type");
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
 
-            var taskManager = context.getBackgroundTaskManager();
+            var taskManager = context.getTaskManager();
+            var description = (String) argsMap.get("description");
 
             if (runInBackground && taskManager != null) {
-                var description = (String) argsMap.get("description");
                 var taskId = "sa-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
                 var agent = createAgent(subagentType, context);
-                var subContext = buildSubContext(subagentType, context, taskId);
-                var outputRef = taskManager.submit(taskId, () -> {
+                var subContext = buildSubContext(subagentType, context, taskId, description);
+                var handle = taskManager.submit(taskId, () -> {
                     agent.run(prompt, subContext);
                     var lastContent = agent.getMessages().getLast().content;
                     return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
                 });
-                return ToolCallResult.asyncLaunched(taskId, outputRef, description)
+                taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), subContext));
+                return ToolCallResult.asyncLaunched(taskId, handle.outputRef(), description)
+                        .withDuration(System.currentTimeMillis() - startTime);
+            } else {
+                var agent = createAgent(subagentType, context);
+                var subContext = buildSubContext(subagentType, context, null, description);
+                agent.run(prompt, subContext);
+                return ToolCallResult.completed(agent.getMessages().getLast().content.getFirst().text)
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            var agent = createAgent(subagentType, context);
-            var subContext = buildSubContext(subagentType, context, null);
-            agent.run(prompt, subContext);
-            return ToolCallResult.completed(agent.getMessages().getLast().content.getFirst().text)
-                    .withDuration(System.currentTimeMillis() - startTime);
+
         } catch (Exception e) {
             var error = "Failed to parse task tool arguments: " + e.getMessage();
             return ToolCallResult.failed(error, e)
@@ -126,7 +130,7 @@ public class TaskTool extends ToolCall {
         }
     }
 
-    private ExecutionContext buildSubContext(String subagentType, ExecutionContext context, String parentTaskId) {
+    private ExecutionContext buildSubContext(String subagentType, ExecutionContext context, String taskId, String taskName) {
         var subContext = ExecutionContext.builder()
                 .sessionId("subagent:" + subagentType + "-" + System.currentTimeMillis())
                 .userId(context.getUserId())
@@ -134,9 +138,9 @@ public class TaskTool extends ToolCall {
                 .asyncTaskManager(context.getAsyncTaskManager())
                 .attachedContent(context.getAttachedContent())
                 .persistenceProvider(context.getPersistenceProvider())
-                .subagentOutputSinkFactory(context.getSubagentOutputSinkFactory())
-                .backgroundTaskManager(context.getBackgroundTaskManager())
-                .parentTaskId(parentTaskId)
+                .taskManager(context.getTaskManager() != null ? context.getTaskManager().createChild() : null)
+                .taskId(taskId)
+                .taskName(taskName)
                 .build();
         subContext.setLlmProvider(context.getLlmProvider());
         subContext.setModel(context.getModel());
@@ -169,8 +173,8 @@ public class TaskTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "subagent_type", "The type of specialized agent to use for this task").required(),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background",
                             "Set to true to run this agent in the background. Returns immediately with a taskId. "
-                            + "You will receive a <task-notification> when the agent completes. "
-                            + "Launch multiple agents concurrently by calling task() with run_in_background=true multiple times in a single message.")
+                                    + "You will receive a <task-notification> when the agent completes. "
+                                    + "Launch multiple agents concurrently by calling task() with run_in_background=true multiple times in a single message.")
             ));
             var tool = new TaskTool();
             build(tool);

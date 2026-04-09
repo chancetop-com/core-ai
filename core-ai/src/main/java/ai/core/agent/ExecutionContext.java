@@ -28,7 +28,8 @@ public final class ExecutionContext {
 
     private final String sessionId;
     private final String userId;
-    private final String parentTaskId;
+    private final String taskId;
+    private final String taskName;
     private final Map<String, Object> customVariables;
     private final ToolCallAsyncTaskManager asyncTaskManager;
     private final AttachedContent attachedContent;
@@ -44,7 +45,8 @@ public final class ExecutionContext {
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
         this.userId = builder.userId;
-        this.parentTaskId = builder.parentTaskId;
+        this.taskId = builder.taskId;
+        this.taskName = builder.taskName;
         this.attachedContent = builder.attachedContent;
         this.customVariables = Maps.newHashMap();
         this.customVariables.putAll(builder.customVariables);
@@ -58,13 +60,20 @@ public final class ExecutionContext {
         return sessionId;
     }
 
-
     public String getUserId() {
         return userId;
     }
 
-    public String getParentTaskId() {
-        return parentTaskId;
+    public boolean isSubagent() {
+        return sessionId != null && sessionId.startsWith("subagent:");
+    }
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public String getTaskName() {
+        return taskName;
     }
 
     public Map<String, Object> getCustomVariables() {
@@ -79,11 +88,11 @@ public final class ExecutionContext {
         return subagentOutputSinkFactory;
     }
 
-    public BackgroundTaskManager getBackgroundTaskManager() {
+    public BackgroundTaskManager getTaskManager() {
         return backgroundTaskManager;
     }
 
-    public void setBackgroundTaskManager(BackgroundTaskManager backgroundTaskManager) {
+    public void setTaskManager(BackgroundTaskManager backgroundTaskManager) {
         this.backgroundTaskManager = backgroundTaskManager;
     }
 
@@ -151,7 +160,8 @@ public final class ExecutionContext {
     public static class Builder {
         private String sessionId;
         private String userId;
-        private String parentTaskId;
+        private String taskId;
+        private String taskName;
         private ToolCallAsyncTaskManager asyncTaskManager;
         private AttachedContent attachedContent;
         private PersistenceProvider persistenceProvider;
@@ -169,8 +179,13 @@ public final class ExecutionContext {
             return this;
         }
 
-        public Builder parentTaskId(String parentTaskId) {
-            this.parentTaskId = parentTaskId;
+        public Builder taskId(String taskId) {
+            this.taskId = taskId;
+            return this;
+        }
+
+        public Builder taskName(String taskName) {
+            this.taskName = taskName;
             return this;
         }
 
@@ -206,7 +221,7 @@ public final class ExecutionContext {
             return this;
         }
 
-        public Builder backgroundTaskManager(BackgroundTaskManager backgroundTaskManager) {
+        public Builder taskManager(BackgroundTaskManager backgroundTaskManager) {
             this.backgroundTaskManager = backgroundTaskManager;
             return this;
         }
