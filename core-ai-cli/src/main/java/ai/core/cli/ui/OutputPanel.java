@@ -25,21 +25,10 @@ public class OutputPanel {
         }
         try {
             Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
-            String primaryValue = extractPrimaryArg(argsMap);
-            if (primaryValue != null) {
-                if (primaryValue.length() > 100) primaryValue = primaryValue.substring(0, 100) + "...";
-                return toolName + "(" + primaryValue + ")";
-            }
-            var sb = new StringBuilder(toolName).append('(');
-            boolean first = true;
-            for (var entry : argsMap.entrySet()) {
-                if (!first) sb.append(", ");
-                String value = String.valueOf(entry.getValue());
-                if (value.length() > 60) value = value.substring(0, 60) + "...";
-                sb.append(entry.getKey()).append(": ").append(value);
-                first = false;
-            }
-            return sb.append(')').toString();
+            String summary = extractPrimaryArgs(argsMap);
+            if (summary == null) return toolName;
+            if (summary.length() > 100) summary = summary.substring(0, 100) + "...";
+            return toolName + "(" + summary + ")";
         } catch (Exception e) {
             return toolName;
         }
@@ -68,21 +57,28 @@ public class OutputPanel {
         return message.length() > 200 ? message.substring(0, 197) + "..." : message;
     }
 
-    private static String extractPrimaryArg(Map<String, Object> argsMap) {
+    private static final int DEFAULT_SUMMARY_ARG_COUNT = 3;
+
+    private static String extractPrimaryArgs(Map<String, Object> argsMap) {
+        return extractPrimaryArgs(argsMap, DEFAULT_SUMMARY_ARG_COUNT);
+    }
+
+    private static String extractPrimaryArgs(Map<String, Object> argsMap, int maxArgs) {
+        if (argsMap.isEmpty()) return null;
         if (argsMap.size() == 1) {
             return String.valueOf(argsMap.values().iterator().next());
         }
-        String result = null;
-        for (String key : List.of("description", "command", "script_path", "file_path", "path", "url", "pattern", "query", "prompt")) {
-            if (argsMap.containsKey(key)) {
-                result = String.valueOf(argsMap.get(key));
-                break;
-            }
+        var sb = new StringBuilder();
+        var entries = argsMap.entrySet().stream().limit(maxArgs).iterator();
+        while (entries.hasNext()) {
+            var entry = entries.next();
+            if (!sb.isEmpty()) sb.append(" ");
+            sb.append(entry.getKey()).append("=").append(entry.getValue());
         }
-        if (argsMap.containsKey("subagent_type")) {
-            result = argsMap.get("subagent_type") + ":" + result;
+        if (argsMap.size() > maxArgs) {
+            sb.append(" ...");
         }
-        return result;
+        return sb.toString();
     }
 
     private final PrintWriter writer;
