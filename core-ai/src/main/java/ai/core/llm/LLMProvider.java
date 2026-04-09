@@ -135,11 +135,9 @@ public abstract class LLMProvider {
             dto.temperature = 1.0;
         }
         dto.messages.forEach(message -> {
+            message.name = null;
             if (message.role == RoleType.SYSTEM && dto.model.startsWith("o1")) {
                 message.role = RoleType.USER;
-            }
-            if (message.role == RoleType.ASSISTANT && message.name == null) {
-                message.name = "assistant";
             }
             if (message.toolCalls != null && message.toolCalls.isEmpty()) {
                 message.toolCalls = null;
