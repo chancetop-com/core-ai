@@ -87,11 +87,11 @@ public class PermissionRule {
         String normalizedText = normalizePath(text);
         if ("*".equals(normalizedPattern)) return true;
         if (normalizedPattern.endsWith("**")) {
-            String prefix = normalizedPattern.substring(0, normalizedPattern.length() - 2);
+            String prefix = normalizedPattern.substring(0, normalizedPattern.length() - 3);
             return normalizedText.startsWith(prefix);
         }
         if (normalizedPattern.endsWith("*")) {
-            String prefix = normalizedPattern.substring(0, normalizedPattern.length() - 1);
+            String prefix = normalizedPattern.substring(0, normalizedPattern.length() - 2);
             return normalizedText.startsWith(prefix);
         }
         return normalizedPattern.equals(normalizedText);
