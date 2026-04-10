@@ -2,6 +2,7 @@ package ai.core.cli.ui;
 
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.tool.DiffGenerator;
+import ai.core.tool.tools.TaskTool;
 import ai.core.utils.JsonUtil;
 
 import java.io.PrintWriter;
@@ -27,13 +28,22 @@ public class OutputPanel {
         }
         try {
             Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
-            String summary = extractPrimaryArgs(argsMap);
+            String summary = specialTaskSummary(toolName, argsMap);
             if (summary == null) return toolName;
             if (summary.length() > 100) summary = summary.substring(0, 100) + "...";
             return toolName + "(" + summary + ")";
         } catch (Exception e) {
             return toolName;
         }
+    }
+
+    static String specialTaskSummary(String toolName, Map<String, Object> argsMap) {
+        if (TaskTool.TOOL_NAME.equals(toolName)) {
+            return "%s:%s".formatted(argsMap.get("subagent_type"), argsMap.get("description"));
+        } else {
+            return extractPrimaryArgs(argsMap);
+        }
+
     }
 
     static String parseErrorHint(String message) {

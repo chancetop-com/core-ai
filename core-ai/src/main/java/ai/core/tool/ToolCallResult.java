@@ -50,17 +50,11 @@ public final class ToolCallResult {
         return r;
     }
 
-    public static ToolCallResult asyncLaunched(String taskId, String outputRef, String description, String subagentType) {
+    public static ToolCallResult asyncLaunched(String taskId, String result) {
         var r = new ToolCallResult();
         r.status = Status.ASYNC_LAUNCHED;
         r.taskId = taskId;
-        r.result = JsonUtil.toJson(Map.of(
-                "status", "async_launched",
-                "taskId", taskId,
-                "outputRef", outputRef != null ? outputRef : "",
-                "description", description != null ? description : "",
-                "subagentType", subagentType != null ? subagentType : ""
-        ));
+        r.result = result;
         return r;
     }
 

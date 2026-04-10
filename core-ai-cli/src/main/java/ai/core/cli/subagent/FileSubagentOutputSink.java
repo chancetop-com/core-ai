@@ -9,9 +9,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 public class FileSubagentOutputSink implements SubagentOutputSink {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileSubagentOutputSink.class);
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss");
 
     private final Path filePath;
     private final BufferedWriter writer;
@@ -19,8 +23,11 @@ public class FileSubagentOutputSink implements SubagentOutputSink {
 
     public FileSubagentOutputSink(Path baseDir, String taskId) throws IOException {
         Files.createDirectories(baseDir);
-        this.filePath = baseDir.resolve(taskId + ".output");
-        this.writer = Files.newBufferedWriter(filePath, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        String dateTime = LocalDateTime.now().format(DATE_TIME_FORMATTER);
+        String uniqueSuffix = UUID.randomUUID().toString().substring(0, 8);
+        String fileName = taskId + "-" + dateTime + "-" + uniqueSuffix + ".output";
+        this.filePath = baseDir.resolve(fileName);
+        this.writer = Files.newBufferedWriter(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
     }
 
     @Override

@@ -110,7 +110,7 @@ public class TaskTool extends ToolCall {
                     return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
                 });
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), subContext));
-                return ToolCallResult.asyncLaunched(taskId, handle.outputRef(), description, subagentType)
+                return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, subagentType))
                         .withDuration(System.currentTimeMillis() - startTime);
             } else {
                 subAgent.run(prompt, subContext);
@@ -124,6 +124,30 @@ public class TaskTool extends ToolCall {
             return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+
+    private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description, String subagentType) {
+        var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
+        var reminder = """
+                  Async agent launched successfully.
+                  agentId: %s (internal ID - do not mention to user. Use SendMessage with to: %s to continue this agent.)
+                  The agent is working in the background. You will be notified automatically when it completes.
+                  Do not duplicate this agent's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end
+                  your response.
+                  output_file: %s
+                  If asked, you can check progress before completion by using %s or %s tail on the output file.
+                """.formatted(taskId, taskId, outputRef, ReadFileTool.TOOL_NAME, ShellCommandTool.TOOL_NAME);
+        return """
+                <task-notification>
+                <task-id>%s</task-id>
+                <task-type>%s</task-type>
+                <task-description>%s</task-description>
+                <status>%s</status>
+                %s
+                <system-reminder>%s</system-reminder>
+                </task-notification>
+                """.formatted(taskId, subagentType, description, "async_launched", outputRefXml, reminder);
     }
 
     private ExecutionContext buildSubContext(String subagentType, ExecutionContext context, String taskId, String taskName) {
