@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Sparkles, RefreshCw, Trash2, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Sparkles, RefreshCw, Trash2, Copy, Check, Pencil } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SkillDefinition, SkillDownloadResponse } from '../../api/client';
 
@@ -114,6 +114,11 @@ export default function SkillDetail() {
               v{skill.version}
             </span>
           )}
+          <button onClick={() => navigate(`/skills/${id}/edit`)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+            style={{ background: 'var(--color-primary)' }}>
+            <Pencil size={14} /> Edit
+          </button>
           {skill.source_type === 'REPO' && (
             <button onClick={handleSync}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"

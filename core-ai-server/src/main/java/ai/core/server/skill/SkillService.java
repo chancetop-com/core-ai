@@ -137,9 +137,12 @@ public class SkillService {
         LOGGER.info("deleted skill, id={}", id);
     }
 
-    public SkillDefinition update(String id, String description) {
+    public SkillDefinition update(String id, String description, String content, List<String> allowedTools, List<SkillResource> resources) {
         var entity = get(id);
         if (description != null) entity.description = description;
+        if (content != null) entity.content = content;
+        if (allowedTools != null) entity.allowedTools = allowedTools.isEmpty() ? null : allowedTools;
+        if (resources != null) entity.resources = resources.isEmpty() ? null : resources;
         entity.updatedAt = ZonedDateTime.now();
         skillCollection.replace(entity);
         return entity;

@@ -145,7 +145,8 @@ public class ServerModule extends Module {
         // SPA routes (return index.html for all frontend paths)
         var spaRoutes = new String[]{
             "/", "/login", "/chat", "/agents", "/sessions",
-            "/system-prompts", "/dashboard", "/traces"
+            "/system-prompts", "/dashboard", "/traces", "/skills",
+            "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools"
         };
         for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);
@@ -155,6 +156,10 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/runs/:id", controller::serve);
         http().route(HTTPMethod.GET, "/system-prompts/:id", controller::serve);
         http().route(HTTPMethod.GET, "/traces/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/skills/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/skills/:id/edit", controller::serve);
+        http().route(HTTPMethod.GET, "/prompts/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/api-tools/:id", controller::serve);
     }
 
     private void registerFile() {

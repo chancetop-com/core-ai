@@ -406,7 +406,7 @@ export default function AgentEditor() {
             <p className="text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
               This will overwrite the current agent configuration with the imported data.
             </p>
-            {pendingImportData?.name && (
+            {pendingImportData && pendingImportData.name != null && (
               <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
                 Importing: <strong style={{ color: 'var(--color-text)' }}>{String(pendingImportData.name)}</strong>
               </p>

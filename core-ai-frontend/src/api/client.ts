@@ -242,6 +242,13 @@ export interface SkillDownloadResponse {
   resources: { path: string; content: string }[];
 }
 
+export interface UpdateSkillRequest {
+  description?: string;
+  content?: string;
+  allowed_tools?: string[];
+  resources?: { path: string; content: string }[];
+}
+
 export interface ToolRegistryView {
   id: string;
   name: string;
@@ -464,6 +471,8 @@ export const api = {
     },
     get: (id: string) =>
       request<SkillDefinition>(`/api/skills/${id}`),
+    update: (id: string, data: UpdateSkillRequest) =>
+      request<SkillDefinition>(`/api/skills/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/api/skills/${id}`, { method: 'DELETE' }),
     sync: (id: string) =>

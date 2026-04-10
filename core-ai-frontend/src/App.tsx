@@ -22,6 +22,7 @@ import ApiTools from './pages/api-tools/ApiTools';
 import ApiToolDetail from './pages/api-tools/ApiToolDetail';
 import SkillList from './pages/skills/SkillList';
 import SkillDetail from './pages/skills/SkillDetail';
+import SkillEditor from './pages/skills/SkillEditor';
 import { CapabilitiesContext, fetchCapabilities, defaultCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
@@ -90,6 +91,7 @@ export default function App() {
                 <Route path="/api-tools/:id" element={<ApiToolDetail />} />
                 <Route path="/skills" element={<SkillList />} />
                 <Route path="/skills/:id" element={<SkillDetail />} />
+                <Route path="/skills/:id/edit" element={<SkillEditor />} />
                 <Route path="*" element={<Navigate to={defaultPath} replace />} />
               </Route>
             )}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw } from 'lucide-react';
+import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, Pencil } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SkillDefinition } from '../../api/client';
 
@@ -138,6 +138,11 @@ export default function SkillList() {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <button onClick={e => { e.stopPropagation(); navigate(`/skills/${s.id}/edit`); }}
+                  className="px-2 py-1 rounded text-xs border cursor-pointer"
+                  style={{ borderColor: 'var(--color-border)' }}>
+                  <Pencil size={12} />
+                </button>
                 {s.source_type === 'REPO' && (
                   <button onClick={e => handleSync(s.id, e)}
                     className="p-1.5 rounded border cursor-pointer"

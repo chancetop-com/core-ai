@@ -9,10 +9,13 @@ import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
 import ai.core.api.server.skill.UpdateSkillRequest;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillResource;
 import ai.core.server.skill.SkillService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
+
+import java.util.List;
 
 /**
  * @author stephen
@@ -49,7 +52,16 @@ public class SkillWebServiceImpl implements SkillWebService {
 
     @Override
     public SkillDefinitionView update(String id, UpdateSkillRequest request) {
-        return toView(skillService.update(id, request.description));
+        List<SkillResource> resources = null;
+        if (request.resources != null) {
+            resources = request.resources.stream().map(r -> {
+                var sr = new SkillResource();
+                sr.path = r.path;
+                sr.content = r.content;
+                return sr;
+            }).toList();
+        }
+        return toView(skillService.update(id, request.description, request.content, request.allowedTools, resources));
     }
 
     @Override
