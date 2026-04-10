@@ -6,19 +6,6 @@ import core.framework.mongo.Field;
  * @author stephen
  */
 public class ToolRef {
-    @Field(name = "id")
-    public String id;
-
-    @Field(name = "type")
-    public ToolSourceType type;
-
-    /** Source identifier for disambiguation. E.g., MCP server name, API app name. */
-    @Field(name = "source")
-    public String source;
-
-    public ToolRef() {
-    }
-
     public static ToolRef fromLegacyToolId(String toolId) {
         if (toolId == null) return null;
 
@@ -51,6 +38,15 @@ public class ToolRef {
         ref.source = source;
         return ref;
     }
+
+    @Field(name = "id")
+    public String id;
+
+    @Field(name = "type")
+    public ToolSourceType type;
+
+    @Field(name = "source")
+    public String source;
 
     public String toLegacyToolId() {
         return id;

@@ -22,10 +22,14 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionState;
+import ai.core.server.tool.ToolRegistryService;
+import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.Session;
 import core.framework.web.WebContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +38,7 @@ import java.util.List;
  * @author stephen
  */
 public class AgentSessionWebServiceImpl implements AgentSessionWebService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionWebServiceImpl.class);
     private static final String SESSION_STATE_KEY = "agent-session-state";
 
     @Inject
@@ -44,6 +49,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     AgentDefinitionService agentDefinitionService;
     @Inject
     AgentDraftGenerator agentDraftGenerator;
+    @Inject
+    ToolRegistryService toolRegistryService;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
@@ -100,7 +107,9 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     private List<String> loadToolsOnSessionCreate(String sessionId, CreateSessionRequest request) {
         if (request.tools == null || request.tools.isEmpty()) return null;
+
         var toolRefs = request.tools.stream()
+                .filter(v -> v != null && v.id != null)
                 .map(v -> {
                     var ref = new ToolRef();
                     ref.id = v.id;
@@ -108,7 +117,19 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                     ref.source = v.source;
                     return ref;
                 }).toList();
-        return sessionManager.loadToolRefs(sessionId, toolRefs);
+
+        if (toolRefs.isEmpty()) return null;
+
+        var loadedTools = toolRegistryService.resolveToolRefs(toolRefs);
+        if (loadedTools.isEmpty()) {
+            // Tools requested but none found — log warning but don't fail
+            LOGGER.warn("no tools found for refs, skipping: {}", toolRefs);
+            return null;
+        }
+
+        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
+        session.loadTools(loadedTools);
+        return loadedTools.stream().map(ToolCall::getName).toList();
     }
 
     private List<String> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {
