@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Sparkles, FileText, FolderOpen, Plus, Trash2, Upload, X, ChevronRight, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles, FileText, FolderOpen, Plus, Trash2, Upload, X, ChevronRight, ChevronDown, RefreshCw, Download } from 'lucide-react';
 import { api } from '../../api/client';
+import JSZip from 'jszip';
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
 
 interface SkillFile {
@@ -45,6 +46,7 @@ export default function SkillEditor() {
 
   const [name, setName] = useState('');
   const [namespace, setNamespace] = useState('');
+  const [sourceType, setSourceType] = useState<'UPLOAD' | 'REPO'>('UPLOAD');
   const [description, setDescription] = useState('');
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
   const [newTool, setNewTool] = useState('');
@@ -69,6 +71,7 @@ export default function SkillEditor() {
     Promise.all([api.skills.get(id), api.skills.download(id)])
       .then(([skill, downloaded]) => {
         setNamespace(skill.namespace);
+        setSourceType(skill.source_type);
         setVersion(skill.version || '');
 
         const { frontmatter, body } = parseFrontmatter(downloaded.content);
@@ -172,6 +175,39 @@ export default function SkillEditor() {
     if (selectedFile === path) setSelectedFile(SKILL_MD);
   };
 
+  const handleDelete = async () => {
+    if (!id || !confirm('Delete this skill?')) return;
+    await api.skills.delete(id);
+    navigate('/skills');
+  };
+
+  const handleSync = async () => {
+    if (!id) return;
+    await api.skills.sync(id);
+    window.location.reload();
+  };
+
+  const handleExport = async () => {
+    const fm: Record<string, string | string[]> = { name, description };
+    if (allowedTools.length > 0) fm['allowed-tools'] = allowedTools;
+    if (version) fm.version = version;
+    const fullContent = buildSkillMdContent(fm, skillBody);
+
+    const zip = new JSZip();
+    const folder = zip.folder(name) !;
+    folder.file('SKILL.md', fullContent);
+    for (const r of resources) {
+      folder.file(r.path, r.content);
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${name.replace(/\s+/g, '-').toLowerCase()}.zip`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const inputStyle = {
     background: 'var(--color-bg-tertiary)',
     borderColor: 'var(--color-border)',
@@ -185,19 +221,42 @@ export default function SkillEditor() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/skills/${id}`)}
+          <button onClick={() => navigate('/skills')}
             className="flex items-center gap-1 text-sm cursor-pointer"
             style={{ color: 'var(--color-primary)' }}>
-            <ArrowLeft size={16} /> Back
+            <ArrowLeft size={16} /> Back to Skills
           </button>
           <Sparkles size={20} style={{ color: 'var(--color-primary)' }} />
           <h1 className="text-xl font-semibold">{name}</h1>
+          <span className="px-2 py-0.5 rounded text-xs"
+            style={{ background: sourceType === 'REPO' ? '#064e3b' : 'var(--color-bg-tertiary)', color: sourceType === 'REPO' ? '#6ee7b7' : 'var(--color-text-secondary)' }}>
+            {sourceType}
+          </span>
         </div>
-        <button onClick={handleSave} disabled={saving}
-          className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-          style={{ background: 'var(--color-primary)' }}>
-          <Save size={14} /> {saving ? 'Saving...' : 'Save'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleDelete}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}>
+            <Trash2 size={14} /> Delete
+          </button>
+          <button onClick={handleExport}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)' }}>
+            <Download size={14} /> Export
+          </button>
+          {sourceType === 'REPO' && (
+            <button onClick={handleSync}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+              style={{ borderColor: 'var(--color-border)' }}>
+              <RefreshCw size={14} /> Sync
+            </button>
+          )}
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+            style={{ background: 'var(--color-primary)' }}>
+            <Save size={14} /> {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
       </div>
 
       {saveError && (

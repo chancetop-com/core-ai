@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, Pencil } from 'lucide-react';
+import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, FileUp } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SkillDefinition } from '../../api/client';
 
@@ -11,6 +11,8 @@ export default function SkillList() {
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
+  const [uploading, setUploading] = useState(false);
+  const uploadRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   const load = () => {
@@ -57,6 +59,44 @@ export default function SkillList() {
     load();
   };
 
+  const handleFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    let skillFile: File | null = null;
+    const resourceFiles: File[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const relativePath = file.webkitRelativePath || file.name;
+      const parts = relativePath.split('/');
+      // skip root folder name, get path relative to skill dir
+      const innerPath = parts.slice(1).join('/');
+      if (innerPath === 'SKILL.md') {
+        skillFile = file;
+      } else if (innerPath.startsWith('scripts/') || innerPath.startsWith('references/')) {
+        resourceFiles.push(new File([file], innerPath, { type: file.type }));
+      }
+    }
+
+    if (!skillFile) {
+      alert('No SKILL.md found in the selected folder');
+      e.target.value = '';
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const created = await api.skills.upload(skillFile, resourceFiles.length > 0 ? resourceFiles : undefined);
+      if (created?.id) navigate(`/skills/${created.id}/edit`);
+    } catch (err) {
+      alert('Upload failed: ' + (err instanceof Error ? err.message : 'unknown error'));
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -66,11 +106,19 @@ export default function SkillList() {
             Browse and manage available skills
           </p>
         </div>
-        <button onClick={load}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
-          style={{ borderColor: 'var(--color-border)' }}>
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)', opacity: uploading ? 0.5 : 1 }}>
+            <FileUp size={14} /> {uploading ? 'Uploading...' : 'Import Skill Folder'}
+            {/* @ts-expect-error webkitdirectory is non-standard but widely supported */}
+            <input ref={uploadRef} type="file" webkitdirectory="" className="hidden" onChange={handleFolderUpload} disabled={uploading} />
+          </label>
+          <button onClick={load}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)' }}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Filters bar */}
@@ -114,7 +162,7 @@ export default function SkillList() {
           </div>
         ) : pagedSkills.map(s => (
           <div key={s.id}
-            onClick={() => navigate(`/skills/${s.id}`)}
+            onClick={() => navigate(`/skills/${s.id}/edit`)}
             className="rounded-xl border p-4 cursor-pointer transition-colors"
             style={{
               background: 'var(--color-bg-secondary)',
@@ -138,11 +186,6 @@ export default function SkillList() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={e => { e.stopPropagation(); navigate(`/skills/${s.id}/edit`); }}
-                  className="px-2 py-1 rounded text-xs border cursor-pointer"
-                  style={{ borderColor: 'var(--color-border)' }}>
-                  <Pencil size={12} />
-                </button>
                 {s.source_type === 'REPO' && (
                   <button onClick={e => handleSync(s.id, e)}
                     className="p-1.5 rounded border cursor-pointer"

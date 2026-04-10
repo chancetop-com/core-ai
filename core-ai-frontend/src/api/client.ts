@@ -485,6 +485,21 @@ export const api = {
       request<SkillDefinition>(`/api/skills/${id}/sync`, { method: 'POST' }),
     download: (id: string) =>
       request<SkillDownloadResponse>(`/api/skills/${id}/download`),
+    upload: async (skillFile: File, resourceFiles?: File[]): Promise<SkillDefinition> => {
+      const formData = new FormData();
+      formData.append('skill_file', skillFile);
+      if (resourceFiles) {
+        for (const f of resourceFiles) {
+          formData.append(f.name, f);
+        }
+      }
+      const headers: Record<string, string> = {};
+      const apiKey = localStorage.getItem('apiKey');
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+      const res = await fetch('/api/skills/upload', { method: 'POST', headers, body: formData });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json();
+    },
   },
   tools: {
     list: (category?: string) => {
