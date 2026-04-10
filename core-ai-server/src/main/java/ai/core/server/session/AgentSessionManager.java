@@ -54,9 +54,7 @@ public class AgentSessionManager {
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, null, context);
-        var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
-        var permissionStore = new InMemoryToolPermissionStore();
-        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+        var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessions.put(sessionId, session);
         return sessionId;
     }
@@ -68,7 +66,6 @@ public class AgentSessionManager {
             if (overrides.temperature != null) config.temperature = overrides.temperature;
             if (overrides.systemPrompt != null) config.systemPrompt = overrides.systemPrompt;
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
-            if (overrides.autoApproveAll != null) config.autoApproveAll = overrides.autoApproveAll;
         }
         List<ToolCall> tools;
         if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
@@ -82,9 +79,7 @@ public class AgentSessionManager {
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
-        var autoApproveAll = Boolean.TRUE.equals(config.autoApproveAll);
-        var permissionStore = new InMemoryToolPermissionStore();
-        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+        var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         sessions.put(sessionId, session);
         return sessionId;
     }
@@ -130,24 +125,19 @@ public class AgentSessionManager {
         config.model = snapshot.model;
         config.temperature = snapshot.temperature;
         config.maxTurns = snapshot.maxTurns;
-        config.autoApproveAll = snapshot.autoApproveAll;
 
         List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty())
                 ? toolRegistryService.resolveToolRefs(snapshot.tools)
                 : List.of();
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
-        var autoApproveAll = Boolean.TRUE.equals(config.autoApproveAll);
-        var permissionStore = new InMemoryToolPermissionStore();
-        return new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+        return new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId) {
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
         var agent = buildAgent(config, null, context);
-        var autoApproveAll = config != null && Boolean.TRUE.equals(config.autoApproveAll);
-        var permissionStore = new InMemoryToolPermissionStore();
-        return new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+        return new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
     }
 
     public void closeSession(String sessionId) {

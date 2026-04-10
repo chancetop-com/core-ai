@@ -39,7 +39,6 @@ public class SessionState {
         public String model;
         public Double temperature;
         public Integer maxTurns;
-        public Boolean autoApproveAll;
         public List<ToolRef> tools;
     }
 }

@@ -39,6 +39,14 @@ public class A2ARunManager {
     private final String persistentSessionId;
     private InProcessAgentSession persistentSession;
 
+    public A2ARunManager(Supplier<Agent> agentFactory) {
+        this(agentFactory, false, null, null);
+    }
+
+    public A2ARunManager(Supplier<Agent> agentFactory, String sessionId) {
+        this(agentFactory, false, null, sessionId);
+    }
+
     public A2ARunManager(Supplier<Agent> agentFactory, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this(agentFactory, autoApproveAll, permissionStore, null);
     }
