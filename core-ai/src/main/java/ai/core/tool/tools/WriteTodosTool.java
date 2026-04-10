@@ -9,6 +9,7 @@ import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.annotation.JsonCreator;
 
 import java.util.List;
+import java.util.Locale;
 
 public class WriteTodosTool {
     private static final String WT_TOOL_DESC = """
@@ -101,7 +102,7 @@ public class WriteTodosTool {
         @JsonCreator
         public static Status fromString(String value) {
             if (value == null) return null;
-            return switch (value.toUpperCase()) {
+            return switch (value.toUpperCase(Locale.getDefault())) {
                 case "PENDING" -> PENDING;
                 case "IN_PROGRESS" -> IN_PROGRESS;
                 case "COMPLETED" -> COMPLETED;

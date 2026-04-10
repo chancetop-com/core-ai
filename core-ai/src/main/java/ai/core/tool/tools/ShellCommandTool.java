@@ -223,7 +223,7 @@ public class ShellCommandTool extends ToolCall {
             
             - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
             """, GrepFileTool.TOOL_NAME, GlobFileTool.TOOL_NAME, ReadFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME, EditFileTool.TOOL_NAME,
-            ShellCommandTool.TOOL_NAME, ShellCommandTool.TOOL_NAME, ShellCommandTool.TOOL_NAME,
+            TOOL_NAME, TOOL_NAME, TOOL_NAME,
             ASYNC_TIMEOUT_SECONDS / 60, DEFAULT_TIMEOUT_SECONDS / 60);
 
     public static Builder builder() {
