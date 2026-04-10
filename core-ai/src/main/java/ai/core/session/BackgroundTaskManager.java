@@ -24,8 +24,6 @@ public class BackgroundTaskManager {
         this.executor = AsyncToolTaskExecutor.getInstance().getExecutor();
     }
 
-    public record TaskHandle(String outputRef, Future<?> future) {}
-
     public TaskHandle submit(String taskId, Supplier<String> agentRunner) {
         var sink = sinkFactory.create(taskId);
         var outputRef = sink.getReference();
@@ -77,4 +75,6 @@ public class BackgroundTaskManager {
                 </task-notification>
                 """.formatted(taskId, status, outputRefXml, resultXml);
     }
+
+    public record TaskHandle(String outputRef, Future<?> future) { }
 }

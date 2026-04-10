@@ -212,7 +212,6 @@ public class Agent extends Node<Agent> {
     }
 
     private String runTurnsLoop(BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
-        var context = getExecutionContext();
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
@@ -222,7 +221,7 @@ public class Agent extends Node<Agent> {
             turnMsgList.forEach(this::addMessage);
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
             currentIteCount++;
-        } while ((AgentHelper.lastIsToolMsg(getMessages()))
+        } while (AgentHelper.lastIsToolMsg(getMessages())
                 && currentIteCount < maxTurnNumber);
 
         setOutput(agentOut.toString());

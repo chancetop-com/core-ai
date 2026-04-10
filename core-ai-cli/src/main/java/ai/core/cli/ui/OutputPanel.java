@@ -18,6 +18,7 @@ import java.util.function.IntSupplier;
  */
 public class OutputPanel {
     private static final String INDENT = "  ";
+    private static final int DEFAULT_SUMMARY_ARG_COUNT = 3;
 
     @SuppressWarnings("unchecked")
     static String formatToolSummary(String toolName, String arguments) {
@@ -58,8 +59,6 @@ public class OutputPanel {
         return message.length() > 200 ? message.substring(0, 197) + "..." : message;
     }
 
-    private static final int DEFAULT_SUMMARY_ARG_COUNT = 3;
-
     private static String extractPrimaryArgs(Map<String, Object> argsMap) {
         return extractPrimaryArgs(argsMap, DEFAULT_SUMMARY_ARG_COUNT);
     }
@@ -73,8 +72,8 @@ public class OutputPanel {
         var entries = argsMap.entrySet().stream().limit(maxArgs).iterator();
         while (entries.hasNext()) {
             var entry = entries.next();
-            if (!sb.isEmpty()) sb.append(" ");
-            sb.append(entry.getKey()).append("=").append(entry.getValue());
+            if (!sb.isEmpty()) sb.append(' ');
+            sb.append(entry.getKey()).append('=').append(entry.getValue());
         }
         if (argsMap.size() > maxArgs) {
             sb.append(" ...");
@@ -132,7 +131,7 @@ public class OutputPanel {
         writer.flush();
     }
 
-    public void toolStart(String toolName, String arguments, String diff,Boolean frontTask) {
+    public void toolStart(String toolName, String arguments, String diff, Boolean frontTask) {
         stopSpinnerIfActive();
         mdRenderer.flush();
         String summary = formatToolSummary(toolName, arguments);

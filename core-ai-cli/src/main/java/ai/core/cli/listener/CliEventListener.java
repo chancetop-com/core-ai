@@ -207,11 +207,10 @@ public class CliEventListener extends BaseEventListener {
                 ch = reader.read(20L);
             }
         } catch (Exception e) {
-            // best effort drain
+            LOGGER.trace("Failed to drain escape sequence: {}", e.getMessage());
         }
     }
 
-    @SuppressWarnings("PMD.AvoidFileStream")
     private void startTtyEscReader(File ttyFile) {
         escReaderThread = new Thread(() -> {
             stty("-icanon", "-echo");

@@ -8,8 +8,6 @@ import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
-import ai.core.api.server.session.TaskCompletedEvent;
-import ai.core.api.server.session.TaskStartEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
@@ -19,16 +17,12 @@ import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
 import ai.core.tool.tools.TaskTool;
-import ai.core.utils.JsonUtil;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -126,12 +120,6 @@ public class BaseEventListener implements AgentEventListener {
 
     }
 
-    record RuntimeTask(String taskId, Long startTime, Boolean runInBackground, Integer toolCallCount) {
-        public RuntimeTask withIncrementedToolCallCount() {
-            return new RuntimeTask(this.taskId, this.startTime, runInBackground, this.toolCallCount + 1);
-        }
-    }
-
     private void increaseToolCallCount(String taskId) {
         if (Objects.isNull(taskId)) {
             return;
@@ -211,5 +199,11 @@ public class BaseEventListener implements AgentEventListener {
     @Override
     public void onPlanUpdate(PlanUpdateEvent event) {
         panel.planUpdate(event.todos);
+    }
+
+    record RuntimeTask(String taskId, Long startTime, Boolean runInBackground, Integer toolCallCount) {
+        public RuntimeTask withIncrementedToolCallCount() {
+            return new RuntimeTask(this.taskId, this.startTime, runInBackground, this.toolCallCount + 1);
+        }
     }
 }

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -14,26 +15,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class SessionCommandQueue {
 
-    public enum CommandMode {
-        USER_INPUT(0),
-        TASK_NOTIFICATION(1);
-
-        final int priority;
-
-        CommandMode(int priority) {
-            this.priority = priority;
-        }
-    }
-
-    public record QueuedCommand(CommandMode mode, String value) {}
-
-    public record CommandBatch(CommandMode mode, List<String> values) {
-        public boolean isEmpty() {
-            return values.isEmpty();
-        }
-    }
-
-    private final PriorityQueue<QueuedCommand> queue = new PriorityQueue<>(
+    private final Queue<QueuedCommand> queue = new PriorityQueue<>(
             Comparator.comparingInt(a -> a.mode().priority)
     );
     private final ReentrantLock lock = new ReentrantLock();
@@ -96,6 +78,25 @@ public class SessionCommandQueue {
             return queue.isEmpty();
         } finally {
             lock.unlock();
+        }
+    }
+
+    public enum CommandMode {
+        USER_INPUT(0),
+        TASK_NOTIFICATION(1);
+
+        final int priority;
+
+        CommandMode(int priority) {
+            this.priority = priority;
+        }
+    }
+
+    public record QueuedCommand(CommandMode mode, String value) { }
+
+    public record CommandBatch(CommandMode mode, List<String> values) {
+        public boolean isEmpty() {
+            return values.isEmpty();
         }
     }
 }

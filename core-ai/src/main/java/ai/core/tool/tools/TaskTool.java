@@ -4,17 +4,13 @@ import ai.core.AgentRuntimeException;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.Task;
-import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultExploreAgent;
-import ai.core.llm.domain.FunctionCall;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * author: lim chen
@@ -172,8 +168,8 @@ public class TaskTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "The task for the agent to perform").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "subagent_type", "The type of specialized agent to use for this task").required(),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background",
-                            "Set to true to run this agent in the background." +
-                                    "Setting up background processing can effectively support multiple tasks running in parallel."
+                            "Set to true to run this agent in the background."
+                                    + "Setting up background processing can effectively support multiple tasks running in parallel. "
                                     + "Returns immediately with a taskId. "
                                     + "You will receive a <task-notification> when the agent completes. "
                                     + "Launch multiple agents concurrently by calling task() with run_in_background=true multiple times in a single message.")

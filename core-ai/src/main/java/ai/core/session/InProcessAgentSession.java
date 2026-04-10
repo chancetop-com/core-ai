@@ -58,7 +58,6 @@ public class InProcessAgentSession implements AgentSession {
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.addLifecycle(new TaskLifecycle(this::dispatch));
         agent.setAuthenticated(true);
-        agent.getExecutionContext().setBackgroundTaskMonitor(taskMonitor);
         setupCompressionListener();
 
         if (agent.hasPersistenceProvider()) {
