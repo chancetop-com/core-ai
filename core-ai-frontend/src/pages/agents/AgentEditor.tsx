@@ -13,6 +13,7 @@ export default function AgentEditor() {
   const [agent, setAgent] = useState<AgentDefinition | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
@@ -81,6 +82,7 @@ export default function AgentEditor() {
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
+    setSaveSuccess(false);
     setSaveError('');
     try {
       const updated = await api.agents.update(id, {
@@ -99,6 +101,8 @@ export default function AgentEditor() {
         response_schema: agent.response_schema,
       });
       setAgent(updated);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -391,10 +395,13 @@ export default function AgentEditor() {
             }}>
             {publishSuccess ? <><Check size={14} /> Published!</> : <><Upload size={14} /> {publishing ? 'Publishing...' : 'Publish'}</>}
           </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-            style={{ background: 'var(--color-primary)' }}>
-            <Save size={14} /> {saving ? 'Saving...' : 'Save'}
+          <button onClick={handleSave} disabled={saving || saveSuccess}
+            className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
+            style={{
+              background: saveSuccess ? 'var(--color-success)' : 'var(--color-primary)',
+              color: 'white',
+            }}>
+            {saveSuccess ? <><Check size={14} /> Saved!</> : <><Save size={14} /> {saving ? 'Saving...' : 'Save'}</>}
           </button>
         </div>
       </div>
