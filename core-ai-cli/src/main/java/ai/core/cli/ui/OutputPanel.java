@@ -8,6 +8,7 @@ import java.io.PrintWriter;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntSupplier;
 
 /**
  * @author lim chen
@@ -85,13 +86,12 @@ public class OutputPanel {
     private final StreamingMarkdownRenderer mdRenderer;
     private final ThinkingSpinner spinner;
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
-    private final java.util.function.IntSupplier terminalWidth;
+    private final IntSupplier terminalWidth;
 
     private volatile boolean textStarted;
     private volatile boolean reasoningShown;
-    private volatile String activeTaskName;
 
-    public OutputPanel(PrintWriter writer, boolean smartTerminal, java.util.function.IntSupplier terminalWidth) {
+    public OutputPanel(PrintWriter writer, boolean smartTerminal, IntSupplier terminalWidth) {
         this.writer = writer;
         this.mdRenderer = new StreamingMarkdownRenderer(writer, smartTerminal, terminalWidth);
         this.spinner = new ThinkingSpinner(writer, terminalWidth);
@@ -101,29 +101,11 @@ public class OutputPanel {
     public void beginTurn() {
         textStarted = false;
         reasoningShown = false;
-        activeTaskName = null;
         mdRenderer.reset();
         spinner.resetTimer();
     }
 
-    public void enterTask(String taskName) {
-        this.activeTaskName = taskName;
-        textStarted = false;
-        reasoningShown = false;
-    }
-
-    public void exitTask() {
-        this.activeTaskName = null;
-        textStarted = false;
-        reasoningShown = false;
-    }
-
-    public boolean isInTask() {
-        return activeTaskName != null;
-    }
-
     public void streamText(String chunk) {
-        if (isInTask()) return;
         stopSpinnerIfActive();
         if (!textStarted) {
             textStarted = true;
@@ -137,7 +119,6 @@ public class OutputPanel {
     }
 
     public void streamReasoning(String chunk) {
-        if (isInTask()) return;
         stopSpinnerIfActive();
         if (!reasoningShown) {
             reasoningShown = true;
@@ -151,11 +132,11 @@ public class OutputPanel {
         writer.flush();
     }
 
-    public void toolStart(String toolName, String arguments, String diff) {
+    public void toolStart(String toolName, String arguments, String diff,Boolean frontTask) {
         stopSpinnerIfActive();
         mdRenderer.flush();
         String summary = formatToolSummary(toolName, arguments);
-        if (isInTask()) {
+        if (frontTask) {
             writer.println(INDENT + AnsiTheme.MUTED + "\u23BF" + AnsiTheme.RESET + " " + AnsiTheme.MUTED + summary + AnsiTheme.RESET);
         } else {
             writer.println("\n" + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " " + summary);
@@ -170,29 +151,16 @@ public class OutputPanel {
 
     }
 
-    public void asyncTaskLaunched(String summary) {
+    public void asyncTaskLaunched() {
         stopSpinnerIfActive();
-        writer.print(INDENT + AnsiTheme.SUCCESS + "\u23BF" + AnsiTheme.RESET + "  ");
-        writer.println(AnsiTheme.MUTED + summary + AnsiTheme.RESET);
+        writer.println(INDENT + AnsiTheme.MUTED + "\u23BF  Running in background" + AnsiTheme.RESET);
         writer.flush();
         resetShown();
         startSpinner();
     }
 
-    public void startAttributedTaskSection(String taskId, String description) {
-        stopSpinnerIfActive();
-        mdRenderer.flush();
-        var label = description != null && !description.isBlank()
-            ? taskId + " · " + description : taskId;
-        writer.println("\n" + INDENT + AnsiTheme.MUTED + "\u25B7 " + label + AnsiTheme.RESET);
-        writer.flush();
-        activeTaskName = taskId;
-        resetShown();
-        startSpinner();
-    }
 
     public void toolResult(String status, String result) {
-        if (isInTask()) return;
         stopSpinnerIfActive();
         String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
         writer.print(INDENT + icon + "\u23BF" + AnsiTheme.RESET + "  ");

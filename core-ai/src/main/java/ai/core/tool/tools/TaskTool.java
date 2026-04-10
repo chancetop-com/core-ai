@@ -4,12 +4,15 @@ import ai.core.AgentRuntimeException;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.Task;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.defaultagents.DefaultExploreAgent;
+import ai.core.llm.domain.FunctionCall;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -101,24 +104,21 @@ public class TaskTool extends ToolCall {
 
             var taskManager = context.getTaskManager();
             var description = (String) argsMap.get("description");
-
+            var taskId = String.valueOf(argsMap.get("task_id"));
+            var subContext = buildSubContext(subagentType, context, taskId, description);
+            var subAgent = createAgent(subagentType, subContext);
             if (runInBackground && taskManager != null) {
-                var taskId = "sa-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-                var agent = createAgent(subagentType, context);
-                var subContext = buildSubContext(subagentType, context, taskId, description);
                 var handle = taskManager.submit(taskId, () -> {
-                    agent.run(prompt, subContext);
-                    var lastContent = agent.getMessages().getLast().content;
+                    subAgent.run(prompt, subContext);
+                    var lastContent = subAgent.getMessages().getLast().content;
                     return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
                 });
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), subContext));
                 return ToolCallResult.asyncLaunched(taskId, handle.outputRef(), description, subagentType)
                         .withDuration(System.currentTimeMillis() - startTime);
             } else {
-                var agent = createAgent(subagentType, context);
-                var subContext = buildSubContext(subagentType, context, null, description);
-                agent.run(prompt, subContext);
-                return ToolCallResult.completed(agent.getMessages().getLast().content.getFirst().text)
+                subAgent.run(prompt, subContext);
+                return ToolCallResult.completed(subAgent.getMessages().getLast().content.getFirst().text)
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
@@ -144,7 +144,6 @@ public class TaskTool extends ToolCall {
                 .build();
         subContext.setLlmProvider(context.getLlmProvider());
         subContext.setModel(context.getModel());
-        subContext.setStreamingCallback(context.getStreamingCallback());
         subContext.setLifecycles(context.getLifecycle());
         subContext.setTokenCostCallback(context.getTokenCostCallback());
         return subContext;
@@ -168,11 +167,14 @@ public class TaskTool extends ToolCall {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC.replace("%s", subagentType));
             this.parameters(ToolCallParameters.of(
+                    ToolCallParameters.ParamSpec.of(String.class, "task_id", "a unique id  of the task").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "description", "A short (3-5 words) description of the task").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "The task for the agent to perform").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "subagent_type", "The type of specialized agent to use for this task").required(),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background",
-                            "Set to true to run this agent in the background. Returns immediately with a taskId. "
+                            "Set to true to run this agent in the background." +
+                                    "Setting up background processing can effectively support multiple tasks running in parallel."
+                                    + "Returns immediately with a taskId. "
                                     + "You will receive a <task-notification> when the agent completes. "
                                     + "Launch multiple agents concurrently by calling task() with run_in_background=true multiple times in a single message.")
             ));

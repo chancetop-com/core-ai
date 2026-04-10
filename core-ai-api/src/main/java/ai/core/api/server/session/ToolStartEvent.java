@@ -36,6 +36,8 @@ public class ToolStartEvent implements AgentEvent {
 
     @Property(name = "taskId")
     public String taskId;
+    @Property(name = "run_in_background")
+    public Boolean runInBackground;
 
     @Override
     public String sessionId() {

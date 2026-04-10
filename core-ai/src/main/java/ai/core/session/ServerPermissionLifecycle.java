@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 
 /**
  * Lifecycle management for server-side tool call permissions.
+ *
  * @author stephen
  */
 public class ServerPermissionLifecycle extends AbstractLifecycle {
@@ -75,9 +76,15 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     private void dispatchStartEvent(String callId, String toolName, String arguments, Map<String, Object> argMap, ExecutionContext context) {
         var startEvent = ToolStartEvent.of(sessionId, callId, toolName, arguments);
         startEvent.diff = generatePreviewDiff(toolName, argMap);
-        startEvent.taskId = context.getTaskId();
+        startEvent.taskId = (String) argMap.getOrDefault("task_id", context.getTaskId());
+        startEvent.runInBackground = isBackground(argMap);
         dispatcher.accept(startEvent);
     }
+
+    private Boolean isBackground(Map<String, Object> argMap) {
+        return Boolean.TRUE.equals(argMap.get("run_in_background"));
+    }
+
 
     private boolean shouldSkipApproval(String toolName, Map<String, Object> argMap, ExecutionContext executionContext) {
         if (autoApproveAll) return true;
@@ -102,7 +109,8 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
                 if (permissionStore != null) permissionStore.allow(pattern);
             }
             case APPROVE_SESSION -> sessionAllowedTools.add(toolName);
-            default -> { }
+            default -> {
+            }
         }
     }
 
@@ -110,12 +118,14 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
         var callId = functionCall.id;
         var toolName = functionCall.function.name;
+        var arguments = functionCall.function.arguments;
+        Map<String, Object> argMap = parseArguments(arguments);
         var status = toolResult.isCompleted() ? "success" : toolResult.isAsyncLaunched() ? "async_launched" : "failure";
         var result = toolResult.getResult();
 
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);
         var event = ToolResultEvent.of(sessionId, callId, toolName, status, result);
-        event.taskId = executionContext.getTaskId();
+        event.taskId = (String) argMap.getOrDefault("task_id", executionContext.getTaskId());
         dispatcher.accept(event);
     }
 

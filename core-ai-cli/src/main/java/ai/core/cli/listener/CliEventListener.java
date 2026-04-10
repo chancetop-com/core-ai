@@ -65,7 +65,13 @@ public class CliEventListener extends BaseEventListener {
             if (tokens == 0) return null;
             long input = u.getPromptTokens() - turnInputBefore + subagentUsage.getPromptTokens();
             long output = u.getCompletionTokens() - turnOutputBefore + subagentUsage.getCompletionTokens();
-            return String.format("%,d tokens (\u2191 %,d \u2193 %,d)", tokens, input, output);
+            var sb = new StringBuilder(64);
+            sb.append(String.format("%,d tokens (\u2191 %,d \u2193 %,d)", tokens, input, output));
+            int tasks = Math.max(0, getRunTasksCount());
+            int tools = getRunTasksToolCount();
+            if (tasks > 0) sb.append(" | ").append(tasks).append(tasks == 1 ? " task" : " tasks");
+            if (tools > 0) sb.append(" | ").append(tools).append(tools == 1 ? " tool" : " tools");
+            return sb.toString();
         });
         startEscReader();
     }

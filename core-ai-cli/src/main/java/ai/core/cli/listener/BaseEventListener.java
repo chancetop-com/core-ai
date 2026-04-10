@@ -8,6 +8,8 @@ import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
+import ai.core.api.server.session.TaskCompletedEvent;
+import ai.core.api.server.session.TaskStartEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
@@ -19,9 +21,13 @@ import ai.core.cli.ui.ThinkingSpinner;
 import ai.core.tool.tools.TaskTool;
 import ai.core.utils.JsonUtil;
 
-import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -34,10 +40,7 @@ public class BaseEventListener implements AgentEventListener {
     protected final OutputPanel panel;
     protected volatile CompletableFuture<Void> turnFuture;
     private final AtomicReference<TurnCompleteEvent> lastTurnComplete = new AtomicReference<>();
-    private volatile long taskStartTime;
-    private final AtomicInteger taskToolCallCount = new AtomicInteger(0);
-    private volatile String currentAttributedTaskId;
-    private final Map<String, String> asyncTaskDescriptions = new LinkedHashMap<>();
+    private final Map<String, RuntimeTask> runTasks = new ConcurrentHashMap<>();
 
     protected BaseEventListener(TerminalUI ui, AgentSession session) {
         this.ui = ui;
@@ -70,46 +73,80 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onToolStart(ToolStartEvent event) {
-        String parentTaskId = event.parentTaskId;
-        if (parentTaskId != null && !parentTaskId.equals(currentAttributedTaskId)) {
-            if (panel.isInTask()) panel.exitTask();
-            panel.startAttributedTaskSection(parentTaskId, asyncTaskDescriptions.get(parentTaskId));
-            currentAttributedTaskId = parentTaskId;
-        }
-        if (parentTaskId != null) {
-            panel.toolStart(event.toolName, event.arguments, event.diff);
-            return;
-        }
-        if (currentAttributedTaskId != null) {
-            panel.exitTask();
-            currentAttributedTaskId = null;
-        }
-        if (TaskTool.TOOL_NAME.equals(event.toolName) && panel.isInTask()) {
-            panel.exitTask();
-        }
-        if (panel.isInTask()) {
-            taskToolCallCount.incrementAndGet();
-        }
-        panel.toolStart(event.toolName, event.arguments, event.diff);
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
-            panel.enterTask(event.toolName);
-            taskStartTime = System.currentTimeMillis();
-            taskToolCallCount.set(0);
+            runTasks.put(event.taskId, new RuntimeTask(event.taskId, System.currentTimeMillis(), event.runInBackground, 0));
+            panel.toolStart(event.toolName, event.arguments, event.diff, false);
+        } else if (Objects.isNull(event.taskId)) {
+            panel.toolStart(event.toolName, event.arguments, event.diff, false);
+        } else {
+            increaseToolCallCount(event.taskId);
+            if (!isInBackgroundTask(event.taskId)) {
+                panel.toolStart(event.toolName, event.arguments, event.diff, isInFrontTask(event.taskId));
+            }
         }
+    }
+
+    private boolean isInBackgroundTask(String taskId) {
+        return Optional.of(runTasks).map(m -> m.get(taskId)).map(RuntimeTask::runInBackground).orElse(false);
+    }
+
+    private boolean isInFrontTask(String taskId) {
+        return Optional.of(runTasks).map(m -> m.get(taskId)).map(RuntimeTask::runInBackground).map(b -> !b).orElse(false);
+    }
+
+    private boolean isInTask(String taskId) {
+        return isInBackgroundTask(taskId) || isInFrontTask(taskId);
+    }
+
+    private void removeTask(String taskId) {
+        runTasks.remove(taskId);
+    }
+
+    public int getRunTasksCount() {
+        return runTasks.size();
+    }
+
+    public int getRunTasksToolCount() {
+        return runTasks.values().stream().mapToInt(t -> t.toolCallCount).sum();
     }
 
     @Override
     public void onToolResult(ToolResultEvent event) {
-        if (TaskTool.TOOL_NAME.equals(event.toolName) && "async_launched".equals(event.status)) {
-            parseAsyncTaskDescription(event.result);
-            panel.asyncTaskLaunched(buildTaskAsyncSummary(event.result));
-        } else if (TaskTool.TOOL_NAME.equals(event.toolName)) {
-            panel.exitTask();
-            panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - taskStartTime, taskToolCallCount.get()));
-        } else {
+        if (TaskTool.TOOL_NAME.equals(event.toolName)) {
+            if (isInBackgroundTask(event.taskId)) {
+                panel.asyncTaskLaunched();
+            }
+            if (isInFrontTask(event.taskId)) {
+                panel.toolResult(event.status, buildTaskDoneSummary(System.currentTimeMillis() - getTaskStartTime(event.taskId), getToolCallCount(event.taskId)));
+                removeTask(event.taskId);
+            }
+        } else if (Objects.isNull(event.taskId) || !isInTask(event.taskId)) {
             panel.toolResult(event.status, event.result);
         }
+
     }
+
+    record RuntimeTask(String taskId, Long startTime, Boolean runInBackground, Integer toolCallCount) {
+        public RuntimeTask withIncrementedToolCallCount() {
+            return new RuntimeTask(this.taskId, this.startTime, runInBackground, this.toolCallCount + 1);
+        }
+    }
+
+    private void increaseToolCallCount(String taskId) {
+        if (Objects.isNull(taskId)) {
+            return;
+        }
+        runTasks.computeIfPresent(taskId, (_, v) -> v.withIncrementedToolCallCount());
+    }
+
+    private int getToolCallCount(String taskId) {
+        return Optional.of(runTasks).map(m -> m.get(taskId)).map(RuntimeTask::toolCallCount).orElse(0);
+    }
+
+    private long getTaskStartTime(String taskId) {
+        return Optional.of(runTasks).map(m -> m.get(taskId)).map(RuntimeTask::startTime).orElse(0L);
+    }
+
 
     private String buildTaskDoneSummary(long elapsedMs, int toolCallCount) {
         var sb = new StringBuilder(50);
@@ -118,34 +155,6 @@ public class BaseEventListener implements AgentEventListener {
             sb.append(" | ").append(toolCallCount).append(toolCallCount == 1 ? " tool" : " tools");
         }
         return sb.toString();
-    }
-
-    @SuppressWarnings("unchecked")
-    private void parseAsyncTaskDescription(String resultJson) {
-        try {
-            var map = JsonUtil.fromJson(Map.class, resultJson);
-            var taskId = (String) map.get("taskId");
-            var description = (String) map.get("description");
-            if (taskId != null && description != null) {
-                asyncTaskDescriptions.put(taskId, description);
-            }
-        } catch (Exception ignored) { // best effort
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private String buildTaskAsyncSummary(String resultJson) {
-        try {
-            var map = JsonUtil.fromJson(Map.class, resultJson);
-            var taskId = (String) map.get("taskId");
-            var description = (String) map.get("description");
-            var sb = new StringBuilder("Running in background");
-            if (taskId != null) sb.append(" | ").append(taskId);
-            if (description != null && !description.isBlank()) sb.append(" | ").append(description);
-            return sb.toString();
-        } catch (Exception e) {
-            return "Running in background";
-        }
     }
 
     @Override
@@ -158,7 +167,6 @@ public class BaseEventListener implements AgentEventListener {
 
     @Override
     public void onTurnComplete(TurnCompleteEvent event) {
-        if (panel.isInTask()) panel.exitTask();
         panel.endTurn();
         if (Boolean.TRUE.equals(event.cancelled)) {
             panel.cancelled();
@@ -168,8 +176,7 @@ public class BaseEventListener implements AgentEventListener {
         }
         lastTurnComplete.set(event);
         printTurnSummary();
-        currentAttributedTaskId = null;
-        asyncTaskDescriptions.clear();
+
         if (turnFuture != null) turnFuture.complete(null);
     }
 
