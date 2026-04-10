@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -40,6 +40,9 @@ export default function AgentEditor() {
   const [base64Value, setBase64Value] = useState('');
   const [base64MediaType, setBase64MediaType] = useState('image/png');
   const imageFileRef = useRef<HTMLInputElement>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [pendingImportData, setPendingImportData] = useState<Record<string, unknown> | null>(null);
 
   // runs
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -286,6 +289,45 @@ export default function AgentEditor() {
     }
   };
 
+  const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
+    'max_turns', 'timeout_seconds', 'tool_ids', 'input_template', 'variables', 'response_schema'] as const;
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    file.text().then(text => {
+      try {
+        const data = JSON.parse(text);
+        const item = Array.isArray(data) ? data[0] : data;
+        if (!item || typeof item !== 'object') {
+          alert('Invalid agent JSON file');
+          return;
+        }
+        const filtered: Record<string, unknown> = {};
+        for (const key of IMPORT_FIELDS) {
+          if (item[key] != null) filtered[key] = item[key];
+        }
+        setPendingImportData(filtered);
+        setShowImportConfirm(true);
+      } catch {
+        alert('Invalid JSON file');
+      }
+    });
+    e.target.value = '';
+  };
+
+  const applyImport = () => {
+    if (!pendingImportData) return;
+    setAgent({ ...agent, ...pendingImportData } as AgentDefinition);
+    setShowImportConfirm(false);
+    setPendingImportData(null);
+  };
+
+  const cancelImport = () => {
+    setShowImportConfirm(false);
+    setPendingImportData(null);
+  };
+
   const handleExport = (a: AgentDefinition) => {
     const exportData = {
       name: a.name, description: a.description, type: a.type,
@@ -331,6 +373,11 @@ export default function AgentEditor() {
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}>
             <Trash2 size={14} /> Delete
           </button>
+          <label className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)' }}>
+            <FileUp size={14} /> Import
+            <input ref={importFileRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+          </label>
           <button onClick={() => handleExport(agent)}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
             style={{ borderColor: 'var(--color-border)' }}>
@@ -351,6 +398,37 @@ export default function AgentEditor() {
           </button>
         </div>
       </div>
+
+      {showImportConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
+          <div className="rounded-xl p-6 max-w-md w-full mx-4" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+            <h3 className="text-lg font-semibold mb-2">Confirm Import</h3>
+            <p className="text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+              This will overwrite the current agent configuration with the imported data.
+            </p>
+            {pendingImportData?.name && (
+              <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                Importing: <strong style={{ color: 'var(--color-text)' }}>{String(pendingImportData.name)}</strong>
+              </p>
+            )}
+            <p className="text-sm mb-4" style={{ color: 'var(--color-warning, #f59e0b)' }}>
+              Unsaved changes will be lost. You can review and save after import.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={cancelImport}
+                className="px-4 py-2 rounded-lg text-sm border cursor-pointer"
+                style={{ borderColor: 'var(--color-border)' }}>
+                Cancel
+              </button>
+              <button onClick={applyImport}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                style={{ background: 'var(--color-primary)' }}>
+                Confirm Import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {saveError && (
         <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--color-error)' }}>
