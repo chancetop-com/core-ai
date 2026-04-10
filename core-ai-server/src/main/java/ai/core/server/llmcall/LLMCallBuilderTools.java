@@ -30,7 +30,7 @@ public class LLMCallBuilderTools {
     }
 
     public List<ToolCall> tools() {
-        var toolRef = new ToolRef("builtin-llm-call-builder", ToolSourceType.BUILTIN);
+        var toolRef = ToolRef.of("builtin-llm-call-builder", ToolSourceType.BUILTIN);
         return toolRegistryService.resolveToolRefs(List.of(toolRef));
     }
 }

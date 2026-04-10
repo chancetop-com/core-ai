@@ -3,23 +3,9 @@ package ai.core.server.domain;
 import core.framework.mongo.Field;
 
 /**
- * A structured reference to a tool, replacing the plain string toolId.
- * Contains the tool identifier, its source type, and an optional source name
- * for disambiguation (e.g., which MCP server, which API app).
- *
  * @author stephen
  */
 public class ToolRef {
-    public static ToolRef fromLegacyToolId(String toolId) {
-        if (toolId == null) return null;
-
-        if (toolId.startsWith("builtin-")) return new ToolRef(toolId, ToolSourceType.BUILTIN);
-        if (toolId.startsWith("config:")) return new ToolRef(toolId, ToolSourceType.MCP, toolId.substring("config:".length()));
-        if (toolId.startsWith("api-app:") || "builtin-service-api".equals(toolId)) return new ToolRef(toolId, ToolSourceType.API);
-
-        return new ToolRef(toolId, null);
-    }
-
     @Field(name = "id")
     public String id;
 
@@ -33,15 +19,37 @@ public class ToolRef {
     public ToolRef() {
     }
 
-    public ToolRef(String id, ToolSourceType type) {
-        this.id = id;
-        this.type = type;
+    public static ToolRef fromLegacyToolId(String toolId) {
+        if (toolId == null) return null;
+
+        var ref = new ToolRef();
+        ref.id = toolId;
+
+        if (toolId.startsWith("builtin-")) {
+            ref.type = ToolSourceType.BUILTIN;
+        } else if (toolId.startsWith("config:")) {
+            ref.type = ToolSourceType.MCP;
+            ref.source = toolId.substring("config:".length());
+        } else if (toolId.startsWith("api-app:") || "builtin-service-api".equals(toolId)) {
+            ref.type = ToolSourceType.API;
+        }
+
+        return ref;
     }
 
-    public ToolRef(String id, ToolSourceType type, String source) {
-        this.id = id;
-        this.type = type;
-        this.source = source;
+    public static ToolRef of(String id, ToolSourceType type) {
+        var ref = new ToolRef();
+        ref.id = id;
+        ref.type = type;
+        return ref;
+    }
+
+    public static ToolRef of(String id, ToolSourceType type, String source) {
+        var ref = new ToolRef();
+        ref.id = id;
+        ref.type = type;
+        ref.source = source;
+        return ref;
     }
 
     public String toLegacyToolId() {
