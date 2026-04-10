@@ -13,9 +13,13 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (res.status === 401) {
-    localStorage.removeItem('apiKey');
-    localStorage.removeItem('user');
-    window.location.href = '/login';
+    // Don't redirect to login in CLI mode (apiKey = 'local')
+    const apiKey = localStorage.getItem('apiKey');
+    if (apiKey !== 'local') {
+      localStorage.removeItem('apiKey');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
     throw new Error('Unauthorized');
   }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);

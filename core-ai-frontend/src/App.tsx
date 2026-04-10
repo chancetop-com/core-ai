@@ -36,7 +36,9 @@ export default function App() {
     fetchCapabilities().then(c => {
       setCaps(c);
       // Skip auth for local modes (cli serve / local server)
-      if (!c.authRequired && !getStoredUser()) {
+      // Always create local user when auth is not required
+      if (!c.authRequired) {
+        // Don't check existing stored user - always use local user in CLI mode
         storeUser('local', 'local', 'Local');
         setUser({ apiKey: 'local', userId: 'local', name: 'Local' });
       }
