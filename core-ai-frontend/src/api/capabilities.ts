@@ -15,8 +15,7 @@ export const defaultCapabilities: Capabilities = {
   prompts: true,
   dashboard: true,
   systemPrompts: true,
-  // Default to no auth required (CLI mode), only server mode explicitly sets this to true
-  authRequired: false,
+  authRequired: true,
 };
 
 export const CapabilitiesContext = createContext<Capabilities>(defaultCapabilities);

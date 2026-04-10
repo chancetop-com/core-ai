@@ -22,25 +22,28 @@ import ApiTools from './pages/api-tools/ApiTools';
 import ApiToolDetail from './pages/api-tools/ApiToolDetail';
 import SkillList from './pages/skills/SkillList';
 import SkillEditor from './pages/skills/SkillEditor';
-import { CapabilitiesContext, fetchCapabilities, defaultCapabilities } from './api/capabilities';
+import { CapabilitiesContext, fetchCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
 import type { AuthUser } from './api/auth';
 
 export default function App() {
-  const [caps, setCaps] = useState<Capabilities>(defaultCapabilities);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     fetchCapabilities().then(c => {
       setCaps(c);
       // Skip auth for local modes (cli serve / local server)
-      // Always create local user when auth is not required
       if (!c.authRequired) {
-        // Don't check existing stored user - always use local user in CLI mode
+        // Always use local user when auth is not required
         storeUser('local', 'local', 'Local');
         setUser({ apiKey: 'local', userId: 'local', name: 'Local' });
+      } else {
+        // Auth required - check stored user
+        const stored = getStoredUser();
+        if (stored) setUser(stored);
       }
       setLoading(false);
     });
@@ -56,8 +59,9 @@ export default function App() {
     setUser(null);
   }, []);
 
-  if (loading) return null;
+  if (loading || caps === null) return null;
 
+  const authRequired = caps.authRequired;
   const defaultPath = caps.dashboard ? '/dashboard' : caps.chat ? '/chat' : '/agents';
 
   return (
@@ -65,10 +69,10 @@ export default function App() {
       <CapabilitiesContext.Provider value={caps}>
         <BrowserRouter>
           <Routes>
-            {caps.authRequired && (
+            {authRequired && (
               <Route path="/login" element={user ? <Navigate to={defaultPath} replace /> : <Login />} />
             )}
-            {!user && caps.authRequired ? (
+            {!user && authRequired ? (
               <Route path="*" element={<Navigate to="/login" replace />} />
             ) : (
               <Route element={<Layout />}>

@@ -197,8 +197,9 @@ export default function AgentEditor() {
       if (agent.model) config.model = agent.model;
       if (agent.temperature != null) config.temperature = agent.temperature;
       if (agent.max_turns) config.maxTurns = agent.max_turns;
+      const tools = agent.tools && agent.tools.length > 0 ? agent.tools : undefined;
 
-      const res = await sessionApi.create('', config);
+      const res = await sessionApi.create('', { config, tools });
       const sid = res.sessionId;
 
       const controller = sessionApi.connectSSE(sid, (event) => {

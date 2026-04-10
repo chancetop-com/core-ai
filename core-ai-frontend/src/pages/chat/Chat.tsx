@@ -508,6 +508,9 @@ export default function Chat() {
     }
   }, []);
 
+  // Derived value: selected agent
+  const selectedAgent = agents.find(a => a.id === selectedAgentId);
+
   // Fetch available skills for picker
   const fetchSkills = useCallback(async () => {
     setSkillsLoading(true);
@@ -523,10 +526,14 @@ export default function Chat() {
 
   // Open tool picker
   const openToolPicker = useCallback(() => {
-    setSelectedToolIds(sessionId ? loadedToolIds : preToolIds);
+    // Start with agent's configured tools
+    const agentToolIds = selectedAgent?.tools.map(t => t.id) || [];
+    // Merge with session tools (loaded or pre-selected)
+    const sessionToolIds = sessionId ? loadedToolIds : preToolIds;
+    setSelectedToolIds(new Set([...agentToolIds, ...sessionToolIds]));
     fetchTools();
     setShowToolPicker(true);
-  }, [sessionId, loadedToolIds, preToolIds, fetchTools]);
+  }, [sessionId, selectedAgent, loadedToolIds, preToolIds, fetchTools]);
 
   // Open skill picker
   const openSkillPicker = useCallback(() => {
@@ -629,8 +636,6 @@ export default function Chat() {
       handleSend();
     }
   };
-
-  const selectedAgent = agents.find(a => a.id === selectedAgentId);
 
   return (
     <div className="flex flex-col h-full">
