@@ -6,6 +6,7 @@ import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.ToolRef;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
@@ -69,8 +70,14 @@ public class AgentSessionManager {
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
             if (overrides.autoApproveAll != null) config.autoApproveAll = overrides.autoApproveAll;
         }
-        var toolIds = definition.publishedConfig != null ? definition.publishedConfig.toolIds : definition.toolIds;
-        var tools = toolRegistryService.resolveTools(toolIds);
+        List<ToolCall> tools;
+        if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
+            tools = toolRegistryService.resolveToolRefs(definition.publishedConfig.tools);
+        } else if (definition.tools != null && !definition.tools.isEmpty()) {
+            tools = toolRegistryService.resolveToolRefs(definition.tools);
+        } else {
+            tools = List.of();
+        }
 
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
@@ -125,7 +132,9 @@ public class AgentSessionManager {
         config.maxTurns = snapshot.maxTurns;
         config.autoApproveAll = snapshot.autoApproveAll;
 
-        var tools = toolRegistryService.resolveTools(snapshot.toolIds);
+        List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty())
+                ? toolRegistryService.resolveToolRefs(snapshot.tools)
+                : List.of();
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
         var autoApproveAll = Boolean.TRUE.equals(config.autoApproveAll);
@@ -146,11 +155,11 @@ public class AgentSessionManager {
         if (session != null) session.close();
     }
 
-    public List<String> loadTools(String sessionId, List<String> toolIds) {
+    public List<String> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
         var session = getSession(sessionId);
-        var tools = toolRegistryService.resolveTools(toolIds);
+        var tools = toolRegistryService.resolveToolRefs(toolRefs);
         if (tools.isEmpty()) {
-            throw new NotFoundException("no tools found for ids: " + toolIds);
+            throw new NotFoundException("no tools found for refs: " + toolRefs);
         }
         session.loadTools(tools);
         return tools.stream().map(ToolCall::getName).toList();
@@ -183,8 +192,14 @@ public class AgentSessionManager {
 
     private Agent buildSubAgent(AgentDefinition definition) {
         var config = toSessionConfig(definition);
-        var toolIds = definition.publishedConfig != null ? definition.publishedConfig.toolIds : definition.toolIds;
-        var tools = toolRegistryService.resolveTools(toolIds);
+        List<ToolCall> tools;
+        if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
+            tools = toolRegistryService.resolveToolRefs(definition.publishedConfig.tools);
+        } else if (definition.tools != null && !definition.tools.isEmpty()) {
+            tools = toolRegistryService.resolveToolRefs(definition.tools);
+        } else {
+            tools = List.of();
+        }
 
         var builder = Agent.builder()
                 .name(definition.name.replaceAll("\\s+", "-"))

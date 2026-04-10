@@ -92,7 +92,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
     private void createDefaultAssistant(Mongo mongo, Date now) {
         var publishedConfig = new Document()
             .append("system_prompt", "You are a helpful AI assistant.")
-            .append("tool_ids", List.of("builtin-all"))
+            .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
             .append("max_turns", 100)
             .append("timeout_seconds", 600);
 
@@ -102,7 +102,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("name", "Assistant")
             .append("description", "Default assistant with all builtin tools")
             .append("system_prompt", "You are a helpful AI assistant.")
-            .append("tool_ids", List.of("builtin-all"))
+            .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
             .append("max_turns", 100)
             .append("timeout_seconds", 600)
             .append("system_default", true)
@@ -117,11 +117,9 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
     }
 
     private void createLLMCallBuilder(Mongo mongo, Date now) {
-        var toolIds = List.of("builtin-llm-call-builder");
-
         var publishedConfig = new Document()
             .append("system_prompt", BUILDER_SYSTEM_PROMPT)
-            .append("tool_ids", toolIds)
+            .append("tools", List.of(new Document("id", "builtin-llm-call-builder").append("type", "BUILTIN")))
             .append("max_turns", 50)
             .append("timeout_seconds", 600);
 
@@ -131,7 +129,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("name", "LLM Call Builder")
             .append("description", "Interactive builder for creating and publishing LLM Call APIs with structured output")
             .append("system_prompt", BUILDER_SYSTEM_PROMPT)
-            .append("tool_ids", toolIds)
+            .append("tools", List.of(new Document("id", "builtin-llm-call-builder").append("type", "BUILTIN")))
             .append("max_turns", 50)
             .append("timeout_seconds", 600)
             .append("system_default", true)

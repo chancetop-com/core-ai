@@ -45,13 +45,19 @@ export interface LoadSkillsResponse {
 export interface SessionInfo {
   id: string;
   agent_id: string;
-  loaded_tool_ids?: string[];
+  loaded_tools?: { id: string; type?: string; source?: string }[];
   loaded_skill_ids?: string[];
+}
+
+export interface ToolRef {
+  id: string;
+  type?: string;
+  source?: string;
 }
 
 export interface CreateSessionOptions {
   config?: Record<string, unknown>;
-  tool_ids?: string[];
+  tools?: ToolRef[];
   skill_ids?: string[];
 }
 
@@ -59,7 +65,7 @@ export const sessionApi = {
   create: (agentId: string, options?: CreateSessionOptions | Record<string, unknown>) => {
     // Support legacy call signature: create(agentId, config)
     let body: Record<string, unknown>;
-    if (options && ('config' in options || 'tool_ids' in options || 'skill_ids' in options)) {
+    if (options && ('config' in options || 'tools' in options || 'skill_ids' in options)) {
       const opts = options as CreateSessionOptions;
       body = { agent_id: agentId, ...opts };
     } else {
@@ -86,10 +92,10 @@ export const sessionApi = {
   history: (sessionId: string) =>
     request<{ messages: HistoryMessage[] }>(`/api/sessions/${sessionId}/history`),
 
-  loadTools: (sessionId: string, toolIds: string[]) =>
+  loadTools: (sessionId: string, tools: ToolRef[]) =>
     request<LoadToolsResponse>(`/api/sessions/${sessionId}/tools`, {
       method: 'POST',
-      body: JSON.stringify({ tool_ids: toolIds }),
+      body: JSON.stringify({ tools }),
     }),
 
   loadSkills: (sessionId: string, skillIds: string[]) =>

@@ -1,11 +1,12 @@
 package ai.core.server.agent;
 
 import ai.core.api.server.agent.GenerateAgentDraftResponse;
+import ai.core.api.server.tool.ToolRefView;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.server.domain.ToolRef;
 import ai.core.session.InProcessAgentSession;
-import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,7 +57,14 @@ public class AgentDraftGenerator {
         draft.model = agent.getModel();
         draft.temperature = agent.getTemperature();
         draft.maxTurns = 20;
-        draft.toolIds = agent.getToolCalls().stream().map(ToolCall::getName).toList();
+        draft.tools = agent.getToolCalls().stream().map(tc -> {
+            var view = new ToolRefView();
+            var ref = ToolRef.fromLegacyToolId(tc.getName());
+            view.id = ref.id;
+            view.type = ref.type != null ? ref.type.name() : null;
+            view.source = ref.source;
+            return view;
+        }).toList();
 
         return draft;
     }

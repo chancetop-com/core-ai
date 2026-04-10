@@ -18,6 +18,8 @@ import ai.core.api.server.session.SessionStatus;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.ToolSourceType;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionState;
 import core.framework.inject.Inject;
@@ -54,45 +56,69 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         state.config = request.config;
 
         if (request.agentId != null) {
-            var agent = agentDefinitionService.getEntity(request.agentId);
-            sessionId = sessionManager.createSessionFromAgent(agent, request.config, userId);
-            state.fromAgent = true;
-            var toolIds = agent.publishedConfig != null ? agent.publishedConfig.toolIds : agent.toolIds;
-            var snapshot = new SessionState.AgentConfigSnapshot();
-            snapshot.systemPrompt = agent.publishedConfig != null && agent.publishedConfig.systemPrompt != null
-                    ? agent.publishedConfig.systemPrompt : agent.systemPrompt;
-            snapshot.model = agent.publishedConfig != null && agent.publishedConfig.model != null
-                    ? agent.publishedConfig.model : agent.model;
-            snapshot.temperature = agent.publishedConfig != null && agent.publishedConfig.temperature != null
-                    ? agent.publishedConfig.temperature : agent.temperature;
-            snapshot.maxTurns = agent.publishedConfig != null && agent.publishedConfig.maxTurns != null
-                    ? agent.publishedConfig.maxTurns : agent.maxTurns;
-            snapshot.toolIds = toolIds;
-            state.agentConfig = snapshot;
+            sessionId = createSessionFromAgent(request.agentId, state, userId);
         } else {
             sessionId = sessionManager.createSession(request.config, userId);
             state.fromAgent = false;
         }
         state.sessionId = sessionId;
 
-        // Load additional tools/skills requested at session creation time
-        List<String> loadedTools = null;
-        List<String> loadedSkills = null;
-        if (request.toolIds != null && !request.toolIds.isEmpty()) {
-            loadedTools = sessionManager.loadTools(sessionId, request.toolIds);
-        }
-        if (request.skillIds != null && !request.skillIds.isEmpty()) {
-            loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
-        }
+        var loadedTools = loadToolsOnSessionCreate(sessionId, request);
+        var loadedSkills = loadSkillsOnSessionCreate(sessionId, request);
 
-        var httpSession = webContext.request().session();
-        httpSession.set(SESSION_STATE_KEY + ":" + sessionId, state.toJson());
+        saveSessionState(sessionId, state);
 
         var response = new CreateSessionResponse();
         response.sessionId = sessionId;
         response.loadedTools = loadedTools;
         response.loadedSkills = loadedSkills;
         return response;
+    }
+
+    private String createSessionFromAgent(String agentId, SessionState state, String userId) {
+        var agent = agentDefinitionService.getEntity(agentId);
+        var sessionId = sessionManager.createSessionFromAgent(agent, state.config, userId);
+        state.fromAgent = true;
+        state.agentConfig = buildAgentConfigSnapshot(agent);
+        return sessionId;
+    }
+
+    private SessionState.AgentConfigSnapshot buildAgentConfigSnapshot(ai.core.server.domain.AgentDefinition agent) {
+        var toolRefs = agent.publishedConfig != null ? agent.publishedConfig.tools : agent.tools;
+        var snapshot = new SessionState.AgentConfigSnapshot();
+        snapshot.systemPrompt = agent.publishedConfig != null && agent.publishedConfig.systemPrompt != null
+                ? agent.publishedConfig.systemPrompt : agent.systemPrompt;
+        snapshot.model = agent.publishedConfig != null && agent.publishedConfig.model != null
+                ? agent.publishedConfig.model : agent.model;
+        snapshot.temperature = agent.publishedConfig != null && agent.publishedConfig.temperature != null
+                ? agent.publishedConfig.temperature : agent.temperature;
+        snapshot.maxTurns = agent.publishedConfig != null && agent.publishedConfig.maxTurns != null
+                ? agent.publishedConfig.maxTurns : agent.maxTurns;
+        snapshot.tools = toolRefs;
+        return snapshot;
+    }
+
+    private List<String> loadToolsOnSessionCreate(String sessionId, CreateSessionRequest request) {
+        if (request.tools == null || request.tools.isEmpty()) return null;
+        var toolRefs = request.tools.stream()
+                .map(v -> {
+                    var ref = new ToolRef();
+                    ref.id = v.id;
+                    ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
+                    ref.source = v.source;
+                    return ref;
+                }).toList();
+        return sessionManager.loadToolRefs(sessionId, toolRefs);
+    }
+
+    private List<String> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {
+        if (request.skillIds == null || request.skillIds.isEmpty()) return null;
+        return sessionManager.loadSkills(sessionId, request.skillIds);
+    }
+
+    private void saveSessionState(String sessionId, SessionState state) {
+        var httpSession = webContext.request().session();
+        httpSession.set(SESSION_STATE_KEY + ":" + sessionId, state.toJson());
     }
 
     @Override
@@ -153,7 +179,20 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var loadedTools = sessionManager.loadTools(sessionId, request.toolIds);
+        List<String> loadedTools;
+        if (request.tools != null && !request.tools.isEmpty()) {
+            var toolRefs = request.tools.stream()
+                    .map(v -> {
+                        var ref = new ToolRef();
+                        ref.id = v.id;
+                        ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
+                        ref.source = v.source;
+                        return ref;
+                    }).toList();
+            loadedTools = sessionManager.loadToolRefs(sessionId, toolRefs);
+        } else {
+            loadedTools = List.of();
+        }
         var response = new LoadToolsResponse();
         response.loadedTools = loadedTools;
         return response;

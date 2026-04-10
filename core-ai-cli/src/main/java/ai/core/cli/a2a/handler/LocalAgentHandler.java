@@ -86,7 +86,7 @@ public class LocalAgentHandler implements HttpHandler {
         view.temperature = 0.7;
         view.maxTurns = 30;
         view.timeoutSeconds = 300;
-        view.toolIds = List.of();
+        view.tools = List.of();
         view.inputTemplate = "";
         view.variables = null;
         view.webhookSecret = "";

@@ -103,7 +103,8 @@ public class ServerModule extends Module {
 
         var builderTools = bind(LLMCallBuilderTools.class);
 
-        onStartup(toolRegistry::initialize);
+        var mcpConfig = property("mcp.servers.json").orElse(null);
+        onStartup(() -> toolRegistry.initialize(mcpConfig));
         onStartup(builderTools::initialize);
         onStartup(authService::initialize);
 

@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.api.server.session.SessionConfig;
+import ai.core.server.domain.ToolRef;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
 
@@ -22,7 +23,7 @@ public class SessionState {
     /** Full agent config snapshot — avoids needing AgentDefinitionService during rebuild. */
     public AgentConfigSnapshot agentConfig;
     public SessionConfig config;
-    public List<String> toolIds;
+    public List<ToolRef> tools;
     public List<String> skillIds;
     public List<String> subAgentIds;
 
@@ -39,6 +40,6 @@ public class SessionState {
         public Double temperature;
         public Integer maxTurns;
         public Boolean autoApproveAll;
-        public List<String> toolIds;
+        public List<ToolRef> tools;
     }
 }

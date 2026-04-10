@@ -43,8 +43,8 @@ public class AgentDefinition {
     @Field(name = "timeout_seconds")
     public Integer timeoutSeconds;
 
-    @Field(name = "tool_ids")
-    public List<String> toolIds;
+    @Field(name = "tools")
+    public List<ToolRef> tools;
 
     @Field(name = "skill_ids")
     public List<String> skillIds;

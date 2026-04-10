@@ -5,18 +5,21 @@ import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
+import ai.core.api.server.tool.ToolRefView;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.User;
 import ai.core.server.session.AgentSessionManager;
-import ai.core.tool.ToolCall;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -53,7 +56,7 @@ public class AgentDefinitionService {
             entity.maxTurns = request.maxTurns != null ? request.maxTurns : 20;
             entity.timeoutSeconds = request.timeoutSeconds != null ? request.timeoutSeconds : 600;
         }
-        entity.toolIds = request.toolIds;
+        entity.tools = request.tools != null ? toToolRefs(request.tools) : null;
         entity.inputTemplate = request.inputTemplate;
         entity.variables = request.variables;
         entity.type = request.type != null ? DefinitionType.valueOf(request.type) : DefinitionType.AGENT;
@@ -108,7 +111,7 @@ public class AgentDefinitionService {
         if (request.temperature != null) entity.temperature = request.temperature;
         if (request.maxTurns != null) entity.maxTurns = request.maxTurns;
         if (request.timeoutSeconds != null) entity.timeoutSeconds = request.timeoutSeconds;
-        if (request.toolIds != null) entity.toolIds = request.toolIds;
+        if (request.tools != null) entity.tools = toToolRefs(request.tools);
         if (request.inputTemplate != null) entity.inputTemplate = request.inputTemplate;
         if (request.variables != null) entity.variables = request.variables;
         if (request.responseSchema != null) entity.responseSchema = request.responseSchema;
@@ -130,7 +133,7 @@ public class AgentDefinitionService {
         config.temperature = entity.temperature;
         config.maxTurns = entity.maxTurns;
         config.timeoutSeconds = entity.timeoutSeconds;
-        config.toolIds = entity.toolIds;
+        config.tools = entity.tools;
         config.inputTemplate = entity.inputTemplate;
         config.variables = entity.variables;
         config.responseSchema = entity.responseSchema;
@@ -158,7 +161,9 @@ public class AgentDefinitionService {
         entity.temperature = agent.getTemperature();
         entity.maxTurns = 20;
         entity.timeoutSeconds = 600;
-        entity.toolIds = agent.getToolCalls().stream().map(ToolCall::getName).toList();
+        entity.tools = agent.getToolCalls().stream()
+                .map(tc -> ToolRef.fromLegacyToolId(tc.getName()))
+                .toList();
         entity.inputTemplate = request.inputTemplate;
         entity.type = DefinitionType.AGENT;
         entity.status = AgentStatus.DRAFT;
@@ -202,7 +207,7 @@ public class AgentDefinitionService {
         view.temperature = entity.temperature;
         view.maxTurns = entity.maxTurns;
         view.timeoutSeconds = entity.timeoutSeconds;
-        view.toolIds = entity.toolIds;
+        view.tools = toToolRefViews(entity.tools);
         view.inputTemplate = entity.inputTemplate;
         view.variables = entity.variables;
         view.webhookSecret = entity.webhookSecret;
@@ -220,6 +225,30 @@ public class AgentDefinitionService {
     private String resolveUserName(String userId) {
         if (userId == null) return null;
         return userCollection.get(userId).map(u -> u.name).orElse(userId);
+    }
+
+    private List<ToolRef> toToolRefs(List<ToolRefView> views) {
+        if (views == null || views.isEmpty()) {
+            return null;
+        }
+        return views.stream().map(v -> {
+            var ref = new ToolRef();
+            ref.id = v.id;
+            ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
+            ref.source = v.source;
+            return ref;
+        }).toList();
+    }
+
+    private List<ToolRefView> toToolRefViews(List<ToolRef> refs) {
+        if (refs == null) return null;
+        return refs.stream().map(ref -> {
+            var view = new ToolRefView();
+            view.id = ref.id;
+            view.type = ref.type != null ? ref.type.name() : null;
+            view.source = ref.source;
+            return view;
+        }).toList();
     }
 
 }

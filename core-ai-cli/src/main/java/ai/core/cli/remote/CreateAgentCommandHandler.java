@@ -53,9 +53,10 @@ public class CreateAgentCommandHandler {
         printField("Temperature", draft.get("temperature"));
         printField("Max Turns", draft.get("max_turns"));
 
-        var toolIds = (List<String>) draft.get("tool_ids");
-        if (toolIds != null && !toolIds.isEmpty()) {
-            printField("Tools", String.join(", ", toolIds));
+        var tools = (List<Map<String, Object>>) draft.get("tools");
+        if (tools != null && !tools.isEmpty()) {
+            var toolNames = tools.stream().map(t -> (String) t.get("id")).toList();
+            printField("Tools", String.join(", ", toolNames));
         }
 
         var systemPrompt = (String) draft.get("system_prompt");

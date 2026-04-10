@@ -139,6 +139,12 @@ export interface SystemPromptTestResult {
   resolvedPrompt: string;
 }
 
+export interface ToolRef {
+  id: string;
+  type?: string;
+  source?: string;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;
@@ -149,7 +155,7 @@ export interface AgentDefinition {
   temperature: number;
   max_turns: number;
   timeout_seconds: number;
-  tool_ids: string[];
+  tools: ToolRef[];
   input_template: string;
   variables: Record<string, string>;
   webhook_secret: string;

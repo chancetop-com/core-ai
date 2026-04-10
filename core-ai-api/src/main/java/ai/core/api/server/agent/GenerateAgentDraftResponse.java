@@ -1,5 +1,6 @@
 package ai.core.api.server.agent;
 
+import ai.core.api.server.tool.ToolRefView;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
@@ -31,6 +32,6 @@ public class GenerateAgentDraftResponse {
     @Property(name = "max_turns")
     public Integer maxTurns;
 
-    @Property(name = "tool_ids")
-    public List<String> toolIds;
+    @Property(name = "tools")
+    public List<ToolRefView> tools;
 }

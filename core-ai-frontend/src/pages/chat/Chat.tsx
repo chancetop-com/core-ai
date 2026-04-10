@@ -5,7 +5,7 @@ import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, Chevr
 import { sessionApi } from '../../api/session';
 import type { SseEvent } from '../../api/session';
 import { api } from '../../api/client';
-import type { AgentDefinition, ToolRegistryView, SkillDefinition } from '../../api/client';
+import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import ResourcePicker from './ResourcePicker';
 
 interface AwaitInfo {
@@ -398,10 +398,10 @@ export default function Chat() {
     }
 
     // Pass pre-selected tools/skills to session creation
-    const preToolIdsArr = Array.from(preToolIds);
+    const preToolIdsArr = Array.from(preToolIds).map(id => ({ id } as ToolRef));
     const preSkillIdsArr = Array.from(preSkillIds);
     const res = await sessionApi.create(selectedAgentId, {
-      tool_ids: preToolIdsArr.length > 0 ? preToolIdsArr : undefined,
+      tools: preToolIdsArr.length > 0 ? preToolIdsArr : undefined,
       skill_ids: preSkillIdsArr.length > 0 ? preSkillIdsArr : undefined,
     });
     const id = res.sessionId;
@@ -572,7 +572,7 @@ export default function Chat() {
     }
 
     try {
-      const res = await sessionApi.loadTools(sessionId, Array.from(selectedToolIds));
+      const res = await sessionApi.loadTools(sessionId, Array.from(selectedToolIds).map(id => ({ id } as ToolRef)));
       if (res.loaded_tools && res.loaded_tools.length > 0) {
         setLoadedToolIds(prev => {
           const next = new Set(prev);

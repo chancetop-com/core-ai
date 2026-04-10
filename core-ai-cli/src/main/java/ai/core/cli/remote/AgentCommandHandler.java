@@ -120,9 +120,10 @@ public class AgentCommandHandler {
         printField("Temperature", agent.get("temperature"));
         printField("Max Turns", agent.get("max_turns"));
         printField("Status", agent.get("status"));
-        var toolIds = (List<String>) agent.get("tool_ids");
-        if (toolIds != null && !toolIds.isEmpty()) {
-            printField("Tools", String.join(", ", toolIds));
+        var tools = (List<Map<String, Object>>) agent.get("tools");
+        if (tools != null && !tools.isEmpty()) {
+            var toolNames = tools.stream().map(t -> (String) t.get("id")).toList();
+            printField("Tools", String.join(", ", toolNames));
         }
         var prompt = (String) agent.get("system_prompt");
         if (prompt != null && !prompt.isBlank()) {

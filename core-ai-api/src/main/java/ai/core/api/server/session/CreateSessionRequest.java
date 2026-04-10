@@ -1,5 +1,6 @@
 package ai.core.api.server.session;
 
+import ai.core.api.server.tool.ToolRefView;
 import core.framework.api.json.Property;
 
 import java.util.List;
@@ -14,8 +15,8 @@ public class CreateSessionRequest {
     @Property(name = "config")
     public SessionConfig config;
 
-    @Property(name = "tool_ids")
-    public List<String> toolIds;
+    @Property(name = "tools")
+    public List<ToolRefView> tools;
 
     @Property(name = "skill_ids")
     public List<String> skillIds;

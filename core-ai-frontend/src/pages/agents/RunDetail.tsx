@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Bot, User, Wrench, Settings, Zap, Clock, Copy, Check } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentRunDetail, AgentDefinition } from '../../api/client';
+import type { AgentRunDetail, AgentDefinition, ToolRef } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 
 export default function RunDetail() {
@@ -196,15 +196,22 @@ export default function RunDetail() {
             </div>
           )}
 
-          {agent?.tool_ids && agent.tool_ids.length > 0 && (
+          {agent?.tools && agent.tools.length > 0 && (
             <div className="rounded-xl border p-4"
               style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-              <h3 className="font-medium text-sm mb-3">Tools ({agent.tool_ids.length})</h3>
+              <h3 className="font-medium text-sm mb-3">Tools ({agent.tools.length})</h3>
               <div className="space-y-1">
-                {agent.tool_ids.map(t => (
-                  <div key={t} className="flex items-center gap-2 text-xs">
+                {agent.tools.map((t: ToolRef) => (
+                  <div key={t.id} className="flex items-center gap-2 text-xs">
                     <Wrench size={12} style={{ color: '#f59e0b' }} />
-                    <span className="font-mono">{t}</span>
+                    <span className="font-mono">{t.id}</span>
+                    {t.type && (
+                      <span className="text-[10px] px-1 rounded"
+                        style={{ background: t.type === 'MCP' ? '#8b5cf615' : '#f59e0b15',
+                          color: t.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }}>
+                        {t.type}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

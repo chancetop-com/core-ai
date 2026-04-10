@@ -2,6 +2,8 @@ package ai.core.server.llmcall;
 
 import ai.core.llm.LLMProviders;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.ToolSourceType;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCall;
 import core.framework.inject.Inject;
@@ -28,6 +30,7 @@ public class LLMCallBuilderTools {
     }
 
     public List<ToolCall> tools() {
-        return toolRegistryService.resolveTools(List.of("builtin-llm-call-builder"));
+        var toolRef = new ToolRef("builtin-llm-call-builder", ToolSourceType.BUILTIN);
+        return toolRegistryService.resolveToolRefs(List.of(toolRef));
     }
 }

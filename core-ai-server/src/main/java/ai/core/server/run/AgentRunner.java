@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.llm.LLMProviders;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.tool.ToolCall;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
@@ -191,8 +192,14 @@ public class AgentRunner {
 
     private Agent buildAgent(AgentDefinition definition) {
         var config = definition.publishedConfig;
-        var toolIds = config != null ? config.toolIds : definition.toolIds;
-        var tools = toolRegistryService.resolveTools(toolIds);
+        List<ToolCall> tools;
+        if (config != null && config.tools != null && !config.tools.isEmpty()) {
+            tools = toolRegistryService.resolveToolRefs(config.tools);
+        } else if (definition.tools != null && !definition.tools.isEmpty()) {
+            tools = toolRegistryService.resolveToolRefs(definition.tools);
+        } else {
+            tools = List.of();
+        }
         var builder = Agent.builder()
             .llmProvider(llmProviders.getProvider())
             .toolCalls(tools);

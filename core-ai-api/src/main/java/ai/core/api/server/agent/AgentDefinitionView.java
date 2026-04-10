@@ -1,5 +1,6 @@
 package ai.core.api.server.agent;
 
+import ai.core.api.server.tool.ToolRefView;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
@@ -40,8 +41,8 @@ public class AgentDefinitionView {
     @Property(name = "timeout_seconds")
     public Integer timeoutSeconds;
 
-    @Property(name = "tool_ids")
-    public List<String> toolIds;
+    @Property(name = "tools")
+    public List<ToolRefView> tools;
 
     @Property(name = "input_template")
     public String inputTemplate;

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView } from '../../api/client';
+import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import StatusBadge from '../../components/StatusBadge';
 
@@ -93,7 +93,7 @@ export default function AgentEditor() {
         temperature: agent.temperature,
         max_turns: agent.max_turns,
         timeout_seconds: agent.timeout_seconds,
-        tool_ids: agent.tool_ids,
+        tools: agent.tools,
         input_template: agent.input_template,
         variables: agent.variables,
         response_schema: agent.response_schema,
@@ -290,7 +290,7 @@ export default function AgentEditor() {
   };
 
   const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
-    'max_turns', 'timeout_seconds', 'tool_ids', 'input_template', 'variables', 'response_schema'] as const;
+    'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema'] as const;
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -332,7 +332,7 @@ export default function AgentEditor() {
     const exportData = {
       name: a.name, description: a.description, type: a.type,
       system_prompt: a.system_prompt, model: a.model, temperature: a.temperature,
-      max_turns: a.max_turns, timeout_seconds: a.timeout_seconds, tool_ids: a.tool_ids,
+      max_turns: a.max_turns, timeout_seconds: a.timeout_seconds,         tools: a.tools,
       input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -406,9 +406,9 @@ export default function AgentEditor() {
             <p className="text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
               This will overwrite the current agent configuration with the imported data.
             </p>
-            {pendingImportData && pendingImportData.name != null && (
+            {!!(pendingImportData as Record<string, unknown>)?.name && (
               <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
-                Importing: <strong style={{ color: 'var(--color-text)' }}>{String(pendingImportData.name)}</strong>
+                Importing: <strong style={{ color: 'var(--color-text)' }}>{String(((pendingImportData as Record<string, unknown>)?.name as string) || '')}</strong>
               </p>
             )}
             <p className="text-sm mb-4" style={{ color: 'var(--color-warning, #f59e0b)' }}>
@@ -578,25 +578,25 @@ export default function AgentEditor() {
             </h3>
 
             {/* Selected tools */}
-            {agent.tool_ids && agent.tool_ids.length > 0 ? (
+            {agent.tools && agent.tools.length > 0 ? (
               <div className="flex flex-wrap gap-2 mb-3">
-                {agent.tool_ids.map(tid => {
-                  const tool = allTools.find(t => t.id === tid);
+                {agent.tools.map((toolRef: ToolRef) => {
+                  const tool = allTools.find(t => t.id === toolRef.id);
                   return (
-                    <span key={tid}
+                    <span key={toolRef.id}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
                       style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
                       <span className="w-1.5 h-1.5 rounded-full"
                         style={{ background: tool?.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }} />
-                      <span className="font-medium">{tool?.name || tid}</span>
-                      {tool?.type && (
+                      <span className="font-medium">{tool?.name || toolRef.id}</span>
+                      {(tool?.type || toolRef.type) && (
                         <span className="text-[10px] px-1 rounded"
-                          style={{ background: tool.type === 'MCP' ? '#8b5cf615' : '#f59e0b15',
-                            color: tool.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }}>
-                          {tool.type}
+                          style={{ background: (tool?.type || toolRef.type) === 'MCP' ? '#8b5cf615' : '#f59e0b15',
+                            color: (tool?.type || toolRef.type) === 'MCP' ? '#8b5cf6' : '#f59e0b' }}>
+                          {tool?.type || toolRef.type}
                         </span>
                       )}
-                      <button onClick={() => update('tool_ids', agent.tool_ids.filter((i: string) => i !== tid))}
+                      <button onClick={() => update('tools', agent.tools.filter((t: ToolRef) => t.id !== toolRef.id))}
                         className="cursor-pointer ml-0.5 rounded hover:bg-[var(--color-bg-tertiary)]"
                         style={{ color: 'var(--color-text-secondary)' }}>
                         <X size={12} />
@@ -622,11 +622,11 @@ export default function AgentEditor() {
                 <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
                   style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
                   {allTools
-                    .filter(t => !agent.tool_ids?.includes(t.id))
+                    .filter(t => !agent.tools?.some((tr: ToolRef) => tr.id === t.id))
                     .filter(t => t.name.toLowerCase().includes(toolSearch.toLowerCase()) || t.type?.toLowerCase().includes(toolSearch.toLowerCase()))
                     .map(t => (
                       <button key={t.id}
-                        onClick={() => { update('tool_ids', [...(agent.tool_ids || []), t.id]); setToolSearch(''); }}
+                        onClick={() => { update('tools', [...(agent.tools || []), { id: t.id, type: t.type, source: t.category }]); setToolSearch(''); }}
                         className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
                         style={{ borderBottom: '1px solid var(--color-border)' }}>
                         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -642,7 +642,7 @@ export default function AgentEditor() {
                         )}
                       </button>
                     ))}
-                  {allTools.filter(t => !agent.tool_ids?.includes(t.id))
+                  {allTools.filter(t => !agent.tools?.some((tr: ToolRef) => tr.id === t.id))
                     .filter(t => t.name.toLowerCase().includes(toolSearch.toLowerCase())).length === 0 && (
                     <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching tools</div>
                   )}

@@ -5,6 +5,7 @@ import ai.core.api.server.session.LoadSubAgentsRequest;
 import ai.core.api.server.session.LoadSubAgentsResponse;
 import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
+import ai.core.api.server.tool.ToolRefView;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.utils.JsonUtil;
@@ -275,7 +276,9 @@ public class RemoteSessionCommandHandler {
         }
         try {
             var request = new LoadToolsRequest();
-            request.toolIds = List.of(toolId);
+            var toolRef = new ToolRefView();
+            toolRef.id = toolId;
+            request.tools = List.of(toolRef);
             var resultJson = api.post("/api/sessions/" + sessionId + "/tools", request);
             if (resultJson == null) {
                 ui.showError("failed to load tool");
