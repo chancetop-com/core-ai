@@ -53,7 +53,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVTraceIndexes(),
             new SchemaMigrationVSkillIndexes(),
             new SchemaMigrationVSystemPromptIndexes(),
-            new SchemaMigrationVServiceApiIndexes()
+            new SchemaMigrationVServiceApiIndexes(),
+            new SchemaMigrationVMigrateToolIdsToTools()
         );
     }
 }
