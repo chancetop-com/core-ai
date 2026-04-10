@@ -114,7 +114,9 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         var result = toolResult.getResult();
 
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);
-        dispatcher.accept(ToolResultEvent.of(sessionId, callId, toolName, status, result));
+        var event = ToolResultEvent.of(sessionId, callId, toolName, status, result);
+        event.taskId = executionContext.getTaskId();
+        dispatcher.accept(event);
     }
 
     @SuppressWarnings("unchecked")

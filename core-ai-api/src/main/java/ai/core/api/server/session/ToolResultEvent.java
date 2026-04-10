@@ -36,6 +36,9 @@ public class ToolResultEvent implements AgentEvent {
     @Property(name = "result")
     public String result;
 
+    @Property(name = "taskId")
+    public String taskId;
+
     @Override
     public String sessionId() {
         return sessionId;

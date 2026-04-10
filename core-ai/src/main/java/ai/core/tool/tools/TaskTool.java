@@ -112,7 +112,7 @@ public class TaskTool extends ToolCall {
                     return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
                 });
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), subContext));
-                return ToolCallResult.asyncLaunched(taskId, handle.outputRef(), description)
+                return ToolCallResult.asyncLaunched(taskId, handle.outputRef(), description, subagentType)
                         .withDuration(System.currentTimeMillis() - startTime);
             } else {
                 var agent = createAgent(subagentType, context);

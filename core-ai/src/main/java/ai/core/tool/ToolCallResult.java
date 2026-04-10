@@ -50,7 +50,7 @@ public final class ToolCallResult {
         return r;
     }
 
-    public static ToolCallResult asyncLaunched(String taskId, String outputRef, String description) {
+    public static ToolCallResult asyncLaunched(String taskId, String outputRef, String description, String subagentType) {
         var r = new ToolCallResult();
         r.status = Status.ASYNC_LAUNCHED;
         r.taskId = taskId;
@@ -58,7 +58,8 @@ public final class ToolCallResult {
                 "status", "async_launched",
                 "taskId", taskId,
                 "outputRef", outputRef != null ? outputRef : "",
-                "description", description != null ? description : ""
+                "description", description != null ? description : "",
+                "subagentType", subagentType != null ? subagentType : ""
         ));
         return r;
     }
