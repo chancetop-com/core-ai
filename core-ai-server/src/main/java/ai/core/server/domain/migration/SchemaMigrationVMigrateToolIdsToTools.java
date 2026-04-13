@@ -30,7 +30,8 @@ public class SchemaMigrationVMigrateToolIdsToTools implements SchemaMigration {
         ));
 
         var findCmd = new Document("find", "agents")
-                .append("filter", filter);
+                .append("filter", filter)
+                .append("hint", new Document("$natural", 1));
 
         var result = mongo.runCommand(findCmd);
         var cursor = result.get("cursor", Document.class);
