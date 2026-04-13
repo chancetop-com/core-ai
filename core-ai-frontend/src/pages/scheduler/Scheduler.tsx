@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Calendar, Edit2, Trash2, X } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, AgentScheduleView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
-import CronEditor from './CronEditor';
+import CronEditor, { describeCron, isOnceCron } from './CronEditor';
 
 type ConcurrencyPolicy = 'SKIP' | 'QUEUE' | 'PARALLEL';
 
@@ -196,7 +196,17 @@ export default function Scheduler() {
                       <span className="font-medium">{agentMap[s.agent_id]?.name ?? s.agent_id}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs">{s.cron_expression}</td>
+                  <td className="px-4 py-3 text-xs">
+                    {isOnceCron(s.cron_expression) ? (
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                          style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#b45309' }}>ONCE</span>
+                        <span>{describeCron(s.cron_expression).replace(/^Once on /, '')}</span>
+                      </div>
+                    ) : (
+                      <span className="font-mono">{s.cron_expression}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{s.timezone}</td>
                   <td className="px-4 py-3">
                     <span className="px-2 py-0.5 rounded text-xs"
