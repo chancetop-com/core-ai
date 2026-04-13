@@ -96,6 +96,7 @@ export interface SessionSummary {
   user_id: string;
   last_trace_at: string;
   first_trace_at: string;
+  first_request: string;
 }
 
 export interface PromptTemplate {

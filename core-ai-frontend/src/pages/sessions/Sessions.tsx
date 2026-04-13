@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Zap, ChevronLeft, ChevronRight, Hash, AlertCircle, User } from 'lucide-react';
+import { Clock, Zap, ChevronLeft, ChevronRight, Hash, AlertCircle, User, MessageSquare } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SessionSummary } from '../../api/client';
 
@@ -66,14 +66,17 @@ export default function Sessions() {
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                 <span className="flex items-center gap-1"><AlertCircle size={14} /> Errors</span>
               </th>
+              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                <span className="flex items-center gap-1"><MessageSquare size={14} /> First Request</span>
+              </th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Last Active</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
+              <tr><td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
             ) : sessions.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No sessions found</td></tr>
+              <tr><td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>No sessions found</td></tr>
             ) : sessions.map(s => (
               <tr key={s.session_id}
                 onClick={() => navigate(`/?sessionId=${encodeURIComponent(s.session_id)}`)}
@@ -101,6 +104,11 @@ export default function Sessions() {
                   ) : (
                     <span style={{ color: 'var(--color-text-secondary)' }}>0</span>
                   )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="max-w-[200px] truncate text-xs" style={{ color: 'var(--color-text-secondary)' }} title={s.first_request}>
+                    {s.first_request}
+                  </div>
                 </td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.last_trace_at)}</td>
               </tr>

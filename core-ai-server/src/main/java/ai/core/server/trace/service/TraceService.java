@@ -127,6 +127,7 @@ public class TraceService {
                 long totalDuration = traces.stream().mapToLong(t -> t.durationMs != null ? t.durationMs : 0).sum();
                 long errorCount = traces.stream().filter(t -> t.status == TraceStatus.ERROR).count();
                 var latestTrace = traces.getFirst();
+                var firstTrace = traces.getLast();
                 Map<String, Object> session = new java.util.LinkedHashMap<>();
                 session.put("session_id", entry.getKey());
                 session.put("trace_count", traces.size());
@@ -135,7 +136,8 @@ public class TraceService {
                 session.put("error_count", errorCount);
                 session.put("user_id", latestTrace.userId);
                 session.put("last_trace_at", latestTrace.createdAt);
-                session.put("first_trace_at", traces.getLast().createdAt);
+                session.put("first_trace_at", firstTrace.createdAt);
+                session.put("first_request", firstTrace.input);
                 return session;
             })
             .sorted((a, b) -> ((ZonedDateTime) b.get("last_trace_at")).compareTo((ZonedDateTime) a.get("last_trace_at")))
