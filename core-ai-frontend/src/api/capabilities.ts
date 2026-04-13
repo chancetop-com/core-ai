@@ -29,7 +29,15 @@ export async function fetchCapabilities(): Promise<Capabilities> {
     const res = await fetch('/api/capabilities');
     if (!res.ok) return defaultCapabilities;
     const caps = await res.json();
-    return { ...defaultCapabilities, ...caps, systemPrompts: caps.systemPrompts ?? caps.prompts ?? false };
+    return {
+      ...defaultCapabilities,
+      chat: caps.chat ?? true,
+      traces: caps.traces ?? true,
+      prompts: caps.prompts ?? true,
+      dashboard: caps.dashboard ?? true,
+      systemPrompts: caps.systemPrompts ?? caps.prompts ?? false,
+      authRequired: caps.auth_required ?? true,
+    };
   } catch {
     return defaultCapabilities;
   }

@@ -242,7 +242,8 @@ export default function Chat() {
   // Load published agents
   useEffect(() => {
     api.agents.list().then(res => {
-      const published = (res.agents || []).filter(a => a.status === 'PUBLISHED' && a.type === 'AGENT');
+      // Include both AGENT type (normal) and local type (CLI mode)
+      const published = (res.agents || []).filter(a => a.status === 'PUBLISHED' && (a.type === 'AGENT' || a.type === 'local'));
       setAgents(published);
       if (published.length > 0) {
         setSelectedAgentId(prev => prev || published[0].id);
