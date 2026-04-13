@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Calendar, Edit2, Trash2, X } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, AgentScheduleView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
+import CronEditor from './CronEditor';
 
 type ConcurrencyPolicy = 'SKIP' | 'ALLOW' | 'REPLACE';
 
@@ -15,13 +16,6 @@ interface EditorState {
   concurrencyPolicy: ConcurrencyPolicy;
   enabled: boolean;
 }
-
-const CRON_PRESETS: Array<{ label: string; value: string }> = [
-  { label: 'Every 5 min', value: '*/5 * * * *' },
-  { label: 'Hourly', value: '0 * * * *' },
-  { label: 'Daily 00:00', value: '0 0 * * *' },
-  { label: 'Weekdays 09:00', value: '0 9 * * 1-5' },
-];
 
 const TIMEZONES = ['UTC', 'Asia/Shanghai', 'Asia/Tokyo', 'America/New_York', 'America/Los_Angeles', 'Europe/London'];
 
@@ -263,22 +257,9 @@ export default function Scheduler() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Cron Expression</label>
-                <input value={editor.cronExpression}
-                  onChange={e => setEditor({ ...editor, cronExpression: e.target.value })}
-                  placeholder="0 * * * *"
-                  className="w-full px-3 py-2 rounded-lg border text-sm font-mono"
-                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {CRON_PRESETS.map(p => (
-                    <button key={p.value} type="button"
-                      onClick={() => setEditor({ ...editor, cronExpression: p.value })}
-                      className="px-2 py-1 rounded text-xs border cursor-pointer"
-                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Schedule</label>
+                <CronEditor value={editor.cronExpression}
+                  onChange={cron => setEditor({ ...editor, cronExpression: cron })} />
               </div>
 
               <div>
