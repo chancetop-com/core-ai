@@ -4,7 +4,7 @@ import { api } from '../../api/client';
 import type { AgentDefinition, AgentScheduleView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
 import CronEditor from './CronEditor';
 
-type ConcurrencyPolicy = 'SKIP' | 'ALLOW' | 'REPLACE';
+type ConcurrencyPolicy = 'SKIP' | 'QUEUE' | 'PARALLEL';
 
 interface EditorState {
   open: boolean;
@@ -275,7 +275,7 @@ export default function Scheduler() {
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Concurrency Policy</label>
                 <div className="flex gap-2">
-                  {(['SKIP', 'ALLOW', 'REPLACE'] as ConcurrencyPolicy[]).map(p => (
+                  {(['SKIP', 'QUEUE', 'PARALLEL'] as ConcurrencyPolicy[]).map(p => (
                     <button key={p} type="button"
                       onClick={() => setEditor({ ...editor, concurrencyPolicy: p })}
                       className="flex-1 px-3 py-2 rounded-lg border text-xs cursor-pointer"
@@ -289,7 +289,7 @@ export default function Scheduler() {
                   ))}
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  SKIP: drop tick if previous still running. ALLOW: run in parallel. REPLACE: cancel previous.
+                  SKIP: drop tick if previous still running. QUEUE: wait and run after. PARALLEL: run in parallel.
                 </p>
               </div>
 
