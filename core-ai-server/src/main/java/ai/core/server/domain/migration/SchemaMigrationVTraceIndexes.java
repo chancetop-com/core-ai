@@ -11,7 +11,7 @@ import core.framework.mongo.Mongo;
 public class SchemaMigrationVTraceIndexes implements SchemaMigration {
     @Override
     public String version() {
-        return "20260313001";
+        return "20260314001";
     }
 
     @Override
@@ -31,6 +31,9 @@ public class SchemaMigrationVTraceIndexes implements SchemaMigration {
         mongo.createIndex("spans", Indexes.ascending("span_id"), new IndexOptions().unique(true));
         mongo.createIndex("spans", Indexes.ascending("parent_span_id"));
         mongo.createIndex("spans", Indexes.descending("created_at"));
+        // support /api/traces/generations query: filter by type, sort by started_at
+        mongo.createIndex("spans", Indexes.compoundIndex(Indexes.ascending("type"), Indexes.descending("started_at")));
+        mongo.createIndex("spans", Indexes.compoundIndex(Indexes.ascending("type"), Indexes.ascending("trace_id"), Indexes.descending("started_at")));
 
         mongo.createIndex("prompt_templates", Indexes.ascending("name"));
         mongo.createIndex("prompt_templates", Indexes.ascending("status"));
