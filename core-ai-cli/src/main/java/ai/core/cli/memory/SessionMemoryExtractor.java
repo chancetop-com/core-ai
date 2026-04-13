@@ -27,6 +27,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -180,14 +182,16 @@ public class SessionMemoryExtractor {
 
     private void writeMemoriesViaAgent(List<ExtractedMemory> memories) {
         if (memories.isEmpty()) return;
+        String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
         String prompt = String.format(Prompts.MEMORY_WRITER_PROMPT,
                 memoryDir.toAbsolutePath(),
                 indexPath.toAbsolutePath(),
-                JsonUtil.toJson(memories));
-        runAgent(prompt, "memory-writer", BuiltinTools.FILE_OPERATIONS, buildWriterSystemPrompt());
+                JsonUtil.toJson(memories),
+                currentDateTime);
+        runAgent(prompt, "memory-writer", BuiltinTools.FILE_OPERATIONS, buildWriterSystemPrompt(currentDateTime));
     }
 
-    private String buildWriterSystemPrompt() {
+    private String buildWriterSystemPrompt(String currentDateTime) {
         String index = indexPath.toAbsolutePath().toString();
         String topics = memoryDir.toAbsolutePath().toString();
         String existing = memoryProvider.load();
@@ -203,21 +207,29 @@ public class SessionMemoryExtractor {
                 <memories>
                 %s
                 </memories>
-                """.formatted(index, topics, existing.isBlank() ? "(empty)" : existing);
+
+                Current datetime: %s
+                """.formatted(index, topics, existing.isBlank() ? "(empty)" : existing, currentDateTime);
     }
 
     private void promotePendingLearnings() {
         if (!Files.isDirectory(learningsDir)) return;
+        String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
         String prompt = String.format(Prompts.LEARNINGS_PROMOTER_PROMPT,
                 learningsDir.toAbsolutePath(),
                 memoryDir.toAbsolutePath(),
-                indexPath.toAbsolutePath());
+                indexPath.toAbsolutePath(),
+                currentDateTime);
         var tools = new java.util.ArrayList<>(BuiltinTools.FILE_OPERATIONS);
         tools.add(SkillTool.builder()
                 .sources(skillSources)
                 .workspaceDir(memoryDir.getParent().toAbsolutePath().toString())
                 .build());
-        runAgent(prompt, "learnings-promoter", tools, null);
+        runAgent(prompt, "learnings-promoter", tools, buildPromoterSystemPrompt(currentDateTime));
+    }
+
+    private String buildPromoterSystemPrompt(String currentDateTime) {
+        return "Current datetime: " + currentDateTime;
     }
 
     private void runAgent(String prompt, String agentName, List<ai.core.tool.ToolCall> tools, String systemPrompt) {

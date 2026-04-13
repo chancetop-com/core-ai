@@ -136,6 +136,8 @@ public class Prompts {
 
                New file → add row with current datetime; existing file → update Updated only.
                Description: use the `description` field from the file's YAML frontmatter.
+
+            IMPORTANT: Use the current datetime "%s" for all date fields (Created/Updated columns).
             """;
 
     public static final String LEARNINGS_PROMOTER_PROMPT = """
@@ -149,6 +151,8 @@ public class Prompts {
             1. Call use_skill("self-improvement") to load the skill instructions
             2. Follow the skill's promotion guidelines to identify and promote worthy entries
             3. Remove promoted sections from the source learning files
+
+            IMPORTANT: Use the current datetime "%s" for all date fields (Created/Updated columns).
             """;
 
     public static final String DEFAULT_REFLECTION_CONTINUE_TEMPLATE = """
