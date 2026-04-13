@@ -369,13 +369,24 @@ export default function Chat() {
       (err) => {
         console.error('SSE error:', err);
         sseControllerRef.current = null;
+        const msg = err instanceof Error ? err.message : String(err);
+        showToast(`Connection lost: ${msg}. Please retry.`);
+        setStatus('idle');
+        setMessages(prev => {
+          if (prev.length === 0) return prev;
+          const last = prev[prev.length - 1];
+          if (last.role !== 'agent' || last.content || last.thinking) return prev;
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...last, content: `Error: ${msg}` };
+          return updated;
+        });
       },
       () => {
         sseControllerRef.current = null;
       },
     );
     sseControllerRef.current = controller;
-  }, [handleSSEEvent]);
+  }, [handleSSEEvent, showToast]);
 
   // Only useEffect manages SSE lifecycle - prevents double connections
   useEffect(() => {
@@ -440,13 +451,15 @@ export default function Chat() {
       const sid = await ensureSession();
       await sessionApi.sendMessage(sid, text);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       setMessages(prev => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
-        if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: `Error: ${err}` };
+        if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: `Error: ${msg}` };
         return updated;
       });
       setStatus('idle');
+      showToast(`Send failed: ${msg}. Please retry.`);
     }
   };
 
