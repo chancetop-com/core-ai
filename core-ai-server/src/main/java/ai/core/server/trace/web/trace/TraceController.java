@@ -7,6 +7,7 @@ import core.framework.web.Request;
 import core.framework.web.Response;
 
 import ai.core.server.trace.service.TraceService;
+import ai.core.utils.JsonUtil;
 
 import java.time.ZonedDateTime;
 
@@ -14,7 +15,7 @@ import java.time.ZonedDateTime;
  * @author Xander
  */
 public class TraceController {
-    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final ObjectMapper MAPPER = JsonUtil.OBJECT_MAPPER;
 
     @Inject
     TraceService traceService;

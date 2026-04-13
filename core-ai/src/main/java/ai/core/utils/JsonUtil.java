@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.introspect.VisibilityChecker;
+import com.fasterxml.jackson.databind.util.StdDateFormat;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import ai.core.internal.json.CoreAiAnnotationIntrospector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,8 +26,27 @@ import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.PUBLIC_
 public class JsonUtil {
     private static final Logger LOGGER = LoggerFactory.getLogger(JsonUtil.class);
 
-    public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL).setVisibility(new VisibilityChecker.Std(NONE, NONE, NONE, NONE, PUBLIC_ONLY)).setAnnotationIntrospector(new CoreAiAnnotationIntrospector()).configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    public static final ObjectMapper OBJECT_MAPPER_NOT_ONLY_PUBLIC = new ObjectMapper().setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL).setAnnotationIntrospector(new CoreAiAnnotationIntrospector()).configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    public static final ObjectMapper OBJECT_MAPPER = createObjectMapper();
+    public static final ObjectMapper OBJECT_MAPPER_NOT_ONLY_PUBLIC = createObjectMapperNotOnlyPublic();
+
+    private static ObjectMapper createObjectMapper() {
+        return new ObjectMapper()
+            .setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL)
+            .setVisibility(new VisibilityChecker.Std(NONE, NONE, NONE, NONE, PUBLIC_ONLY))
+            .setAnnotationIntrospector(new CoreAiAnnotationIntrospector())
+            .registerModule(new JavaTimeModule())
+            .setDateFormat(new StdDateFormat())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
+
+    private static ObjectMapper createObjectMapperNotOnlyPublic() {
+        return new ObjectMapper()
+            .setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL)
+            .setAnnotationIntrospector(new CoreAiAnnotationIntrospector())
+            .registerModule(new JavaTimeModule())
+            .setDateFormat(new StdDateFormat())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
 
     public static String toJson(Object instance) {
         if (instance == null) {
