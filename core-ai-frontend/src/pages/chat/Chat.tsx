@@ -357,6 +357,12 @@ export default function Chat() {
     }
   }, []);
 
+  // Show a brief toast notification
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
   // Connect SSE - single source of truth
   const doConnectSSE = useCallback((sid: string) => {
     if (sseControllerRef.current) {
@@ -502,12 +508,6 @@ export default function Chat() {
     sessionStorage.removeItem('chat_messages');
     sessionStorage.removeItem('chat_sessionId');
   };
-
-  // Show a brief toast notification
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  }, []);
 
   // Fetch available tools for picker
   const fetchTools = useCallback(async () => {
