@@ -3,6 +3,7 @@ package ai.core.cli.ui;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.cli.DebugLog;
 import ai.core.cli.log.CliLogger;
+import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.Reference;
@@ -305,7 +306,7 @@ public class TerminalUI {
             return line;
         } catch (org.jline.reader.UserInterruptException e) {
             return "/exit";
-        } catch (org.jline.reader.EndOfFileException e) {
+        } catch (EndOfFileException | IllegalStateException e) {
             return null;
         }
     }

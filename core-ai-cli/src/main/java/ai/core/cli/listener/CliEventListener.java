@@ -179,9 +179,6 @@ public class CliEventListener extends BaseEventListener {
                         }
                         // It was part of an escape sequence, drain the rest
                         drainEscapeSequence(reader, next);
-                    } else if (ch != NonBlockingReader.EOF) {
-                        // Some other key was pressed, discard it
-                        LOGGER.debug("ESC reader: discarded ch={}", ch);
                     }
                 }
             } catch (Exception e) {
