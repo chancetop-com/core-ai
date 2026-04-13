@@ -23,6 +23,10 @@ public interface AgentScheduleWebService {
     AgentScheduleView create(CreateScheduleRequest request);
 
     @GET
+    @Path("/api/schedules")
+    ListSchedulesResponse list();
+
+    @GET
     @Path("/api/schedules/agent/:agentId/list")
     ListSchedulesResponse listByAgent(@PathParam("agentId") String agentId);
 

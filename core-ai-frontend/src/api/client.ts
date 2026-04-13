@@ -397,6 +397,39 @@ export interface ListServiceApiResponse {
   service_apis: ServiceApiView[];
 }
 
+export interface AgentScheduleView {
+  id: string;
+  agent_id: string;
+  cron_expression: string;
+  timezone: string;
+  enabled: boolean;
+  input: string;
+  concurrency_policy: string;
+  next_run_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListSchedulesResponse {
+  schedules: AgentScheduleView[];
+}
+
+export interface CreateScheduleRequest {
+  agent_id: string;
+  cron_expression: string;
+  timezone?: string;
+  input?: string;
+  concurrency_policy?: string;
+}
+
+export interface UpdateScheduleRequest {
+  cron_expression?: string;
+  timezone?: string;
+  enabled?: boolean;
+  input?: string;
+  concurrency_policy?: string;
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -546,5 +579,17 @@ export const api = {
       request<void>(`/api/service-api/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: true, operator }) }),
     disable: (id: string, operator: string) =>
       request<void>(`/api/service-api/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: false, operator }) }),
+  },
+  schedules: {
+    list: () =>
+      request<ListSchedulesResponse>('/api/schedules'),
+    listByAgent: (agentId: string) =>
+      request<ListSchedulesResponse>(`/api/schedules/agent/${agentId}/list`),
+    create: (data: CreateScheduleRequest) =>
+      request<AgentScheduleView>('/api/schedules', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: UpdateScheduleRequest) =>
+      request<AgentScheduleView>(`/api/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/api/schedules/${id}`, { method: 'DELETE' }),
   },
 };

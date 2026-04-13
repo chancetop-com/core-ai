@@ -51,6 +51,13 @@ public class AgentScheduleService {
         return response;
     }
 
+    public ListSchedulesResponse list() {
+        var schedules = agentScheduleCollection.find(Filters.empty());
+        var response = new ListSchedulesResponse();
+        response.schedules = schedules.stream().map(this::toView).toList();
+        return response;
+    }
+
     public AgentScheduleView update(String id, UpdateScheduleRequest request) {
         var entity = agentScheduleCollection.get(id)
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));

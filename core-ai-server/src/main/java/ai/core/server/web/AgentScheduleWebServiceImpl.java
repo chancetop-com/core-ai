@@ -28,6 +28,11 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     }
 
     @Override
+    public ListSchedulesResponse list() {
+        return agentScheduleService.list();
+    }
+
+    @Override
     public ListSchedulesResponse listByAgent(String agentId) {
         return agentScheduleService.listByAgent(agentId);
     }
