@@ -1,11 +1,8 @@
 package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
-import ai.core.cli.command.McpCommandHandler;
 import ai.core.cli.command.MemoryCommandHandler;
 import ai.core.cli.command.ReplCommandHandler;
-import ai.core.cli.command.SkillCommandHandler;
-import ai.core.cli.remote.RemoteCommandHandler;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.ui.AnsiTheme;
@@ -36,15 +33,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * @author stephen
- */
 public class AgentSessionRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionRunner.class);
 
@@ -64,6 +57,7 @@ public class AgentSessionRunner {
     private final SessionPersistence sessionPersistence;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
+    private ReplCommandHandler commands;
 
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
         this.ui = ui;
@@ -85,7 +79,7 @@ public class AgentSessionRunner {
         session.onEvent(listener);
         setupCompressionListener(listener);
 
-        var commands = new ReplCommandHandler(ui);
+        commands = new ReplCommandHandler(ui);
         BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
         Semaphore readyForInput = new Semaphore(1);
 
@@ -93,14 +87,16 @@ public class AgentSessionRunner {
         extractPreviousSession();
         printSessionHistory();
         startSenderThread(messageQueue, listener, session, readyForInput);
-        readInputLoop(commands, messageQueue, readyForInput);
+        readInputLoop(messageQueue, readyForInput);
 
         session.close();
         return switchSessionId.get();
     }
     private void extractPreviousSession() {
-        new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel(), sessionPersistence)
-                .extractPreviousSessionAsync(sessionId, ui);
+        var extractor = new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel(), sessionPersistence);
+        if (!extractor.hasPendingSessions(sessionId)) return;
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Extracting memories from last session..." + AnsiTheme.RESET + "\n");
+        extractor.extractPreviousSessionAsync(sessionId, () -> extractor.reloadAgentMemorySection(agent));
     }
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
@@ -152,7 +148,9 @@ public class AgentSessionRunner {
         senderThread.setDaemon(true);
         senderThread.start();
     }
-    private void readInputLoop(ReplCommandHandler commands, BlockingQueue<String> queue, Semaphore readyForInput) {
+
+    private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {
+        var dispatcher = new CommandDispatcher(ui, this, switchSessionId, remoteConfig, commands, memoryCommand);
         boolean showFrame = true;
         while (true) {
             try {
@@ -175,7 +173,7 @@ public class AgentSessionRunner {
             }
             var trimmed = input.trim();
             if (trimmed.startsWith("/")) {
-                dispatchCommand(trimmed, commands, queue);
+                dispatcher.dispatch(trimmed, queue);
                 showFrame = true;
                 if (switchSessionId.get() != null || remoteConfig.get() != null) break;
                 readyForInput.release();
@@ -186,54 +184,15 @@ public class AgentSessionRunner {
             queue.offer(FileReferenceExpander.expand(expanded));
         }
     }
-    private void dispatchCommand(String trimmed, ReplCommandHandler commands, BlockingQueue<String> queue) {
-        var lower = trimmed.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("/model ")) {
-            switchModel(getCurrentModelName(), trimmed.split("\\s+", 2)[1].trim(), null);
-        } else if ("/model".equals(lower) || "/models".equals(lower)) {
-            showModelPicker();
-        } else if ("/stats".equals(lower)) {
-            handleStats();
-        } else if ("/tools".equals(lower)) {
-            handleTools();
-        } else if ("/copy".equals(lower)) {
-            handleCopy();
-        } else if ("/undo".equals(lower)) {
-            handleUndo();
-        } else if ("/compact".equals(lower)) {
-            handleCompact();
-        } else if (lower.startsWith("/export")) {
-            handleExport(trimmed);
-        } else if (lower.startsWith("/memory")) {
-            memoryCommand.handle(trimmed);
-        } else if ("/skill".equals(lower) || "/skills".equals(lower)) {
-            new SkillCommandHandler(ui).handle();
-        } else if (lower.startsWith("/skill ")) {
-            String content = new SkillCommandHandler(ui).loadSkillContent(trimmed.substring(7).trim());
-            if (content != null) queue.offer(content);
-        } else if ("/mcp".equals(lower)) {
-            new McpCommandHandler(ui).handle();
-        } else if ("/resume".equals(lower)) {
-            String picked = showSessionPicker();
-            if (picked != null) {
-                switchSessionId.set(picked);
-                queue.offer(POISON_PILL);
-            }
-        } else if ("/remote".equals(lower)) {
-            var config = new RemoteCommandHandler(ui).handle();
-            if (config != null) {
-                remoteConfig.set(config);
-                queue.offer(POISON_PILL);
-            }
-        } else {
-            commands.handle(trimmed);
-        }
-    }
-    private void showModelPicker() {
+
+    void showModelPicker() {
         String currentModel = getCurrentModelName();
         var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
         ui.printStreamingChunk("\n  " + AnsiTheme.PROMPT + "Current model: " + AnsiTheme.RESET + currentModel + "\n\n");
-        var entries = buildModelEntryList(currentModel);
+        var entries = new java.util.ArrayList<>(modelRegistry.getAllEntries());
+        if (entries.stream().noneMatch(e -> e.model().equals(currentModel))) {
+            entries.addFirst(new ModelRegistry.ModelEntry(currentModel, modelRegistry.getProviderType(currentModel)));
+        }
         for (int i = 0; i < entries.size(); i++) {
             var entry = entries.get(i);
             String providerTag = AnsiTheme.MUTED + " [" + entry.providerType().getName() + "]" + AnsiTheme.RESET;
@@ -277,14 +236,8 @@ public class AgentSessionRunner {
             switchModel(currentModel, input, null);
         }
     }
-    private List<ModelRegistry.ModelEntry> buildModelEntryList(String currentModel) {
-        var entries = new java.util.ArrayList<>(modelRegistry.getAllEntries());
-        if (entries.stream().noneMatch(e -> e.model().equals(currentModel))) {
-            entries.addFirst(new ModelRegistry.ModelEntry(currentModel, modelRegistry.getProviderType(currentModel)));
-        }
-        return entries;
-    }
-    private void switchModel(String currentModel, String newModel, LLMProviderType providerType) {
+
+    void switchModel(String currentModel, String newModel, LLMProviderType providerType) {
         var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
         if (currentModel.equals(newModel) && (providerType == null || providerType == currentProviderType)) {
             ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Already using " + newModel + AnsiTheme.RESET + "\n\n");
@@ -301,11 +254,11 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model switched: "
                 + currentModel + " → " + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
     }
-    private String getCurrentModelName() {
+    String getCurrentModelName() {
         return agent.getModel() != null ? agent.getModel() : agent.getLLMProvider().config.getModel();
     }
 
-    private void handleStats() {
+    void handleStats() {
         var u = agent.getCurrentTokenUsage();
         String model = getCurrentModelName();
         int turns = (int) agent.getMessages().stream().filter(m -> m.role == RoleType.USER).count();
@@ -313,7 +266,7 @@ public class AgentSessionRunner {
                 AnsiTheme.PROMPT, AnsiTheme.RESET, model, sessionId, turns, (long) u.getTotalTokens(), (long) u.getPromptTokens(), (long) u.getCompletionTokens(), agent.getToolCalls().size()));
     }
 
-    private void handleTools() {
+    void handleTools() {
         var tools = agent.getToolCalls();
         ui.printStreamingChunk(String.format("%n  %sAvailable Tools (%d)%s%n", AnsiTheme.PROMPT, tools.size(), AnsiTheme.RESET));
         for (var tool : tools) {
@@ -324,7 +277,7 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n");
     }
 
-    private void handleExport(String trimmed) {
+    void handleExport(String trimmed) {
         String[] parts = trimmed.split("\\s+", 2);
         String filePath = parts.length > 1 ? parts[1].trim() : "session-" + sessionId + ".md";
         var sb = new StringBuilder(4096);
@@ -340,7 +293,7 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
-    private void handleCopy() {
+    void handleCopy() {
         var messages = agent.getMessages();
         String lastAssistant = null;
         for (int i = messages.size() - 1; i >= 0; i--) {
@@ -369,15 +322,14 @@ public class AgentSessionRunner {
         compression.setListener((beforeCount, afterCount, completed) -> {
             panel.stopSpinnerIfActive();
             String msg = completed
-                ? "\n  " + AnsiTheme.SUCCESS + "\u2726" + AnsiTheme.RESET + AnsiTheme.MUTED + " Compressed: " + beforeCount + " \u2192 " + afterCount + " messages" + AnsiTheme.RESET + "\n"
-                : "\n  " + AnsiTheme.MUTED + "\u2726 Compressing " + afterCount + " messages..." + AnsiTheme.RESET;
+                    ? "\n  " + AnsiTheme.SUCCESS + "\u2726" + AnsiTheme.RESET + AnsiTheme.MUTED + " Compressed: " + beforeCount + " \u2192 " + afterCount + " messages" + AnsiTheme.RESET + "\n"
+                    : "\n  " + AnsiTheme.MUTED + "\u2726 Compressing " + afterCount + " messages..." + AnsiTheme.RESET;
             ui.printStreamingChunk(msg);
             panel.startSpinner();
         });
     }
 
-    @SuppressWarnings("PMD.CompareObjectsWithEquals")
-    private void handleCompact() {
+    void handleCompact() {
         var messages = agent.getMessages();
         var compression = agent.getCompression();
         if (messages.size() <= 4 || compression == null) {
@@ -387,7 +339,7 @@ public class AgentSessionRunner {
         int beforeCount = messages.size();
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Compacting...\n" + AnsiTheme.RESET);
         var compressed = compression.forceCompress(messages);
-        if (compressed == messages) {
+        if (compressed.equals(messages)) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  Nothing to compact.\n" + AnsiTheme.RESET);
             return;
         }
@@ -397,7 +349,7 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Compacted: "
                 + beforeCount + " → " + messages.size() + " messages\n\n");
     }
-    private void handleUndo() {
+    void handleUndo() {
         var messages = agent.getMessages();
         int idx = messages.size() - 1;
         while (idx >= 0 && messages.get(idx).role != RoleType.USER) idx--;
@@ -414,7 +366,7 @@ public class AgentSessionRunner {
                 + " message(s): " + AnsiTheme.MUTED + preview + AnsiTheme.RESET + "\n\n");
     }
 
-    private String showSessionPicker() {
+    String showSessionPicker() {
         var sessions = sessionManager.listSessions();
         if (sessions.isEmpty()) {
             ui.printStreamingChunk(AnsiTheme.MUTED + "No saved sessions found." + AnsiTheme.RESET + "\n");

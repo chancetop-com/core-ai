@@ -58,26 +58,97 @@ public class Prompts {
             Output summary directly:
             """;
     public static final String MEMORY_EXTRACTION_PROMPT = """
-            Analyze the following conversation and extract memorable information about the user.
+            You are analyzing a conversation between a user and an AI coding assistant.
+            Extract knowledge that will make the assistant more effective in future sessions on this project.
+
+            EXTRACT these types (use the exact type string):
+            - "feedback": The user corrected the assistant, said "no"/"don't"/"stop doing X", or explicitly validated a non-obvious approach. \
+            Format content as: "<The rule>. **Why:** <reason given>. **How to apply:** <when this kicks in>."
+            - "user": The user's technical expertise, role, workflow preferences, or tool choices that affect how to collaborate.
+            - "project": Non-obvious project facts, architectural decisions, constraints, or ongoing work context not derivable from code.
+            - "reference": Locations of key files, external systems, docs, dashboards, or named resources the user pointed to.
+
+            DO NOT extract:
+            - Step-by-step execution history ("user ran X then Y")
+            - Information already obvious from reading the code
+            - One-off task details with no future relevance
+            - Small talk or greetings
+
+            For each memory:
+            - "content": concise standalone statement (feedback type: follow the rule/Why/How-to-apply structure)
+            - "type": one of "user", "feedback", "project", "reference"
+            - "topic": broad 2–4 word kebab-case label (e.g. "memory-management", "self-improvement", "coding-conventions"). \
+            Semantically related knowledge MUST share the same topic — it will be merged into one file. \
+            Avoid fine-grained per-fact topics; prefer broader themes that group related rules together.
+            - "importance": 0.0–1.0 (skip anything below 0.6)
+
+            TOPIC GROUPING RULES (critical):
+            - All feedback about memory indexing, aggregation, or description writing → topic: "memory-management"
+            - All feedback about code style, naming, or comments → topic: "coding-conventions"
+            - All project facts about the self-improvement system, learnings workflow, or session extraction → topic: "self-improvement"
+            - When in doubt: fewer, broader topics are better than many narrow ones.
+
+            Return [] if nothing is worth preserving.
 
             Conversation:
             %s
 
-            Return a JSON array of extracted memories. Each memory should have:
-            - "content": the extracted information as a clear, standalone statement
-            - "importance": a number from 0.0 to 1.0 indicating how important this information is for future interactions
-
-            Guidelines for importance:
-            - 0.9-1.0: Critical personal info (name, core preferences, important goals)
-            - 0.7-0.8: Useful context (occupation, interests, ongoing projects)
-            - 0.5-0.6: Nice to know (casual mentions, minor preferences)
-            - Below 0.5: Skip - not worth storing
-
-            Only extract meaningful, non-trivial information. Skip greetings and small talk.
-            If no meaningful information can be extracted, return an empty array: []
-
             Response format:
-            [{"content": "...", "importance": 0.8}, ...]
+            [{"content": "...", "type": "feedback", "topic": "memory-management", "importance": 0.8}, ...]
+            """;
+
+    public static final String MEMORY_WRITER_PROMPT = """
+            Write the following extracted memories into the project memory files.
+
+            Memory directory: %s
+            Memory index: %s
+
+            Extracted memories (JSON):
+            %s
+
+            Rules (CRITICAL — read all before writing):
+            - The existing memory files and their content are already loaded in your system prompt context.
+            - Prefer merging into an existing file over creating a new one. \
+            Check context first: if any existing file covers the same semantic area, append there.
+            - Only create a new file when no existing file covers the same topic area.
+            - Keep the total number of memory files small; high knowledge density per file is the goal.
+
+            Step 1 — consolidate within this batch before any file I/O:
+            - Group all entries by their target file ({type}-{topic}.md).
+            - Multiple entries sharing the same topic must be written to the same file in one operation.
+            - Entries with different topics but the same semantic area should also be merged into one file.
+
+            Step 2 — for each consolidated group:
+            1. Check existing memories in your context to find a semantically matching file (same type and related subject)
+            2. If match found: append all group bullets to that file (skip duplicates), update Updated in index
+            3. If no match: create {memory_dir}/{type}-{topic}.md with frontmatter:
+               ---
+               name: {topic}
+               description: {type} memories — {topic}
+               type: {type}
+               ---
+               Then append all group bullets.
+            4. Update MEMORY.md index (create if missing):
+               # Memory Index
+
+               | File | Description | Created | Updated |
+               |------|-------------|---------|---------|
+
+               New file → add row with current datetime; existing file → update Updated only.
+               Description: use the `description` field from the file's YAML frontmatter.
+            """;
+
+    public static final String LEARNINGS_PROMOTER_PROMPT = """
+            Use the self-improvement skill to promote pending high-priority learning entries to permanent memory.
+
+            Learning files directory: %s
+            Memory directory: %s
+            Memory index: %s
+
+            Steps:
+            1. Call use_skill("self-improvement") to load the skill instructions
+            2. Follow the skill's promotion guidelines to identify and promote worthy entries
+            3. Remove promoted sections from the source learning files
             """;
 
     public static final String DEFAULT_REFLECTION_CONTINUE_TEMPLATE = """

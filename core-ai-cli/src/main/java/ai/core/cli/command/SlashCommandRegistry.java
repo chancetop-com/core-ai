@@ -21,6 +21,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/memory open", "Open memory folder in file manager"),
             new SlashCommand("/init", "Create .core-ai/instructions.md project config"),
             new SlashCommand("/skill", "List loaded skills"),
+            new SlashCommand("/plugins", "Manage plugins (/plugins help for more)"),
             new SlashCommand("/mcp", "Show MCP server status"),
             new SlashCommand("/undo", "Undo last message and its response"),
             new SlashCommand("/remote", "Connect to a remote core-ai-server"),

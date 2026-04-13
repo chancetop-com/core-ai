@@ -237,10 +237,13 @@ public class Extraction {
                     continue;
                 }
                 double importance = mem.importance != null ? mem.importance : 0.5;
-                memoryRecords.add(MemoryRecord.builder()
+                if (importance < 0.6) continue;
+                var builder = MemoryRecord.builder()
                     .content(mem.content)
-                    .importance(importance)
-                    .build());
+                    .importance(importance);
+                if (mem.type != null) builder.metadata("type", mem.type);
+                if (mem.topic != null) builder.metadata("topic", mem.topic);
+                memoryRecords.add(builder.build());
             }
             return memoryRecords;
         } catch (Exception e) {
@@ -285,6 +288,10 @@ public class Extraction {
     public static class ExtractedMemory {
         @Property(name = "content")
         public String content;
+        @Property(name = "type")
+        public String type;
+        @Property(name = "topic")
+        public String topic;
         @Property(name = "importance")
         public Double importance;
     }

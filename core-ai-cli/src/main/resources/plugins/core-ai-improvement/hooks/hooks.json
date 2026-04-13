@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "skills/self-improvement/scripts/activator.sh"
+          }
+        ]
+      }
+    ],
+    "ToolResult": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "skills/self-improvement/scripts/error-detector.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

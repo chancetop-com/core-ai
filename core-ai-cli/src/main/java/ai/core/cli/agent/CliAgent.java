@@ -1,6 +1,7 @@
 package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
+import ai.core.cli.plugin.PluginManager;
 import ai.core.agent.ExecutionContext;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
@@ -34,10 +35,11 @@ import java.util.stream.Collectors;
 public class CliAgent {
 
     public static Agent of(Config config) {
-        var skillConfig = buildSkillConfig(config);
+        var pluginManager = PluginManager.getInstance(Path.of(System.getProperty("user.home"), ".core-ai"));
+        var skillConfig = buildSkillConfig(config, pluginManager);
         var tools = buildTools(config, skillConfig);
 
-        var hookConfig = HookConfig.load(config.workspace);
+        var hookConfig = HookConfig.load(config.workspace, pluginManager);
         var hookLifecycle = hookConfig.isEmpty() ? null
                 : new ScriptHookLifecycle(hookConfig, new ScriptHookRunner(config.workspace));
 
@@ -75,11 +77,17 @@ public class CliAgent {
         return agent;
     }
 
-    private static SkillConfig buildSkillConfig(Config config) {
-        return SkillConfig.builder()
+    private static SkillConfig buildSkillConfig(Config config, PluginManager pluginManager) {
+        var builder = SkillConfig.builder()
                 .source("workspace", config.workspace.resolve(".core-ai/skills").toString(), 100)
-                .source("user", userSkillsDir().toString(), 50)
-                .build();
+                .source("user", userSkillsDir().toString(), 50);
+
+        int priority = 75; // Between workspace (100) and user (50)
+        for (var source : pluginManager.getEnabledPluginSkillSources()) {
+            builder.source("plugin:" + source[0], source[1], priority);
+        }
+
+        return builder.build();
     }
 
     private static List<ToolCall> buildTools(Config config, SkillConfig skillConfig) {
@@ -131,11 +139,14 @@ public class CliAgent {
         sb.append("""
                 
                 ## Memory
-                
+
                 Persistent structured memory at .core-ai/memory/.
                 Index: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
                 Each topic file has YAML frontmatter (name, description, type: user/feedback/project/reference).
-                
+
+                Index structure: | File | Description | Created | Updated |
+                Description column: use the `description` field from the file's YAML frontmatter.
+
                 Reading: use md_memory_tool to search/get, or read_file for full content.
                 Writing: use write_file/edit_file to create/update topic files. \
                 Update MEMORY.md index when adding or removing files. \

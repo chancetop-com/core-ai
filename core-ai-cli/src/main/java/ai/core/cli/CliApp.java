@@ -3,6 +3,7 @@ package ai.core.cli;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
+import ai.core.cli.utils.PathUtils;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManager;
@@ -19,6 +20,7 @@ import ai.core.cli.remote.HttpAgentSession;
 import ai.core.cli.remote.RemoteApiClient;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.remote.RemoteSessionRunner;
+import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.session.FileSessionPersistence;
@@ -47,14 +49,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-/**
- * @author stephen
- */
 public class CliApp {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliApp.class);
 
-    private static final Path DEFAULT_CONFIG = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
-    private static final String SESSIONS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "sessions").toString();
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private static void openBrowser(String url) {
@@ -82,7 +79,7 @@ public class CliApp {
     private final Path workspace;
 
     public CliApp(Path configFile, String modelOverride, boolean autoApproveAll, boolean continueSession, boolean resume, Path workspace) {
-        this.configFile = configFile != null ? configFile : DEFAULT_CONFIG;
+        this.configFile = configFile != null ? configFile : PathUtils.DEFAULT_CONFIG;
         this.modelOverride = modelOverride;
         this.autoApproveAll = autoApproveAll;
         this.continueSession = continueSession;
@@ -91,12 +88,20 @@ public class CliApp {
     }
 
     public void start() {
-        // set core.appName before any core-ng class loads to suppress LogManager warning
         System.setProperty("core.appName", "core-ai-cli");
+        Path jarPath = PathUtils.getJarPath();
+        Path configDir = configFile.getParent();
+        PluginManager.getInstance(configDir).initializeIfNeeded(jarPath);
 
         var ui = new TerminalUI();
         InteractiveConfigSetup.setupIfNeeded(ui);
 
+        var sessionContext = initializeSession(ui);
+        runSessionLoop(ui, sessionContext);
+        cleanup(ui, sessionContext);
+    }
+
+    private SessionContext initializeSession(TerminalUI ui) {
         LOGGER.info("loading config from {}", configFile);
         var props = PropertiesFileSource.fromFile(configFile);
         var bootstrap = new AgentBootstrap(props);
@@ -106,10 +111,8 @@ public class CliApp {
         LOGGER.info("bootstrap initialized");
 
         restoreActiveProvider(props, result.llmProviders);
-
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
-
-        var sessionPersistence = new FileSessionPersistence(SESSIONS_DIR);
+        var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
         var sessionManager = new SessionManager(sessionPersistence);
         var modelName = modelOverride != null ? modelOverride : result.llmProviders.getDefaultProvider().config.getModel();
         String currentSessionId = resolveOrCreateSessionId(sessionManager, ui);
@@ -117,17 +120,21 @@ public class CliApp {
         var permissionStore = whiteToolsPermissionStore();
         var noteMemory = new MdMemoryProvider(workspace);
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
+        return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName, currentSessionId, permissionStore, noteMemory, modelRegistry);
+    }
 
+    private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
         try {
+            String currentSessionId = ctx.currentSessionId;
             while (true) {
-                var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
+                var agentConfig = new CliAgent.Config(ctx.result.llmProviders, modelOverride, ctx.maxTurn, ctx.sessionPersistence, workspace, question -> {
                     ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
                     ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
                     return ui.readRawLine();
                 });
                 var agent = CliAgent.of(agentConfig);
-                var config = new AgentSessionRunner.Config(modelName, autoApproveAll, currentSessionId, sessionManager, permissionStore, noteMemory, modelRegistry, sessionPersistence);
-                var runner = new AgentSessionRunner(ui, agent, result.llmProviders, config);
+                var config = new AgentSessionRunner.Config(ctx.modelName, autoApproveAll, currentSessionId, ctx.sessionManager, ctx.permissionStore, ctx.noteMemory, ctx.modelRegistry, ctx.sessionPersistence);
+                var runner = new AgentSessionRunner(ui, agent, ctx.result.llmProviders, config);
                 String nextSessionId = runner.run();
                 var remote = runner.getRemoteConfig();
                 if (remote != null) {
@@ -141,9 +148,12 @@ public class CliApp {
             ui.printStreamingChunk("Goodbye!\n");
         } finally {
             CliLogger.close();
-            closeQuietly(ui);
-            closeShutdownResources(result);
         }
+    }
+
+    private void cleanup(TerminalUI ui, SessionContext ctx) {
+        closeQuietly(ui);
+        closeShutdownResources(ctx.result);
     }
 
     private ToolPermissionStore whiteToolsPermissionStore() {
@@ -240,10 +250,9 @@ public class CliApp {
         return cleaned.substring(0, maxLength) + "...";
     }
 
-    @SuppressWarnings("PMD.SystemPrintln")
     public void startRemote(String serverUrl, String apiKey, String agentId) {
         if (apiKey == null || apiKey.isBlank()) {
-            System.err.println("Error: --api-key is required for remote mode.");
+            ConsoleWriter.println("Error: --api-key is required for remote mode.");
             return;
         }
         var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant", null);
@@ -258,7 +267,6 @@ public class CliApp {
         }
     }
 
-    @SuppressWarnings("PMD.SystemPrintln")
     public void startServe(int port, boolean openBrowser, Path webDir) {
         System.setProperty("core.appName", "core-ai-cli");
 
@@ -273,7 +281,7 @@ public class CliApp {
         restoreActiveProvider(props, result.llmProviders);
 
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
-        var sessionPersistence = new FileSessionPersistence(SESSIONS_DIR);
+        var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
         var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = whiteToolsPermissionStore();
 
@@ -301,15 +309,15 @@ public class CliApp {
 
         server.start();
         var url = "http://localhost:" + port;
-        System.out.println("A2A server running at " + url);
+        ConsoleWriter.println("A2A server running at " + url);
         if (!currentSessionId.startsWith("serve-")) {
-            System.out.println("Session: " + currentSessionId);
+            ConsoleWriter.println("Session: " + currentSessionId);
         }
 
         if (openBrowser) {
             openBrowser(url);
         } else {
-            System.out.println("Headless mode - use any A2A client to connect");
+            ConsoleWriter.println("Headless mode - use any A2A client to connect");
         }
 
         try {
@@ -319,34 +327,33 @@ public class CliApp {
         }
     }
 
-    @SuppressWarnings("PMD.SystemPrintln")
     private String resolveSessionIdForServe(SessionManager sessionManager) {
         if (continueSession) {
             var sessions = sessionManager.listSessions();
             if (sessions.isEmpty()) {
-                System.out.println("No previous sessions found. Starting new session.");
+                ConsoleWriter.println("No previous sessions found. Starting new session.");
                 return null;
             }
             var sessionId = sessions.getFirst().id();
-            System.out.println("Resuming most recent session: " + sessionId);
+            ConsoleWriter.println("Resuming most recent session: " + sessionId);
             return sessionId;
         }
         if (resume) {
             var sessions = sessionManager.listSessions();
             if (sessions.isEmpty()) {
-                System.out.println("No previous sessions found. Starting new session.");
+                ConsoleWriter.println("No previous sessions found. Starting new session.");
                 return null;
             }
-            System.out.println("\nRecent sessions:");
+            ConsoleWriter.println("\nRecent sessions:");
             int limit = Math.min(sessions.size(), 10);
             for (int i = 0; i < limit; i++) {
                 var session = sessions.get(i);
                 String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
                 String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
-                System.out.printf("  %2d) %s (%s)%n", i + 1, title, timeStr);
+                ConsoleWriter.printf("  %2d) %s (%s)%n", i + 1, title, timeStr);
             }
-            System.out.println();
-            System.out.print("Select session (1-" + limit + "), or 'n' for new: ");
+            ConsoleWriter.println();
+            ConsoleWriter.print("Select session (1-" + limit + "), or 'n' for new: ");
             var scanner = new java.util.Scanner(System.in, StandardCharsets.UTF_8);
             while (true) {
                 var input = scanner.nextLine();
@@ -357,13 +364,13 @@ public class CliApp {
                     int choice = Integer.parseInt(input.trim());
                     if (choice >= 1 && choice <= limit) {
                         var sessionId = sessions.get(choice - 1).id();
-                        System.out.println("Resuming session: " + sessionId);
+                        ConsoleWriter.println("Resuming session: " + sessionId);
                         return sessionId;
                     }
                 } catch (NumberFormatException ignored) {
                     // fall through to re-prompt
                 }
-                System.out.println("Invalid selection. Enter 1-" + limit + " or 'n' for new: ");
+                ConsoleWriter.println("Invalid selection. Enter 1-" + limit + " or 'n' for new: ");
             }
         }
         return null;
@@ -388,25 +395,19 @@ public class CliApp {
         }
     }
 
-    @SuppressWarnings("PMD.SystemPrintln")
     private void clearLoading() {
-        System.err.print("\r\033[K");
-        System.err.flush();
+        ConsoleWriter.clearLine();
     }
 
-    @SuppressWarnings("PMD.SystemPrintln")
     private void registerMcpLoadingListener() {
         McpClientManagerRegistry.addCreationListener(manager ->
                 manager.addListener((serverName, oldState, newState) -> {
                     if (newState == McpClientManager.ConnectionState.CONNECTING) {
-                        System.err.print("\r\033[K" + AnsiTheme.MUTED + "  Loading MCP server: " + serverName + "..." + AnsiTheme.RESET);
-                        System.err.flush();
+                        ConsoleWriter.clearLineAndPrint(AnsiTheme.MUTED + "  Loading MCP server: " + serverName + "..." + AnsiTheme.RESET);
                     } else if (newState == McpClientManager.ConnectionState.CONNECTED) {
-                        System.err.print("\r\033[K" + AnsiTheme.MUTED + "  MCP server loaded: " + serverName + AnsiTheme.RESET);
-                        System.err.flush();
+                        ConsoleWriter.clearLineAndPrint(AnsiTheme.MUTED + "  MCP server loaded: " + serverName + AnsiTheme.RESET);
                     } else if (newState == McpClientManager.ConnectionState.FAILED) {
-                        System.err.print("\r\033[K" + AnsiTheme.WARNING + "  MCP server failed: " + serverName + AnsiTheme.RESET);
-                        System.err.flush();
+                        ConsoleWriter.clearLineAndPrint(AnsiTheme.WARNING + "  MCP server failed: " + serverName + AnsiTheme.RESET);
                     }
                 })
         );
@@ -421,5 +422,10 @@ public class CliApp {
             }
         }
     }
+
+    private record SessionContext(BootstrapResult result, PropertiesFileSource props, int maxTurn,
+            FileSessionPersistence sessionPersistence, SessionManager sessionManager, String modelName,
+            String currentSessionId, ToolPermissionStore permissionStore, MdMemoryProvider noteMemory,
+            ModelRegistry modelRegistry) { }
 
 }

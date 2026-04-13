@@ -1,15 +1,24 @@
 package ai.core.cli.memory;
 
+import ai.core.agent.Agent;
 import ai.core.agent.AgentPersistence;
+import ai.core.agent.ExecutionContext;
+import ai.core.agent.streaming.StreamingCallback;
+import ai.core.cli.log.CliLogger;
 import ai.core.document.Tokenizer;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.Content;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
 import ai.core.prompt.Prompts;
 import ai.core.session.SessionPersistence;
+import ai.core.cli.plugin.PluginManager;
+import ai.core.skill.SkillSource;
+import ai.core.tool.BuiltinTools;
+import ai.core.tool.tools.SkillTool;
 import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
 import org.slf4j.Logger;
@@ -18,19 +27,12 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
-import ai.core.cli.ui.AnsiTheme;
-import ai.core.cli.ui.TerminalUI;
 
 /**
- * Extract memories from previous session and persist to markdown files.
+ * Extract memories from previous session and persist to markdown files via agent.
  *
  * @author xander
  */
@@ -38,7 +40,6 @@ public class SessionMemoryExtractor {
     private static final Logger LOGGER = LoggerFactory.getLogger(SessionMemoryExtractor.class);
     private static final int MAX_TOKENS_PER_MESSAGE = 5000;
     private static final int MIN_MESSAGES_FOR_EXTRACTION = 4;
-    private static final DateTimeFormatter FILE_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final String EXTRACTED_SESSIONS_FILE = ".extracted-sessions";
 
     private static String stripMarkdownCodeBlock(String text) {
@@ -51,41 +52,85 @@ public class SessionMemoryExtractor {
         return stripped;
     }
 
-    private final MdMemoryProvider memoryProvider;
+    private static List<SkillSource> buildSkillSources(Path workspace) {
+        var home = Path.of(System.getProperty("user.home"), ".core-ai");
+        var pluginManager = PluginManager.getInstance(home);
+        var sources = new java.util.ArrayList<SkillSource>();
+        sources.add(new SkillSource("workspace", workspace.resolve(".core-ai/skills").toString(), 100));
+        sources.add(new SkillSource("user", home.resolve("skills").toString(), 50));
+        for (var source : pluginManager.getEnabledPluginSkillSources()) {
+            sources.add(new SkillSource("plugin:" + source[0], source[1], 75));
+        }
+        return sources;
+    }
+
+    private static void updateSystemMessage(List<Message> messages, String replacement) {
+        var systemMsg = messages.getFirst();
+        if (systemMsg.content == null || systemMsg.content.isEmpty()) return;
+        String text = systemMsg.content.getFirst().text;
+        if (text == null) return;
+        systemMsg.content = List.of(Content.of(text.replaceAll("(?s)<memories>.*?</memories>", replacement)));
+    }
+
     private final LLMProvider llmProvider;
     private final String model;
     private final SessionPersistence sessionPersistence;
+    private final MdMemoryProvider memoryProvider;
+    private final Path learningsDir;
+    private final Path memoryDir;
+    private final Path indexPath;
+    private final List<SkillSource> skillSources;
 
     public SessionMemoryExtractor(MdMemoryProvider memoryProvider, LLMProvider llmProvider,
                                   String model, SessionPersistence sessionPersistence) {
-        this.memoryProvider = memoryProvider;
         this.llmProvider = llmProvider;
         this.model = model;
         this.sessionPersistence = sessionPersistence;
+        this.memoryProvider = memoryProvider;
+        this.memoryDir = memoryProvider.getMemoryDir();
+        this.indexPath = memoryDir.getParent().resolve("MEMORY.md");
+        this.learningsDir = memoryDir.getParent().resolve(".learnings");
+        this.skillSources = buildSkillSources(memoryDir.getParent().getParent());
     }
 
-    public void extractPreviousSessionAsync(String currentSessionId, TerminalUI ui) {
-        var sessions = sessionPersistence.listSessions();
-        String previousId = null;
-        for (var s : sessions) {
-            if (!s.id().equals(currentSessionId)) {
-                previousId = s.id();
-                break;
-            }
+    public void reloadAgentMemorySection(Agent agent) {
+        String fresh = memoryProvider.load();
+        String replacement = "<memories>\n" + (fresh.isBlank() ? "(empty)" : fresh) + "\n</memories>";
+        String current = agent.getSystemPrompt();
+        if (current != null) {
+            agent.setSystemPrompt(current.replaceAll("(?s)<memories>.*?</memories>", replacement));
         }
-        if (previousId == null || isAlreadyExtracted(previousId)) return;
+        if (!agent.getMessages().isEmpty()) {
+            updateSystemMessage(agent.getMessages(), replacement);
+        }
+        LOGGER.info("Memory section reloaded in system prompt");
+    }
 
-        ui.printStreamingChunk(AnsiTheme.MUTED + "  Extracting memories from last session..." + AnsiTheme.RESET + "\n");
-        String targetSessionId = previousId;
+    public boolean hasPendingSessions(String currentSessionId) {
+        return sessionPersistence.listSessions().stream()
+                .anyMatch(s -> !s.id().equals(currentSessionId) && !isAlreadyExtracted(s.id()));
+    }
+
+    public void extractPreviousSessionAsync(String currentSessionId, Runnable onComplete) {
+        var sessions = sessionPersistence.listSessions();
+        var unextracted = sessions.stream()
+                .filter(s -> !s.id().equals(currentSessionId) && !isAlreadyExtracted(s.id()))
+                .toList();
+        if (unextracted.isEmpty()) return;
+
         var thread = new Thread(() -> {
             try {
-                var messages = loadSessionMessages(targetSessionId);
-                if (messages == null || messages.isEmpty()) return;
-                int count = extract(messages);
-                markExtracted(targetSessionId);
-                if (count > 0) {
-                    LOGGER.debug("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Extracted {} memories from last session\n", count);
+                var allMemories = new java.util.ArrayList<ExtractedMemory>();
+                for (var session : unextracted) {
+                    allMemories.addAll(extractSessionSafely(session.id()));
                 }
+                if (!allMemories.isEmpty()) {
+                    writeMemoriesViaAgent(allMemories);
+                }
+                if (Files.isDirectory(learningsDir)) {
+                    promotePendingLearnings();
+                }
+                if (onComplete != null) onComplete.run();
             } catch (Exception e) {
                 LOGGER.warn("Background memory extraction failed: {}", e.getMessage());
             }
@@ -94,28 +139,118 @@ public class SessionMemoryExtractor {
         thread.start();
     }
 
-    int extract(List<Message> messages) {
+    private List<ExtractedMemory> extractSessionSafely(String sessionId) {
+        LOGGER.info("Extracting memories from session {}", sessionId);
+        try {
+            var memories = extractFromSession(sessionId);
+            markExtracted(sessionId);
+            LOGGER.info("Extracted {} memories from session {}", memories.size(), sessionId);
+            return memories;
+        } catch (Exception e) {
+            LOGGER.warn("Failed to extract memories from session {}: {}", sessionId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<ExtractedMemory> extractFromSession(String sessionId) {
+        var messages = loadSessionMessages(sessionId);
+        if (messages == null || messages.isEmpty()) return List.of();
+        return extractFromMessages(messages);
+    }
+
+    List<ExtractedMemory> extractFromMessages(List<Message> messages) {
         var userAssistantMessages = messages.stream()
                 .filter(m -> m.role == RoleType.USER || m.role == RoleType.ASSISTANT)
                 .toList();
         if (userAssistantMessages.size() < MIN_MESSAGES_FOR_EXTRACTION) {
             LOGGER.debug("Too few messages ({}) for extraction, skipping", userAssistantMessages.size());
-            return 0;
+            return List.of();
         }
         String conversation = formatConversation(userAssistantMessages);
-        if (conversation.isBlank()) return 0;
+        if (conversation.isBlank()) return List.of();
         try {
             var extracted = callLLMForExtraction(conversation);
-            if (extracted.isEmpty()) {
-                LOGGER.debug("No memories extracted from session");
-                return 0;
-            }
-            writeMemories(extracted);
-            LOGGER.info("Extracted and saved {} memories from session", extracted.size());
-            return extracted.size();
+            LOGGER.debug("Extracted {} memories from messages", extracted.size());
+            return extracted;
         } catch (Exception e) {
-            LOGGER.warn("Failed to extract session memories: {}", e.getMessage());
-            return 0;
+            LOGGER.warn("Failed to extract memories from messages: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private void writeMemoriesViaAgent(List<ExtractedMemory> memories) {
+        if (memories.isEmpty()) return;
+        String prompt = String.format(Prompts.MEMORY_WRITER_PROMPT,
+                memoryDir.toAbsolutePath(),
+                indexPath.toAbsolutePath(),
+                JsonUtil.toJson(memories));
+        runAgent(prompt, "memory-writer", BuiltinTools.FILE_OPERATIONS, buildWriterSystemPrompt());
+    }
+
+    private String buildWriterSystemPrompt() {
+        String index = indexPath.toAbsolutePath().toString();
+        String topics = memoryDir.toAbsolutePath().toString();
+        String existing = memoryProvider.load();
+        return """
+                ## Memory
+
+                Index: %s | Topic files: %s/*.md
+                Each topic file has YAML frontmatter (name, description, type: user/feedback/project/reference).
+
+                Index structure: | File | Description | Created | Updated |
+                Description column: use the `description` field from the file's YAML frontmatter.
+
+                <memories>
+                %s
+                </memories>
+                """.formatted(index, topics, existing.isBlank() ? "(empty)" : existing);
+    }
+
+    private void promotePendingLearnings() {
+        if (!Files.isDirectory(learningsDir)) return;
+        String prompt = String.format(Prompts.LEARNINGS_PROMOTER_PROMPT,
+                learningsDir.toAbsolutePath(),
+                memoryDir.toAbsolutePath(),
+                indexPath.toAbsolutePath());
+        var tools = new java.util.ArrayList<>(BuiltinTools.FILE_OPERATIONS);
+        tools.add(SkillTool.builder()
+                .sources(skillSources)
+                .workspaceDir(memoryDir.getParent().toAbsolutePath().toString())
+                .build());
+        runAgent(prompt, "learnings-promoter", tools, null);
+    }
+
+    private void runAgent(String prompt, String agentName, List<ai.core.tool.ToolCall> tools, String systemPrompt) {
+        try {
+            Files.createDirectories(memoryDir);
+            var logBuffer = new StringBuilder("[").append(agentName).append("] ");
+            StreamingCallback logCallback = new StreamingCallback() {
+                @Override
+                public void onChunk(String chunk) {
+                    logBuffer.append(chunk);
+                }
+
+                @Override
+                public void onError(Throwable error) {
+                    CliLogger.writeToFileDirect("[" + agentName + "] streaming error: " + error.getMessage(), error);
+                }
+            };
+            var builder = Agent.builder()
+                    .llmProvider(llmProvider)
+                    .model(model)
+                    .toolCalls(tools)
+                    .maxTurn(20)
+                    .temperature(0.3)
+                    .streamingCallback(logCallback);
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                builder.systemPrompt(systemPrompt);
+            }
+            var agent = builder.build();
+            agent.setExecutionContext(ExecutionContext.builder().build());
+            agent.run(prompt);
+            CliLogger.writeToFileDirect(logBuffer.toString(), null);
+        } catch (Exception e) {
+            LOGGER.warn("Agent {} failed: {}", agentName, e.getMessage());
         }
     }
 
@@ -134,7 +269,7 @@ public class SessionMemoryExtractor {
 
     private void markExtracted(String sessionId) {
         try {
-            Path file = memoryProvider.getMemoryDir().resolve(EXTRACTED_SESSIONS_FILE);
+            Path file = memoryDir.resolve(EXTRACTED_SESSIONS_FILE);
             Files.createDirectories(file.getParent());
             Files.writeString(file, sessionId + "\n",
                     java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
@@ -144,7 +279,7 @@ public class SessionMemoryExtractor {
     }
 
     private Set<String> loadExtractedSessions() {
-        Path file = memoryProvider.getMemoryDir().resolve(EXTRACTED_SESSIONS_FILE);
+        Path file = memoryDir.resolve(EXTRACTED_SESSIONS_FILE);
         if (!Files.exists(file)) return Set.of();
         try {
             return new HashSet<>(Files.readAllLines(file));
@@ -194,52 +329,12 @@ public class SessionMemoryExtractor {
             if (memories == null) return List.of();
             return memories.stream()
                     .filter(m -> m.content != null && !m.content.isBlank())
-                    .filter(m -> m.importance == null || m.importance >= 0.5)
+                    .filter(m -> m.importance == null || m.importance >= 0.6)
                     .toList();
         } catch (Exception e) {
             LOGGER.warn("Failed to parse extraction response", e);
             return List.of();
         }
-    }
-
-    private void writeMemories(List<ExtractedMemory> memories) throws IOException {
-        Path memoryDir = memoryProvider.getMemoryDir();
-        Files.createDirectories(memoryDir);
-
-        var existingMemories = memoryProvider.load();
-        var newMemories = new ArrayList<ExtractedMemory>();
-        for (var mem : memories) {
-            String prefix = mem.content.toLowerCase(Locale.ROOT).substring(0, Math.min(30, mem.content.length()));
-            if (!existingMemories.toLowerCase(Locale.ROOT).contains(prefix)) {
-                newMemories.add(mem);
-            }
-        }
-        if (newMemories.isEmpty()) {
-            LOGGER.debug("All extracted memories already exist, skipping");
-            return;
-        }
-
-        String timestamp = FILE_DATE_FORMAT.format(Instant.now().atZone(ZoneId.systemDefault()));
-        String fileName = "extracted-" + timestamp + ".md";
-        Path filePath = memoryDir.resolve(fileName);
-
-        var sb = new StringBuilder(256);
-        sb.append("---\nname: session-extraction-").append(timestamp)
-          .append("\ndescription: Auto-extracted memories from session conversation\ntype: project\n---\n\n");
-        for (var mem : newMemories) {
-            sb.append("- ").append(mem.content).append('\n');
-        }
-
-        Files.writeString(filePath, sb.toString());
-        updateIndex(fileName);
-    }
-
-    private void updateIndex(String fileName) throws IOException {
-        Path indexPath = memoryProvider.getMemoryDir().getParent().resolve("MEMORY.md");
-        String existing = Files.exists(indexPath) ? Files.readString(indexPath) : "";
-        if (existing.contains(fileName)) return;
-        String entry = "\n- [" + fileName + "](memory/" + fileName + ") - Auto-extracted session memories\n";
-        Files.writeString(indexPath, existing + entry);
     }
 
     public static class ExtractionResponse {
@@ -250,6 +345,10 @@ public class SessionMemoryExtractor {
     public static class ExtractedMemory {
         @Property(name = "content")
         public String content;
+        @Property(name = "type")
+        public String type;
+        @Property(name = "topic")
+        public String topic;
         @Property(name = "importance")
         public Double importance;
     }

@@ -257,15 +257,10 @@ public class OutputPanel {
     }
 
     public void turnSummary(long elapsedMs, Long inputTokens, Long outputTokens) {
-        var sb = new StringBuilder();
-        sb.append('\n').append(AnsiTheme.MUTED).append(INDENT).append("\u2726 ")
-                .append(ThinkingSpinner.formatElapsed(elapsedMs));
-        if (inputTokens != null && outputTokens != null) {
-            long total = inputTokens + outputTokens;
-            sb.append(String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", total, inputTokens, outputTokens));
-        }
-        sb.append(AnsiTheme.RESET);
-        writer.println(sb.toString());
+        String tokens = (inputTokens != null && outputTokens != null)
+            ? String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", inputTokens + outputTokens, inputTokens, outputTokens)
+            : "";
+        writer.println("\n" + INDENT + "\u2726 " + ThinkingSpinner.formatElapsed(elapsedMs) + tokens + AnsiTheme.RESET);
         writer.flush();
     }
 
