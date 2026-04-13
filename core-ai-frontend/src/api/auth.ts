@@ -20,7 +20,10 @@ export function getStoredUser(): AuthUser | null {
   const apiKey = localStorage.getItem('apiKey');
   const userId = localStorage.getItem('userId');
   const name = localStorage.getItem('userName');
-  if (apiKey && userId) return { apiKey, userId, name: name || userId };
+  // Don't return local user in server mode - 'local' is only valid in CLI mode
+  if (apiKey && userId && apiKey !== 'local') {
+    return { apiKey, userId, name: name || userId };
+  }
   return null;
 }
 
