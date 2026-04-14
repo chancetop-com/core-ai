@@ -207,9 +207,11 @@ public class LocalSpanProcessor implements SpanProcessor {
 
     private io.opentelemetry.proto.trace.v1.Status mapStatus(SpanData spanData) {
         var statusCode = spanData.getStatus().getStatusCode();
-        var otlpStatusCode = statusCode == io.opentelemetry.api.trace.StatusCode.OK
-            ? io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_OK
-            : io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_ERROR;
+        var otlpStatusCode = switch (statusCode) {
+            case OK -> io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_OK;
+            case ERROR -> io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_ERROR;
+            case UNSET -> io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_OK;
+        };
 
         return io.opentelemetry.proto.trace.v1.Status.newBuilder()
             .setCode(otlpStatusCode)
