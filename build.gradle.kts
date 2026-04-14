@@ -148,6 +148,9 @@ project(":core-ai-server") {
         implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.JACKSON_VERSION}")
         // OTLP protobuf for trace ingestion
         implementation("io.opentelemetry.proto:opentelemetry-proto:${Versions.OPENTELEMETRY_PROTO_VERSION}")
+        // OpenTelemetry SDK for local SpanProcessor
+        implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
+        implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<Test> {

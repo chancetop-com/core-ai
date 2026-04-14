@@ -52,6 +52,7 @@ import ai.core.server.trace.service.IngestService;
 import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.PromptService;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.server.trace.web.ingest.IngestController;
 import ai.core.server.trace.web.otlp.OTLPController;
 import ai.core.server.trace.web.prompt.PromptController;
@@ -201,8 +202,11 @@ public class ServerModule extends Module {
     private void registerTrace() {
         bind(TraceService.class);
         bind(PromptService.class);
-        bind(OTLPIngestService.class);
+        var otlpIngestService = bind(OTLPIngestService.class);
         bind(IngestService.class);
+
+        // Register OTLPIngestService for LocalSpanProcessor (SPI bridge)
+        onStartup(() -> LocalSpanProcessorRegistry.register(otlpIngestService));
 
         var traceController = bind(TraceController.class);
         var promptController = bind(PromptController.class);

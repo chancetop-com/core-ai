@@ -1,5 +1,7 @@
 package ai.core.telemetry;
 
+import ai.core.telemetry.spi.LocalSpanProcessorProvider;
+
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
@@ -9,18 +11,19 @@ import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Configuration for OpenTelemetry tracing with OTLP export (compatible with Langfuse)
- *
  * @author stephen
  */
 public final class TelemetryConfig {
@@ -44,9 +47,7 @@ public final class TelemetryConfig {
         this.serviceVersion = builder.serviceVersion;
         this.environment = builder.environment;
         this.headers = new HashMap<>(builder.headers);
-
-        // Normalize endpoint: append Langfuse path if needed
-        this.otlpEndpoint = normalizeEndpoint(builder.otlpEndpoint, builder.useLangfusePath);
+        this.otlpEndpoint = builder.otlpEndpoint;
 
         if (enabled) {
             this.openTelemetry = initializeOpenTelemetry();
@@ -63,61 +64,53 @@ public final class TelemetryConfig {
         return enabled;
     }
 
-    /**
-     * Normalize OTLP endpoint URL for Langfuse compatibility
-     * Appends /api/public/otel/v1/traces if not already present
-     */
-    private String normalizeEndpoint(String endpoint, boolean useLangfusePath) {
-        if (!useLangfusePath || endpoint == null || endpoint.isEmpty()) {
-            return endpoint;
-        }
-
-        // Remove trailing slash
-        var normalizedEndpoint = endpoint.replaceAll("/+$", "");
-
-        // Check if path is already included
-        if (normalizedEndpoint.contains("/otel/") || normalizedEndpoint.endsWith("/v1/traces")) {
-            return normalizedEndpoint;
-        }
-
-        // Append Langfuse self-hosted path
-        return normalizedEndpoint + "/api/public/otel/v1/traces";
-    }
-
     private OpenTelemetry initializeOpenTelemetry() {
         try {
             var serviceNameKey = AttributeKey.stringKey("service.name");
             var serviceVersionKey = AttributeKey.stringKey("service.version");
             var deploymentEnvironmentKey = AttributeKey.stringKey("deployment.environment");
 
-            var resource = Resource.getDefault()
-                .merge(Resource.create(Attributes.builder()
+            var resource = Resource.getDefault().merge(Resource.create(Attributes.builder()
                     .put(serviceNameKey, serviceName)
                     .put(serviceVersionKey, serviceVersion)
-                    .put(deploymentEnvironmentKey, environment)
-                    .build()));
+                    .put(deploymentEnvironmentKey, environment).build()));
 
-            // Use HTTP/protobuf exporter (required by Langfuse)
-            var spanExporterBuilder = OtlpHttpSpanExporter.builder()
-                .setEndpoint(otlpEndpoint)
-                .setTimeout(Duration.ofSeconds(10));
+            var sdkTracerProviderBuilder = SdkTracerProvider.builder().setResource(resource);
 
-            // Add custom headers (e.g., for Langfuse Basic Auth)
-            if (!headers.isEmpty()) {
-                headers.forEach(spanExporterBuilder::addHeader);
-            }
+            // Determine export mode based on endpoint configuration
+            if (isLocalExportMode(otlpEndpoint)) {
+                // Use local SpanProcessor to write directly to storage
+                var localProcessor = loadLocalProcessor(serviceName, serviceVersion, environment);
+                if (localProcessor != null) {
+                    sdkTracerProviderBuilder.addSpanProcessor(localProcessor);
+                    LOGGER.debug("OpenTelemetry initialized with local processor - service: {}", serviceName);
+                } else {
+                    LOGGER.warn("trace.otlp.endpoint is 'local' but no LocalSpanProcessorProvider found, tracing disabled");
+                    return OpenTelemetry.noop();
+                }
+            } else {
+                // Use HTTP/protobuf exporter for external OTLP endpoint (e.g., Langfuse)
+                var spanExporterBuilder = OtlpHttpSpanExporter.builder()
+                    .setEndpoint(otlpEndpoint)
+                    .setTimeout(Duration.ofSeconds(10));
 
-            var spanExporter = spanExporterBuilder.build();
+                // Add custom headers (e.g., for Langfuse Basic Auth)
+                if (!headers.isEmpty()) {
+                    headers.forEach(spanExporterBuilder::addHeader);
+                }
 
-            var sdkTracerProvider = SdkTracerProvider.builder()
-                .addSpanProcessor(BatchSpanProcessor.builder(spanExporter)
+                var spanExporter = spanExporterBuilder.build();
+
+                sdkTracerProviderBuilder.addSpanProcessor(BatchSpanProcessor.builder(spanExporter)
                     .setScheduleDelay(1, TimeUnit.SECONDS)
                     .setMaxQueueSize(2048)
                     .setMaxExportBatchSize(512)
-                    .setExporterTimeout(30, TimeUnit.SECONDS)
-                    .build())
-                .setResource(resource)
-                .build();
+                    .setExporterTimeout(30, TimeUnit.SECONDS).build());
+
+                LOGGER.debug("OpenTelemetry initialized with HTTP exporter - service: {}, endpoint: {}", serviceName, otlpEndpoint);
+            }
+
+            var sdkTracerProvider = sdkTracerProviderBuilder.build();
 
             var openTelemetrySdk = OpenTelemetrySdk.builder()
                 .setTracerProvider(sdkTracerProvider)
@@ -130,7 +123,6 @@ public final class TelemetryConfig {
                 LOGGER.debug("OpenTelemetry tracer provider closed");
             }));
 
-            LOGGER.debug("OpenTelemetry initialized - service: {}, endpoint: {}", serviceName, otlpEndpoint);
             return openTelemetrySdk;
         } catch (Exception e) {
             LOGGER.error("Failed to initialize OpenTelemetry, falling back to noop", e);
@@ -138,14 +130,33 @@ public final class TelemetryConfig {
         }
     }
 
+    private boolean isLocalExportMode(String endpoint) {
+        if (endpoint == null || endpoint.isEmpty()) {
+            return true;
+        }
+        var normalized = endpoint.trim().toLowerCase(Locale.getDefault());
+        return "local".equals(normalized);
+    }
+
+    private SpanProcessor loadLocalProcessor(String serviceName, String serviceVersion, String environment) {
+        var loader = ServiceLoader.load(LocalSpanProcessorProvider.class);
+        for (var provider : loader) {
+            var processor = provider.createLocalProcessor(serviceName, serviceVersion, environment);
+            if (processor != null) {
+                LOGGER.debug("Loaded LocalSpanProcessorProvider: {}", provider.getClass().getName());
+                return processor;
+            }
+        }
+        return null;
+    }
+
     public static class Builder {
         private String serviceName = "core-ai";
-        private String otlpEndpoint = "http://localhost:4317";
+        private String otlpEndpoint = null;  // null means local mode
         private boolean enabled = false;
         private String serviceVersion = "1.0.0";
         private String environment = "production";
         private final Map<String, String> headers = new HashMap<>();
-        private boolean useLangfusePath = true;  // Default: append Langfuse path
 
         public Builder serviceName(String serviceName) {
             this.serviceName = serviceName;
@@ -172,27 +183,11 @@ public final class TelemetryConfig {
             return this;
         }
 
-        /**
-         * Enable/disable automatic Langfuse path appending
-         * When enabled, /api/public/otel/v1/traces will be appended to base URL
-         * Default: true (enabled)
-         */
-        public Builder useLangfusePath(boolean useLangfusePath) {
-            this.useLangfusePath = useLangfusePath;
-            return this;
-        }
-
-        /**
-         * Add a custom header for OTLP export (e.g., for authentication)
-         */
         public Builder addHeader(String key, String value) {
             this.headers.put(key, value);
             return this;
         }
 
-        /**
-         * Add multiple custom headers for OTLP export
-         */
         public Builder addHeaders(Map<String, String> headers) {
             this.headers.putAll(headers);
             return this;
