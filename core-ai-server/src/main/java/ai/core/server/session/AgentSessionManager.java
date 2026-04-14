@@ -149,6 +149,7 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.onEvent(chatMessageService.listener(sessionId));
         chatMessageService.registerSession(sessionId, userId, null);
+        restoreAgentHistory(agent, sessionId);
         return session;
     }
 
@@ -158,7 +159,27 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.onEvent(chatMessageService.listener(sessionId));
         chatMessageService.registerSession(sessionId, userId, null);
+        restoreAgentHistory(agent, sessionId);
         return session;
+    }
+
+    private void restoreAgentHistory(Agent agent, String sessionId) {
+        try {
+            var records = chatMessageService.history(sessionId);
+            if (records.isEmpty()) return;
+            List<ai.core.llm.domain.Message> restored = new java.util.ArrayList<>(records.size());
+            for (var r : records) {
+                if (r.content == null || r.content.isBlank()) continue;
+                var role = "user".equals(r.role) ? ai.core.llm.domain.RoleType.USER : ai.core.llm.domain.RoleType.ASSISTANT;
+                restored.add(ai.core.llm.domain.Message.of(role, r.content));
+            }
+            if (!restored.isEmpty()) {
+                agent.restoreHistory(restored);
+                logger.info("restored {} historical messages for session {}", restored.size(), sessionId);
+            }
+        } catch (Exception e) {
+            logger.warn("failed to restore agent history, sessionId={}", sessionId, e);
+        }
     }
 
     public void closeSession(String sessionId) {

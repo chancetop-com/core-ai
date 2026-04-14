@@ -421,6 +421,12 @@ public class Agent extends Node<Agent> {
         addMessage(Message.of(RoleType.USER, content));
     }
 
+    // restore prior conversation messages on session rebuild — only user/assistant text, skip thinking/tools
+    public void restoreHistory(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) return;
+        addMessages(messages);
+    }
+
     public String continueWithInjectedMessage() {
         return runTurnsLoop(this::handLLM);
     }
