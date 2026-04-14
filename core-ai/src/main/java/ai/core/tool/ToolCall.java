@@ -7,6 +7,7 @@ import ai.core.llm.domain.Tool;
 import ai.core.llm.domain.ToolType;
 import ai.core.utils.JsonSchemaUtil;
 import ai.core.utils.JsonUtil;
+import core.framework.util.Strings;
 
 import java.util.List;
 import java.util.Map;
@@ -236,7 +237,12 @@ public abstract class ToolCall {
             }
             toolCall.namespace = namespace;
             toolCall.name = name;
-            toolCall.description = description;
+            toolCall.description = Strings.format("""
+            This is a subagent tool.
+            When the agent calls this tool, it will trigger a subagent execution with the following description and parameters.
+            Here is the description of the subagent to be executed:
+            {}
+            """, description);
             toolCall.parameters = parameters;
             toolCall.needAuth = needAuth != null && needAuth;
             toolCall.directReturn = directReturn != null && directReturn;
