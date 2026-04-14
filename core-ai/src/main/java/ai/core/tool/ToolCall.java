@@ -246,6 +246,8 @@ public abstract class ToolCall {
                         Here is the description of the subagent to be executed:
                         {}
                         """, description);
+            } else {
+                toolCall.description = description;
             }
             toolCall.parameters = parameters;
             toolCall.needAuth = needAuth != null && needAuth;
