@@ -20,6 +20,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -27,6 +30,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class LocalSpanProcessor implements SpanProcessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalSpanProcessor.class);
+    private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        var t = new Thread(r, "local-span-processor");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final String serviceName;
     private final String serviceVersion;
@@ -56,12 +64,18 @@ public class LocalSpanProcessor implements SpanProcessor {
             return;
         }
 
-        try {
-            var request = convertToExportRequest(span);
-            ingestService.ingest(request);
-        } catch (Exception e) {
-            LOGGER.warn("Failed to write span locally: {}", span.getName(), e);
-        }
+        var spanName = span.getName();
+        CompletableFuture.runAsync(() -> {
+            try {
+                long startTime = System.nanoTime();
+                var request = convertToExportRequest(span);
+                ingestService.ingest(request);
+                long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
+                LOGGER.debug("ingest completed, span={}, elapsed={}ms", spanName, elapsedMs);
+            } catch (Exception e) {
+                LOGGER.warn("Failed to write span locally: {}", spanName, e);
+            }
+        }, EXECUTOR);
     }
 
     @Override

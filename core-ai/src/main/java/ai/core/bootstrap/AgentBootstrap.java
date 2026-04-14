@@ -112,57 +112,53 @@ public class AgentBootstrap {
     }
 
     private void configureTelemetry(BootstrapResult result) {
-        props.property("trace.otlp.endpoint").ifPresent(endpoint -> {
-            logger.debug("Initializing OpenTelemetry tracing with endpoint: {}", endpoint);
+        var endpoint = props.property("trace.otlp.endpoint").orElse(null);
+        var serviceName = props.property("trace.service.name").orElse("core-ai");
+        var serviceVersion = props.property("trace.service.version").orElse("1.0.0");
+        var environment = props.property("trace.environment").orElse("production");
 
-            var serviceName = props.property("trace.service.name").orElse("core-ai");
-            var serviceVersion = props.property("trace.service.version").orElse("1.0.0");
-            var environment = props.property("trace.environment").orElse("production");
+        var telemetryConfigBuilder = TelemetryConfig.builder()
+                .serviceName(serviceName)
+                .serviceVersion(serviceVersion)
+                .environment(environment)
+                .otlpEndpoint(endpoint)
+                .enabled(true);
 
-            var telemetryConfigBuilder = TelemetryConfig.builder()
-                    .serviceName(serviceName)
-                    .serviceVersion(serviceVersion)
-                    .environment(environment)
-                    .otlpEndpoint(endpoint)
-                    .enabled(true);
+        var publicKey = props.property("trace.otlp.public.key");
+        var secretKey = props.property("trace.otlp.secret.key");
+        if (publicKey.isPresent() && secretKey.isPresent()) {
+            var credentials = publicKey.get() + ":" + secretKey.get();
+            var encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+            telemetryConfigBuilder.addHeader("Authorization", "Basic " + encodedCredentials);
+            logger.debug("Langfuse Basic Auth configured for OTLP export");
+        }
 
-            var publicKey = props.property("trace.otlp.public.key");
-            var secretKey = props.property("trace.otlp.secret.key");
-            if (publicKey.isPresent() && secretKey.isPresent()) {
-                var credentials = publicKey.get() + ":" + secretKey.get();
-                var encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-                telemetryConfigBuilder.addHeader("Authorization", "Basic " + encodedCredentials);
-                logger.debug("Langfuse Basic Auth configured for OTLP export");
-            }
+        var telemetryConfig = telemetryConfigBuilder.build();
+        result.telemetryConfig = telemetryConfig;
 
-            var telemetryConfig = telemetryConfigBuilder.build();
-            result.telemetryConfig = telemetryConfig;
+        var openTelemetry = telemetryConfig.getOpenTelemetry();
+        var enabled = telemetryConfig.isEnabled();
 
-            var openTelemetry = telemetryConfig.getOpenTelemetry();
-            var enabled = telemetryConfig.isEnabled();
+        llmTracer = new LLMTracer(openTelemetry, enabled);
+        var agentTracer = new AgentTracer(openTelemetry, enabled);
+        var flowTracer = new FlowTracer(openTelemetry, enabled);
+        var groupTracer = new GroupTracer(openTelemetry, enabled);
 
-            llmTracer = new LLMTracer(openTelemetry, enabled);
-            var agentTracer = new AgentTracer(openTelemetry, enabled);
-            var flowTracer = new FlowTracer(openTelemetry, enabled);
-            var groupTracer = new GroupTracer(openTelemetry, enabled);
+        result.llmTracer = llmTracer;
+        result.agentTracer = agentTracer;
+        result.flowTracer = flowTracer;
+        result.groupTracer = groupTracer;
 
-            result.llmTracer = llmTracer;
-            result.agentTracer = agentTracer;
-            result.flowTracer = flowTracer;
-            result.groupTracer = groupTracer;
+        TracerRegistry.setAgentTracer(agentTracer);
+        TracerRegistry.setFlowTracer(flowTracer);
+        TracerRegistry.setGroupTracer(groupTracer);
 
-            TracerRegistry.setAgentTracer(agentTracer);
-            TracerRegistry.setFlowTracer(flowTracer);
-            TracerRegistry.setGroupTracer(groupTracer);
-
-            logger.debug("OpenTelemetry tracing enabled and registered globally - service: {}, version: {}, environment: {}",
+        if (endpoint != null && !endpoint.isEmpty()) {
+            logger.debug("OpenTelemetry tracing enabled - service: {}, version: {}, environment: {}, endpoint: {}",
+                    serviceName, serviceVersion, environment, endpoint);
+        } else {
+            logger.debug("OpenTelemetry tracing enabled in local mode - service: {}, version: {}, environment: {}",
                     serviceName, serviceVersion, environment);
-        });
-
-        if (props.property("trace.otlp.endpoint").isEmpty()) {
-            logger.debug("OpenTelemetry tracing disabled - trace.otlp.endpoint not configured");
-            llmTracer = null;
-            TracerRegistry.clear();
         }
     }
 
