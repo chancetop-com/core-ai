@@ -18,4 +18,7 @@ public class CreateSessionResponse {
 
     @Property(name = "loaded_skills")
     public List<String> loadedSkills;
+
+    @Property(name = "loaded_sub_agents")
+    public List<String> loadedSubAgents;
 }

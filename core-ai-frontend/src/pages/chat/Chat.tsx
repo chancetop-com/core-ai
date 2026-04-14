@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles, Users } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, HistoryMessage } from '../../api/session';
@@ -222,17 +222,21 @@ export default function Chat() {
   // Loaded tools/skills (confirmed on server)
   const [loadedToolIds, setLoadedToolIds] = useState<Set<string>>(new Set());
   const [loadedSkillIds, setLoadedSkillIds] = useState<Set<string>>(new Set());
+  const [loadedSubAgentIds, setLoadedSubAgentIds] = useState<Set<string>>(new Set());
   // Pre-session selections (shown as chips, will be sent on session create)
   const [preToolIds, setPreToolIds] = useState<Set<string>>(new Set());
   const [preSkillIds, setPreSkillIds] = useState<Set<string>>(new Set());
+  const [preSubAgentIds, setPreSubAgentIds] = useState<Set<string>>(new Set());
   const [availableTools, setAvailableTools] = useState<ToolRegistryView[]>([]);
   const [availableSkills, setAvailableSkills] = useState<SkillDefinition[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
+  const [showAgentPicker, setShowAgentPicker] = useState(false);
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set());
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
+  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -473,9 +477,11 @@ export default function Chat() {
     // Pass pre-selected tools/skills to session creation
     const preToolIdsArr = Array.from(preToolIds).map(id => ({ id } as ToolRef));
     const preSkillIdsArr = Array.from(preSkillIds);
+    const preSubAgentIdsArr = Array.from(preSubAgentIds);
     const res = await sessionApi.create(selectedAgentId, {
       tools: preToolIdsArr.length > 0 ? preToolIdsArr : undefined,
       skill_ids: preSkillIdsArr.length > 0 ? preSkillIdsArr : undefined,
+      sub_agent_ids: preSubAgentIdsArr.length > 0 ? preSubAgentIdsArr : undefined,
     });
     const id = res.sessionId;
     setSessionId(id);
@@ -489,8 +495,13 @@ export default function Chat() {
       setLoadedSkillIds(new Set(res.loaded_skills));
       showToast(`Loaded ${res.loaded_skills.length} skill(s)`);
     }
+    if (res.loaded_sub_agents && res.loaded_sub_agents.length > 0) {
+      setLoadedSubAgentIds(new Set(res.loaded_sub_agents));
+      showToast(`Loaded ${res.loaded_sub_agents.length} sub-agent(s)`);
+    }
     setPreToolIds(new Set());
     setPreSkillIds(new Set());
+    setPreSubAgentIds(new Set());
 
     // Wait for SSE to connect
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -611,6 +622,56 @@ export default function Chat() {
     fetchSkills();
     setShowSkillPicker(true);
   }, [sessionId, loadedSkillIds, preSkillIds, fetchSkills]);
+
+  // Open agent picker
+  const openAgentPicker = useCallback(() => {
+    setSelectedAgentIds(sessionId ? loadedSubAgentIds : preSubAgentIds);
+    setShowAgentPicker(true);
+  }, [sessionId, loadedSubAgentIds, preSubAgentIds]);
+
+  // Toggle agent selection
+  const toggleAgent = useCallback((id: string) => {
+    setSelectedAgentIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Confirm agent selection — save as pre-session or call API directly
+  const loadSelectedAgents = useCallback(async () => {
+    if (selectedAgentIds.size === 0) {
+      setShowAgentPicker(false);
+      return;
+    }
+
+    if (!sessionId) {
+      // No session yet — save as pre-session selections
+      setPreSubAgentIds(new Set(selectedAgentIds));
+      showToast(`Selected ${selectedAgentIds.size} agent(s), will load as subagent on first message`);
+      setShowAgentPicker(false);
+      setSelectedAgentIds(new Set());
+      return;
+    }
+
+    try {
+      const res = await sessionApi.loadSubAgents(sessionId, Array.from(selectedAgentIds));
+      if (res.loaded_sub_agents && res.loaded_sub_agents.length > 0) {
+        setLoadedSubAgentIds(prev => {
+          const next = new Set(prev);
+          for (const name of res.loaded_sub_agents) next.add(name);
+          return next;
+        });
+        showToast(`Loaded ${res.loaded_sub_agents.length} agent(s) as subagent(s)`);
+      }
+      setShowAgentPicker(false);
+      setSelectedAgentIds(new Set());
+    } catch (err) {
+      console.error('Failed to load subagents:', err);
+      showToast('Failed to load subagents');
+    }
+  }, [sessionId, selectedAgentIds, showToast]);
 
   // Toggle tool selection
   const toggleTool = useCallback((id: string) => {
@@ -835,7 +896,7 @@ export default function Chat() {
       <div className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
         <div className="max-w-4xl mx-auto">
           {/* Loaded / pre-selected tools/skills chips */}
-          {(loadedToolIds.size > 0 || loadedSkillIds.size > 0 || preToolIds.size > 0 || preSkillIds.size > 0) && (
+          {(loadedToolIds.size > 0 || loadedSkillIds.size > 0 || loadedSubAgentIds.size > 0 || preToolIds.size > 0 || preSkillIds.size > 0 || preSubAgentIds.size > 0) && (
             <div className="flex flex-wrap gap-1.5 mb-2 min-h-[24px]">
               {Array.from(loadedToolIds).map(name => (
                 <span key={`t-${name}`}
@@ -887,6 +948,31 @@ export default function Chat() {
                   <span className="ml-0.5 opacity-60">(pending)</span>
                 </span>
               ))}
+              {Array.from(loadedSubAgentIds).map(name => (
+                <span key={`lsa-${name}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                  style={{
+                    background: '#8b5cf6' + '18',
+                    color: '#8b5cf6',
+                    border: '1px solid #8b5cf6' + '30',
+                  }}>
+                  <Users size={10} />
+                  {name}
+                </span>
+              ))}
+              {Array.from(preSubAgentIds).map(name => (
+                <span key={`psa-${name}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                  style={{
+                    background: '#8b5cf6' + '08',
+                    color: 'var(--color-text-muted)',
+                    border: '1px dashed var(--color-border)',
+                  }}>
+                  <Users size={10} />
+                  {name}
+                  <span className="ml-0.5 opacity-60">(pending)</span>
+                </span>
+              ))}
             </div>
           )}
 
@@ -917,6 +1003,20 @@ export default function Chat() {
               }}
               title="Load skills">
               <Sparkles size={18} />
+            </button>
+
+            {/* Agent picker button — enabled when agent is selected */}
+            <button
+              onClick={openAgentPicker}
+              disabled={!selectedAgentId || status === 'running'}
+              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
+              style={{
+                background: (loadedSubAgentIds.size > 0 || preSubAgentIds.size > 0) ? '#8b5cf620' : 'var(--color-bg-tertiary)',
+                border: '1px solid var(--color-border)',
+                color: (loadedSubAgentIds.size > 0 || preSubAgentIds.size > 0) ? '#8b5cf6' : 'var(--color-text-secondary)',
+              }}
+              title="Load agents as subagents">
+              <Users size={18} />
             </button>
 
             <textarea
@@ -998,6 +1098,26 @@ export default function Chat() {
           onToggle={toggleSkill}
           onLoad={loadSelectedSkills}
           onClose={() => setShowSkillPicker(false)}
+        />
+      )}
+
+      {/* Agent Picker Modal */}
+      {showAgentPicker && (
+        <ResourcePicker
+          title="Load Agents as Subagents"
+          items={agents.filter(a => a.id !== selectedAgentId).map(a => ({
+            id: a.id,
+            name: a.name,
+            description: a.description || '',
+            type: a.type,
+          }))}
+          loading={false}
+          loadedIds={loadedSubAgentIds}
+          pendingIds={preSubAgentIds}
+          selectedIds={selectedAgentIds}
+          onToggle={toggleAgent}
+          onLoad={loadSelectedAgents}
+          onClose={() => setShowAgentPicker(false)}
         />
       )}
       </div>

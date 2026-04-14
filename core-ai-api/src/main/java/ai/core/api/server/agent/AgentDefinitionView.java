@@ -65,6 +65,9 @@ public class AgentDefinitionView {
     @Property(name = "created_by")
     public String createdBy;
 
+    @Property(name = "subagent_ids")
+    public List<String> subAgentIds;
+
     @Property(name = "status")
     public String status;
 

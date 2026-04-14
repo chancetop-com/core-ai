@@ -54,6 +54,7 @@ export interface CreateSessionResponse {
   sessionId: string;
   loaded_tools?: string[];
   loaded_skills?: string[];
+  loaded_sub_agents?: string[];
 }
 
 export interface LoadToolsResponse {
@@ -62,6 +63,10 @@ export interface LoadToolsResponse {
 
 export interface LoadSkillsResponse {
   loaded_skills: string[];
+}
+
+export interface LoadSubAgentsResponse {
+  loaded_sub_agents: string[];
 }
 
 export interface SessionInfo {
@@ -81,6 +86,7 @@ export interface CreateSessionOptions {
   config?: Record<string, unknown>;
   tools?: ToolRef[];
   skill_ids?: string[];
+  sub_agent_ids?: string[];
 }
 
 export const sessionApi = {
@@ -127,6 +133,12 @@ export const sessionApi = {
     request<LoadSkillsResponse>(`/api/sessions/${sessionId}/skills`, {
       method: 'POST',
       body: JSON.stringify({ skill_ids: skillIds }),
+    }),
+
+  loadSubAgents: (sessionId: string, agentIds: string[]) =>
+    request<LoadSubAgentsResponse>(`/api/sessions/${sessionId}/subagents`, {
+      method: 'POST',
+      body: JSON.stringify({ agent_ids: agentIds }),
     }),
 
   getInfo: (sessionId: string) =>

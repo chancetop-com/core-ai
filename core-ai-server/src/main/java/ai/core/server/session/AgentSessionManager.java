@@ -12,13 +12,14 @@ import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
-import ai.core.session.InProcessAgentSession;
+import ai.core.tool.BuiltinTools;
+import ai.core.tool.ToolCall;
 import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.session.InMemoryToolPermissionStore;
-import ai.core.tool.BuiltinTools;
-import ai.core.tool.ToolCall;
+import ai.core.session.InProcessAgentSession;
 import core.framework.inject.Inject;
+import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,9 @@ public class AgentSessionManager {
     MongoSkillProvider mongoSkillProvider;
 
     @Inject
+    MongoCollection<AgentDefinition> agentDefinitionCollection;
+
+    @Inject
     SkillService skillService;
 
     @Inject
@@ -64,7 +68,7 @@ public class AgentSessionManager {
         return sessionId;
     }
 
-    public String createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
+    public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
         var config = toSessionConfig(definition);
         if (overrides != null) {
             if (overrides.model != null) config.model = overrides.model;
@@ -88,7 +92,11 @@ public class AgentSessionManager {
         session.onEvent(chatMessageService.listener(sessionId));
         chatMessageService.registerSession(sessionId, userId, definition.id);
         sessions.put(sessionId, session);
-        return sessionId;
+
+        // Auto-load subagents configured in the agent definition
+        var loadedSubAgents = loadSubAgentsFromDefinition(session, definition);
+
+        return new SessionCreationResult(sessionId, loadedSubAgents);
     }
 
     public InProcessAgentSession getSession(String sessionId) {
@@ -194,6 +202,28 @@ public class AgentSessionManager {
         return names;
     }
 
+    private List<String> loadSubAgentsFromDefinition(InProcessAgentSession session, AgentDefinition definition) {
+        var subAgentIds = definition.subAgentIds;
+        if (subAgentIds == null || subAgentIds.isEmpty()) {
+            return List.of();
+        }
+        var names = new java.util.ArrayList<String>();
+        for (var subAgentId : subAgentIds) {
+            try {
+                var subAgentDef = agentDefinitionCollection.get(subAgentId)
+                        .orElseThrow(() -> new RuntimeException("subagent not found, id=" + subAgentId));
+                var subAgent = buildSubAgent(subAgentDef);
+                var subAgentToolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
+                session.loadTools(List.of(subAgentToolCall));
+                names.add(subAgentDef.name);
+                logger.info("loaded subagent {} for session {}", subAgentDef.name, session.id());
+            } catch (Exception e) {
+                logger.warn("failed to load subagent {} for session {}: {}", subAgentId, session.id(), e.getMessage());
+            }
+        }
+        return names;
+    }
+
     private Agent buildSubAgent(AgentDefinition definition) {
         var config = toSessionConfig(definition);
         List<ToolCall> tools;
@@ -271,5 +301,8 @@ public class AgentSessionManager {
         }
 
         return builder.build();
+    }
+
+    public record SessionCreationResult(String sessionId, List<String> loadedSubAgents) {
     }
 }

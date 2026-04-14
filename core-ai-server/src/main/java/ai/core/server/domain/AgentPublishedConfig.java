@@ -33,6 +33,9 @@ public class AgentPublishedConfig {
     @Field(name = "skill_ids")
     public List<String> skillIds;
 
+    @Field(name = "subagent_ids")
+    public List<String> subAgentIds;
+
     @Field(name = "input_template")
     public String inputTemplate;
 

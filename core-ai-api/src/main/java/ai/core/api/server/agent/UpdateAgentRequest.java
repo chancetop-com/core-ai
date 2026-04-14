@@ -48,4 +48,7 @@ public class UpdateAgentRequest {
 
     @Property(name = "type")
     public String type;
+
+    @Property(name = "subagent_ids")
+    public List<String> subAgentIds;
 }

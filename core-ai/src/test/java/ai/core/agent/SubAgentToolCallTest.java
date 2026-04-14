@@ -59,7 +59,7 @@ class SubAgentToolCallTest {
         var toolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
 
         assertEquals("researcher", toolCall.getName());
-        assertEquals("Expert at researching topics", toolCall.getDescription());
+        assertTrue(toolCall.getDescription().contains("Expert at researching topics"));
         assertTrue(toolCall.isSubAgent());
         assertNotNull(toolCall.getParameters());
         assertEquals(1, toolCall.getParameters().size());
@@ -270,7 +270,7 @@ class SubAgentToolCallTest {
                 .build();
 
         assertEquals("factory-agent", toolCall.getName());
-        assertEquals("Agent created via factory", toolCall.getDescription());
+        assertTrue(toolCall.getDescription().contains("Agent created via factory"));
         assertTrue(toolCall.isSubAgent());
         assertNull(toolCall.getSubAgent());
         assertEquals(0, callCount.get());

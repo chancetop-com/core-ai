@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -25,6 +25,10 @@ export default function AgentEditor() {
   // tools
   const [allTools, setAllTools] = useState<ToolRegistryView[]>([]);
   const [toolSearch, setToolSearch] = useState('');
+
+  // subagents
+  const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
+  const [subAgentSearch, setSubAgentSearch] = useState('');
 
   // test panel
   const [testInput, setTestInput] = useState('');
@@ -57,6 +61,15 @@ export default function AgentEditor() {
     api.agents.get(id).then(setAgent).catch(console.error).finally(() => setLoading(false));
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
     api.tools.list().then(res => setAllTools(res.tools || [])).catch(console.error);
+    api.agents.list().then(res => {
+      // Include both AGENT type and local type (CLI mode), exclude current agent
+      const published = (res.agents || []).filter(a =>
+        a.id !== id &&
+        (a.status === 'PUBLISHED' || a.status === 'DRAFT') &&
+        (a.type === 'AGENT' || a.type === 'local')
+      );
+      setAllAgents(published);
+    }).catch(console.error);
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id]);
@@ -99,6 +112,7 @@ export default function AgentEditor() {
         input_template: agent.input_template,
         variables: agent.variables,
         response_schema: agent.response_schema,
+        subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -295,7 +309,7 @@ export default function AgentEditor() {
   };
 
   const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
-    'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema'] as const;
+    'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids'] as const;
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -339,6 +353,7 @@ export default function AgentEditor() {
       system_prompt: a.system_prompt, model: a.model, temperature: a.temperature,
       max_turns: a.max_turns, timeout_seconds: a.timeout_seconds,         tools: a.tools,
       input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
+      subagent_ids: (a as unknown as Record<string, unknown>).subagent_ids,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -653,6 +668,84 @@ export default function AgentEditor() {
                   {allTools.filter(t => !agent.tools?.some((tr: ToolRef) => tr.id === t.id))
                     .filter(t => t.name.toLowerCase().includes(toolSearch.toLowerCase())).length === 0 && (
                     <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching tools</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Subagents */}
+          <div className="rounded-xl border p-4"
+            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+              <Users size={16} style={{ color: '#8b5cf6' }} /> Subagents
+            </h3>
+            <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+              Select agents to load as subagents when this agent is used in a chat session.
+            </p>
+
+            {/* Selected subagents */}
+            {(agent as unknown as Record<string, unknown>).subagent_ids && ((agent as unknown as Record<string, unknown>).subagent_ids as string[]).length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {((agent as unknown as Record<string, unknown>).subagent_ids as string[]).map((subAgentId: string) => {
+                  const subAgent = allAgents.find(a => a.id === subAgentId);
+                  return (
+                    <span key={subAgentId}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                      style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#8b5cf6' }} />
+                      <span className="font-medium">{subAgent?.name || subAgentId}</span>
+                      <button onClick={() => update('subagent_ids', ((agent as unknown as Record<string, unknown>).subagent_ids as string[]).filter((id: string) => id !== subAgentId))}
+                        className="cursor-pointer ml-0.5 rounded hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ color: 'var(--color-text-secondary)' }}>
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>No subagents selected</p>
+            )}
+
+            {/* Add subagents */}
+            <div className="relative">
+              <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-sm"
+                style={inputStyle}>
+                <Search size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+                <input value={subAgentSearch} onChange={e => setSubAgentSearch(e.target.value)}
+                  className="flex-1 bg-transparent outline-none text-sm"
+                  placeholder="Search agents to add as subagent..." />
+              </div>
+              {subAgentSearch && (
+                <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
+                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
+                  {allAgents
+                    .filter(a => !((agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined)?.includes(a.id))
+                    .filter(a => a.name.toLowerCase().includes(subAgentSearch.toLowerCase()) || a.type?.toLowerCase().includes(subAgentSearch.toLowerCase()))
+                    .map(a => (
+                      <button key={a.id}
+                        onClick={() => {
+                          const currentIds = ((agent as unknown as Record<string, unknown>).subagent_ids as string[]) || [];
+                          update('subagent_ids', [...currentIds, a.id]);
+                          setSubAgentSearch('');
+                        }}
+                        className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#8b5cf6' }} />
+                        <span className="font-medium">{a.name}</span>
+                        <span className="text-[10px] px-1 rounded ml-auto"
+                          style={{ background: '#8b5cf615', color: '#8b5cf6' }}>
+                          {a.type}
+                        </span>
+                        {a.description && (
+                          <span className="text-[10px] truncate" style={{ color: 'var(--color-text-secondary)' }}>{a.description}</span>
+                        )}
+                      </button>
+                    ))}
+                  {allAgents.filter(a => !((agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined)?.includes(a.id))
+                    .filter(a => a.name.toLowerCase().includes(subAgentSearch.toLowerCase())).length === 0 && (
+                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching agents</div>
                   )}
                 </div>
               )}

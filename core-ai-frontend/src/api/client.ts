@@ -172,6 +172,7 @@ export interface AgentDefinition {
   published_at: string;
   created_at: string;
   updated_at: string;
+  subagent_ids?: string[];
 }
 
 export interface ListAgentsResponse {

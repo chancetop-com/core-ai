@@ -20,4 +20,7 @@ public class CreateSessionRequest {
 
     @Property(name = "skill_ids")
     public List<String> skillIds;
+
+    @Property(name = "sub_agent_ids")
+    public List<String> subAgentIds;
 }

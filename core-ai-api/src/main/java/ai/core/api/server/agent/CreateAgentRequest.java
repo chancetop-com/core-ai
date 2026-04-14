@@ -50,4 +50,7 @@ public class CreateAgentRequest {
 
     @Property(name = "response_schema")
     public String responseSchema;
+
+    @Property(name = "subagent_ids")
+    public List<String> subAgentIds;
 }

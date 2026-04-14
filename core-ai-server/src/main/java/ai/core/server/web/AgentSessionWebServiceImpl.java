@@ -65,9 +65,10 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var state = new SessionState();
         state.userId = userId;
         state.config = request.config;
+        var loadedSubAgents = new ArrayList<String>();
 
         if (request.agentId != null) {
-            sessionId = createSessionFromAgent(request.agentId, state, userId);
+            sessionId = createSessionFromAgent(request.agentId, state, userId, loadedSubAgents);
         } else {
             sessionId = sessionManager.createSession(request.config, userId);
             state.fromAgent = false;
@@ -76,6 +77,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
         var loadedTools = loadToolsOnSessionCreate(sessionId, request);
         var loadedSkills = loadSkillsOnSessionCreate(sessionId, request);
+        loadExtraSubAgentsOnSessionCreate(sessionId, request, loadedSubAgents);
 
         saveSessionState(sessionId, state);
 
@@ -83,15 +85,19 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         response.sessionId = sessionId;
         response.loadedTools = loadedTools;
         response.loadedSkills = loadedSkills;
+        response.loadedSubAgents = loadedSubAgents.isEmpty() ? null : loadedSubAgents;
         return response;
     }
 
-    private String createSessionFromAgent(String agentId, SessionState state, String userId) {
+    private String createSessionFromAgent(String agentId, SessionState state, String userId, List<String> loadedSubAgents) {
         var agent = agentDefinitionService.getEntity(agentId);
-        var sessionId = sessionManager.createSessionFromAgent(agent, state.config, userId);
+        var result = sessionManager.createSessionFromAgent(agent, state.config, userId);
         state.fromAgent = true;
         state.agentConfig = buildAgentConfigSnapshot(agent);
-        return sessionId;
+        if (result.loadedSubAgents() != null && !result.loadedSubAgents().isEmpty()) {
+            loadedSubAgents.addAll(result.loadedSubAgents());
+        }
+        return result.sessionId();
     }
 
     private SessionState.AgentConfigSnapshot buildAgentConfigSnapshot(ai.core.server.domain.AgentDefinition agent) {
@@ -139,6 +145,24 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     private List<String> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {
         if (request.skillIds == null || request.skillIds.isEmpty()) return null;
         return sessionManager.loadSkills(sessionId, request.skillIds);
+    }
+
+    private void loadExtraSubAgentsOnSessionCreate(String sessionId, CreateSessionRequest request, List<String> loadedSubAgents) {
+        if (request.subAgentIds == null || request.subAgentIds.isEmpty()) return;
+        var definitions = request.subAgentIds.stream()
+                .map(id -> {
+                    try {
+                        return agentDefinitionService.getEntity(id);
+                    } catch (Exception e) {
+                        LOGGER.warn("extra subagent not found, id={}", id);
+                        return null;
+                    }
+                })
+                .filter(def -> def != null)
+                .toList();
+        if (definitions.isEmpty()) return;
+        var names = sessionManager.loadSubAgents(sessionId, definitions);
+        loadedSubAgents.addAll(names);
     }
 
     private void saveSessionState(String sessionId, SessionState state) {

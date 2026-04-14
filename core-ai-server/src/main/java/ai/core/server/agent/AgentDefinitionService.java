@@ -57,6 +57,7 @@ public class AgentDefinitionService {
             entity.timeoutSeconds = request.timeoutSeconds != null ? request.timeoutSeconds : 600;
         }
         entity.tools = request.tools != null ? toToolRefs(request.tools) : null;
+        entity.subAgentIds = request.subAgentIds;
         entity.inputTemplate = request.inputTemplate;
         entity.variables = request.variables;
         entity.type = request.type != null ? DefinitionType.valueOf(request.type) : DefinitionType.AGENT;
@@ -116,6 +117,7 @@ public class AgentDefinitionService {
         if (request.variables != null) entity.variables = request.variables;
         if (request.responseSchema != null) entity.responseSchema = request.responseSchema;
         if (request.type != null) entity.type = DefinitionType.valueOf(request.type);
+        if (request.subAgentIds != null) entity.subAgentIds = request.subAgentIds;
         entity.updatedAt = ZonedDateTime.now();
 
         agentDefinitionCollection.replace(entity);
@@ -137,6 +139,7 @@ public class AgentDefinitionService {
         config.inputTemplate = entity.inputTemplate;
         config.variables = entity.variables;
         config.responseSchema = entity.responseSchema;
+        config.subAgentIds = entity.subAgentIds;
 
         entity.publishedConfig = config;
         entity.status = AgentStatus.PUBLISHED;
@@ -215,6 +218,7 @@ public class AgentDefinitionService {
         view.createdBy = resolveUserName(entity.userId);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
+        view.subAgentIds = entity.subAgentIds;
         view.status = entity.status != null ? entity.status.name() : null;
         view.publishedAt = entity.publishedAt;
         view.createdAt = entity.createdAt;
