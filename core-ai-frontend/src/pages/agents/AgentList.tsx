@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -25,6 +25,7 @@ export default function AgentList() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(10);
+  const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -35,7 +36,10 @@ export default function AgentList() {
 
   useEffect(load, []);
 
-  const userAgents = agents.filter(a => !a.system_default);
+  const trimmedQuery = query.trim().toLowerCase();
+  const userAgents = agents
+    .filter(a => !a.system_default)
+    .filter(a => !trimmedQuery || a.name.toLowerCase().includes(trimmedQuery));
   const pagedAgents = userAgents.slice(offset, offset + limit);
 
   const handleCreate = async () => {
@@ -179,6 +183,16 @@ export default function AgentList() {
             </>
           )}
         </div>
+      </div>
+
+      <div className="mb-4 relative max-w-md">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
+          style={{ color: 'var(--color-text-secondary)' }} />
+        <input type="text" value={query}
+          onChange={e => { setQuery(e.target.value); setOffset(0); }}
+          placeholder="Search by name..."
+          className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
+          style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
       </div>
 
       <div className="grid gap-4">
