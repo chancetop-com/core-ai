@@ -52,7 +52,7 @@ export default function Sessions() {
             <tr style={{ background: 'var(--color-bg-tertiary)' }}>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Session ID</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                <span className="flex items-center gap-1"><User size={14} /> User</span>
+                <span className="flex items-center gap-1"><MessageSquare size={14} /> Title</span>
               </th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                 <span className="flex items-center gap-1"><Hash size={14} /> Traces</span>
@@ -67,7 +67,7 @@ export default function Sessions() {
                 <span className="flex items-center gap-1"><AlertCircle size={14} /> Errors</span>
               </th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                <span className="flex items-center gap-1"><MessageSquare size={14} /> First Request</span>
+                <span className="flex items-center gap-1"><User size={14} /> User</span>
               </th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Last Active</th>
             </tr>
@@ -87,7 +87,11 @@ export default function Sessions() {
                 <td className="px-4 py-3">
                   <div className="font-medium font-mono text-xs truncate" style={{ maxWidth: '200px' }}>{s.session_id}</div>
                 </td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{s.user_id || '-'}</td>
+                <td className="px-4 py-3">
+                  <div className="max-w-[200px] truncate text-xs" style={{ color: 'var(--color-text-secondary)' }} title={s.first_request}>
+                    {s.first_request}
+                  </div>
+                </td>
                 <td className="px-4 py-3">
                   <span className="px-2 py-0.5 rounded text-xs font-medium"
                     style={{ background: 'var(--color-bg-tertiary)' }}>
@@ -105,11 +109,7 @@ export default function Sessions() {
                     <span style={{ color: 'var(--color-text-secondary)' }}>0</span>
                   )}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="max-w-[200px] truncate text-xs" style={{ color: 'var(--color-text-secondary)' }} title={s.first_request}>
-                    {s.first_request}
-                  </div>
-                </td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{s.user_id || '-'}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.last_trace_at)}</td>
               </tr>
             ))}
