@@ -541,7 +541,7 @@ export default function Chat() {
   // Open tool picker
   const openToolPicker = useCallback(() => {
     // Start with agent's configured tools
-    const agentToolIds = selectedAgent?.tools.map(t => t.id) || [];
+    const agentToolIds = selectedAgent?.tools?.map(t => t.id) || [];
     // Merge with session tools (loaded or pre-selected)
     const sessionToolIds = sessionId ? loadedToolIds : preToolIds;
     setSelectedToolIds(new Set([...agentToolIds, ...sessionToolIds]));
