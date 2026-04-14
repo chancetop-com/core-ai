@@ -21,11 +21,33 @@ export interface SseEvent {
   timestamp: string;
 }
 
+export interface HistoryToolCall {
+  call_id: string;
+  name: string;
+  arguments?: string;
+  result?: string;
+  status?: string;
+}
+
+export interface ChatSessionSummary {
+  id: string;
+  user_id?: string;
+  agent_id?: string;
+  title?: string;
+  message_count?: number;
+  created_at?: string;
+  last_message_at?: string;
+}
+
 export interface HistoryMessage {
   role: string;
   content: string;
-  timestamp: string;
-  metadata: Record<string, string>;
+  thinking?: string;
+  tools?: HistoryToolCall[];
+  seq?: number;
+  trace_id?: string;
+  timestamp?: string;
+  metadata?: Record<string, string>;
 }
 
 export interface CreateSessionResponse {
@@ -91,6 +113,9 @@ export const sessionApi = {
 
   history: (sessionId: string) =>
     request<{ messages: HistoryMessage[] }>(`/api/sessions/${sessionId}/history`),
+
+  listChatSessions: (offset = 0, limit = 50) =>
+    request<{ sessions: ChatSessionSummary[] }>(`/api/chat/sessions?offset=${offset}&limit=${limit}`),
 
   loadTools: (sessionId: string, tools: ToolRef[]) =>
     request<LoadToolsResponse>(`/api/sessions/${sessionId}/tools`, {

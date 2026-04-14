@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, Plus, ListTodo, Sparkles } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
-import type { SseEvent } from '../../api/session';
+import type { SseEvent, HistoryMessage } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import ResourcePicker from './ResourcePicker';
+import ChatSessionsSidebar from './ChatSessionsSidebar';
 
 interface AwaitInfo {
   callId: string;
@@ -182,7 +184,27 @@ function PlanUpdateBlock({ todos }: { todos: PlanTodo[] }) {
   );
 }
 
+function historyToChatMessages(messages: HistoryMessage[]): ChatMessage[] {
+  return messages.map(m => {
+    const tools: ToolEvent[] | undefined = m.tools?.map(t => ({
+      type: 'result',
+      tool: t.name,
+      callId: t.call_id,
+      arguments: t.arguments,
+      result: t.result,
+      resultStatus: t.status,
+    }));
+    return {
+      role: m.role === 'user' ? 'user' : 'agent',
+      content: m.content ?? '',
+      thinking: m.thinking || undefined,
+      tools: tools && tools.length > 0 ? tools : undefined,
+    };
+  });
+}
+
 export default function Chat() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try { const s = sessionStorage.getItem('chat_messages'); return s ? JSON.parse(s) : []; } catch { return []; }
   });
@@ -238,6 +260,38 @@ export default function Chat() {
   useEffect(() => {
     if (selectedAgentId) sessionStorage.setItem('chat_agentId', selectedAgentId);
   }, [selectedAgentId]);
+
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+
+  const hydrateSession = useCallback(async (id: string) => {
+    if (!id) return;
+    try {
+      const res = await sessionApi.history(id);
+      sseControllerRef.current?.abort();
+      sseControllerRef.current = null;
+      setSessionId(id);
+      setMessages(historyToChatMessages(res.messages || []));
+      setStatus('idle');
+      setAwaitInfo(null);
+      setPlanTodos(null);
+    } catch (e) {
+      console.warn('failed to hydrate session history', e);
+    }
+  }, []);
+
+  // Hydrate from URL ?sessionId=... — user returning from Sessions page
+  useEffect(() => {
+    const urlSessionId = searchParams.get('sessionId');
+    if (!urlSessionId) return;
+    if (sessionId === urlSessionId && messages.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      await hydrateSession(urlSessionId);
+      if (!cancelled) setSearchParams({}, { replace: true });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Load published agents
   useEffect(() => {
@@ -325,6 +379,7 @@ export default function Chat() {
         case 'turn_complete': {
           setStatus('idle');
           setAwaitInfo(null);
+          setSidebarRefreshKey(k => k + 1);
           break;
         }
         case 'error': {
@@ -456,6 +511,7 @@ export default function Chat() {
     try {
       const sid = await ensureSession();
       await sessionApi.sendMessage(sid, text);
+      setSidebarRefreshKey(k => k + 1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages(prev => {
@@ -652,7 +708,14 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full">
+      <ChatSessionsSidebar
+        currentSessionId={sessionId}
+        refreshKey={sidebarRefreshKey}
+        onOpen={hydrateSession}
+        onNewChat={handleNewChat}
+      />
+      <div className="flex flex-col h-full flex-1 min-w-0">
       {/* Top bar: agent selector */}
       <div className="border-b px-6 py-3 flex items-center justify-between"
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
@@ -674,11 +737,6 @@ export default function Chat() {
             </span>
           )}
         </div>
-        <button onClick={handleNewChat}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer"
-          style={{ background: 'var(--color-primary)', color: 'white' }}>
-          <Plus size={14} /> New Chat
-        </button>
       </div>
 
       {/* Chat messages */}
@@ -942,6 +1000,7 @@ export default function Chat() {
           onClose={() => setShowSkillPicker(false)}
         />
       )}
+      </div>
     </div>
   );
 }

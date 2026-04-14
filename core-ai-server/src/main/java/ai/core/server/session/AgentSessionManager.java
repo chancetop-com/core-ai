@@ -59,6 +59,7 @@ public class AgentSessionManager {
         var agent = buildAgent(config, null, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.onEvent(chatMessageService.listener(sessionId));
+        chatMessageService.registerSession(sessionId, userId, null);
         sessions.put(sessionId, session);
         return sessionId;
     }
@@ -85,6 +86,7 @@ public class AgentSessionManager {
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.onEvent(chatMessageService.listener(sessionId));
+        chatMessageService.registerSession(sessionId, userId, definition.id);
         sessions.put(sessionId, session);
         return sessionId;
     }
@@ -138,6 +140,7 @@ public class AgentSessionManager {
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.onEvent(chatMessageService.listener(sessionId));
+        chatMessageService.registerSession(sessionId, userId, null);
         return session;
     }
 
@@ -146,6 +149,7 @@ public class AgentSessionManager {
         var agent = buildAgent(config, null, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.onEvent(chatMessageService.listener(sessionId));
+        chatMessageService.registerSession(sessionId, userId, null);
         return session;
     }
 

@@ -33,6 +33,7 @@ import ai.core.server.skill.SkillUploadController;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.user.UserService;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
+import ai.core.server.web.ChatSessionController;
 import ai.core.server.web.SkillWebServiceImpl;
 import ai.core.server.web.webhook.WebhookController;
 import ai.core.server.web.AgentRunWebServiceImpl;
@@ -127,6 +128,9 @@ public class ServerModule extends Module {
     }
 
     private void bindWebService() {
+        var chatSessionController = bind(ChatSessionController.class);
+        http().route(HTTPMethod.GET, "/api/chat/sessions", chatSessionController::list);
+
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));
         api().service(AgentSessionWebService.class, bind(AgentSessionWebServiceImpl.class));
