@@ -5,6 +5,7 @@ import ai.core.api.jsonschema.JsonSchema;
 import ai.core.llm.domain.Function;
 import ai.core.llm.domain.Tool;
 import ai.core.llm.domain.ToolType;
+import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.utils.JsonSchemaUtil;
 import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
@@ -237,12 +238,15 @@ public abstract class ToolCall {
             }
             toolCall.namespace = namespace;
             toolCall.name = name;
-            toolCall.description = Strings.format("""
-            This is a subagent tool.
-            When the agent calls this tool, it will trigger a subagent execution with the following description and parameters.
-            Here is the description of the subagent to be executed:
-            {}
-            """, description);
+            if (toolCall instanceof SubAgentToolCall) {
+                // for sub-agent tool, we put the description in the tool call description, so that it can be used as the sub-agent execution description.
+                toolCall.description = Strings.format("""
+                        This is a subagent tool.
+                        When the agent calls this tool, it will trigger a subagent execution with the following description and parameters.
+                        Here is the description of the subagent to be executed:
+                        {}
+                        """, description);
+            }
             toolCall.parameters = parameters;
             toolCall.needAuth = needAuth != null && needAuth;
             toolCall.directReturn = directReturn != null && directReturn;
