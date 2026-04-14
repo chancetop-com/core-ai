@@ -50,11 +50,15 @@ public class AgentSessionManager {
     @Inject
     SkillService skillService;
 
+    @Inject
+    ChatMessageService chatMessageService;
+
     public String createSession(SessionConfig config, String userId) {
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, null, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        session.onEvent(chatMessageService.listener(sessionId));
         sessions.put(sessionId, session);
         return sessionId;
     }
@@ -80,6 +84,7 @@ public class AgentSessionManager {
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        session.onEvent(chatMessageService.listener(sessionId));
         sessions.put(sessionId, session);
         return sessionId;
     }
@@ -131,18 +136,23 @@ public class AgentSessionManager {
                 : List.of();
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
-        return new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        session.onEvent(chatMessageService.listener(sessionId));
+        return session;
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId) {
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
         var agent = buildAgent(config, null, context);
-        return new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        session.onEvent(chatMessageService.listener(sessionId));
+        return session;
     }
 
     public void closeSession(String sessionId) {
         var session = sessions.remove(sessionId);
         if (session != null) session.close();
+        chatMessageService.onSessionClosed(sessionId);
     }
 
     public List<String> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {

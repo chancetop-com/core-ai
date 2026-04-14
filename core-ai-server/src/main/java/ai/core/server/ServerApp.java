@@ -8,6 +8,7 @@ import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
+import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SystemPrompt;
@@ -56,6 +57,7 @@ public class ServerApp extends App {
         mongo.collection(SchemaVersion.class);
 
         mongo.collection(SystemPrompt.class);
+        mongo.collection(ChatMessage.class);
 
         // trace collections
         mongo.collection(Trace.class);

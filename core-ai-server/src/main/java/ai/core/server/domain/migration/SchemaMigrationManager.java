@@ -54,7 +54,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVSkillIndexes(),
             new SchemaMigrationVSystemPromptIndexes(),
             new SchemaMigrationVServiceApiIndexes(),
-            new SchemaMigrationVMigrateToolIdsToTools()
+            new SchemaMigrationVMigrateToolIdsToTools(),
+            new SchemaMigrationVChatMessageIndexes()
         );
     }
 }

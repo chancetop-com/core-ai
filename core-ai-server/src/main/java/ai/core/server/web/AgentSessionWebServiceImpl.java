@@ -20,7 +20,9 @@ import ai.core.server.web.auth.AuthContext;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
+import ai.core.api.server.session.Message;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCall;
@@ -51,6 +53,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     AgentDraftGenerator agentDraftGenerator;
     @Inject
     ToolRegistryService toolRegistryService;
+    @Inject
+    ChatMessageService chatMessageService;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
@@ -148,6 +152,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
         var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
+        chatMessageService.writeUserMessage(sessionId, request.message);
         session.sendMessage(request.message);
     }
 
@@ -162,9 +167,31 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     @Override
     public SessionHistoryResponse history(String sessionId) {
-        sessionManager.getSession(sessionId, resolveSessionState(sessionId));
+        var records = chatMessageService.history(sessionId);
+        var messages = new ArrayList<Message>(records.size());
+        for (var record : records) {
+            var msg = new Message();
+            msg.role = record.role;
+            msg.content = record.content;
+            msg.thinking = record.thinking;
+            msg.seq = record.seq;
+            msg.traceId = record.traceId;
+            msg.timestamp = record.createdAt != null ? record.createdAt.toInstant() : null;
+            if (record.tools != null) {
+                msg.tools = record.tools.stream().map(t -> {
+                    var r = new Message.ToolCallRecord();
+                    r.callId = t.callId;
+                    r.name = t.name;
+                    r.arguments = t.arguments;
+                    r.result = t.result;
+                    r.status = t.status;
+                    return r;
+                }).toList();
+            }
+            messages.add(msg);
+        }
         var response = new SessionHistoryResponse();
-        response.messages = new ArrayList<>();
+        response.messages = messages;
         return response;
     }
 

@@ -26,6 +26,7 @@ import ai.core.server.schedule.AgentScheduleService;
 import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillUploadController;
@@ -88,6 +89,7 @@ public class ServerModule extends Module {
         bind(LLMCallExecutor.class);
         bind(AgentRunner.class);
         bind(AgentScheduler.class);
+        bind(ChatMessageService.class);
         bind(AgentSessionManager.class);
         bind(AgentDefinitionService.class);
         bind(JavaToSchemaService.class);
