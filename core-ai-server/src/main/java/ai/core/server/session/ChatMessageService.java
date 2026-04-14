@@ -71,6 +71,10 @@ public class ChatMessageService {
         return chatMessageCollection.find(query);
     }
 
+    public ChatSession getSessionMeta(String sessionId) {
+        return chatSessionCollection.get(sessionId).orElse(null);
+    }
+
     public List<ChatSession> listSessions(String userId, int offset, int limit) {
         var query = new Query();
         query.filter = Filters.eq("user_id", userId);

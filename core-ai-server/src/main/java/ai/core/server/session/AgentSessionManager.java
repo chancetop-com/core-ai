@@ -107,10 +107,10 @@ public class AgentSessionManager {
         var session = sessions.get(sessionId);
         if (session != null) return session;
 
-        // Try to rebuild from session state if available
-        if (state != null) {
-            logger.info("session not found locally, attempting to rebuild from state, sessionId={}", sessionId);
-            session = rebuildSession(sessionId, state);
+        var effectiveState = state != null ? state : buildStateFromDb(sessionId);
+        if (effectiveState != null) {
+            logger.info("session not found locally, attempting to rebuild, sessionId={}", sessionId);
+            session = rebuildSession(sessionId, effectiveState);
             if (session != null) {
                 sessions.put(sessionId, session);
                 logger.info("session rebuilt successfully, sessionId={}", sessionId);
@@ -119,6 +119,38 @@ public class AgentSessionManager {
         }
 
         throw new NotFoundException("session not found, sessionId=" + sessionId);
+    }
+
+    private SessionState buildStateFromDb(String sessionId) {
+        var meta = chatMessageService.getSessionMeta(sessionId);
+        if (meta == null) return null;
+        var state = new SessionState();
+        state.sessionId = sessionId;
+        state.userId = meta.userId;
+        if (meta.agentId == null) {
+            state.fromAgent = false;
+            return state;
+        }
+        var definition = agentDefinitionCollection.get(meta.agentId).orElse(null);
+        if (definition == null) {
+            logger.warn("agent definition not found for DB rebuild, sessionId={}, agentId={}", sessionId, meta.agentId);
+            state.fromAgent = false;
+            return state;
+        }
+        state.fromAgent = true;
+        state.agentConfig = buildSnapshotFromDefinition(definition);
+        return state;
+    }
+
+    private SessionState.AgentConfigSnapshot buildSnapshotFromDefinition(AgentDefinition def) {
+        var pub = def.publishedConfig;
+        var snapshot = new SessionState.AgentConfigSnapshot();
+        snapshot.systemPrompt = pub != null && pub.systemPrompt != null ? pub.systemPrompt : def.systemPrompt;
+        snapshot.model = pub != null && pub.model != null ? pub.model : def.model;
+        snapshot.temperature = pub != null && pub.temperature != null ? pub.temperature : def.temperature;
+        snapshot.maxTurns = pub != null && pub.maxTurns != null ? pub.maxTurns : def.maxTurns;
+        snapshot.tools = pub != null && pub.tools != null && !pub.tools.isEmpty() ? pub.tools : def.tools;
+        return snapshot;
     }
 
     private InProcessAgentSession rebuildSession(String sessionId, SessionState state) {
