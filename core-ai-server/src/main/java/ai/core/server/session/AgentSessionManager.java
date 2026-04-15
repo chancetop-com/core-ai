@@ -57,12 +57,20 @@ public class AgentSessionManager {
     @Inject
     ChatMessageService chatMessageService;
 
+    @Inject
+    ai.core.server.web.sse.SessionChannelService sessionChannelService;
+
+    private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
+        attachSessionListeners(session, sessionId);
+        session.onEvent(new ai.core.server.web.sse.SseEventBridge(sessionId, sessionChannelService));
+    }
+
     public String createSession(SessionConfig config, String userId) {
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, null, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
-        session.onEvent(chatMessageService.listener(sessionId));
+        attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, userId, null);
         sessions.put(sessionId, session);
         return sessionId;
@@ -89,7 +97,7 @@ public class AgentSessionManager {
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
-        session.onEvent(chatMessageService.listener(sessionId));
+        attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, userId, definition.id);
         sessions.put(sessionId, session);
 
@@ -179,7 +187,7 @@ public class AgentSessionManager {
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
-        session.onEvent(chatMessageService.listener(sessionId));
+        attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, userId, null);
         restoreAgentHistory(agent, sessionId);
         return session;
@@ -189,7 +197,7 @@ public class AgentSessionManager {
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
         var agent = buildAgent(config, null, context);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
-        session.onEvent(chatMessageService.listener(sessionId));
+        attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, userId, null);
         restoreAgentHistory(agent, sessionId);
         return session;

@@ -33,10 +33,10 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
 
         logger.info("SSE client connected, sessionId={}", sessionId);
         sessionChannelService.connect(channel, sessionId);
-        var session = sessionManager.getSession(sessionId, resolveSessionState(request, sessionId));
+        // ensure session exists (bridge is registered at session creation/rebuild, not here)
+        sessionManager.getSession(sessionId, resolveSessionState(request, sessionId));
         channel.context().put(SESSION_ID_KEY, sessionId);
         channel.join(sessionId);
-        session.onEvent(new SseEventBridge(sessionId, sessionChannelService));
     }
 
     @Override
