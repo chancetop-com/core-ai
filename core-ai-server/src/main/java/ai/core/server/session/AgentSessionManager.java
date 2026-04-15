@@ -61,7 +61,7 @@ public class AgentSessionManager {
     ai.core.server.web.sse.SessionChannelService sessionChannelService;
 
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
-        attachSessionListeners(session, sessionId);
+        session.onEvent(chatMessageService.listener(sessionId));
         session.onEvent(new ai.core.server.web.sse.SseEventBridge(sessionId, sessionChannelService));
     }
 
