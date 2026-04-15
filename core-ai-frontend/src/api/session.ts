@@ -123,6 +123,9 @@ export const sessionApi = {
   listChatSessions: (offset = 0, limit = 50) =>
     request<{ sessions: ChatSessionSummary[] }>(`/api/chat/sessions?offset=${offset}&limit=${limit}`),
 
+  deleteChatSession: (sessionId: string) =>
+    request<{ deleted: boolean }>(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' }),
+
   loadTools: (sessionId: string, tools: ToolRef[]) =>
     request<LoadToolsResponse>(`/api/sessions/${sessionId}/tools`, {
       method: 'POST',

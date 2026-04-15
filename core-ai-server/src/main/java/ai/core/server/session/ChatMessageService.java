@@ -77,11 +77,24 @@ public class ChatMessageService {
 
     public List<ChatSession> listSessions(String userId, int offset, int limit) {
         var query = new Query();
-        query.filter = Filters.eq("user_id", userId);
+        query.filter = Filters.and(
+            Filters.eq("user_id", userId),
+            Filters.exists("deleted_at", false));
         query.sort = Sorts.descending("last_message_at");
         query.skip = offset;
         query.limit = limit;
         return chatSessionCollection.find(query);
+    }
+
+    // soft-delete: mark session as deleted, but keep chat_messages rows for audit/trace.
+    // returns true if hidden; false if not found or not owned by user.
+    public boolean softDeleteSession(String userId, String sessionId) {
+        var meta = chatSessionCollection.get(sessionId).orElse(null);
+        if (meta == null) return false;
+        if (userId != null && meta.userId != null && !userId.equals(meta.userId)) return false;
+        chatSessionCollection.update(Filters.eq("_id", sessionId), Updates.set("deleted_at", ZonedDateTime.now()));
+        onSessionClosed(sessionId);
+        return true;
     }
 
     public AgentEventListener listener(String sessionId) {

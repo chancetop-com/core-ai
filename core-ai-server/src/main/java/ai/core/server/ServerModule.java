@@ -90,6 +90,8 @@ public class ServerModule extends Module {
         bind(LLMCallExecutor.class);
         bind(AgentRunner.class);
         bind(AgentScheduler.class);
+        bind(ChannelService.class);
+        bind(SessionChannelService.class);
         bind(ChatMessageService.class);
         bind(AgentSessionManager.class);
         bind(AgentDefinitionService.class);
@@ -102,8 +104,6 @@ public class ServerModule extends Module {
         authService.adminEmail = property("sys.admin.email").orElse("admin@example.com");
         authService.adminPassword = property("sys.admin.password").orElse("admin");
         authService.adminName = property("sys.admin.name").orElse("Admin");
-        bind(ChannelService.class);
-        bind(SessionChannelService.class);
 
         var builderTools = bind(LLMCallBuilderTools.class);
 
@@ -130,6 +130,7 @@ public class ServerModule extends Module {
     private void bindWebService() {
         var chatSessionController = bind(ChatSessionController.class);
         http().route(HTTPMethod.GET, "/api/chat/sessions", chatSessionController::list);
+        http().route(HTTPMethod.DELETE, "/api/chat/sessions/:sessionId", chatSessionController::delete);
 
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));

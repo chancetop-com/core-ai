@@ -33,4 +33,7 @@ public class ChatSession {
 
     @Field(name = "last_message_at")
     public ZonedDateTime lastMessageAt;
+
+    @Field(name = "deleted_at")
+    public ZonedDateTime deletedAt;
 }

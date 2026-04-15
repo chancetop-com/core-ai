@@ -44,6 +44,15 @@ public class ChatSessionController {
         return jsonResponse(Map.of("sessions", sessions));
     }
 
+    public Response delete(Request request) {
+        var userId = AuthContext.userId(webContext);
+        if (userId == null) return Response.text("unauthorized").status(HTTPStatus.UNAUTHORIZED);
+        var sessionId = request.pathParam("sessionId");
+        var ok = chatMessageService.softDeleteSession(userId, sessionId);
+        if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        return jsonResponse(Map.of("deleted", true));
+    }
+
     private Response jsonResponse(Object data) {
         try {
             var json = MAPPER.writeValueAsBytes(data);

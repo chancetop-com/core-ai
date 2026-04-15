@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MessageSquare, Plus, Loader2 } from 'lucide-react';
+import { MessageSquare, Plus, Loader2, Trash2 } from 'lucide-react';
 import { sessionApi } from '../../api/session';
 import type { ChatSessionSummary } from '../../api/session';
 
@@ -8,6 +8,7 @@ interface Props {
   refreshKey: number;
   onOpen: (sessionId: string) => void;
   onNewChat: () => void;
+  onDeleted?: (sessionId: string) => void;
 }
 
 function formatTime(iso?: string): string {
@@ -21,9 +22,21 @@ function formatTime(iso?: string): string {
   return d.toLocaleDateString();
 }
 
-export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOpen, onNewChat }: Props) {
+export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOpen, onNewChat, onDeleted }: Props) {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm('Delete this conversation? (messages will remain in audit log)')) return;
+    try {
+      await sessionApi.deleteChatSession(id);
+      setSessions(prev => prev.filter(s => s.id !== id));
+      onDeleted?.(id);
+    } catch (err) {
+      console.warn('failed to delete chat session', err);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,8 +76,8 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
         {sessions.map(s => {
           const active = s.id === currentSessionId;
           return (
-            <button key={s.id} onClick={() => onOpen(s.id)}
-              className="w-full text-left px-3 py-2 flex items-start gap-2 cursor-pointer border-l-2 transition-colors"
+            <div key={s.id} onClick={() => onOpen(s.id)}
+              className="group w-full text-left px-3 py-2 flex items-start gap-2 cursor-pointer border-l-2 transition-colors"
               style={{
                 borderColor: active ? 'var(--color-primary)' : 'transparent',
                 background: active ? 'var(--color-bg-tertiary)' : 'transparent',
@@ -80,7 +93,13 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
                   {s.message_count ? ` · ${s.message_count} msg` : ''}
                 </div>
               </div>
-            </button>
+              <button onClick={e => handleDelete(e, s.id)}
+                className="opacity-0 group-hover:opacity-100 mt-0.5 p-1 rounded cursor-pointer transition-opacity"
+                style={{ color: 'var(--color-text-secondary)' }}
+                title="Delete conversation">
+                <Trash2 size={14} />
+              </button>
+            </div>
           );
         })}
       </div>
