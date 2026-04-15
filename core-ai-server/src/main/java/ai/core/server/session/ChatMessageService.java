@@ -79,7 +79,9 @@ public class ChatMessageService {
         var query = new Query();
         query.filter = Filters.and(
             Filters.eq("user_id", userId),
-            Filters.exists("deleted_at", false));
+            Filters.or(
+                Filters.exists("deleted_at", false),
+                Filters.eq("deleted_at", null)));
         query.sort = Sorts.descending("last_message_at");
         query.skip = offset;
         query.limit = limit;
