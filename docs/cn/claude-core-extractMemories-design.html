@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>extractMemories 与 Dream 机制设计说明</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #f5f7fa;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2.2em;
+      color: #1a1a2e;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 40px;
+      font-size: 1.1em;
+    }
+    h2 {
+      font-size: 1.6em;
+      color: #2d3748;
+      margin: 40px 0 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    h3 {
+      font-size: 1.2em;
+      color: #4a5568;
+      margin: 25px 0 15px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .card.highlight {
+      border-left: 4px solid #4299e1;
+    }
+    .card.warning {
+      border-left: 4px solid #ed8936;
+      background: #fffaf0;
+    }
+    .card.success {
+      border-left: 4px solid #48bb78;
+      background: #f0fff4;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    th {
+      background: #f7fafc;
+      font-weight: 600;
+      color: #4a5568;
+    }
+    tr:hover {
+      background: #f7fafc;
+    }
+    code {
+      background: #edf2f7;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'SF Mono', Monaco, Consolas, monospace;
+      font-size: 0.9em;
+    }
+    pre {
+      background: #1a1a2e;
+      color: #e2e8f0;
+      padding: 15px 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 15px 0;
+      font-size: 0.85em;
+      line-height: 1.5;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      color: inherit;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8em;
+      font-weight: 600;
+    }
+    .badge-blue { background: #ebf8ff; color: #2b6cb0; }
+    .badge-green { background: #c6f6d5; color: #276749; }
+    .badge-orange { background: #feebc8; color: #c05621; }
+    .badge-purple { background: #e9d8fd; color: #6b46c1; }
+    ul, ol {
+      margin: 15px 0;
+      padding-left: 25px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      margin: 20px 0;
+    }
+    .step-number {
+      width: 32px;
+      height: 32px;
+      background: #4299e1;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      margin-right: 15px;
+      flex-shrink: 0;
+    }
+    .step-content {
+      flex: 1;
+    }
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin: 20px 0;
+    }
+    @media (max-width: 768px) {
+      .comparison-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .timeline {
+      position: relative;
+      padding-left: 30px;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #cbd5e0;
+    }
+    .timeline-item {
+      position: relative;
+      margin-bottom: 20px;
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -24px;
+      top: 5px;
+      width: 12px;
+      height: 12px;
+      background: #4299e1;
+      border-radius: 50%;
+      border: 3px solid white;
+    }
+    .timeline-item.warning::before {
+      background: #ed8936;
+    }
+    .timeline-item.success::before {
+      background: #48bb78;
+    }
+    /* 图文描述样式 */
+    .diagram-desc {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .diagram-desc h4 {
+      color: #2d3748;
+      margin-bottom: 15px;
+      font-size: 1em;
+    }
+    .diagram-box {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin: 15px 0;
+    }
+    .diagram-box-item {
+      background: white;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 15px;
+      min-width: 200px;
+      flex: 1;
+    }
+    .diagram-box-item.blue { border-color: #4299e1; background: #ebf8ff; }
+    .diagram-box-item.green { border-color: #48bb78; background: #f0fff4; }
+    .diagram-box-item.yellow { border-color: #d69e2e; background: #fef3c7; }
+    .diagram-box-item.red { border-color: #e53e3e; background: #fff5f5; }
+    .diagram-box-item.cyan { border-color: #38b2ac; background: #e6fffa; }
+    .diagram-box-item.purple { border-color: #6b46c1; background: #e9d8fd; }
+    .diagram-box-item.orange { border-color: #ed8936; background: #fffaf0; }
+    .diagram-box-item.gray { border-color: #cbd5e0; background: #f7fafc; }
+    .diagram-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+      color: #718096;
+      font-size: 1.5em;
+    }
+    .flow-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .flow-diagram-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .flow-diagram-step {
+      background: white;
+      border: 2px solid #4299e1;
+      border-radius: 8px;
+      padding: 12px 20px;
+      min-width: 150px;
+      text-align: center;
+    }
+    .flow-diagram-step.green { border-color: #48bb78; background: #f0fff4; }
+    .flow-diagram-step.yellow { border-color: #d69e2e; background: #fef3c7; }
+    .flow-diagram-step.red { border-color: #e53e3e; background: #fff5f5; }
+    .flow-diagram-step.orange { border-color: #ed8936; background: #fffaf0; }
+    .flow-diagram-step.cyan { border-color: #38b2ac; background: #e6fffa; }
+    .flow-diagram-arrow {
+      color: #cbd5e0;
+      font-size: 1.2em;
+    }
+    .gate-box {
+      background: white;
+      border: 2px solid;
+      border-radius: 8px;
+      padding: 12px 20px;
+      margin: 8px 0;
+    }
+    .gate-box.time { border-color: #4299e1; background: #ebf8ff; }
+    .gate-box.scan { border-color: #d69e2e; background: #fef3c7; }
+    .gate-box.session { border-color: #38b2ac; background: #e6fffa; }
+    .gate-box .gate-num {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      background: currentColor;
+      color: white;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 24px;
+      font-size: 0.8em;
+      font-weight: bold;
+      margin-right: 10px;
+    }
+    .vs-box {
+      display: flex;
+      gap: 20px;
+      margin: 15px 0;
+    }
+    .vs-box-col {
+      flex: 1;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    .vs-box-col.left { background: #e6fffa; border: 2px solid #38b2ac; }
+    .vs-box-col.right { background: #fef3c7; border: 2px solid #d69e2e; }
+    .vs-divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5em;
+      color: #cbd5e0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>extractMemories 与 Dream 机制设计说明</h1>
+    <p class="subtitle">Claude Code 自动记忆系统深度解析</p>
+
+    <!-- 整体架构图 -->
+    <h2>1. 整体架构</h2>
+    <div class="card highlight">
+      <!-- 图文描述 -->
+      <div class="diagram-desc">
+        <h4>📐 架构图说明</h4>
+        <p>Claude Code 的 Query Loop 主循环中嵌入了两个独立的记忆子系统：</p>
+        
+        <div class="diagram-box">
+          <div class="diagram-box-item cyan">
+            <strong>extractMemories</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>位于 <strong>Post-Sampling Hooks</strong></li>
+              <li>每轮响应后触发</li>
+              <li>提取当前会话新记忆</li>
+              <li>数据范围: 当前 session</li>
+            </ul>
+          </div>
+          
+          <div class="diagram-box-item yellow">
+            <strong>autoDream (做梦)</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>位于 <strong>Stop Hooks</strong></li>
+              <li>满足门控条件时触发</li>
+              <li>整合/清理已有记忆</li>
+              <li>数据范围: 多 session</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="flow-diagram" style="margin-top: 20px;">
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step blue" style="flex: 2;">
+              Query Loop 主循环
+            </div>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step blue" style="flex: 2;">
+              用户消息 → 模型响应
+            </div>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step blue" style="flex: 2;">
+              Tool 执行
+            </div>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step cyan" style="flex: 1;">
+              Post-Sampling Hooks
+            </div>
+            <div class="flow-diagram-step yellow" style="flex: 1;">
+              Stop Hooks
+            </div>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step green" style="flex: 1;">
+              extractMemories
+            </div>
+            <div class="flow-diagram-step orange" style="flex: 1;">
+              autoDream
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- extractMemories 详解 -->
+    <h2>2. extractMemories 机制</h2>
+    
+    <div class="card">
+      <h3>2.1 触发条件（Gate 检查）</h3>
+      <table>
+        <tr>
+          <th>条件</th>
+          <th>来源</th>
+          <th>默认值</th>
+          <th>说明</th>
+        </tr>
+        <tr>
+          <td><code>tengu_passport_quail</code></td>
+          <td>GrowthBook Feature Flag</td>
+          <td><span class="badge badge-orange">false</span></td>
+          <td>功能总开关</td>
+        </tr>
+        <tr>
+          <td><code>isAutoMemoryEnabled()</code></td>
+          <td>配置</td>
+          <td>—</td>
+          <td>auto memory 必须启用</td>
+        </tr>
+        <tr>
+          <td><code>getIsRemoteMode()</code></td>
+          <td>环境</td>
+          <td>—</td>
+          <td>远程模式跳过</td>
+        </tr>
+        <tr>
+          <td><code>agentId === undefined</code></td>
+          <td>上下文</td>
+          <td>—</td>
+          <td>仅主 agent 执行</td>
+        </tr>
+      </table>
+      <p style="margin-top: 15px; color: #666;">
+        <strong>注：</strong>全部条件为 AND 关系，全部满足才进入执行。
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>2.2 执行频率控制</h3>
+      <div class="diagram-desc">
+        <h4>📐 节流流程说明</h4>
+        <p>通过 GrowthBook 配置 <code>tengu_bramble_lintel</code> 控制执行频率：</p>
+        
+        <div class="flow-diagram">
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step blue">Turn 1</div>
+            <span class="flow-diagram-arrow">→</span>
+            <span style="color: #c53030;">节流跳过</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step blue">Turn 2</div>
+            <span class="flow-diagram-arrow">→</span>
+            <span style="color: #c53030;">节流跳过</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step green">Turn 3</div>
+            <span class="flow-diagram-arrow">→</span>
+            <span style="color: #276749; font-weight: bold;">执行提取!</span>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+          <div class="diagram-box-item gray">
+            <strong>配置项</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li><code>tengu_bramble_lintel</code></li>
+              <li>默认值: 1 (每轮都检查)</li>
+              <li>GrowthBook 可配置</li>
+            </ul>
+          </div>
+          <div class="diagram-box-item green">
+            <strong>✓ 消息不丢失</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>跳过时 <code>lastMemoryMessageUuid</code> 不更新</li>
+              <li>下次提取包含所有累积消息</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>2.3 Agent 执行流程</h3>
+      <div class="flow-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <strong>启动 forked agent</strong>
+          <p style="color: #666; font-size: 0.9em;">
+            通过 <code>runForkedAgent()</code> 启动独立 agent，最多 <code>maxTurns=5</code> 轮
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <strong>Turn 1: 并行读取</strong>
+          <p style="color: #666; font-size: 0.9em;">
+            Agent 并行发起所有 <code>FileRead</code> 调用，读取需要更新的 memory 文件
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <strong>Turn 2: 并行写入</strong>
+          <p style="color: #666; font-size: 0.9em;">
+            Agent 并行发起所有 <code>FileWrite/FileEdit</code> 调用，写入/更新记忆
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <strong>Turn 3-5: 可能的补充</strong>
+          <p style="color: #666; font-size: 0.9em;">
+            如需额外操作（验证、更新索引等），最多再执行 3 轮
+          </p>
+        </div>
+      </div>
+      
+      <div class="diagram-desc">
+        <h4>📐 Agent 执行流程</h4>
+        <p>forked agent 通过 <code>maxTurns=5</code> 限制轮数，典型执行模式：</p>
+        
+        <div class="flow-diagram">
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step blue">Turn 1</div>
+            <span class="flow-diagram-arrow">→</span>
+            <div style="flex: 2; text-align: left;">
+              <strong>FileRead × N</strong>
+              <span style="color: #718096; font-size: 0.85em;">并行读取所有可能修改的文件</span>
+            </div>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step green">Turn 2</div>
+            <span class="flow-diagram-arrow">→</span>
+            <div style="flex: 2; text-align: left;">
+              <strong>FileWrite/FileEdit × N</strong>
+              <span style="color: #718096; font-size: 0.85em;">并行写入新记忆内容</span>
+            </div>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step yellow">Turn 3-5</div>
+            <span class="flow-diagram-arrow">→</span>
+            <div style="flex: 2; text-align: left;">
+              <strong>(可选) 验证/补充/索引更新</strong>
+              <span style="color: #718096; font-size: 0.85em;">如需额外操作</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+          <div class="diagram-box-item purple">
+            <strong>maxTurns = 5</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>代码硬编码限制</li>
+              <li>不可配置</li>
+              <li>到达后强制结束</li>
+            </ul>
+          </div>
+          <div class="diagram-box-item cyan">
+            <strong>并行策略</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>Turn 1: 所有读取并行</li>
+              <li>Turn 2: 所有写入并行</li>
+              <li>最大化效率</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card highlight">
+      <h3>2.4 Agent 最大轮数限制</h3>
+      <p><strong>是代码逻辑强制限制，不是提示词。</strong></p>
+      <pre><code>// extractMemories.ts:426
+maxTurns: 5  // 硬编码，不可配置</code></pre>
+      <p style="margin-top: 15px;">提示词中只说"有限轮次预算"，没有具体数字。实际由代码层面的 <code>maxTurns</code> 参数控制：</p>
+      <pre><code>// query.ts:1705
+if (maxTurns && nextTurnCount > maxTurns) {
+  yield createAttachmentMessage({
+    type: 'max_turns_reached',
+    maxTurns,
+    turnCount: nextTurnCount,
+  })
+  return { reason: 'max_turns', turnCount: nextTurnCount }
+}</code></pre>
+    </div>
+
+    <div class="card success">
+      <h3>2.5 用户通知机制</h3>
+      <div class="diagram-desc">
+        <h4>📐 通知策略</h4>
+        <p>extractMemories 对不同情况的通知策略：</p>
+        
+        <div class="diagram-box">
+          <div class="diagram-box-item green">
+            <strong>✓ 有记忆写入</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>显示用户通知</li>
+              <li>格式: "Memory saved: ..."</li>
+              <li>告知用户记忆已保存</li>
+            </ul>
+          </div>
+          
+          <div class="diagram-box-item gray">
+            <strong>✗ 无记忆写入</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>完全静默</li>
+              <li>无任何提示</li>
+              <li>仅 debug log 记录</li>
+            </ul>
+          </div>
+          
+          <div class="diagram-box-item gray">
+            <strong>✗ 提取出错</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>静默失败</li>
+              <li>无用户可见错误</li>
+              <li>光标不更新，下次重试</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dream 详解 -->
+    <h2>3. autoDream (做梦) 机制</h2>
+
+    <div class="card">
+      <h3>3.1 与 extractMemories 的核心区别</h3>
+      <div class="comparison-grid">
+        <div style="padding: 20px; background: #e6fffa; border-radius: 8px;">
+          <h4 style="color: #234e52; margin-bottom: 15px;">extractMemories</h4>
+          <ul style="color: #2c7a7b;">
+            <li>触发: 每轮 post-sampling</li>
+            <li>数据: 当前 session</li>
+            <li>目的: <strong>提取</strong>新记忆</li>
+            <li>操作: 新增文件</li>
+          </ul>
+        </div>
+        <div style="padding: 20px; background: #fef3c7; border-radius: 8px;">
+          <h4 style="color: #744210; margin-bottom: 15px;">autoDream</h4>
+          <ul style="color: #975a16;">
+            <li>触发: 时间 + 会话门控</li>
+            <li>数据: 跨多个 session</li>
+            <li>目的: <strong>整合/清理</strong>已有记忆</li>
+            <li>操作: 修改/合并/删除</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>3.2 触发门控（Gate 顺序）</h3>
+      <div class="diagram-desc">
+        <h4>📐 门控检查流程</h4>
+        <p>门控按"最便宜优先"顺序检查，任何一步失败都会 return：</p>
+        
+        <div class="flow-diagram">
+          <div class="flow-diagram-row">
+            <span style="font-size: 1.5em;">▶</span>
+            <span style="color: #718096;">开始检查</span>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="gate-box time" style="flex: 2;">
+              <span class="gate-num">1</span>
+              <strong>时间门控</strong>
+              <span style="color: #718096;">hoursSince >= minHours (默认 24h)</span>
+            </div>
+            <span style="color: #c53030;">❌ return</span>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="gate-box scan" style="flex: 2;">
+              <span class="gate-num">2</span>
+              <strong>扫描节流</strong>
+              <span style="color: #718096;">距离上次扫描 >= 10 分钟</span>
+            </div>
+            <span style="color: #c53030;">❌ return</span>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="gate-box session" style="flex: 2;">
+              <span class="gate-num">3</span>
+              <strong>会话门控</strong>
+              <span style="color: #718096;">sessionIds >= minSessions (默认 5)</span>
+            </div>
+            <span style="color: #c53030;">❌ return</span>
+          </div>
+          <div class="flow-diagram-row">
+            <span class="flow-diagram-arrow">↓</span>
+          </div>
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step green" style="flex: 2;">
+              ✓ 执行 Consolidation
+            </div>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+          <div class="diagram-box-item blue">
+            <strong>时间门控</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>配置: <code>minHours</code></li>
+              <li>默认值: 24 小时</li>
+              <li>GrowthBook 可配置</li>
+            </ul>
+          </div>
+          <div class="diagram-box-item yellow">
+            <strong>扫描节流</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>距离上次扫描 >= 10 分钟</li>
+              <li>防止频繁扫描</li>
+            </ul>
+          </div>
+          <div class="diagram-box-item cyan">
+            <strong>会话门控</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>配置: <code>minSessions</code></li>
+              <li>默认值: 5 个会话</li>
+              <li>GrowthBook 可配置</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>3.3 Dream 的三个阶段</h3>
+      <div class="timeline">
+        <div class="timeline-item">
+          <strong>Phase 1 — Orient (定位)</strong>
+          <ul style="margin-top: 8px;">
+            <li>列出 memory 目录</li>
+            <li>读取 MEMORY.md 索引</li>
+            <li>浏览现有 topic 文件</li>
+          </ul>
+        </div>
+        <div class="timeline-item">
+          <strong>Phase 2 — Gather Signal (收集信号)</strong>
+          <ul style="margin-top: 8px;">
+            <li>读取 daily logs (每日日志)</li>
+            <li>查找与现有记忆矛盾的信息</li>
+            <li>grep transcript 获取特定上下文</li>
+          </ul>
+        </div>
+        <div class="timeline-item success">
+          <strong>Phase 3 — Consolidate (整合)</strong>
+          <ul style="margin-top: 8px;">
+            <li>合并新信号到现有 topic</li>
+            <li>将相对日期转为绝对日期</li>
+            <li>删除/修正过时的记忆</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 会话关闭处理 -->
+    <h2>4. 会话关闭处理</h2>
+
+    <div class="card warning">
+      <h3>4.1 extractMemories: 有 drain 机制 ✓</h3>
+      <div class="diagram-desc">
+        <h4>📐 关闭流程（有 drain）</h4>
+        <p>会话关闭时，extractMemories 会等待提取完成：</p>
+        
+        <div class="flow-diagram">
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step orange">会话关闭</div>
+            <span class="flow-diagram-arrow">→</span>
+            <div class="flow-diagram-step green">drainPendingExtraction</div>
+            <span class="flow-diagram-arrow">→</span>
+            <div class="flow-diagram-step blue">gracefulShutdown</div>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+          <div class="diagram-box-item green">
+            <strong>✓ drainPendingExtraction</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>等待最多 60 秒</li>
+              <li>提取完成则继续</li>
+              <li>超时后强制继续</li>
+            </ul>
+          </div>
+          <div class="diagram-box-item blue">
+            <strong>gracefulShutdown</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>5s failsafe</li>
+              <li>进程退出</li>
+            </ul>
+          </div>
+        </div>
+        
+        <pre><code>// extractMemories.ts:579-586
+drainer = async (timeoutMs = 60_000) => {
+  if (inFlightExtractions.size === 0) return
+  await Promise.race([
+    Promise.all(inFlightExtractions),           // 等待完成
+    new Promise(r => setTimeout(r, timeoutMs)) // 或超时
+  ])
+}</code></pre>
+      </div>
+    </div>
+
+    <div class="card warning">
+      <h3>4.2 autoDream: 无 drain 机制 ⚠️</h3>
+      <div class="diagram-desc">
+        <h4>📐 关闭流程（无 drain）</h4>
+        <p>会话关闭时，Dream <strong style="color: #c53030;">直接被终止</strong>，不等待完成：</p>
+        
+        <div class="flow-diagram">
+          <div class="flow-diagram-row">
+            <div class="flow-diagram-step red">会话关闭</div>
+            <span class="flow-diagram-arrow">→</span>
+            <div class="flow-diagram-step red">gracefulShutdown</div>
+            <span class="flow-diagram-arrow">→</span>
+            <div class="flow-diagram-step red">Dream 被 kill</div>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+          <div class="diagram-box-item green">
+            <strong>✓ 已写入的文件</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>会保留</li>
+              <li>不会回滚</li>
+            </ul>
+          </div>
+          <div class="diagram-box-item orange">
+            <strong>↩️ Lock 文件</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>会回滚 mtime</li>
+              <li>下次可重新执行</li>
+            </ul>
+          </div>
+          <div class="diagram-box-item red">
+            <strong>⚠️ Consolidation 完整性</strong>
+            <ul style="margin-top: 10px; font-size: 0.9em;">
+              <li>可能不完整</li>
+              <li>下次满足条件时重跑</li>
+            </ul>
+          </div>
+        </div>
+        
+        <table>
+          <tr>
+            <th>情况</th>
+            <th>结果</th>
+          </tr>
+          <tr>
+            <td>已写入的文件</td>
+            <td><span class="badge badge-green">保留</span> 不会回滚</td>
+          </tr>
+          <tr>
+            <td>Lock 文件</td>
+            <td><span class="badge badge-orange">回滚</span> 下次可重新执行</td>
+          </tr>
+          <tr>
+            <td>Consolidation 完整性</td>
+            <td><span class="badge badge-orange">可能不完整</span></td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- 配置汇总 -->
+    <h2>5. 配置汇总</h2>
+
+    <div class="card highlight">
+      <table>
+        <tr>
+          <th>配置项</th>
+          <th>所属机制</th>
+          <th>默认值</th>
+          <th>类型</th>
+          <th>说明</th>
+        </tr>
+        <tr>
+          <td><code>tengu_passport_quail</code></td>
+          <td>extractMemories</td>
+          <td><span class="badge badge-orange">false</span></td>
+          <td>GrowthBook</td>
+          <td>功能总开关</td>
+        </tr>
+        <tr>
+          <td><code>tengu_bramble_lintel</code></td>
+          <td>extractMemories</td>
+          <td><span class="badge badge-blue">1</span></td>
+          <td>GrowthBook</td>
+          <td>执行频率（每 N 轮）</td>
+        </tr>
+        <tr>
+          <td><code>maxTurns</code></td>
+          <td>extractMemories</td>
+          <td><span class="badge badge-purple">5</span></td>
+          <td>代码硬编码</td>
+          <td>Agent 最大轮数</td>
+        </tr>
+        <tr>
+          <td><code>minHours</code></td>
+          <td>autoDream</td>
+          <td><span class="badge badge-blue">24</span></td>
+          <td>GrowthBook</td>
+          <td>时间门控（小时）</td>
+        </tr>
+        <tr>
+          <td><code>minSessions</code></td>
+          <td>autoDream</td>
+          <td><span class="badge badge-blue">5</span></td>
+          <td>GrowthBook</td>
+          <td>会话门控（数量）</td>
+        </tr>
+        <tr>
+          <td><code>drain timeout</code></td>
+          <td>extractMemories</td>
+          <td><span class="badge badge-blue">60s</span></td>
+          <td>代码</td>
+          <td>关闭等待超时</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 总结 -->
+    <h2>6. 总结</h2>
+
+    <div class="card success">
+      <div class="diagram-desc">
+        <h4>📐 双系统对比总结</h4>
+        
+        <div class="vs-box">
+          <div class="vs-box-col left">
+            <h4 style="text-align: center; color: #234e52;">extractMemories</h4>
+            <ul style="font-size: 0.9em; margin-top: 15px;">
+              <li><strong>目的:</strong> 提取当前会话的新记忆</li>
+              <li><strong>触发:</strong> 每轮 post-sampling</li>
+              <li><strong>数据:</strong> 当前 session (完整历史)</li>
+              <li><strong>Agent:</strong> forked, maxTurns=5</li>
+              <li><strong>节流:</strong> tengu_bramble_lintel</li>
+              <li><strong>通知:</strong> 有写入时显示</li>
+              <li><strong>关闭:</strong> drain 等待 60s ✓</li>
+              <li><strong>失败:</strong> 光标不更新，下次重试</li>
+            </ul>
+          </div>
+          
+          <div class="vs-divider">VS</div>
+          
+          <div class="vs-box-col right">
+            <h4 style="text-align: center; color: #744210;">autoDream</h4>
+            <ul style="font-size: 0.9em; margin-top: 15px;">
+              <li><strong>目的:</strong> 整合/清理/更新已有记忆</li>
+              <li><strong>触发:</strong> 时间(24h) + 会话(5) 门控</li>
+              <li><strong>数据:</strong> 多 session transcript</li>
+              <li><strong>Agent:</strong> forked, 无 maxTurns 限制</li>
+              <li><strong>阶段:</strong> Orient → Gather → Consolidate</li>
+              <li><strong>通知:</strong> 有写入时显示</li>
+              <li><strong>关闭:</strong> 无 drain，立即终止 ⚠️</li>
+              <li><strong>失败:</strong> Lock 回滚，下次可重跑</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align: center; color: #999; font-size: 0.9em; margin-top: 40px; padding-bottom: 40px;">
+      <p>Claude Code 自动记忆系统设计文档</p>
+      <p>基于源码分析生成 | 版本: 2026-04-14</p>
+    </div>
+  </div>
+</body>
+</html>
