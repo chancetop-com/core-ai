@@ -35,10 +35,11 @@ subprojects {
         failFast = true
         testLogging.showStandardStreams = true
         testLogging.exceptionFormat = TestExceptionFormat.FULL
-
-        var mockitoAgent: File? = configurations.testRuntimeClasspath.get().resolve().find { it.name.startsWith("mockito-core-") }
-        if (mockitoAgent != null) {
-            jvmArgs("-javaagent:${mockitoAgent}")
+        doFirst {
+            val mockitoAgent = configurations.testRuntimeClasspath.get().files.find { it.name.startsWith("mockito-core-") }
+            if (mockitoAgent != null) {
+                jvmArgs("-javaagent:${mockitoAgent}")
+            }
         }
     }
 
