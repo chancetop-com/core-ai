@@ -77,6 +77,28 @@ export default function TraceList() {
     return `${input.toLocaleString()} / ${output.toLocaleString()}`;
   };
 
+  const extractModel = (t: Trace): string => {
+    if (t.metadata?.model) return t.metadata.model;
+    try {
+      const parsed = JSON.parse(t.input);
+      if (parsed?.model) return parsed.model;
+    } catch { /* ignore */ }
+    return '-';
+  };
+
+  const extractInputPreview = (t: Trace): string => {
+    try {
+      const parsed = JSON.parse(t.input);
+      const msgs = parsed?.messages;
+      if (Array.isArray(msgs) && msgs.length > 0) {
+        const last = msgs[msgs.length - 1];
+        const content = Array.isArray(last?.content) ? last.content[0]?.text : last?.content;
+        if (typeof content === 'string') return content.replace(/\s+/g, ' ').slice(0, 80);
+      }
+    } catch { /* ignore */ }
+    return '';
+  };
+
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -205,6 +227,7 @@ export default function TraceList() {
           <thead>
             <tr style={{ background: 'var(--color-bg-tertiary)' }}>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Name</th>
+              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Model</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Status</th>
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                 <span className="flex items-center gap-1"><Clock size={14} /> Duration</span>
@@ -212,17 +235,20 @@ export default function TraceList() {
               <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                 <span className="flex items-center gap-1"><Zap size={14} /> Tokens (in/out)</span>
               </th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Started At</th>
+              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Time</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
+              <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>Loading...</td></tr>
             ) : traces.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+              <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: 'var(--color-text-secondary)' }}>
                 {activeFilterCount > 0 ? 'No traces match your filters' : 'No traces yet'}
               </td></tr>
-            ) : traces.map(t => (
+            ) : traces.map(t => {
+              const model = extractModel(t);
+              const preview = extractInputPreview(t);
+              return (
               <tr key={t.id}
                 onClick={() => navigate(`/traces/${t.traceId || t.id}`)}
                 className="cursor-pointer transition-colors border-t"
@@ -231,11 +257,17 @@ export default function TraceList() {
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                 <td className="px-4 py-3">
                   <div className="font-medium truncate" style={{ maxWidth: '300px' }}>{t.name || t.traceId}</div>
+                  {preview && (
+                    <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-secondary)', maxWidth: '300px' }}>
+                      {preview}
+                    </div>
+                  )}
                   <div className="flex gap-2 mt-0.5">
                     {t.sessionId && (
-                      <span className="text-xs px-1.5 py-0.5 rounded"
-                        style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}>
-                        {t.sessionId}
+                      <span className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
+                        onClick={e => { e.stopPropagation(); setFilters(f => ({ ...f, sessionId: t.sessionId })); applyFilters(); }}
+                        style={{ color: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}>
+                        session:{t.sessionId.substring(0, 8)}
                       </span>
                     )}
                     {t.userId && (
@@ -246,12 +278,21 @@ export default function TraceList() {
                     )}
                   </div>
                 </td>
+                <td className="px-4 py-3">
+                  {model !== '-' ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full"
+                      style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                      {model}
+                    </span>
+                  ) : <span style={{ color: 'var(--color-text-secondary)' }}>-</span>}
+                </td>
                 <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatDuration(t.durationMs)}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTokens(t)}</td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(t.startedAt || t.createdAt)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

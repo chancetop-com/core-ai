@@ -10,7 +10,7 @@ import AgentList from './pages/agents/AgentList';
 import AgentEditor from './pages/agents/AgentEditor';
 import RunDetail from './pages/agents/RunDetail';
 import Chat from './pages/chat/Chat';
-import Sessions from './pages/sessions/Sessions';
+
 import SystemPromptList from './pages/system-prompts/SystemPromptList';
 import SystemPromptEditor from './pages/system-prompts/SystemPromptEditor';
 import Login from './pages/login/Login';
@@ -79,7 +79,7 @@ export default function App() {
                 {caps.chat && <Route path="/chat" element={<Chat />} />}
                 {caps.traces && <Route path="/" element={<TraceList />} />}
                 {caps.traces && <Route path="/traces/:id" element={<TraceDetail />} />}
-                {caps.traces && <Route path="/sessions" element={<Sessions />} />}
+                {/* Sessions page removed — session list now in Chat sidebar */}
                 {caps.prompts && <Route path="/prompts" element={<PromptList />} />}
                 {caps.prompts && <Route path="/prompts/:id" element={<PromptEditor />} />}
                 <Route path="/agents" element={<AgentList />} />
