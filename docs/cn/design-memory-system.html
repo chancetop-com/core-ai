@@ -403,7 +403,7 @@
             <text x="395" y="109" font-size="8" fill="#64748b" font-family="sans-serif">hot events ≥ 5 · issue ≥ 3 · high 事件</text>
             <line x1="393" y1="117" x2="627" y2="117" stroke="#334155" stroke-width="0.5"/>
             <text x="395" y="133" font-size="9" fill="#a78bfa" font-family="sans-serif">读 Session → 写 ②③④  全提炼链</text>
-            <text x="395" y="148" font-size="8" fill="#94a3b8" font-family="sans-serif">Session → .learning → episodes → knowledge</text>
+            <text x="395" y="148" font-size="8" fill="#94a3b8" font-family="sans-serif">Session → daily-logs → episodes → knowledge</text>
             <text x="395" y="163" font-size="8" fill="#64748b" font-family="sans-serif">async · 独立上下文 · 不阻塞主流程</text>
             <text x="395" y="178" font-size="8" fill="#64748b" font-family="sans-serif">fork 独立 agent · 不占主 context window</text>
             <text x="395" y="195" font-size="7" fill="#38bdf8" font-family="sans-serif">T4 session close 后也可触发一次完整提炼</text>
@@ -431,7 +431,7 @@
             <rect x="386" y="340" width="248" height="100" rx="8" fill="#1e293b" stroke="#f472b6" stroke-width="1.5"/>
             <text x="510" y="360" text-anchor="middle" font-size="10" fill="#f472b6" font-weight="bold" font-family="sans-serif">Session Close</text>
             <text x="395" y="378" font-size="9" fill="#94a3b8" font-family="sans-serif">CLI 关闭 hook 触发</text>
-            <text x="395" y="393" font-size="9" fill="#94a3b8" font-family="sans-serif">单次 LLM call 快速摘要写 .learning</text>
+            <text x="395" y="393" font-size="9" fill="#94a3b8" font-family="sans-serif">单次 LLM call 快速摘要写daily-logs</text>
             <text x="395" y="408" font-size="8" fill="#64748b" font-family="sans-serif">允许冗余 · 速度优先</text>
             <text x="395" y="422" font-size="8" fill="#f472b6" font-family="sans-serif">写 → ②  下次启动后 Ind.Agent 融合</text>
             <!-- arrow → ② -->
@@ -520,10 +520,10 @@
         同一次 session（grubhub.com 菜单爬虫，2026-03-28）经过完整提炼链后，在各层的实际存储内容示例。
     </p>
 
-    <!-- Layer ② .learning -->
+    <!-- Layer ② daily-logs -->
     <div style="margin-bottom:1.2rem;">
         <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.4rem;">
-            <span style="background:rgba(56,189,248,0.15);color:var(--accent-blue);border:1px solid rgba(56,189,248,0.4);border-radius:6px;padding:0.15rem 0.6rem;font-size:0.78rem;font-weight:600;">② .learning</span>
+            <span style="background:rgba(56,189,248,0.15);color:var(--accent-blue);border:1px solid rgba(56,189,248,0.4);border-radius:6px;padding:0.15rem 0.6rem;font-size:0.78rem;font-weight:600;">② daily-logs</span>
             <code style="color:var(--text-secondary);font-size:0.82rem;">2026-03-28-grubhub_menu_crawler.md</code>
         </div>
         <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:1.1rem 1.3rem;font-size:0.78rem;line-height:1.7;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
@@ -1923,28 +1923,29 @@ confirmed: 1 session</span></pre>
         <tbody>
             <tr>
                 <td><code>current.jsonl</code> — 实时捕获</td>
-                <td>Session Hot Events（实时追加）</td>
-                <td><strong style="color:var(--accent-orange);">改进：</strong>采用 JSONL 格式替代 Markdown，提升 crash-safe 能力</td>
+                <td>Session message list</td>
+                <td><strong style="color:var(--accent-orange);"></td>
             </tr>
             <tr>
                 <td><code>daily-logs/</code> + <code>episodes/</code> — 叙事摘要</td>
-                <td>② .learning（T4 快速写入）→ ③ episodes（T1 整理后生成）</td>
+                <td>独立agent 触发（单日多次，每10轮会话），同时提取daily-logs，如果有提取到daily-logs 在episodes 创建对应的再要索引 </td>
                 <td>参考架构一步归档+合成；本设计拆分为 T4 快照写 ② / T1 独立提炼 ② → ③，层次更清晰</td>
             </tr>
             <tr>
                 <td><code>knowledge/</code> — 语义知识（检索入口）</td>
-                <td>Domain Knowledge Layer（domain files）</td>
+                <td>Domain Knowledge Layer（domain files）定位相同，在执行 daily-logs 时会判断是否有新知识进行写入</td>
                 <td>结构一致；参考架构按 people/projects/decisions 分类，本设计按 project/user/feedback/reference 分类</td>
             </tr>
             <tr>
-                <td><code>preferences.md</code> — 偏好提升</td>
-                <td>User Preference Layer（~/.claude/）</td>
-                <td>参考架构强调需经过稳定性验证才提升，本设计应加入此验证步骤</td>
+                <td>Nightly pipeline (23:30/23:45/23:50)</td>
+                <td>T3 Dream Task： 如果启动cli ，上次dream 超过24小时触发</td>
+                <td></td>
             </tr>
             <tr>
-                <td>Nightly pipeline (23:30/23:45/23:50)</td>
-                <td>T3 Dream Task (Cron 24h)</td>
-                <td>参考架构将三步拆为不同时间点，降低单次任务复杂度；本设计可拆分</td>
+                <td><code>preferences.md</code> — 偏好提升</td>
+                <td>preferences.md（~/.core-ai/） 按日进行总结是否有效，进行提取，而外包括（SOUL.md、claude.md）
+                </td>
+                <td>参考架构强调需经过稳定性验证才提升，本设计应加入此验证步骤</td>
             </tr>
             <tr>
                 <td><code>watches/</code> — 监控目标</td>
@@ -1965,7 +1966,7 @@ confirmed: 1 session</span></pre>
 <footer>
         <p>Knowledge System Design v2 · 2026-04 · core-ai project</p>
         <p style="margin-top:0.3rem;font-size:0.78rem;">
-            current.jsonl → .learning → episodes → knowledge → preferences.md / soul.md / CLAUDE.md
+            current.jsonl → daily-logs → episodes → knowledge → preferences.md / soul.md / CLAUDE.md
         </p>
     </footer>
 
