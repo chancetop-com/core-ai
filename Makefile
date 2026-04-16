@@ -1,8 +1,11 @@
 DOCKER_USER = chancetop
 IMAGE_NAME = core-ai-server
+SANDBOX_IMAGE_NAME = core-ai-sandbox-runtime
 VERSION ?= latest
 FULL_IMAGE = $(DOCKER_USER)/$(IMAGE_NAME):$(VERSION)
+SANDBOX_FULL_IMAGE = $(DOCKER_USER)/$(SANDBOX_IMAGE_NAME):$(VERSION)
 DOCKER_DIR = build/core-ai-server/docker
+SANDBOX_DIR = core-ai-sandbox-runtime
 
 REPO = chancetop-com/core-ai
 CLI_NAME = core-ai-cli
@@ -32,9 +35,9 @@ endif
 CLI_BINARY = $(CLI_NAME)-$(DETECTED_OS)-$(ARCH)$(CLI_EXT)
 CLI_BUILD_DIR = build/core-ai-cli/native/nativeCompile
 
-.PHONY: docker push cli release builder
+.PHONY: server sandbox push cli release builder
 
-docker: builder
+server: builder
 	@test -n "$(DOCKER_USER)" || (echo "ERROR: set DOCKER_USERNAME env var" && exit 1)
 	$(GRADLEW) :core-ai-server:docker
 	docker buildx build \
@@ -42,6 +45,14 @@ docker: builder
 		-t $(FULL_IMAGE) \
 		--push \
 		$(DOCKER_DIR)
+
+sandbox: builder
+	@test -n "$(DOCKER_USER)" || (echo "ERROR: set DOCKER_USERNAME env var" && exit 1)
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(SANDBOX_FULL_IMAGE) \
+		--push \
+		$(SANDBOX_DIR)
 
 builder:
 	@if ! docker buildx ls | grep multi-builder > /dev/null 2>&1; then \

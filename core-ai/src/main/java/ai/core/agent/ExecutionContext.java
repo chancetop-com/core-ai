@@ -5,6 +5,7 @@ import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Usage;
 import ai.core.persistence.PersistenceProvider;
+import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
@@ -35,6 +36,7 @@ public final class ExecutionContext {
     private final AttachedContent attachedContent;
     private final PersistenceProvider persistenceProvider;
     private final SubagentOutputSinkFactory subagentOutputSinkFactory;
+    private Sandbox sandbox;
     private BackgroundTaskManager backgroundTaskManager;
     private LLMProvider llmProvider;
     private String model;
@@ -53,6 +55,7 @@ public final class ExecutionContext {
         this.asyncTaskManager = builder.asyncTaskManager;
         this.persistenceProvider = builder.persistenceProvider;
         this.subagentOutputSinkFactory = builder.subagentOutputSinkFactory;
+        this.sandbox = builder.sandbox;
         this.backgroundTaskManager = builder.backgroundTaskManager;
     }
 
@@ -86,6 +89,14 @@ public final class ExecutionContext {
 
     public SubagentOutputSinkFactory getSubagentOutputSinkFactory() {
         return subagentOutputSinkFactory;
+    }
+
+    public Sandbox getSandbox() {
+        return sandbox;
+    }
+
+    public void sandbox(Sandbox sandbox) {
+        this.sandbox = sandbox;
     }
 
     public BackgroundTaskManager getTaskManager() {
@@ -166,6 +177,7 @@ public final class ExecutionContext {
         private AttachedContent attachedContent;
         private PersistenceProvider persistenceProvider;
         private SubagentOutputSinkFactory subagentOutputSinkFactory;
+        private Sandbox sandbox;
         private BackgroundTaskManager backgroundTaskManager;
         private final Map<String, Object> customVariables = Maps.newHashMap();
 
@@ -218,6 +230,11 @@ public final class ExecutionContext {
 
         public Builder subagentOutputSinkFactory(SubagentOutputSinkFactory subagentOutputSinkFactory) {
             this.subagentOutputSinkFactory = subagentOutputSinkFactory;
+            return this;
+        }
+
+        public Builder sandbox(Sandbox sandbox) {
+            this.sandbox = sandbox;
             return this;
         }
 

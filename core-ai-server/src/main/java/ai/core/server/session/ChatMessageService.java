@@ -243,9 +243,9 @@ public class ChatMessageService {
         }
     }
 
-    private static class TurnBuffer {
+    private static final class TurnBuffer {
         String thinking;
-        Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
+        final Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
     }
 
     public record SessionMeta(String userId, String agentId, String source, String scheduleId, String apiKeyId) {

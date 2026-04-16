@@ -38,4 +38,7 @@ public interface AgentEventListener {
     default void onCompression(CompressionEvent event) {
     }
 
+    default void onSandbox(SandboxEvent event) {
+    }
 }
+

@@ -27,5 +27,7 @@ public enum EventType {
     @Property(name = "plan_update")
     PLAN_UPDATE,
     @Property(name = "compression")
-    COMPRESSION
+    COMPRESSION,
+    @Property(name = "sandbox")
+    SANDBOX
 }

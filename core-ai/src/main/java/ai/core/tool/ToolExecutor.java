@@ -53,6 +53,44 @@ public class ToolExecutor {
     }
 
     private ToolCallResult doExecute(FunctionCall functionCall, ExecutionContext context) {
+        var tool = findTool(functionCall);
+        if (tool == null) {
+            return ToolCallResult.failed("tool not found: " + functionCall.function.name);
+        }
+
+        var sandbox = context.getSandbox();
+        var useSandbox = sandbox != null && sandbox.shouldIntercept(tool.getName());
+
+        // Common validation for both sandbox and non-sandbox paths
+        var validationResult = validate(tool, functionCall, useSandbox);
+        if (validationResult != null) {
+            return validationResult;
+        }
+
+        // Log start
+        LOGGER.debug("tool {}: {}", functionCall.function.name, functionCall.function.arguments);
+        var startTime = System.currentTimeMillis();
+
+        // Execute - sandbox or direct
+        ToolCallResult result;
+        if (useSandbox) {
+            LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
+            result = sandbox.execute(tool.getName(), functionCall.function.arguments, context);
+            result.withStats("executionMode", "sandbox");
+            result.withStats("sandboxId", sandbox.getId());
+        } else {
+            result = executeWithTimeout(tool, functionCall, context);
+        }
+
+        // Common post-processing
+        result.withToolName(tool.getName()).withDuration(System.currentTimeMillis() - startTime);
+        handleAsyncResult(result, tool, functionCall, context);
+
+        LOGGER.debug("tool {} completed in {}ms, stats: {}", result.getToolName(), result.getDurationMs(), result.getStats());
+        return result;
+    }
+
+    private ToolCall findTool(FunctionCall functionCall) {
         var optional = toolCalls.stream()
                 .filter(v -> v.getName().equalsIgnoreCase(functionCall.function.name))
                 .findFirst();
@@ -60,17 +98,17 @@ public class ToolExecutor {
         if (optional.isEmpty())
             optional = toolCalls.stream().filter(v -> v.getName().endsWith(functionCall.function.name)).findFirst();
 
-        if (optional.isEmpty()) {
-            return ToolCallResult.failed("tool not found: " + functionCall.function.name);
-        }
+        return optional.orElse(null);
+    }
 
-        var tool = optional.get();
-        // Check authentication
-        if (Boolean.TRUE.equals(tool.isNeedAuth()) && !authenticated) {
+    private ToolCallResult validate(ToolCall tool, FunctionCall functionCall, boolean useSandbox) {
+        // Sandbox path skips auth check (sandbox has its own isolation)
+        if (!useSandbox && Boolean.TRUE.equals(tool.isNeedAuth()) && !authenticated) {
             statusUpdater.accept(NodeStatus.WAITING_FOR_USER_INPUT);
             return ToolCallResult.failed("This tool call requires user authentication, please ask user to confirm it.");
         }
 
+        // Missing params check applies to both paths
         var missingParams = tool.findMissingRequiredParams(functionCall.function.arguments);
         if (!missingParams.isEmpty()) {
             LOGGER.warn("tool [{}] call rejected: missing required parameters: {}", tool.getName(), missingParams);
@@ -78,19 +116,7 @@ public class ToolExecutor {
                     tool.getName(), String.join(", ", missingParams)));
         }
 
-        LOGGER.debug("tool {}: {}", functionCall.function.name, functionCall.function.arguments);
-        var startTime = System.currentTimeMillis();
-
-        var result = executeWithTimeout(tool, functionCall, context);
-
-        // Set stats
-        result.withToolName(tool.getName()).withDuration(System.currentTimeMillis() - startTime);
-        // Handle async results
-        handleAsyncResult(result, tool, functionCall, context);
-
-        // Log stats
-        LOGGER.debug("tool {} completed in {}ms, stats: {}", result.getToolName(), result.getDurationMs(), result.getStats());
-        return result;
+        return null; // validation passed
     }
 
     private ToolCallResult executeWithTimeout(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {

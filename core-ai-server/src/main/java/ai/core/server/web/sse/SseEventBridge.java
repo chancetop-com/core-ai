@@ -13,6 +13,7 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
+import ai.core.api.server.session.SandboxEvent;
 
 /**
  * @author stephen
@@ -79,5 +80,10 @@ public class SseEventBridge implements AgentEventListener {
     @Override
     public void onCompression(CompressionEvent event) {
         sessionChannelService.send(sessionId, EventType.COMPRESSION, event);
+    }
+
+    @Override
+    public void onSandbox(SandboxEvent event) {
+        sessionChannelService.send(sessionId, EventType.SANDBOX, event);
     }
 }

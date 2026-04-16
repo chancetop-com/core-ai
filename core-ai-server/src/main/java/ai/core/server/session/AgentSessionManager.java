@@ -7,9 +7,11 @@ import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.web.sse.SessionChannelService;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
 import ai.core.tool.BuiltinTools;
@@ -58,7 +60,10 @@ public class AgentSessionManager {
     ChatMessageService chatMessageService;
 
     @Inject
-    ai.core.server.web.sse.SessionChannelService sessionChannelService;
+    SessionChannelService sessionChannelService;
+
+    @Inject
+    SandboxService sandboxService;
 
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         session.onEvent(chatMessageService.listener(sessionId));
@@ -76,6 +81,13 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, source));
+
+        // Create sandbox after session so events can be dispatched
+        var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
+        if (sandbox != null) {
+            context.sandbox(sandbox);
+        }
+
         sessions.put(sessionId, session);
         return sessionId;
     }
@@ -107,6 +119,14 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, definition.id, source));
+
+        // Create sandbox after session so events can be dispatched
+        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
+        var sandbox = sandboxService.createSandbox(sandboxConfig, sessionId, userId, session::dispatchEvent);
+        if (sandbox != null) {
+            context.sandbox(sandbox);
+        }
+
         sessions.put(sessionId, session);
 
         // Auto-load subagents configured in the agent definition
@@ -200,6 +220,14 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         registerSessionFromDb(sessionId, userId);
+
+        if (context != null) {
+            var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
+            if (sandbox != null) {
+                context.sandbox(sandbox);
+            }
+        }
+
         restoreAgentHistory(agent, sessionId);
         return session;
     }
@@ -212,6 +240,14 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         registerSessionFromDb(sessionId, userId);
+
+        if (context != null) {
+            var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
+            if (sandbox != null) {
+                context.sandbox(sandbox);
+            }
+        }
+
         restoreAgentHistory(agent, sessionId);
         return session;
     }
@@ -252,6 +288,7 @@ public class AgentSessionManager {
     public void closeSession(String sessionId) {
         var session = sessions.remove(sessionId);
         if (session != null) session.close();
+        sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
     }
 

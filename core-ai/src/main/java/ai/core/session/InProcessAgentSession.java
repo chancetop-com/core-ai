@@ -13,6 +13,7 @@ import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
+import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
@@ -217,6 +218,10 @@ public class InProcessAgentSession implements AgentSession {
         logger.info("loaded {} tools to session, sessionId={}", tools.size(), sessionId);
     }
 
+    public void dispatchEvent(AgentEvent event) {
+        dispatch(event);
+    }
+
     private void setupCompressionListener() {
         var compression = agent.getCompression();
         if (compression == null) return;
@@ -228,18 +233,23 @@ public class InProcessAgentSession implements AgentSession {
         logger.debug("dispatching event: {}, sessionId={}, thread={}", event.getClass().getSimpleName(), sessionId, Thread.currentThread().getName());
         for (AgentEventListener listener : listeners) {
             try {
-                if (event instanceof TextChunkEvent e) listener.onTextChunk(e);
-                else if (event instanceof ReasoningChunkEvent e) listener.onReasoningChunk(e);
-                else if (event instanceof ReasoningCompleteEvent e) listener.onReasoningComplete(e);
-                else if (event instanceof ToolStartEvent e) listener.onToolStart(e);
-                else if (event instanceof ToolResultEvent e) listener.onToolResult(e);
-                else if (event instanceof ToolApprovalRequestEvent e) listener.onToolApprovalRequest(e);
-                else if (event instanceof TurnCompleteEvent e) listener.onTurnComplete(e);
-                else if (event instanceof ErrorEvent e) listener.onError(e);
-                else if (event instanceof StatusChangeEvent e) listener.onStatusChange(e);
-                else if (event instanceof OnToolEvent e) listener.onOnTool(e);
-                else if (event instanceof PlanUpdateEvent e) listener.onPlanUpdate(e);
-                else if (event instanceof CompressionEvent e) listener.onCompression(e);
+                switch (event) {
+                    case TextChunkEvent e -> listener.onTextChunk(e);
+                    case ReasoningChunkEvent e -> listener.onReasoningChunk(e);
+                    case ReasoningCompleteEvent e -> listener.onReasoningComplete(e);
+                    case ToolStartEvent e -> listener.onToolStart(e);
+                    case ToolResultEvent e -> listener.onToolResult(e);
+                    case ToolApprovalRequestEvent e -> listener.onToolApprovalRequest(e);
+                    case TurnCompleteEvent e -> listener.onTurnComplete(e);
+                    case ErrorEvent e -> listener.onError(e);
+                    case StatusChangeEvent e -> listener.onStatusChange(e);
+                    case OnToolEvent e -> listener.onOnTool(e);
+                    case PlanUpdateEvent e -> listener.onPlanUpdate(e);
+                    case CompressionEvent e -> listener.onCompression(e);
+                    case SandboxEvent e -> listener.onSandbox(e);
+                    default -> {
+                    }
+                }
             } catch (Exception e) {
                 logger.error("failed to dispatch event to listener, event={}, sessionId={}", event.getClass().getSimpleName(), sessionId, e);
             }

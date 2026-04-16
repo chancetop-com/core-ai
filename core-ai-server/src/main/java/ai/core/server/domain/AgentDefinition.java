@@ -81,6 +81,9 @@ public class AgentDefinition {
     @Field(name = "published_config")
     public AgentPublishedConfig publishedConfig;
 
+    @Field(name = "sandbox_config")
+    public AgentSandboxConfig sandboxConfig;
+
     @Field(name = "published_at")
     public ZonedDateTime publishedAt;
 

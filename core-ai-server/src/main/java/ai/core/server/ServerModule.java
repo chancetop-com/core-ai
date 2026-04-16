@@ -9,11 +9,15 @@ import ai.core.api.server.AgentSessionWebService;
 import ai.core.api.server.SkillWebService;
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.UserWebService;
+import ai.core.sandbox.SandboxProvider;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.llmcall.LLMCallBuilderTools;
+import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.docker.DockerSandboxProvider;
+import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
@@ -86,31 +90,15 @@ public class ServerModule extends Module {
         site().session().timeout(Duration.ofHours(24));
         site().session().cookie("CoreAIServerSessionId", null);
 
-        bind(SystemPromptService.class);
-        bind(LLMCallExecutor.class);
-        bind(AgentRunner.class);
-        bind(AgentScheduler.class);
-        bind(ChannelService.class);
-        bind(SessionChannelService.class);
-        bind(ChatMessageService.class);
-        bind(AgentSessionManager.class);
-        bind(AgentDefinitionService.class);
-        bind(JavaToSchemaService.class);
-        bind(AgentDraftGenerator.class);
-        bind(AgentRunService.class);
-        bind(AgentScheduleService.class);
-        bind(UserService.class);
-        var authService = bind(AuthService.class);
-        authService.adminEmail = property("sys.admin.email").orElse("admin@example.com");
-        authService.adminPassword = property("sys.admin.password").orElse("admin");
-        authService.adminName = property("sys.admin.name").orElse("Admin");
+        bindSandboxService();
+        bindService();
+        bindAuthService();
 
         var builderTools = bind(LLMCallBuilderTools.class);
 
         var mcpConfig = property("mcp.servers.json").orElse(null);
         onStartup(() -> toolRegistry.initialize(mcpConfig));
         onStartup(builderTools::initialize);
-        onStartup(authService::initialize);
 
         bindWebService();
         http().route(HTTPMethod.POST, "/api/webhooks/:agentId", bind(WebhookController.class));
@@ -125,6 +113,53 @@ public class ServerModule extends Module {
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
 
         registerStaticFiles();
+    }
+
+    private void bindAuthService() {
+        var authService = bind(AuthService.class);
+        authService.adminEmail = property("sys.admin.email").orElse("admin@example.com");
+        authService.adminPassword = property("sys.admin.password").orElse("admin");
+        authService.adminName = property("sys.admin.name").orElse("Admin");
+
+        onStartup(authService::initialize);
+    }
+
+    private void bindSandboxService() {
+        property("sys.sandbox.provider").ifPresent(p -> {
+            SandboxProvider provider;
+            if (p.equalsIgnoreCase("kubernetes")) {
+                var apiServer = property("sys.sandbox.aks.api-server").orElse("https://kubernetes.default.svc");
+                var token = property("sys.sandbox.aks.token").orElse("");
+                var namespace = property("sys.sandbox.aks.namespace").orElse("core-ai-sandbox");
+                provider = new KubernetesSandboxProvider(apiServer, token, namespace, null);
+            } else {
+                var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
+                var workspaceBase = Path.of(property("sys.sandbox.docker.workspace-base").orElse("/tmp/workspaces"));
+                provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
+            }
+            var sandboxService = bind(new SandboxService(provider));
+            onShutdown(sandboxService::shutdown);
+        });
+        if (property("sys.sandbox.provider").isEmpty()) {
+            bind(new SandboxService());
+        }
+    }
+
+    private void bindService() {
+        bind(SystemPromptService.class);
+        bind(LLMCallExecutor.class);
+        bind(AgentRunner.class);
+        bind(AgentScheduler.class);
+        bind(ChannelService.class);
+        bind(SessionChannelService.class);
+        bind(ChatMessageService.class);
+        bind(AgentSessionManager.class);
+        bind(AgentDefinitionService.class);
+        bind(JavaToSchemaService.class);
+        bind(AgentDraftGenerator.class);
+        bind(AgentRunService.class);
+        bind(AgentScheduleService.class);
+        bind(UserService.class);
     }
 
     private void bindWebService() {

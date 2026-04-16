@@ -1,8 +1,10 @@
 package ai.core.server.run;
 
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.llm.LLMProviders;
+import ai.core.sandbox.Sandbox;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.tool.ToolCall;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -12,6 +14,7 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
@@ -66,12 +69,26 @@ public class AgentRunner {
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
 
+    @Inject
+    SandboxService sandboxService;
+
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
         var runEntity = createRunRecord(definition, input, trigger);
         agentRunCollection.insert(runEntity);
 
         var runId = runEntity.id;
-        var future = CompletableFuture.runAsync(() -> execute(runEntity, definition), executorService);
+
+        // Create sandbox with effective config (platform default + agent override)
+        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
+
+        var sandbox = sandboxService.createSandbox(sandboxConfig, runId, definition.userId);
+        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+            try (sandbox) {
+                execute(runEntity, definition, sandbox);
+            } finally {
+                sandboxService.releaseSandbox(runId);
+            }
+        }, executorService);
         runningFutures.put(runId, future);
         future.whenComplete((result, error) -> runningFutures.remove(runId));
 
@@ -101,17 +118,17 @@ public class AgentRunner {
         ).isPresent();
     }
 
-    private void execute(AgentRun runEntity, AgentDefinition definition) {
+    private void execute(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox) {
         if (definition.type == DefinitionType.LLM_CALL) {
             executeLLMCall(runEntity, definition);
         } else {
-            executeAgent(runEntity, definition);
+            executeAgent(runEntity, definition, sandbox);
         }
     }
 
-    private void executeAgent(AgentRun runEntity, AgentDefinition definition) {
+    private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox) {
         var runId = runEntity.id;
-        var agent = buildAgent(definition);
+        var agent = buildAgent(definition, sandbox);
         try {
             var config = definition.publishedConfig;
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
@@ -190,7 +207,7 @@ public class AgentRunner {
         }
     }
 
-    private Agent buildAgent(AgentDefinition definition) {
+    private Agent buildAgent(AgentDefinition definition, Sandbox sandbox) {
         var config = definition.publishedConfig;
         List<ToolCall> tools;
         if (config != null && config.tools != null && !config.tools.isEmpty()) {
@@ -200,9 +217,19 @@ public class AgentRunner {
         } else {
             tools = List.of();
         }
+
+        var context = ExecutionContext.builder()
+            .sessionId("run:" + definition.id)
+            .userId(definition.userId)
+            .build();
+        if (sandbox != null) {
+            context.sandbox(sandbox);
+        }
+
         var builder = Agent.builder()
             .llmProvider(llmProviders.getProvider())
-            .toolCalls(tools);
+            .toolCalls(tools)
+            .executionContext(context);
 
         var systemPrompt = resolveSystemPrompt(config, definition);
         var model = config != null ? config.model : definition.model;

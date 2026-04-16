@@ -44,4 +44,7 @@ public class AgentPublishedConfig {
 
     @Field(name = "response_schema")
     public String responseSchema;
+
+    @Field(name = "sandbox_config")
+    public AgentSandboxConfig sandboxConfig;
 }
