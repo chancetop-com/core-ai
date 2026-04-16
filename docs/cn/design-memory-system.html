@@ -1,0 +1,1980 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory系统设计 v2 - Memory System Architecture</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-purple: #a78bfa;
+            --accent-green: #4ade80;
+            --accent-orange: #fb923c;
+            --accent-pink: #f472b6;
+            --accent-cyan: #22d3ee;
+            --accent-yellow: #fbbf24;
+            --accent-red: #f87171;
+            --border-color: #475569;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        h1 {
+            font-size: 2.4rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.4rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: rgba(167,139,250,0.2);
+            color: var(--accent-purple);
+            padding: 0.2rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(167,139,250,0.4);
+        }
+
+        h2 {
+            color: var(--accent-cyan);
+            font-size: 1.4rem;
+            margin: 2.5rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        h2 .section-num {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        h3 {
+            color: var(--accent-orange);
+            font-size: 1.1rem;
+            margin: 1.2rem 0 0.6rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .svg-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1.2rem 0;
+            overflow-x: auto;
+        }
+
+        .svg-caption {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+        }
+
+        .grid { display: grid; gap: 1rem; }
+        .grid-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+        .grid-3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+        .grid-4 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+        .tag {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            margin: 0.2rem;
+        }
+        .tag-blue { background: rgba(56,189,248,0.15); color: var(--accent-blue); border: 1px solid rgba(56,189,248,0.3); }
+        .tag-purple { background: rgba(167,139,250,0.15); color: var(--accent-purple); border: 1px solid rgba(167,139,250,0.3); }
+        .tag-green { background: rgba(74,222,128,0.15); color: var(--accent-green); border: 1px solid rgba(74,222,128,0.3); }
+        .tag-orange { background: rgba(251,146,60,0.15); color: var(--accent-orange); border: 1px solid rgba(251,146,60,0.3); }
+        .tag-pink { background: rgba(244,114,182,0.15); color: var(--accent-pink); border: 1px solid rgba(244,114,182,0.3); }
+        .tag-yellow { background: rgba(251,191,36,0.15); color: var(--accent-yellow); border: 1px solid rgba(251,191,36,0.3); }
+
+        .layer-block {
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            margin: 0.6rem 0;
+            border-left: 4px solid;
+            position: relative;
+        }
+        .layer-session { background: rgba(56,189,248,0.07); border-color: var(--accent-blue); }
+        .layer-domain  { background: rgba(167,139,250,0.07); border-color: var(--accent-purple); }
+        .layer-user    { background: rgba(74,222,128,0.07); border-color: var(--accent-green); }
+        .layer-agent   { background: rgba(251,146,60,0.07); border-color: var(--accent-orange); }
+
+        .trigger-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .trigger-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+        }
+        .trigger-t1::before { background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); }
+        .trigger-t2::before { background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); }
+        .trigger-t3::before { background: linear-gradient(90deg, var(--accent-yellow), var(--accent-orange)); }
+        .trigger-t4::before { background: linear-gradient(90deg, var(--accent-pink), var(--accent-red)); }
+
+        .trigger-icon {
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .trigger-title {
+            font-weight: 700;
+            margin-bottom: 0.4rem;
+            font-size: 1rem;
+        }
+
+        .trigger-desc {
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
+
+        .step-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 0.6rem;
+        }
+        .step-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.6rem;
+            padding: 0.4rem 0;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .step-list li:last-child { border-bottom: none; }
+        .step-num {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: bold;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .file-tree {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.8;
+            background: var(--bg-primary);
+            padding: 1.2rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .ft-dir { color: var(--accent-blue); font-weight: 600; }
+        .ft-file { color: var(--text-primary); }
+        .ft-comment { color: var(--text-secondary); }
+        .ft-hot { color: var(--accent-orange); }
+        .ft-index { color: var(--accent-purple); }
+        .ft-pref { color: var(--accent-green); }
+        .ft-agent { color: var(--accent-cyan); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+        th, td { border: 1px solid var(--border-color); padding: 0.7rem 1rem; text-align: left; }
+        th { background: var(--bg-tertiary); color: var(--accent-cyan); font-weight: 600; }
+        tr:hover { background: rgba(56,189,248,0.04); }
+
+        code {
+            background: var(--bg-tertiary);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-green);
+        }
+
+        .info-box {
+            background: rgba(56,189,248,0.06);
+            border: 1px solid rgba(56,189,248,0.2);
+            border-radius: 8px;
+            padding: 0.8rem 1.2rem;
+            margin: 0.8rem 0;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+        }
+        .info-box strong { color: var(--accent-blue); }
+
+        .warning-box {
+            background: rgba(251,191,36,0.06);
+            border: 1px solid rgba(251,191,36,0.25);
+            border-radius: 8px;
+            padding: 0.8rem 1.2rem;
+            margin: 0.8rem 0;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+        }
+        .warning-box strong { color: var(--accent-yellow); }
+
+        .dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            text-align: center;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>知识系统设计 v2</h1>
+    <div class="subtitle">Unified Memory Architecture for AI Agent — Session / Domain / User Preference</div>
+    <div class="version-badge">v2.0 · 2026-04</div>
+
+    <!-- ===== 1. 总体架构 ===== -->
+    <h2><span class="section-num">1</span>总体架构 Overview</h2>
+
+    <div class="svg-container">
+        <svg viewBox="0 0 1100 560" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:760px;">
+            <defs>
+                <marker id="arrowBlue"   markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#38bdf8"/></marker>
+                <marker id="arrowPurple" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a78bfa"/></marker>
+                <marker id="arrowGreen"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4ade80"/></marker>
+                <marker id="arrowYellow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#fbbf24"/></marker>
+                <marker id="arrowCyan"   markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#22d3ee"/></marker>
+                <marker id="arrowPink"   markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#f472b6"/></marker>
+                <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <circle cx="1" cy="1" r="0.8" fill="#334155" opacity="0.4"/>
+                </pattern>
+            </defs>
+
+            <rect width="1100" height="560" fill="url(#dots)"/>
+            <text x="550" y="24" text-anchor="middle" font-size="15" fill="#38bdf8" font-weight="bold" font-family="sans-serif">知识系统总体架构 v2</text>
+
+            <!-- ══════════════════════════════════════════════════ -->
+            <!-- LEFT COLUMN: Storage Pipeline  x=8 w=358         -->
+            <!-- ══════════════════════════════════════════════════ -->
+            <rect x="8" y="33" width="358" height="517" rx="11" fill="rgba(15,23,42,0.5)" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="187" y="50" text-anchor="middle" font-size="9" fill="#475569" font-family="sans-serif">Storage Pipeline  Session→②→③→④→⑤</text>
+
+            <!-- Session (implicit source, no separate file) -->
+            <rect x="18" y="56" width="338" height="62" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+            <text x="38" y="76" font-size="10" fill="#38bdf8" font-weight="bold" font-family="sans-serif">Session  (数据源)</text>
+            <text x="38" y="91" font-size="9" fill="#94a3b8" font-family="sans-serif">当前对话上下文 · 无需额外克隆</text>
+            <text x="38" y="107" font-size="8" fill="#64748b" font-family="sans-serif">Independent Agent 直接读取 · 不写入独立文件</text>
+            <!-- "implicit" badge -->
+            <rect x="278" y="60" width="72" height="16" rx="4" fill="rgba(56,189,248,0.15)" stroke="rgba(56,189,248,0.3)" stroke-width="1"/>
+            <text x="314" y="72" text-anchor="middle" font-size="7" fill="#38bdf8" font-family="sans-serif">implicit source</text>
+
+            <!-- Session→② arrow -->
+            <path d="M 187 118 L 187 141" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)" stroke-dasharray="4,2"/>
+            <text x="197" y="134" font-size="7" fill="#a78bfa" font-family="sans-serif">Independent Agent 提炼</text>
+
+            <!-- ② .learning -->
+            <rect x="18" y="143" width="338" height="76" rx="8" fill="#1e293b" stroke="#fb923c" stroke-width="2"/>
+            <text x="38" y="163" font-size="10" fill="#fb923c" font-weight="bold" font-family="sans-serif">② daily-logs / .learning</text>
+            <text x="38" y="179" font-size="9" fill="#94a3b8" font-family="sans-serif">结构化事件记录 · 待消化</text>
+            <text x="38" y="194" font-size="8" fill="#64748b" font-family="sans-serif">处理时间 · 障碍&amp;应对 · 用户反馈 · 最终结果</text>
+            <text x="38" y="209" font-size="8" fill="#64748b" font-family="sans-serif">探索阶段 + 开发阶段完整上下文</text>
+
+            <!-- ②→③ arrow -->
+            <path d="M 187 219 L 187 241" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)" stroke-dasharray="4,2"/>
+            <text x="197" y="235" font-size="7" fill="#a78bfa" font-family="sans-serif">Independent Agent 合成</text>
+
+            <!-- ③ episodes -->
+            <rect x="18" y="243" width="338" height="68" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
+            <text x="38" y="263" font-size="10" fill="#a78bfa" font-weight="bold" font-family="sans-serif">③ episodes / 每日总结</text>
+            <text x="38" y="279" font-size="9" fill="#94a3b8" font-family="sans-serif">踩坑/解法提炼 · 用户反馈提炼 · 知识信号</text>
+            <text x="38" y="294" font-size="8" fill="#22d3ee" font-family="sans-serif">agentic search 按日索引 · O(days) 检索复杂度</text>
+            <text x="38" y="308" font-size="8" fill="#64748b" font-family="sans-serif">.learning 压缩摘要 → 推动 ④ 更新</text>
+
+            <!-- ③→④ arrow -->
+            <path d="M 187 311 L 187 333" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)" stroke-dasharray="4,2"/>
+            <text x="197" y="327" font-size="7" fill="#a78bfa" font-family="sans-serif">Independent Agent 提取</text>
+
+            <!-- ④ knowledge -->
+            <rect x="18" y="335" width="338" height="68" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+            <text x="38" y="355" font-size="10" fill="#4ade80" font-weight="bold" font-family="sans-serif">④ knowledge / domain</text>
+            <text x="38" y="371" font-size="9" fill="#94a3b8" font-family="sans-serif">Memory.md 索引 + 领域文件</text>
+            <text x="38" y="386" font-size="8" fill="#22d3ee" font-family="sans-serif">最终知识检索层 · project / user / feedback / reference</text>
+            <text x="38" y="400" font-size="8" fill="#22d3ee" font-family="sans-serif">Main Agent 执行路径与 Independent Agent 一致</text>
+
+            <!-- ④→⑤ Promotion arrow — Dream Task -->
+            <path d="M 187 403 L 187 425" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowYellow)" stroke-dasharray="4,2"/>
+            <text x="197" y="419" font-size="7" fill="#fbbf24" font-family="sans-serif">Dream Task · Preference Promotion</text>
+
+            <!-- ⑤ Promotion targets -->
+            <rect x="18" y="427" width="338" height="113" rx="8" fill="rgba(15,23,42,0.7)" stroke="#475569" stroke-width="1"/>
+            <text x="187" y="444" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">⑤ Preference Promotion — 按类型路由至三目标</text>
+
+            <rect x="24" y="450" width="103" height="82" rx="7" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+            <text x="75" y="469" text-anchor="middle" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">preferences.md</text>
+            <text x="75" y="484" text-anchor="middle" font-size="7" fill="#94a3b8" font-family="sans-serif">用户偏好</text>
+            <text x="75" y="498" text-anchor="middle" font-size="7" fill="#64748b" font-family="sans-serif">沟通风格 · 工作方式</text>
+            <text x="75" y="525" text-anchor="middle" font-size="7" fill="#4ade80" font-family="sans-serif">用户侧 · ~/</text>
+
+            <rect x="135" y="450" width="103" height="82" rx="7" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+            <text x="186" y="469" text-anchor="middle" font-size="9" fill="#a78bfa" font-weight="bold" font-family="sans-serif">soul.md</text>
+            <text x="186" y="484" text-anchor="middle" font-size="7" fill="#94a3b8" font-family="sans-serif">Agent 思维原则</text>
+            <text x="186" y="498" text-anchor="middle" font-size="7" fill="#64748b" font-family="sans-serif">技术判断 · 决策模式</text>
+            <text x="186" y="525" text-anchor="middle" font-size="7" fill="#a78bfa" font-family="sans-serif">能力积累 · 可迁移</text>
+
+            <rect x="246" y="450" width="103" height="82" rx="7" fill="#1e293b" stroke="#fb923c" stroke-width="1.5"/>
+            <text x="297" y="469" text-anchor="middle" font-size="9" fill="#fb923c" font-weight="bold" font-family="sans-serif">CLAUDE.md</text>
+            <text x="297" y="484" text-anchor="middle" font-size="7" fill="#94a3b8" font-family="sans-serif">强制规则</text>
+            <text x="297" y="498" text-anchor="middle" font-size="7" fill="#64748b" font-family="sans-serif">项目约束 · 禁止行为</text>
+            <text x="297" y="525" text-anchor="middle" font-size="7" fill="#fb923c" font-family="sans-serif">每次对话注入 · ./</text>
+
+            <!-- ══════════════════════════════════════════════════ -->
+            <!-- MIDDLE COLUMN: Triggers  x=376 w=268             -->
+            <!-- ══════════════════════════════════════════════════ -->
+            <rect x="376" y="33" width="268" height="517" rx="11" fill="rgba(15,23,42,0.5)" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="510" y="50" text-anchor="middle" font-size="9" fill="#475569" font-family="sans-serif">Trigger Mechanisms</text>
+
+            <!-- Independent Agent -->
+            <rect x="386" y="56" width="248" height="148" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
+            <text x="510" y="76" text-anchor="middle" font-size="10" fill="#a78bfa" font-weight="bold" font-family="sans-serif">Independent Agent</text>
+            <text x="395" y="94" font-size="9" fill="#94a3b8" font-family="sans-serif">每 10 轮验证触发条件</text>
+            <text x="395" y="109" font-size="8" fill="#64748b" font-family="sans-serif">hot events ≥ 5 · issue ≥ 3 · high 事件</text>
+            <line x1="393" y1="117" x2="627" y2="117" stroke="#334155" stroke-width="0.5"/>
+            <text x="395" y="133" font-size="9" fill="#a78bfa" font-family="sans-serif">读 Session → 写 ②③④  全提炼链</text>
+            <text x="395" y="148" font-size="8" fill="#94a3b8" font-family="sans-serif">Session → .learning → episodes → knowledge</text>
+            <text x="395" y="163" font-size="8" fill="#64748b" font-family="sans-serif">async · 独立上下文 · 不阻塞主流程</text>
+            <text x="395" y="178" font-size="8" fill="#64748b" font-family="sans-serif">fork 独立 agent · 不占主 context window</text>
+            <text x="395" y="195" font-size="7" fill="#38bdf8" font-family="sans-serif">T4 session close 后也可触发一次完整提炼</text>
+            <!-- Session → Independent Agent (读取), Independent Agent → ②③④ (写入) -->
+            <path d="M 358 87 L 383 100" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
+            <path d="M 386 140 L 358 190" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrowPurple)" stroke-dasharray="3,2" opacity="0.7"/>
+            <path d="M 386 155 L 358 285" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrowPurple)" stroke-dasharray="3,2" opacity="0.5"/>
+            <path d="M 386 165 L 358 370" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrowPurple)" stroke-dasharray="3,2" opacity="0.35"/>
+
+            <!-- Main Agent (T2) -->
+            <rect x="386" y="222" width="248" height="100" rx="8" fill="#1e293b" stroke="#22d3ee" stroke-width="1.5"/>
+            <text x="510" y="242" text-anchor="middle" font-size="10" fill="#22d3ee" font-weight="bold" font-family="sans-serif">Main Agent</text>
+            <text x="395" y="260" font-size="9" fill="#94a3b8" font-family="sans-serif">用户命令 / auto-learning 触发</text>
+            <text x="395" y="275" font-size="9" fill="#94a3b8" font-family="sans-serif">sync · 即时反馈 · 主流程执行</text>
+            <text x="395" y="290" font-size="8" fill="#22d3ee" font-family="sans-serif">同步执行完整链 Session → ② → ③ → ④</text>
+            <text x="395" y="307" font-size="8" fill="#22d3ee" font-family="sans-serif">直写 → ④</text>
+            <!-- Session → Main Agent (读取) -->
+            <path d="M 358 100 L 383 230" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
+            <!-- Main Agent → ② ③ ④ (写入) -->
+            <path d="M 386 255 L 358 188" stroke="#22d3ee" stroke-width="1.2" marker-end="url(#arrowCyan)" stroke-dasharray="3,2" opacity="0.7"/>
+            <path d="M 386 265 L 358 278" stroke="#22d3ee" stroke-width="1.2" marker-end="url(#arrowCyan)" stroke-dasharray="3,2" opacity="0.5"/>
+            <path d="M 386 272 L 358 370" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
+
+            <!-- Session Close -->
+            <rect x="386" y="340" width="248" height="100" rx="8" fill="#1e293b" stroke="#f472b6" stroke-width="1.5"/>
+            <text x="510" y="360" text-anchor="middle" font-size="10" fill="#f472b6" font-weight="bold" font-family="sans-serif">Session Close</text>
+            <text x="395" y="378" font-size="9" fill="#94a3b8" font-family="sans-serif">CLI 关闭 hook 触发</text>
+            <text x="395" y="393" font-size="9" fill="#94a3b8" font-family="sans-serif">单次 LLM call 快速摘要写 .learning</text>
+            <text x="395" y="408" font-size="8" fill="#64748b" font-family="sans-serif">允许冗余 · 速度优先</text>
+            <text x="395" y="422" font-size="8" fill="#f472b6" font-family="sans-serif">写 → ②  下次启动后 Ind.Agent 融合</text>
+            <!-- arrow → ② -->
+            <path d="M 386 393 L 358 200" stroke="#f472b6" stroke-width="1.5" marker-end="url(#arrowPink)" stroke-dasharray="5,2" opacity="0.7"/>
+
+            <!-- Dream Task -->
+            <rect x="386" y="458" width="248" height="82" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+            <text x="510" y="478" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="bold" font-family="sans-serif">Dream Task</text>
+            <text x="395" y="496" font-size="9" fill="#94a3b8" font-family="sans-serif">Cron 每 24h · offline</text>
+            <text x="395" y="511" font-size="8" fill="#fbbf24" font-family="sans-serif">读取全部历史（②③④ + 更早内容）</text>
+            <text x="395" y="526" font-size="8" fill="#fbbf24" font-family="sans-serif">跨 session 聚合 → Preference Promotion</text>
+            <text x="395" y="532" font-size="7" fill="#64748b" font-family="sans-serif">→ preferences / soul / CLAUDE.md</text>
+            <!-- arrow → ⑤ Promotion (bottom of pipeline) -->
+            <path d="M 386 510 L 358 480" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowYellow)"/>
+
+            <!-- ══════════════════════════════════════════════════ -->
+            <!-- RIGHT COLUMN: Agent Context  x=654 w=438         -->
+            <!-- ══════════════════════════════════════════════════ -->
+            <rect x="654" y="33" width="438" height="517" rx="11" fill="#1e293b" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <text x="873" y="54" text-anchor="middle" font-size="11" fill="#22d3ee" font-weight="bold" font-family="sans-serif">Agent Context</text>
+            <text x="873" y="70" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">每次对话启动时注入的核心上下文</text>
+
+            <!-- 常驻注入 -->
+            <rect x="664" y="78" width="418" height="208" rx="8" fill="rgba(34,211,238,0.04)" stroke="rgba(34,211,238,0.18)" stroke-width="1"/>
+            <text x="873" y="96" text-anchor="middle" font-size="9" fill="#22d3ee" font-weight="bold" font-family="sans-serif">常驻注入（每次对话自动加载）</text>
+
+            <rect x="672" y="104" width="124" height="172" rx="7" fill="#0f172a" stroke="#4ade80" stroke-width="1.5"/>
+            <text x="734" y="122" text-anchor="middle" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">preferences.md</text>
+            <text x="734" y="138" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">用户偏好</text>
+            <line x1="680" y1="145" x2="788" y2="145" stroke="#334155" stroke-width="0.5"/>
+            <text x="734" y="160" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 沟通风格</text>
+            <text x="734" y="174" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 工作方式</text>
+            <text x="734" y="188" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 反馈偏好</text>
+            <text x="734" y="265" text-anchor="middle" font-size="7" fill="#4ade80" font-family="sans-serif">跨项目 ~/</text>
+
+            <rect x="808" y="104" width="124" height="172" rx="7" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+            <text x="870" y="122" text-anchor="middle" font-size="9" fill="#a78bfa" font-weight="bold" font-family="sans-serif">soul.md</text>
+            <text x="870" y="138" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">思维原则</text>
+            <line x1="816" y1="145" x2="924" y2="145" stroke="#334155" stroke-width="0.5"/>
+            <text x="870" y="160" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 技术判断</text>
+            <text x="870" y="174" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 决策倾向</text>
+            <text x="870" y="188" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 解题模式</text>
+            <text x="870" y="265" text-anchor="middle" font-size="7" fill="#a78bfa" font-family="sans-serif">能力积累 · ~/ or ./</text>
+
+            <rect x="944" y="104" width="124" height="172" rx="7" fill="#0f172a" stroke="#fb923c" stroke-width="1.5"/>
+            <text x="1006" y="122" text-anchor="middle" font-size="9" fill="#fb923c" font-weight="bold" font-family="sans-serif">CLAUDE.md</text>
+            <text x="1006" y="138" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">强制规则</text>
+            <line x1="952" y1="145" x2="1060" y2="145" stroke="#334155" stroke-width="0.5"/>
+            <text x="1006" y="160" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 项目约束</text>
+            <text x="1006" y="174" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 禁止行为</text>
+            <text x="1006" y="188" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">· 开发规范</text>
+            <text x="1006" y="265" text-anchor="middle" font-size="7" fill="#fb923c" font-family="sans-serif">精简 &lt;100行 · ./</text>
+
+            <!-- 按需加载 -->
+            <rect x="664" y="298" width="418" height="100" rx="8" fill="rgba(148,163,184,0.04)" stroke="rgba(148,163,184,0.18)" stroke-width="1"/>
+            <text x="873" y="316" text-anchor="middle" font-size="9" fill="#94a3b8" font-weight="bold" font-family="sans-serif">按需加载（agentic search）</text>
+
+            <rect x="672" y="324" width="192" height="64" rx="7" fill="#0f172a" stroke="#4ade80" stroke-width="1"/>
+            <text x="768" y="343" text-anchor="middle" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">Memory.md</text>
+            <text x="768" y="358" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">知识索引 · &lt;200行</text>
+            <text x="768" y="382" text-anchor="middle" font-size="7" fill="#64748b" font-family="sans-serif">按需展开 domain files</text>
+
+            <rect x="876" y="324" width="196" height="64" rx="7" fill="#0f172a" stroke="#a78bfa" stroke-width="1"/>
+            <text x="974" y="343" text-anchor="middle" font-size="9" fill="#a78bfa" font-weight="bold" font-family="sans-serif">episodes / YYYY-MM-DD</text>
+            <text x="974" y="358" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">历史查询 · 按日检索</text>
+            <text x="974" y="382" text-anchor="middle" font-size="7" fill="#64748b" font-family="sans-serif">never raw logs · O(days)</text>
+
+            <!-- 生命周期 -->
+            <rect x="664" y="410" width="418" height="130" rx="8" fill="rgba(56,189,248,0.04)" stroke="rgba(56,189,248,0.13)" stroke-width="1"/>
+            <text x="873" y="428" text-anchor="middle" font-size="9" fill="#38bdf8" font-weight="bold" font-family="sans-serif">对话生命周期</text>
+            <text x="673" y="446" font-size="8" fill="#94a3b8" font-family="sans-serif">启动:      prefs + soul + CLAUDE.md 常驻注入 · Memory.md 按需</text>
+            <text x="673" y="462" font-size="8" fill="#a78bfa" font-family="sans-serif">对话中:    Ind.Agent 每10轮 读 Session → 写 ②③④ 提炼链</text>
+            <text x="673" y="478" font-size="8" fill="#22d3ee" font-family="sans-serif">随时:      Main Agent 用户命令 · sync · Session → ② → ③ → ④ · 即时反馈</text>
+            <text x="673" y="494" font-size="8" fill="#f472b6" font-family="sans-serif">关闭:      Session Close 快摘要写 ② · 下次启动 Ind.Agent 融合</text>
+            <text x="673" y="510" font-size="8" fill="#fbbf24" font-family="sans-serif">每日:      Dream Task 读全部历史 → 深度整理 + Promotion → ⑤</text>
+            <text x="673" y="527" font-size="8" fill="#64748b" font-family="sans-serif">Promotion: ② + ③ + ④ → preferences(用户) / soul(原则) / CLAUDE(规则)</text>
+        </svg>
+        <div class="svg-caption">图 1 — 知识系统总体架构：Session 为数据源 · Independent Agent 负责提炼链 · Dream Task 读全量做 Promotion</div>
+    </div>
+
+    <!-- ===== 1.5 各层文件内容案例 ===== -->
+    <h3 style="color:var(--accent-orange);font-size:1.15rem;margin:2rem 0 1rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border-color);">
+        各层文件内容案例 — 以 grubhub 爬虫开发为例
+    </h3>
+    <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1.2rem;">
+        同一次 session（grubhub.com 菜单爬虫，2026-03-28）经过完整提炼链后，在各层的实际存储内容示例。
+    </p>
+
+    <!-- Layer ② .learning -->
+    <div style="margin-bottom:1.2rem;">
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.4rem;">
+            <span style="background:rgba(56,189,248,0.15);color:var(--accent-blue);border:1px solid rgba(56,189,248,0.4);border-radius:6px;padding:0.15rem 0.6rem;font-size:0.78rem;font-weight:600;">② .learning</span>
+            <code style="color:var(--text-secondary);font-size:0.82rem;">2026-03-28-grubhub_menu_crawler.md</code>
+        </div>
+        <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:1.1rem 1.3rem;font-size:0.78rem;line-height:1.7;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
+site: grubhub.com
+script: grubhub_menu.py
+date: 2026-03-28
+status: completed
+data_extracted: 餐厅菜单（分类、菜品、价格、描述、图片）
+result: 11 分类，95 菜品，耗时约 20s
+---</span>
+
+<span style="color:#fbbf24;">## 探索阶段</span>
+
+<span style="color:#a78bfa;">### explore.py 运行结果</span>
+- 探索方式：Playwright 监听 `page.on('response')`（早期版本，后迁移为 nodriver）
+- 数据在哪里：<span style="color:#4ade80;">**JSON API**</span>，非 SSR，非 WebSocket
+- 捕获到的关键请求：`restaurant_gateway/info/nonvolatile`、`restaurant_gateway/feed`
+
+<span style="color:#a78bfa;">### 探索中遇到的障碍</span>
+| 障碍                     | 现象                                    | 处理方式                              |
+|--------------------------|----------------------------------------|--------------------------------------|
+| networkidle 超时          | `Timeout 30000ms`，页面有持续后台请求    | 改用 `domcontentloaded` + 固定等待    |
+| 虚拟化渲染               | 滚动后 section 数量从 4 变 1            | 放弃 DOM，改为拦截 API                |
+| 分类数据为空（结果骨架）  | feed API 返回 `results: []`             | 需点击导航 tab 触发每个分类的独立 feed 请求 |
+
+<span style="color:#a78bfa;">### 有效触发方式</span>
+- [x] 页面加载自动触发 nonvolatile（分类骨架）
+- [x] 点击导航 tab `[data-testid^="category_"]` 触发 feed（实际菜品）
+
+<span style="color:#fbbf24;">## 开发阶段</span>
+
+<span style="color:#a78bfa;">## API 端点</span>
+
+| 端点关键词                                     | 用途                     | 数据路径                          |
+|-----------------------------------------------|--------------------------|----------------------------------|
+| `restaurant_gateway/info/nonvolatile`          | 餐厅信息 + 菜单分类骨架   | `object.data.enhanced_feed[]`    |
+| `restaurant_gateway/feed/{id}/{categoryId}`    | 单分类菜品列表（懒加载）  | `object.data.content[].entity`   |
+
+</pre>
+    </div>
+
+    <!-- Layer ③ episodes -->
+    <div style="margin-bottom:1.2rem;">
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.4rem;">
+            <span style="background:rgba(167,139,250,0.15);color:var(--accent-purple);border:1px solid rgba(167,139,250,0.4);border-radius:6px;padding:0.15rem 0.6rem;font-size:0.78rem;font-weight:600;">③ episodes</span>
+            <code style="color:var(--text-secondary);font-size:0.82rem;">.core-ai/episodes/2026-03-28.md</code>
+        </div>
+        <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:1.1rem 1.3rem;font-size:0.78rem;line-height:1.7;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
+date: 2026-03-28  |  sessions: 1  |  key_skills: [crawler]
+---</span>
+
+<span style="color:#fbbf24;">## 今日摘要</span>
+
+完成 grubhub.com 菜单爬虫（grubhub_menu.py）：11 分类，95 菜品，耗时约 20s。
+<span style="color:#64748b;">refs: 2026-03-28-grubhub_menu_crawler</span></pre>
+    </div>
+
+    <!-- Layer ④ knowledge -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.2rem;">
+
+        <!-- project -->
+        <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                <span style="background:rgba(74,222,128,0.15);color:var(--accent-green);border:1px solid rgba(74,222,128,0.4);border-radius:6px;padding:0.15rem 0.55rem;font-size:0.76rem;font-weight:600;">④ knowledge / project</span>
+                <code style="color:var(--text-secondary);font-size:0.78rem;">project/spa-scraping.md</code>
+            </div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
+type: project
+description: 项目/技术维度的知识，踩坑解法、
+             架构决策、可复用实现模式
+---</span>
+
+<span style="color:#fbbf24;">## 踩坑与解法</span>
+<span style="color:#a78bfa;">### networkidle 超时</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+- <span style="color:#f87171;">现象</span>: Timeout 30000ms，SPA 持续后台请求
+- <span style="color:#4ade80;">解法</span>: 改用目标元素出现作为就绪信号
+
+<span style="color:#a78bfa;">### Virtual Scroll 数据丢失</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+- <span style="color:#f87171;">现象</span>: 滚动后 section 从 4 变 1
+- <span style="color:#4ade80;">解法</span>: 放弃 DOM，改为 API 拦截
+
+<span style="color:#a78bfa;">### feed API 返回空结果</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+- <span style="color:#f87171;">现象</span>: enhanced_feed 只是骨架
+- <span style="color:#4ade80;">解法</span>: 遍历点击分类 tab，每次 0.6s 间隔
+
+<span style="color:#a78bfa;">### nodriver handler 注入失效</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+- <span style="color:#f87171;">现象</span>: functools.partial 覆盖自动注入
+- <span style="color:#4ade80;">解法</span>: `async def handler(event, tab=None)`
+
+<span style="color:#a78bfa;">### ResponseReceived body 未就绪</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+- <span style="color:#f87171;">现象</span>: get_response_body 抛异常
+- <span style="color:#4ade80;">解法</span>: 两阶段拦截，LoadingFinished 才读 body
+
+<span style="color:#fbbf24;">## 可复用模式</span>
+- 懒加载触发：点击 tab，0.6s 间隔
+- 页面就绪：等待导航元素，不用 networkidle
+- 两阶段拦截：ResponseReceived→ID，LoadingFinished→body
+- 反爬：headless=False 效果最佳
+<span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span></pre>
+        </div>
+
+        <!-- user -->
+        <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                <span style="background:rgba(56,189,248,0.15);color:var(--accent-blue);border:1px solid rgba(56,189,248,0.4);border-radius:6px;padding:0.15rem 0.55rem;font-size:0.76rem;font-weight:600;">④ knowledge / user</span>
+                <code style="color:var(--text-secondary);font-size:0.78rem;">user/crawler-preferences.md</code>
+            </div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
+type: user
+description: 用户角色、工作风格、目标偏好、
+             技术背景等跨项目持久信息
+---</span>
+
+<span style="color:#fbbf24;">## 爬虫任务偏好</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+任务完成后用户会主动要求提炼
+"可复用模式"，重视跨项目经验
+积累。
+→ 每次爬虫完成后主动建议提炼
+  并写入 knowledge/project/。
+
+<span style="color:#fbbf24;">## 交付标准</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+用户以实际抓取数量验收结果：
+grubhub 案例：11 分类，95 菜品，
+耗时 ~20s 被视为达标。</pre>
+        </div>
+
+        <!-- feedback -->
+        <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                <span style="background:rgba(251,191,36,0.15);color:var(--accent-yellow);border:1px solid rgba(251,191,36,0.4);border-radius:6px;padding:0.15rem 0.55rem;font-size:0.76rem;font-weight:600;">④ knowledge / feedback</span>
+                <code style="color:var(--text-secondary);font-size:0.78rem;">feedback/crawler-agent-behavior.md</code>
+            </div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
+type: feedback
+description: 用户对 agent 行为的纠正或确认，
+             指导 agent 未来的处理方式
+---</span>
+
+<span style="color:#fbbf24;">## 探索策略：优先拦截 API</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+用户接受了从 DOM 切换到 API 拦截
+的建议，未提出异议。
+→ 对 SPA 站点，agent 应主动推荐
+  API 拦截方案，不必等用户确认。
+
+<span style="color:#fbbf24;">## 结果验证方式</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+用户以数量（分类数 × 菜品数）验
+证结果，不逐条核对内容。
+→ 汇报时给出数量摘要即可。</pre>
+        </div>
+
+        <!-- reference -->
+        <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                <span style="background:rgba(248,113,113,0.15);color:var(--accent-red);border:1px solid rgba(248,113,113,0.4);border-radius:6px;padding:0.15rem 0.55rem;font-size:0.76rem;font-weight:600;">④ knowledge / reference</span>
+                <code style="color:var(--text-secondary);font-size:0.78rem;">reference/grubhub-api.md</code>
+            </div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
+type: reference
+description: 外部系统的指针与查阅入口，
+             API 端点、工具文档、数据路径
+---</span>
+
+<span style="color:#fbbf24;">## grubhub 菜单 API</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+
+| 端点                              | 用途         |
+|----------------------------------|------------|
+| `restaurant_gateway/info/        | 餐厅信息 +  |
+|  nonvolatile`                    | 分类骨架    |
+| `restaurant_gateway/feed/        | 单分类菜品  |
+|  {id}/{categoryId}`              | （懒加载）  |
+
+数据路径：
+- 分类骨架: `object.data.enhanced_feed[]`
+- 菜品列表: `object.data.content[].entity`
+- 价格字段: `entity.price.display_string`</pre>
+        </div>
+
+    </div>
+
+    <!-- Layer ⑤ three targets -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:0.5rem;">
+        <!-- preferences.md -->
+        <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                <span style="background:rgba(34,211,238,0.15);color:var(--accent-cyan);border:1px solid rgba(34,211,238,0.4);border-radius:6px;padding:0.15rem 0.5rem;font-size:0.75rem;font-weight:600;">⑤ preferences.md</span>
+            </div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#fbbf24;">## 爬虫任务完成后</span>
+用户在任务完成后会主动
+要求提炼"可复用模式"。
+每次爬虫完成后，主动
+提议提炼并写入知识库。
+
+<span style="color:#64748b;">source: grubhub-2026-03-28
+confirmed: 1 session</span></pre>
+        </div>
+        <!-- soul.md -->
+        <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                <span style="background:rgba(251,191,36,0.15);color:var(--accent-yellow);border:1px solid rgba(251,191,36,0.4);border-radius:6px;padding:0.15rem 0.5rem;font-size:0.75rem;font-weight:600;">⑤ soul.md</span>
+            </div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#fbbf24;">## SPA 数据获取判断</span>
+面对 SPA 网站，优先考虑
+API 拦截而非 DOM 抓取。
+DOM 在虚拟化渲染下不
+可靠；API 响应更稳定且
+包含完整数据。
+
+<span style="color:#64748b;">source: grubhub-2026-03-28
+confirmed: 1 session</span></pre>
+        </div>
+        <!-- CLAUDE.md -->
+        <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                <span style="background:rgba(248,113,113,0.15);color:var(--accent-red);border:1px solid rgba(248,113,113,0.4);border-radius:6px;padding:0.15rem 0.5rem;font-size:0.75rem;font-weight:600;">⑤ CLAUDE.md</span>
+            </div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#fbbf24;">## nodriver 启动规范</span>
+本项目 nodriver 统一使用
+headless=False 启动。
+headless=True 反爬效果差，
+禁止在爬虫任务中使用。
+
+<span style="color:#64748b;">source: grubhub-2026-03-28
+confirmed: 1 session</span></pre>
+        </div>
+    </div>
+    <p style="color:var(--text-secondary);font-size:0.78rem;margin-top:0.5rem;margin-bottom:2rem;">
+        ⚠️ preferences.md / soul.md / CLAUDE.md 中标注 <code>confirmed: 1 session</code> 的条目为候选状态，需经 Dream Task 跨 session 稳定性验证后才正式生效。
+    </p>
+
+    
+<!-- ===== 12. 本设计的具体映射确认 ===== -->
+    <h2><span class="section-num">2</span>存储层详解 Storage Layers</h2>
+
+    <div class="info-box">
+        基于对 AFU 参考架构的理解，以下是本系统各层的<strong>精确职责定义</strong>，
+        明确每层存什么、谁来写、谁来读、处于什么状态。
+    </div>
+
+    <!-- Pipeline flow SVG -->
+    <div class="svg-container">
+        <svg viewBox="0 0 1360 380" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:900px;">
+            <defs>
+                <marker id="pm1" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#38bdf8"/></marker>
+                <marker id="pm2" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#fb923c"/></marker>
+                <marker id="pm3" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#a78bfa"/></marker>
+                <marker id="pm4" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#4ade80"/></marker>
+                <marker id="pm5" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#fbbf24"/></marker>
+            </defs>
+            <rect width="1360" height="380" fill="#0f172a" rx="8"/>
+
+            <!-- Layer 1: session current.jsonl -->
+            <rect x="20" y="20" width="230" height="340" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+            <rect x="20" y="20" width="230" height="36" rx="10" fill="#38bdf8" opacity="0.15"/>
+            <text x="135" y="44" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="bold" font-family="sans-serif">① session / current.jsonl</text>
+            <text x="135" y="66" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">原始会话信息（实时）</text>
+            <text x="135" y="82" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">JSONL，append-only，crash-safe</text>
+
+            <line x1="40" y1="100" x2="230" y2="100" stroke="#334155" stroke-width="0.5"/>
+            <text x="35" y="118" font-size="9" fill="#94a3b8" font-family="sans-serif">写入时机: 每次有意义的</text>
+            <text x="35" y="133" font-size="9" fill="#94a3b8" font-family="sans-serif">对话交互发生时</text>
+
+            <line x1="40" y1="150" x2="230" y2="150" stroke="#334155" stroke-width="0.5"/>
+            <text x="35" y="168" font-size="9" fill="#64748b" font-family="sans-serif">每条记录包含：</text>
+            <text x="35" y="184" font-size="9" fill="#64748b" font-family="sans-serif">· timestamp</text>
+            <text x="35" y="199" font-size="9" fill="#64748b" font-family="sans-serif">· type (action/decision/pref)</text>
+            <text x="35" y="214" font-size="9" fill="#64748b" font-family="sans-serif">· content (原始内容)</text>
+            <text x="35" y="229" font-size="9" fill="#64748b" font-family="sans-serif">· round (对话轮次)</text>
+
+            <line x1="40" y1="248" x2="230" y2="248" stroke="#334155" stroke-width="0.5"/>
+            <text x="135" y="268" text-anchor="middle" font-size="9" fill="#f87171" font-family="sans-serif">不被直接检索</text>
+            <text x="135" y="284" text-anchor="middle" font-size="9" fill="#f87171" font-family="sans-serif">只负责写入</text>
+            <text x="135" y="310" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">状态: 原始 · 待提炼</text>
+            <text x="135" y="326" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">写入者: main agent (实时)</text>
+            <text x="135" y="342" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">读取者: T1/T3/T4 提炼任务</text>
+
+            <!-- Arrow 1→2 -->
+            <path d="M 250 190 L 288 190" stroke="#fb923c" stroke-width="2" marker-end="url(#pm2)"/>
+            <text x="269" y="183" text-anchor="middle" font-size="8" fill="#fb923c" font-family="sans-serif">提炼</text>
+
+            <!-- Layer 2: daily-logs .learning -->
+            <rect x="290" y="20" width="230" height="340" rx="10" fill="#1e293b" stroke="#fb923c" stroke-width="2"/>
+            <rect x="290" y="20" width="230" height="36" rx="10" fill="#fb923c" opacity="0.12"/>
+            <text x="405" y="44" text-anchor="middle" font-size="11" fill="#fb923c" font-weight="bold" font-family="sans-serif">② daily-logs / .learning</text>
+            <text x="405" y="66" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">结构化事件记录（待学习）</text>
+            <text x="405" y="82" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">Markdown，按日存储</text>
+
+            <line x1="310" y1="100" x2="500" y2="100" stroke="#334155" stroke-width="0.5"/>
+            <text x="305" y="118" font-size="9" fill="#94a3b8" font-family="sans-serif">写入时机: T1/T3 从</text>
+            <text x="305" y="133" font-size="9" fill="#94a3b8" font-family="sans-serif">current.jsonl 提炼后</text>
+
+            <line x1="310" y1="150" x2="500" y2="150" stroke="#334155" stroke-width="0.5"/>
+            <text x="305" y="168" font-size="9" fill="#64748b" font-family="sans-serif">每条事件记录包含：</text>
+            <text x="305" y="184" font-size="9" fill="#fb923c" font-family="sans-serif">· 事件处理时间</text>
+            <text x="305" y="199" font-size="9" fill="#fb923c" font-family="sans-serif">· 处理内容（做了什么）</text>
+            <text x="305" y="214" font-size="9" fill="#fb923c" font-family="sans-serif">· 障碍 &amp; 应对方式</text>
+            <text x="305" y="229" font-size="9" fill="#fb923c" font-family="sans-serif">· 用户反馈</text>
+            <text x="305" y="244" font-size="9" fill="#fb923c" font-family="sans-serif">· 最终结果</text>
+
+            <line x1="310" y1="260" x2="500" y2="260" stroke="#334155" stroke-width="0.5"/>
+            <text x="405" y="280" text-anchor="middle" font-size="9" fill="#fbbf24" font-family="sans-serif">状态: 待学习 · 未消化</text>
+            <text x="405" y="310" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">状态: 结构化 · 待消化</text>
+            <text x="405" y="326" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">写入者: T1 agent (按需)</text>
+            <text x="405" y="342" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">读取者: T3 Dream Task</text>
+
+            <!-- Arrow 2→3 -->
+            <path d="M 520 190 L 558 190" stroke="#a78bfa" stroke-width="2" marker-end="url(#pm3)"/>
+            <text x="539" y="183" text-anchor="middle" font-size="8" fill="#a78bfa" font-family="sans-serif">合成</text>
+
+            <!-- Layer 3: episodes -->
+            <rect x="560" y="20" width="230" height="340" rx="10" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
+            <rect x="560" y="20" width="230" height="36" rx="10" fill="#a78bfa" opacity="0.12"/>
+            <text x="675" y="44" text-anchor="middle" font-size="11" fill="#a78bfa" font-weight="bold" font-family="sans-serif">③ episodes / 每日总结</text>
+            <text x="675" y="66" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">daily-logs 的 agent 可搜索索引</text>
+            <text x="675" y="82" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">Markdown，为 agent 检索优化</text>
+
+            <line x1="580" y1="100" x2="770" y2="100" stroke="#334155" stroke-width="0.5"/>
+            <text x="575" y="118" font-size="9" fill="#94a3b8" font-family="sans-serif">写入时机: T3 Dream Task</text>
+            <text x="575" y="133" font-size="9" fill="#94a3b8" font-family="sans-serif">从 daily-logs 合成</text>
+
+            <line x1="580" y1="150" x2="770" y2="150" stroke="#334155" stroke-width="0.5"/>
+            <text x="575" y="168" font-size="9" fill="#64748b" font-family="sans-serif">每日总结包含：</text>
+            <text x="575" y="184" font-size="9" fill="#a78bfa" font-family="sans-serif">· 事件列表（摘要）</text>
+            <text x="575" y="199" font-size="9" fill="#a78bfa" font-family="sans-serif">· 踩坑 &amp; 解法提炼</text>
+            <text x="575" y="214" font-size="9" fill="#a78bfa" font-family="sans-serif">· 用户反馈提炼</text>
+            <text x="575" y="229" font-size="9" fill="#a78bfa" font-family="sans-serif">· 知识提取信号（→ L4）</text>
+            <text x="575" y="244" font-size="9" fill="#64748b" font-family="sans-serif">· 日期 / domain 标签</text>
+
+            <line x1="580" y1="260" x2="770" y2="260" stroke="#334155" stroke-width="0.5"/>
+            <text x="675" y="280" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">agentic search 入口（按日）</text>
+            <text x="675" y="310" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">状态: 消化中 · 可检索</text>
+            <text x="675" y="326" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">写入者: T3 Dream Task</text>
+            <text x="675" y="342" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">读取者: agent 历史查询</text>
+
+            <!-- Arrow 3→4 -->
+            <path d="M 790 190 L 828 190" stroke="#4ade80" stroke-width="2" marker-end="url(#pm4)"/>
+            <text x="809" y="183" text-anchor="middle" font-size="8" fill="#4ade80" font-family="sans-serif">更新</text>
+
+            <!-- Layer 4: knowledge / Memory.md -->
+            <rect x="830" y="20" width="210" height="340" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+            <rect x="830" y="20" width="210" height="36" rx="10" fill="#4ade80" opacity="0.12"/>
+            <text x="935" y="44" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="bold" font-family="sans-serif">④ knowledge / domain</text>
+            <text x="935" y="66" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">Memory.md + 领域详细文件</text>
+            <text x="935" y="82" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">最终检索层</text>
+
+            <line x1="850" y1="100" x2="1025" y2="100" stroke="#334155" stroke-width="0.5"/>
+            <text x="845" y="118" font-size="9" fill="#94a3b8" font-family="sans-serif">写入时机: T3 从 episodes</text>
+            <text x="845" y="133" font-size="9" fill="#94a3b8" font-family="sans-serif">提取持久知识后</text>
+
+            <line x1="850" y1="150" x2="1025" y2="150" stroke="#334155" stroke-width="0.5"/>
+            <text x="845" y="168" font-size="9" fill="#4ade80" font-family="sans-serif">Memory.md — 索引层</text>
+            <text x="845" y="184" font-size="9" fill="#64748b" font-family="sans-serif">· 领域文件一行摘要</text>
+            <text x="845" y="199" font-size="9" fill="#64748b" font-family="sans-serif">· agentic search 入口</text>
+            <text x="845" y="218" font-size="9" fill="#4ade80" font-family="sans-serif">domain/*.md — 详细层</text>
+            <text x="845" y="234" font-size="9" fill="#64748b" font-family="sans-serif">· 踩坑解法 · 技术决策</text>
+            <text x="845" y="249" font-size="9" fill="#64748b" font-family="sans-serif">· 类型层级: project / user</text>
+            <text x="845" y="264" font-size="9" fill="#64748b" font-family="sans-serif">  feedback / reference</text>
+
+            <line x1="850" y1="275" x2="1025" y2="275" stroke="#334155" stroke-width="0.5"/>
+            <text x="935" y="295" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">最终知识检索入口</text>
+            <text x="935" y="310" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">状态: 持久化 · 精炼</text>
+            <text x="935" y="326" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">写入者: T3 / T2 (用户命令)</text>
+            <text x="935" y="342" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">读取者: T3 促升 · agent 检索</text>
+
+            <!-- Arrow 4→5 -->
+            <path d="M 1040 190 L 1063 190" stroke="#fbbf24" stroke-width="2" marker-end="url(#pm5)"/>
+            <text x="1052" y="183" text-anchor="middle" font-size="8" fill="#fbbf24" font-family="sans-serif">促升</text>
+
+            <!-- Layer 5: Preference Promotion -->
+            <rect x="1065" y="20" width="275" height="340" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+            <rect x="1065" y="20" width="275" height="36" rx="10" fill="#fbbf24" opacity="0.12"/>
+            <text x="1202" y="44" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="bold" font-family="sans-serif">⑤ Preference Promotion</text>
+            <text x="1202" y="66" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">T3 Dream Task · 常驻上下文</text>
+            <text x="1202" y="82" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">读 ①②③④ 全量 · 跨session聚合</text>
+
+            <line x1="1085" y1="100" x2="1320" y2="100" stroke="#334155" stroke-width="0.5"/>
+            <text x="1080" y="118" font-size="9" fill="#94a3b8" font-family="sans-serif">写入时机: T3 Cron 每24h</text>
+            <text x="1080" y="133" font-size="9" fill="#94a3b8" font-family="sans-serif">跨session稳定模式确认后</text>
+
+            <line x1="1085" y1="150" x2="1320" y2="150" stroke="#334155" stroke-width="0.5"/>
+
+            <!-- Three target mini-boxes -->
+            <rect x="1080" y="158" width="248" height="30" rx="5" fill="rgba(74,222,128,0.1)" stroke="#4ade80" stroke-width="1"/>
+            <text x="1086" y="171" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">preferences.md</text>
+            <text x="1086" y="184" font-size="8" fill="#64748b" font-family="sans-serif">用户偏好 · ~/.claude/ · 跨项目</text>
+
+            <rect x="1080" y="194" width="248" height="30" rx="5" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1"/>
+            <text x="1086" y="207" font-size="9" fill="#a78bfa" font-weight="bold" font-family="sans-serif">soul.md</text>
+            <text x="1086" y="220" font-size="8" fill="#64748b" font-family="sans-serif">思维原则 · ~/.claude/ · 可迁移</text>
+
+            <rect x="1080" y="230" width="248" height="30" rx="5" fill="rgba(251,146,60,0.1)" stroke="#fb923c" stroke-width="1"/>
+            <text x="1086" y="243" font-size="9" fill="#fb923c" font-weight="bold" font-family="sans-serif">CLAUDE.md</text>
+            <text x="1086" y="256" font-size="8" fill="#64748b" font-family="sans-serif">强制规则 · ./.claude/ · &lt;100行</text>
+
+            <line x1="1085" y1="270" x2="1320" y2="270" stroke="#334155" stroke-width="0.5"/>
+            <text x="1202" y="290" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">Agent Context 常驻注入层</text>
+            <text x="1202" y="308" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">状态: 稳定模式 · 常驻</text>
+            <text x="1202" y="324" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">写入者: T3 (跨session聚合)</text>
+            <text x="1202" y="340" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">读取者: 每次对话自动加载</text>
+        </svg>
+        <div class="svg-caption">图 2 — 五层存储职责详解：从原始捕获经提炼链到常驻上下文，每层的写入者、内容、状态与读取者</div>
+    </div>
+
+    <h3>各层职责对照表</h3>
+    <table>
+        <thead>
+            <tr><th>层级</th><th>对应文件</th><th>内容定义</th><th>状态</th><th>检索</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-blue)"></span>① Session</td>
+                <td><code>current.jsonl</code></td>
+                <td>原始会话流水，JSONL，每行一条 entry（type / content / round）</td>
+                <td><span class="tag tag-orange">原始</span></td>
+                <td>不直接检索</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-orange)"></span>② Daily-logs</td>
+                <td><code>daily-logs/YYYY-MM-DD.learning.md</code></td>
+                <td>结构化事件记录：处理时间、处理内容、<strong>障碍&amp;应对</strong>、用户反馈、最终结果</td>
+                <td><span class="tag tag-yellow">待消化</span></td>
+                <td>不直接检索</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-purple)"></span>③ Episodes</td>
+                <td><code>episodes/YYYY-MM-DD.md</code></td>
+                <td>daily-logs 的每日摘要：事件列表 + <strong>踩坑/解法提炼</strong> + 用户反馈提炼。<strong>agentic search 按日索引</strong></td>
+                <td><span class="tag tag-purple">可检索</span></td>
+                <td>按日历史查询</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-green)"></span>④ Knowledge</td>
+                <td><code>Memory.md</code> + <code>domain/*.md</code></td>
+                <td>Memory.md 为领域索引（agentic search 入口）；domain 文件存领域详细知识，按 project/user/feedback/reference 分类</td>
+                <td><span class="tag tag-green">持久化</span></td>
+                <td>主要检索层</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-yellow)"></span>⑤ Promotion</td>
+                <td><code>preferences.md</code> · <code>soul.md</code> · <code>CLAUDE.md</code></td>
+                <td>T3 Dream Task 扫描 ①②③④ 全部历史，将跨 session 稳定模式按类型路由到三目标文件，构成 Agent Context 常驻注入层</td>
+                <td><span class="tag tag-yellow">常驻注入</span></td>
+                <td>每次对话自动加载</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="info-box">
+        <strong>Episodes 的双重作用：</strong>
+        一方面作为 daily-logs 的<strong>压缩摘要</strong>（减少 agent 扫描量），
+        另一方面提取"知识信号"推动 ④ Knowledge 更新。
+        agent 历史查询时先搜 episodes（O(days) 复杂度），而非直接扫 daily-logs（O(events) 复杂度）。
+    </div>
+
+    <div class="info-box">
+        <strong>Knowledge 层的两级结构：</strong>
+        <code>Memory.md</code> 是跨领域的<strong>平面索引</strong>（每条一行摘要，&lt;200行），供 agent 快速定位。
+        <code>domain/*.md</code> 是按领域划分的<strong>详细知识文件</strong>，包含类型层级
+        （project / feedback / reference / user）。
+        Memory.md 始终加载进上下文；domain 文件按需加载。
+    </div>
+
+    <h3>⑤ Preference Promotion — 从 ①②③④ 到常驻上下文</h3>
+    <div class="grid grid-3">
+        <div class="card" style="border-color:var(--accent-green);">
+            <div style="font-family:monospace;font-size:0.85rem;color:var(--accent-green);font-weight:700;margin-bottom:0.5rem;">preferences.md</div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">路径: <code>~/.claude/</code>  用户级 · 跨项目</div>
+            <p style="font-size:0.83rem;color:var(--text-secondary);">从 ②③④ 中提取<strong>用户行为规律</strong>：沟通风格、工作方式、反馈偏好。需跨多个 session 验证为稳定模式后才写入。</p>
+            <div style="margin-top:0.6rem;font-size:0.8rem;color:var(--accent-green);">来源信号: ② 用户反馈字段 → ③ 反馈提炼 → ④ user 类知识</div>
+        </div>
+        <div class="card" style="border-color:var(--accent-purple);">
+            <div style="font-family:monospace;font-size:0.85rem;color:var(--accent-purple);font-weight:700;margin-bottom:0.5rem;">soul.md</div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">路径: <code>~/.claude/</code> 或 <code>./.claude/</code></div>
+            <p style="font-size:0.83rem;color:var(--text-secondary);">从 ②③④ 中提取 <strong>agent 技术判断原则</strong>：跨项目可迁移的解题模式、优先策略、经验证的决策规律。</p>
+            <div style="margin-top:0.6rem;font-size:0.8rem;color:var(--accent-purple);">来源信号: ④ project 可复用模式 → 多 session 验证 → 提升</div>
+        </div>
+        <div class="card" style="border-color:var(--accent-orange);">
+            <div style="font-family:monospace;font-size:0.85rem;color:var(--accent-orange);font-weight:700;margin-bottom:0.5rem;">CLAUDE.md</div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">路径: <code>./.claude/</code>  项目级 · 精简 &lt;100行</div>
+            <p style="font-size:0.83rem;color:var(--text-secondary);">从 ②③④ 中提取<strong>强制规则</strong>：禁止行为、开发规范、关键架构约束。每次对话必须生效的内容。</p>
+            <div style="margin-top:0.6rem;font-size:0.8rem;color:var(--accent-orange);">来源信号: ④ feedback 强规则 → 用户明确声明 → 写入</div>
+        </div>
+    </div>
+    <div class="warning-box">
+        <strong>稳定性验证：</strong>仅跨多个 session 反复出现的模式才执行 Promotion。一次性偶发行为停留在 ④ Knowledge 不提升。
+        <code>soul.md</code> 是 agent 能力积累（引导判断）；<code>CLAUDE.md</code> 是外部约束（强制执行）。两者常驻注入但职责不同。
+    </div>
+<!-- ===== 4. 触发机制详情 ===== -->
+    <h2><span class="section-num">3</span>触发机制 Trigger Mechanism</h2>
+
+    <div class="grid grid-2" style="margin-bottom:1rem;">
+        <div class="trigger-card trigger-t1">
+            <div class="trigger-icon">🤖</div>
+            <div class="trigger-title" style="color:var(--accent-purple);">T1 · Independent Agent Trigger</div>
+            <div class="trigger-desc">每 10 轮对话验证触发条件（hot events 数量 / issue 出现 / 重要 learning），满足条件后 fork 独立 agent 异步整理，不阻塞主流程。<strong style="color:var(--accent-purple);">负责完整提炼链 Session → ② → ③ → ④。</strong></div>
+            <ul class="step-list">
+                <li><span class="step-num">1</span>直接读取当前 Session，提取结构化事件</li>
+                <li><span class="step-num">2</span>写入 <code>②&nbsp;.learning/</code> — 事件明细（障碍、反馈、结果）</li>
+                <li><span class="step-num">3</span>生成/更新 <code>③&nbsp;episodes/</code> — 当日叙事摘要</li>
+                <li><span class="step-num">4</span>提取持久知识 → 写入 <code>④&nbsp;knowledge/&lt;type&gt;</code> 领域文件</li>
+                <li><span class="step-num">5</span>更新 MEMORY.md 索引，保持 &lt;200 行</li>
+            </ul>
+            <div style="margin-top:0.8rem;">
+                <span class="tag tag-purple">async</span>
+                <span class="tag tag-blue">独立上下文</span>
+                <span class="tag tag-orange">每10轮</span>
+            </div>
+        </div>
+
+        <div class="trigger-card trigger-t2">
+            <div class="trigger-icon">💬</div>
+            <div class="trigger-title" style="color:var(--accent-cyan);">T2 · Main Agent Trigger</div>
+            <div class="trigger-desc">用户主动下达 <code>/learn</code>、<code>/memory save</code> 等命令，或 auto-learning 规则触发。在主 agent 流程中同步执行，可立即获取整理结果。<strong style="color:var(--accent-cyan);">执行路径与 T1 一致：Session → ② → ③ → ④。</strong></div>
+            <ul class="step-list">
+                <li><span class="step-num">1</span>用户命令 <code>/learn</code> / <code>/memory update</code> 或 auto-learning 规则命中</li>
+                <li><span class="step-num">2</span>直接读取当前 Session，提取结构化事件</li>
+                <li><span class="step-num">3</span>写入 <code>② .learning/</code> — 事件明细</li>
+                <li><span class="step-num">4</span>生成/更新 <code>③ episodes/</code> — 当日叙事摘要</li>
+                <li><span class="step-num">5</span>提取持久知识 → 写入 <code>④ knowledge/domain</code> 领域文件，反馈用户</li>
+            </ul>
+            <div style="margin-top:0.8rem;">
+                <span class="tag tag-green">sync</span>
+                <span class="tag tag-blue">用户可见</span>
+                <span class="tag tag-yellow">即时</span>
+            </div>
+        </div>
+
+        <div class="trigger-card trigger-t3">
+            <div class="trigger-icon">🌙</div>
+            <div class="trigger-title" style="color:var(--accent-yellow);">T3 · Dream Task (Cron 24h)</div>
+            <div class="trigger-desc">每 24 小时离线运行一次深度整理。<strong style="color:var(--accent-yellow);">读取全部历史内容（② .learning + ③ episodes + ④ knowledge + 更早归档）</strong>，跨 session 聚合，执行 Preference Promotion → ⑤。</div>
+            <ul class="step-list">
+                <li><span class="step-num">1</span>加载全部历史：<code>② .learning</code> + <code>③ episodes</code> + <code>④ knowledge</code> + 更早内容</li>
+                <li><span class="step-num">2</span>跨 session 聚合，识别稳定规律与一次性偏差</li>
+                <li><span class="step-num">3</span>Preference Promotion：稳定模式路由到 <code>preferences.md</code> / <code>soul.md</code> / <code>CLAUDE.md</code></li>
+                <li><span class="step-num">4</span>补充 ③④ 层内容，去除跨文件冗余</li>
+                <li><span class="step-num">5</span>重组 MEMORY.md 索引</li>
+            </ul>
+            <div style="margin-top:0.8rem;">
+                <span class="tag tag-yellow">cron 24h</span>
+                <span class="tag tag-purple">读全部历史</span>
+                <span class="tag tag-pink">offline</span>
+            </div>
+        </div>
+
+        <div class="trigger-card trigger-t4">
+            <div class="trigger-icon">🔚</div>
+            <div class="trigger-title" style="color:var(--accent-pink);">T4 · Session Close (Fast Snapshot)</div>
+            <div class="trigger-desc">CLI 会话关闭时，使用单次轻量 LLM call 快速将当前 session 的要点快照<strong style="color:var(--accent-pink);">直接写入 ② .learning/</strong>，允许内容冗余，速度优先。下次 CLI 启动后由 T1 Independent Agent 执行完整提炼链。</div>
+            <ul class="step-list">
+                <li><span class="step-num">1</span>会话关闭 hook 触发</li>
+                <li><span class="step-num">2</span>单次 LLM call：快速总结 session 要点 → 追加写入 <code>② .learning/</code></li>
+                <li><span class="step-num">3</span>允许冗余（不做整理，速度优先）</li>
+                <li><span class="step-num">4</span>下次 CLI 启动 → T1 读取 .learning 内容，完整跑 ②→③→④ 提炼链</li>
+            </ul>
+            <div style="margin-top:0.8rem;">
+                <span class="tag tag-pink">fast snapshot</span>
+                <span class="tag tag-orange">冗余容忍</span>
+                <span class="tag tag-blue">启动后融合</span>
+            </div>
+        </div>
+    </div>
+    <h3>触发条件一览</h3>
+<!-- ===== 6. 触发条件详细规则 ===== -->
+
+    <table>
+        <thead>
+            <tr>
+                <th>触发器</th>
+                <th>触发条件</th>
+                <th>执行模式</th>
+                <th>写入目标</th>
+                <th>优先级</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-purple)"></span>T1 Independent Agent</td>
+                <td>
+                    每 10 轮检查，满足任一：<br>
+                    · hot events ≥ 5 条<br>
+                    · 出现 importance=high 事件<br>
+                    · 累计 issue 数 ≥ 3
+                </td>
+                <td>Fork 独立 agent，<br>异步非阻塞</td>
+                <td>② .learning<br>③ episodes<br>④ knowledge<br>MEMORY.md</td>
+                <td>中</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-cyan)"></span>T2 Main Agent</td>
+                <td>
+                    · 用户显式命令 <code>/learn</code><br>
+                    · 用户说"记住这个"<br>
+                    · auto-learning 规则命中
+                </td>
+                <td>主流程同步执行，<br>用户可见反馈</td>
+                <td>② .learning<br>③ episodes<br>④ knowledge</td>
+                <td>高（即时）</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-yellow)"></span>T3 Dream Task</td>
+                <td>Cron 表达式，每 24 小时<br>通常在低活跃时段执行</td>
+                <td>Cron 调度，<br>完全离线异步</td>
+                <td>读取 ②③④ + 更早历史<br>→ Preference Promotion<br>→ ⑤ preferences / soul / CLAUDE</td>
+                <td>低（定期）</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-pink)"></span>T4 Session Close</td>
+                <td>CLI 会话关闭 hook 触发，<br>无条件执行</td>
+                <td>单次 LLM call，<br>快速快照，允许冗余</td>
+                <td>② .learning/<br>（快速摘要快照）</td>
+                <td>紧急（关闭时）</td>
+            </tr>
+        </tbody>
+    </table>
+    <h3>Agent vs LLM Call — 实现方式选择</h3>
+    <div class="info-box" style="margin-bottom:1rem;">
+        T1/T2 选择 Agent 而非单次 LLM Call，有四个相互独立的真实理由：
+        <strong>命中缓存、按需加载、增量写入、行业验证</strong>。
+        T4 仅写快照无需读取，保持单次 LLM Call 即可。
+    </div>
+    <table>
+        <thead>
+            <tr><th>触发点</th><th>实现方式</th><th>原因</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-purple)"></span>T1 Independent Agent</td>
+                <td><span class="tag tag-purple">Independent Agent</span></td>
+                <td>
+                    <strong style="color:var(--accent-blue);">① 命中缓存</strong> — 加装主 agent session 后，消息前缀与主 agent 完全一致，Claude 服务端直接命中缓存，大幅降低 input token 成本。<br>
+                    <strong style="color:var(--accent-green);">② 按需加载</strong> — 通过 MEMORY.md 索引定向读取相关 ④ knowledge 文件，无需全量预加载；知识库增长后仍保持高效。<br>
+                    <strong style="color:var(--accent-orange);">③ 增量写入</strong> — 使用 <code>edit_file</code> 只输出变更部分，无需输出整个文件覆盖；单次 LLM Call 全量覆盖写的 output token 成本随文件增长线性上升。<br>
+                    <strong style="color:var(--accent-cyan);">④ 执行一致性</strong> — 复用主 agent 的 llmProvider、systemPrompt、toolCalls，提取行为与主 agent 完全一致，不存在"提取逻辑与主流程理解偏差"的问题。<br>
+                    <strong style="color:var(--accent-purple);">⑤ 行业验证</strong> — Claude Code、Hermes Agent、Open Claw 均采用 Agent 模式执行记忆提取，工程实践已验证。
+                </td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-cyan)"></span>T2 Main Agent</td>
+                <td><span class="tag tag-green">Main Agent</span></td>
+                <td>执行路径与 T1 相同，同样具备以上四点优势；sync 执行，用户可见反馈</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-yellow)"></span>T3 Dream Task</td>
+                <td><span class="tag tag-yellow">Agent (Cron)</span></td>
+                <td>跨文件聚合：读取全部 ②③④ 历史；Preference Promotion 需判断稳定性后动态路由至三个目标文件；文件数量不确定，必须动态检索</td>
+            </tr>
+            <tr>
+                <td><span class="dot" style="background:var(--accent-pink)"></span>T4 Session Close</td>
+                <td><span class="tag tag-pink">单次 LLM Call</span></td>
+                <td>只写 ② 快照，不读任何现有文件；单向转换（session 文本 → markdown 摘要）；速度优先，允许冗余，下次启动后由 T1 融合</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>T1 Independent Agent — Fork 实现方式</h3>
+    <div class="info-box" style="margin-bottom:1rem;">
+        复用主 agent 的 <code>llmProvider</code> 和 <code>systemPrompt</code>，加装主 agent 的 session 消息作为上下文，
+        追加一条 user message 触发提取任务。主 agent 的 session 不受任何影响。
+    </div>
+    <div class="card" style="border-color:var(--accent-purple);">
+        <h3 style="color:var(--accent-purple);margin-bottom:0.8rem;">为什么复用 system prompt 且无需新建</h3>
+        <p style="font-size:0.87rem;color:var(--text-secondary);margin-bottom:1rem;">
+            主 agent 的 system prompt 已包含 workspace、instructions、memory 等完整上下文，
+            memory agent 继承后直接具备提取所需的背景知识。无需另写专用 system prompt，减少维护成本。
+        </p>
+        <h3 style="color:var(--accent-purple);margin-bottom:0.8rem;">为什么 Cache 真正命中</h3>
+        <p style="font-size:0.87rem;color:var(--text-secondary);margin-bottom:1rem;">
+            主 agent 持续向 Claude 发送 session 消息序列，Claude 服务端已按内容哈希缓存该前缀。
+            memory agent 加装相同 session 消息后，发送到 Claude 的内容前缀完全一致，直接命中缓存：
+        </p>
+        <div class="file-tree" style="font-size:0.82rem;line-height:1.9;margin-bottom:1rem;">
+<span style="color:#64748b;">主 agent 已缓存:</span>  [system] [user₁] [asst₁] [user₂] [asst₂] ...
+<span style="color:#64748b;">memory agent 发送:</span> [system] [user₁] [asst₁] [user₂] [asst₂] ... [<span style="color:#a78bfa;">user: 请提取记忆</span>]
+                         <span style="color:#4ade80;">↑————————— 命中缓存 ——————————↑</span>
+        </div>
+        <h3 style="color:var(--accent-purple);margin-bottom:0.8rem;">执行流程</h3>
+        <ul class="step-list">
+            <li><span class="step-num">1</span>第 10 轮触发：快照 <code>mainAgent.getMessages()</code>（保留 SYSTEM，保留完整对话）</li>
+            <li><span class="step-num">2</span>新建 Agent 实例，复用 <code>mainAgent.llmProvider</code> 和 <code>mainAgent.systemPrompt</code>，不设 <code>persistenceProvider</code></li>
+            <li><span class="step-num">3</span><code>memoryAgent.restoreHistory(snapshot)</code> — 加装主 agent 全部 session 消息</li>
+            <li><span class="step-num">4</span><code>memoryAgent.injectUserMessage("提取本次对话的记忆...")</code> — 追加提取指令</li>
+            <li><span class="step-num">5</span>独立线程异步执行 <code>continueWithInjectedMessage()</code>，主 agent 不感知、不阻塞</li>
+            <li><span class="step-num">6</span>memory agent 执行提炼链，写入 ②③④；执行结果不回写主 agent messages</li>
+        </ul>
+        <div style="margin-top:0.8rem;">
+            <span class="tag tag-purple">复用 system prompt</span>
+            <span class="tag tag-blue">复用 session cache</span>
+            <span class="tag tag-green">async 独立线程</span>
+            <span class="tag tag-orange">不写回主 session</span>
+        </div>
+    </div>
+
+    <h3>T4 Session Close 执行流程</h3>
+<!-- ===== 8. Session Close 与 Startup Merge 流程 ===== -->
+
+    <div class="svg-container">
+        <svg viewBox="0 0 900 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:600px;">
+            <defs>
+                <marker id="as" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill="#f1f5f9"/>
+                </marker>
+            </defs>
+            <rect width="900" height="240" fill="#0f172a" rx="8"/>
+
+            <!-- Phase 1: Session Running -->
+            <rect x="20" y="30" width="150" height="60" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+            <text x="95" y="56" text-anchor="middle" font-size="10" fill="#38bdf8" font-family="sans-serif" font-weight="bold">Session Running</text>
+            <text x="95" y="72" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">对话进行中</text>
+            <text x="95" y="85" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">hot events 累积</text>
+
+            <!-- Arrow -->
+            <path d="M 170 60 L 220 60" stroke="#f1f5f9" stroke-width="1.5" marker-end="url(#as)"/>
+            <text x="195" y="54" text-anchor="middle" font-size="8" fill="#f472b6" font-family="sans-serif">CLI close</text>
+
+            <!-- Phase 2: T4 fast snapshot -->
+            <rect x="220" y="30" width="160" height="60" rx="8" fill="#1e293b" stroke="#f472b6" stroke-width="1.5"/>
+            <text x="300" y="55" text-anchor="middle" font-size="10" fill="#f472b6" font-family="sans-serif" font-weight="bold">T4 Fast Snapshot</text>
+            <text x="300" y="70" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">单次 LLM call</text>
+            <text x="300" y="84" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">允许冗余，速度优先</text>
+
+            <!-- Arrow -->
+            <path d="M 380 60 L 430 60" stroke="#f1f5f9" stroke-width="1.5" marker-end="url(#as)"/>
+            <text x="405" y="54" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">写入</text>
+
+            <!-- Phase 3: Raw snapshot file -->
+            <rect x="430" y="30" width="180" height="60" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+            <text x="520" y="55" text-anchor="middle" font-size="10" fill="#f1f5f9" font-family="sans-serif" font-weight="bold">② .learning/YYYY-MM-DD.md</text>
+            <text x="520" y="70" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">原始快照（含冗余）</text>
+            <text x="520" y="84" text-anchor="middle" font-size="9" fill="#fbbf24" font-family="sans-serif">待提炼状态</text>
+
+            <!-- Gap / time gap label -->
+            <text x="450" y="135" text-anchor="middle" font-size="9" fill="#475569" font-family="sans-serif">⏳ 等待下次启动</text>
+
+            <!-- Phase 4: Next CLI Startup -->
+            <rect x="20" y="150" width="160" height="60" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+            <text x="100" y="175" text-anchor="middle" font-size="10" fill="#38bdf8" font-family="sans-serif" font-weight="bold">Next CLI Startup</text>
+            <text x="100" y="191" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">检测到 pending 快照</text>
+            <text x="100" y="204" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">触发融合 agent</text>
+
+            <!-- Arrow from startup to merge agent -->
+            <path d="M 180 180 L 230 180" stroke="#f1f5f9" stroke-width="1.5" marker-end="url(#as)"/>
+
+            <!-- Phase 5: Merge agent -->
+            <rect x="230" y="150" width="180" height="60" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+            <text x="320" y="175" text-anchor="middle" font-size="10" fill="#a78bfa" font-family="sans-serif" font-weight="bold">Merge Agent</text>
+            <text x="320" y="191" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">读取原始快照</text>
+            <text x="320" y="204" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">去重 · 分类 · 整理</text>
+
+            <!-- Arrow to domain files -->
+            <path d="M 410 180 L 460 180" stroke="#f1f5f9" stroke-width="1.5" marker-end="url(#as)"/>
+
+            <!-- Phase 6: Domain / User files -->
+            <rect x="460" y="150" width="180" height="60" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+            <text x="550" y="175" text-anchor="middle" font-size="10" fill="#4ade80" font-family="sans-serif" font-weight="bold">Domain + User Files</text>
+            <text x="550" y="191" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">正式知识文件更新</text>
+            <text x="550" y="204" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">MEMORY.md 索引同步</text>
+
+            <!-- Vertical connector from raw snapshot to merge agent -->
+            <path d="M 520 90 L 520 130 L 320 130 L 320 148" stroke="#f472b6" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#as)"/>
+
+            <!-- After merge: delete raw snapshot -->
+            <rect x="680" y="150" width="190" height="60" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+            <text x="775" y="175" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif" font-weight="bold">归档 / 清理快照</text>
+            <text x="775" y="191" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">融合完成后标记 done</text>
+            <text x="775" y="204" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">或移入 archive/</text>
+
+            <path d="M 640 180 L 678 180" stroke="#f1f5f9" stroke-width="1.5" marker-end="url(#as)"/>
+        </svg>
+        <div class="svg-caption">图 4 — T4 Session Close — 写入 ② .learning，下次启动 T1 融合</div>
+    </div>
+    <h3>T3 Preference Promotion 详解</h3>
+<!-- ===== 14. Preference Promotion — 三目标路由 ===== -->
+
+    <div class="info-box">
+        Preference Promotion 是知识系统的<strong>最终结晶步骤</strong>。
+        T3 Dream Task 在完成 Knowledge 领域知识整理后，继续扫描已确认可复用的内容，
+        按类型路由到三个目标文件。这三个文件共同构成 agent 的<strong>常驻核心上下文</strong>。
+    </div>
+
+    <!-- Three targets diagram -->
+    <div class="svg-container">
+        <svg viewBox="0 0 1060 480" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:700px;">
+            <defs>
+                <marker id="pp1" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#4ade80"/></marker>
+                <marker id="pp2" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#a78bfa"/></marker>
+                <marker id="pp3" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#fb923c"/></marker>
+                <marker id="pp4" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#fbbf24"/></marker>
+            </defs>
+            <rect width="1060" height="480" fill="#0f172a" rx="8"/>
+
+            <!-- Knowledge source -->
+            <rect x="30" y="180" width="220" height="120" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+            <text x="140" y="210" text-anchor="middle" font-size="12" fill="#4ade80" font-weight="bold" font-family="sans-serif">Knowledge</text>
+            <text x="140" y="228" text-anchor="middle" font-size="10" fill="#4ade80" font-family="sans-serif">domain memory</text>
+            <line x1="50" y1="242" x2="238" y2="242" stroke="#334155" stroke-width="0.5"/>
+            <text x="140" y="260" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">已确认可复用内容</text>
+            <text x="140" y="276" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">（踩坑解法 / 模式 / 规律）</text>
+            <text x="140" y="292" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">Nightly 23:50 扫描</text>
+
+            <!-- Router box -->
+            <rect x="300" y="200" width="140" height="80" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+            <text x="370" y="232" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="bold" font-family="sans-serif">Promotion</text>
+            <text x="370" y="250" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="bold" font-family="sans-serif">Router</text>
+            <text x="370" y="268" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">按类型路由</text>
+
+            <!-- Arrow: knowledge → router -->
+            <path d="M 250 240 L 298 240" stroke="#4ade80" stroke-width="2" marker-end="url(#pp1)"/>
+
+            <!-- Route arrows -->
+            <path d="M 440 225 L 530 130" stroke="#4ade80" stroke-width="2" marker-end="url(#pp1)"/>
+            <text x="468" y="163" font-size="8" fill="#4ade80" font-family="sans-serif">用户偏好类</text>
+
+            <path d="M 440 240 L 530 240" stroke="#a78bfa" stroke-width="2" marker-end="url(#pp2)"/>
+            <text x="462" y="232" font-size="8" fill="#a78bfa" font-family="sans-serif">原则决策类</text>
+
+            <path d="M 440 255 L 530 350" stroke="#fb923c" stroke-width="2" marker-end="url(#pp3)"/>
+            <text x="465" y="320" font-size="8" fill="#fb923c" font-family="sans-serif">强制规则类</text>
+
+            <!-- Target: preferences.md -->
+            <rect x="530" y="60" width="250" height="150" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+            <rect x="530" y="60" width="250" height="32" rx="10" fill="rgba(74,222,128,0.12)"/>
+            <text x="655" y="82" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="bold" font-family="monospace">preferences.md</text>
+            <text x="655" y="99" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">路径: ~/.claude/  用户级</text>
+            <line x1="548" y1="108" x2="768" y2="108" stroke="#334155" stroke-width="0.5"/>
+            <text x="548" y="126" font-size="9" fill="#94a3b8" font-family="sans-serif">存放：用户工作方式与偏好</text>
+            <text x="548" y="142" font-size="9" fill="#64748b" font-family="sans-serif">· 沟通风格（简洁/详细）</text>
+            <text x="548" y="157" font-size="9" fill="#64748b" font-family="sans-serif">· 工作流习惯 · 反馈方式</text>
+            <text x="548" y="172" font-size="9" fill="#64748b" font-family="sans-serif">· 跨项目稳定的用户行为特征</text>
+            <text x="548" y="196" font-size="9" fill="#22d3ee" font-family="sans-serif">跨项目生效 · 用户画像</text>
+
+            <!-- Target: soul.md -->
+            <rect x="530" y="165" width="250" height="170" rx="10" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
+            <rect x="530" y="165" width="250" height="32" rx="10" fill="rgba(167,139,250,0.12)"/>
+            <text x="655" y="187" text-anchor="middle" font-size="11" fill="#a78bfa" font-weight="bold" font-family="monospace">soul.md</text>
+            <text x="655" y="204" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">路径: ~/.claude/ 或 ./.claude/  全局/项目</text>
+            <line x1="548" y1="213" x2="768" y2="213" stroke="#334155" stroke-width="0.5"/>
+            <text x="548" y="231" font-size="9" fill="#94a3b8" font-family="sans-serif">存放：agent 思维原则与决策倾向</text>
+            <text x="548" y="247" font-size="9" fill="#64748b" font-family="sans-serif">· 技术判断规律（如：SPA优先API）</text>
+            <text x="548" y="262" font-size="9" fill="#64748b" font-family="sans-serif">· 解题思路模式（如：两阶段拦截）</text>
+            <text x="548" y="277" font-size="9" fill="#64748b" font-family="sans-serif">· 经过验证的技术决策原则</text>
+            <text x="548" y="292" font-size="9" fill="#64748b" font-family="sans-serif">· 领域内的最优路径总结</text>
+            <text x="548" y="318" font-size="9" fill="#22d3ee" font-family="sans-serif">agent 能力特征积累 · 可迁移</text>
+
+            <!-- Target: CLAUDE.md -->
+            <rect x="530" y="300" width="250" height="150" rx="10" fill="#1e293b" stroke="#fb923c" stroke-width="2"/>
+            <rect x="530" y="300" width="250" height="32" rx="10" fill="rgba(251,146,60,0.12)"/>
+            <text x="655" y="322" text-anchor="middle" font-size="11" fill="#fb923c" font-weight="bold" font-family="monospace">CLAUDE.md</text>
+            <text x="655" y="339" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">路径: ./.claude/  项目级，常驻注入</text>
+            <line x1="548" y1="348" x2="768" y2="348" stroke="#334155" stroke-width="0.5"/>
+            <text x="548" y="366" font-size="9" fill="#94a3b8" font-family="sans-serif">存放：每次对话必须生效的规则</text>
+            <text x="548" y="382" font-size="9" fill="#64748b" font-family="sans-serif">· 强制约束（禁止行为）</text>
+            <text x="548" y="397" font-size="9" fill="#64748b" font-family="sans-serif">· 项目开发规范（英文注释等）</text>
+            <text x="548" y="412" font-size="9" fill="#64748b" font-family="sans-serif">· 关键架构约束</text>
+            <text x="548" y="432" font-size="9" fill="#22d3ee" font-family="sans-serif">每次对话自动注入 · 精简 &lt;100行</text>
+
+            <!-- Right: read context -->
+            <rect x="830" y="160" width="200" height="160" rx="10" fill="#1e293b" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <text x="930" y="185" text-anchor="middle" font-size="11" fill="#22d3ee" font-weight="bold" font-family="sans-serif">Agent Context</text>
+            <text x="930" y="203" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">每次对话启动注入</text>
+            <line x1="848" y1="215" x2="1018" y2="215" stroke="#334155" stroke-width="0.5"/>
+            <text x="848" y="233" font-size="9" fill="#4ade80" font-family="sans-serif">✓ preferences.md (用户偏好)</text>
+            <text x="848" y="249" font-size="9" fill="#a78bfa" font-family="sans-serif">✓ soul.md (思维原则)</text>
+            <text x="848" y="265" font-size="9" fill="#fb923c" font-family="sans-serif">✓ CLAUDE.md (强制规则)</text>
+            <text x="848" y="281" font-size="9" fill="#64748b" font-family="sans-serif">  Memory.md (按需)</text>
+            <text x="930" y="308" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">三者共同塑造 agent 行为</text>
+
+            <!-- Arrows to context -->
+            <path d="M 780 135 L 828 220" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#pp1)"/>
+            <path d="M 780 255 L 828 255" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#pp2)"/>
+            <path d="M 780 375 L 828 290" stroke="#fb923c" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#pp3)"/>
+
+            <!-- Stability filter note -->
+            <rect x="30" y="330" width="220" height="130" rx="8" fill="rgba(251,191,36,0.06)" stroke="rgba(251,191,36,0.25)" stroke-width="1"/>
+            <text x="140" y="353" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="bold" font-family="sans-serif">稳定性验证</text>
+            <text x="50" y="372" font-size="9" fill="#94a3b8" font-family="sans-serif">促升前必须确认：</text>
+            <text x="50" y="388" font-size="9" fill="#64748b" font-family="sans-serif">· 跨多个 session 出现</text>
+            <text x="50" y="404" font-size="9" fill="#64748b" font-family="sans-serif">· 不是当次特殊情况</text>
+            <text x="50" y="420" font-size="9" fill="#64748b" font-family="sans-serif">· 用户明确认可或多次验证</text>
+            <text x="50" y="436" font-size="9" fill="#f87171" font-family="sans-serif">一次性偏差 → 不促升</text>
+            <text x="50" y="452" font-size="9" fill="#4ade80" font-family="sans-serif">稳定模式 → 按类型路由</text>
+        </svg>
+        <div class="svg-caption">图 8 — Preference Promotion 三目标路由：Knowledge → preferences.md / soul.md / CLAUDE.md</div>
+    </div>
+
+    <!-- Three files detail -->
+    <h3>三个目标文件的职责边界</h3>
+    <div class="grid grid-3">
+        <div class="card" style="border-color:var(--accent-green);">
+            <div style="font-family:monospace;font-size:0.85rem;color:var(--accent-green);font-weight:700;margin-bottom:0.6rem;">preferences.md</div>
+            <p style="font-size:0.83rem;color:var(--text-secondary);margin-bottom:0.5rem;">
+                <strong style="color:var(--text-primary);">回答：用户是谁，怎么工作</strong>
+            </p>
+            <ul style="font-size:0.83rem;color:var(--text-secondary);padding-left:1.2rem;line-height:1.8;">
+                <li>用户沟通风格（简洁/详细）</li>
+                <li>用户工作流习惯</li>
+                <li>用户对反馈的偏好</li>
+                <li>跨项目稳定的行为特征</li>
+            </ul>
+            <div style="margin-top:0.8rem;">
+                <span class="tag tag-green">~/.claude/</span>
+                <span class="tag tag-green">用户级</span>
+                <span class="tag tag-green">跨项目</span>
+            </div>
+            <div class="info-box" style="margin-top:0.8rem;font-size:0.82rem;">
+                来源：daily-logs 中的<strong>用户反馈字段</strong>，多次确认后的稳定行为模式
+            </div>
+        </div>
+
+        <div class="card" style="border-color:var(--accent-purple);">
+            <div style="font-family:monospace;font-size:0.85rem;color:var(--accent-purple);font-weight:700;margin-bottom:0.6rem;">soul.md</div>
+            <p style="font-size:0.83rem;color:var(--text-secondary);margin-bottom:0.5rem;">
+                <strong style="color:var(--text-primary);">回答：agent 如何思考和判断</strong>
+            </p>
+            <ul style="font-size:0.83rem;color:var(--text-secondary);padding-left:1.2rem;line-height:1.8;">
+                <li>技术判断原则（优先策略）</li>
+                <li>跨项目可迁移的解题模式</li>
+                <li>经验证的技术决策规律</li>
+                <li>领域内的最优路径总结</li>
+            </ul>
+            <div style="margin-top:0.8rem;">
+                <span class="tag tag-purple">全局/项目</span>
+                <span class="tag tag-purple">可迁移</span>
+                <span class="tag tag-purple">能力积累</span>
+            </div>
+            <div class="info-box" style="margin-top:0.8rem;font-size:0.82rem;">
+                来源：Knowledge 中<strong>可复用模式</strong>经多次验证、跨站点/项目通用后提升
+            </div>
+        </div>
+
+        <div class="card" style="border-color:var(--accent-orange);">
+            <div style="font-family:monospace;font-size:0.85rem;color:var(--accent-orange);font-weight:700;margin-bottom:0.6rem;">CLAUDE.md</div>
+            <p style="font-size:0.83rem;color:var(--text-secondary);margin-bottom:0.5rem;">
+                <strong style="color:var(--text-primary);">回答：这个项目必须遵守什么</strong>
+            </p>
+            <ul style="font-size:0.83rem;color:var(--text-secondary);padding-left:1.2rem;line-height:1.8;">
+                <li>强制约束（禁止行为）</li>
+                <li>项目开发规范</li>
+                <li>关键架构约束</li>
+                <li>每次对话必须生效的规则</li>
+            </ul>
+            <div style="margin-top:0.8rem;">
+                <span class="tag tag-orange">./.claude/</span>
+                <span class="tag tag-orange">项目级</span>
+                <span class="tag tag-orange">常驻注入</span>
+            </div>
+            <div class="info-box" style="margin-top:0.8rem;font-size:0.82rem;">
+                来源：Knowledge 中<strong>项目强规则</strong>，或用户明确声明必须遵守的约束
+            </div>
+        </div>
+    </div>
+
+    <!-- grubhub case promotion example -->
+    <h3>案例：grubhub 开发记录的 Promotion 路由</h3>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.8rem;">
+        延续 §5 的 grubhub 案例，展示 Knowledge 中的内容如何在 Nightly 23:50 被路由到三个目标文件。
+    </p>
+
+    <div class="svg-container">
+        <svg viewBox="0 0 1060 360" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:700px;">
+            <defs>
+                <marker id="gp1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4ade80"/></marker>
+                <marker id="gp2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a78bfa"/></marker>
+                <marker id="gp3" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#fb923c"/></marker>
+            </defs>
+            <rect width="1060" height="360" fill="#0f172a" rx="8"/>
+
+            <!-- Source: knowledge -->
+            <rect x="20" y="20" width="300" height="320" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+            <text x="170" y="45" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="bold" font-family="sans-serif">Knowledge (grubhub 提炼)</text>
+            <line x1="36" y1="55" x2="304" y2="55" stroke="#334155" stroke-width="0.5"/>
+
+            <text x="36" y="74" font-size="9" fill="#fb923c" font-family="sans-serif">可复用模式:</text>
+            <text x="36" y="90" font-size="9" fill="#94a3b8" font-family="sans-serif">① SPA → 优先拦截 API，不用 DOM</text>
+            <text x="36" y="105" font-size="9" fill="#94a3b8" font-family="sans-serif">② 页面就绪用业务元素，不用 networkidle</text>
+            <text x="36" y="120" font-size="9" fill="#94a3b8" font-family="sans-serif">③ 懒加载 → 点击 tab，每项 0.6s 间隔</text>
+            <text x="36" y="135" font-size="9" fill="#94a3b8" font-family="sans-serif">④ headless=False 反爬效果最佳</text>
+            <text x="36" y="150" font-size="9" fill="#94a3b8" font-family="sans-serif">⑤ 两阶段拦截：ID 在前，body 在 LoadingFinished</text>
+            <text x="36" y="165" font-size="9" fill="#94a3b8" font-family="sans-serif">⑥ handler 签名 async def h(event, tab=None)</text>
+
+            <line x1="36" y1="178" x2="304" y2="178" stroke="#334155" stroke-width="0.5"/>
+            <text x="36" y="196" font-size="9" fill="#4ade80" font-family="sans-serif">用户反馈提炼:</text>
+            <text x="36" y="212" font-size="9" fill="#94a3b8" font-family="sans-serif">⑦ 用户关注结果验证（数量+格式正确）</text>
+            <text x="36" y="227" font-size="9" fill="#94a3b8" font-family="sans-serif">⑧ 用户不需要过程细节，只要最终结果</text>
+
+            <line x1="36" y1="240" x2="304" y2="240" stroke="#334155" stroke-width="0.5"/>
+            <text x="36" y="258" font-size="9" fill="#fb923c" font-family="sans-serif">项目规范:</text>
+            <text x="36" y="274" font-size="9" fill="#94a3b8" font-family="sans-serif">⑨ 完成后必须实际运行验证数据</text>
+            <text x="36" y="289" font-size="9" fill="#94a3b8" font-family="sans-serif">⑩ 爬虫脚本命名: {site}_menu.py</text>
+
+            <!-- Arrows -->
+            <path d="M 320 110 L 378 110" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#gp2)"/>
+            <path d="M 320 200 L 378 200" stroke="#4ade80" stroke-width="1.5" marker-end="url(#gp1)"/>
+            <path d="M 320 265 L 378 265" stroke="#fb923c" stroke-width="1.5" marker-end="url(#gp3)"/>
+
+            <!-- Label tags on arrows -->
+            <rect x="318" y="98" width="62" height="14" rx="3" fill="rgba(167,139,250,0.15)"/>
+            <text x="349" y="109" text-anchor="middle" font-size="8" fill="#a78bfa" font-family="sans-serif">① ② ③ ④ ⑤ ⑥</text>
+            <rect x="318" y="188" width="62" height="14" rx="3" fill="rgba(74,222,128,0.15)"/>
+            <text x="349" y="199" text-anchor="middle" font-size="8" fill="#4ade80" font-family="sans-serif">⑦ ⑧</text>
+            <rect x="318" y="253" width="62" height="14" rx="3" fill="rgba(251,146,60,0.15)"/>
+            <text x="349" y="264" text-anchor="middle" font-size="8" fill="#fb923c" font-family="sans-serif">⑨ ⑩</text>
+
+            <!-- soul.md -->
+            <rect x="380" y="40" width="310" height="175" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+            <text x="535" y="63" text-anchor="middle" font-size="10" fill="#a78bfa" font-weight="bold" font-family="monospace">soul.md  (agent 思维原则)</text>
+            <line x1="396" y1="72" x2="674" y2="72" stroke="#334155" stroke-width="0.5"/>
+            <text x="396" y="90" font-size="9" fill="#a78bfa" font-family="sans-serif">## Crawler Principles</text>
+            <text x="396" y="106" font-size="9" fill="#94a3b8" font-family="sans-serif">- SPA 数据优先拦截 Network API，避免 DOM 抓取</text>
+            <text x="396" y="121" font-size="9" fill="#94a3b8" font-family="sans-serif">- 页面就绪信号用目标业务元素，不用 networkidle</text>
+            <text x="396" y="136" font-size="9" fill="#94a3b8" font-family="sans-serif">- 懒加载场景：遍历点击交互，间隔 ≥ 0.6s</text>
+            <text x="396" y="151" font-size="9" fill="#94a3b8" font-family="sans-serif">- nodriver 默认 headless=False（反爬）</text>
+            <text x="396" y="166" font-size="9" fill="#94a3b8" font-family="sans-serif">- 两阶段拦截：ResponseReceived(记ID) →</text>
+            <text x="396" y="180" font-size="9" fill="#94a3b8" font-family="sans-serif">  LoadingFinished(读body)</text>
+            <text x="396" y="197" font-size="9" fill="#64748b" font-family="sans-serif">来源: grubhub(2026-03-28) · 多站点验证后提升</text>
+
+            <!-- preferences.md -->
+            <rect x="380" y="230" width="310" height="95" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+            <text x="535" y="253" text-anchor="middle" font-size="10" fill="#4ade80" font-weight="bold" font-family="monospace">preferences.md  (用户偏好)</text>
+            <line x1="396" y1="262" x2="674" y2="262" stroke="#334155" stroke-width="0.5"/>
+            <text x="396" y="280" font-size="9" fill="#94a3b8" font-family="sans-serif">- 关注结果验证（数量 + 格式），不关心过程</text>
+            <text x="396" y="295" font-size="9" fill="#94a3b8" font-family="sans-serif">- 完成即汇报结果，不需逐步进度说明</text>
+            <text x="396" y="313" font-size="9" fill="#64748b" font-family="sans-serif">来源: 多次会话用户反馈提炼</text>
+
+            <!-- CLAUDE.md -->
+            <rect x="380" y="340" width="310" height="0" rx="8" fill="#1e293b" stroke="#fb923c" stroke-width="0"/>
+
+            <!-- CLAUDE.md (separate block below) -->
+            <rect x="740" y="40" width="295" height="300" rx="8" fill="#1e293b" stroke="#fb923c" stroke-width="1.5"/>
+            <text x="887" y="63" text-anchor="middle" font-size="10" fill="#fb923c" font-weight="bold" font-family="monospace">CLAUDE.md  (项目规范)</text>
+            <line x1="756" y1="72" x2="1019" y2="72" stroke="#334155" stroke-width="0.5"/>
+            <text x="756" y="90" font-size="9" fill="#fb923c" font-family="sans-serif">## claw-crawler Development Rules</text>
+            <text x="756" y="107" font-size="9" fill="#94a3b8" font-family="sans-serif">- 完成爬虫脚本后必须实际运行验证</text>
+            <text x="756" y="122" font-size="9" fill="#94a3b8" font-family="sans-serif">  （不以 type check 代替）</text>
+            <text x="756" y="137" font-size="9" fill="#94a3b8" font-family="sans-serif">- 脚本命名: {site}_menu.py</text>
+            <text x="756" y="152" font-size="9" fill="#94a3b8" font-family="sans-serif">- commit 信息使用英文</text>
+            <text x="756" y="167" font-size="9" fill="#94a3b8" font-family="sans-serif">- 代码注释优先自描述，不加冗余注释</text>
+            <line x1="756" y1="180" x2="1019" y2="180" stroke="#334155" stroke-width="0.5"/>
+            <text x="756" y="198" font-size="9" fill="#64748b" font-family="sans-serif">精简 &lt;100行，只放强制规则</text>
+            <text x="756" y="214" font-size="9" fill="#64748b" font-family="sans-serif">每次对话自动注入系统上下文</text>
+
+            <!-- arrow from source to CLAUDE.md -->
+            <path d="M 690 265 L 738 180" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#gp3)"/>
+        </svg>
+        <div class="svg-caption">图 9 — grubhub 案例：Knowledge 内容按类型路由到 soul.md / preferences.md / CLAUDE.md</div>
+    </div>
+
+    <!-- Routing decision table -->
+    <h3>路由判断规则</h3>
+    <table>
+        <thead>
+            <tr><th>内容特征</th><th>路由目标</th><th>判断依据</th><th>示例</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>技术决策原则 / 可迁移解题模式</td>
+                <td><span class="tag tag-purple">soul.md</span></td>
+                <td>跨站点/项目通用，体现 agent 判断能力</td>
+                <td>"SPA 优先拦截 API"、"两阶段拦截模式"</td>
+            </tr>
+            <tr>
+                <td>用户沟通/工作方式偏好</td>
+                <td><span class="tag tag-green">preferences.md</span></td>
+                <td>来自用户反馈字段，多次会话稳定出现</td>
+                <td>"关注结果验证，不需过程细节"</td>
+            </tr>
+            <tr>
+                <td>项目强制规则 / 开发约束</td>
+                <td><span class="tag tag-orange">CLAUDE.md</span></td>
+                <td>必须每次对话生效，项目级特定规范</td>
+                <td>"完成后必须实际运行验证"</td>
+            </tr>
+            <tr>
+                <td>一次性特殊处理</td>
+                <td><span class="tag" style="background:rgba(248,113,113,0.15);color:var(--accent-red);">不促升</span></td>
+                <td>仅出现一次，无法确认是稳定模式</td>
+                <td>特定站点的临时 workaround</td>
+            </tr>
+            <tr>
+                <td>详细的技术实现步骤</td>
+                <td><span class="tag tag-blue">停留在 knowledge</span></td>
+                <td>细节不需常驻，按需从 domain 文件检索</td>
+                <td>具体 API 端点路径、数据结构</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="warning-box">
+        <strong>soul.md 与 CLAUDE.md 的关键区别：</strong><br>
+        <code>soul.md</code> 是 agent 的<strong>能力积累</strong>——"我学会了如何更好地解决这类问题"，偏向引导判断，语气是建议性的；<br>
+        <code>CLAUDE.md</code> 是<strong>外部约束</strong>——"在这个项目里必须这样做"，偏向强制执行，语气是规定性的。<br>
+        两者都常驻注入，但前者塑造思维方式，后者约束行为边界。
+    </div>
+    <!-- ===== 4. Agent Context 注入 ===== -->
+    <h2><span class="section-num">4</span>Agent Context 注入</h2>
+
+    <div class="grid grid-2">
+        <div class="card">
+            <h3>常驻注入 — 每次对话自动加载</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.8rem;">
+                以下三个文件在每次 CLI 启动时<strong>自动注入 system context</strong>，始终生效。
+            </p>
+            <div class="layer-block" style="background:rgba(74,222,128,0.07);border-color:var(--accent-green);margin-bottom:0.6rem;">
+                <code style="color:var(--accent-green);font-weight:700;">preferences.md</code>
+                <span style="font-size:0.82rem;color:var(--text-secondary);margin-left:0.5rem;">~/.claude/</span>
+                <p style="font-size:0.83rem;color:var(--text-secondary);margin-top:0.3rem;">用户工作风格、沟通偏好、跨项目稳定行为特征。由 T3 从 Knowledge 提升。</p>
+            </div>
+            <div class="layer-block" style="background:rgba(167,139,250,0.07);border-color:var(--accent-purple);margin-bottom:0.6rem;">
+                <code style="color:var(--accent-purple);font-weight:700;">soul.md</code>
+                <span style="font-size:0.82rem;color:var(--text-secondary);margin-left:0.5rem;">~/.claude/ 或 ./.claude/</span>
+                <p style="font-size:0.83rem;color:var(--text-secondary);margin-top:0.3rem;">Agent 思维原则与技术判断倾向，跨项目可迁移的能力积累。由 T3 从可复用模式提升。</p>
+            </div>
+            <div class="layer-block" style="background:rgba(251,146,60,0.07);border-color:var(--accent-orange);">
+                <code style="color:var(--accent-orange);font-weight:700;">CLAUDE.md</code>
+                <span style="font-size:0.82rem;color:var(--text-secondary);margin-left:0.5rem;">./.claude/  精简 &lt;100行</span>
+                <p style="font-size:0.83rem;color:var(--text-secondary);margin-top:0.3rem;">每次对话必须生效的强制规则：禁止行为、项目开发规范、关键架构约束。</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>按需加载 — agentic search 触发</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.8rem;">
+                以下内容默认<strong>不全量注入</strong>；episodes 例外：最新 2 日启动时自动预加载，更早历史由 agent 按需检索。
+            </p>
+            <div class="layer-block" style="background:rgba(74,222,128,0.04);border-color:#4ade8066;margin-bottom:0.6rem;">
+                <code style="color:var(--accent-green);font-weight:700;">MEMORY.md</code>
+                <span style="font-size:0.82rem;color:var(--text-secondary);margin-left:0.5rem;">④ knowledge 索引，&lt;200行</span>
+                <p style="font-size:0.83rem;color:var(--text-secondary);margin-top:0.3rem;">Knowledge 领域文件的平面索引，每条一行摘要 + 文件路径。Agent 查询时先搜此文件定位领域。</p>
+            </div>
+            <div class="layer-block" style="background:rgba(167,139,250,0.04);border-color:#a78bfa66;">
+                <code style="color:var(--accent-purple);font-weight:700;">episodes/YYYY-MM-DD.md</code>
+                <span style="font-size:0.82rem;color:var(--text-secondary);margin-left:0.5rem;">③ 历史查询按日索引</span>
+                <p style="font-size:0.83rem;color:var(--text-secondary);margin-top:0.3rem;">
+                    <strong style="color:var(--accent-purple);">默认加载最新 2 日</strong>（启动时自动注入），
+                    超出范围的历史 episode 由 agent 按需按日期检索，O(days) 复杂度。
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem;">
+        <h3>对话生命周期时序</h3>
+        <table>
+            <thead><tr><th>时机</th><th>动作</th><th>写入/读取</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><span class="tag tag-blue">启动</span></td>
+                    <td>preferences.md + soul.md + CLAUDE.md 常驻注入；最新 2 日 episodes 默认预加载；检测 .learning/ 是否有待处理内容</td>
+                    <td>读: ⑤ 常驻文件 + ③ 最近 2日</td>
+                </tr>
+                <tr>
+                    <td><span class="tag tag-purple">对话中 T1</span></td>
+                    <td>每 10 轮 Independent Agent 异步读 Session → 写 ②③④ 提炼链</td>
+                    <td>读: ① Session → 写: ②③④</td>
+                </tr>
+                <tr>
+                    <td><span class="tag tag-green">对话中 T2</span></td>
+                    <td>用户命令 /learn 或 auto-learning → 同步执行完整提炼链，即时反馈</td>
+                    <td>读: ① Session → 写: ②③④</td>
+                </tr>
+                <tr>
+                    <td><span class="tag tag-pink">关闭 T4</span></td>
+                    <td>CLI 关闭 hook → 单次 LLM call 快摘要写入 ② .learning/，速度优先</td>
+                    <td>写: ②</td>
+                </tr>
+                <tr>
+                    <td><span class="tag tag-yellow">每日 T3</span></td>
+                    <td>Dream Task Cron → 读全部历史，跨 session 聚合，Preference Promotion → ⑤</td>
+                    <td>读: ②③④ → 写: ⑤</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+
+<!-- ===== 5. 实现要点 ===== -->
+    <h2><span class="section-num">5</span>实现要点 Implementation Notes</h2>
+
+    <div class="grid grid-2">
+        <div class="card">
+            <h3>T1 触发条件检查</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.6rem;">每 10 轮 main agent 在 PostToolUse hook 中检查以下条件（满足任一即触发）：</p>
+            <ul style="font-size:0.88rem;color:var(--text-secondary);padding-left:1.2rem;line-height:1.8;">
+                <li>session 中 hot events 数量 ≥ 5</li>
+                <li>存在 <code>importance=high</code> 的 hot event</li>
+                <li>累计 issue 事件 ≥ 3 条</li>
+                <li>距上次 T1 执行超过 30 分钟</li>
+            </ul>
+            <div class="warning-box" style="margin-top:0.8rem;">
+                <strong>注意：</strong>T1 使用独立 agent，不共享主 agent 的上下文窗口。通过文件传递 session 摘要。
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>MEMORY.md 维护规则</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.6rem;">每次写入知识文件后需同步更新索引：</p>
+            <ul style="font-size:0.88rem;color:var(--text-secondary);padding-left:1.2rem;line-height:1.8;">
+                <li>每条索引 ≤ 150 字符，一行摘要</li>
+                <li>总行数 &lt; 200 行（超出则整理合并）</li>
+                <li>格式：<code>- [Title](file.md) — 简述</code></li>
+                <li>删除指向不存在文件的索引行</li>
+            </ul>
+            <div class="info-box" style="margin-top:0.8rem;">
+                MEMORY.md 在每次对话启动时自动加载到上下文，是知识系统的<strong>入口文件</strong>，保持精简至关重要。
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Dream Task 配置</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.6rem;">通过 <code>CronCreate</code> 注册每日任务：</p>
+            <div class="file-tree" style="font-size:0.82rem;line-height:1.7;">
+<span class="ft-comment"># Cron: 每天凌晨 2 点执行</span><br>
+<span class="ft-file">schedule: "0 2 * * *"</span><br>
+<span class="ft-file">agent: dream-knowledge-organizer</span><br>
+<span class="ft-file">task: |</span><br>
+<span class="ft-comment">  1. 加载最近7天 hot events</span><br>
+<span class="ft-comment">  2. 跨 session 聚合分析</span><br>
+<span class="ft-comment">  3. 更新 domain + user files</span><br>
+<span class="ft-comment">  4. 精简 MEMORY.md 索引</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Session Close Hook</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.6rem;">在 <code>settings.json</code> Stop hook 中注册 T4：</p>
+            <div class="file-tree" style="font-size:0.82rem;line-height:1.7;">
+<span class="ft-comment"># settings.json hooks.Stop</span><br>
+<span class="ft-file">command: claude --fast \</span><br>
+<span class="ft-comment">  -p "快速总结本次会话的</span><br>
+<span class="ft-comment">  hot events，追加到</span><br>
+<span class="ft-comment">  session_hot_{date}.md，</span><br>
+<span class="ft-comment">  允许内容冗余，速度优先"</span><br>
+<span class="ft-file">timeout: 30s</span><br>
+<span class="ft-comment"># 下次启动在 PreSession hook</span><br>
+<span class="ft-comment"># 检测并执行 merge agent</span>
+            </div>
+        </div>
+    </div>
+    <h3>文件命名约定 File Naming</h3>
+<!-- ===== 10. 文件命名约定 ===== -->
+
+    <table>
+        <thead>
+            <tr><th>文件类型</th><th>命名格式</th><th>存储层</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>学习日志</td><td><code>daily-logs/YYYY-MM-DD.md</code> (②)</td><td>Project</td><td>T1/T4 写入，结构化事件记录</td></tr>
+            <tr><td>领域知识</td><td><code>knowledge/project/&lt;topic&gt;.md</code> (④)</td><td>Project</td><td>踩坑解法、技术决策</td></tr>
+            <tr><td>反馈记录</td><td><code>knowledge/feedback/&lt;topic&gt;.md</code> (④)</td><td>Project</td><td>用户行为纠正与确认</td></tr>
+            <tr><td>参考信息</td><td><code>knowledge/reference/&lt;topic&gt;.md</code> (④)</td><td>Project</td><td>外部 API 端点、工具文档</td></tr>
+            <tr><td>项目用户知识</td><td><code>knowledge/user/&lt;name&gt;.md</code> (④)</td><td>Project</td><td>用户与本项目相关的知识：角色定位、项目内沟通方式、相关方（对接人、汇报人、执行人）</td></tr>
+            <tr><td>跨项目用户偏好</td><td><code>preferences.md</code> (⑤)</td><td>Global</td><td>跨项目稳定的工作风格、沟通偏好、技术背景。由 T3 从 ④ 中提升，存于 ~/.claude/</td></tr>
+            <tr><td>知识索引</td><td><code>MEMORY.md</code></td><td>Both</td><td>唯一索引，不含正文内容</td></tr>
+            <tr><td>Agent 规则</td><td><code>CLAUDE.md</code></td><td>Project</td><td>常驻上下文，精简核心规则</td></tr>
+        </tbody>
+    </table>
+<!-- ===== 6. 参考架构 ===== -->
+    <h2><span class="section-num">6</span>参考架构 Reference: AFU Memory System</h2>
+
+    <div class="info-box" style="margin-bottom:1rem;">
+        <strong>来源：</strong>AFU Memory System — 三层架构，核心思想是<strong>将捕获（capture）与检索（retrieval）分离</strong>。
+        原始日志永不直接被查询，所有检索都走经过整理的语义知识层。这是本系统设计的重要参考依据。
+    </div>
+
+    <div class="svg-container">
+        <svg viewBox="0 0 1060 420" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:700px;">
+            <defs>
+                <marker id="ra1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#38bdf8"/></marker>
+                <marker id="ra2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a78bfa"/></marker>
+                <marker id="ra3" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4ade80"/></marker>
+                <marker id="ra4" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#fbbf24"/></marker>
+            </defs>
+            <rect width="1060" height="420" fill="#0f172a" rx="8"/>
+
+            <!-- File tree left panel -->
+            <rect x="20" y="20" width="360" height="380" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+            <text x="40" y="45" font-size="11" fill="#22d3ee" font-weight="bold" font-family="monospace">~/.afu/memory/</text>
+
+            <text x="40" y="68" font-size="10" fill="#38bdf8" font-family="monospace">├── current.jsonl</text>
+            <text x="200" y="68" font-size="9" fill="#64748b" font-family="monospace"># Real-time log (crash-safe)</text>
+
+            <text x="40" y="86" font-size="10" fill="#4ade80" font-family="monospace">├── preferences.md</text>
+            <text x="200" y="86" font-size="9" fill="#64748b" font-family="monospace"># Promoted patterns</text>
+
+            <text x="40" y="104" font-size="10" fill="#a78bfa" font-family="monospace">├── daily-logs/YYYY-MM-DD.md</text>
+            <text x="40" y="118" font-size="9" fill="#64748b" font-family="monospace">│                            # Archived raw logs</text>
+
+            <text x="40" y="136" font-size="10" fill="#a78bfa" font-family="monospace">├── episodes/YYYY-MM-DD.md</text>
+            <text x="40" y="150" font-size="9" fill="#64748b" font-family="monospace">│                            # Synthesized summaries</text>
+
+            <text x="40" y="168" font-size="10" fill="#fbbf24" font-family="monospace">├── knowledge/</text>
+            <text x="60" y="185" font-size="10" fill="#f1f5f9" font-family="monospace">├── people/[name].md</text>
+            <text x="230" y="185" font-size="9" fill="#64748b" font-family="monospace"># Person files</text>
+            <text x="60" y="201" font-size="10" fill="#f1f5f9" font-family="monospace">├── projects/[name].md</text>
+            <text x="230" y="201" font-size="9" fill="#64748b" font-family="monospace"># Project files</text>
+            <text x="60" y="217" font-size="10" fill="#f1f5f9" font-family="monospace">└── decisions/YYYY-MM.md</text>
+            <text x="230" y="217" font-size="9" fill="#64748b" font-family="monospace"># Monthly decisions</text>
+
+            <text x="40" y="235" font-size="10" fill="#fb923c" font-family="monospace">├── watches/</text>
+            <text x="60" y="251" font-size="10" fill="#f1f5f9" font-family="monospace">├── [slug].md</text>
+            <text x="180" y="251" font-size="9" fill="#64748b" font-family="monospace"># Target profile + goals</text>
+            <text x="60" y="267" font-size="10" fill="#f1f5f9" font-family="monospace">└── [slug]-events.jsonl</text>
+            <text x="240" y="267" font-size="9" fill="#64748b" font-family="monospace"># Timestamped events</text>
+
+            <text x="40" y="285" font-size="10" fill="#94a3b8" font-family="monospace">├── jobs/*.md</text>
+            <text x="180" y="285" font-size="9" fill="#64748b" font-family="monospace"># Scheduled job configs</text>
+            <text x="40" y="301" font-size="10" fill="#94a3b8" font-family="monospace">└── schedule.md</text>
+            <text x="180" y="301" font-size="9" fill="#64748b" font-family="monospace"># Nightly job schedule</text>
+
+            <!-- Nightly schedule -->
+            <rect x="30" y="320" width="340" height="68" rx="6" fill="rgba(251,191,36,0.07)" stroke="rgba(251,191,36,0.3)" stroke-width="1"/>
+            <text x="200" y="338" text-anchor="middle" font-size="9" fill="#fbbf24" font-weight="bold" font-family="monospace">Nightly Processing Pipeline</text>
+            <text x="45" y="354" font-size="9" fill="#94a3b8" font-family="monospace">23:30  Archive raw log → daily-logs/ + episodes/</text>
+            <text x="45" y="369" font-size="9" fill="#94a3b8" font-family="monospace">23:45  Extract facts → knowledge/ files</text>
+            <text x="45" y="384" font-size="9" fill="#94a3b8" font-family="monospace">23:50  Promote stable patterns → preferences.md</text>
+
+            <!-- Right panel: 3 tiers -->
+            <text x="440" y="42" font-size="13" fill="#22d3ee" font-weight="bold" font-family="sans-serif">三层架构核心原则</text>
+
+            <!-- Tier 1 -->
+            <rect x="420" y="55" width="610" height="90" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+            <rect x="420" y="55" width="4" height="90" rx="2" fill="#38bdf8"/>
+            <text x="440" y="78" font-size="11" fill="#38bdf8" font-weight="bold" font-family="sans-serif">Tier 1 · Real-Time Capture</text>
+            <text x="440" y="96" font-size="10" fill="#f1f5f9" font-family="monospace">current.jsonl</text>
+            <text x="540" y="96" font-size="9" fill="#94a3b8" font-family="sans-serif">— JSONL 格式，每行原子写入，对话中每个重要</text>
+            <text x="440" y="112" font-size="9" fill="#94a3b8" font-family="sans-serif">事实 / 决策 / 偏好标记都记录为一条 JSONL entry。</text>
+            <text x="440" y="128" font-size="9" fill="#64748b" font-family="sans-serif">Crash-safe：程序崩溃不会导致部分写入损坏整个文件（append-only）</text>
+
+            <!-- Arrow T1 → T2 -->
+            <path d="M 725 145 L 725 165" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ra2)"/>
+            <text x="735" y="158" font-size="8" fill="#a78bfa" font-family="sans-serif">23:30 nightly</text>
+
+            <!-- Tier 2 -->
+            <rect x="420" y="165" width="610" height="90" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+            <rect x="420" y="165" width="4" height="90" rx="2" fill="#a78bfa"/>
+            <text x="440" y="188" font-size="11" fill="#a78bfa" font-weight="bold" font-family="sans-serif">Tier 2 · Episodic Summaries</text>
+            <text x="440" y="206" font-size="10" fill="#f1f5f9" font-family="monospace">daily-logs/ + episodes/YYYY-MM-DD.md</text>
+            <text x="440" y="222" font-size="9" fill="#94a3b8" font-family="sans-serif">每晚将原始日志归档到 daily-logs/，并合成叙事摘要到 episodes/。</text>
+            <text x="440" y="238" font-size="9" fill="#64748b" font-family="sans-serif">保留人类可读的历史记录，是 Tier 3 提取的原材料。</text>
+
+            <!-- Arrow T2 → T3 -->
+            <path d="M 725 255 L 725 275" stroke="#4ade80" stroke-width="1.5" marker-end="url(#ra3)"/>
+            <text x="735" y="268" font-size="8" fill="#4ade80" font-family="sans-serif">23:45 nightly</text>
+
+            <!-- Tier 3 -->
+            <rect x="420" y="275" width="610" height="90" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+            <rect x="420" y="275" width="4" height="90" rx="2" fill="#4ade80"/>
+            <text x="440" y="298" font-size="11" fill="#4ade80" font-weight="bold" font-family="sans-serif">Tier 3 · Semantic Knowledge</text>
+            <text x="440" y="316" font-size="10" fill="#f1f5f9" font-family="monospace">knowledge/ (people / projects / decisions)</text>
+            <text x="440" y="332" font-size="9" fill="#94a3b8" font-family="sans-serif">从 episode 提取持久事实，写入结构化知识文件。</text>
+            <text x="440" y="348" font-size="9" fill="#4ade80" font-family="sans-serif">查询时只搜索此层 — never raw logs。这是检索入口。</text>
+
+            <!-- Preference promotion arrow -->
+            <path d="M 725 365 L 725 385" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ra4)"/>
+            <text x="735" y="378" font-size="8" fill="#fbbf24" font-family="sans-serif">23:50 nightly</text>
+
+            <rect x="420" y="385" width="610" height="25" rx="5" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.3)" stroke-width="1"/>
+            <text x="440" y="402" font-size="9" fill="#fbbf24" font-family="sans-serif">Preference Promotion → preferences.md  (当天行为纠正中筛选出稳定模式后提升)</text>
+        </svg>
+        <div class="svg-caption">图 5 — AFU Memory System 参考架构：三层分离（Real-Time Capture / Episodic / Semantic Knowledge）</div>
+    </div>
+
+    <h3>核心设计原则（来自参考架构）</h3>
+    <div class="grid grid-2">
+        <div class="card">
+            <h3 style="color:var(--accent-blue);">1. 捕获与检索分离</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">
+                原始日志（<code>current.jsonl</code>）只负责<strong style="color:var(--accent-blue);">写入</strong>，从不被直接查询。
+                检索入口永远是经过整理的 <code>knowledge/</code> 语义层。
+                这避免了在噪声数据中搜索，也保证了检索精度。
+            </p>
+        </div>
+        <div class="card">
+            <h3 style="color:var(--accent-orange);">2. JSONL 原子写入</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">
+                实时捕获使用 <code>.jsonl</code> 格式（每行一个 JSON 对象），append-only。
+                <strong style="color:var(--accent-orange);">Crash-safe</strong>：即使进程中途崩溃，已写入的行不会损坏，
+                下次恢复后仍可读取。比 Markdown 文件的实时写入更可靠。
+            </p>
+        </div>
+        <div class="card">
+            <h3 style="color:var(--accent-purple);">3. 渐进式提炼管道</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">
+                原始 → 叙事摘要 → 语义知识，三步渐进提炼。
+                每一步都有独立的存储位置和定时任务，互不阻塞。
+                这与本设计的 T3 Dream Task 思路完全一致。
+            </p>
+        </div>
+        <div class="card">
+            <h3 style="color:var(--accent-green);">4. 偏好提升是独立步骤</h3>
+            <p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">
+                行为纠正（behavioral corrections）在当天发生，但不立即写入偏好文件。
+                每晚 23:50 单独评估：这是<strong style="color:var(--accent-green);">稳定模式</strong>还是一次性偏差？
+                只有确认为稳定模式才提升到 <code>preferences.md</code>。
+            </p>
+        </div>
+    </div>
+
+    <h3>与本设计的映射关系</h3>
+    <table>
+        <thead>
+            <tr><th>AFU 参考架构</th><th>本设计对应</th><th>差异与改进点</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>current.jsonl</code> — 实时捕获</td>
+                <td>Session Hot Events（实时追加）</td>
+                <td><strong style="color:var(--accent-orange);">改进：</strong>采用 JSONL 格式替代 Markdown，提升 crash-safe 能力</td>
+            </tr>
+            <tr>
+                <td><code>daily-logs/</code> + <code>episodes/</code> — 叙事摘要</td>
+                <td>② .learning（T4 快速写入）→ ③ episodes（T1 整理后生成）</td>
+                <td>参考架构一步归档+合成；本设计拆分为 T4 快照写 ② / T1 独立提炼 ② → ③，层次更清晰</td>
+            </tr>
+            <tr>
+                <td><code>knowledge/</code> — 语义知识（检索入口）</td>
+                <td>Domain Knowledge Layer（domain files）</td>
+                <td>结构一致；参考架构按 people/projects/decisions 分类，本设计按 project/user/feedback/reference 分类</td>
+            </tr>
+            <tr>
+                <td><code>preferences.md</code> — 偏好提升</td>
+                <td>User Preference Layer（~/.claude/）</td>
+                <td>参考架构强调需经过稳定性验证才提升，本设计应加入此验证步骤</td>
+            </tr>
+            <tr>
+                <td>Nightly pipeline (23:30/23:45/23:50)</td>
+                <td>T3 Dream Task (Cron 24h)</td>
+                <td>参考架构将三步拆为不同时间点，降低单次任务复杂度；本设计可拆分</td>
+            </tr>
+            <tr>
+                <td><code>watches/</code> — 监控目标</td>
+                <td>（本设计暂无对应）</td>
+                <td><strong style="color:var(--accent-cyan);">可扩展：</strong>为特定项目/话题添加 watch 机制，追踪时序事件</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="warning-box">
+        <strong>关键设计决策（来自参考架构验证）：</strong>
+        Session Hot Events 应使用 <strong>JSONL 格式</strong>（而非 Markdown 文件）进行实时捕获，
+        以保证 crash-safe 和 append-only 语义。Markdown 格式的整理版本（domain files / episodes）
+        作为人类可读的检索目标，在事后由 agent 生成。
+        <br><br>
+        查询时<strong>永远不直接搜索原始 JSONL 日志</strong>，只搜索经过整理的 knowledge 文件。
+    </div>
+<footer>
+        <p>Knowledge System Design v2 · 2026-04 · core-ai project</p>
+        <p style="margin-top:0.3rem;font-size:0.78rem;">
+            current.jsonl → .learning → episodes → knowledge → preferences.md / soul.md / CLAUDE.md
+        </p>
+    </footer>
+
+</div>
+</body>
+</html>
