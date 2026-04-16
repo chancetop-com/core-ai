@@ -39,6 +39,18 @@ public class TraceService {
         if (filter.name != null && !filter.name.isEmpty()) {
             bsonFilters.add(Filters.regex("name", filter.name, "i"));
         }
+        if (filter.type != null && !filter.type.isEmpty()) {
+            bsonFilters.add(Filters.eq("type", filter.type));
+        }
+        if (filter.source != null && !filter.source.isEmpty()) {
+            bsonFilters.add(Filters.eq("source", filter.source));
+        }
+        if (filter.agentName != null && !filter.agentName.isEmpty()) {
+            bsonFilters.add(Filters.eq("agent_name", filter.agentName));
+        }
+        if (filter.model != null && !filter.model.isEmpty()) {
+            bsonFilters.add(Filters.eq("model", filter.model));
+        }
         if (filter.status != null && !filter.status.isEmpty()) {
             bsonFilters.add(Filters.eq("status", TraceStatus.valueOf(filter.status)));
         }
@@ -158,6 +170,10 @@ public class TraceService {
         public int offset;
         public int limit = 20;
         public String name;
+        public String type;        // agent | llm_call | external
+        public String source;      // chat | test | api | a2a | scheduled | llm_test | llm_api | external
+        public String agentName;
+        public String model;
         public String status;
         public String sessionId;
         public String userId;

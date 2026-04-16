@@ -15,6 +15,7 @@ import io.opentelemetry.proto.trace.v1.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import ai.core.server.domain.ChatSession;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
@@ -38,6 +39,8 @@ public class OTLPIngestService {
 
     @Inject
     MongoCollection<Trace> traceCollection;
+    @Inject
+    MongoCollection<ChatSession> chatSessionCollection;
     @Inject
     MongoCollection<Span> spanCollection;
 
@@ -123,6 +126,24 @@ public class OTLPIngestService {
             trace.durationMs = endMs - startMs;
             trace.completedAt = toZonedDateTime(endMs);
             trace.updatedAt = ZonedDateTime.now();
+            // Backfill model if this span carries it and trace.model is still empty
+            var spanModel = attrs.get("gen_ai.request.model");
+            if (spanModel != null && (trace.model == null || trace.model.isEmpty())) {
+                trace.model = spanModel;
+            }
+            // Prefer richer span info: if this span carries session/agent/user attributes,
+            // upgrade the trace's identity fields (they may be null when the first-arrived
+            // span was an external one without context)
+            var hasRichContext = attrs.get("session.id") != null || attrs.get("gen_ai.agent.name") != null;
+            if (hasRichContext) {
+                trace.name = protoSpan.getName();
+                trace.sessionId = attrs.get("session.id");
+                trace.userId = attrs.get("user.id");
+                trace.agentName = attrs.get("gen_ai.agent.name");
+                trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
+                trace.type = resolveType(trace.source, attrs);
+                if (trace.input == null || trace.input.isEmpty()) trace.input = resolveInput(attrs);
+            }
             traceCollection.replace(trace);
             return;
         }
@@ -134,6 +155,9 @@ public class OTLPIngestService {
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
+        trace.model = attrs.get("gen_ai.request.model");
+        trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
+        trace.type = resolveType(trace.source, attrs);
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
         trace.input = resolveInput(attrs);
         trace.output = resolveOutput(attrs);
@@ -212,6 +236,29 @@ public class OTLPIngestService {
         var output = attrs.get("gen_ai.completion");
         if (output != null) return output;
         return attrs.get("langfuse.observation.output");
+    }
+
+    private String resolveSource(Map<String, String> attrs, Map<String, String> resourceAttrs, String sessionId) {
+        // Highest priority: explicit client.type span attribute (set by server-side wrapper span, e.g. LLM call entry)
+        var clientType = attrs.get("client.type");
+        if (clientType != null) return clientType;
+        // External service (e.g. litellm proxy)
+        var serviceName = resourceAttrs.get("service.name");
+        if (serviceName != null && !"core-ai".equals(serviceName)) return "external";
+        // Agent trace with session_id — look up chat_sessions to find the session's source
+        if (sessionId != null) {
+            var session = chatSessionCollection.get(sessionId).orElse(null);
+            if (session != null && session.source != null) return session.source;
+        }
+        return null;
+    }
+
+    private String resolveType(String source, Map<String, String> attrs) {
+        if (source == null) return "external";
+        if (source.startsWith("llm_")) return "llm_call";
+        if ("external".equals(source)) return "external";
+        if (attrs.get("gen_ai.agent.id") != null || attrs.get("gen_ai.agent.name") != null) return "agent";
+        return "agent";  // chat/test/api/a2a/scheduled all imply agent context
     }
 
     private TraceStatus mapTraceStatus(Status.StatusCode code) {

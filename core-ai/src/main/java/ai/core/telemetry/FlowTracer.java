@@ -38,7 +38,7 @@ public class FlowTracer extends Tracer {
             return operation.get();
         }
 
-        var spanBuilder = tracer.spanBuilder(INSTRUMENTATION_NAME)
+        var spanBuilder = tracer.spanBuilder("flow.run")
             .setSpanKind(SpanKind.INTERNAL)
             .setAttribute(FLOW_ID, context.getFlowId())
             .setAttribute(FLOW_NAME, context.getFlowName())

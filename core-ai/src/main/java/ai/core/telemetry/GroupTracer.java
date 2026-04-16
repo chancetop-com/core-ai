@@ -45,7 +45,7 @@ public class GroupTracer extends Tracer {
             return operation.get();
         }
 
-        var spanBuilder = tracer.spanBuilder(INSTRUMENTATION_NAME)
+        var spanBuilder = tracer.spanBuilder("group.execute")
             .setSpanKind(SpanKind.INTERNAL)
             .setAttribute(LANGFUSE_OBSERVATION_TYPE, "chain")
             .setAttribute(GROUP_NAME, context.getGroupName())

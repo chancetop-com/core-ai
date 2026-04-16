@@ -52,7 +52,7 @@ public class AgentTracer extends Tracer {
             return operation.get();
         }
 
-        var spanBuilder = tracer.spanBuilder(INSTRUMENTATION_NAME)
+        var spanBuilder = tracer.spanBuilder("agent.turn")
             .setSpanKind(SpanKind.CLIENT)  // CLIENT per OTel conventions for agent operations
             .setAttribute(LANGFUSE_OBSERVATION_TYPE, "agent")
             .setAttribute(GEN_AI_OPERATION_NAME, "agent")

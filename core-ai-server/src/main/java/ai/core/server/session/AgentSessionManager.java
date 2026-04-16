@@ -193,7 +193,9 @@ public class AgentSessionManager {
         List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty())
                 ? toolRegistryService.resolveToolRefs(snapshot.tools)
                 : List.of();
-        var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
+        var context = userId != null
+                ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build()
+                : null;
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context, snapshot.agentName);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
@@ -203,7 +205,9 @@ public class AgentSessionManager {
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId) {
-        var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
+        var context = userId != null
+                ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build()
+                : null;
         var agent = buildAgent(config, null, context, null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);

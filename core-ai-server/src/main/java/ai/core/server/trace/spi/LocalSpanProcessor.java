@@ -119,8 +119,8 @@ public class LocalSpanProcessor implements SpanProcessor {
         var attributes = spanData.getAttributes();
         var keyValueList = new ArrayList<KeyValue>();
         if (attributes != null && !attributes.isEmpty()) {
-            attributes.forEach((key, value) -> {
-                var anyValue = convertAttributeValue(value);
+            attributes.forEach((key, val) -> {
+                var anyValue = convertAttributeValue(val);
                 keyValueList.add(KeyValue.newBuilder()
                     .setKey(key.getKey())
                     .setValue(anyValue)
@@ -208,9 +208,8 @@ public class LocalSpanProcessor implements SpanProcessor {
     private io.opentelemetry.proto.trace.v1.Status mapStatus(SpanData spanData) {
         var statusCode = spanData.getStatus().getStatusCode();
         var otlpStatusCode = switch (statusCode) {
-            case OK -> io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_OK;
+            case OK, UNSET -> io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_OK;
             case ERROR -> io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_ERROR;
-            case UNSET -> io.opentelemetry.proto.trace.v1.Status.StatusCode.STATUS_CODE_OK;
         };
 
         return io.opentelemetry.proto.trace.v1.Status.newBuilder()

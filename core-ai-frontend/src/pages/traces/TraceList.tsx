@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Clock, Zap, ChevronLeft, ChevronRight, Search, X, Filter } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Trace, TraceFilter } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
+import TraceDetailPanel from './TraceDetailPanel';
 
 const STATUS_OPTIONS = ['', 'RUNNING', 'COMPLETED', 'ERROR'];
 
@@ -13,11 +14,15 @@ export default function TraceList() {
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const limit = 20;
-  const navigate = useNavigate();
 
   const [filters, setFilters] = useState<TraceFilter>({
     name: searchParams.get('name') || '',
+    type: searchParams.get('type') || '',
+    source: searchParams.get('source') || '',
+    agentName: searchParams.get('agentName') || '',
+    model: searchParams.get('model') || '',
     status: searchParams.get('status') || '',
     sessionId: searchParams.get('sessionId') || '',
     userId: searchParams.get('userId') || '',
@@ -25,7 +30,36 @@ export default function TraceList() {
     startTo: searchParams.get('startTo') || '',
   });
 
-  const activeFilterCount = Object.values(filters).filter(v => v).length;
+  // tab-level filter (type) counted separately from "advanced" filters
+  const activeFilterCount = Object.entries(filters).filter(([k, v]) => v && k !== 'type').length;
+
+  const setType = (type: string) => {
+    const next = { ...filters, type };
+    setFilters(next);
+    setOffset(0);
+    const params = new URLSearchParams();
+    Object.entries(next).forEach(([k, v]) => { if (v) params.set(k, v); });
+    setSearchParams(params);
+  };
+
+  const TYPE_TABS: { key: string; label: string }[] = [
+    { key: '', label: 'All' },
+    { key: 'agent', label: 'Agent' },
+    { key: 'llm_call', label: 'LLM Call' },
+    { key: 'external', label: 'External' },
+  ];
+
+  const SOURCE_OPTIONS: { key: string; label: string }[] = [
+    { key: '', label: 'All sources' },
+    { key: 'chat', label: 'Chat' },
+    { key: 'test', label: 'Test' },
+    { key: 'api', label: 'API' },
+    { key: 'a2a', label: 'A2A' },
+    { key: 'scheduled', label: 'Scheduled' },
+    { key: 'llm_test', label: 'LLM Test' },
+    { key: 'llm_api', label: 'LLM API' },
+    { key: 'external', label: 'External' },
+  ];
 
   const fetchTraces = useCallback(() => {
     setLoading(true);
@@ -48,7 +82,7 @@ export default function TraceList() {
   };
 
   const clearFilters = () => {
-    setFilters({ name: '', status: '', sessionId: '', userId: '', startFrom: '', startTo: '' });
+    setFilters({ name: '', type: '', source: '', agentName: '', model: '', status: '', sessionId: '', userId: '', startFrom: '', startTo: '' });
     setOffset(0);
     setSearchParams({});
   };
@@ -83,6 +117,20 @@ export default function TraceList() {
     return '-';
   };
 
+  const sourceBadge = (source?: string): { label: string; emoji: string } => {
+    switch (source) {
+      case 'chat': return { label: 'Chat', emoji: '🌐' };
+      case 'test': return { label: 'Test', emoji: '🧪' };
+      case 'api': return { label: 'API', emoji: '⚡' };
+      case 'a2a': return { label: 'A2A', emoji: '🤝' };
+      case 'scheduled': return { label: 'Scheduled', emoji: '⏰' };
+      case 'llm_test': return { label: 'LLM Test', emoji: '🧪' };
+      case 'llm_api': return { label: 'LLM API', emoji: '⚡' };
+      case 'external': return { label: 'External', emoji: '🕸' };
+      default: return { label: 'Unknown', emoji: '·' };
+    }
+  };
+
   const extractInputPreview = (t: Trace): string => {
     try {
       const parsed = JSON.parse(t.input);
@@ -97,7 +145,8 @@ export default function TraceList() {
   };
 
   return (
-    <div className="p-6">
+    <div className="flex h-full">
+    <div className="p-6 flex-1 min-w-0 overflow-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Traces</h1>
@@ -126,6 +175,24 @@ export default function TraceList() {
         </div>
       </div>
 
+      {/* Type tabs */}
+      <div className="mb-4 flex gap-1 border-b" style={{ borderColor: 'var(--color-border)' }}>
+        {TYPE_TABS.map(t => {
+          const active = (filters.type || '') === t.key;
+          return (
+            <button key={t.key} onClick={() => setType(t.key)}
+              className="px-3 py-2 text-sm cursor-pointer border-b-2 -mb-[2px] transition-colors"
+              style={{
+                borderColor: active ? 'var(--color-primary)' : 'transparent',
+                color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                fontWeight: active ? 600 : 400,
+              }}>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Filter panel */}
       {showFilters && (
         <div className="mb-4 rounded-xl border p-4"
@@ -147,6 +214,16 @@ export default function TraceList() {
               </div>
             </div>
             <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>Source</label>
+              <select
+                value={filters.source}
+                onChange={e => { setFilters(f => ({ ...f, source: e.target.value })); }}
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
+                {SOURCE_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
               <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>Status</label>
               <select
                 value={filters.status}
@@ -155,6 +232,30 @@ export default function TraceList() {
                 style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
                 {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s || 'All statuses'}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>Agent Name</label>
+              <input
+                type="text"
+                value={filters.agentName}
+                onChange={e => setFilters(f => ({ ...f, agentName: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && applyFilters()}
+                placeholder="Filter by agent..."
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>Model</label>
+              <input
+                type="text"
+                value={filters.model}
+                onChange={e => setFilters(f => ({ ...f, model: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && applyFilters()}
+                placeholder="Filter by model..."
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
+              />
             </div>
             <div>
               <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>Session ID</label>
@@ -245,15 +346,21 @@ export default function TraceList() {
             ) : traces.map(t => {
               const model = extractModel(t);
               const preview = extractInputPreview(t);
+              const src = sourceBadge(t.source);
               return (
               <tr key={t.id}
-                onClick={() => navigate(`/traces/${t.traceId || t.id}`)}
+                onClick={() => setSelectedTraceId(t.traceId || t.id)}
                 className="cursor-pointer transition-colors border-t"
                 style={{ borderColor: 'var(--color-border)' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap"
+                      style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
+                      title={`source: ${t.source || 'unknown'}`}>
+                      <span className="mr-1">{src.emoji}</span>{src.label}
+                    </span>
                     <div className="font-medium truncate" style={{ maxWidth: '240px' }}>{t.name || t.traceId}</div>
                     {t.agentName && (
                       <span className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap"
@@ -319,6 +426,10 @@ export default function TraceList() {
           </button>
         </div>
       </div>
+    </div>
+    {selectedTraceId && (
+      <TraceDetailPanel traceId={selectedTraceId} onClose={() => setSelectedTraceId(null)} />
+    )}
     </div>
   );
 }

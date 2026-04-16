@@ -26,6 +26,10 @@ public class TraceController {
         filter.offset = Integer.parseInt(params.getOrDefault("offset", "0"));
         filter.limit = Integer.parseInt(params.getOrDefault("limit", "20"));
         filter.name = params.get("name");
+        filter.type = params.get("type");
+        filter.source = params.get("source");
+        filter.agentName = params.get("agentName");
+        filter.model = params.get("model");
         filter.status = params.get("status");
         filter.sessionId = params.get("sessionId");
         filter.userId = params.get("userId");

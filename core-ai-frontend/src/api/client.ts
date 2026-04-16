@@ -44,6 +44,8 @@ export interface Trace {
   id: string;
   traceId: string;
   name: string;
+  type?: string;     // agent | llm_call | external
+  source?: string;   // chat | test | api | a2a | scheduled | llm_test | llm_api | external
   agentName?: string;
   model?: string;
   sessionId: string;
@@ -82,6 +84,10 @@ export interface Span {
 
 export interface TraceFilter {
   name?: string;
+  type?: string;        // agent | llm_call | external
+  source?: string;      // chat | test | api | a2a | scheduled | llm_test | llm_api | external
+  agentName?: string;
+  model?: string;
   status?: string;
   sessionId?: string;
   userId?: string;
