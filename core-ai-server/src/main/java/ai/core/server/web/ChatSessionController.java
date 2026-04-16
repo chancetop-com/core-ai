@@ -30,11 +30,18 @@ public class ChatSessionController {
         var params = request.queryParams();
         int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
         int limit = Integer.parseInt(params.getOrDefault("limit", "50"));
-        var sessions = chatMessageService.listSessions(userId, offset, limit).stream().map(s -> {
+        var sourcesParam = params.get("sources");
+        var sources = sourcesParam != null && !sourcesParam.isEmpty()
+            ? java.util.Arrays.asList(sourcesParam.split(","))
+            : java.util.List.of("chat", "a2a");
+        var sessions = chatMessageService.listSessions(userId, sources, offset, limit).stream().map(s -> {
             var m = new java.util.LinkedHashMap<String, Object>();
             m.put("id", s.id);
             m.put("user_id", s.userId);
             m.put("agent_id", s.agentId);
+            m.put("source", s.source);
+            m.put("schedule_id", s.scheduleId);
+            m.put("api_key_id", s.apiKeyId);
             m.put("title", s.title);
             m.put("message_count", s.messageCount);
             m.put("created_at", s.createdAt != null ? s.createdAt.toInstant().toString() : null);

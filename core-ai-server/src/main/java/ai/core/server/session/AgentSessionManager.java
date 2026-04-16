@@ -66,17 +66,25 @@ public class AgentSessionManager {
     }
 
     public String createSession(SessionConfig config, String userId) {
+        return createSession(config, userId, "chat");
+    }
+
+    public String createSession(SessionConfig config, String userId, String source) {
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
-        var agent = buildAgent(config, null, context);
+        var agent = buildAgent(config, null, context, null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
-        chatMessageService.registerSession(sessionId, userId, null);
+        chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, source));
         sessions.put(sessionId, session);
         return sessionId;
     }
 
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
+        return createSessionFromAgent(definition, overrides, userId, "chat");
+    }
+
+    public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId, String source) {
         var config = toSessionConfig(definition);
         if (overrides != null) {
             if (overrides.model != null) config.model = overrides.model;
@@ -95,10 +103,10 @@ public class AgentSessionManager {
 
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
-        var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
+        var agent = buildAgent(config, tools.isEmpty() ? null : tools, context, definition.name);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
-        chatMessageService.registerSession(sessionId, userId, definition.id);
+        chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, definition.id, source));
         sessions.put(sessionId, session);
 
         // Auto-load subagents configured in the agent definition
@@ -153,6 +161,7 @@ public class AgentSessionManager {
     private SessionState.AgentConfigSnapshot buildSnapshotFromDefinition(AgentDefinition def) {
         var pub = def.publishedConfig;
         var snapshot = new SessionState.AgentConfigSnapshot();
+        snapshot.agentName = def.name;
         snapshot.systemPrompt = pub != null && pub.systemPrompt != null ? pub.systemPrompt : def.systemPrompt;
         snapshot.model = pub != null && pub.model != null ? pub.model : def.model;
         snapshot.temperature = pub != null && pub.temperature != null ? pub.temperature : def.temperature;
@@ -185,22 +194,36 @@ public class AgentSessionManager {
                 ? toolRegistryService.resolveToolRefs(snapshot.tools)
                 : List.of();
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
-        var agent = buildAgent(config, tools.isEmpty() ? null : tools, context);
+        var agent = buildAgent(config, tools.isEmpty() ? null : tools, context, snapshot.agentName);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
-        chatMessageService.registerSession(sessionId, userId, null);
+        registerSessionFromDb(sessionId, userId);
         restoreAgentHistory(agent, sessionId);
         return session;
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId) {
         var context = userId != null ? ExecutionContext.builder().userId(userId).build() : null;
-        var agent = buildAgent(config, null, context);
+        var agent = buildAgent(config, null, context, null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
-        chatMessageService.registerSession(sessionId, userId, null);
+        registerSessionFromDb(sessionId, userId);
         restoreAgentHistory(agent, sessionId);
         return session;
+    }
+
+    private void registerSessionFromDb(String sessionId, String userId) {
+        var meta = chatMessageService.getSessionMeta(sessionId);
+        if (meta != null) {
+            chatMessageService.registerSession(sessionId, new ChatMessageService.SessionMeta(
+                meta.userId != null ? meta.userId : userId,
+                meta.agentId,
+                meta.source != null ? meta.source : "chat",
+                meta.scheduleId,
+                meta.apiKeyId));
+        } else {
+            chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, "chat"));
+        }
     }
 
     private void restoreAgentHistory(Agent agent, String sessionId) {
@@ -330,8 +353,9 @@ public class AgentSessionManager {
         return config;
     }
 
-    private Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context) {
+    private Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName) {
         var builder = Agent.builder()
+                .name(agentName != null ? agentName.replaceAll("\\s+", "-") : "assistant")
                 .llmProvider(llmProviders.getProvider())
                 .toolCalls(tools != null ? tools : BuiltinTools.ALL)
                 .temperature(config != null && config.temperature != null ? config.temperature : 0.8);

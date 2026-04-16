@@ -46,7 +46,11 @@ public class ChatMessageService {
     private final ConcurrentMap<String, SessionMeta> metaBySession = new ConcurrentHashMap<>();
 
     public void registerSession(String sessionId, String userId, String agentId) {
-        metaBySession.put(sessionId, new SessionMeta(userId, agentId));
+        registerSession(sessionId, SessionMeta.of(userId, agentId, "chat"));
+    }
+
+    public void registerSession(String sessionId, SessionMeta meta) {
+        metaBySession.put(sessionId, meta);
     }
 
     public void writeUserMessage(String sessionId, String content) {
@@ -75,13 +79,25 @@ public class ChatMessageService {
         return chatSessionCollection.get(sessionId).orElse(null);
     }
 
-    public List<ChatSession> listSessions(String userId, int offset, int limit) {
+    public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit) {
         var query = new Query();
-        query.filter = Filters.and(
-            Filters.eq("user_id", userId),
-            Filters.or(
-                Filters.exists("deleted_at", false),
-                Filters.eq("deleted_at", null)));
+        var filters = new java.util.ArrayList<org.bson.conversions.Bson>();
+        filters.add(Filters.eq("user_id", userId));
+        filters.add(Filters.or(
+            Filters.exists("deleted_at", false),
+            Filters.eq("deleted_at", null)));
+        if (sources != null && !sources.isEmpty()) {
+            // include rows where source is missing (legacy data) when filtering by "chat" to avoid losing old sessions
+            if (sources.contains("chat")) {
+                filters.add(Filters.or(
+                    Filters.in("source", sources),
+                    Filters.exists("source", false),
+                    Filters.eq("source", null)));
+            } else {
+                filters.add(Filters.in("source", sources));
+            }
+        }
+        query.filter = Filters.and(filters);
         query.sort = Sorts.descending("last_message_at");
         query.skip = offset;
         query.limit = limit;
@@ -118,6 +134,9 @@ public class ChatMessageService {
             session.id = sessionId;
             session.userId = meta != null ? meta.userId : null;
             session.agentId = meta != null ? meta.agentId : null;
+            session.source = meta != null && meta.source != null ? meta.source : "chat";
+            session.scheduleId = meta != null ? meta.scheduleId : null;
+            session.apiKeyId = meta != null ? meta.apiKeyId : null;
             session.title = truncateTitle(content);
             session.messageCount = 1L;
             session.createdAt = now;
@@ -229,6 +248,9 @@ public class ChatMessageService {
         Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
     }
 
-    private record SessionMeta(String userId, String agentId) {
+    public record SessionMeta(String userId, String agentId, String source, String scheduleId, String apiKeyId) {
+        public static SessionMeta of(String userId, String agentId, String source) {
+            return new SessionMeta(userId, agentId, source, null, null);
+        }
     }
 }

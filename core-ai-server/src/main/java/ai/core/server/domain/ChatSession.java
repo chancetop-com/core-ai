@@ -21,6 +21,18 @@ public class ChatSession {
     @Field(name = "agent_id")
     public String agentId;
 
+    // chat | test | api | a2a | scheduled — distinguishes where the session was initiated
+    @Field(name = "source")
+    public String source;
+
+    // set only when source=scheduled
+    @Field(name = "schedule_id")
+    public String scheduleId;
+
+    // set only when source=api
+    @Field(name = "api_key_id")
+    public String apiKeyId;
+
     // derived from first user message, truncated; editable later
     @Field(name = "title")
     public String title;

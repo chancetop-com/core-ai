@@ -21,6 +21,12 @@ public class Trace {
     @Field(name = "name")
     public String name;
 
+    @Field(name = "model")
+    public String model;
+
+    @Field(name = "agent_name")
+    public String agentName;
+
     @Field(name = "session_id")
     public String sessionId;
 

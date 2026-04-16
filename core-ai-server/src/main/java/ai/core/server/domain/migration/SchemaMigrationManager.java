@@ -56,7 +56,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVServiceApiIndexes(),
             new SchemaMigrationVMigrateToolIdsToTools(),
             new SchemaMigrationVChatMessageIndexes(),
-            new SchemaMigrationVChatSessionIndexes()
+            new SchemaMigrationVChatSessionIndexes(),
+            new SchemaMigrationVChatSessionSourceIndexes()
         );
     }
 }

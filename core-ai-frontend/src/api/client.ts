@@ -44,6 +44,8 @@ export interface Trace {
   id: string;
   traceId: string;
   name: string;
+  agentName?: string;
+  model?: string;
   sessionId: string;
   userId: string;
   status: 'RUNNING' | 'COMPLETED' | 'ERROR';

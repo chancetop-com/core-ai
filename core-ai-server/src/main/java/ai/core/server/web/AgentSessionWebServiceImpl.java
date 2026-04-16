@@ -103,6 +103,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     private SessionState.AgentConfigSnapshot buildAgentConfigSnapshot(ai.core.server.domain.AgentDefinition agent) {
         var toolRefs = agent.publishedConfig != null ? agent.publishedConfig.tools : agent.tools;
         var snapshot = new SessionState.AgentConfigSnapshot();
+        snapshot.agentName = agent.name;
         snapshot.systemPrompt = agent.publishedConfig != null && agent.publishedConfig.systemPrompt != null
                 ? agent.publishedConfig.systemPrompt : agent.systemPrompt;
         snapshot.model = agent.publishedConfig != null && agent.publishedConfig.model != null

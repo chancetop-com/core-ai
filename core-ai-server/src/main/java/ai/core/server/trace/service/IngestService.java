@@ -130,8 +130,24 @@ public class IngestService {
         span.createdAt = ZonedDateTime.now();
         spanCollection.insert(span);
 
+        // Back-fill model onto trace if not yet set
+        if (spanReq.model != null && !spanReq.model.isEmpty()) {
+            backfillTraceModel(spanReq.traceId, spanReq.model);
+        }
+
         // Recalculate trace token totals from all spans
         recalculateTraceTokens(spanReq.traceId);
+    }
+
+    private void backfillTraceModel(String traceId, String model) {
+        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
+        if (existing.isEmpty()) return;
+        var trace = existing.getFirst();
+        if (trace.model == null || trace.model.isEmpty()) {
+            trace.model = model;
+            trace.updatedAt = ZonedDateTime.now();
+            traceCollection.replace(trace);
+        }
     }
 
     private void recalculateTraceTokens(String traceId) {

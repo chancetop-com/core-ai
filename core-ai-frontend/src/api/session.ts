@@ -33,6 +33,9 @@ export interface ChatSessionSummary {
   id: string;
   user_id?: string;
   agent_id?: string;
+  source?: string;          // chat | test | api | a2a | scheduled
+  schedule_id?: string;
+  api_key_id?: string;
   title?: string;
   message_count?: number;
   created_at?: string;

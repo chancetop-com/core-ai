@@ -100,6 +100,11 @@ public class OTLPIngestService {
         span.outputTokens = parseLongAttr(attrs, "gen_ai.usage.output_tokens");
         spanCollection.insert(span);
 
+        // Back-fill model onto trace if not yet set
+        if (span.model != null && !span.model.isEmpty()) {
+            backfillTraceModel(traceId, span.model);
+        }
+
         // Recalculate trace token totals from all spans
         recalculateTraceTokens(traceId);
     }
@@ -128,6 +133,7 @@ public class OTLPIngestService {
         trace.name = protoSpan.getName();
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
+        trace.agentName = attrs.get("gen_ai.agent.name");
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
         trace.input = resolveInput(attrs);
         trace.output = resolveOutput(attrs);
@@ -145,6 +151,17 @@ public class OTLPIngestService {
         trace.totalTokens = 0L;
 
         traceCollection.insert(trace);
+    }
+
+    private void backfillTraceModel(String traceId, String model) {
+        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
+        if (existing.isEmpty()) return;
+        var trace = existing.getFirst();
+        if (trace.model == null || trace.model.isEmpty()) {
+            trace.model = model;
+            trace.updatedAt = ZonedDateTime.now();
+            traceCollection.replace(trace);
+        }
     }
 
     private void recalculateTraceTokens(String traceId) {

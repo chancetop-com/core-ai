@@ -35,6 +35,7 @@ public class SessionState {
      * Lightweight snapshot of agent definition, sufficient to rebuild a session.
      */
     public static class AgentConfigSnapshot {
+        public String agentName;
         public String systemPrompt;
         public String model;
         public Double temperature;

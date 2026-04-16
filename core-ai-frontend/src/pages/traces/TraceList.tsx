@@ -78,11 +78,8 @@ export default function TraceList() {
   };
 
   const extractModel = (t: Trace): string => {
+    if (t.model) return t.model;
     if (t.metadata?.model) return t.metadata.model;
-    try {
-      const parsed = JSON.parse(t.input);
-      if (parsed?.model) return parsed.model;
-    } catch { /* ignore */ }
     return '-';
   };
 
@@ -256,7 +253,15 @@ export default function TraceList() {
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                 <td className="px-4 py-3">
-                  <div className="font-medium truncate" style={{ maxWidth: '300px' }}>{t.name || t.traceId}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium truncate" style={{ maxWidth: '240px' }}>{t.name || t.traceId}</div>
+                    {t.agentName && (
+                      <span className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap"
+                        style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
+                        {t.agentName}
+                      </span>
+                    )}
+                  </div>
                   {preview && (
                     <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-secondary)', maxWidth: '300px' }}>
                       {preview}
