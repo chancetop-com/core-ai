@@ -349,9 +349,9 @@
             <!-- ③ episodes -->
             <rect x="18" y="243" width="338" height="68" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
             <text x="38" y="263" font-size="10" fill="#a78bfa" font-weight="bold" font-family="sans-serif">③ episodes / 每日总结</text>
-            <text x="38" y="279" font-size="9" fill="#94a3b8" font-family="sans-serif">踩坑/解法提炼 · 用户反馈提炼 · 知识信号</text>
-            <text x="38" y="294" font-size="8" fill="#22d3ee" font-family="sans-serif">agentic search 按日索引 · O(days) 检索复杂度</text>
-            <text x="38" y="308" font-size="8" fill="#64748b" font-family="sans-serif">.learning 压缩摘要 → 推动 ④ 更新</text>
+            <text x="38" y="279" font-size="9" fill="#94a3b8" font-family="sans-serif">当日摘要 · refs 指针 · 按日索引</text>
+            <text x="38" y="294" font-size="8" fill="#22d3ee" font-family="sans-serif">agentic search 入口 · O(days) 检索复杂度</text>
+            <text x="38" y="308" font-size="8" fill="#64748b" font-family="sans-serif">踩坑/解法 → ④ knowledge · 不存于本层</text>
 
             <!-- ③→④ arrow -->
             <path d="M 187 311 L 187 333" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)" stroke-dasharray="4,2"/>
@@ -527,42 +527,36 @@
             <code style="color:var(--text-secondary);font-size:0.82rem;">2026-03-28-grubhub_menu_crawler.md</code>
         </div>
         <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:1.1rem 1.3rem;font-size:0.78rem;line-height:1.7;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
-site: grubhub.com
-script: grubhub_menu.py
+task: grubhub.com 菜单爬虫开发
 date: 2026-03-28
+duration: ~3h
 status: completed
-data_extracted: 餐厅菜单（分类、菜品、价格、描述、图片）
-result: 11 分类，95 菜品，耗时约 20s
+result: grubhub_menu.py，11 分类，95 菜品，耗时约 20s
 ---</span>
 
-<span style="color:#fbbf24;">## 探索阶段</span>
+<span style="color:#fbbf24;">## 执行摘要</span>
 
-<span style="color:#a78bfa;">### explore.py 运行结果</span>
-- 探索方式：Playwright 监听 `page.on('response')`（早期版本，后迁移为 nodriver）
-- 数据在哪里：<span style="color:#4ade80;">**JSON API**</span>，非 SSR，非 WebSocket
-- 捕获到的关键请求：`restaurant_gateway/info/nonvolatile`、`restaurant_gateway/feed`
+探索 grubhub.com 数据结构，确认 API 拦截方案后，使用 nodriver 实现
+双阶段拦截，完成菜单数据采集。
 
-<span style="color:#a78bfa;">### 探索中遇到的障碍</span>
-| 障碍                     | 现象                                    | 处理方式                              |
-|--------------------------|----------------------------------------|--------------------------------------|
-| networkidle 超时          | `Timeout 30000ms`，页面有持续后台请求    | 改用 `domcontentloaded` + 固定等待    |
-| 虚拟化渲染               | 滚动后 section 数量从 4 变 1            | 放弃 DOM，改为拦截 API                |
-| 分类数据为空（结果骨架）  | feed API 返回 `results: []`             | 需点击导航 tab 触发每个分类的独立 feed 请求 |
+<span style="color:#fbbf24;">## 障碍 &amp; 应对</span>
 
-<span style="color:#a78bfa;">### 有效触发方式</span>
-- [x] 页面加载自动触发 nonvolatile（分类骨架）
-- [x] 点击导航 tab `[data-testid^="category_"]` 触发 feed（实际菜品）
+| 障碍                        | 应对方式                                        |
+|-----------------------------|------------------------------------------------|
+| networkidle 超时             | 改用目标元素 `[data-testid^=category_]` 等待     |
+| 虚拟化渲染，DOM 数据不完整    | 放弃 DOM 抓取，改为拦截 `restaurant_gateway/feed` |
+| feed API 返回骨架空数据       | 遍历点击分类 tab 触发懒加载，间隔 0.6s           |
+| nodriver handler 注入失效    | 改用闭包 `async def handler(event, tab=None)`   |
+| ResponseReceived body 未就绪 | 两阶段拦截：ResponseReceived 记录 ID，LoadingFinished 读 body |
 
-<span style="color:#fbbf24;">## 开发阶段</span>
+<span style="color:#fbbf24;">## 用户反馈</span>
 
-<span style="color:#a78bfa;">## API 端点</span>
+验证结果正确，数据格式符合预期。
 
-| 端点关键词                                     | 用途                     | 数据路径                          |
-|-----------------------------------------------|--------------------------|----------------------------------|
-| `restaurant_gateway/info/nonvolatile`          | 餐厅信息 + 菜单分类骨架   | `object.data.enhanced_feed[]`    |
-| `restaurant_gateway/feed/{id}/{categoryId}`    | 单分类菜品列表（懒加载）  | `object.data.content[].entity`   |
+<span style="color:#fbbf24;">## 关键决策</span>
 
-</pre>
+- 放弃 DOM 抓取，优先 API 拦截（SPA 虚拟化渲染不可靠）
+- headless=False，反爬效果最佳</pre>
     </div>
 
     <!-- Layer ③ episodes -->
@@ -949,7 +943,7 @@ confirmed: 1 session</span></pre>
             <tr>
                 <td><span class="dot" style="background:var(--accent-purple)"></span>③ Episodes</td>
                 <td><code>episodes/YYYY-MM-DD.md</code></td>
-                <td>daily-logs 的每日摘要：事件列表 + <strong>踩坑/解法提炼</strong> + 用户反馈提炼。<strong>agentic search 按日索引</strong></td>
+                <td>当日事件简短摘要 + refs 指针。踩坑/解法提炼已提取至 ④ knowledge，本层只作 <strong>agentic search 按日索引</strong></td>
                 <td><span class="tag tag-purple">可检索</span></td>
                 <td>按日历史查询</td>
             </tr>
