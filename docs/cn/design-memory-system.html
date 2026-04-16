@@ -1030,27 +1030,16 @@ confirmed: 1 session</span></pre>
             <div class="trigger-icon">💬</div>
             <div class="trigger-title" style="color:var(--accent-cyan);">T2 · Main Agent Trigger</div>
             <div class="trigger-desc">用户主动下达 <code>/learn</code>、<code>/memory save</code> 等命令，或 auto-learning 规则触发。在主 agent 流程中同步执行，可立即获取整理结果。<strong style="color:var(--accent-cyan);">执行路径与 T1 一致：Session → ② → ③ → ④。</strong></div>
-            <ul class="step-list">
-                <li><span class="step-num">1</span>用户命令 <code>/learn</code> / <code>/memory update</code> 或 auto-learning 规则命中</li>
-                <li><span class="step-num">2</span>直接读取当前 Session，提取结构化事件</li>
-                <li><span class="step-num">3</span>写入 <code>② .learning/</code> — 事件明细</li>
-                <li><span class="step-num">4</span>生成/更新 <code>③ episodes/</code> — 当日叙事摘要</li>
-                <li><span class="step-num">5</span>提取持久知识 → 写入 <code>④ knowledge/domain</code> 领域文件，反馈用户</li>
-            </ul>
-            <div style="margin-top:0.8rem;">
-                <span class="tag tag-green">sync</span>
-                <span class="tag tag-blue">用户可见</span>
-                <span class="tag tag-yellow">即时</span>
-            </div>
+
         </div>
 
         <div class="trigger-card trigger-t3">
             <div class="trigger-icon">🌙</div>
-            <div class="trigger-title" style="color:var(--accent-yellow);">T3 · Dream Task (Cron 24h)</div>
+            <div class="trigger-title" style="color:var(--accent-yellow);">T3 · Dream Task (24h)</div>
             <div class="trigger-desc">每 24 小时离线运行一次深度整理。<strong style="color:var(--accent-yellow);">读取全部历史内容（② .learning + ③ episodes + ④ knowledge + 更早归档）</strong>，跨 session 聚合，执行 Preference Promotion → ⑤。</div>
             <ul class="step-list">
                 <li><span class="step-num">1</span>加载全部历史：<code>② .learning</code> + <code>③ episodes</code> + <code>④ knowledge</code> + 更早内容</li>
-                <li><span class="step-num">2</span>跨 session 聚合，识别稳定规律与一次性偏差</li>
+                <li><span class="step-num">2</span>跨 session 聚合，识别稳定规律与一次性偏差（验证knowledge 在跨session 的执行使用情况，评估置信度）</li>
                 <li><span class="step-num">3</span>Preference Promotion：稳定模式路由到 <code>preferences.md</code> / <code>soul.md</code> / <code>CLAUDE.md</code></li>
                 <li><span class="step-num">4</span>补充 ③④ 层内容，去除跨文件冗余</li>
                 <li><span class="step-num">5</span>重组 MEMORY.md 索引</li>
