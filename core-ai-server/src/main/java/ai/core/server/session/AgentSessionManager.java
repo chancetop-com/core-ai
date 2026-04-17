@@ -16,6 +16,7 @@ import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
+import ai.core.tool.tools.ReadSkillResourceTool;
 import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.session.InMemoryToolPermissionStore;
@@ -310,8 +311,9 @@ public class AgentSessionManager {
         }
         var registry = new SkillRegistry();
         registry.addProvider(mongoSkillProvider);
-        var skillTool = SkillTool.builder().registry(registry).build();
-        session.loadTools(List.of(skillTool));
+        SkillTool skillTool = SkillTool.builder().registry(registry).build();
+        ReadSkillResourceTool readResourceTool = ReadSkillResourceTool.builder().registry(registry).build();
+        session.loadTools(List.<ToolCall>of(skillTool, readResourceTool));
         return skills.stream().map(SkillMetadata::getQualifiedName).toList();
     }
 

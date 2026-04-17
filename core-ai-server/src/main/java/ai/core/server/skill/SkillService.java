@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -36,6 +37,9 @@ public class SkillService {
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
 
+    @Inject
+    SkillStorage skillStorage;
+
     public SkillDefinition upload(String userId, String namespace, byte[] skillFileBytes, Map<String, byte[]> resources) {
         String content = new String(skillFileBytes, StandardCharsets.UTF_8);
         var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
@@ -45,8 +49,12 @@ public class SkillService {
         }
 
         String qualifiedName = namespace + "/" + parsed.getName();
-        var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
+        skillStorage.writeSkillMd(namespace, parsed.getName(), content);
+        if (resources != null && !resources.isEmpty()) {
+            skillStorage.writeResources(namespace, parsed.getName(), resources);
+        }
 
+        var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
         var entity = existing.orElseGet(SkillDefinition::new);
         if (entity.id == null) {
             entity.id = new ObjectId().toHexString();
@@ -57,11 +65,10 @@ public class SkillService {
         entity.qualifiedName = qualifiedName;
         entity.description = parsed.getDescription();
         entity.sourceType = SkillSourceType.UPLOAD;
-        entity.content = content;
+        entity.content = null;
+        entity.resources = null;
         entity.allowedTools = parsed.getAllowedTools().isEmpty() ? null : new ArrayList<>(parsed.getAllowedTools());
         entity.metadata = parsed.getMetadata().isEmpty() ? null : Map.copyOf(parsed.getMetadata());
-        entity.resources = buildResources(resources);
-
         entity.userId = userId;
         entity.updatedAt = ZonedDateTime.now();
 
@@ -95,7 +102,7 @@ public class SkillService {
 
             var results = new ArrayList<SkillDefinition>();
             for (var skill : skills) {
-                var entity = createOrUpdateFromParsed(userId, namespace, skill, repoUrl, branch, skillPath);
+                var entity = registerOrUpdate(userId, namespace, skill, repoUrl, branch, skillPath);
                 results.add(entity);
             }
             LOGGER.info("registered {} skills from repo {}", results.size(), repoUrl);
@@ -133,6 +140,12 @@ public class SkillService {
     }
 
     public void delete(String id) {
+        var entity = get(id);
+        try {
+            skillStorage.delete(entity.namespace, entity.name);
+        } catch (Exception e) {
+            LOGGER.warn("failed to delete skill files for {}, continuing with DB delete", entity.qualifiedName, e);
+        }
         skillCollection.delete(id);
         LOGGER.info("deleted skill, id={}", id);
     }
@@ -140,9 +153,16 @@ public class SkillService {
     public SkillDefinition update(String id, String description, String content, List<String> allowedTools, List<SkillResource> resources) {
         var entity = get(id);
         if (description != null) entity.description = description;
-        if (content != null) entity.content = content;
+        if (content != null) {
+            skillStorage.writeSkillMd(entity.namespace, entity.name, content);
+        }
+        if (resources != null) {
+            for (var r : resources) {
+                skillStorage.writeResource(entity.namespace, entity.name, r.path,
+                    r.content != null ? r.content.getBytes(StandardCharsets.UTF_8) : new byte[0]);
+            }
+        }
         if (allowedTools != null) entity.allowedTools = allowedTools.isEmpty() ? null : allowedTools;
-        if (resources != null) entity.resources = resources.isEmpty() ? null : resources;
         entity.updatedAt = ZonedDateTime.now();
         skillCollection.replace(entity);
         return entity;
@@ -168,10 +188,16 @@ public class SkillService {
 
             for (var skill : skills) {
                 if (skill.getName().equals(entity.name)) {
-                    entity.content = Files.readString(Path.of(skill.getPath()), StandardCharsets.UTF_8);
+                    Path skillDir = skill.getSkillDir() != null
+                        ? Path.of(skill.getSkillDir())
+                        : Path.of(skill.getPath()).getParent();
+                    skillStorage.copyDirectory(entity.namespace, entity.name, skillDir);
+
                     entity.description = skill.getDescription();
                     entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
                     entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
+                    entity.content = null;
+                    entity.resources = null;
                     entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
                     entity.updatedAt = ZonedDateTime.now();
                     skillCollection.replace(entity);
@@ -195,23 +221,37 @@ public class SkillService {
         if (skillIds == null || skillIds.isEmpty()) return List.of();
         var result = new ArrayList<SkillMetadata>();
         for (var id : skillIds) {
-            skillCollection.get(id).ifPresent(def -> {
-                var metadata = SkillMetadata.builder(def.name, def.description != null ? def.description : "", null)
-                    .namespace(def.namespace)
-                    .content(def.content)
-                    .allowedTools(def.allowedTools)
-                    .metadata(def.metadata)
-                    .build();
-                result.add(metadata);
-            });
+            skillCollection.get(id).ifPresent(def -> result.add(toMetadata(def)));
         }
         return result;
     }
 
-    private SkillDefinition createOrUpdateFromParsed(String userId, String namespace, SkillMetadata skill, String repoUrl, String branch, String skillPath) {
-        String qualifiedName = namespace + "/" + skill.getName();
-        var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
+    public SkillMetadata toMetadata(SkillDefinition def) {
+        var skillDir = skillStorage.skillDir(def.namespace, def.name);
+        var content = skillStorage.exists(def.namespace, def.name)
+            ? skillStorage.readSkillMd(def.namespace, def.name)
+            : def.content;
+        var resources = skillStorage.exists(def.namespace, def.name)
+            ? skillStorage.listResources(def.namespace, def.name)
+            : (def.resources != null ? def.resources.stream().map(r -> r.path).toList() : Collections.<String>emptyList());
+        return SkillMetadata.builder(def.name, def.description != null ? def.description : "", null)
+            .namespace(def.namespace)
+            .skillDir(skillDir.toString())
+            .content(content)
+            .allowedTools(def.allowedTools != null ? def.allowedTools : Collections.emptyList())
+            .metadata(def.metadata != null ? def.metadata : Collections.emptyMap())
+            .resources(resources)
+            .build();
+    }
 
+    private SkillDefinition registerOrUpdate(String userId, String namespace, SkillMetadata skill, String repoUrl, String branch, String skillPath) {
+        String qualifiedName = namespace + "/" + skill.getName();
+        Path skillDir = skill.getSkillDir() != null
+            ? Path.of(skill.getSkillDir())
+            : Path.of(skill.getPath()).getParent();
+        skillStorage.copyDirectory(namespace, skill.getName(), skillDir);
+
+        var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
         var entity = existing.orElseGet(SkillDefinition::new);
         if (entity.id == null) {
             entity.id = new ObjectId().toHexString();
@@ -222,14 +262,10 @@ public class SkillService {
         entity.qualifiedName = qualifiedName;
         entity.description = skill.getDescription();
         entity.sourceType = SkillSourceType.REPO;
-        try {
-            entity.content = Files.readString(Path.of(skill.getPath()), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new RuntimeException("failed to read skill file: " + skill.getPath(), e);
-        }
+        entity.content = null;
+        entity.resources = null;
         entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
         entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
-
         entity.userId = userId;
         entity.updatedAt = ZonedDateTime.now();
 
@@ -246,18 +282,6 @@ public class SkillService {
             skillCollection.insert(entity);
         }
         return entity;
-    }
-
-    private List<SkillResource> buildResources(Map<String, byte[]> resources) {
-        if (resources == null || resources.isEmpty()) return null;
-        var result = new ArrayList<SkillResource>();
-        for (var entry : resources.entrySet()) {
-            var resource = new SkillResource();
-            resource.path = entry.getKey();
-            resource.content = new String(entry.getValue(), StandardCharsets.UTF_8);
-            result.add(resource);
-        }
-        return result;
     }
 
     String extractRepoOwner(String repoUrl) {

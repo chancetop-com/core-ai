@@ -36,7 +36,6 @@ public class SkillDefinition {
     @Field(name = "source_type")
     public SkillSourceType sourceType;
 
-    @NotNull
     @Field(name = "content")
     public String content;
 
