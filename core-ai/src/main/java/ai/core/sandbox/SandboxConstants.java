@@ -37,7 +37,7 @@ public final class SandboxConstants {
 
     public static final int MAX_CPU_LIMIT_MILLICORES = 2000;
 
-    public static final int DEFAULT_TIMEOUT_SECONDS = 3600;
+    public static final int DEFAULT_TIMEOUT_SECONDS = 1800;
 
     public static final int MAX_TIMEOUT_SECONDS = 7200;
 

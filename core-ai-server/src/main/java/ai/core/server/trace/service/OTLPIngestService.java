@@ -120,34 +120,48 @@ public class OTLPIngestService {
 
         var existing = traceCollection.find(Filters.eq("trace_id", traceId));
         if (!existing.isEmpty()) {
-            var trace = existing.getFirst();
-            trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
-            trace.output = resolveOutput(attrs);
-            trace.durationMs = endMs - startMs;
-            trace.completedAt = toZonedDateTime(endMs);
-            trace.updatedAt = ZonedDateTime.now();
-            // Backfill model if this span carries it and trace.model is still empty
-            var spanModel = attrs.get("gen_ai.request.model");
-            if (spanModel != null && (trace.model == null || trace.model.isEmpty())) {
-                trace.model = spanModel;
-            }
-            // Prefer richer span info: if this span carries session/agent/user attributes,
-            // upgrade the trace's identity fields (they may be null when the first-arrived
-            // span was an external one without context)
-            var hasRichContext = attrs.get("session.id") != null || attrs.get("gen_ai.agent.name") != null;
-            if (hasRichContext) {
-                trace.name = protoSpan.getName();
-                trace.sessionId = attrs.get("session.id");
-                trace.userId = attrs.get("user.id");
-                trace.agentName = attrs.get("gen_ai.agent.name");
-                trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
-                trace.type = resolveType(trace.source, attrs);
-                if (trace.input == null || trace.input.isEmpty()) trace.input = resolveInput(attrs);
-            }
-            traceCollection.replace(trace);
+            updateExistingTrace(existing.getFirst(), protoSpan, attrs, endMs);
             return;
         }
+        createNewTrace(protoSpan, traceId, attrs, resourceAttrs, startMs, endMs);
+    }
 
+    private void updateExistingTrace(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
+                                    Map<String, String> attrs, long endMs) {
+        trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
+        trace.output = resolveOutput(attrs);
+        trace.durationMs = endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
+        trace.completedAt = toZonedDateTime(endMs);
+        trace.updatedAt = ZonedDateTime.now();
+        // Backfill model if this span carries it and trace.model is still empty
+        var spanModel = attrs.get("gen_ai.request.model");
+        if (spanModel != null && (trace.model == null || trace.model.isEmpty())) {
+            trace.model = spanModel;
+        }
+        // Prefer richer span info: if this span carries session/agent/user attributes,
+        // upgrade the trace's identity fields (they may be null when the first-arrived
+        // span was an external one without context)
+        var hasRichContext = attrs.get("session.id") != null || attrs.get("gen_ai.agent.name") != null;
+        if (hasRichContext) {
+            upgradeTraceWithSpanInfo(trace, protoSpan, attrs);
+        }
+        traceCollection.replace(trace);
+    }
+
+    private void upgradeTraceWithSpanInfo(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
+                                          Map<String, String> attrs) {
+        trace.name = protoSpan.getName();
+        trace.sessionId = attrs.get("session.id");
+        trace.userId = attrs.get("user.id");
+        trace.agentName = attrs.get("gen_ai.agent.name");
+        trace.source = resolveSource(attrs, Map.of(), trace.sessionId);
+        trace.type = resolveType(trace.source, attrs);
+        if (trace.input == null || trace.input.isEmpty()) trace.input = resolveInput(attrs);
+    }
+
+    private void createNewTrace(io.opentelemetry.proto.trace.v1.Span protoSpan, String traceId,
+                               Map<String, String> attrs, Map<String, String> resourceAttrs,
+                               long startMs, long endMs) {
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
         trace.traceId = traceId;
@@ -173,7 +187,6 @@ public class OTLPIngestService {
         trace.inputTokens = 0L;
         trace.outputTokens = 0L;
         trace.totalTokens = 0L;
-
         traceCollection.insert(trace);
     }
 

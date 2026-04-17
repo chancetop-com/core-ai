@@ -9,6 +9,11 @@ import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import ai.core.server.sandbox.kubernetes.KubernetesClient.PodInfo;
+
 /**
  * @author stephen
  */
@@ -17,10 +22,56 @@ public class KubernetesSandboxProvider implements SandboxProvider {
 
     private final KubernetesClient kubernetesClient;
     private final SandboxConfig defaultConfig;
+    private final boolean useHostPort;
 
+    // ...existing constructors...
     public KubernetesSandboxProvider(String apiServer, String token, String namespace, SandboxConfig defaultConfig) {
-        this.kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
+        this(new KubernetesClient(apiServer, token, namespace, 60), defaultConfig, false);
+    }
+
+    public KubernetesSandboxProvider(KubernetesClient kubernetesClient, SandboxConfig defaultConfig) {
+        this(kubernetesClient, defaultConfig, false);
+    }
+
+    public KubernetesSandboxProvider(KubernetesClient kubernetesClient, SandboxConfig defaultConfig, boolean useHostPort) {
+        this.kubernetesClient = kubernetesClient;
         this.defaultConfig = defaultConfig != null ? defaultConfig : new SandboxConfig();
+        this.useHostPort = useHostPort;
+    }
+
+    public void cleanupExpiredPods(int maxLifetimeSeconds) {
+        try {
+            var now = Instant.now();
+            var pods = kubernetesClient.listPods("component=sandbox");
+            for (var pod : pods) {
+                cleanupPodIfExpired(pod, now, maxLifetimeSeconds);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("failed to run sandbox pod cleanup", e);
+        }
+    }
+
+    private void cleanupPodIfExpired(PodInfo pod, Instant now, int maxLifetimeSeconds) {
+        try {
+            var created = ZonedDateTime.parse(pod.metadata.creationTimestamp).toInstant();
+            var age = Duration.between(created, now);
+            if (age.getSeconds() <= maxLifetimeSeconds) return;
+
+            LOGGER.info("deleting expired sandbox pod: name={}, age={}s", pod.getName(), age.getSeconds());
+            deleteSandboxResources(pod.getName());
+        } catch (Exception e) {
+            LOGGER.warn("failed to cleanup sandbox pod: {}", pod.getName(), e);
+        }
+    }
+
+    private void deleteSandboxResources(String podName) {
+        var serviceName = "svc-" + podName;
+        try {
+            kubernetesClient.deleteService(serviceName);
+        } catch (Exception ignored) {
+            // service may not exist
+        }
+        kubernetesClient.deletePod(podName);
     }
 
     @Override
@@ -28,10 +79,10 @@ public class KubernetesSandboxProvider implements SandboxProvider {
         var effectiveConfig = config != null ? config : defaultConfig;
         effectiveConfig.validate();
 
-        var podBuilder = new KubernetesPodSpecBuilder(effectiveConfig, sessionId, userId);
+        var podBuilder = new KubernetesPodSpecBuilder(effectiveConfig, sessionId, userId, useHostPort);
         var podName = podBuilder.podName();
 
-        LOGGER.info("creating sandbox pod: name={}, image={}, sessionId={}", podName, effectiveConfig.image, sessionId);
+        LOGGER.info("creating sandbox pod: name={}, image={}, sessionId={}, useHostPort={}", podName, effectiveConfig.image, sessionId, useHostPort);
 
         var podManifest = podBuilder.build();
         var podJson = JSON.toJSON(podManifest);
@@ -53,7 +104,26 @@ public class KubernetesSandboxProvider implements SandboxProvider {
         var timeoutSeconds = effectiveConfig.timeoutSeconds != null
                 ? effectiveConfig.timeoutSeconds
                 : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
-        return new KubernetesSandbox(podName, podIp, timeoutSeconds);
+
+        // In hostPort mode, create a NodePort service and connect via localhost:nodePort
+        if (useHostPort) {
+            var serviceName = "svc-" + podName;
+            try {
+                var serviceInfo = kubernetesClient.createNodePortService(serviceName, podName, SandboxConstants.RUNTIME_PORT);
+                var nodePort = serviceInfo.spec.ports[0].nodePort;
+                LOGGER.info("created NodePort service: {} -> localhost:{} for pod {}", serviceName, nodePort, podName);
+                var sandbox = new KubernetesSandbox(podName, serviceName, "localhost", nodePort, timeoutSeconds);
+                sandbox.waitForReady();
+                return sandbox;
+            } catch (Exception e) {
+                LOGGER.error("failed to create NodePort service for pod: {}", podName, e);
+                cleanupPod(podName);
+                throw new RuntimeException("Failed to create sandbox service", e);
+            }
+        }
+        var sandbox = new KubernetesSandbox(podName, podIp, timeoutSeconds);
+        sandbox.waitForReady();
+        return sandbox;
     }
 
     private void cleanupPod(String podName) {
@@ -72,12 +142,17 @@ public class KubernetesSandboxProvider implements SandboxProvider {
         LOGGER.info("releasing sandbox pod: name={}", sandboxId);
 
         try {
+            // Delete associated NodePort service if exists
+            if (sandbox instanceof KubernetesSandbox k8sSandbox && k8sSandbox.getServiceName() != null) {
+                kubernetesClient.deleteService(k8sSandbox.getServiceName());
+                LOGGER.debug("deleted sandbox service: {}", k8sSandbox.getServiceName());
+            }
             kubernetesClient.deletePod(sandboxId);
             sandbox.close();
             LOGGER.debug("sandbox pod released: name={}", sandboxId);
         } catch (Exception e) {
             LOGGER.error("failed to release sandbox pod: name={}", sandboxId, e);
-            sandbox.close(); // Still close the sandbox even if delete fails
+            sandbox.close();
         }
     }
 
@@ -98,8 +173,7 @@ public class KubernetesSandboxProvider implements SandboxProvider {
                 case "Running" -> sandbox.getStatus() == SandboxStatus.EXECUTING
                         ? SandboxStatus.EXECUTING
                         : SandboxStatus.READY;
-                case "Succeeded", "Failed" -> SandboxStatus.ERROR;
-                case "Unknown" -> SandboxStatus.ERROR;
+                case "Succeeded", "Failed", "Unknown" -> SandboxStatus.ERROR;
                 default -> sandbox.getStatus();
             };
         } catch (Exception e) {

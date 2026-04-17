@@ -18,14 +18,24 @@ public class KubernetesSandbox implements Sandbox {
     private static final Logger LOGGER = LoggerFactory.getLogger(KubernetesSandbox.class);
 
     private final String podName;
+    private final String serviceName; // NodePort service name, null if not used
     private final SandboxClient runtimeClient;
     private volatile SandboxStatus status = SandboxStatus.READY;
     private final Instant createdAt;
 
     public KubernetesSandbox(String podName, String podIp, int timeoutSeconds) {
+        this(podName, null, podIp, SandboxConstants.RUNTIME_PORT, timeoutSeconds);
+    }
+
+    public KubernetesSandbox(String podName, String serviceName, String host, int port, int timeoutSeconds) {
         this.podName = podName;
-        this.runtimeClient = new SandboxClient(podIp, SandboxConstants.RUNTIME_PORT, timeoutSeconds);
+        this.serviceName = serviceName;
+        this.runtimeClient = new SandboxClient(host, port, timeoutSeconds);
         this.createdAt = Instant.now();
+    }
+
+    public void waitForReady() {
+        runtimeClient.waitForReady(30_000);
     }
 
     @Override
@@ -39,9 +49,22 @@ public class KubernetesSandbox implements Sandbox {
             return runtimeClient.execute(toolName, arguments, context);
         } catch (Exception e) {
             LOGGER.error("sandbox execution failed: pod={}, tool={}", podName, toolName, e);
+            // Mark as ERROR so LazySandbox can detect and recreate
+            if (isConnectionError(e)) {
+                status = SandboxStatus.ERROR;
+            }
             return ToolCallResult.failed("Sandbox execution failed: " + e.getMessage())
                     .withStats("error", "sandbox_error");
         }
+    }
+
+    private boolean isConnectionError(Throwable th) {
+        var current = th;
+        while (current != null) {
+            if (current instanceof java.net.ConnectException) return true;
+            current = current.getCause();
+        }
+        return false;
     }
 
     @Override
@@ -66,5 +89,9 @@ public class KubernetesSandbox implements Sandbox {
 
     public String getPodIp() {
         return runtimeClient.getIp();
+    }
+
+    public String getServiceName() {
+        return serviceName;
     }
 }

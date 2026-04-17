@@ -17,6 +17,7 @@ import ai.core.server.auth.AuthService;
 import ai.core.server.llmcall.LLMCallBuilderTools;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.docker.DockerSandboxProvider;
+import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.file.FileDownloadController;
@@ -128,10 +129,18 @@ public class ServerModule extends Module {
         property("sys.sandbox.provider").ifPresent(p -> {
             SandboxProvider provider;
             if (p.equalsIgnoreCase("kubernetes")) {
-                var apiServer = property("sys.sandbox.aks.api-server").orElse("https://kubernetes.default.svc");
-                var token = property("sys.sandbox.aks.token").orElse("");
-                var namespace = property("sys.sandbox.aks.namespace").orElse("core-ai-sandbox");
-                provider = new KubernetesSandboxProvider(apiServer, token, namespace, null);
+                var namespace = property("sys.sandbox.kubernetes.namespace").orElse("core-ai-sandbox");
+                var token = property("sys.sandbox.kubernetes.token").orElse(null);
+                KubernetesClient kubernetesClient;
+                if (token != null && !token.isBlank()) {
+                    var apiServer = property("sys.sandbox.kubernetes.api-server").orElse("https://kubernetes.default.svc");
+                    kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
+                } else {
+                    kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
+                }
+                // for local Kubernetes (e.g. kind, minikube), hostPort is often more reliable than cluster IP for connectivity from server to sandbox pods
+                var useHostPort = property("sys.sandbox.kubernetes.host-port").orElse("false").equalsIgnoreCase("true");
+                provider = new KubernetesSandboxProvider(kubernetesClient, null, useHostPort);
             } else {
                 var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
                 var workspaceBase = Path.of(property("sys.sandbox.docker.workspace-base").orElse("/tmp/workspaces"));

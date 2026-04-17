@@ -32,17 +32,21 @@ public class SandboxManager {
     }
 
     public Sandbox acquire(SandboxConfig config, String sessionId, String userId) {
-        var sandbox = provider.acquire(config, sessionId, userId);
-        var entry = new SandboxEntry(sandbox, sessionId, userId, config, Instant.now());
+        try {
+            var sandbox = provider.acquire(config, sessionId, userId);
+            var entry = new SandboxEntry(sandbox, sessionId, userId, config, Instant.now());
 
-        // Use sandbox ID as key
-        activeSandboxes.put(sandbox.getId(), entry);
-        acquireCount.incrementAndGet();
+            // Use sandbox ID as key
+            activeSandboxes.put(sandbox.getId(), entry);
+            acquireCount.incrementAndGet();
 
-        LOGGER.debug("sandbox acquired: id={}, sessionId={}, activeCount={}",
-                sandbox.getId(), sessionId, activeSandboxes.size());
+            LOGGER.debug("sandbox acquired: id={}, sessionId={}, activeCount={}", sandbox.getId(), sessionId, activeSandboxes.size());
 
-        return sandbox;
+            return sandbox;
+        } catch (Exception e) {
+            LOGGER.error("failed to acquire sandbox for sessionId={}, userId={}: {}", sessionId, userId, e.getMessage(), e);
+            return null;
+        }
     }
 
     public void release(Sandbox sandbox) {

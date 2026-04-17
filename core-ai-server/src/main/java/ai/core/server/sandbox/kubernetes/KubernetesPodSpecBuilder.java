@@ -15,7 +15,7 @@ public class KubernetesPodSpecBuilder {
 
     private static final String SANDBOX_USER = "1001";
     private static final String SANDBOX_GROUP = "1001";
-    private static final String RUNTIME_PORT = "8080";
+    private static final int RUNTIME_PORT = 8080;
 
     private final String podName;
     private final SandboxConfig config;
@@ -26,9 +26,12 @@ public class KubernetesPodSpecBuilder {
         this.config = config;
         this.sessionId = sessionId;
         this.userId = userId;
-        // Generate unique pod name
         var suffix = UUID.randomUUID().toString().substring(0, 8);
         this.podName = "sandbox-" + suffix;
+    }
+
+    public KubernetesPodSpecBuilder(SandboxConfig config, String sessionId, String userId, boolean useHostPort) {
+        this(config, sessionId, userId);
     }
 
     public String podName() {
@@ -52,11 +55,22 @@ public class KubernetesPodSpecBuilder {
         return metadata;
     }
 
+    private String sanitizeLabel(String value) {
+        // K8s label values: alphanumeric, '-', '_', '.', max 63 chars
+        var sanitized = value.replaceAll("[^A-Za-z0-9_.\\-]", "_");
+        if (sanitized.length() > 63) sanitized = sanitized.substring(0, 63);
+        // must start and end with alphanumeric
+        sanitized = sanitized.replaceAll("^[^A-Za-z0-9]+", "");
+        sanitized = sanitized.replaceAll("[^A-Za-z0-9]+$", "");
+        return sanitized.isEmpty() ? "unknown" : sanitized;
+    }
+
     private Map<String, String> buildLabels() {
         var labels = new LinkedHashMap<String, String>();
         labels.put("component", "sandbox");
-        labels.put("session-id", sessionId != null ? sessionId : "unknown");
-        labels.put("user-id", userId != null ? userId : "unknown");
+        labels.put("sandbox-name", podName);
+        labels.put("session-id", sanitizeLabel(sessionId != null ? sessionId : "unknown"));
+        labels.put("user-id", sanitizeLabel(userId != null ? userId : "unknown"));
         if (Boolean.TRUE.equals(config.networkEnabled)) {
             labels.put("network-enabled", "true");
         }
@@ -67,6 +81,9 @@ public class KubernetesPodSpecBuilder {
         var spec = new LinkedHashMap<String, Object>();
         spec.put("restartPolicy", "Never");
         spec.put("terminationGracePeriodSeconds", 5);
+        // K8s auto-terminates the pod after this deadline, handles orphan cleanup
+        var timeout = config.timeoutSeconds != null ? config.timeoutSeconds : 1800;
+        spec.put("activeDeadlineSeconds", timeout);
         spec.put("securityContext", buildPodSecurityContext());
         spec.put("containers", List.of(buildContainer()));
         spec.put("volumes", buildVolumes());
@@ -86,9 +103,9 @@ public class KubernetesPodSpecBuilder {
     private Map<String, Object> buildContainer() {
         var container = new LinkedHashMap<String, Object>();
         container.put("name", "sandbox");
-        container.put("image", config.image != null ? config.image : "core-ai-sandbox:latest");
+        container.put("image", config.image != null ? config.image : "core-ai-sandbox-runtime:latest");
         container.put("imagePullPolicy", "IfNotPresent");
-        container.put("ports", List.of(Map.of("containerPort", Integer.parseInt(RUNTIME_PORT))));
+        container.put("ports", List.of(Map.of("containerPort", RUNTIME_PORT)));
         container.put("securityContext", buildContainerSecurityContext());
         container.put("resources", buildResources());
         container.put("env", buildEnv());
@@ -136,7 +153,7 @@ public class KubernetesPodSpecBuilder {
 
     private Map<String, Object> buildLivenessProbe() {
         var probe = new LinkedHashMap<String, Object>();
-        probe.put("httpGet", Map.of("path", "/health", "port", Integer.parseInt(RUNTIME_PORT)));
+        probe.put("httpGet", Map.of("path", "/health", "port", RUNTIME_PORT));
         probe.put("initialDelaySeconds", 5);
         probe.put("periodSeconds", 10);
         probe.put("timeoutSeconds", 5);
@@ -146,7 +163,7 @@ public class KubernetesPodSpecBuilder {
 
     private Map<String, Object> buildReadinessProbe() {
         var probe = new LinkedHashMap<String, Object>();
-        probe.put("httpGet", Map.of("path", "/health", "port", Integer.parseInt(RUNTIME_PORT)));
+        probe.put("httpGet", Map.of("path", "/health", "port", RUNTIME_PORT));
         probe.put("initialDelaySeconds", 2);
         probe.put("periodSeconds", 5);
         probe.put("timeoutSeconds", 3);

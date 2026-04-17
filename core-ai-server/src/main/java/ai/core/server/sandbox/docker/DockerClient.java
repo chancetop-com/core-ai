@@ -67,23 +67,21 @@ public class DockerClient {
 
         while (System.currentTimeMillis() - startTime < maxWait) {
             var containerOpt = getContainer(containerId);
-            if (containerOpt.isPresent()) {
-                var container = containerOpt.get();
-                var state = container.state != null ? container.state.status : null;
-                if ("running".equals(state)) {
-                    var hostPort = getMappedHostPort(container);
-                    if (hostPort != null) {
-                        return "127.0.0.1:" + hostPort;
-                    }
-                    // Fallback to container IP (Linux)
-                    var ip = getContainerIP(container);
-                    if (ip != null && !ip.isBlank()) {
-                        return ip + ":" + RUNTIME_PORT;
-                    }
-                }
-                if ("exited".equals(state)) {
-                    throw new RuntimeException("Container exited unexpectedly: " + containerId);
-                }
+            if (containerOpt.isEmpty()) {
+                sleep(pollInterval);
+                continue;
+            }
+            var container = containerOpt.get();
+            var state = container.state != null ? container.state.status : null;
+            if ("running".equals(state)) {
+                var hostPort = getMappedHostPort(container);
+                if (hostPort != null) return "127.0.0.1:" + hostPort;
+                // Fallback to container IP (Linux)
+                var ip = getContainerIP(container);
+                if (ip != null && !ip.isBlank()) return ip + ":" + RUNTIME_PORT;
+            }
+            if ("exited".equals(state)) {
+                throw new RuntimeException("Container exited unexpectedly: " + containerId);
             }
             sleep(pollInterval);
         }

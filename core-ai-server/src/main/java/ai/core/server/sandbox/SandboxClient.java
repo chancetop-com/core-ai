@@ -33,6 +33,34 @@ public class SandboxClient {
         this.httpClient = HTTPClient.builder().timeout(Duration.ofMillis(timeoutMs)).build();
     }
 
+    public void waitForReady(int maxWaitMs) {
+        var url = baseUrl + "/health";
+        var start = System.currentTimeMillis();
+        var pollClient = HTTPClient.builder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .timeout(Duration.ofSeconds(3))
+                .build();
+        while (System.currentTimeMillis() - start < maxWaitMs) {
+            try {
+                var req = new HTTPRequest(HTTPMethod.GET, url);
+                var resp = pollClient.execute(req);
+                if (resp.statusCode == 200) {
+                    LOGGER.info("sandbox runtime ready: url={}, elapsed={}ms", baseUrl, System.currentTimeMillis() - start);
+                    return;
+                }
+            } catch (Exception e) {
+                LOGGER.warn("sandbox runtime health check failed: url={}, elapsed={}ms, error={}", baseUrl, System.currentTimeMillis() - start, e.getMessage());
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        LOGGER.warn("sandbox runtime health check timed out after {}ms: url={}", maxWaitMs, baseUrl);
+    }
+
     public String getIp() {
         return ip;
     }

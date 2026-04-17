@@ -27,7 +27,7 @@ public class SandboxService {
         config.memoryLimitMb = 512;
         config.cpuLimitMillicores = 500;
         config.networkEnabled = false;
-        config.timeoutSeconds = 3600;
+        config.timeoutSeconds = 1800;
         return config;
     }
 
@@ -42,9 +42,6 @@ public class SandboxService {
         this(provider, createDefaultConfig());
     }
 
-    /**
-     * No-op constructor for when sandbox is disabled.
-     */
     public SandboxService() {
         this.sandboxManager = null;
         this.defaultConfig = new SandboxConfig();
@@ -63,7 +60,7 @@ public class SandboxService {
             t.setDaemon(true);
             return t;
         });
-        cleanupScheduler.scheduleAtFixedRate(new SandboxCleanupJob(sandboxManager), 5, 5, TimeUnit.MINUTES);
+        cleanupScheduler.scheduleAtFixedRate(new SandboxCleanupJob(sandboxManager, provider), 5, 5, TimeUnit.MINUTES);
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
