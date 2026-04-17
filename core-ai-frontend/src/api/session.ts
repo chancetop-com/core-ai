@@ -123,8 +123,11 @@ export const sessionApi = {
   history: (sessionId: string) =>
     request<{ messages: HistoryMessage[] }>(`/api/sessions/${sessionId}/history`),
 
-  listChatSessions: (offset = 0, limit = 50) =>
-    request<{ sessions: ChatSessionSummary[] }>(`/api/chat/sessions?offset=${offset}&limit=${limit}`),
+  listChatSessions: (offset = 0, limit = 50, sources?: string[]) => {
+    const qs = [`offset=${offset}`, `limit=${limit}`];
+    if (sources && sources.length > 0) qs.push(`sources=${sources.join(',')}`);
+    return request<{ sessions: ChatSessionSummary[] }>(`/api/chat/sessions?${qs.join('&')}`);
+  },
 
   deleteChatSession: (sessionId: string) =>
     request<{ deleted: boolean }>(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' }),

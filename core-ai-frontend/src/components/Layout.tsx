@@ -51,6 +51,16 @@ export default function Layout() {
 
   const [expandedNav, setExpandedNav] = useState<string | null>(null);
 
+  const isRouteActive = (to: string, pathname: string): boolean => {
+    if (to === '/') return pathname === '/' || pathname.startsWith('/traces');
+    if (to === '/agents') return pathname === '/agents' || pathname.startsWith('/agents/');
+    if (to === '/system-prompts') return pathname === '/system-prompts' || pathname.startsWith('/system-prompts/');
+    if (to === '/api-tools') return pathname === '/api-tools' || pathname.startsWith('/api-tools/');
+    if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
+    if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
+    return pathname === to;
+  };
+
   const navItems: NavItem[] = [
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
     { to: '/', icon: Activity, label: 'Traces', show: caps.traces },
@@ -95,7 +105,9 @@ export default function Layout() {
           {navItems.map(({ to, icon: Icon, label, children }) => {
             const hasChildren = children && children.length > 0;
             const isExpanded = expandedNav === to;
-            const anyChildActive = hasChildren && children.some(c => location.pathname === c.to);
+            const anyChildActive = hasChildren && children.some(c => isRouteActive(c.to, location.pathname));
+            const selfActive = !hasChildren && isRouteActive(to, location.pathname);
+            const active = selfActive || anyChildActive;
             return (
               <div key={to}>
                 <div
@@ -106,10 +118,12 @@ export default function Layout() {
                     }
                   }}
                   role={hasChildren ? 'button' : undefined}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${hasChildren ? 'cursor-pointer' : ''} ${collapsed ? 'justify-center' : ''}`}
+                  className={`flex items-center gap-3 pr-3 py-2 rounded-lg text-sm transition-colors ${hasChildren ? 'cursor-pointer' : ''} ${collapsed ? 'justify-center pl-3' : ''}`}
                   style={{
-                    background: anyChildActive || (location.pathname === to && to !== '/') ? 'var(--color-bg-tertiary)' : 'transparent',
-                    color: anyChildActive || (location.pathname === to && to !== '/') ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                    paddingLeft: collapsed ? undefined : active ? '9px' : '12px',
+                    borderLeft: collapsed ? undefined : active ? '3px solid var(--color-primary)' : '3px solid transparent',
+                    background: active ? 'var(--color-primary-bg)' : 'transparent',
+                    color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                   }}>
                   {Icon && <Icon size={18} />}
                   {!collapsed && (
@@ -131,15 +145,17 @@ export default function Layout() {
                   <div className="ml-6 mt-1 flex flex-col gap-0.5">
                     {children.filter(c => c.show).map(child => {
                       const ChildIcon = child.icon;
+                      const childActive = isRouteActive(child.to, location.pathname);
                       return (
                         <NavLink key={child.to} to={child.to}
-                          className={({ isActive }) =>
-                            `flex items-center gap-2 pl-5 pr-3 py-1.5 rounded-lg text-sm transition-colors ${isActive ? 'font-medium' : ''}`
-                          }
-                          style={({ isActive }) => ({
-                            background: isActive ? 'var(--color-bg-tertiary)' : 'transparent',
-                            color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                          })}>
+                          className="flex items-center gap-2 pr-3 py-1.5 rounded-lg text-sm transition-colors"
+                          style={{
+                            paddingLeft: childActive ? '17px' : '20px',
+                            borderLeft: childActive ? '3px solid var(--color-primary)' : '3px solid transparent',
+                            background: childActive ? 'var(--color-primary-bg)' : 'transparent',
+                            color: childActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                            fontWeight: childActive ? 500 : 400,
+                          }}>
                           {ChildIcon && <ChildIcon size={14} className="opacity-70" />}
                           {child.label}
                         </NavLink>
