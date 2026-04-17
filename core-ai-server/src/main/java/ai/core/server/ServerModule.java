@@ -18,6 +18,7 @@ import ai.core.server.llmcall.LLMCallBuilderTools;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.TokenResolver;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
+import ai.core.server.sandbox.agentsandbox.AgentSandboxExtensionsClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
 import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
@@ -138,10 +139,12 @@ public class ServerModule extends Module {
                 provider = createKubernetesSandboxProvider();
             } else if (p.equalsIgnoreCase("agent-sandbox")) {
                 provider = createAgentSandboxProvider();
-            } else {
+            } else if (p.equalsIgnoreCase("docker")) {
                 var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
                 var workspaceBase = Path.of(property("sys.sandbox.docker.workspace-base").orElse("/tmp/workspaces"));
                 provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
+            } else {
+                return;
             }
             var sandboxService = bind(new SandboxService(provider));
             onShutdown(sandboxService::shutdown);
@@ -182,7 +185,14 @@ public class ServerModule extends Module {
                 kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
             }
         }
-        return new AgentSandboxProvider(client, null, kubernetesClient, useHostPort);
+        // Warm pool mode: if template name is configured, use SandboxClaim via extensions API
+        var templateName = property("sys.sandbox.agent-sandbox.template").orElse(null);
+        var warmPoolName = property("sys.sandbox.agent-sandbox.warm-pool").orElse("default");
+        AgentSandboxExtensionsClient extensionsClient = null;
+        if (templateName != null && !templateName.isBlank()) {
+            extensionsClient = new AgentSandboxExtensionsClient(apiServer, namespace, tokenResolver, 120);
+        }
+        return new AgentSandboxProvider(client, extensionsClient, null, kubernetesClient, useHostPort, templateName, warmPoolName);
     }
 
     private void bindService() {
