@@ -1,5 +1,6 @@
 package ai.core.server.sandbox.kubernetes;
 
+import ai.core.server.sandbox.TokenResolver;
 import core.framework.api.json.Property;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
@@ -7,10 +8,10 @@ import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
 import core.framework.json.JSON;
-import core.framework.util.Files;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -22,38 +23,35 @@ import java.util.Optional;
  */
 public class KubernetesClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(KubernetesClient.class);
-    private static final String IN_CLUSTER_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token";
     private static final String IN_CLUSTER_NAMESPACE_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
     private static final String IN_CLUSTER_API_SERVER = "https://kubernetes.default.svc";
 
     public static KubernetesClient createInCluster(String namespaceOverride, int timeoutSeconds) {
         var namespace = namespaceOverride;
         if (namespace == null || namespace.isBlank()) {
-            namespace = Files.text(Path.of(IN_CLUSTER_NAMESPACE_PATH));
+            try {
+                namespace = Files.readString(Path.of(IN_CLUSTER_NAMESPACE_PATH)).trim();
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to read in-cluster namespace", e);
+            }
         }
         LOGGER.info("using in-cluster kubernetes credentials, namespace={}", namespace);
-        return new KubernetesClient(IN_CLUSTER_API_SERVER, namespace, timeoutSeconds, true);
+        return new KubernetesClient(IN_CLUSTER_API_SERVER, namespace, TokenResolver.inCluster(), timeoutSeconds);
     }
 
     private final String apiServer;
     private final String namespace;
     private final HTTPClient httpClient;
-    private final String token; // null for in-cluster mode
-    private final boolean inCluster;
+    private final TokenResolver tokenResolver;
 
     public KubernetesClient(String apiServer, String token, String namespace, int timeoutSeconds) {
-        this(apiServer, namespace, timeoutSeconds, token, false);
+        this(apiServer, namespace, TokenResolver.fixed(token), timeoutSeconds);
     }
 
-    public KubernetesClient(String apiServer, String namespace, int timeoutSeconds, boolean inCluster) {
-        this(apiServer, namespace, timeoutSeconds, null, inCluster);
-    }
-
-    public KubernetesClient(String apiServer, String namespace, int timeoutSeconds, String token, boolean inCluster) {
+    public KubernetesClient(String apiServer, String namespace, TokenResolver tokenResolver, int timeoutSeconds) {
         this.apiServer = apiServer.trim().replaceAll("/+$", "");
         this.namespace = namespace;
-        this.token = token;
-        this.inCluster = inCluster;
+        this.tokenResolver = tokenResolver;
         this.httpClient = HTTPClient.builder()
                 .trustAll()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -62,11 +60,7 @@ public class KubernetesClient {
     }
 
     private String resolveToken() {
-        if (inCluster) {
-            // re-read token on each call to handle token rotation
-            return Files.text(Path.of(IN_CLUSTER_TOKEN_PATH));
-        }
-        return token;
+        return tokenResolver.resolve();
     }
 
     public PodInfo createPod(String podJson) {
@@ -152,6 +146,28 @@ public class KubernetesClient {
         if (response.statusCode != 200 && response.statusCode != 202 && response.statusCode != 404) {
             throw new RuntimeException("Failed to delete service: " + response.statusCode + " " + response.text());
         }
+    }
+
+    public ServiceInfo createNodePortServiceBySelector(String serviceName, String selectorLabel, int containerPort) {
+        // Parse "key=value" selector label into a map
+        var parts = selectorLabel.split("=", 2);
+        var selectorMap = parts.length == 2 ? Map.of(parts[0], parts[1]) : Map.of("sandbox-name", selectorLabel);
+        var service = Map.of(
+            "apiVersion", "v1",
+            "kind", "Service",
+            "metadata", Map.of("name", serviceName, "labels", Map.of("component", "sandbox")),
+            "spec", Map.of(
+                "type", "NodePort",
+                "selector", selectorMap,
+                "ports", List.of(Map.of("port", containerPort, "targetPort", containerPort, "protocol", "TCP"))
+            )
+        );
+        var url = apiServer + "/api/v1/namespaces/" + namespace + "/services";
+        var response = post(url, JSON.toJSON(service));
+        if (response.statusCode != 201) {
+            throw new RuntimeException("Failed to create service: " + response.statusCode + " " + response.text());
+        }
+        return JSON.fromJSON(ServiceInfo.class, response.text());
     }
 
     public List<ServiceInfo> listServices(String labelSelector) {

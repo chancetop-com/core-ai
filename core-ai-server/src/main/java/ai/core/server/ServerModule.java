@@ -16,6 +16,9 @@ import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.llmcall.LLMCallBuilderTools;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.TokenResolver;
+import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
+import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
 import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
@@ -129,18 +132,9 @@ public class ServerModule extends Module {
         property("sys.sandbox.provider").ifPresent(p -> {
             SandboxProvider provider;
             if (p.equalsIgnoreCase("kubernetes")) {
-                var namespace = property("sys.sandbox.kubernetes.namespace").orElse("core-ai-sandbox");
-                var token = property("sys.sandbox.kubernetes.token").orElse(null);
-                KubernetesClient kubernetesClient;
-                if (token != null && !token.isBlank()) {
-                    var apiServer = property("sys.sandbox.kubernetes.api-server").orElse("https://kubernetes.default.svc");
-                    kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
-                } else {
-                    kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
-                }
-                // for local Kubernetes (e.g. kind, minikube), hostPort is often more reliable than cluster IP for connectivity from server to sandbox pods
-                var useHostPort = property("sys.sandbox.kubernetes.host-port").orElse("false").equalsIgnoreCase("true");
-                provider = new KubernetesSandboxProvider(kubernetesClient, null, useHostPort);
+                provider = createKubernetesSandboxProvider();
+            } else if (p.equalsIgnoreCase("agent-sandbox")) {
+                provider = createAgentSandboxProvider();
             } else {
                 var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
                 var workspaceBase = Path.of(property("sys.sandbox.docker.workspace-base").orElse("/tmp/workspaces"));
@@ -152,6 +146,40 @@ public class ServerModule extends Module {
         if (property("sys.sandbox.provider").isEmpty()) {
             bind(new SandboxService());
         }
+    }
+
+    private SandboxProvider createKubernetesSandboxProvider() {
+        var namespace = property("sys.sandbox.kubernetes.namespace").orElse("core-ai-sandbox");
+        var token = property("sys.sandbox.kubernetes.token").orElse(null);
+        KubernetesClient kubernetesClient;
+        if (token != null && !token.isBlank()) {
+            var apiServer = property("sys.sandbox.kubernetes.api-server").orElse("https://kubernetes.default.svc");
+            kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
+        } else {
+            kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
+        }
+        var useHostPort = property("sys.sandbox.kubernetes.host-port").orElse("false").equalsIgnoreCase("true");
+        return new KubernetesSandboxProvider(kubernetesClient, null, useHostPort);
+    }
+
+    private SandboxProvider createAgentSandboxProvider() {
+        var namespace = property("sys.sandbox.kubernetes.namespace").orElse("core-ai-sandbox");
+        var token = property("sys.sandbox.kubernetes.token").orElse(null);
+        var apiServer = property("sys.sandbox.kubernetes.api-server").orElse("https://kubernetes.default.svc");
+        TokenResolver tokenResolver = (token != null && !token.isBlank())
+                ? TokenResolver.fixed(token)
+                : TokenResolver.inCluster();
+        var client = new AgentSandboxClient(apiServer, namespace, tokenResolver, 120);
+        var useHostPort = property("sys.sandbox.kubernetes.host-port").orElse("false").equalsIgnoreCase("true");
+        KubernetesClient kubernetesClient = null;
+        if (useHostPort) {
+            if (token != null && !token.isBlank()) {
+                kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
+            } else {
+                kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
+            }
+        }
+        return new AgentSandboxProvider(client, null, kubernetesClient, useHostPort);
     }
 
     private void bindService() {

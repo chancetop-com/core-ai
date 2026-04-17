@@ -2,6 +2,7 @@ package ai.core.server.sandbox;
 
 import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxProvider;
+import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,9 +26,11 @@ public class SandboxCleanupJob implements Runnable {
         try {
             LOGGER.debug("running sandbox cleanup job");
             sandboxManager.cleanupExpired();
-            // Cleanup expired pods in K8s (handles orphans from crashed server instances)
+            // Cleanup expired resources in K8s (handles orphans from crashed server instances)
             if (provider instanceof KubernetesSandboxProvider k8sProvider) {
                 k8sProvider.cleanupExpiredPods(SandboxConstants.DEFAULT_TIMEOUT_SECONDS);
+            } else if (provider instanceof AgentSandboxProvider agentProvider) {
+                agentProvider.cleanupExpiredSandboxes(SandboxConstants.DEFAULT_TIMEOUT_SECONDS);
             }
         } catch (Exception e) {
             LOGGER.error("sandbox cleanup job failed", e);
