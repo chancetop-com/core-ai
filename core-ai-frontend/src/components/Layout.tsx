@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench, Users, Settings } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -37,6 +37,7 @@ export default function Layout() {
       '/tools': 'Tools',
       '/api-tools': 'API Tools',
       '/skills': 'Skills',
+      '/settings': 'Settings',
     };
     const path = location.pathname;
     const title = titles[path]
@@ -45,6 +46,7 @@ export default function Layout() {
       || (path.startsWith('/runs/') ? 'Run Detail' : null)
       || (path.startsWith('/system-prompts/') ? 'System Prompt' : null)
       || (path.startsWith('/api-tools/') ? 'API Tool Detail' : null)
+      || (path.startsWith('/settings/') ? 'Settings' : null)
       || 'Core AI';
     document.title = `${title} - Core AI`;
   }, [location.pathname]);
@@ -58,6 +60,7 @@ export default function Layout() {
     if (to === '/api-tools') return pathname === '/api-tools' || pathname.startsWith('/api-tools/');
     if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
+    if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
     return pathname === to;
   };
 
@@ -174,6 +177,14 @@ export default function Layout() {
             <div className="px-3 py-1.5 text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
               {user.name || user.userId}
             </div>
+          )}
+          {user?.role === 'admin' && (
+            <button onClick={() => navigate('/settings/users')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
+              style={{ color: 'var(--color-text-secondary)' }}>
+              <Settings size={16} />
+              {!collapsed && 'Settings'}
+            </button>
           )}
           <button onClick={toggle}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}

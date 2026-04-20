@@ -14,6 +14,9 @@ import Chat from './pages/chat/Chat';
 import SystemPromptList from './pages/system-prompts/SystemPromptList';
 import SystemPromptEditor from './pages/system-prompts/SystemPromptEditor';
 import Login from './pages/login/Login';
+import Register from './pages/login/Register';
+import UserManagement from './pages/users/UserManagement';
+import SettingsPage from './pages/settings/Settings';
 import Scheduler from './pages/scheduler/Scheduler';
 import Tasks from './pages/tasks/Tasks';
 import Mcp from './pages/mcp/Mcp';
@@ -49,9 +52,9 @@ export default function App() {
     });
   }, []);
 
-  const login = useCallback((apiKey: string, userId: string, name: string) => {
-    storeUser(apiKey, userId, name);
-    setUser({ apiKey, userId, name });
+  const login = useCallback((apiKey: string, userId: string, name: string, role?: string) => {
+    storeUser(apiKey, userId, name, role);
+    setUser({ apiKey, userId, name, role });
   }, []);
 
   const logout = useCallback(() => {
@@ -70,7 +73,10 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             {authRequired && (
-              <Route path="/login" element={user ? <Navigate to={defaultPath} replace /> : <Login />} />
+              <>
+                <Route path="/login" element={user ? <Navigate to={defaultPath} replace /> : <Login />} />
+                <Route path="/register" element={<Register />} />
+              </>
             )}
             {!user && authRequired ? (
               <Route path="*" element={<Navigate to="/login" replace />} />
@@ -96,6 +102,9 @@ export default function App() {
                 <Route path="/api-tools/:id" element={<ApiToolDetail />} />
                 <Route path="/skills" element={<SkillList />} />
                 <Route path="/skills/:id/edit" element={<SkillEditor />} />
+                <Route path="/settings" element={<SettingsPage />}>
+                  {user?.role === 'admin' && <Route path="users" element={<UserManagement />} />}
+                </Route>
                 <Route path="*" element={<Navigate to={defaultPath} replace />} />
               </Route>
             )}

@@ -99,6 +99,10 @@ public class AuthService {
             throw new UnauthorizedException("invalid email or password");
         }
 
+        if (!STATUS_ACTIVE.equals(user.status)) {
+            throw new UnauthorizedException("account pending approval, please wait for admin to approve");
+        }
+
         if (user.apiKey == null) {
             user.apiKey = generateApiKey();
         }
@@ -109,7 +113,24 @@ public class AuthService {
         response.apiKey = user.apiKey;
         response.userId = user.id;
         response.name = user.name;
+        response.role = user.role;
         return response;
+    }
+
+    public void updateUserStatus(String adminUserId, String targetEmail, String newStatus) {
+        requireAdmin(adminUserId);
+
+        var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
+        var user = userCollection.get(normalizedEmail)
+            .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
+
+        if (!STATUS_ACTIVE.equals(newStatus) && !STATUS_PENDING.equals(newStatus)) {
+            throw new BadRequestException("invalid status, must be 'active' or 'pending'");
+        }
+
+        user.status = newStatus;
+        userCollection.replace(user);
+        LOGGER.info("user status updated, email={}, newStatus={}", normalizedEmail, newStatus);
     }
 
     public void invite(String adminUserId, String email) {

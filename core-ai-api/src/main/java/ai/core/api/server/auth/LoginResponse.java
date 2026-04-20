@@ -14,4 +14,7 @@ public class LoginResponse {
 
     @Property(name = "name")
     public String name;
+
+    @Property(name = "role")
+    public String role;
 }

@@ -26,4 +26,8 @@ public interface AuthWebService {
     @GET
     @Path("/api/auth/users")
     ListUsersResponse listUsers();
+
+    @POST
+    @Path("/api/auth/users/update-status")
+    void updateUserStatus(UpdateUserStatusRequest request);
 }

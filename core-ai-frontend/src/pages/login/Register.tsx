@@ -1,37 +1,35 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Bot, LogIn } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Bot, UserPlus } from 'lucide-react';
 import { authApi } from '../../api/client';
-import { useAuth } from '../../api/auth';
 
-export default function Login() {
+export default function Register() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  useEffect(() => {
-    if (location.state?.registered) {
-      setSuccess('Account created! Please wait for admin approval.');
-      navigate('/login', { replace: true });
-    }
-  }, [location.state, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) return;
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      const res = await authApi.login(email, password);
-      login(res.api_key, res.user_id, res.name, res.role);
-      navigate('/');
+      await authApi.register(email, password, name || undefined);
+      navigate('/login', { state: { registered: true } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -51,8 +49,8 @@ export default function Login() {
             style={{ background: 'var(--color-primary)', opacity: 0.9 }}>
             <Bot size={28} color="white" />
           </div>
-          <h1 className="text-2xl font-bold">Core AI</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>Sign in to continue</p>
+          <h1 className="text-2xl font-bold">Create Account</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>Sign up to get started</p>
         </div>
 
         <form onSubmit={handleSubmit}
@@ -65,11 +63,13 @@ export default function Login() {
             </div>
           )}
 
-          {success && (
-            <div className="px-3 py-2 rounded-lg text-sm" style={{ background: '#22c55e20', color: '#22c55e' }}>
-              {success}
-            </div>
-          )}
+          <div>
+            <label className="block text-sm font-medium mb-1">Name (optional)</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+              style={inputStyle}
+              placeholder="Your name" />
+          </div>
 
           <div>
             <label className="block text-sm font-medium mb-1">Email</label>
@@ -85,23 +85,35 @@ export default function Login() {
             <input type="password" value={password} onChange={e => setPassword(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
               style={inputStyle}
-              placeholder="Enter your password" />
+              placeholder="At least 6 characters" />
           </div>
 
-          <button type="submit" disabled={loading || !email.trim() || !password.trim()}
+          <div>
+            <label className="block text-sm font-medium mb-1">Confirm Password</label>
+            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+              style={inputStyle}
+              placeholder="Re-enter your password" />
+          </div>
+
+          <button type="submit" disabled={loading || !email.trim() || !password.trim() || !confirmPassword.trim()}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
             style={{ background: 'var(--color-primary)' }}>
-            <LogIn size={16} />
-            {loading ? 'Signing in...' : 'Sign In'}
+            <UserPlus size={16} />
+            {loading ? 'Creating account...' : 'Create Account'}
           </button>
 
           <div className="text-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            Don't have an account?{' '}
-            <Link to="/register" className="font-medium cursor-pointer" style={{ color: 'var(--color-primary)' }}>
-              Sign up
+            Already have an account?{' '}
+            <Link to="/login" className="font-medium cursor-pointer" style={{ color: 'var(--color-primary)' }}>
+              Sign in
             </Link>
           </div>
         </form>
+
+        <p className="text-xs text-center mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+          After registration, your account requires admin approval to activate.
+        </p>
       </div>
     </div>
   );

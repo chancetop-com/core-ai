@@ -40,6 +40,44 @@ export const authApi = {
     request<{ api_key: string; user_id: string }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
 };
 
+export interface UserStatus {
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  created_at: string;
+}
+
+export interface ListUsersResponse {
+  users: UserStatus[];
+}
+
+async function requestWithAuth<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const apiKey = localStorage.getItem('apiKey');
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+  const res = await fetch(`${BASE}${url}`, { headers, ...options });
+  if (res.status === 401) {
+    const apiKeyStored = localStorage.getItem('apiKey');
+    if (apiKeyStored !== 'local') {
+      localStorage.removeItem('apiKey');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as T);
+}
+
+export const adminApi = {
+  listUsers: () =>
+    requestWithAuth<ListUsersResponse>('/api/auth/users'),
+  updateUserStatus: (email: string, status: string) =>
+    requestWithAuth<void>('/api/auth/users/update-status', { method: 'POST', body: JSON.stringify({ email, status }) }),
+};
+
 export interface Trace {
   id: string;
   traceId: string;

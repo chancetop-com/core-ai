@@ -7,6 +7,7 @@ import ai.core.api.server.auth.LoginRequest;
 import ai.core.api.server.auth.LoginResponse;
 import ai.core.api.server.auth.RegisterRequest;
 import ai.core.api.server.auth.RegisterResponse;
+import ai.core.api.server.auth.UpdateUserStatusRequest;
 import ai.core.server.auth.AuthService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
@@ -45,5 +46,11 @@ public class AuthWebServiceImpl implements AuthWebService {
     public ListUsersResponse listUsers() {
         var userId = AuthContext.userId(webContext);
         return authService.listUsers(userId);
+    }
+
+    @Override
+    public void updateUserStatus(UpdateUserStatusRequest request) {
+        var userId = AuthContext.userId(webContext);
+        authService.updateUserStatus(userId, request.email, request.status);
     }
 }

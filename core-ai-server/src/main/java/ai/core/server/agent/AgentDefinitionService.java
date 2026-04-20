@@ -26,6 +26,10 @@ import java.util.UUID;
  * @author stephen
  */
 public class AgentDefinitionService {
+    private static final String AIRAGENT_ADMIN_ROLE = AIRAGENTConstants.ADMIN_ROLE;
+    private static final String AIRAGENT_USER_ID_FIELD = "user_id";
+    private static final String AIRAGENT_SYSTEM_DEFAULT_FIELD = "system_default";
+
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
 
@@ -71,14 +75,26 @@ public class AgentDefinitionService {
     }
 
     public ListAgentsResponse list(String userId) {
-        var entities = agentDefinitionCollection.find(Filters.or(
-            Filters.eq("user_id", userId),
-            Filters.eq("system_default", true)
-        ));
+        List<AgentDefinition> entities;
+        if (isAdmin(userId)) {
+            entities = agentDefinitionCollection.find(Filters.empty());
+        } else {
+            entities = agentDefinitionCollection.find(Filters.or(
+                Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
+                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+            ));
+        }
         var response = new ListAgentsResponse();
         response.agents = entities.stream().map(this::toView).toList();
         response.total = (long) response.agents.size();
         return response;
+    }
+
+    private boolean isAdmin(String userId) {
+        if (userId == null) return false;
+        return userCollection.get(userId)
+            .map(user -> AIRAGENT_ADMIN_ROLE.equals(user.role))
+            .orElse(false);
     }
 
     public AgentDefinitionView get(String id) {
