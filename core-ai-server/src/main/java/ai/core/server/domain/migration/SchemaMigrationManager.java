@@ -1,5 +1,6 @@
 package ai.core.server.domain.migration;
 
+import com.mongodb.MongoCommandException;
 import core.framework.inject.Inject;
 import core.framework.mongo.Mongo;
 import core.framework.mongo.MongoCollection;
@@ -34,7 +35,15 @@ public class SchemaMigrationManager {
                 continue;
             }
             LOGGER.info("run migration, version={}, description={}", migration.version(), migration.description());
-            migration.migrate(mongo);
+            try {
+                migration.migrate(mongo);
+            } catch (MongoCommandException e) {
+                if (e.getErrorCode() == 86) {
+                    LOGGER.warn("index conflict during migration, version={}, message={}", migration.version(), e.getErrorMessage());
+                } else {
+                    throw e;
+                }
+            }
 
             var version = new SchemaVersion();
             version.id = migration.version();
