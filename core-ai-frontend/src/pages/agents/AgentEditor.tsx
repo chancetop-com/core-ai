@@ -912,7 +912,7 @@ export default function AgentEditor() {
 
           {/* API Usage - collapsible */}
           {agent.status === 'PUBLISHED' && (
-            <CollapsibleApiUsage agentId={agent.id} />
+            <CollapsibleApiUsage agentId={agent.id} agentType={agent.type} />
           )}
 
           {/* Recent Runs - inline expandable */}
@@ -1291,7 +1291,7 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
   );
 }
 
-function CollapsibleApiUsage({ agentId }: { agentId: string }) {
+function CollapsibleApiUsage({ agentId, agentType }: { agentId: string; agentType?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-xl border"
@@ -1306,16 +1306,17 @@ function CollapsibleApiUsage({ agentId }: { agentId: string }) {
       </button>
       {open && (
         <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-          <ApiUsagePanel agentId={agentId} />
+          <ApiUsagePanel agentId={agentId} agentType={agentType} />
         </div>
       )}
     </div>
   );
 }
 
-function ApiUsagePanel({ agentId }: { agentId: string }) {
+function ApiUsagePanel({ agentId, agentType }: { agentId: string; agentType?: string }) {
   const [copied, setCopied] = useState('');
-  const [tab, setTab] = useState<'call' | 'trigger' | 'session'>('call');
+  const isLlmCall = agentType === 'LLM_CALL';
+  const [tab, setTab] = useState<'call' | 'trigger' | 'session'>(isLlmCall ? 'call' : 'trigger');
   const apiKey = localStorage.getItem('apiKey') || '<YOUR_API_KEY>';
   const baseUrl = window.location.origin;
 
@@ -1355,11 +1356,14 @@ curl -X POST "${baseUrl}/api/sessions/$SESSION_ID/messages" \\
     setTimeout(() => setCopied(''), 2000);
   };
 
-  const tabs = [
+  const allTabs = [
     { key: 'call' as const, label: 'Call (Sync)' },
     { key: 'trigger' as const, label: 'Trigger (Async)' },
     { key: 'session' as const, label: 'Session (Stream)' },
   ];
+  const tabs = isLlmCall
+    ? allTabs.filter(t => t.key === 'call')
+    : allTabs.filter(t => t.key !== 'call');
 
   const currentCode = tab === 'call' ? callCurl : tab === 'trigger' ? triggerCurl : sessionCurl;
 
