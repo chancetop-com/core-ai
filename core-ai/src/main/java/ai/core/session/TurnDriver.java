@@ -32,6 +32,9 @@ public class TurnDriver {
                 var batch = commandQueue.drainSameMode();
                 if (batch.isEmpty()) continue;
                 commandHandler.accept(batch);
+                // Clear interrupt flag left by cancelTurn() so the next iteration works
+                //noinspection ResultOfMethodCallIgnored
+                Thread.interrupted();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
