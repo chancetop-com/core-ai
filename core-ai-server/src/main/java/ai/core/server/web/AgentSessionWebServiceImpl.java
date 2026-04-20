@@ -67,7 +67,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         state.config = request.config;
         var loadedSubAgents = new ArrayList<String>();
 
-        if (request.agentId != null) {
+        if (request.agentId != null && !request.agentId.isBlank()) {
             sessionId = createSessionFromAgent(request.agentId, state, userId, loadedSubAgents);
         } else {
             sessionId = sessionManager.createSession(request.config, userId);

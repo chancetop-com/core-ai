@@ -98,7 +98,7 @@ export const sessionApi = {
     let body: Record<string, unknown>;
     if (options && ('config' in options || 'tools' in options || 'skill_ids' in options)) {
       const opts = options as CreateSessionOptions;
-      body = { agent_id: agentId, ...opts };
+      body = agentId ? { agent_id: agentId, ...opts } : { ...opts };
     } else {
       body = agentId ? { agent_id: agentId, config: options } : { config: options };
     }
