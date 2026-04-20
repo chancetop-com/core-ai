@@ -1,4 +1,4 @@
-import { Settings as SettingsIcon, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 
@@ -17,12 +17,12 @@ export default function Settings() {
         <nav className="flex-1 p-2 flex flex-col gap-1">
           {user?.role === 'admin' && (
             <NavLink to="/settings/users"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors`
+              className={() =>
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
               }
-              style={({ isActive }) => ({
-                background: isActive ? 'var(--color-primary-bg)' : 'transparent',
-                color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              style={() => ({
+                background: 'transparent',
+                color: 'var(--color-text-secondary)',
               })}>
               <User size={16} />
               User Management

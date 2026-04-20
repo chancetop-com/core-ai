@@ -31,6 +31,7 @@ export interface LoginResponse {
   api_key: string;
   user_id: string;
   name: string;
+  role?: string;
 }
 
 export const authApi = {

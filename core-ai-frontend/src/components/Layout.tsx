@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench, Users, Settings } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench, Settings } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
