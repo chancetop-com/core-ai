@@ -299,11 +299,11 @@ public class AgentSandboxProvider implements SandboxProvider {
     // --- Cleanup ---
 
     public void cleanupExpiredSandboxes(int maxLifetimeSeconds) {
-        if (useWarmPool()) {
+        // Always try to cleanup both types to handle orphaned resources
+        if (extensionsClient != null) {
             cleanupExpiredClaims(maxLifetimeSeconds);
-        } else {
-            cleanupExpiredDirectSandboxes(maxLifetimeSeconds);
         }
+        cleanupExpiredDirectSandboxes(maxLifetimeSeconds);
     }
 
     private void cleanupExpiredClaims(int maxLifetimeSeconds) {

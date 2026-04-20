@@ -51,4 +51,7 @@ public class UpdateAgentRequest {
 
     @Property(name = "subagent_ids")
     public List<String> subAgentIds;
+
+    @Property(name = "skill_ids")
+    public List<String> skillIds;
 }

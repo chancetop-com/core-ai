@@ -618,16 +618,24 @@ export default function Chat() {
 
   // Open skill picker
   const openSkillPicker = useCallback(() => {
-    setSelectedSkillIds(sessionId ? loadedSkillIds : preSkillIds);
+    // Start with agent's configured skills
+    const agentSkillIds = (selectedAgent as unknown as Record<string, unknown>)?.skill_ids as string[] || [];
+    // Merge with session skills (loaded or pre-selected)
+    const sessionSkillIds = sessionId ? loadedSkillIds : preSkillIds;
+    setSelectedSkillIds(new Set([...agentSkillIds, ...sessionSkillIds]));
     fetchSkills();
     setShowSkillPicker(true);
-  }, [sessionId, loadedSkillIds, preSkillIds, fetchSkills]);
+  }, [sessionId, selectedAgent, loadedSkillIds, preSkillIds, fetchSkills]);
 
   // Open agent picker
   const openAgentPicker = useCallback(() => {
-    setSelectedAgentIds(sessionId ? loadedSubAgentIds : preSubAgentIds);
+    // Start with agent's configured subagents
+    const agentSubAgentIds = (selectedAgent as unknown as Record<string, unknown>)?.subagent_ids as string[] || [];
+    // Merge with session subagents (loaded or pre-selected)
+    const sessionSubAgentIds = sessionId ? loadedSubAgentIds : preSubAgentIds;
+    setSelectedAgentIds(new Set([...agentSubAgentIds, ...sessionSubAgentIds]));
     setShowAgentPicker(true);
-  }, [sessionId, loadedSubAgentIds, preSubAgentIds]);
+  }, [sessionId, selectedAgent, loadedSubAgentIds, preSubAgentIds]);
 
   // Toggle agent selection
   const toggleAgent = useCallback((id: string) => {

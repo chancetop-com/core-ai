@@ -27,7 +27,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/remote", "Connect to a remote core-ai-server"),
             new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/debug", "Toggle debug mode"),
-            new SlashCommand("/clear", "Clear screen"),
+            new SlashCommand("/clear", "Start new session"),
             new SlashCommand("/exit", "Quit")
     );
 

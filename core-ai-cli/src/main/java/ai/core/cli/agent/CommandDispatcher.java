@@ -81,6 +81,10 @@ public class CommandDispatcher {
                 remoteConfig.set(config);
                 queue.offer(POISON_PILL);
             }
+        } else if ("/clear".equals(lower)) {
+            ui.printStreamingChunk("\u001B[2J\u001B[H");
+            switchSessionId.set(null);
+            queue.offer(POISON_PILL);
         } else {
             commands.handle(trimmed);
         }

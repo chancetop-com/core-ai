@@ -34,7 +34,6 @@ public class ReplCommandHandler {
             case "/help" -> printHelp();
             case "/init" -> initProject();
             case "/debug" -> toggleDebug();
-            case "/clear" -> clearScreen();
             case "/exit" -> {
             }
             default -> ui.printStreamingChunk(AnsiTheme.WARNING + "Unknown command: " + command + ". Type /help for available commands." + AnsiTheme.RESET + "\n");
@@ -91,9 +90,5 @@ public class ReplCommandHandler {
         } catch (IOException e) {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to create: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
-    }
-
-    private void clearScreen() {
-        ui.printStreamingChunk("\u001B[2J\u001B[H");
     }
 }

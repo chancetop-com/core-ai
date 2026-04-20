@@ -220,6 +220,7 @@ export interface AgentDefinition {
   created_at: string;
   updated_at: string;
   subagent_ids?: string[];
+  skill_ids?: string[];
 }
 
 export interface ListAgentsResponse {

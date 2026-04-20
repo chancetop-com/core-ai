@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef } from '../../api/client';
+import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import StatusBadge from '../../components/StatusBadge';
 
@@ -29,6 +29,10 @@ export default function AgentEditor() {
   // subagents
   const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
   const [subAgentSearch, setSubAgentSearch] = useState('');
+
+  // skills
+  const [allSkills, setAllSkills] = useState<SkillDefinition[]>([]);
+  const [skillSearch, setSkillSearch] = useState('');
 
   // test panel
   const [testInput, setTestInput] = useState('');
@@ -70,6 +74,7 @@ export default function AgentEditor() {
       );
       setAllAgents(published);
     }).catch(console.error);
+    api.skills.list().then(res => setAllSkills(res.skills || [])).catch(console.error);
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id]);
@@ -113,6 +118,7 @@ export default function AgentEditor() {
         variables: agent.variables,
         response_schema: agent.response_schema,
         subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined,
+        skill_ids: (agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -309,7 +315,7 @@ export default function AgentEditor() {
   };
 
   const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
-    'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids'] as const;
+    'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids', 'skill_ids'] as const;
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -354,6 +360,7 @@ export default function AgentEditor() {
       max_turns: a.max_turns, timeout_seconds: a.timeout_seconds,         tools: a.tools,
       input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
       subagent_ids: (a as unknown as Record<string, unknown>).subagent_ids,
+      skill_ids: (a as unknown as Record<string, unknown>).skill_ids,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -746,6 +753,88 @@ export default function AgentEditor() {
                   {allAgents.filter(a => !((agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined)?.includes(a.id))
                     .filter(a => a.name.toLowerCase().includes(subAgentSearch.toLowerCase())).length === 0 && (
                     <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching agents</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Skills */}
+          <div className="rounded-xl border p-4"
+            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+              <Sparkles size={16} style={{ color: '#ec4899' }} /> Skills
+            </h3>
+            <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+              Select skills to enhance this agent's capabilities.
+            </p>
+
+            {/* Selected skills */}
+            {(agent as unknown as Record<string, unknown>).skill_ids && ((agent as unknown as Record<string, unknown>).skill_ids as string[]).length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {((agent as unknown as Record<string, unknown>).skill_ids as string[]).map((skillId: string) => {
+                  const skill = allSkills.find(s => s.id === skillId);
+                  return (
+                    <span key={skillId}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                      style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ec4899' }} />
+                      <span className="font-medium">{skill?.name || skillId}</span>
+                      <span className="text-[10px] px-1 rounded"
+                        style={{ background: '#ec489915', color: '#ec4899' }}>
+                        {skill?.namespace || 'custom'}
+                      </span>
+                      <button onClick={() => update('skill_ids', ((agent as unknown as Record<string, unknown>).skill_ids as string[]).filter((id: string) => id !== skillId))}
+                        className="cursor-pointer ml-0.5 rounded hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ color: 'var(--color-text-secondary)' }}>
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>No skills selected</p>
+            )}
+
+            {/* Add skills */}
+            <div className="relative">
+              <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-sm"
+                style={inputStyle}>
+                <Search size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+                <input value={skillSearch} onChange={e => setSkillSearch(e.target.value)}
+                  className="flex-1 bg-transparent outline-none text-sm"
+                  placeholder="Search skills to add..." />
+              </div>
+              {skillSearch && (
+                <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
+                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
+                  {allSkills
+                    .filter(s => !((agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined)?.includes(s.id))
+                    .filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase()) || s.namespace?.toLowerCase().includes(skillSearch.toLowerCase()))
+                    .map(s => (
+                      <button key={s.id}
+                        onClick={() => {
+                          const currentIds = ((agent as unknown as Record<string, unknown>).skill_ids as string[]) || [];
+                          update('skill_ids', [...currentIds, s.id]);
+                          setSkillSearch('');
+                        }}
+                        className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#ec4899' }} />
+                        <span className="font-medium">{s.name}</span>
+                        <span className="text-[10px] px-1 rounded ml-auto"
+                          style={{ background: '#ec489915', color: '#ec4899' }}>
+                          {s.namespace}
+                        </span>
+                        {s.description && (
+                          <span className="text-[10px] truncate" style={{ color: 'var(--color-text-secondary)' }}>{s.description}</span>
+                        )}
+                      </button>
+                    ))}
+                  {allSkills.filter(s => !((agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined)?.includes(s.id))
+                    .filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase())).length === 0 && (
+                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching skills</div>
                   )}
                 </div>
               )}
