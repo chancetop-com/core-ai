@@ -233,7 +233,7 @@ public class SkillService {
             : def.content;
         var resources = skillStorage.exists(def.namespace, def.name)
             ? skillStorage.listResources(def.namespace, def.name)
-            : (def.resources != null ? def.resources.stream().map(r -> r.path).toList() : Collections.<String>emptyList());
+            : def.resources != null ? def.resources.stream().map(r -> r.path).toList() : Collections.<String>emptyList();
         return SkillMetadata.builder(def.name, def.description != null ? def.description : "", null)
             .namespace(def.namespace)
             .skillDir(skillDir.toString())

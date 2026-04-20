@@ -77,30 +77,37 @@ public class LocalFileSystemSkillStorage implements SkillStorage {
     @Override
     public void copyDirectory(String namespace, String name, Path sourceDir) {
         var targetDir = skillDir(namespace, name);
+        if (Files.exists(targetDir)) {
+            deleteRecursive(targetDir);
+        }
         try {
-            if (Files.exists(targetDir)) {
-                deleteRecursive(targetDir);
-            }
             Files.createDirectories(targetDir);
-            try (var walk = Files.walk(sourceDir)) {
-                walk.forEach(src -> {
-                    var rel = sourceDir.relativize(src);
-                    var dest = targetDir.resolve(rel.toString()).normalize();
-                    if (!dest.startsWith(targetDir)) return;
-                    try {
-                        if (Files.isDirectory(src)) {
-                            Files.createDirectories(dest);
-                        } else {
-                            Files.createDirectories(dest.getParent());
-                            Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
-                        }
-                    } catch (IOException e) {
-                        throw new RuntimeException("copy failed: " + src + " -> " + dest, e);
-                    }
-                });
+            var paths = collectPaths(sourceDir);
+            for (var src : paths) {
+                copyFile(sourceDir, targetDir, src);
             }
         } catch (IOException e) {
             throw new RuntimeException("failed to copy directory to storage: " + targetDir, e);
+        }
+    }
+
+    private List<Path> collectPaths(Path sourceDir) throws IOException {
+        List<Path> paths = new ArrayList<>();
+        try (var walk = Files.walk(sourceDir)) {
+            walk.forEach(paths::add);
+        }
+        return paths;
+    }
+
+    private void copyFile(Path sourceDir, Path targetDir, Path src) throws IOException {
+        var rel = sourceDir.relativize(src);
+        var dest = targetDir.resolve(rel.toString()).normalize();
+        if (!dest.startsWith(targetDir)) return;
+        if (Files.isDirectory(src)) {
+            Files.createDirectories(dest);
+        } else {
+            Files.createDirectories(dest.getParent());
+            Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
