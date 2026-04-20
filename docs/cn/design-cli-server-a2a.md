@@ -347,44 +347,9 @@ core-ai-server/
 - 未注册 / 已断开 → 立即返回错误（让 MainAgent 决定 retry 或放弃）
 - 支持并发请求（`rpc-req` 的 `id` 区分响应）
 
-## 11. 落地计划
+## 11. 附录：A2A 消息示例
 
-### Phase 1：主链路（2 周）
-1. `core-ai-api` 新增 A2A 类型：`AgentCard`、`Task`、`Message`、`Part`、`TaskStatus`、`TaskArtifactUpdateEvent`、`TaskStatusUpdateEvent`
-2. Server 实现 `A2AController` + `SessionStore`（内存）
-3. Server 实现 `A2AEventBridge`，接现有 Agent 事件推 SSE
-4. CLI 抽象 `AgentSession` 接口，实现 `RemoteAgentSession`（仅主链路，不带反向通道）
-5. **里程碑**：CLI 能连 server 聊天，但本地文件工具不可用
-
-### Phase 2：反向通道（2 周）
-6. CLI 内嵌 `LocalAgent`（复用现有 Tool 框架）
-7. 反向 WS 协议（`ReverseWsHandler` + `LocalAgentHost`）
-8. `LocalAgentProxy` 接入 MainAgent 工具系统
-9. 路径/命令白名单、审计日志
-10. **里程碑**：远程 MainAgent 能调本地文件/shell 工具
-
-### Phase 3：可靠性（1 周）
-11. `tasks/resubscribe` 断点续传
-12. SQLite 持久化（server 侧 session，CLI 侧缓存）
-13. Bearer token + per-session token
-14. 能力协商、版本检查
-15. **里程碑**：生产可用
-
-### Phase 4：生态（可选）
-16. 支持外部 A2A agent 作为 sub-agent（server 调第三方）
-17. MainAgent Card 对外公开，允许第三方 A2A client 调用 core-ai-server
-18. Push notification 支持（为 Web UI 场景铺垫）
-
-## 12. 开放问题
-
-1. **Server 侧 Agent 热插拔**：新增 agent 是否需要重启？首版静态配置，后续通过 Agent 注册中心。
-2. **多机器同步**：用户两台机器同一 server.token，`/resume` 能跨机器吗？首版：contextId 可查但 LocalAgent 能力取决于当前连接机器，可能导致历史步骤无法复现。
-3. **Tool 版本漂移**：server 升级后要求新 LocalAgent skill，老 CLI 怎么办？靠能力协商 + 明确错误提示。
-4. **离线 / 弱网**：主链路 SSE 可重连；反向 WS 断开期间 MainAgent 的本地工具调用全部失败。是否需要"降级模式"（放弃本地操作继续推理）？待定。
-
-## 13. 附录：A2A 消息示例
-
-### 13.1 用户发送消息（正向）
+### 11.1 用户发送消息（正向）
 
 ```json
 // CLI → Server: POST /agents/coder/a2a
