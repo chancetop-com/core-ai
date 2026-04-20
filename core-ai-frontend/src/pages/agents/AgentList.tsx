@@ -26,6 +26,7 @@ export default function AgentList() {
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(10);
   const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'updated_at' | 'created_at'>('updated_at');
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -39,7 +40,9 @@ export default function AgentList() {
   const trimmedQuery = query.trim().toLowerCase();
   const userAgents = agents
     .filter(a => !a.system_default)
-    .filter(a => !trimmedQuery || a.name.toLowerCase().includes(trimmedQuery));
+    .filter(a => !trimmedQuery || a.name.toLowerCase().includes(trimmedQuery))
+    .slice()
+    .sort((a, b) => (b[sortBy] || '').localeCompare(a[sortBy] || ''));
   const pagedAgents = userAgents.slice(offset, offset + limit);
 
   const handleCreate = async () => {
@@ -185,14 +188,23 @@ export default function AgentList() {
         </div>
       </div>
 
-      <div className="mb-4 relative max-w-md">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
-          style={{ color: 'var(--color-text-secondary)' }} />
-        <input type="text" value={query}
-          onChange={e => { setQuery(e.target.value); setOffset(0); }}
-          placeholder="Search by name..."
-          className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
-          style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
+      <div className="mb-4 flex items-center gap-2">
+        <div className="relative max-w-md flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
+            style={{ color: 'var(--color-text-secondary)' }} />
+          <input type="text" value={query}
+            onChange={e => { setQuery(e.target.value); setOffset(0); }}
+            placeholder="Search by name..."
+            className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
+            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
+        </div>
+        <select value={sortBy}
+          onChange={e => { setSortBy(e.target.value as 'updated_at' | 'created_at'); setOffset(0); }}
+          className="px-3 py-2 rounded-lg border text-sm outline-none cursor-pointer"
+          style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+          <option value="updated_at">Sort: Updated ↓</option>
+          <option value="created_at">Sort: Created ↓</option>
+        </select>
       </div>
 
       <div className="grid gap-4">
