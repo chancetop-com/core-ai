@@ -30,7 +30,10 @@ public class SandboxClient {
         this.port = port;
         this.baseUrl = "http://" + ip + ":" + port;
         var timeoutMs = timeoutSeconds > 0 ? timeoutSeconds * 1000L : SandboxConstants.DEFAULT_TOOL_TIMEOUT_MS;
-        this.httpClient = HTTPClient.builder().timeout(Duration.ofMillis(timeoutMs)).build();
+        this.httpClient = HTTPClient.builder()
+                .connectTimeout(Duration.ofSeconds(3))
+                .timeout(Duration.ofMillis(timeoutMs))
+                .build();
     }
 
     public void waitForReady(int maxWaitMs) {
@@ -85,9 +88,7 @@ public class SandboxClient {
             return parseResponse(response.text(), System.currentTimeMillis() - startTime);
         } catch (Exception e) {
             LOGGER.error("sandbox runtime request failed: url={}, tool={}", baseUrl, toolName, e);
-            return ToolCallResult.failed("Sandbox execution failed: " + e.getMessage())
-                    .withDuration(System.currentTimeMillis() - startTime)
-                    .withStats("error", "sandbox_error");
+            throw e;
         }
     }
 

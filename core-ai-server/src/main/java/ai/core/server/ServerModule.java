@@ -141,7 +141,7 @@ public class ServerModule extends Module {
                 provider = createAgentSandboxProvider();
             } else if (p.equalsIgnoreCase("docker")) {
                 var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
-                var workspaceBase = Path.of(property("sys.sandbox.docker.workspace-base").orElse("/tmp/workspaces"));
+                var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
                 provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
             } else {
                 return;
@@ -159,24 +159,24 @@ public class ServerModule extends Module {
         var token = property("sys.sandbox.kubernetes.token").orElse(null);
         KubernetesClient kubernetesClient;
         if (token != null && !token.isBlank()) {
-            var apiServer = property("sys.sandbox.kubernetes.api-server").orElse("https://kubernetes.default.svc");
+            var apiServer = property("sys.sandbox.kubernetes.apiServer").orElse("https://kubernetes.default.svc");
             kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
         } else {
             kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
         }
-        var useHostPort = property("sys.sandbox.kubernetes.host-port").orElse("false").equalsIgnoreCase("true");
+        var useHostPort = property("sys.sandbox.kubernetes.hostPort").orElse("false").equalsIgnoreCase("true");
         return new KubernetesSandboxProvider(kubernetesClient, null, useHostPort);
     }
 
     private SandboxProvider createAgentSandboxProvider() {
         var namespace = property("sys.sandbox.kubernetes.namespace").orElse("core-ai-sandbox");
         var token = property("sys.sandbox.kubernetes.token").orElse(null);
-        var apiServer = property("sys.sandbox.kubernetes.api-server").orElse("https://kubernetes.default.svc");
+        var apiServer = property("sys.sandbox.kubernetes.apiServer").orElse("https://kubernetes.default.svc");
         TokenResolver tokenResolver = (token != null && !token.isBlank())
                 ? TokenResolver.fixed(token)
                 : TokenResolver.inCluster();
         var client = new AgentSandboxClient(apiServer, namespace, tokenResolver, 120);
-        var useHostPort = property("sys.sandbox.kubernetes.host-port").orElse("false").equalsIgnoreCase("true");
+        var useHostPort = property("sys.sandbox.kubernetes.hostPort").orElse("false").equalsIgnoreCase("true");
         KubernetesClient kubernetesClient = null;
         if (useHostPort) {
             if (token != null && !token.isBlank()) {
@@ -186,8 +186,8 @@ public class ServerModule extends Module {
             }
         }
         // Warm pool mode: if template name is configured, use SandboxClaim via extensions API
-        var templateName = property("sys.sandbox.agent-sandbox.template").orElse(null);
-        var warmPoolName = property("sys.sandbox.agent-sandbox.warm-pool").orElse("default");
+        var templateName = property("sys.sandbox.agentSandbox.template").orElse(null);
+        var warmPoolName = property("sys.sandbox.agentSandbox.warmPool").orElse("default");
         AgentSandboxExtensionsClient extensionsClient = null;
         if (templateName != null && !templateName.isBlank()) {
             extensionsClient = new AgentSandboxExtensionsClient(apiServer, namespace, tokenResolver, 120);

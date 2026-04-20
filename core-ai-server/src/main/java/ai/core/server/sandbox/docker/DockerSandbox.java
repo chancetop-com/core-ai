@@ -40,6 +40,9 @@ public class DockerSandbox implements Sandbox {
             return runtimeClient.execute(toolName, arguments, context);
         } catch (Exception e) {
             LOGGER.error("sandbox execution failed: container={}, tool={}", containerId, toolName, e);
+            if (isConnectionError(e)) {
+                status = SandboxStatus.ERROR;
+            }
             return ToolCallResult.failed("Sandbox execution failed: " + e.getMessage())
                     .withStats("error", "sandbox_error");
         }
@@ -67,5 +70,14 @@ public class DockerSandbox implements Sandbox {
 
     public String getContainerIp() {
         return runtimeClient.getIp();
+    }
+
+    private boolean isConnectionError(Throwable throwable) {
+        var current = throwable;
+        while (current != null) {
+            if (current instanceof java.net.ConnectException || current instanceof java.net.SocketTimeoutException) return true;
+            current = current.getCause();
+        }
+        return false;
     }
 }

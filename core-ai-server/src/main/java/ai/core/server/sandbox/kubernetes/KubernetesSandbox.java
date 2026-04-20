@@ -61,7 +61,7 @@ public class KubernetesSandbox implements Sandbox {
     private boolean isConnectionError(Throwable th) {
         var current = th;
         while (current != null) {
-            if (current instanceof java.net.ConnectException) return true;
+            if (current instanceof java.net.ConnectException || current instanceof java.net.SocketTimeoutException) return true;
             current = current.getCause();
         }
         return false;

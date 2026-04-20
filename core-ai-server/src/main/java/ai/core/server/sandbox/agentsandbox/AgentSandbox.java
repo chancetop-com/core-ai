@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.ConnectException;
+import java.net.SocketTimeoutException;
 import java.time.Instant;
 
 /**
@@ -79,7 +80,12 @@ public class AgentSandbox implements Sandbox {
     }
 
     private boolean isConnectionError(Throwable throwable) {
-        return throwable instanceof ConnectException;
+        var current = throwable;
+        while (current != null) {
+            if (current instanceof ConnectException || current instanceof SocketTimeoutException) return true;
+            current = current.getCause();
+        }
+        return false;
     }
 }
 
