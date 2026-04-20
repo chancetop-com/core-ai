@@ -8,8 +8,6 @@ import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
 import core.framework.json.JSON;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.List;
@@ -20,7 +18,6 @@ import java.util.Optional;
  * @author stephen
  */
 public class AgentSandboxExtensionsClient {
-    private static final Logger LOGGER = LoggerFactory.getLogger(AgentSandboxExtensionsClient.class);
     private static final String API_GROUP = "extensions.agents.x-k8s.io";
     private static final String API_VERSION = "v1alpha1";
 

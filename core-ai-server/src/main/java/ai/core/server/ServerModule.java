@@ -20,6 +20,7 @@ import ai.core.server.sandbox.TokenResolver;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxExtensionsClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
+import ai.core.server.sandbox.agentsandbox.AgentSandboxProviderConfig;
 import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
@@ -192,7 +193,14 @@ public class ServerModule extends Module {
         if (templateName != null && !templateName.isBlank()) {
             extensionsClient = new AgentSandboxExtensionsClient(apiServer, namespace, tokenResolver, 120);
         }
-        return new AgentSandboxProvider(client, extensionsClient, null, kubernetesClient, useHostPort, templateName, warmPoolName);
+        var config = new AgentSandboxProviderConfig();
+        config.client = client;
+        config.extensionsClient = extensionsClient;
+        config.kubernetesClient = kubernetesClient;
+        config.useHostPort = useHostPort;
+        config.templateName = templateName;
+        config.warmPoolName = warmPoolName;
+        return new AgentSandboxProvider(config);
     }
 
     private void bindService() {

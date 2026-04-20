@@ -25,35 +25,21 @@ public class AgentSandboxProvider implements SandboxProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSandboxProvider.class);
 
     private final AgentSandboxClient client;
-    private final AgentSandboxExtensionsClient extensionsClient; // optional, for warm pool mode
+    private final AgentSandboxExtensionsClient extensionsClient;
     private final SandboxConfig defaultConfig;
     private final KubernetesClient kubernetesClient;
     private final boolean useHostPort;
-    private final String templateName;  // if set, use SandboxClaim (warm pool) mode
+    private final String templateName;
     private final String warmPoolName;
 
-    public AgentSandboxProvider(AgentSandboxClient client, SandboxConfig defaultConfig) {
-        this(client, null, defaultConfig, null, false, null, null);
-    }
-
-    public AgentSandboxProvider(AgentSandboxClient client, SandboxConfig defaultConfig, KubernetesClient kubernetesClient, boolean useHostPort) {
-        this(client, null, defaultConfig, kubernetesClient, useHostPort, null, null);
-    }
-
-    public AgentSandboxProvider(AgentSandboxClient client,
-                                AgentSandboxExtensionsClient extensionsClient,
-                                SandboxConfig defaultConfig,
-                                KubernetesClient kubernetesClient,
-                                boolean useHostPort,
-                                String templateName,
-                                String warmPoolName) {
-        this.client = client;
-        this.extensionsClient = extensionsClient;
-        this.defaultConfig = defaultConfig != null ? defaultConfig : new SandboxConfig();
-        this.kubernetesClient = kubernetesClient;
-        this.useHostPort = useHostPort;
-        this.templateName = templateName;
-        this.warmPoolName = warmPoolName != null ? warmPoolName : "default";
+    public AgentSandboxProvider(AgentSandboxProviderConfig config) {
+        this.client = config.client;
+        this.extensionsClient = config.extensionsClient;
+        this.defaultConfig = config.defaultConfig != null ? config.defaultConfig : new SandboxConfig();
+        this.kubernetesClient = config.kubernetesClient;
+        this.useHostPort = config.useHostPort;
+        this.templateName = config.templateName;
+        this.warmPoolName = config.warmPoolName != null ? config.warmPoolName : "default";
     }
 
     private boolean useWarmPool() {
@@ -117,13 +103,13 @@ public class AgentSandboxProvider implements SandboxProvider {
         try {
             // The assigned sandbox name can be used to find the pod
             var sandboxName = claim.status.sandbox.name;
-            var selectorLabel = "agents.x-k8s.io/sandbox-name-hash";
             // Query the actual Sandbox CR to get its selector
             var sandboxCR = client.getSandbox(sandboxName);
             String selector;
             if (sandboxCR.isPresent() && sandboxCR.get().status != null && sandboxCR.get().status.selector != null) {
                 selector = sandboxCR.get().status.selector;
             } else {
+                var selectorLabel = "agents.x-k8s.io/sandbox-name-hash";
                 selector = selectorLabel + "=" + sandboxName;
             }
             var serviceInfo = kubernetesClient.createNodePortServiceBySelector(serviceName, selector, SandboxConstants.RUNTIME_PORT);
@@ -325,23 +311,25 @@ public class AgentSandboxProvider implements SandboxProvider {
             var now = Instant.now();
             var claims = extensionsClient.listClaims("core-ai/component=sandbox");
             for (var claim : claims) {
-                try {
-                    if (claim.metadata == null || claim.metadata.creationTimestamp == null) continue;
-                    var created = ZonedDateTime.parse(claim.metadata.creationTimestamp).toInstant();
-                    var age = Duration.between(created, now);
-                    if (age.getSeconds() > maxLifetimeSeconds) {
-                        LOGGER.info("deleting expired sandbox claim: name={}, age={}s", claim.getName(), age.getSeconds());
-                        if (kubernetesClient != null) {
-                            try { kubernetesClient.deleteService("svc-" + claim.getName()); } catch (Exception ignored) {}
-                        }
-                        extensionsClient.deleteClaim(claim.getName());
-                    }
-                } catch (Exception e) {
-                    LOGGER.warn("failed to cleanup sandbox claim: {}", claim.getName(), e);
-                }
+                cleanupExpiredClaim(claim, now, maxLifetimeSeconds);
             }
         } catch (Exception e) {
             LOGGER.warn("failed to run sandbox claim cleanup", e);
+        }
+    }
+
+    private void cleanupExpiredClaim(AgentSandboxExtensionsClient.SandboxClaim claim, Instant now, int maxLifetimeSeconds) {
+        try {
+            if (claim.metadata == null || claim.metadata.creationTimestamp == null) return;
+            var created = ZonedDateTime.parse(claim.metadata.creationTimestamp).toInstant();
+            var age = Duration.between(created, now);
+            if (age.getSeconds() > maxLifetimeSeconds) {
+                LOGGER.info("deleting expired sandbox claim: name={}, age={}s", claim.getName(), age.getSeconds());
+                deleteServiceSilently("svc-" + claim.getName());
+                extensionsClient.deleteClaim(claim.getName());
+            }
+        } catch (Exception e) {
+            LOGGER.warn("failed to cleanup sandbox claim: {}", claim.getName(), e);
         }
     }
 
@@ -350,27 +338,38 @@ public class AgentSandboxProvider implements SandboxProvider {
             var now = Instant.now();
             var sandboxes = client.listSandboxes("core-ai/component=sandbox");
             for (var cr : sandboxes) {
-                try {
-                    if (cr.metadata == null || cr.metadata.creationTimestamp == null) continue;
-                    var created = ZonedDateTime.parse(cr.metadata.creationTimestamp).toInstant();
-                    var age = Duration.between(created, now);
-                    if (age.getSeconds() > maxLifetimeSeconds) {
-                        LOGGER.info("deleting expired agent sandbox CR: name={}, age={}s", cr.getName(), age.getSeconds());
-                        if (kubernetesClient != null) {
-                            try { kubernetesClient.deleteService("svc-" + cr.getName()); } catch (Exception ignored) {}
-                        }
-                        client.deleteSandbox(cr.getName());
-                    }
-                } catch (Exception e) {
-                    LOGGER.warn("failed to cleanup agent sandbox CR: {}", cr.getName(), e);
-                }
+                cleanupExpiredDirectSandbox(cr, now, maxLifetimeSeconds);
             }
         } catch (Exception e) {
             LOGGER.warn("failed to run agent sandbox cleanup", e);
         }
     }
 
-    private static String sanitizeLabel(String value) {
+    private void cleanupExpiredDirectSandbox(AgentSandboxClient.SandboxCR cr, Instant now, int maxLifetimeSeconds) {
+        try {
+            if (cr.metadata == null || cr.metadata.creationTimestamp == null) return;
+            var created = ZonedDateTime.parse(cr.metadata.creationTimestamp).toInstant();
+            var age = Duration.between(created, now);
+            if (age.getSeconds() > maxLifetimeSeconds) {
+                LOGGER.info("deleting expired agent sandbox CR: name={}, age={}s", cr.getName(), age.getSeconds());
+                deleteServiceSilently("svc-" + cr.getName());
+                client.deleteSandbox(cr.getName());
+            }
+        } catch (Exception e) {
+            LOGGER.warn("failed to cleanup agent sandbox CR: {}", cr.getName(), e);
+        }
+    }
+
+    private void deleteServiceSilently(String serviceName) {
+        if (kubernetesClient == null) return;
+        try {
+            kubernetesClient.deleteService(serviceName);
+        } catch (Exception e) {
+            LOGGER.debug("failed to delete service: {}", serviceName, e);
+        }
+    }
+
+    private String sanitizeLabel(String value) {
         var sanitized = value.replaceAll("[^A-Za-z0-9_.\\-]", "_");
         if (sanitized.length() > 63) sanitized = sanitized.substring(0, 63);
         sanitized = sanitized.replaceAll("^[^A-Za-z0-9]+", "");
