@@ -335,8 +335,33 @@ export interface ApiAppView {
   description: string;
 }
 
+export interface ApiPayloadService {
+  name: string;
+  description: string;
+  operations: ApiPayloadOperation[];
+}
+
+export interface ApiPayload {
+  app: string;
+  base_url: string;
+  version: string;
+  services: ApiPayloadService[];
+  types: ApiPayloadType[];
+}
+
 export interface ListApiAppsResponse {
   apps: ApiAppView[];
+}
+
+export interface ApiServiceView {
+  name: string;
+  description: string;
+  operation_count: number;
+  operations: ApiOperationView[];
+}
+
+export interface ListApiAppServicesResponse {
+  services: ApiServiceView[];
 }
 
 // Service API types
