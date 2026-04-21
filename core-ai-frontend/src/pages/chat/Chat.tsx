@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles, Users } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles, Users, Copy, Check } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, HistoryMessage } from '../../api/session';
@@ -37,6 +37,44 @@ interface ToolEvent {
 interface PlanTodo {
   content: string;
   status: string;
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.warn('copy failed', err);
+    }
+  };
+  return (
+    <button onClick={handleCopy}
+      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs cursor-pointer transition-opacity hover:opacity-100"
+      style={{
+        color: copied ? 'var(--color-success)' : 'var(--color-text-secondary)',
+        background: 'var(--color-bg-tertiary)',
+        border: '1px solid var(--color-border)',
+      }}
+      title={copied ? 'Copied' : 'Copy message'}>
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      <span>{copied ? 'Copied' : 'Copy'}</span>
+    </button>
+  );
 }
 
 function ThinkingBlock({ thinking, isStreaming }: { thinking: string; isStreaming: boolean }) {
@@ -831,7 +869,7 @@ export default function Chat() {
             <PlanUpdateBlock todos={planTodos} />
           )}
           {messages.filter((msg, idx) => msg.role === 'user' || msg.content?.trim() || msg.thinking || (msg.tools && msg.tools.length > 0) || msg.approval || (status === 'running' && msg.role === 'agent' && idx === messages.length - 1)).map((msg, i) => (
-            <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+            <div key={i} className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'agent' && (
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                   style={{ background: 'var(--color-primary)', color: 'white' }}>
@@ -860,6 +898,11 @@ export default function Chat() {
                     <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
                   )}
                 </div>
+                {msg.content?.trim() && (
+                  <div className={`flex mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                    <CopyButton text={msg.content} />
+                  </div>
+                )}
                 {msg.approval && (
                   <div className="mt-2 rounded-xl border px-4 py-3"
                     style={{ borderColor: 'var(--color-warning)', background: 'var(--color-bg-secondary)' }}>
