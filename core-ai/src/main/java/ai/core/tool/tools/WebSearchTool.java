@@ -3,8 +3,10 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.tools.search.BingScrapingSearchProvider;
 import ai.core.tool.tools.search.BingSearchProvider;
 import ai.core.tool.tools.search.ExaSearchProvider;
+import ai.core.tool.tools.search.FallbackSearchProvider;
 import ai.core.tool.tools.search.SearchProvider;
 import ai.core.tool.tools.search.SearchResult;
 import core.framework.json.JSON;
@@ -31,22 +33,22 @@ public class WebSearchTool extends ToolCall {
             - Returns search result information formatted as search result blocks, including links as markdown hyperlinks
             - Use this tool for accessing information beyond LLM model's knowledge cutoff
             - Searches are performed automatically within a single API call
-
+            
             CRITICAL REQUIREMENT - You MUST follow this:
               - After answering the user's question, you MUST include a "Sources:" section at the end of your response
               - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
               - This is MANDATORY - never skip including sources in your response
               - Example format:
-
+            
                 [Your answer here]
-
+            
                 Sources:
                 - [Source Title 1](https://example.com/1)
                 - [Source Title 2](https://example.com/2)
-
+            
             Usage notes:
               - Domain filtering is supported to include or block specific websites
-
+            
             IMPORTANT - Use the correct year in search queries:
               - Today's date is {}. You MUST use this year when searching for recent information, documentation, or current events.
               - Example: If today is 2025-07-15 and the user asks for "latest React docs", search for "React documentation 2025", NOT "React documentation 2024"
@@ -121,6 +123,7 @@ public class WebSearchTool extends ToolCall {
         private String searchApiEndpoint;
         private String apiKey;
         private int maxResults = 10;
+        private SearchProvider provider;
 
         @Override
         protected Builder self() {
@@ -142,6 +145,11 @@ public class WebSearchTool extends ToolCall {
             return this;
         }
 
+        public Builder provider(SearchProvider provider) {
+            this.provider = provider;
+            return this;
+        }
+
         public WebSearchTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
@@ -153,13 +161,15 @@ public class WebSearchTool extends ToolCall {
             ));
             var tool = new WebSearchTool();
             tool.maxResults = this.maxResults;
-            // provider priority: Bing API key → Exa MCP (free default)
-            if (!Strings.isBlank(this.apiKey)) {
-                LOGGER.debug("WebSearchTool using BingSearchProvider (API key)");
+            if (this.provider != null) {
+                tool.searchProvider = this.provider;
+            } else if (!Strings.isBlank(this.apiKey)) {
                 tool.searchProvider = new BingSearchProvider(this.searchApiEndpoint, this.apiKey);
             } else {
-                LOGGER.debug("WebSearchTool using ExaSearchProvider (MCP, free)");
-                tool.searchProvider = new ExaSearchProvider();
+                tool.searchProvider = new FallbackSearchProvider(List.of(
+                        new ExaSearchProvider(),
+                        new BingScrapingSearchProvider()
+                ));
             }
             build(tool);
             return tool;
