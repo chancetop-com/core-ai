@@ -83,7 +83,7 @@ public class CommandDispatcher {
             }
         } else if ("/clear".equals(lower)) {
             ui.printStreamingChunk("\u001B[2J\u001B[H");
-            switchSessionId.set(null);
+            switchSessionId.set("");
             queue.offer(POISON_PILL);
         } else {
             commands.handle(trimmed);

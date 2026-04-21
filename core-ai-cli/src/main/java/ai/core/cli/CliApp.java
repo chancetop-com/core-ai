@@ -143,7 +143,7 @@ public class CliApp {
                     continue;
                 }
                 if (nextSessionId == null) break;
-                currentSessionId = nextSessionId;
+                currentSessionId = nextSessionId.isEmpty() ? null : nextSessionId;
             }
             ui.printStreamingChunk("Goodbye!\n");
         } finally {
