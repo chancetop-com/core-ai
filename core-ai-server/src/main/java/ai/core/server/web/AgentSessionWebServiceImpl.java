@@ -173,6 +173,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     @Override
     public void sendMessage(String sessionId, SendMessageRequest request) {
+        ActionLogContext.triggerTrace(true);
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
