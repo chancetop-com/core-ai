@@ -35,6 +35,7 @@ public class ToolRegistryService {
 
     static final Map<String, List<ToolCall>> BUILTIN_TOOL_SETS = Map.of(
         "builtin-all", BuiltinTools.ALL,
+        "builtin-planning", BuiltinTools.PLANNING,
         "builtin-file-operations", BuiltinTools.FILE_OPERATIONS,
         "builtin-file-read-only", BuiltinTools.FILE_READ_ONLY,
         "builtin-multimodal", BuiltinTools.MULTIMODAL,

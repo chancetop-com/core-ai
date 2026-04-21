@@ -41,6 +41,10 @@ public final class BuiltinTools {
             PythonScriptTool.builder().build()
     );
 
+    public static final List<ToolCall> PLANNING = List.of(
+            WriteTodosTool.self()
+    );
+
     public static final List<ToolCall> FILE_OPERATIONS = List.of(
             ReadFileTool.builder().build(),
             WriteFileTool.builder().build(),
