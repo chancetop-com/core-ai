@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition } from '../../api/client';
+import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import StatusBadge from '../../components/StatusBadge';
 
@@ -24,7 +24,6 @@ export default function AgentEditor() {
 
   // tools
   const [allTools, setAllTools] = useState<ToolRegistryView[]>([]);
-  const [toolSearch, setToolSearch] = useState('');
 
   // subagents
   const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
@@ -33,6 +32,14 @@ export default function AgentEditor() {
   // skills
   const [allSkills, setAllSkills] = useState<SkillDefinition[]>([]);
   const [skillSearch, setSkillSearch] = useState('');
+
+  // service-api picker
+  const [apiApps, setApiApps] = useState<ApiAppView[]>([]);
+  const [apiAppsLoaded, setApiAppsLoaded] = useState(false);
+  const [expandedApiApp, setExpandedApiApp] = useState<string | null>(null);
+  const [apiAppServices, setApiAppServices] = useState<Record<string, ApiServiceView[]>>({});
+  const [showApiPicker, setShowApiPicker] = useState(false);
+  const [expandedApiService, setExpandedApiService] = useState<string | null>(null);
 
   // test panel
   const [testInput, setTestInput] = useState('');
@@ -95,6 +102,73 @@ export default function AgentEditor() {
 
   const update = (field: string, value: unknown) => {
     setAgent({ ...agent, [field]: value } as AgentDefinition);
+  };
+
+  const loadApiApps = async () => {
+    if (apiAppsLoaded) return;
+    try {
+      const res = await api.tools.listApiApps();
+      setApiApps(res.apps || []);
+      setApiAppsLoaded(true);
+    } catch (e) {
+      console.error('Failed to load API apps:', e);
+    }
+  };
+
+  const loadApiAppServices = async (appName: string) => {
+    if (apiAppServices[appName]) return;
+    try {
+      const res = await api.tools.listApiAppServices(appName);
+      setApiAppServices(prev => ({ ...prev, [appName]: res.services || [] }));
+    } catch (e) {
+      console.error('Failed to load services for app:', appName, e);
+    }
+  };
+
+  const toggleApiApp = (appName: string) => {
+    if (expandedApiApp === appName) {
+      setExpandedApiApp(null);
+    } else {
+      setExpandedApiApp(appName);
+      loadApiAppServices(appName);
+    }
+  };
+
+  const addApiAppTool = (appName: string) => {
+    const toolId = `api-app:${appName}`;
+    if (agent.tools?.some((t: ToolRef) => t.id === toolId)) return;
+    // Remove any service/operation-level refs for this app
+    const filtered = (agent.tools || []).filter((t: ToolRef) =>
+      !t.id.startsWith(`api-service:${appName}:`) && !t.id.startsWith(`api-operation:${appName}:`));
+    update('tools', [...filtered, { id: toolId, type: 'API', source: appName }]);
+  };
+
+  const addApiServiceTool = (appName: string, serviceName: string) => {
+    const toolId = `api-service:${appName}:${serviceName}`;
+    if (agent.tools?.some((t: ToolRef) => t.id === toolId)) return;
+    // Remove app-level and operation-level refs for this service
+    const filtered = (agent.tools || []).filter((t: ToolRef) =>
+      t.id !== `api-app:${appName}` && !t.id.startsWith(`api-operation:${appName}:${serviceName}:`));
+    update('tools', [...filtered, { id: toolId, type: 'API', source: appName }]);
+  };
+
+  const addApiOperationTool = (appName: string, serviceName: string, operationName: string) => {
+    const toolId = `api-operation:${appName}:${serviceName}:${operationName}`;
+    if (agent.tools?.some((t: ToolRef) => t.id === toolId)) return;
+    update('tools', [...(agent.tools || []), { id: toolId, type: 'API', source: appName }]);
+  };
+
+  const getApiToolDisplayName = (toolRef: ToolRef): string => {
+    if (toolRef.id.startsWith('api-app:')) return toolRef.id.substring('api-app:'.length);
+    if (toolRef.id.startsWith('api-operation:')) {
+      const parts = toolRef.id.substring('api-operation:'.length).split(':');
+      return `${parts[0]} > ${parts[1] || ''} > ${parts[2] || ''}`;
+    }
+    if (toolRef.id.startsWith('api-service:')) {
+      const parts = toolRef.id.substring('api-service:'.length).split(':');
+      return `${parts[0]} > ${parts[1] || ''}`;
+    }
+    return toolRef.id;
   };
 
   const handleSave = async () => {
@@ -605,76 +679,202 @@ export default function AgentEditor() {
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
               <Wrench size={16} style={{ color: '#f59e0b' }} /> Tools
+              {agent.tools && agent.tools.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                  {agent.tools.length} selected
+                </span>
+              )}
             </h3>
 
-            {/* Selected tools */}
-            {agent.tools && agent.tools.length > 0 ? (
-              <div className="flex flex-wrap gap-2 mb-3">
+            {/* Selected tools summary */}
+            {agent.tools && agent.tools.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
                 {agent.tools.map((toolRef: ToolRef) => {
-                  const tool = allTools.find(t => t.id === toolRef.id);
+                  const isApiTool = toolRef.id.startsWith('api-app:') || toolRef.id.startsWith('api-service:') || toolRef.id.startsWith('api-operation:');
+                  const tool = isApiTool ? null : allTools.find(t => t.id === toolRef.id);
+                  const displayName = isApiTool ? getApiToolDisplayName(toolRef) : (tool?.name || toolRef.id);
+                  const color = isApiTool ? '#10b981' : (tool?.type || toolRef.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
                   return (
                     <span key={toolRef.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-                      style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
-                      <span className="w-1.5 h-1.5 rounded-full"
-                        style={{ background: tool?.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }} />
-                      <span className="font-medium">{tool?.name || toolRef.id}</span>
-                      {(tool?.type || toolRef.type) && (
-                        <span className="text-[10px] px-1 rounded"
-                          style={{ background: (tool?.type || toolRef.type) === 'MCP' ? '#8b5cf615' : '#f59e0b15',
-                            color: (tool?.type || toolRef.type) === 'MCP' ? '#8b5cf6' : '#f59e0b' }}>
-                          {tool?.type || toolRef.type}
-                        </span>
-                      )}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]"
+                      style={{ background: `${color}10`, border: `1px solid ${color}30` }}>
+                      <span style={{ color }}>{displayName}</span>
                       <button onClick={() => update('tools', agent.tools.filter((t: ToolRef) => t.id !== toolRef.id))}
-                        className="cursor-pointer ml-0.5 rounded hover:bg-[var(--color-bg-tertiary)]"
-                        style={{ color: 'var(--color-text-secondary)' }}>
-                        <X size={12} />
+                        className="cursor-pointer rounded hover:opacity-70" style={{ color }}>
+                        <X size={10} />
                       </button>
                     </span>
                   );
                 })}
               </div>
-            ) : (
-              <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>No tools selected</p>
             )}
 
-            {/* Add tools */}
-            <div className="relative">
-              <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-sm"
-                style={inputStyle}>
-                <Search size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
-                <input value={toolSearch} onChange={e => setToolSearch(e.target.value)}
-                  className="flex-1 bg-transparent outline-none text-sm"
-                  placeholder="Search tools to add..." />
-              </div>
-              {toolSearch && (
-                <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
-                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
-                  {allTools
-                    .filter(t => !agent.tools?.some((tr: ToolRef) => tr.id === t.id))
-                    .filter(t => t.name.toLowerCase().includes(toolSearch.toLowerCase()) || t.type?.toLowerCase().includes(toolSearch.toLowerCase()))
-                    .map(t => (
-                      <button key={t.id}
-                        onClick={() => { update('tools', [...(agent.tools || []), { id: t.id, type: t.type, source: t.category }]); setToolSearch(''); }}
-                        className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
-                        style={{ borderBottom: '1px solid var(--color-border)' }}>
-                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                          style={{ background: t.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }} />
-                        <span className="font-medium">{t.name}</span>
-                        <span className="text-[10px] px-1 rounded ml-auto"
-                          style={{ background: t.type === 'MCP' ? '#8b5cf615' : '#f59e0b15',
-                            color: t.type === 'MCP' ? '#8b5cf6' : '#f59e0b' }}>
-                          {t.type}
-                        </span>
-                        {t.category && (
-                          <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{t.category}</span>
+            {/* Builtin Tools */}
+            <ToolSection
+              title="Builtin"
+              color="#f59e0b"
+              items={allTools.filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api')}
+              selectedIds={agent.tools?.map((t: ToolRef) => t.id) || []}
+              onToggle={(id, selected) => {
+                if (selected) {
+                  update('tools', agent.tools.filter((t: ToolRef) => t.id !== id));
+                } else {
+                  const tool = allTools.find(t => t.id === id);
+                  update('tools', [...(agent.tools || []), { id, type: 'BUILTIN', source: tool?.category }]);
+                }
+              }}
+            />
+
+            {/* MCP Tools */}
+            <ToolSection
+              title="MCP"
+              color="#8b5cf6"
+              items={allTools.filter(t => t.type === 'MCP')}
+              selectedIds={agent.tools?.map((t: ToolRef) => t.id) || []}
+              onToggle={(id, selected) => {
+                if (selected) {
+                  update('tools', agent.tools.filter((t: ToolRef) => t.id !== id));
+                } else {
+                  const tool = allTools.find(t => t.id === id);
+                  update('tools', [...(agent.tools || []), { id, type: 'MCP', source: tool?.category }]);
+                }
+              }}
+            />
+
+            {/* Service API Tools */}
+            <div className="mt-2 rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium cursor-pointer hover:bg-[var(--color-bg-tertiary)] rounded-lg"
+                onClick={() => { setShowApiPicker(!showApiPicker); if (!apiAppsLoaded) loadApiApps(); }}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ background: '#10b981' }} />
+                  <span>Service API</span>
+                  {agent.tools?.some((t: ToolRef) => t.id.startsWith('api-app:') || t.id.startsWith('api-service:') || t.id.startsWith('api-operation:')) && (
+                    <span className="text-[10px] px-1 rounded-full" style={{ background: '#10b98120', color: '#10b981' }}>
+                      {agent.tools.filter((t: ToolRef) => t.id.startsWith('api-app:') || t.id.startsWith('api-service:') || t.id.startsWith('api-operation:')).length}
+                    </span>
+                  )}
+                </div>
+                {showApiPicker ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              {showApiPicker && (
+                <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  {!apiAppsLoaded ? (
+                    <div className="px-3 py-2 text-xs flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+                      <Loader2 size={12} className="animate-spin" /> Loading...
+                    </div>
+                  ) : apiApps.length === 0 ? (
+                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No API apps available</div>
+                  ) : (
+                    <div className="max-h-[400px] overflow-auto">
+                    {apiApps.map(app => {
+                      const appAdded = agent.tools?.some((t: ToolRef) => t.id === `api-app:${app.name}`);
+                      return (
+                      <div key={app.name} className="border-t first:border-t-0" style={{ borderColor: 'var(--color-border)' }}>
+                        <div className="flex items-center px-3 py-1.5">
+                          <button
+                            className="flex-1 flex items-center gap-2 text-xs cursor-pointer text-left"
+                            onClick={() => toggleApiApp(app.name)}>
+                            {expandedApiApp === app.name ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            <span className="font-medium">{app.name}</span>
+                            {app.version && (
+                              <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>v{app.version}</span>
+                            )}
+                          </button>
+                          <button
+                            className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer"
+                            style={{
+                              background: appAdded ? 'var(--color-bg-tertiary)' : '#10b98120',
+                              color: appAdded ? 'var(--color-text-secondary)' : '#10b981',
+                            }}
+                            disabled={!!appAdded}
+                            onClick={() => addApiAppTool(app.name)}>
+                            {appAdded ? 'Added' : 'Add All'}
+                          </button>
+                        </div>
+                        {expandedApiApp === app.name && (
+                          <div className="pl-6 pb-1">
+                            {!apiAppServices[app.name] ? (
+                              <div className="px-3 py-1 text-xs flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+                                <Loader2 size={10} className="animate-spin" /> Loading...
+                              </div>
+                            ) : apiAppServices[app.name].length === 0 ? (
+                              <div className="px-3 py-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No services</div>
+                            ) : (
+                              apiAppServices[app.name].map(svc => {
+                                const svcToolId = `api-service:${app.name}:${svc.name}`;
+                                const svcAdded = agent.tools?.some((t: ToolRef) => t.id === svcToolId);
+                                const svcKey = `${app.name}:${svc.name}`;
+                                const isExpanded = expandedApiService === svcKey;
+                                return (
+                                  <div key={svc.name}>
+                                    <div className="flex items-center justify-between px-3 py-1 text-xs hover:bg-[var(--color-bg-tertiary)] rounded">
+                                      <button
+                                        className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer text-left"
+                                        onClick={() => setExpandedApiService(isExpanded ? null : svcKey)}>
+                                        {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                                        <span className="font-medium truncate">{svc.name}</span>
+                                        <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+                                          {svc.operation_count} ops
+                                        </span>
+                                      </button>
+                                      <button
+                                        className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer flex-shrink-0"
+                                        style={{
+                                          background: (svcAdded || appAdded) ? 'var(--color-bg-tertiary)' : '#10b98120',
+                                          color: (svcAdded || appAdded) ? 'var(--color-text-secondary)' : '#10b981',
+                                        }}
+                                        disabled={!!(svcAdded || appAdded)}
+                                        onClick={() => addApiServiceTool(app.name, svc.name)}>
+                                        {appAdded ? 'App added' : svcAdded ? 'Added' : 'Add All'}
+                                      </button>
+                                    </div>
+                                    {isExpanded && svc.operations && (
+                                      <div className="pl-6 pb-0.5">
+                                        {svc.operations.map(op => {
+                                          const opToolId = `api-operation:${app.name}:${svc.name}:${op.name}`;
+                                          const opAdded = agent.tools?.some((t: ToolRef) => t.id === opToolId);
+                                          const parentAdded = appAdded || svcAdded;
+                                          return (
+                                            <div key={op.name}
+                                              className="flex items-center justify-between px-3 py-0.5 text-xs hover:bg-[var(--color-bg-tertiary)] rounded">
+                                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                {op.method && (
+                                                  <span className="text-[9px] font-mono px-1 rounded flex-shrink-0"
+                                                    style={{
+                                                      background: op.method === 'GET' ? '#3b82f615' : op.method === 'POST' ? '#10b98115' : op.method === 'PUT' ? '#f59e0b15' : '#ef444415',
+                                                      color: op.method === 'GET' ? '#3b82f6' : op.method === 'POST' ? '#10b981' : op.method === 'PUT' ? '#f59e0b' : '#ef4444',
+                                                    }}>
+                                                    {op.method}
+                                                  </span>
+                                                )}
+                                                <span className="truncate">{op.name}</span>
+                                              </div>
+                                              <button
+                                                className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer flex-shrink-0"
+                                                style={{
+                                                  background: (opAdded || parentAdded) ? 'var(--color-bg-tertiary)' : '#10b98120',
+                                                  color: (opAdded || parentAdded) ? 'var(--color-text-secondary)' : '#10b981',
+                                                }}
+                                                disabled={!!(opAdded || parentAdded)}
+                                                onClick={() => addApiOperationTool(app.name, svc.name, op.name)}>
+                                                {parentAdded ? '✓' : opAdded ? 'Added' : 'Add'}
+                                              </button>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
                         )}
-                      </button>
-                    ))}
-                  {allTools.filter(t => !agent.tools?.some((tr: ToolRef) => tr.id === t.id))
-                    .filter(t => t.name.toLowerCase().includes(toolSearch.toLowerCase())).length === 0 && (
-                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching tools</div>
+                      </div>
+                      );
+                    })}
+                    </div>
                   )}
                 </div>
               )}
@@ -1177,6 +1377,62 @@ function RunDetailModal({ detail, onClose }: { detail: AgentRunDetail; onClose: 
 
 function tryFormatJson(str: string): string {
   try { return JSON.stringify(JSON.parse(str), null, 2); } catch { return str; }
+}
+
+function ToolSection({ title, color, items, selectedIds, onToggle }: {
+  title: string;
+  color: string;
+  items: ToolRegistryView[];
+  selectedIds: string[];
+  onToggle: (id: string, selected: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedCount = items.filter(t => selectedIds.includes(t.id)).length;
+
+  return (
+    <div className="mt-2 rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
+      <button
+        className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium cursor-pointer hover:bg-[var(--color-bg-tertiary)] rounded-lg"
+        onClick={() => setOpen(!open)}>
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+          <span>{title}</span>
+          {selectedCount > 0 && (
+            <span className="text-[10px] px-1 rounded-full" style={{ background: `${color}20`, color }}>
+              {selectedCount}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{items.length} available</span>
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </div>
+      </button>
+      {open && (
+        <div className="border-t max-h-[300px] overflow-auto" style={{ borderColor: 'var(--color-border)' }}>
+          {items.length === 0 ? (
+            <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No {title.toLowerCase()} tools available</div>
+          ) : (
+            items.map(t => {
+              const selected = selectedIds.includes(t.id);
+              return (
+                <label key={t.id}
+                  className="flex items-center gap-2.5 px-3 py-1.5 text-xs cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+                  style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  <input type="checkbox" checked={selected} onChange={() => onToggle(t.id, selected)}
+                    className="accent-current" style={{ accentColor: color }} />
+                  <span className="font-medium flex-1">{t.name}</span>
+                  {t.description && (
+                    <span className="text-[10px] truncate max-w-[200px]" style={{ color: 'var(--color-text-secondary)' }}>{t.description}</span>
+                  )}
+                </label>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function RunInlineDetail({ run, detail, onViewFull }: {

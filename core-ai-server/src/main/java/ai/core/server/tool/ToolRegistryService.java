@@ -338,6 +338,10 @@ public class ToolRegistryService {
         return internalApiToolLoader == null ? List.of() : internalApiToolLoader.listApiApps();
     }
 
+    public List<InternalApiToolLoader.ApiServiceInfo> listApiAppServices(String appName) {
+        return internalApiToolLoader == null ? List.of() : internalApiToolLoader.listApiAppServices(appName);
+    }
+
     public void reloadApiTools() {
         if (toolRefResolver != null) toolRefResolver.reloadApiTools();
     }

@@ -413,10 +413,18 @@ export interface ApiPayloadOperation {
   deprecated: boolean;
 }
 
-export interface ApiPayloadService {
+export interface ApiServiceView {
   name: string;
   description: string;
-  operations: ApiPayloadOperation[];
+  operation_count: number;
+  operations: ApiOperationView[];
+}
+
+export interface ApiOperationView {
+  name: string;
+  description: string;
+  method: string;
+  path: string;
 }
 
 export interface ApiPayloadTypeField {
@@ -609,6 +617,8 @@ export const api = {
       request<ToolRegistryView>(`/api/tools/mcp-servers/${id}/disable`, { method: 'PUT' }),
     listApiApps: () =>
       request<ListApiAppsResponse>('/api/tools/service-api/apps'),
+    listApiAppServices: (appName: string) =>
+      request<ListApiAppServicesResponse>(`/api/tools/service-api/apps/${appName}/services`),
   },
   serviceApis: {
     list: () =>

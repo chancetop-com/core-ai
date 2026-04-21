@@ -88,6 +88,11 @@ public class ToolRefResolver {
             return;
         }
 
+        if (apiToolLoader != null && InternalApiToolLoader.isApiToolId(toolRef.id)) {
+            result.addAll(apiToolLoader.loadByToolId(toolRef.id));
+            return;
+        }
+
         if (apiToolLoader != null && toolRef.source != null) {
             result.addAll(apiToolLoader.loadApiAppTools(toolRef.source));
         }

@@ -2,6 +2,7 @@ package ai.core.server.web;
 
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.tool.CreateMcpServerRequest;
+import ai.core.api.server.tool.ListApiAppServicesResponse;
 import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
@@ -71,6 +72,28 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
         var apps = toolRegistryService.listServiceApiApps();
         var response = new ListApiAppsResponse();
         response.apps = apps.stream().map(this::toApiAppView).toList();
+        return response;
+    }
+
+    @Override
+    public ListApiAppServicesResponse listApiAppServices(String appName) {
+        var services = toolRegistryService.listApiAppServices(appName);
+        var response = new ListApiAppServicesResponse();
+        response.services = services.stream().map(s -> {
+            var view = new ListApiAppServicesResponse.ApiServiceView();
+            view.name = s.name();
+            view.description = s.description();
+            view.operationCount = s.operationCount();
+            view.operations = s.operations().stream().map(op -> {
+                var opView = new ListApiAppServicesResponse.ApiOperationView();
+                opView.name = op.name();
+                opView.description = op.description();
+                opView.method = op.method();
+                opView.path = op.path();
+                return opView;
+            }).toList();
+            return view;
+        }).toList();
         return response;
     }
 

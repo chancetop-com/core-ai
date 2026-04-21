@@ -1,6 +1,7 @@
 package ai.core.api.server;
 
 import ai.core.api.server.tool.CreateMcpServerRequest;
+import ai.core.api.server.tool.ListApiAppServicesResponse;
 import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
@@ -53,4 +54,8 @@ public interface ToolRegistryWebService {
     @GET
     @Path("/api/tools/service-api/apps")
     ListApiAppsResponse listServiceApiApps();
+
+    @GET
+    @Path("/api/tools/service-api/apps/:appName/services")
+    ListApiAppServicesResponse listApiAppServices(@PathParam("appName") String appName);
 }

@@ -30,9 +30,10 @@ public class InternalApiToolLoader {
 
     public static final String API_APP_PREFIX = "api-app:";
     public static final String API_SERVICE_PREFIX = "api-service:";
+    public static final String API_OPERATION_PREFIX = "api-operation:";
 
     public static boolean isApiToolId(String toolId) {
-        return toolId != null && (toolId.startsWith(API_APP_PREFIX) || toolId.startsWith(API_SERVICE_PREFIX));
+        return toolId != null && (toolId.startsWith(API_APP_PREFIX) || toolId.startsWith(API_SERVICE_PREFIX) || toolId.startsWith(API_OPERATION_PREFIX));
     }
 
     @Inject
@@ -126,10 +127,59 @@ public class InternalApiToolLoader {
         return loadTools(filteredApis);
     }
 
+    public List<ToolCall> loadApiOperationTools(String appName, String serviceName, String operationName) {
+        if (apiDefinitionService == null) {
+            LOGGER.warn("ApiDefinitionService not available");
+            return List.of();
+        }
+
+        var apis = apiDefinitionService.loadAll().stream()
+                .filter(api -> api.app.equals(appName))
+                .toList();
+
+        if (apis.isEmpty()) {
+            LOGGER.debug("No API definition found for app: {}", appName);
+            return List.of();
+        }
+
+        var filteredApis = apis.stream()
+                .map(api -> {
+                    var filtered = new ApiDefinition();
+                    filtered.app = api.app;
+                    filtered.baseUrl = api.baseUrl;
+                    filtered.version = api.version;
+                    filtered.services = api.services.stream()
+                            .filter(s -> s.name.equals(serviceName))
+                            .map(s -> {
+                                var svc = new ApiDefinition.Service();
+                                svc.name = s.name;
+                                svc.description = s.description;
+                                svc.operations = s.operations.stream()
+                                        .filter(op -> op.name.equals(operationName))
+                                        .toList();
+                                return svc;
+                            })
+                            .filter(s -> !s.operations.isEmpty())
+                            .toList();
+                    filtered.types = api.types;
+                    return filtered;
+                })
+                .filter(api -> !api.services.isEmpty())
+                .toList();
+
+        return loadTools(filteredApis);
+    }
+
     public List<ToolCall> loadByToolId(String toolId) {
         if (toolId.startsWith(API_APP_PREFIX)) {
             var appName = toolId.substring(API_APP_PREFIX.length());
             return loadApiAppTools(appName);
+        } else if (toolId.startsWith(API_OPERATION_PREFIX)) {
+            var remaining = toolId.substring(API_OPERATION_PREFIX.length());
+            var parts = remaining.split(":", 3);
+            if (parts.length == 3) {
+                return loadApiOperationTools(parts[0], parts[1], parts[2]);
+            }
         } else if (toolId.startsWith(API_SERVICE_PREFIX)) {
             var remaining = toolId.substring(API_SERVICE_PREFIX.length());
             var colonIdx = remaining.indexOf(':');
@@ -260,5 +310,26 @@ public class InternalApiToolLoader {
     }
 
     public record ApiAppInfo(String app, String baseUrl, String version, String description) {
+    }
+
+    public record ApiServiceInfo(String name, String description, int operationCount, List<ApiOperationInfo> operations) {
+    }
+
+    public record ApiOperationInfo(String name, String description, String method, String path) {
+    }
+
+    public List<ApiServiceInfo> listApiAppServices(String appName) {
+        if (apiDefinitionService == null) return List.of();
+        return apiDefinitionService.loadAll().stream()
+                .filter(api -> api.app.equals(appName))
+                .flatMap(api -> api.services.stream())
+                .map(s -> new ApiServiceInfo(
+                        s.name,
+                        s.description,
+                        s.operations != null ? s.operations.size() : 0,
+                        s.operations != null ? s.operations.stream()
+                                .map(op -> new ApiOperationInfo(op.name, op.description, op.method, op.path))
+                                .toList() : List.of()))
+                .toList();
     }
 }

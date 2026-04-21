@@ -8,6 +8,7 @@ import type { SseEvent, HistoryMessage } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import ResourcePicker from './ResourcePicker';
+import ToolPickerModal from './ToolPickerModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
 
 interface AwaitInfo {
@@ -1070,15 +1071,8 @@ export default function Chat() {
 
       {/* Tool Picker Modal */}
       {showToolPicker && (
-        <ResourcePicker
-          title="Load Tools"
-          items={availableTools.map(t => ({
-            id: t.id,
-            name: t.name,
-            description: t.description,
-            type: t.type,
-            category: t.category,
-          }))}
+        <ToolPickerModal
+          availableTools={availableTools}
           loading={toolsLoading}
           loadedIds={loadedToolIds}
           pendingIds={preToolIds}
