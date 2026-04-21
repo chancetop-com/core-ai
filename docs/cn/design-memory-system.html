@@ -340,7 +340,7 @@
             <text x="38" y="163" font-size="10" fill="#a78bfa" font-weight="bold" font-family="sans-serif">② daily-logs / .learning</text>
             <text x="38" y="179" font-size="9" fill="#94a3b8" font-family="sans-serif">结构化事件记录 · 待消化</text>
             <text x="38" y="194" font-size="8" fill="#64748b" font-family="sans-serif">处理时间 · 障碍&amp;应对 · 用户反馈 · 最终结果</text>
-            <text x="38" y="209" font-size="8" fill="#64748b" font-family="sans-serif">探索阶段 + 开发阶段完整上下文</text>
+            <text x="38" y="209" font-size="8" fill="#64748b" font-family="sans-serif">用户处理事件级别的完整上下文</text>
 
             <!-- ②→③ arrow -->
             <path d="M 187 219 L 187 241" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)" stroke-dasharray="4,2"/>
@@ -349,10 +349,8 @@
             <!-- ③ episodes -->
             <rect x="18" y="243" width="338" height="68" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
             <text x="38" y="263" font-size="10" fill="#a78bfa" font-weight="bold" font-family="sans-serif">③ episodes / 每日总结</text>
-            <text x="38" y="279" font-size="9" fill="#94a3b8" font-family="sans-serif">当日摘要 · refs 指针 · 按日索引</text>
-            <text x="38" y="294" font-size="8" fill="#22d3ee" font-family="sans-serif">agentic search 入口 · O(days) 检索复杂度</text>
-            <text x="38" y="308" font-size="8" fill="#64748b" font-family="sans-serif">踩坑/解法 → ④ knowledge · 不存于本层</text>
-
+            <text x="38" y="279" font-size="9" fill="#94a3b8" font-family="sans-serif">当日摘要 · refs 指针 · 按日创建索引文件</text>
+            <text x="38" y="294" font-size="8" fill="#22d3ee" font-family="sans-serif">agentic search 入口 </text>
             <!-- ③→④ arrow -->
             <path d="M 187 311 L 187 333" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)" stroke-dasharray="4,2"/>
             <text x="197" y="327" font-size="7" fill="#a78bfa" font-family="sans-serif">Independent Agent 提取</text>
@@ -362,15 +360,15 @@
             <text x="38" y="355" font-size="10" fill="#4ade80" font-weight="bold" font-family="sans-serif">④ knowledge / domain</text>
             <text x="38" y="371" font-size="9" fill="#94a3b8" font-family="sans-serif">Memory.md 索引 + 领域文件</text>
             <text x="38" y="386" font-size="8" fill="#22d3ee" font-family="sans-serif">最终知识检索层 · project / user / feedback / reference</text>
-            <text x="38" y="400" font-size="8" fill="#22d3ee" font-family="sans-serif">Main Agent 执行路径与 Independent Agent 一致</text>
+            <text x="38" y="400" font-size="8" fill="#22d3ee" font-family="sans-serif">Main Agent and Independent Agent 执行最终结果目标</text>
 
             <!-- ④→⑤ Promotion arrow — Dream Task -->
             <path d="M 187 403 L 187 425" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowYellow)" stroke-dasharray="4,2"/>
-            <text x="197" y="419" font-size="7" fill="#fbbf24" font-family="sans-serif">Dream Task · Preference Promotion</text>
+            <text x="197" y="419" font-size="7" fill="#fbbf24" font-family="sans-serif">Dream Task · 验证后的知识晋升</text>
 
             <!-- ⑤ Promotion targets -->
             <rect x="18" y="427" width="338" height="113" rx="8" fill="rgba(15,23,42,0.7)" stroke="#475569" stroke-width="1"/>
-            <text x="187" y="444" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">⑤ Preference Promotion — 按类型路由至三目标</text>
+            <text x="187" y="444" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">⑤ Preference Promotion — 按类型整理至三目标</text>
 
             <rect x="24" y="450" width="103" height="82" rx="7" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
             <text x="75" y="469" text-anchor="middle" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">preferences.md</text>
@@ -406,6 +404,8 @@
             <text x="395" y="148" font-size="8" fill="#94a3b8" font-family="sans-serif">Session → daily-logs → episodes → knowledge</text>
             <text x="395" y="163" font-size="8" fill="#64748b" font-family="sans-serif">async · 独立上下文 · 不阻塞主流程</text>
             <text x="395" y="178" font-size="8" fill="#64748b" font-family="sans-serif">fork 独立 agent · 不占主 context window</text>
+            <text x="395" y="193" font-size="8" fill="#64748b" font-family="sans-serif">限制执行轮次，避免执行异常</text>
+
             <!-- Session → Independent Agent (读取), Independent Agent → ②③④ (写入) -->
             <path d="M 358 87 L 383 100" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
             <path d="M 386 140 L 358 190" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrowPurple)" stroke-dasharray="3,2" opacity="0.7"/>
@@ -440,8 +440,8 @@
             <rect x="386" y="458" width="248" height="82" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
             <text x="510" y="478" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="bold" font-family="sans-serif">Dream Task</text>
             <text x="395" y="496" font-size="9" fill="#94a3b8" font-family="sans-serif"> 每 24h </text>
-            <text x="395" y="511" font-size="8" fill="#fbbf24" font-family="sans-serif">读取全部历史（②③④ + 更早内容）</text>
-            <text x="395" y="526" font-size="8" fill="#fbbf24" font-family="sans-serif">跨 session 聚合 → Preference Promotion</text>
+            <text x="395" y="511" font-size="8" fill="#fbbf24" font-family="sans-serif">agentic 读取全部历史（②③④ + 更早内容）</text>
+            <text x="395" y="526" font-size="8" fill="#fbbf24" font-family="sans-serif">置信度高的知识 → Preference Promotion</text>
             <text x="395" y="532" font-size="7" fill="#64748b" font-family="sans-serif">→ preferences / soul / CLAUDE.md</text>
             <!-- arrow → ⑤ Promotion (bottom of pipeline) -->
             <path d="M 386 510 L 358 480" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowYellow)"/>
@@ -523,13 +523,11 @@
     <div style="margin-bottom:1.2rem;">
         <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.4rem;">
             <span style="background:rgba(56,189,248,0.15);color:var(--accent-blue);border:1px solid rgba(56,189,248,0.4);border-radius:6px;padding:0.15rem 0.6rem;font-size:0.78rem;font-weight:600;">② daily-logs</span>
-            <code style="color:var(--text-secondary);font-size:0.82rem;">2026-03-28-grubhub_menu_crawler.md</code>
+            <code style="color:var(--text-secondary);font-size:0.82rem;">2026-03-28/grubhub_menu_crawler.md</code>
         </div>
         <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:1.1rem 1.3rem;font-size:0.78rem;line-height:1.7;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;">---
 task: grubhub.com 菜单爬虫开发
 date: 2026-03-28
-duration: ~3h
-status: completed
 result: grubhub_menu.py，11 分类，95 菜品，耗时约 20s
 ---</span>
 
@@ -567,7 +565,7 @@ date: 2026-03-28  |  sessions: 1  |  key_skills: [crawler]
 ---</span>
 <span style="color:#fbbf24;">## 今日摘要</span>
 
-(10:30:34) 进行grubhub.com 菜单内容的网页探索和爬虫开发，获取到菜单数据：11 分类，95 菜品。执行过程中关键用户反馈：验证结果正确，数据格式符合预期。[daily-logs/2026-03-28-grubhub_menu_crawler.md]
+updatetime:(10:30:34) 进行grubhub.com 菜单内容的网页探索和爬虫开发，获取到菜单数据：11 分类，95 菜品。执行过程中关键用户反馈：验证结果正确，数据格式符合预期。[daily-logs/2026-03-28/grubhub_menu_crawler.md]
 </pre>
     </div>
     <!-- Layer ④ knowledge -->
@@ -700,12 +698,11 @@ description: 外部系统的指针与查阅入口，
             </div>
             <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#fbbf24;">## 爬虫任务完成后</span>
 用户在任务完成后会主动
-要求提炼"可复用模式"。
+要求提炼"可复用模式"。(source: grubhub-2026-03-28)
 每次爬虫完成后，主动
 提议提炼并写入知识库。
 
-<span style="color:#64748b;">source: grubhub-2026-03-28
-confirmed: 1 session</span></pre>
+</pre>
         </div>
         <!-- soul.md -->
         <div>
@@ -718,9 +715,7 @@ API 拦截而非 DOM 抓取。
 DOM 在虚拟化渲染下不
 可靠；API 响应更稳定且
 包含完整数据。
-
-<span style="color:#64748b;">source: grubhub-2026-03-28
-confirmed: 1 session</span></pre>
+</pre>
         </div>
         <!-- CLAUDE.md -->
         <div>
@@ -733,13 +728,9 @@ headless=False 启动。
 headless=True 反爬效果差，
 禁止在爬虫任务中使用。
 
-<span style="color:#64748b;">source: grubhub-2026-03-28
-confirmed: 1 session</span></pre>
+</pre>
         </div>
     </div>
-    <p style="color:var(--text-secondary);font-size:0.78rem;margin-top:0.5rem;margin-bottom:2rem;">
-        ⚠️ preferences.md / soul.md / CLAUDE.md 中标注 <code>confirmed: 1 session</code> 的条目为候选状态，需经 Dream Task 跨 session 稳定性验证后才正式生效。
-    </p>
 
     
 <!-- ===== 12. 本设计的具体映射确认 ===== -->
