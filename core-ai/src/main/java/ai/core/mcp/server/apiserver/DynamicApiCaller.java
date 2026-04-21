@@ -80,7 +80,7 @@ public class DynamicApiCaller {
         }
         var req = new HTTPRequest(HTTPMethod.valueOf(operation.method), url);
         req.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
-        req.headers.put("ref-id", ActionLogContext.id());
+//        req.headers.put("ref-id", ActionLogContext.id());
         ActionLogContext.put("mcp-call-api-url", url);
         if (operation.requestType != null) {
             var requestType = typeMap.get(apiDefinition.app).get(operation.requestType);
