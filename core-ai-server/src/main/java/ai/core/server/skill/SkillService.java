@@ -214,7 +214,29 @@ public class SkillService {
     }
 
     public SkillDefinition download(String id) {
-        return get(id);
+        var entity = get(id);
+        if (!skillStorage.exists(entity.namespace, entity.name)) {
+            return entity;
+        }
+        if (entity.content == null) {
+            entity.content = skillStorage.readSkillMd(entity.namespace, entity.name);
+        }
+        if (entity.resources == null) {
+            var paths = skillStorage.listResources(entity.namespace, entity.name);
+            if (!paths.isEmpty()) {
+                var loaded = new ArrayList<SkillResource>(paths.size());
+                for (var path : paths) {
+                    var resource = new SkillResource();
+                    resource.path = path;
+                    resource.content = new String(
+                        skillStorage.readResource(entity.namespace, entity.name, path),
+                        StandardCharsets.UTF_8);
+                    loaded.add(resource);
+                }
+                entity.resources = loaded;
+            }
+        }
+        return entity;
     }
 
     public List<SkillMetadata> resolveSkills(List<String> skillIds) {
