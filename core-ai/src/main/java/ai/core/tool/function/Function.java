@@ -30,13 +30,17 @@ public class Function extends ToolCall {
     ResponseConverter responseConverter = new DefaultJsonResponseConverter();
     Logger logger = LoggerFactory.getLogger(Function.class);
 
+    @SuppressWarnings("unchecked")
     private String executeSupport(String text, ExecutionContext context) throws InvocationTargetException, IllegalAccessException {
+        var argsMap = JsonUtil.fromJson(Map.class, text);
+        if (context.getCustomVariables() != null) {
+            argsMap.putAll(context.getCustomVariables());
+        }
         if (dynamicArguments != null && dynamicArguments) {
             // args convert by method itself
-            var rst = method.invoke(object, List.of(this.getName(), text).toArray());
+            var rst = method.invoke(object, List.of(this.getName(), JsonUtil.toJson(argsMap)).toArray());
             return responseConverter.convert(rst);
         }
-        var argsMap = JsonUtil.fromJson(Map.class, text);
         var methodParams = method.getParameters();
         var args = new Object[methodParams.length];
 
