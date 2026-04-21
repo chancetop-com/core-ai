@@ -4,6 +4,7 @@ import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionState;
 import core.framework.inject.Inject;
+import core.framework.log.ActionLogContext;
 import core.framework.web.Request;
 import core.framework.web.sse.Channel;
 import core.framework.web.sse.ChannelListener;
@@ -25,6 +26,7 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
 
     @Override
     public void onConnect(Request request, Channel<SseBaseEvent> channel, String lastEventId) {
+        ActionLogContext.triggerTrace(true);
         var sessionId = request.queryParams().get(SESSION_ID_KEY);
         if (sessionId == null || sessionId.isBlank()) {
             channel.close();
