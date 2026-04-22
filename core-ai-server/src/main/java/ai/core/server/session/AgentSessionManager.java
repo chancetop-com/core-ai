@@ -10,6 +10,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillService;
+import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.skill.SkillMetadata;
@@ -65,6 +66,9 @@ public class AgentSessionManager {
 
     @Inject
     SandboxService sandboxService;
+
+    @Inject
+    SystemPromptService systemPromptService;
 
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         session.onEvent(chatMessageService.listener(sessionId));
@@ -184,9 +188,12 @@ public class AgentSessionManager {
         var snapshot = new SessionState.AgentConfigSnapshot();
         snapshot.agentName = def.name;
         snapshot.systemPrompt = pub != null && pub.systemPrompt != null ? pub.systemPrompt : def.systemPrompt;
+        snapshot.systemPromptId = pub != null && pub.systemPromptId != null ? pub.systemPromptId : def.systemPromptId;
         snapshot.model = pub != null && pub.model != null ? pub.model : def.model;
         snapshot.temperature = pub != null && pub.temperature != null ? pub.temperature : def.temperature;
         snapshot.maxTurns = pub != null && pub.maxTurns != null ? pub.maxTurns : def.maxTurns;
+        snapshot.inputTemplate = pub != null && pub.inputTemplate != null ? pub.inputTemplate : def.inputTemplate;
+        snapshot.variables = pub != null && pub.variables != null ? pub.variables : def.variables;
         snapshot.tools = pub != null && pub.tools != null && !pub.tools.isEmpty() ? pub.tools : def.tools;
         return snapshot;
     }
@@ -206,7 +213,7 @@ public class AgentSessionManager {
 
     private InProcessAgentSession rebuildFromSnapshot(String sessionId, SessionState.AgentConfigSnapshot snapshot, String userId) {
         var config = new SessionConfig();
-        config.systemPrompt = snapshot.systemPrompt;
+        config.systemPrompt = snapshot.systemPromptId != null ? systemPromptService.resolveContent(snapshot.systemPromptId) : snapshot.systemPrompt;
         config.model = snapshot.model;
         config.temperature = snapshot.temperature;
         config.maxTurns = snapshot.maxTurns;
@@ -389,7 +396,9 @@ public class AgentSessionManager {
     private SessionConfig toSessionConfig(AgentDefinition definition) {
         var config = new SessionConfig();
         var source = definition.publishedConfig != null ? definition.publishedConfig : null;
-        config.systemPrompt = source != null && source.systemPrompt != null ? source.systemPrompt : definition.systemPrompt;
+        var systemPromptId = source != null && source.systemPromptId != null ? source.systemPromptId : definition.systemPromptId;
+        var inlineSystemPrompt = source != null && source.systemPrompt != null ? source.systemPrompt : definition.systemPrompt;
+        config.systemPrompt = systemPromptId != null ? systemPromptService.resolveContent(systemPromptId) : inlineSystemPrompt;
         config.model = source != null && source.model != null ? source.model : definition.model;
         config.temperature = source != null && source.temperature != null ? source.temperature : definition.temperature;
         config.maxTurns = source != null && source.maxTurns != null ? source.maxTurns : definition.maxTurns;
