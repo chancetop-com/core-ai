@@ -26,6 +26,27 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, string
   return { frontmatter: fm, body: match[2] };
 }
 
+function groupResources(resources: SkillFile[]): { folders: Array<{ name: string; files: SkillFile[] }>; rootFiles: SkillFile[] } {
+  const byFolder = new Map<string, SkillFile[]>();
+  const rootFiles: SkillFile[] = [];
+  for (const r of resources) {
+    const slash = r.path.indexOf('/');
+    if (slash < 0) {
+      rootFiles.push(r);
+    } else {
+      const folder = r.path.slice(0, slash);
+      const list = byFolder.get(folder) ?? [];
+      list.push(r);
+      byFolder.set(folder, list);
+    }
+  }
+  const folders = Array.from(byFolder.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, files]) => ({ name, files }));
+  rootFiles.sort((a, b) => a.path.localeCompare(b.path));
+  return { folders, rootFiles };
+}
+
 function buildSkillMdContent(fm: Record<string, string | string[]>, body: string): string {
   const lines = ['---'];
   for (const [k, v] of Object.entries(fm)) {
@@ -56,12 +77,11 @@ export default function SkillEditor() {
   const [resources, setResources] = useState<SkillFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<string>(SKILL_MD);
 
-  const [expandScripts, setExpandScripts] = useState(true);
-  const [expandRefs, setExpandRefs] = useState(true);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
   const [showNewFile, setShowNewFile] = useState(false);
   const [newFileName, setNewFileName] = useState('');
-  const [newFileDir, setNewFileDir] = useState<'scripts' | 'references'>('scripts');
+  const [newFileDir, setNewFileDir] = useState<string>('scripts');
 
   const uploadRef = useRef<HTMLInputElement>(null);
 
@@ -90,8 +110,10 @@ export default function SkillEditor() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  const scriptFiles = resources.filter(r => r.path.startsWith('scripts/'));
-  const refFiles = resources.filter(r => r.path.startsWith('references/'));
+  const { folders, rootFiles } = groupResources(resources);
+  const toggleFolder = (name: string) =>
+    setExpandedFolders(prev => ({ ...prev, [name]: prev[name] === false }));
+  const isFolderExpanded = (name: string) => expandedFolders[name] !== false;
 
   const selectedContent = selectedFile === SKILL_MD
     ? skillBody
@@ -139,7 +161,8 @@ export default function SkillEditor() {
   const handleNewFile = () => {
     const fname = newFileName.trim();
     if (!fname) return;
-    const path = `${newFileDir}/${fname}`;
+    const dir = newFileDir.trim().replace(/^\/+|\/+$/g, '');
+    const path = dir ? `${dir}/${fname}` : fname;
     if (resources.some(r => r.path === path)) {
       alert(`File "${path}" already exists`);
       return;
@@ -156,7 +179,8 @@ export default function SkillEditor() {
     const reader = new FileReader();
     reader.onload = () => {
       const content = reader.result as string;
-      const path = `scripts/${file.name}`;
+      const dir = newFileDir.trim().replace(/^\/+|\/+$/g, '');
+      const path = dir ? `${dir}/${file.name}` : file.name;
       if (resources.some(r => r.path === path)) {
         if (!confirm(`File "${path}" already exists. Overwrite?`)) return;
         setResources(prev => prev.map(r => r.path === path ? { ...r, content } : r));
@@ -327,22 +351,24 @@ export default function SkillEditor() {
               selected={selectedFile === SKILL_MD}
               onClick={() => setSelectedFile(SKILL_MD)} />
 
-            <FolderItem name="scripts" expanded={expandScripts}
-              onToggle={() => setExpandScripts(!expandScripts)} count={scriptFiles.length} />
-            {expandScripts && scriptFiles.map(f => (
-              <FileItem key={f.path} name={f.path.replace('scripts/', '')} indent
+            {rootFiles.map(f => (
+              <FileItem key={f.path} name={f.path} icon={<FileText size={14} />}
                 selected={selectedFile === f.path}
                 onClick={() => setSelectedFile(f.path)}
                 onDelete={() => handleDeleteFile(f.path)} />
             ))}
 
-            <FolderItem name="references" expanded={expandRefs}
-              onToggle={() => setExpandRefs(!expandRefs)} count={refFiles.length} />
-            {expandRefs && refFiles.map(f => (
-              <FileItem key={f.path} name={f.path.replace('references/', '')} indent
-                selected={selectedFile === f.path}
-                onClick={() => setSelectedFile(f.path)}
-                onDelete={() => handleDeleteFile(f.path)} />
+            {folders.map(folder => (
+              <div key={folder.name}>
+                <FolderItem name={folder.name} expanded={isFolderExpanded(folder.name)}
+                  onToggle={() => toggleFolder(folder.name)} count={folder.files.length} />
+                {isFolderExpanded(folder.name) && folder.files.map(f => (
+                  <FileItem key={f.path} name={f.path.slice(folder.name.length + 1)} indent
+                    selected={selectedFile === f.path}
+                    onClick={() => setSelectedFile(f.path)}
+                    onDelete={() => handleDeleteFile(f.path)} />
+                ))}
+              </div>
             ))}
           </div>
 
@@ -387,20 +413,10 @@ export default function SkillEditor() {
           <div className="rounded-xl p-5 w-96" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
             <h3 className="text-sm font-semibold mb-3">New File</h3>
             <div className="mb-3">
-              <label className="text-xs mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>Directory</label>
-              <div className="flex gap-2">
-                {(['scripts', 'references'] as const).map(d => (
-                  <button key={d} onClick={() => setNewFileDir(d)}
-                    className="px-3 py-1.5 rounded-lg text-xs border cursor-pointer"
-                    style={{
-                      borderColor: newFileDir === d ? 'var(--color-primary)' : 'var(--color-border)',
-                      background: newFileDir === d ? 'var(--color-primary)' : 'transparent',
-                      color: newFileDir === d ? 'white' : 'var(--color-text)',
-                    }}>
-                    {d}/
-                  </button>
-                ))}
-              </div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>Directory (optional, e.g. scripts, references, eval)</label>
+              <input value={newFileDir} onChange={e => setNewFileDir(e.target.value)}
+                placeholder="leave empty for root"
+                className="w-full px-3 py-1.5 rounded-lg border text-sm" style={inputStyle} />
             </div>
             <div className="mb-4">
               <label className="text-xs mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>File Name</label>

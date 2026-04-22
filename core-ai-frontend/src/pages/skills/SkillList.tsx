@@ -74,7 +74,7 @@ export default function SkillList() {
       const innerPath = parts.slice(1).join('/');
       if (innerPath === 'SKILL.md') {
         skillFile = file;
-      } else if (innerPath.startsWith('scripts/') || innerPath.startsWith('references/')) {
+      } else if (innerPath && !innerPath.startsWith('.') && !innerPath.includes('/.')) {
         resourceFiles.push(new File([file], innerPath, { type: file.type }));
       }
     }

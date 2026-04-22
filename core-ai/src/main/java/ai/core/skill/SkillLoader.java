@@ -151,20 +151,16 @@ public class SkillLoader {
     }
 
     List<String> scanResources(Path skillDir) {
-        String[] subDirs = {"scripts", "references"};
         List<String> result = new ArrayList<>();
-        for (String sub : subDirs) {
-            Path subDir = skillDir.resolve(sub);
-            if (!Files.isDirectory(subDir)) continue;
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(subDir)) {
-                for (Path entry : stream) {
-                    if (Files.isRegularFile(entry)) {
-                        result.add(sub + "/" + entry.getFileName().toString());
-                    }
-                }
-            } catch (IOException e) {
-                LOGGER.warn("Failed to scan resources in {}: {}", subDir, e.getMessage());
-            }
+        try (var walk = Files.walk(skillDir)) {
+            walk.filter(Files::isRegularFile).forEach(f -> {
+                var rel = skillDir.relativize(f).toString().replace('\\', '/');
+                if (rel.isEmpty() || "SKILL.md".equals(rel)) return;
+                if (rel.startsWith(".") || rel.contains("/.")) return;
+                result.add(rel);
+            });
+        } catch (IOException e) {
+            LOGGER.warn("Failed to scan resources in {}: {}", skillDir, e.getMessage());
         }
         Collections.sort(result);
         return result;

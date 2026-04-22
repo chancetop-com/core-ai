@@ -684,6 +684,15 @@ func handleSkillMaterialize(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func isExecutableExtension(path string) bool {
+	lower := strings.ToLower(path)
+	return strings.HasSuffix(lower, ".sh") ||
+		strings.HasSuffix(lower, ".py") ||
+		strings.HasSuffix(lower, ".pl") ||
+		strings.HasSuffix(lower, ".rb") ||
+		strings.HasSuffix(lower, ".js")
+}
+
 func extractZip(data []byte, targetDir string) error {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -708,7 +717,7 @@ func extractZip(data []byte, targetDir string) error {
 			return err
 		}
 		mode := os.FileMode(0644)
-		if strings.HasPrefix(f.Name, "scripts/") {
+		if isExecutableExtension(f.Name) {
 			mode = 0755
 		}
 		out, err := os.OpenFile(cleanDest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
