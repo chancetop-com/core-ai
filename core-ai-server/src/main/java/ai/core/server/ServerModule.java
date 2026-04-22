@@ -145,6 +145,7 @@ public class ServerModule extends Module {
                 var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
                 provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
             } else {
+                bind(new SandboxService());
                 return;
             }
             var sandboxService = bind(new SandboxService(provider));
