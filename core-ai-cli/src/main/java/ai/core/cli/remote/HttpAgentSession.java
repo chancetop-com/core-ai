@@ -194,6 +194,11 @@ public final class HttpAgentSession implements AgentSession {
 
     @Override
     public void sendMessage(String message) {
+        sendMessage(message, null);
+    }
+
+    @Override
+    public void sendMessage(String message, Map<String, Object> variables) {
         api.post("/api/sessions/" + sessionId + "/messages", Map.of("message", message));
     }
 

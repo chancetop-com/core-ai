@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -101,17 +102,17 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     }
 
     private SessionState.AgentConfigSnapshot buildAgentConfigSnapshot(ai.core.server.domain.AgentDefinition agent) {
-        var toolRefs = agent.publishedConfig != null ? agent.publishedConfig.tools : agent.tools;
+        var published = agent.publishedConfig;
+        var toolRefs = published != null ? published.tools : agent.tools;
         var snapshot = new SessionState.AgentConfigSnapshot();
         snapshot.agentName = agent.name;
-        snapshot.systemPrompt = agent.publishedConfig != null && agent.publishedConfig.systemPrompt != null
-                ? agent.publishedConfig.systemPrompt : agent.systemPrompt;
-        snapshot.model = agent.publishedConfig != null && agent.publishedConfig.model != null
-                ? agent.publishedConfig.model : agent.model;
-        snapshot.temperature = agent.publishedConfig != null && agent.publishedConfig.temperature != null
-                ? agent.publishedConfig.temperature : agent.temperature;
-        snapshot.maxTurns = agent.publishedConfig != null && agent.publishedConfig.maxTurns != null
-                ? agent.publishedConfig.maxTurns : agent.maxTurns;
+        snapshot.systemPrompt = published != null && published.systemPrompt != null ? published.systemPrompt : agent.systemPrompt;
+        snapshot.systemPromptId = published != null && published.systemPromptId != null ? published.systemPromptId : agent.systemPromptId;
+        snapshot.model = published != null && published.model != null ? published.model : agent.model;
+        snapshot.temperature = published != null && published.temperature != null ? published.temperature : agent.temperature;
+        snapshot.maxTurns = published != null && published.maxTurns != null ? published.maxTurns : agent.maxTurns;
+        snapshot.inputTemplate = published != null && published.inputTemplate != null ? published.inputTemplate : agent.inputTemplate;
+        snapshot.variables = published != null && published.variables != null ? published.variables : agent.variables;
         snapshot.tools = toolRefs;
         return snapshot;
     }
@@ -179,7 +180,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("session_id", sessionId);
         var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         chatMessageService.writeUserMessage(sessionId, request.message);
-        session.sendMessage(request.message);
+        session.sendMessage(request.message, request.variables != null ? new HashMap<>(request.variables) : null);
     }
 
     @Override

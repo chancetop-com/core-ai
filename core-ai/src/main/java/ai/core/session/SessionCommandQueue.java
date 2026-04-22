@@ -3,6 +3,7 @@ package ai.core.session;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.locks.Condition;
@@ -21,12 +22,12 @@ public class SessionCommandQueue {
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition notEmpty = lock.newCondition();
 
-    public void enqueueUserInput(String value) {
-        enqueue(new QueuedCommand(CommandMode.USER_INPUT, value));
+    public void enqueueUserInput(String value, Map<String, Object> variables) {
+        enqueue(new QueuedCommand(CommandMode.USER_INPUT, new QueuedMessage(value, variables)));
     }
 
     public void enqueueTaskNotification(String value) {
-        enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, value));
+        enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, null));
     }
 
     private void enqueue(QueuedCommand command) {
@@ -48,7 +49,7 @@ public class SessionCommandQueue {
         try {
             if (queue.isEmpty()) return new CommandBatch(null, List.of());
             var targetMode = queue.peek().mode();
-            var values = new ArrayList<String>();
+            var values = new ArrayList<QueuedMessage>();
             while (!queue.isEmpty() && queue.peek().mode() == targetMode) {
                 values.add(queue.poll().value());
             }
@@ -92,9 +93,15 @@ public class SessionCommandQueue {
         }
     }
 
-    public record QueuedCommand(CommandMode mode, String value) { }
+    public record QueuedMessage(String value, Map<String, Object> variables) {
 
-    public record CommandBatch(CommandMode mode, List<String> values) {
+    }
+
+    public record QueuedCommand(CommandMode mode, QueuedMessage value) {
+
+    }
+
+    public record CommandBatch(CommandMode mode, List<QueuedMessage> values) {
         public boolean isEmpty() {
             return values.isEmpty();
         }

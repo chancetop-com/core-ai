@@ -1,6 +1,7 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
+import ai.core.agent.ExecutionContext;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.agent.lifecycle.PlanUpdateLifecycle;
 import ai.core.api.server.session.AgentEvent;
@@ -25,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -73,8 +75,13 @@ public class InProcessAgentSession implements AgentSession {
 
     @Override
     public void sendMessage(String message) {
+        sendMessage(message, null);
+    }
+
+    @Override
+    public void sendMessage(String message, Map<String, Object> variables) {
         agent.resetCancellation();
-        commandQueue.enqueueUserInput(message);
+        commandQueue.enqueueUserInput(message, variables);
     }
 
     private void executeCommands(SessionCommandQueue.CommandBatch batch) {
@@ -111,12 +118,12 @@ public class InProcessAgentSession implements AgentSession {
         }
     }
 
-    private void executeUserInput(List<String> values, long inputBefore, long outputBefore) {
-        var combined = String.join("\n", values);
+    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore) {
+        var combined = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("agent run starting");
         String result;
         try {
-            result = agent.run(combined);
+            result = agent.run(combined, ExecutionContext.builder().customVariables(values.getLast().variables()).build());
         } catch (MaxTurnsExceededException e) {
             debug("agent exceeded max turns: " + e.maxTurns);
             if (agent.hasPersistenceProvider()) {
@@ -145,8 +152,8 @@ public class InProcessAgentSession implements AgentSession {
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
     }
 
-    private void executeTaskNotifications(List<String> values, long inputBefore, long outputBefore) {
-        var xml = String.join("\n", values);
+    private void executeTaskNotifications(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore) {
+        var xml = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("injecting task notifications");
         String result;
         try {
