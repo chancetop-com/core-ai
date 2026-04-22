@@ -129,7 +129,7 @@ public class AgentRunner {
 
     private void execute(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         if (definition.type == DefinitionType.LLM_CALL) {
-            executeLLMCall(runEntity, definition, variables);
+            executeLLMCall(runEntity, definition);
         } else {
             executeAgent(runEntity, definition, sandbox, variables);
         }
@@ -160,7 +160,7 @@ public class AgentRunner {
         }
     }
 
-    private void executeLLMCall(AgentRun runEntity, AgentDefinition definition, Map<String, Object> variables) {
+    private void executeLLMCall(AgentRun runEntity, AgentDefinition definition) {
         try {
             var result = llmCallExecutor.execute(definition, runEntity.input);
 

@@ -43,34 +43,24 @@ public class AgentSessionManager {
 
     @Inject
     LLMProviders llmProviders;
-
     @Inject
     PersistenceProviders persistenceProviders;
-
     @Inject
     ToolRegistryService toolRegistryService;
-
     @Inject
     MongoSkillProvider mongoSkillProvider;
-
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
-
     @Inject
     SkillService skillService;
-
     @Inject
     ChatMessageService chatMessageService;
-
     @Inject
     SessionChannelService sessionChannelService;
-
     @Inject
     SandboxService sandboxService;
-
     @Inject
     SystemPromptService systemPromptService;
-
     @Inject
     SkillArchiveBuilder skillArchiveBuilder;
 

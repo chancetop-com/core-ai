@@ -193,6 +193,21 @@ public class InternalApiToolLoader {
         return List.of();
     }
 
+    public List<ApiServiceInfo> listApiAppServices(String appName) {
+        if (apiDefinitionService == null) return List.of();
+        return apiDefinitionService.loadAll().stream()
+                .filter(api -> api.app.equals(appName))
+                .flatMap(api -> api.services.stream())
+                .map(s -> new ApiServiceInfo(
+                        s.name,
+                        s.description,
+                        s.operations != null ? s.operations.size() : 0,
+                        s.operations != null ? s.operations.stream()
+                                .map(op -> new ApiOperationInfo(op.name, op.description, op.method, op.path))
+                                .toList() : List.of()))
+                .toList();
+    }
+
     private List<ToolCall> loadTools(List<ApiDefinition> apis) {
         if (apis.isEmpty()) {
             return List.of();
@@ -316,20 +331,5 @@ public class InternalApiToolLoader {
     }
 
     public record ApiOperationInfo(String name, String description, String method, String path) {
-    }
-
-    public List<ApiServiceInfo> listApiAppServices(String appName) {
-        if (apiDefinitionService == null) return List.of();
-        return apiDefinitionService.loadAll().stream()
-                .filter(api -> api.app.equals(appName))
-                .flatMap(api -> api.services.stream())
-                .map(s -> new ApiServiceInfo(
-                        s.name,
-                        s.description,
-                        s.operations != null ? s.operations.size() : 0,
-                        s.operations != null ? s.operations.stream()
-                                .map(op -> new ApiOperationInfo(op.name, op.description, op.method, op.path))
-                                .toList() : List.of()))
-                .toList();
     }
 }
