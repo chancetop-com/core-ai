@@ -6,6 +6,7 @@ import core.framework.mongo.Field;
 import core.framework.mongo.Id;
 
 import java.time.ZonedDateTime;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -36,6 +37,9 @@ public class AgentSchedule {
 
     @Field(name = "input")
     public String input;
+
+    @Field(name = "variables")
+    public Map<String, String> variables;
 
     @NotNull
     @Field(name = "concurrency_policy")

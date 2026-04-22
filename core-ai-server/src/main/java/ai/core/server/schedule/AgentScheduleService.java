@@ -30,6 +30,7 @@ public class AgentScheduleService {
         entity.timezone = request.timezone != null ? request.timezone : "UTC";
         entity.enabled = true;
         entity.input = request.input;
+        entity.variables = request.variables;
         entity.concurrencyPolicy = request.concurrencyPolicy != null
             ? ConcurrencyPolicy.valueOf(request.concurrencyPolicy)
             : ConcurrencyPolicy.SKIP;
@@ -66,6 +67,7 @@ public class AgentScheduleService {
         if (request.timezone != null) entity.timezone = request.timezone;
         if (request.enabled != null) entity.enabled = request.enabled;
         if (request.input != null) entity.input = request.input;
+        if (request.variables != null) entity.variables = request.variables;
         if (request.concurrencyPolicy != null) entity.concurrencyPolicy = ConcurrencyPolicy.valueOf(request.concurrencyPolicy);
         entity.updatedAt = ZonedDateTime.now();
 
@@ -89,6 +91,7 @@ public class AgentScheduleService {
         view.timezone = entity.timezone;
         view.enabled = entity.enabled;
         view.input = entity.input;
+        view.variables = entity.variables;
         view.concurrencyPolicy = entity.concurrencyPolicy.name();
         view.nextRunAt = entity.nextRunAt;
         view.createdAt = entity.createdAt;

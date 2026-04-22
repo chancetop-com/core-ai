@@ -4,6 +4,7 @@ import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, Fil
 import { api } from '../../api/client';
 import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView } from '../../api/client';
 import { sessionApi } from '../../api/session';
+import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import StatusBadge from '../../components/StatusBadge';
 
 export default function AgentEditor() {
@@ -317,7 +318,7 @@ export default function AgentEditor() {
       testControllerRef.current = controller;
 
       setTimeout(() => {
-        sessionApi.sendMessage(sid, testInput).catch(err => {
+        sessionApi.sendMessage(sid, testInput, agent.variables || undefined).catch(err => {
           setTestOutput(`Error: ${err}`);
           setTesting(false);
         });
@@ -665,6 +666,20 @@ export default function AgentEditor() {
               className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
               style={inputStyle}
               placeholder="Input template with {{variable}} placeholders..." />
+          </div>
+
+          <div className="rounded-xl border p-4"
+            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <h3 className="font-medium text-sm mb-3">Variables</h3>
+            <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+              Configure default variable values. These defaults are used by chat and schedule unless overridden.
+            </p>
+            <KeyValueVariablesEditor
+              value={agent.variables}
+              onChange={value => update('variables', value)}
+              keyPlaceholder="Variable key"
+              valuePlaceholder="Default value"
+            />
           </div>
 
           {/* Response Schema */}

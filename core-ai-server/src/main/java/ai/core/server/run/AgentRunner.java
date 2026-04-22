@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -73,6 +74,14 @@ public class AgentRunner {
     SandboxService sandboxService;
 
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
+        return run(definition, input, trigger, null);
+    }
+
+    public String run(AgentDefinition definition, String input, TriggerType trigger, Map<String, String> runtimeVariables) {
+        var resolvedVariables = new HashMap<String, Object>();
+        if (runtimeVariables != null) {
+            resolvedVariables.putAll(runtimeVariables);
+        }
         var runEntity = createRunRecord(definition, input, trigger);
         agentRunCollection.insert(runEntity);
 
@@ -84,7 +93,7 @@ public class AgentRunner {
         var sandbox = sandboxService.createSandbox(sandboxConfig, runId, definition.userId);
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             try (sandbox) {
-                execute(runEntity, definition, sandbox);
+                execute(runEntity, definition, sandbox, resolvedVariables);
             } finally {
                 sandboxService.releaseSandbox(runId);
             }
@@ -118,22 +127,22 @@ public class AgentRunner {
         ).isPresent();
     }
 
-    private void execute(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox) {
+    private void execute(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         if (definition.type == DefinitionType.LLM_CALL) {
-            executeLLMCall(runEntity, definition);
+            executeLLMCall(runEntity, definition, variables);
         } else {
-            executeAgent(runEntity, definition, sandbox);
+            executeAgent(runEntity, definition, sandbox, variables);
         }
     }
 
-    private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox) {
+    private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var runId = runEntity.id;
-        var agent = buildAgent(definition, sandbox);
+        var agent = buildAgent(definition, sandbox, variables);
         try {
             var config = definition.publishedConfig;
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
-            var output = executeWithTimeout(agent, runEntity.input, timeoutSeconds);
+            var output = executeWithTimeout(agent, runEntity.input, timeoutSeconds, variables);
             updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
         } catch (TimeoutException e) {
             var config = definition.publishedConfig;
@@ -151,7 +160,7 @@ public class AgentRunner {
         }
     }
 
-    private void executeLLMCall(AgentRun runEntity, AgentDefinition definition) {
+    private void executeLLMCall(AgentRun runEntity, AgentDefinition definition, Map<String, Object> variables) {
         try {
             var result = llmCallExecutor.execute(definition, runEntity.input);
 
@@ -197,8 +206,8 @@ public class AgentRunner {
         return transcript;
     }
 
-    private String executeWithTimeout(Agent agent, String input, int timeoutSeconds) throws Exception {
-        var future = CompletableFuture.supplyAsync(() -> agent.run(input), executorService);
+    private String executeWithTimeout(Agent agent, String input, int timeoutSeconds, Map<String, Object> variables) throws Exception {
+        var future = CompletableFuture.supplyAsync(() -> agent.run(input, ExecutionContext.builder().customVariables(variables).build()), executorService);
         try {
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
@@ -207,7 +216,7 @@ public class AgentRunner {
         }
     }
 
-    private Agent buildAgent(AgentDefinition definition, Sandbox sandbox) {
+    private Agent buildAgent(AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var config = definition.publishedConfig;
         List<ToolCall> tools;
         if (config != null && config.tools != null && !config.tools.isEmpty()) {
@@ -221,6 +230,7 @@ public class AgentRunner {
         var context = ExecutionContext.builder()
             .sessionId("run:" + definition.id)
             .userId(definition.userId)
+            .customVariables(variables)
             .build();
         if (sandbox != null) {
             context.sandbox(sandbox);

@@ -257,6 +257,7 @@ export default function Chat() {
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>(() => sessionStorage.getItem('chat_agentId') || '');
   const [sessionId, setSessionId] = useState<string | null>(() => sessionStorage.getItem('chat_sessionId'));
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   // Loaded tools/skills (confirmed on server)
   const [loadedToolIds, setLoadedToolIds] = useState<Set<string>>(new Set());
@@ -277,9 +278,11 @@ export default function Chat() {
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
+  const [variablesExpanded, setVariablesExpanded] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const variablesPanelRef = useRef<HTMLDivElement>(null);
   const sseControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
@@ -303,6 +306,45 @@ export default function Chat() {
   useEffect(() => {
     if (selectedAgentId) sessionStorage.setItem('chat_agentId', selectedAgentId);
   }, [selectedAgentId]);
+
+  useEffect(() => {
+    setVariablesExpanded(false);
+  }, [selectedAgentId]);
+
+  useEffect(() => {
+    if (!variablesExpanded) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const panel = variablesPanelRef.current;
+      const target = event.target as Node | null;
+      if (!panel || !target) return;
+      if (!panel.contains(target)) {
+        setVariablesExpanded(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [variablesExpanded]);
+
+  useEffect(() => {
+    const agent = agents.find(a => a.id === selectedAgentId);
+    const defaults = agent?.variables || {};
+    const keys = Object.keys(defaults);
+    if (keys.length === 0) {
+      setVariableValues({});
+      return;
+    }
+    setVariableValues(prev => {
+      const next: Record<string, string> = {};
+      for (const key of keys) {
+        next[key] = prev[key] ?? String(defaults[key] ?? '');
+      }
+      return next;
+    });
+  }, [agents, selectedAgentId]);
 
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
@@ -560,7 +602,7 @@ export default function Chat() {
 
     try {
       const sid = await ensureSession();
-      await sessionApi.sendMessage(sid, text);
+      await sessionApi.sendMessage(sid, text, variableValues);
       setSidebarRefreshKey(k => k + 1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -630,6 +672,7 @@ export default function Chat() {
 
   // Derived value: selected agent
   const selectedAgent = agents.find(a => a.id === selectedAgentId);
+  const agentVariableEntries = Object.entries(selectedAgent?.variables || {});
 
   // Fetch available skills for picker
   const fetchSkills = useCallback(async () => {
@@ -848,7 +891,57 @@ export default function Chat() {
       </div>
 
       {/* Chat messages */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-6 relative">
+        {agentVariableEntries.length > 0 && (
+          <div className="absolute top-5 right-6 z-20">
+            <div className="relative" ref={variablesPanelRef}>
+              <button
+                onClick={() => setVariablesExpanded(prev => !prev)}
+                disabled={status === 'running'}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs cursor-pointer disabled:opacity-40"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  background: variablesExpanded ? 'var(--color-bg-tertiary)' : 'var(--color-bg-secondary)',
+                  color: 'var(--color-text-secondary)',
+                }}
+                title="Configure variables"
+              >
+                Variables ({agentVariableEntries.length})
+                {variablesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              {variablesExpanded && (
+                <div className="absolute right-0 top-11 z-20 w-[420px] rounded-xl border p-3 shadow-lg"
+                  style={{
+                    borderColor: 'var(--color-border)',
+                    background: 'var(--color-bg)',
+                  }}>
+                  <div className="text-xs mb-2 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                    Variables
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {agentVariableEntries.map(([key]) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <label className="text-xs min-w-[110px]" style={{ color: 'var(--color-text-secondary)' }}>{key}</label>
+                        <input
+                          value={variableValues[key] ?? ''}
+                          onChange={e => setVariableValues(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none"
+                          style={{
+                            background: 'var(--color-bg-tertiary)',
+                            borderColor: 'var(--color-border)',
+                            color: 'var(--color-text)',
+                          }}
+                          placeholder={`Value for ${key}`}
+                          disabled={status === 'running'}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-4"
             style={{ color: 'var(--color-text-secondary)' }}>

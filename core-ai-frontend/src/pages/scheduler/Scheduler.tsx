@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Calendar, Edit2, Trash2, X } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, AgentScheduleView, CreateScheduleRequest, UpdateScheduleRequest } from '../../api/client';
+import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import CronEditor, { describeCron, isOnceCron } from './CronEditor';
 
 type ConcurrencyPolicy = 'SKIP' | 'QUEUE' | 'PARALLEL';
@@ -13,6 +14,7 @@ interface EditorState {
   cronExpression: string;
   timezone: string;
   input: string;
+  variables?: Record<string, string>;
   concurrencyPolicy: ConcurrencyPolicy;
   enabled: boolean;
 }
@@ -27,6 +29,7 @@ function emptyEditor(): EditorState {
     cronExpression: '0 * * * *',
     timezone: 'Asia/Shanghai',
     input: '',
+    variables: undefined,
     concurrencyPolicy: 'SKIP',
     enabled: true,
   };
@@ -77,7 +80,16 @@ export default function Scheduler() {
     return true;
   });
 
-  const openNew = () => setEditor({ ...emptyEditor(), open: true, agentId: agents[0]?.id ?? '' });
+  const openNew = () => {
+    const defaultAgentId = agents[0]?.id ?? '';
+    const defaultVariables = defaultAgentId ? (agentMap[defaultAgentId]?.variables || {}) : {};
+    setEditor({
+      ...emptyEditor(),
+      open: true,
+      agentId: defaultAgentId,
+      variables: Object.keys(defaultVariables).length > 0 ? defaultVariables : undefined,
+    });
+  };
 
   const openEdit = (s: AgentScheduleView) => setEditor({
     open: true,
@@ -86,6 +98,7 @@ export default function Scheduler() {
     cronExpression: s.cron_expression,
     timezone: s.timezone || 'UTC',
     input: s.input || '',
+    variables: s.variables,
     concurrencyPolicy: (s.concurrency_policy as ConcurrencyPolicy) || 'SKIP',
     enabled: s.enabled,
   });
@@ -98,11 +111,14 @@ export default function Scheduler() {
       return;
     }
     try {
+      const variables = editor.variables && Object.keys(editor.variables).length > 0 ? editor.variables : undefined;
+
       if (editor.editing) {
         const payload: UpdateScheduleRequest = {
           cron_expression: editor.cronExpression,
           timezone: editor.timezone,
-          input: editor.input,
+          input: editor.input.trim() ? editor.input : '',
+          variables,
           concurrency_policy: editor.concurrencyPolicy,
           enabled: editor.enabled,
         };
@@ -112,7 +128,8 @@ export default function Scheduler() {
           agent_id: editor.agentId,
           cron_expression: editor.cronExpression,
           timezone: editor.timezone,
-          input: editor.input,
+          input: editor.input.trim() ? editor.input : '',
+          variables,
           concurrency_policy: editor.concurrencyPolicy,
         };
         await api.schedules.create(payload);
@@ -258,7 +275,15 @@ export default function Scheduler() {
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Agent</label>
                 <select value={editor.agentId} disabled={!!editor.editing}
-                  onChange={e => setEditor({ ...editor, agentId: e.target.value })}
+                  onChange={e => {
+                    const nextAgentId = e.target.value;
+                    const defaults = agentMap[nextAgentId]?.variables || {};
+                    setEditor({
+                      ...editor,
+                      agentId: nextAgentId,
+                      variables: Object.keys(defaults).length > 0 ? defaults : undefined,
+                    });
+                  }}
                   className="w-full px-3 py-2 rounded-lg border text-sm"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
                   <option value="">Select agent</option>
@@ -307,9 +332,22 @@ export default function Scheduler() {
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Input</label>
                 <textarea value={editor.input}
                   onChange={e => setEditor({ ...editor, input: e.target.value })}
-                  rows={4} placeholder="Input message passed to the agent on each run"
+                  rows={4} placeholder="Optional: leave empty to use agent input_template"
                   className="w-full px-3 py-2 rounded-lg border text-sm font-mono"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Variables</label>
+                <KeyValueVariablesEditor
+                  value={editor.variables}
+                  onChange={value => setEditor({ ...editor, variables: value })}
+                  keyPlaceholder="Variable key"
+                  valuePlaceholder="Variable value"
+                />
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Schedule variables override agent default variables for this schedule.
+                </p>
               </div>
 
               {editor.editing && (

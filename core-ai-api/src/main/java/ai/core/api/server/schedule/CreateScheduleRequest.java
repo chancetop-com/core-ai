@@ -3,6 +3,8 @@ package ai.core.api.server.schedule;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
+import java.util.Map;
+
 /**
  * @author stephen
  */
@@ -20,6 +22,9 @@ public class CreateScheduleRequest {
 
     @Property(name = "input")
     public String input;
+
+    @Property(name = "variables")
+    public Map<String, String> variables;
 
     @Property(name = "concurrency_policy")
     public String concurrencyPolicy;

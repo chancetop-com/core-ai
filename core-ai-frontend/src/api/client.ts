@@ -487,6 +487,7 @@ export interface AgentScheduleView {
   timezone: string;
   enabled: boolean;
   input: string;
+  variables?: Record<string, string>;
   concurrency_policy: string;
   next_run_at: string;
   created_at: string;
@@ -502,6 +503,7 @@ export interface CreateScheduleRequest {
   cron_expression: string;
   timezone?: string;
   input?: string;
+  variables?: Record<string, string>;
   concurrency_policy?: string;
 }
 
@@ -510,6 +512,7 @@ export interface UpdateScheduleRequest {
   timezone?: string;
   enabled?: boolean;
   input?: string;
+  variables?: Record<string, string>;
   concurrency_policy?: string;
 }
 

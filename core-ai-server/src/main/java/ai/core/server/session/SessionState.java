@@ -6,6 +6,7 @@ import core.framework.json.JSON;
 import core.framework.util.Strings;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -37,9 +38,12 @@ public class SessionState {
     public static class AgentConfigSnapshot {
         public String agentName;
         public String systemPrompt;
+        public String systemPromptId;
         public String model;
         public Double temperature;
         public Integer maxTurns;
+        public String inputTemplate;
+        public Map<String, String> variables;
         public List<ToolRef> tools;
     }
 }

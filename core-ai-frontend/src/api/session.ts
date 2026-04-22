@@ -108,8 +108,11 @@ export const sessionApi = {
     });
   },
 
-  sendMessage: (sessionId: string, message: string) =>
-    request<void>(`/api/sessions/${sessionId}/messages`, { method: 'POST', body: JSON.stringify({ message }) }),
+  sendMessage: (sessionId: string, message: string, variables?: Record<string, string>) =>
+    request<void>(`/api/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message, variables }),
+    }),
 
   approve: (sessionId: string, callId: string, decision: 'APPROVE' | 'DENY') =>
     request<void>(`/api/sessions/${sessionId}/approve`, { method: 'POST', body: JSON.stringify({ call_id: callId, decision }) }),
