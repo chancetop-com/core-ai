@@ -4,6 +4,7 @@ import { ArrowLeft, Save, Trash2, Play, Clock, ChevronDown, ChevronRight, Square
 import { api } from '../../api/client';
 import type { SystemPrompt, SystemPromptVersion } from '../../api/client';
 import { sessionApi } from '../../api/session';
+import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 
 export default function SystemPromptEditor() {
   const { promptId } = useParams<{ promptId: string }>();
@@ -109,22 +110,20 @@ export default function SystemPromptEditor() {
       const sid = res.sessionId;
 
       const controller = sessionApi.connectSSE(sid, (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (event.type === 'text_chunk') {
-            const chunk = data.text || data.chunk || '';
-            testOutputRef.current += chunk;
-            setTestOutput(testOutputRef.current);
-          } else if (event.type === 'turn_complete') {
-            setTesting(false);
-            sessionApi.close(sid).catch(() => {});
-          } else if (event.type === 'error') {
-            testOutputRef.current += `\n\nError: ${data.message || data.error}`;
-            setTestOutput(testOutputRef.current);
-            setTesting(false);
-            sessionApi.close(sid).catch(() => {});
-          }
-        } catch { /* ignore */ }
+        if (event.type === 'TEXT_CHUNK' || event.type === 'text_chunk') {
+          const chunk = (event as SseTextChunkEvent).content || '';
+          testOutputRef.current += chunk;
+          setTestOutput(testOutputRef.current);
+        } else if (event.type === 'TURN_COMPLETE' || event.type === 'turn_complete') {
+          setTesting(false);
+          sessionApi.close(sid).catch(() => {});
+        } else if (event.type === 'ERROR' || event.type === 'error') {
+          const errorEvent = event as SseErrorEvent;
+          testOutputRef.current += `\n\nError: ${errorEvent.message || 'Unknown error'}`;
+          setTestOutput(testOutputRef.current);
+          setTesting(false);
+          sessionApi.close(sid).catch(() => {});
+        }
       }, () => {
         setTesting(false);
       });

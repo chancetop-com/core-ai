@@ -14,12 +14,89 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return text ? JSON.parse(text) : (undefined as T);
 }
 
-export interface SseEvent {
+export interface SseBaseEvent {
   type: string;
   sessionId: string;
-  data: string;
   timestamp: string;
 }
+
+export interface SseTextChunkEvent extends SseBaseEvent {
+  content: string;
+  is_final_chunk: boolean;
+}
+
+export interface SseReasoningChunkEvent extends SseBaseEvent {
+  content: string;
+  is_final_chunk: boolean;
+}
+
+export interface SseToolStartEvent extends SseBaseEvent {
+  call_id: string;
+  tool_name: string;
+  tool_args?: Record<string, unknown>;
+  tool_notes?: string;
+}
+
+export interface SseToolResultEvent extends SseBaseEvent {
+  call_id: string;
+  tool_name: string;
+  status: string;
+  result?: string;
+}
+
+export interface SseToolApprovalRequestEvent extends SseBaseEvent {
+  call_id: string;
+  tool_name: string;
+  arguments?: string;
+  suggested_pattern?: string;
+}
+
+export interface SseTurnCompleteEvent extends SseBaseEvent {
+  output?: string;
+  cancelled?: boolean;
+  max_turns_reached?: boolean;
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
+export interface SseErrorEvent extends SseBaseEvent {
+  message: string;
+  detail?: string;
+}
+
+export interface SseStatusChangeEvent extends SseBaseEvent {
+  status: string;
+}
+
+export interface SsePlanUpdateEvent extends SseBaseEvent {
+  todos: Array<{ content: string; status: string }>;
+}
+
+export interface SseCompressionEvent extends SseBaseEvent {
+  before_count: number;
+  after_count: number;
+  completed: boolean;
+}
+
+export interface SseSandboxEvent extends SseBaseEvent {
+  sandbox_id?: string;
+  sandbox_type?: string;
+  message?: string;
+  duration_ms?: number;
+}
+
+export type SseEvent =
+  | SseTextChunkEvent
+  | SseReasoningChunkEvent
+  | SseToolStartEvent
+  | SseToolResultEvent
+  | SseToolApprovalRequestEvent
+  | SseTurnCompleteEvent
+  | SseErrorEvent
+  | SseStatusChangeEvent
+  | SsePlanUpdateEvent
+  | SseCompressionEvent
+  | SseSandboxEvent;
 
 export interface HistoryToolCall {
   call_id: string;

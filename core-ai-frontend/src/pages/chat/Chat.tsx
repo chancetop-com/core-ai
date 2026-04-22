@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles, Users, Copy, Check } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
-import type { SseEvent, HistoryMessage } from '../../api/session';
+import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, HistoryMessage } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import ResourcePicker from './ResourcePicker';
@@ -391,109 +391,133 @@ export default function Chat() {
   }, []);
 
   const handleSSEEvent = useCallback((event: SseEvent) => {
-    try {
-      const data = JSON.parse(event.data);
-
-      switch (event.type) {
-        case 'text_chunk': {
-          const chunk = data.text || data.chunk || '';
-          if (chunk) {
-            setMessages(prev => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: (last.content || '') + chunk };
-              return updated;
-            });
-          }
-          break;
-        }
-        case 'reasoning_chunk': {
-          const chunk = data.text || data.chunk || '';
-          if (chunk) {
-            setMessages(prev => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last?.role === 'agent') updated[updated.length - 1] = { ...last, thinking: (last.thinking || '') + chunk };
-              return updated;
-            });
-          }
-          break;
-        }
-        case 'tool_start': {
+    switch (event.type) {
+      case 'TEXT_CHUNK':
+      case 'text_chunk': {
+        const chunkEvent = event as SseTextChunkEvent;
+        const chunk = chunkEvent.content || '';
+        if (chunk) {
           setMessages(prev => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
-            if (last?.role === 'agent') {
-              const tools = [...(last.tools || [])];
-              tools.push({ type: 'start', tool: data.name || data.tool, callId: data.callId || data.call_id, arguments: data.arguments });
-              updated[updated.length - 1] = { ...last, tools };
-            }
+            if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: (last.content || '') + chunk };
             return updated;
           });
-          break;
         }
-        case 'tool_result': {
-          setMessages(prev => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last?.role === 'agent') {
-              const tools = [...(last.tools || [])];
-              const idx = tools.findLastIndex(t => t.callId === (data.callId || data.call_id));
-              if (idx >= 0) tools[idx] = { ...tools[idx], type: 'result', result: data.result, resultStatus: data.status || 'COMPLETED' };
-              updated[updated.length - 1] = { ...last, tools };
-            }
-            return updated;
-          });
-          break;
-        }
-        case 'tool_approval_request': {
-          const info: AwaitInfo = {
-            callId: data.callId || data.call_id,
-            tool: data.name || data.tool,
-            arguments: data.arguments || '',
-          };
-          setAwaitInfo(info);
-          setMessages(prev => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last?.role === 'agent') updated[updated.length - 1] = { ...last, approval: info };
-            return updated;
-          });
-          break;
-        }
-        case 'turn_complete': {
-          setStatus('idle');
-          setAwaitInfo(null);
-          setSidebarRefreshKey(k => k + 1);
-          break;
-        }
-        case 'error': {
-          const errMsg = data.message || data.error || 'Unknown error';
-          setMessages(prev => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: `Error: ${errMsg}` };
-            return updated;
-          });
-          setStatus('idle');
-          break;
-        }
-        case 'plan_update': {
-          if (data.todos && Array.isArray(data.todos)) {
-            setPlanTodos(data.todos);
-          }
-          break;
-        }
-        case 'compression': {
-          if (data.completed) {
-            setCompressionInfo({ before: data.before_count, after: data.after_count });
-            setTimeout(() => setCompressionInfo(null), 5000);
-          }
-          break;
-        }
+        break;
       }
-    } catch {
-      // ignore parse errors
+      case 'REASONING_CHUNK':
+      case 'reasoning_chunk': {
+        const chunkEvent = event as SseReasoningChunkEvent;
+        const chunk = chunkEvent.content || '';
+        const isFinalChunk = chunkEvent.is_final_chunk;
+
+        if (!isFinalChunk && chunk) {
+          // Update thinking
+          setMessages(prev => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === 'agent') updated[updated.length - 1] = { ...last, thinking: (last.thinking || '') + chunk };
+            return updated;
+          });
+        }
+        break;
+      }
+      case 'TOOL_START':
+      case 'tool_start': {
+        const toolEvent = event as SseToolStartEvent;
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last?.role === 'agent') {
+            const tools = [...(last.tools || [])];
+            tools.push({ type: 'start', tool: toolEvent.tool_name, callId: toolEvent.call_id, arguments: toolEvent.tool_args ? JSON.stringify(toolEvent.tool_args) : undefined });
+            updated[updated.length - 1] = { ...last, tools };
+          }
+          return updated;
+        });
+        break;
+      }
+      case 'TOOL_RESULT':
+      case 'tool_result': {
+        const resultEvent = event as SseToolResultEvent;
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last?.role === 'agent') {
+            const tools = [...(last.tools || [])];
+            const idx = tools.findLastIndex(t => t.callId === resultEvent.call_id);
+            if (idx >= 0) tools[idx] = { ...tools[idx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED' };
+            updated[updated.length - 1] = { ...last, tools };
+          }
+          return updated;
+        });
+        break;
+      }
+      case 'TOOL_APPROVAL_REQUEST':
+      case 'tool_approval_request': {
+        const approvalEvent = event as SseToolApprovalRequestEvent;
+        const info: AwaitInfo = {
+          callId: approvalEvent.call_id,
+          tool: approvalEvent.tool_name,
+          arguments: approvalEvent.arguments || '',
+        };
+        setAwaitInfo(info);
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last?.role === 'agent') updated[updated.length - 1] = { ...last, approval: info };
+          return updated;
+        });
+        break;
+      }
+      case 'TURN_COMPLETE':
+      case 'turn_complete': {
+        setStatus('idle');
+        setAwaitInfo(null);
+        setSidebarRefreshKey(k => k + 1);
+        break;
+      }
+      case 'ERROR':
+      case 'error': {
+        const errorEvent = event as SseErrorEvent;
+        const errMsg = errorEvent.message || 'Unknown error';
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: `Error: ${errMsg}` };
+          return updated;
+        });
+        setStatus('idle');
+        break;
+      }
+      case 'STATUS_CHANGE':
+      case 'status_change': {
+        const statusEvent = event as SseStatusChangeEvent;
+        if (statusEvent.status === 'idle' || statusEvent.status === 'waiting') {
+          setStatus('idle');
+        } else if (statusEvent.status === 'running') {
+          setStatus('running');
+        }
+        break;
+      }
+      case 'PLAN_UPDATE':
+      case 'plan_update': {
+        const planEvent = event as SsePlanUpdateEvent;
+        if (planEvent.todos && Array.isArray(planEvent.todos)) {
+          setPlanTodos(planEvent.todos);
+        }
+        break;
+      }
+      case 'COMPRESSION':
+      case 'compression': {
+        const compressionEvent = event as SseCompressionEvent;
+        if (compressionEvent.completed) {
+          setCompressionInfo({ before: compressionEvent.before_count, after: compressionEvent.after_count });
+          setTimeout(() => setCompressionInfo(null), 5000);
+        }
+        break;
+      }
     }
   }, []);
 
