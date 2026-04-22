@@ -384,9 +384,6 @@ public class AgentSessionManager {
             builder.maxTurn(config.maxTurns);
         }
 
-        var skillRegistry = new SkillRegistry();
-        skillRegistry.addProvider(mongoSkillProvider);
-        builder.skillRegistry(skillRegistry);
 
         return builder.build();
     }
@@ -426,9 +423,6 @@ public class AgentSessionManager {
             builder.executionContext(context);
         }
 
-        var skillRegistry = new SkillRegistry();
-        skillRegistry.addProvider(mongoSkillProvider);
-        builder.skillRegistry(skillRegistry);
 
         var provider = persistenceProviders.getDefaultPersistenceProvider();
         if (provider != null) {
