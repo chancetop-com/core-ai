@@ -122,8 +122,13 @@ public class InProcessAgentSession implements AgentSession {
         var combined = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("agent run starting");
         String result;
+        var context = agent.getExecutionContext();
+        var newVariables = values.getLast().variables();
+        if (newVariables != null && !newVariables.isEmpty()) {
+            context.getCustomVariables().putAll(newVariables);
+        }
         try {
-            result = agent.run(combined, ExecutionContext.builder().customVariables(values.getLast().variables()).build());
+            result = agent.run(combined, context);
         } catch (MaxTurnsExceededException e) {
             debug("agent exceeded max turns: " + e.maxTurns);
             if (agent.hasPersistenceProvider()) {
