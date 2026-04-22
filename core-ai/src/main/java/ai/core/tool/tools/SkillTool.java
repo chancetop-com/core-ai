@@ -39,7 +39,7 @@ public class SkillTool extends ToolCall {
         return new Builder();
     }
 
-    static String buildDescription(List<SkillMetadata> skills, String workspaceDir) {
+    public static String buildDescription(List<SkillMetadata> skills, String workspaceDir) {
         if (skills == null || skills.isEmpty()) {
             return NO_SKILLS_DESC;
         }

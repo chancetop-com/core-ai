@@ -37,11 +37,9 @@ import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
-import ai.core.server.skill.LocalFileSystemSkillStorage;
 import ai.core.server.skill.MongoSkillProvider;
+import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
-import ai.core.server.skill.SkillStorage;
-import ai.core.server.skill.SkillStorageMigrator;
 import ai.core.server.skill.SkillUploadController;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.user.UserService;
@@ -274,12 +272,9 @@ public class ServerModule extends Module {
     }
 
     private void registerSkill() {
-        var storagePath = property("sys.skill.storage.path").orElse("/tmp/core-ai-skills");
-        bind(SkillStorage.class, new LocalFileSystemSkillStorage(storagePath));
         bind(SkillService.class);
         bind(MongoSkillProvider.class);
-        var migrator = bind(SkillStorageMigrator.class);
-        onStartup(migrator::migrate);
+        bind(new SkillArchiveBuilder());
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));
 //        schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class), Duration.ofHours(1));

@@ -92,6 +92,24 @@ public class SandboxClient {
         }
     }
 
+    public void materializeSkill(String name, String version, byte[] archiveBytes) {
+        var url = baseUrl + "/skills/" + name;
+        var req = new HTTPRequest(HTTPMethod.POST, url);
+        if (version != null) req.headers.put("X-Skill-Version", version);
+        req.body(archiveBytes, ContentType.parse("application/zip"));
+        try {
+            var response = httpClient.execute(req);
+            if (response.statusCode != 200 && response.statusCode != 204) {
+                throw new RuntimeException("materialize skill failed: status=" + response.statusCode
+                    + ", body=" + response.text());
+            }
+            LOGGER.info("materialized skill to sandbox: name={}, version={}, size={}bytes", name, version, archiveBytes.length);
+        } catch (Exception e) {
+            LOGGER.error("materialize skill request failed: url={}, name={}", url, name, e);
+            throw new RuntimeException("failed to materialize skill: " + name, e);
+        }
+    }
+
     public ToolCallResult pollTask(String taskId) {
         var startTime = System.currentTimeMillis();
         try {

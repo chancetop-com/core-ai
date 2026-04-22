@@ -52,6 +52,12 @@ public class LazySandbox implements Sandbox {
     }
 
     @Override
+    public void materializeSkill(String name, String version, byte[] tarBytes) {
+        ensureReady();
+        delegate.materializeSkill(name, version, tarBytes);
+    }
+
+    @Override
     public SandboxStatus getStatus() {
         var current = delegate;
         if (current == null) {

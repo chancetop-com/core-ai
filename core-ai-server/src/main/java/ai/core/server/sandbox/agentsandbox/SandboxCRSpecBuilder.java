@@ -106,7 +106,10 @@ public class SandboxCRSpecBuilder {
         env.add(Map.of("name", "MAX_ASYNC_TASKS", "value", String.valueOf(maxAsync)));
         container.put("env", env);
 
-        container.put("volumeMounts", List.of(Map.of("name", "tmp", "mountPath", "/tmp")));
+        container.put("volumeMounts", List.of(
+                Map.of("name", "tmp", "mountPath", "/tmp"),
+                Map.of("name", "skill", "mountPath", "/skill")
+        ));
         return container;
     }
 
@@ -115,7 +118,12 @@ public class SandboxCRSpecBuilder {
         tmpVolume.put("name", "tmp");
         tmpVolume.put("emptyDir", Map.of("medium", "Memory", "sizeLimit",
                 config.tmpSizeLimit != null ? config.tmpSizeLimit : "100Mi"));
-        return List.of(tmpVolume);
+
+        var skillVolume = new LinkedHashMap<String, Object>();
+        skillVolume.put("name", "skill");
+        skillVolume.put("emptyDir", Map.of("sizeLimit", "50Mi"));
+
+        return List.of(tmpVolume, skillVolume);
     }
 
     private String sanitizeLabel(String value) {

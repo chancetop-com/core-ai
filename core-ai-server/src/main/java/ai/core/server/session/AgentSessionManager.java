@@ -9,6 +9,8 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
+import ai.core.server.skill.ServerSkillTool;
+import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
@@ -18,7 +20,6 @@ import ai.core.skill.SkillRegistry;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.tools.ReadSkillResourceTool;
-import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
@@ -69,6 +70,9 @@ public class AgentSessionManager {
 
     @Inject
     SystemPromptService systemPromptService;
+
+    @Inject
+    SkillArchiveBuilder skillArchiveBuilder;
 
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         session.onEvent(chatMessageService.listener(sessionId));
@@ -318,9 +322,13 @@ public class AgentSessionManager {
         }
         var registry = new SkillRegistry();
         registry.addProvider(mongoSkillProvider);
-        SkillTool skillTool = SkillTool.builder().registry(registry).build();
-        ReadSkillResourceTool readResourceTool = ReadSkillResourceTool.builder().registry(registry).build();
-        session.loadTools(List.<ToolCall>of(skillTool, readResourceTool));
+        ToolCall skillTool = ServerSkillTool.builder()
+            .registry(registry)
+            .skillService(skillService)
+            .archiveBuilder(skillArchiveBuilder)
+            .build();
+        ToolCall readResourceTool = ReadSkillResourceTool.builder().registry(registry).build();
+        session.loadTools(List.of(skillTool, readResourceTool));
         return skills.stream().map(SkillMetadata::getQualifiedName).toList();
     }
 

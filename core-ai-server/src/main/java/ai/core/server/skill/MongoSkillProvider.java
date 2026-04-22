@@ -1,18 +1,18 @@
 package ai.core.server.skill;
 
+import ai.core.server.domain.SkillDefinition;
 import ai.core.skill.SkillLoadException;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillProvider;
-import ai.core.server.domain.SkillDefinition;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * Skill provider backed by Mongo metadata + SkillStorage for file content.
+ * Skill provider backed entirely by Mongo. SKILL.md content and resource
+ * file bodies live in the `skills` collection; no external filesystem.
  *
  * @author stephen
  */
@@ -24,9 +24,6 @@ public class MongoSkillProvider implements SkillProvider {
     @Inject
     SkillService skillService;
 
-    @Inject
-    SkillStorage skillStorage;
-
     @Override
     public List<SkillMetadata> listSkills() {
         var definitions = skillCollection.find(Filters.exists("_id"));
@@ -35,26 +32,21 @@ public class MongoSkillProvider implements SkillProvider {
 
     @Override
     public String readContent(SkillMetadata skill) {
-        var ns = skill.getNamespace();
-        var name = skill.getName();
-        if (ns != null && skillStorage.exists(ns, name)) {
-            return skillStorage.readSkillMd(ns, name);
-        }
-        if (skill.getContent() != null) {
-            return skill.getContent();
-        }
+        if (skill.getContent() != null) return skill.getContent();
         throw new SkillLoadException("skill content not available: " + skill.getQualifiedName());
     }
 
     @Override
     public String readResource(SkillMetadata skill, String resourcePath) {
-        var ns = skill.getNamespace();
-        var name = skill.getName();
-        if (ns == null || !skillStorage.exists(ns, name)) {
-            throw new SkillLoadException("skill not in storage: " + skill.getQualifiedName());
+        var def = skillService.findByQualifiedName(skill.getQualifiedName());
+        if (def.resources == null || def.resources.isEmpty()) {
+            throw new SkillLoadException("skill has no resources: " + skill.getQualifiedName());
         }
-        var bytes = skillStorage.readResource(ns, name, resourcePath);
-        return new String(bytes, StandardCharsets.UTF_8);
+        return def.resources.stream()
+            .filter(r -> r.path.equals(resourcePath))
+            .findFirst()
+            .map(r -> r.content)
+            .orElseThrow(() -> new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName()));
     }
 
     @Override

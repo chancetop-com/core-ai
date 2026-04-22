@@ -177,6 +177,10 @@ public class KubernetesPodSpecBuilder {
         tmpMount.put("name", "tmp");
         tmpMount.put("mountPath", "/tmp");
         mounts.add(tmpMount);
+        var skillMount = new LinkedHashMap<String, Object>();
+        skillMount.put("name", "skill");
+        skillMount.put("mountPath", "/skill");
+        mounts.add(skillMount);
         return mounts;
     }
 
@@ -195,6 +199,14 @@ public class KubernetesPodSpecBuilder {
         }
         tmpVolume.put("emptyDir", tmpEmptyDir);
         volumes.add(tmpVolume);
+
+        // Empty dir for /skill (writable, for materialized skills)
+        var skillVolume = new LinkedHashMap<String, Object>();
+        skillVolume.put("name", "skill");
+        var skillEmptyDir = new LinkedHashMap<String, Object>();
+        skillEmptyDir.put("sizeLimit", "50Mi");
+        skillVolume.put("emptyDir", skillEmptyDir);
+        volumes.add(skillVolume);
 
         return volumes;
     }

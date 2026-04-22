@@ -49,6 +49,11 @@ public class DockerSandbox implements Sandbox {
     }
 
     @Override
+    public void materializeSkill(String name, String version, byte[] tarBytes) {
+        runtimeClient.materializeSkill(name, version, tarBytes);
+    }
+
+    @Override
     public SandboxStatus getStatus() {
         return status;
     }

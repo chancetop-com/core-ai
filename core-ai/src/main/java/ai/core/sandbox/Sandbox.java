@@ -16,6 +16,10 @@ public interface Sandbox extends AutoCloseable {
 
     String getId();
 
+    default void materializeSkill(String name, String version, byte[] tarBytes) {
+        throw new UnsupportedOperationException("materializeSkill not supported by this sandbox");
+    }
+
     @Override
     void close();
 }

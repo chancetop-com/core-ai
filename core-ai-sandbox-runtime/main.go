@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,7 +20,9 @@ import (
 	"time"
 )
 
-const maxOutputSize = 30 * 1024 // 30KB
+const maxOutputSize = 30 * 1024        // 30KB
+const skillBaseDir = "/skill"           // sandbox-side mount target for materialized skills
+const maxSkillArchiveSize = 5 << 20     // 5 MB
 
 // ---- Request / Response ----
 
@@ -115,6 +119,9 @@ func (r *TaskRegistry) Cleanup(maxAge time.Duration) {
 var (
 	workspaceDir = "/workspace"
 	taskRegistry *TaskRegistry
+
+	skillVersionsMu sync.Mutex
+	skillVersions   = make(map[string]string) // name -> installed version
 )
 
 // ---- Tool executor type ----
@@ -148,9 +155,14 @@ func main() {
 		}
 	}()
 
+	if err := os.MkdirAll(skillBaseDir, 0755); err != nil {
+		log.Printf("warning: failed to create skill base dir %s: %v", skillBaseDir, err)
+	}
+
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/execute", handleExecute)
 	http.HandleFunc("/tasks/", handleTaskPoll)
+	http.HandleFunc("/skills/", handleSkillMaterialize)
 
 	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d", port, workspaceDir, maxAsync)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
@@ -593,7 +605,7 @@ func resolveSafePath(requested string) (string, error) {
 		requested = filepath.Join(workspaceDir, requested)
 	}
 	abs := filepath.Clean(requested)
-	if strings.HasPrefix(abs, workspaceDir) || strings.HasPrefix(abs, "/tmp") {
+	if strings.HasPrefix(abs, workspaceDir) || strings.HasPrefix(abs, "/tmp") || strings.HasPrefix(abs, skillBaseDir) {
 		return abs, nil
 	}
 	return "", fmt.Errorf("path outside allowed directories: %s", requested)
@@ -604,10 +616,121 @@ func sanitizePath(requested, defaultPath string) string {
 		return defaultPath
 	}
 	abs := filepath.Clean(requested)
-	if strings.HasPrefix(abs, "/workspace") || strings.HasPrefix(abs, "/tmp") {
+	if strings.HasPrefix(abs, "/workspace") || strings.HasPrefix(abs, "/tmp") || strings.HasPrefix(abs, skillBaseDir) {
 		return abs
 	}
 	return defaultPath
+}
+
+// ---- Skill materialization ----
+
+// handleSkillMaterialize handles POST /skills/{name} with a zip body.
+// Extracts into /skill/{name}/. Version check via X-Skill-Version header:
+// if the same version is already installed, skips extraction.
+func handleSkillMaterialize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := strings.TrimPrefix(r.URL.Path, "/skills/")
+	name = strings.TrimSuffix(name, "/")
+	if name == "" || strings.Contains(name, "/") || strings.Contains(name, "..") {
+		http.Error(w, "invalid skill name", http.StatusBadRequest)
+		return
+	}
+
+	version := r.Header.Get("X-Skill-Version")
+	if version != "" {
+		skillVersionsMu.Lock()
+		installed := skillVersions[name]
+		skillVersionsMu.Unlock()
+		if installed != "" && installed == version {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxSkillArchiveSize+1))
+	if err != nil {
+		http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(body) > maxSkillArchiveSize {
+		http.Error(w, fmt.Sprintf("archive exceeds max size (%d bytes)", maxSkillArchiveSize), http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	targetDir := filepath.Join(skillBaseDir, name)
+	if err := os.RemoveAll(targetDir); err != nil {
+		http.Error(w, "failed to clear target dir: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		http.Error(w, "failed to create target dir: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := extractZip(body, targetDir); err != nil {
+		http.Error(w, "failed to extract archive: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	skillVersionsMu.Lock()
+	skillVersions[name] = version
+	skillVersionsMu.Unlock()
+
+	log.Printf("materialized skill: name=%s, version=%s, size=%d, target=%s", name, version, len(body), targetDir)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func extractZip(data []byte, targetDir string) error {
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("invalid zip: %w", err)
+	}
+	for _, f := range reader.File {
+		if strings.Contains(f.Name, "..") {
+			return fmt.Errorf("invalid entry path: %s", f.Name)
+		}
+		dest := filepath.Join(targetDir, f.Name)
+		cleanDest := filepath.Clean(dest)
+		if !strings.HasPrefix(cleanDest, filepath.Clean(targetDir)+string(os.PathSeparator)) && cleanDest != filepath.Clean(targetDir) {
+			return fmt.Errorf("entry escapes target dir: %s", f.Name)
+		}
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(cleanDest, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(cleanDest), 0755); err != nil {
+			return err
+		}
+		mode := os.FileMode(0644)
+		if strings.HasPrefix(f.Name, "scripts/") {
+			mode = 0755
+		}
+		out, err := os.OpenFile(cleanDest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+		if err != nil {
+			return err
+		}
+		in, err := f.Open()
+		if err != nil {
+			out.Close()
+			return err
+		}
+		if _, err := io.Copy(out, in); err != nil {
+			in.Close()
+			out.Close()
+			return err
+		}
+		in.Close()
+		if err := out.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func minimalEnv() []string {

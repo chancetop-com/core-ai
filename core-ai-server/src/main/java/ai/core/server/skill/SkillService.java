@@ -37,9 +37,6 @@ public class SkillService {
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
 
-    @Inject
-    SkillStorage skillStorage;
-
     public SkillDefinition upload(String userId, String namespace, byte[] skillFileBytes, Map<String, byte[]> resources) {
         String content = new String(skillFileBytes, StandardCharsets.UTF_8);
         var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
@@ -49,11 +46,6 @@ public class SkillService {
         }
 
         String qualifiedName = namespace + "/" + parsed.getName();
-        skillStorage.writeSkillMd(namespace, parsed.getName(), content);
-        if (resources != null && !resources.isEmpty()) {
-            skillStorage.writeResources(namespace, parsed.getName(), resources);
-        }
-
         var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
         var entity = existing.orElseGet(SkillDefinition::new);
         if (entity.id == null) {
@@ -65,8 +57,8 @@ public class SkillService {
         entity.qualifiedName = qualifiedName;
         entity.description = parsed.getDescription();
         entity.sourceType = SkillSourceType.UPLOAD;
-        entity.content = null;
-        entity.resources = null;
+        entity.content = content;
+        entity.resources = toResources(resources);
         entity.allowedTools = parsed.getAllowedTools().isEmpty() ? null : new ArrayList<>(parsed.getAllowedTools());
         entity.metadata = parsed.getMetadata().isEmpty() ? null : Map.copyOf(parsed.getMetadata());
         entity.userId = userId;
@@ -139,13 +131,12 @@ public class SkillService {
             .orElseThrow(() -> new RuntimeException("skill not found, id=" + id));
     }
 
+    public SkillDefinition findByQualifiedName(String qualifiedName) {
+        return skillCollection.findOne(Filters.eq("qualified_name", qualifiedName))
+            .orElseThrow(() -> new RuntimeException("skill not found: " + qualifiedName));
+    }
+
     public void delete(String id) {
-        var entity = get(id);
-        try {
-            skillStorage.delete(entity.namespace, entity.name);
-        } catch (Exception e) {
-            LOGGER.warn("failed to delete skill files for {}, continuing with DB delete", entity.qualifiedName, e);
-        }
         skillCollection.delete(id);
         LOGGER.info("deleted skill, id={}", id);
     }
@@ -153,15 +144,8 @@ public class SkillService {
     public SkillDefinition update(String id, String description, String content, List<String> allowedTools, List<SkillResource> resources) {
         var entity = get(id);
         if (description != null) entity.description = description;
-        if (content != null) {
-            skillStorage.writeSkillMd(entity.namespace, entity.name, content);
-        }
-        if (resources != null) {
-            for (var r : resources) {
-                skillStorage.writeResource(entity.namespace, entity.name, r.path,
-                    r.content != null ? r.content.getBytes(StandardCharsets.UTF_8) : new byte[0]);
-            }
-        }
+        if (content != null) entity.content = content;
+        if (resources != null) entity.resources = resources.isEmpty() ? null : resources;
         if (allowedTools != null) entity.allowedTools = allowedTools.isEmpty() ? null : allowedTools;
         entity.updatedAt = ZonedDateTime.now();
         skillCollection.replace(entity);
@@ -191,13 +175,11 @@ public class SkillService {
                     Path skillDir = skill.getSkillDir() != null
                         ? Path.of(skill.getSkillDir())
                         : Path.of(skill.getPath()).getParent();
-                    skillStorage.copyDirectory(entity.namespace, entity.name, skillDir);
-
+                    entity.content = readSkillMdFromDir(skillDir);
+                    entity.resources = readResourcesFromDir(skillDir, skill.getResources());
                     entity.description = skill.getDescription();
                     entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
                     entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
-                    entity.content = null;
-                    entity.resources = null;
                     entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
                     entity.updatedAt = ZonedDateTime.now();
                     skillCollection.replace(entity);
@@ -214,29 +196,7 @@ public class SkillService {
     }
 
     public SkillDefinition download(String id) {
-        var entity = get(id);
-        if (!skillStorage.exists(entity.namespace, entity.name)) {
-            return entity;
-        }
-        if (entity.content == null) {
-            entity.content = skillStorage.readSkillMd(entity.namespace, entity.name);
-        }
-        if (entity.resources == null) {
-            var paths = skillStorage.listResources(entity.namespace, entity.name);
-            if (!paths.isEmpty()) {
-                var loaded = new ArrayList<SkillResource>(paths.size());
-                for (var path : paths) {
-                    var resource = new SkillResource();
-                    resource.path = path;
-                    resource.content = new String(
-                        skillStorage.readResource(entity.namespace, entity.name, path),
-                        StandardCharsets.UTF_8);
-                    loaded.add(resource);
-                }
-                entity.resources = loaded;
-            }
-        }
-        return entity;
+        return get(id);
     }
 
     public List<SkillMetadata> resolveSkills(List<String> skillIds) {
@@ -249,20 +209,15 @@ public class SkillService {
     }
 
     public SkillMetadata toMetadata(SkillDefinition def) {
-        var skillDir = skillStorage.skillDir(def.namespace, def.name);
-        var content = skillStorage.exists(def.namespace, def.name)
-            ? skillStorage.readSkillMd(def.namespace, def.name)
-            : def.content;
-        var resources = skillStorage.exists(def.namespace, def.name)
-            ? skillStorage.listResources(def.namespace, def.name)
-            : def.resources != null ? def.resources.stream().map(r -> r.path).toList() : Collections.<String>emptyList();
+        var resourcePaths = def.resources != null
+            ? def.resources.stream().map(r -> r.path).toList()
+            : Collections.<String>emptyList();
         return SkillMetadata.builder(def.name, def.description != null ? def.description : "", null)
             .namespace(def.namespace)
-            .skillDir(skillDir.toString())
-            .content(content)
+            .content(def.content)
             .allowedTools(def.allowedTools != null ? def.allowedTools : Collections.emptyList())
             .metadata(def.metadata != null ? def.metadata : Collections.emptyMap())
-            .resources(resources)
+            .resources(resourcePaths)
             .build();
     }
 
@@ -271,7 +226,6 @@ public class SkillService {
         Path skillDir = skill.getSkillDir() != null
             ? Path.of(skill.getSkillDir())
             : Path.of(skill.getPath()).getParent();
-        skillStorage.copyDirectory(namespace, skill.getName(), skillDir);
 
         var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
         var entity = existing.orElseGet(SkillDefinition::new);
@@ -284,8 +238,8 @@ public class SkillService {
         entity.qualifiedName = qualifiedName;
         entity.description = skill.getDescription();
         entity.sourceType = SkillSourceType.REPO;
-        entity.content = null;
-        entity.resources = null;
+        entity.content = readSkillMdFromDir(skillDir);
+        entity.resources = readResourcesFromDir(skillDir, skill.getResources());
         entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
         entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
         entity.userId = userId;
@@ -304,6 +258,43 @@ public class SkillService {
             skillCollection.insert(entity);
         }
         return entity;
+    }
+
+    private List<SkillResource> toResources(Map<String, byte[]> resources) {
+        if (resources == null || resources.isEmpty()) return null;
+        var list = new ArrayList<SkillResource>(resources.size());
+        for (var entry : resources.entrySet()) {
+            var r = new SkillResource();
+            r.path = entry.getKey();
+            r.content = new String(entry.getValue(), StandardCharsets.UTF_8);
+            list.add(r);
+        }
+        return list;
+    }
+
+    private String readSkillMdFromDir(Path skillDir) {
+        try {
+            return Files.readString(skillDir.resolve("SKILL.md"), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new RuntimeException("failed to read SKILL.md from " + skillDir, e);
+        }
+    }
+
+    private List<SkillResource> readResourcesFromDir(Path skillDir, List<String> paths) {
+        if (paths == null || paths.isEmpty()) return null;
+        var list = new ArrayList<SkillResource>(paths.size());
+        for (var relPath : paths) {
+            try {
+                var bytes = Files.readAllBytes(skillDir.resolve(relPath));
+                var r = new SkillResource();
+                r.path = relPath;
+                r.content = new String(bytes, StandardCharsets.UTF_8);
+                list.add(r);
+            } catch (IOException e) {
+                LOGGER.warn("failed to read resource {} in {}", relPath, skillDir, e);
+            }
+        }
+        return list.isEmpty() ? null : list;
     }
 
     String extractRepoOwner(String repoUrl) {
