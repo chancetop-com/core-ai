@@ -22,21 +22,33 @@ public final class CliLogger extends AbstractLogger {
     private static final long serialVersionUID = 7591457691679122691L;
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
     private static final PrintStream STDERR = System.err;
-    private static final Path LOGS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "logs");
 
     private static volatile PrintWriter fileWriter;
+    private static volatile Path logsDir;
+
+    private static Path logsDir() {
+        if (logsDir == null) {
+            synchronized (CliLogger.class) {
+                if (logsDir == null) {
+                    logsDir = Path.of(System.getProperty("user.home"), ".core-ai", "logs");
+                }
+            }
+        }
+        return logsDir;
+    }
     private static volatile String currentSessionId = "default";
     private static volatile PrintWriter terminalWriter;
 
     public static void initialize(String sessionId) {
         currentSessionId = sessionId;
+        Path logs = logsDir();
         try {
-            Files.createDirectories(LOGS_DIR);
+            Files.createDirectories(logs);
         } catch (IOException e) {
             STDERR.println("Failed to create logs directory: " + e.getMessage());
         }
         closeFileWriter();
-        Path logFile = LOGS_DIR.resolve(sessionId + ".log");
+        Path logFile = logs.resolve(sessionId + ".log");
         try {
             var bw = Files.newBufferedWriter(logFile, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             fileWriter = new PrintWriter(bw, true);
