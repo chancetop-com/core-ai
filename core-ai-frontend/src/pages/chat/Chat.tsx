@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles, Users, Copy, Check } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
-import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, HistoryMessage } from '../../api/session';
+import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, HistoryMessage, ChatSessionSummary } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import ResourcePicker from './ResourcePicker';
@@ -348,21 +348,25 @@ export default function Chat() {
 
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
-  const hydrateSession = useCallback(async (id: string) => {
-    if (!id) return;
+  const hydrateSession = useCallback(async (session: ChatSessionSummary) => {
+    if (!session.id) return;
     try {
-      const res = await sessionApi.history(id);
+      const res = await sessionApi.history(session.id);
       sseControllerRef.current?.abort();
       sseControllerRef.current = null;
-      setSessionId(id);
+      setSessionId(session.id);
       setMessages(historyToChatMessages(res.messages || []));
       setStatus('idle');
       setAwaitInfo(null);
       setPlanTodos(null);
+      // Auto-select agent for this session
+      if (session.agent_id && agents.some(a => a.id === session.agent_id)) {
+        setSelectedAgentId(session.agent_id);
+      }
     } catch (e) {
       console.warn('failed to hydrate session history', e);
     }
-  }, []);
+  }, [agents]);
 
   // Hydrate from URL ?sessionId=... — user returning from Sessions page
   useEffect(() => {

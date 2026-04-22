@@ -6,7 +6,7 @@ import type { ChatSessionSummary } from '../../api/session';
 interface Props {
   currentSessionId: string | null;
   refreshKey: number;
-  onOpen: (sessionId: string) => void;
+  onOpen: (session: ChatSessionSummary) => void;
   onNewChat: () => void;
   onDeleted?: (sessionId: string) => void;
 }
@@ -76,7 +76,7 @@ export default function ChatSessionsSidebar({ currentSessionId, refreshKey, onOp
         {sessions.map(s => {
           const active = s.id === currentSessionId;
           return (
-            <div key={s.id} onClick={() => onOpen(s.id)}
+            <div key={s.id} onClick={() => onOpen(s)}
               className="group w-full text-left px-3 py-2 flex items-start gap-2 cursor-pointer border-l-2 transition-colors"
               style={{
                 borderColor: active ? 'var(--color-primary)' : 'transparent',
