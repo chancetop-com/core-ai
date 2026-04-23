@@ -171,16 +171,16 @@ function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
 function PlanUpdateBlock({ todos }: { todos: PlanTodo[] }) {
   const [expanded, setExpanded] = useState(true);
   const statusColor = (status: string) => {
-    switch (status) {
-      case 'COMPLETED': return 'var(--color-success)';
-      case 'IN_PROGRESS': return 'var(--color-warning)';
+    switch (status.toLowerCase()) {
+      case 'completed': return 'var(--color-success)';
+      case 'in_progress': return 'var(--color-warning)';
       default: return 'var(--color-text-muted)';
     }
   };
   const statusLabel = (status: string) => {
-    switch (status) {
-      case 'COMPLETED': return 'Done';
-      case 'IN_PROGRESS': return 'In Progress';
+    switch (status.toLowerCase()) {
+      case 'completed': return 'Done';
+      case 'in_progress': return 'In Progress';
       default: return 'Pending';
     }
   };
@@ -209,7 +209,7 @@ function PlanUpdateBlock({ todos }: { todos: PlanTodo[] }) {
                 <tr key={j} className="border-b" style={{ borderColor: 'var(--color-border)' }}>
                   <td className="py-1.5 pr-3 whitespace-nowrap">
                     <span style={{ color: statusColor(t.status) }}>
-                      {t.status === 'COMPLETED' ? '\u2713 ' : t.status === 'IN_PROGRESS' ? '\u25B6 ' : '\u25CB '}{statusLabel(t.status)}
+                      {t.status.toLowerCase() === 'completed' ? '\u2713 ' : t.status.toLowerCase() === 'in_progress' ? '\u25B6 ' : '\u25CB '}{statusLabel(t.status)}
                     </span>
                   </td>
                   <td className="py-1.5" style={{ color: 'var(--color-text)' }}>{t.content}</td>
@@ -662,6 +662,7 @@ export default function Chat() {
     setStatus('running');
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
+    setPlanTodos(null);
     setMessages(prev => [...prev, { role: 'agent', content: '', thinking: '', tools: [] }]);
 
     try {
@@ -1131,9 +1132,6 @@ export default function Chat() {
               <span>Context compressed: {compressionInfo.before} → {compressionInfo.after} messages</span>
             </div>
           )}
-          {planTodos && planTodos.length > 0 && (
-            <PlanUpdateBlock todos={planTodos} />
-          )}
           {messages.filter((msg, idx) => msg.role === 'user' || msg.content?.trim() || msg.thinking || (msg.tools && msg.tools.length > 0) || msg.approval || (status === 'running' && msg.role === 'agent' && idx === messages.length - 1)).map((msg, i) => (
             <div key={i} className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'agent' && (
@@ -1145,6 +1143,7 @@ export default function Chat() {
               <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
                 {msg.thinking && <ThinkingBlock thinking={msg.thinking} isStreaming={status === 'running' && i === messages.length - 1 && !msg.content} />}
                 {msg.tools && msg.tools.length > 0 && <ToolsBlock tools={msg.tools} />}
+                {planTodos && planTodos.length > 0 && msg.role === 'agent' && i === messages.length - 1 && <PlanUpdateBlock todos={planTodos} />}
                 <div className="rounded-xl px-4 py-3 text-sm overflow-x-auto"
                   style={{
                     background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
