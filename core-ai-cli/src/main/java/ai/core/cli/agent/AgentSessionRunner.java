@@ -92,6 +92,24 @@ public class AgentSessionRunner {
         session.close();
         return switchSessionId.get();
     }
+
+    public void runPrompt(String prompt) {
+        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+        var listener = new CliEventListener(ui, session, agent);
+        session.onEvent(listener);
+        setupCompressionListener(listener);
+
+        printBanner();
+        extractPreviousSession();
+        printSessionHistory();
+        if (prompt != null && !prompt.isBlank()) {
+            ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + prompt.strip() + "\n");
+        }
+        sendPrompt(listener, session, prompt);
+
+        session.close();
+    }
+
     private void extractPreviousSession() {
         var extractor = new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel(), sessionPersistence);
         if (!extractor.hasPendingSessions(sessionId)) return;
@@ -147,6 +165,16 @@ public class AgentSessionRunner {
         }, "sender-thread");
         senderThread.setDaemon(true);
         senderThread.start();
+    }
+
+    private void sendPrompt(CliEventListener listener, InProcessAgentSession session, String prompt) {
+        LOGGER.debug("sending prompt: {}", prompt);
+        listener.prepareTurn();
+        String expanded = ui.getPasteBuffer().expand(prompt == null ? "" : prompt);
+        session.sendMessage(FileReferenceExpander.expand(expanded));
+        LOGGER.debug("waiting for turn...");
+        listener.waitForTurn();
+        LOGGER.debug("turn finished");
     }
 
     private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {

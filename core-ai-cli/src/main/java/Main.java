@@ -41,6 +41,9 @@ public class Main implements Callable<Integer> {
     @Option(names = "--model", description = "Override LLM model name")
     String model;
 
+    @Option(names = "--prompt", description = "Send one prompt, print the response, and exit")
+    String prompt;
+
     @Option(names = "--config", description = "Config file path")
     Path configFile;
 
@@ -84,13 +87,13 @@ public class Main implements Callable<Integer> {
             System.setProperty("core.ai.debug", "true");
         }
         if (serve) {
-            new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace)
+            new CliApp(configFile, model, prompt, skipPermissions, continueSession, resume, workspace)
                     .startServe(port, !headless, webDir);
         } else if (serverUrl != null) {
-            new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace)
+            new CliApp(configFile, model, prompt, skipPermissions, continueSession, resume, workspace)
                     .startRemote(serverUrl, apiKey, agentId);
         } else {
-            new CliApp(configFile, model, skipPermissions, continueSession, resume, workspace).start();
+            new CliApp(configFile, model, prompt, skipPermissions, continueSession, resume, workspace).start();
         }
         return 0;
     }

@@ -86,6 +86,18 @@ public class RemoteSessionRunner {
         }
     }
 
+    public void runPrompt(String prompt) {
+        session.onEvent(listener);
+        printBanner();
+        if (prompt != null && !prompt.isBlank()) {
+            ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + currentPrompt + AnsiTheme.RESET + prompt.strip() + "\n");
+        }
+        listener.prepareTurn();
+        session.sendMessage(FileReferenceExpander.expand(prompt == null ? "" : prompt));
+        listener.waitForTurn();
+        session.close();
+    }
+
     private void switchAgent(String agentId, String agentName) {
         session.close();
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Switching to " + agentName + "..." + AnsiTheme.RESET + "\n");

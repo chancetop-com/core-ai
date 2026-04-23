@@ -73,14 +73,16 @@ public class CliApp {
 
     private final Path configFile;
     private final String modelOverride;
+    private final String prompt;
     private final boolean autoApproveAll;
     private final boolean continueSession;
     private final boolean resume;
     private final Path workspace;
 
-    public CliApp(Path configFile, String modelOverride, boolean autoApproveAll, boolean continueSession, boolean resume, Path workspace) {
+    public CliApp(Path configFile, String modelOverride, String prompt, boolean autoApproveAll, boolean continueSession, boolean resume, Path workspace) {
         this.configFile = configFile != null ? configFile : PathUtils.DEFAULT_CONFIG;
         this.modelOverride = modelOverride;
+        this.prompt = prompt;
         this.autoApproveAll = autoApproveAll;
         this.continueSession = continueSession;
         this.resume = resume;
@@ -97,7 +99,11 @@ public class CliApp {
         InteractiveConfigSetup.setupIfNeeded(ui);
 
         var sessionContext = initializeSession(ui);
-        runSessionLoop(ui, sessionContext);
+        if (prompt != null) {
+            runSinglePrompt(ui, sessionContext, prompt);
+        } else {
+            runSessionLoop(ui, sessionContext);
+        }
         cleanup(ui, sessionContext);
     }
 
@@ -127,18 +133,11 @@ public class CliApp {
         try {
             String currentSessionId = ctx.currentSessionId;
             while (true) {
-                var agentConfig = new CliAgent.Config(ctx.result.llmProviders, modelOverride, ctx.maxTurn, ctx.sessionPersistence, workspace, question -> {
-                    ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
-                    ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
-                    return ui.readRawLine();
-                });
-                var agent = CliAgent.of(agentConfig);
-                var config = new AgentSessionRunner.Config(ctx.modelName, autoApproveAll, currentSessionId, ctx.sessionManager, ctx.permissionStore, ctx.noteMemory, ctx.modelRegistry, ctx.sessionPersistence);
-                var runner = new AgentSessionRunner(ui, agent, ctx.result.llmProviders, config);
+                var runner = createLocalRunner(ui, ctx, currentSessionId);
                 String nextSessionId = runner.run();
                 var remote = runner.getRemoteConfig();
                 if (remote != null) {
-                    runRemoteSession(ui, remote);
+                    runRemoteSession(ui, remote, null);
                     ui.printStreamingChunk(AnsiTheme.MUTED + "  Back to local mode." + AnsiTheme.RESET + "\n");
                     continue;
                 }
@@ -149,6 +148,26 @@ public class CliApp {
         } finally {
             CliLogger.close();
         }
+    }
+
+    private void runSinglePrompt(TerminalUI ui, SessionContext ctx, String promptText) {
+        try {
+            var runner = createLocalRunner(ui, ctx, ctx.currentSessionId);
+            runner.runPrompt(promptText);
+        } finally {
+            CliLogger.close();
+        }
+    }
+
+    private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
+        var agentConfig = new CliAgent.Config(ctx.result.llmProviders, modelOverride, ctx.maxTurn, ctx.sessionPersistence, workspace, question -> {
+            ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
+            ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
+            return ui.readRawLine();
+        });
+        var agent = CliAgent.of(agentConfig);
+        var config = new AgentSessionRunner.Config(ctx.modelName, autoApproveAll, sessionId, ctx.sessionManager, ctx.permissionStore, ctx.noteMemory, ctx.modelRegistry, ctx.sessionPersistence);
+        return new AgentSessionRunner(ui, agent, ctx.result.llmProviders, config);
     }
 
     private void cleanup(TerminalUI ui, SessionContext ctx) {
@@ -258,7 +277,7 @@ public class CliApp {
         var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant", null);
         var ui = new TerminalUI();
         try {
-            runRemoteSession(ui, config);
+            runRemoteSession(ui, config, prompt);
             ui.printStreamingChunk("Goodbye!\n");
         } catch (Exception e) {
             ui.showError(e.getMessage());
@@ -376,12 +395,16 @@ public class CliApp {
         return null;
     }
 
-    private void runRemoteSession(TerminalUI ui, RemoteConfig config) {
+    private void runRemoteSession(TerminalUI ui, RemoteConfig config, String promptText) {
         try {
             var api = new RemoteApiClient(config.serverUrl(), config.apiKey());
             var session = HttpAgentSession.connect(api, config.agentId());
             var runner = new RemoteSessionRunner(ui, session, api, config.name(), config.agentId());
-            runner.run();
+            if (promptText != null) {
+                runner.runPrompt(promptText);
+            } else {
+                runner.run();
+            }
         } catch (Exception e) {
             ui.showError(e.getMessage());
         }
