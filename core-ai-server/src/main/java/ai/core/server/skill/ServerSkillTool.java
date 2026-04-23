@@ -37,6 +37,13 @@ public class ServerSkillTool extends ToolCall {
     private SkillService skillService;
     private SkillArchiveBuilder archiveBuilder;
 
+    /** Compute description dynamically so that skills attached to the session after
+     *  the tool was built (via AgentSessionManager.loadSkills) become visible to the LLM. */
+    @Override
+    public String getDescription() {
+        return SkillTool.buildDescription(registry != null ? registry.listAll() : List.of(), null);
+    }
+
     @Override
     public ToolCallResult execute(String arguments) {
         return ToolCallResult.failed("ServerSkillTool requires ExecutionContext; direct execute is not supported");
