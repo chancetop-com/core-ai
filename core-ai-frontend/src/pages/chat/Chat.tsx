@@ -193,7 +193,7 @@ function PlanUpdateBlock({ todos }: { todos: PlanTodo[] }) {
         style={{ color: 'var(--color-text-secondary)' }}>
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <ListTodo size={14} />
-        <span className="font-medium">Planning ({todos.filter(t => t.status === 'COMPLETED').length}/{todos.length})</span>
+        <span className="font-medium">Planning ({todos.filter(t => t.status.toLowerCase() === 'completed').length}/{todos.length})</span>
       </button>
       {expanded && (
         <div className="px-3 pb-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
