@@ -370,6 +370,11 @@ public class OutputPanel {
 
     public void startSpinner() {
         if (spinnerActive.compareAndSet(false, true)) {
+            mdRenderer.flush();
+            if (reasoningShown && !textStarted) {
+                writer.println();
+                writer.flush();
+            }
             spinner.start();
         }
     }
