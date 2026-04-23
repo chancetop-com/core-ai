@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -254,7 +255,7 @@ public class AgentRunner {
         var skillIds = config != null ? config.skillIds : definition.skillIds;
         if (skillIds != null && !skillIds.isEmpty()) {
             var skillRegistry = new SkillRegistry();
-            skillRegistry.addProvider(mongoSkillProvider);
+            skillRegistry.addProvider(mongoSkillProvider.scoped(new HashSet<>(skillIds)));
             builder.skillRegistry(skillRegistry);
         }
 

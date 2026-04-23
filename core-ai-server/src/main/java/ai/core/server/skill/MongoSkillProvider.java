@@ -9,14 +9,17 @@ import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 
 import java.util.List;
+import java.util.Set;
 
 /**
- * Skill provider backed entirely by Mongo. SKILL.md content and resource
- * file bodies live in the `skills` collection; no external filesystem.
+ * Skill source backed by Mongo. Does NOT implement SkillProvider directly — callers
+ * must obtain a scoped provider via {@link #scoped(Set)} so only explicitly allowed
+ * skill ids are visible to an Agent. This prevents an Agent from discovering skills
+ * that were never attached to it.
  *
  * @author stephen
  */
-public class MongoSkillProvider implements SkillProvider {
+public class MongoSkillProvider {
 
     @Inject
     MongoCollection<SkillDefinition> skillCollection;
@@ -24,33 +27,52 @@ public class MongoSkillProvider implements SkillProvider {
     @Inject
     SkillService skillService;
 
-    @Override
-    public List<SkillMetadata> listSkills() {
-        var definitions = skillCollection.find(Filters.exists("_id"));
-        return definitions.stream().map(skillService::toMetadata).toList();
+    /**
+     * Returns a SkillProvider that only lists skills whose id is in {@code allowedIds}.
+     * The set is held by reference, so callers may mutate it to grow the allowed set;
+     * call {@link ai.core.skill.SkillRegistry#invalidateCache()} afterwards to force a re-list.
+     */
+    public SkillProvider scoped(Set<String> allowedIds) {
+        return new ScopedProvider(allowedIds);
     }
 
-    @Override
-    public String readContent(SkillMetadata skill) {
-        if (skill.getContent() != null) return skill.getContent();
-        throw new SkillLoadException("skill content not available: " + skill.getQualifiedName());
-    }
+    private final class ScopedProvider implements SkillProvider {
+        private final Set<String> allowedIds;
 
-    @Override
-    public String readResource(SkillMetadata skill, String resourcePath) {
-        var def = skillService.findByQualifiedName(skill.getQualifiedName());
-        if (def.resources == null || def.resources.isEmpty()) {
-            throw new SkillLoadException("skill has no resources: " + skill.getQualifiedName());
+        ScopedProvider(Set<String> allowedIds) {
+            this.allowedIds = allowedIds;
         }
-        return def.resources.stream()
-            .filter(r -> r.path.equals(resourcePath))
-            .findFirst()
-            .map(r -> r.content)
-            .orElseThrow(() -> new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName()));
-    }
 
-    @Override
-    public int priority() {
-        return 10;
+        @Override
+        public List<SkillMetadata> listSkills() {
+            if (allowedIds.isEmpty()) return List.of();
+            var snapshot = List.copyOf(allowedIds);
+            var definitions = skillCollection.find(Filters.in("_id", snapshot));
+            return definitions.stream().map(skillService::toMetadata).toList();
+        }
+
+        @Override
+        public String readContent(SkillMetadata skill) {
+            if (skill.getContent() != null) return skill.getContent();
+            throw new SkillLoadException("skill content not available: " + skill.getQualifiedName());
+        }
+
+        @Override
+        public String readResource(SkillMetadata skill, String resourcePath) {
+            var def = skillService.findByQualifiedName(skill.getQualifiedName());
+            if (def.resources == null || def.resources.isEmpty()) {
+                throw new SkillLoadException("skill has no resources: " + skill.getQualifiedName());
+            }
+            return def.resources.stream()
+                .filter(r -> r.path.equals(resourcePath))
+                .findFirst()
+                .map(r -> r.content)
+                .orElseThrow(() -> new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName()));
+        }
+
+        @Override
+        public int priority() {
+            return 10;
+        }
     }
 }

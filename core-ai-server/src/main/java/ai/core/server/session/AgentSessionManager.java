@@ -30,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -40,6 +41,14 @@ import java.util.concurrent.ConcurrentMap;
 public class AgentSessionManager {
     private final Logger logger = LoggerFactory.getLogger(AgentSessionManager.class);
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, SessionSkillState> sessionSkillStates = new ConcurrentHashMap<>();
+
+    /** Per-session skill whitelist + registry. loadSkills appends to the id set and invalidates
+     *  the registry cache so the Agent only ever sees skills explicitly attached to this session. */
+    private static final class SessionSkillState {
+        final Set<String> allowedIds = ConcurrentHashMap.newKeySet();
+        final SkillRegistry registry = new SkillRegistry();
+    }
 
     @Inject
     LLMProviders llmProviders;
@@ -290,6 +299,7 @@ public class AgentSessionManager {
     public void closeSession(String sessionId) {
         var session = sessions.remove(sessionId);
         if (session != null) session.close();
+        sessionSkillStates.remove(sessionId);
         sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
     }
@@ -310,15 +320,20 @@ public class AgentSessionManager {
         if (skills.isEmpty()) {
             throw new NotFoundException("no skills found for ids: " + skillIds);
         }
-        var registry = new SkillRegistry();
-        registry.addProvider(mongoSkillProvider);
-        ToolCall skillTool = ServerSkillTool.builder()
-            .registry(registry)
-            .skillService(skillService)
-            .archiveBuilder(skillArchiveBuilder)
-            .build();
-        ToolCall readResourceTool = ReadSkillResourceTool.builder().registry(registry).build();
-        session.loadTools(List.of(skillTool, readResourceTool));
+        var state = sessionSkillStates.computeIfAbsent(sessionId, k -> {
+            var fresh = new SessionSkillState();
+            fresh.registry.addProvider(mongoSkillProvider.scoped(fresh.allowedIds));
+            ToolCall skillTool = ServerSkillTool.builder()
+                .registry(fresh.registry)
+                .skillService(skillService)
+                .archiveBuilder(skillArchiveBuilder)
+                .build();
+            ToolCall readResourceTool = ReadSkillResourceTool.builder().registry(fresh.registry).build();
+            session.loadTools(List.of(skillTool, readResourceTool));
+            return fresh;
+        });
+        state.allowedIds.addAll(skillIds);
+        state.registry.invalidateCache();
         return skills.stream().map(SkillMetadata::getQualifiedName).toList();
     }
 
