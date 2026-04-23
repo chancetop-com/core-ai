@@ -935,7 +935,7 @@ export default function Chat() {
       {/* Top bar: agent selector */}
       <div className="border-b px-6 py-3 flex items-center justify-between"
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 overflow-hidden">
           <div className="relative" ref={agentDropdownRef}>
             <button
               onClick={() => setAgentDropdownOpen(prev => !prev)}
@@ -943,7 +943,7 @@ export default function Chat() {
               className="flex w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm cursor-pointer disabled:opacity-40"
               style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
               <Bot size={14} style={{ color: 'var(--color-primary)' }} />
-              <span>{selectedAgent?.name || 'Select Agent'}</span>
+              <span className="truncate max-w-[160px]">{selectedAgent?.name || 'Select Agent'}</span>
               <ChevronDown size={14} className={agentDropdownOpen ? 'rotate-180' : ''} />
             </button>
             {agentDropdownOpen && (
@@ -1056,7 +1056,7 @@ export default function Chat() {
             )}
           </div>
           {selectedAgent && (
-            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            <span className="flex-1 min-w-0 text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
               {selectedAgent.model || 'default model'}
               {selectedAgent.description && ` · ${selectedAgent.description}`}
             </span>

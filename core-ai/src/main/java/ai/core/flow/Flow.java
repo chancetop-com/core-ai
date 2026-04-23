@@ -22,10 +22,7 @@ import java.util.stream.Collectors;
 
 /**
  * @author stephen
- *
- * This feature is not being used and will be removed later.  @lim
  */
-
 public class Flow {
     public static Builder builder() {
         return new Builder();
