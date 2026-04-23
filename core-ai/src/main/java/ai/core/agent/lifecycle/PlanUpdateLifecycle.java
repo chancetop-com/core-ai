@@ -4,6 +4,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.tools.WriteTodosTool;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.json.JSON;
 import org.slf4j.Logger;
@@ -28,7 +29,7 @@ public class PlanUpdateLifecycle extends AbstractLifecycle {
 
     @Override
     public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
-        if (!"write_todos".equals(functionCall.function.name) || !toolResult.isCompleted()) {
+        if (!WriteTodosTool.WT_TOOL_NAME.equals(functionCall.function.name) || !toolResult.isCompleted()) {
             return;
         }
 

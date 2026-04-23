@@ -5,6 +5,7 @@ import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
+import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import core.framework.api.http.HTTPStatus;
@@ -27,7 +28,7 @@ public interface AgentDefinitionWebService {
 
     @GET
     @Path("/api/agents")
-    ListAgentsResponse list();
+    ListAgentsResponse list(ListAgentsRequest request);
 
     @GET
     @Path("/api/agents/:id")

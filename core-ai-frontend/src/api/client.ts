@@ -553,8 +553,8 @@ export const api = {
       request<PromptTemplate>(`/api/prompts/${id}/publish`, { method: 'POST' }),
   },
   agents: {
-    list: () =>
-      request<ListAgentsResponse>('/api/agents'),
+    list: (my?: boolean) =>
+      request<ListAgentsResponse>(`/api/agents${my !== undefined ? `?my=${my}` : ''}`),
     get: (id: string) =>
       request<AgentDefinition>(`/api/agents/${id}`),
     create: (data: Partial<AgentDefinition>) =>

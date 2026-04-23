@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles, Users, Copy, Check } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles, Users, Copy, Check, Search, Star } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, HistoryMessage, ChatSessionSummary } from '../../api/session';
@@ -254,10 +254,15 @@ export default function Chat() {
   const [compressionInfo, setCompressionInfo] = useState<{ before: number; after: number } | null>(null);
 
   // Agent selection
-  const [agents, setAgents] = useState<AgentDefinition[]>([]);
+  const [myAgents, setMyAgents] = useState<AgentDefinition[]>([]);
+  const [otherAgents, setOtherAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>(() => sessionStorage.getItem('chat_agentId') || '');
   const [sessionId, setSessionId] = useState<string | null>(() => sessionStorage.getItem('chat_sessionId'));
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
+  const [agentSearchQuery, setAgentSearchQuery] = useState('');
+  const [loadingOtherAgents, setLoadingOtherAgents] = useState(false);
+  const agentDropdownRef = useRef<HTMLDivElement>(null);
 
   // Loaded tools/skills (confirmed on server)
   const [loadedToolIds, setLoadedToolIds] = useState<Set<string>>(new Set());
@@ -286,6 +291,9 @@ export default function Chat() {
   const sseControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
+
+  // All published agents for chat (my + others, filtered by status)
+  const agents = [...myAgents, ...otherAgents].filter(a => a.status === 'PUBLISHED' || a.type === 'local');
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -328,6 +336,26 @@ export default function Chat() {
       document.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [variablesExpanded]);
+
+  // Close agent dropdown when clicking outside
+  useEffect(() => {
+    if (!agentDropdownOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const dropdown = agentDropdownRef.current;
+      const target = event.target as Node | null;
+      if (!dropdown || !target) return;
+      if (!dropdown.contains(target)) {
+        setAgentDropdownOpen(false);
+        setAgentSearchQuery('');
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [agentDropdownOpen]);
 
   useEffect(() => {
     const agent = agents.find(a => a.id === selectedAgentId);
@@ -383,14 +411,19 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Load published agents
+  // Load agents (my agents + others for chat)
   useEffect(() => {
-    api.agents.list().then(res => {
-      // Include both AGENT type (normal) and local type (CLI mode)
-      const published = (res.agents || []).filter(a => a.status === 'PUBLISHED' && (a.type === 'AGENT' || a.type === 'local'));
-      setAgents(published);
-      if (published.length > 0) {
-        setSelectedAgentId(prev => prev || published[0].id);
+    Promise.all([
+      api.agents.list(true),
+      api.agents.list(false),
+    ]).then(([myRes, otherRes]) => {
+      setMyAgents(myRes.agents || []);
+      setOtherAgents(otherRes.agents || []);
+      // Auto-select first published agent if none selected
+      const allAgents = [...(myRes.agents || []), ...(otherRes.agents || [])]
+        .filter(a => a.status === 'PUBLISHED' || a.type === 'local');
+      if (allAgents.length > 0 && !selectedAgentId) {
+        setSelectedAgentId(allAgents[0].id);
       }
     }).catch(console.error);
   }, []);
@@ -900,16 +933,103 @@ export default function Chat() {
       <div className="border-b px-6 py-3 flex items-center justify-between"
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
         <div className="flex items-center gap-3">
-          <select value={selectedAgentId}
-            onChange={e => { handleNewChat(); setSelectedAgentId(e.target.value); }}
-            disabled={status === 'running'}
-            className="px-3 py-2 rounded-lg border text-sm outline-none"
-            style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-            {agents.length === 0 && <option value="">No published agents</option>}
-            {agents.map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
+          <div className="relative" ref={agentDropdownRef}>
+            <button
+              onClick={() => setAgentDropdownOpen(prev => !prev)}
+              disabled={status === 'running'}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer disabled:opacity-40"
+              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+              <Bot size={14} style={{ color: 'var(--color-primary)' }} />
+              <span>{selectedAgent?.name || 'Select Agent'}</span>
+              <ChevronDown size={14} className={agentDropdownOpen ? 'rotate-180' : ''} />
+            </button>
+            {agentDropdownOpen && (
+              <div className="absolute left-0 top-11 z-50 w-[380px] rounded-xl border shadow-lg"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
+                {/* My Agents Section */}
+                {myAgents.filter(a => a.status === 'PUBLISHED' || a.type === 'local').length > 0 && (
+                  <div className="p-2">
+                    <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium"
+                      style={{ color: 'var(--color-text-secondary)' }}>
+                      <Bot size={12} /> My Agents
+                    </div>
+                    <div className="max-h-[200px] overflow-auto">
+                      {myAgents.filter(a => a.status === 'PUBLISHED' || a.type === 'local').map(a => (
+                        <button key={a.id}
+                          onClick={() => { handleNewChat(); setSelectedAgentId(a.id); setAgentDropdownOpen(false); setAgentSearchQuery(''); }}
+                          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
+                          style={{
+                            background: selectedAgentId === a.id ? 'var(--color-bg-tertiary)' : 'transparent',
+                            color: 'var(--color-text)',
+                          }}
+                          onMouseEnter={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
+                          onMouseLeave={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'transparent'; }}>
+                          <Bot size={14} style={{ color: 'var(--color-primary)' }} />
+                          <span className="flex-1 truncate">{a.name}</span>
+                          {selectedAgentId === a.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Search Others Section */}
+                <div className="p-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium mb-1"
+                    style={{ color: 'var(--color-text-secondary)' }}>
+                    <Star size={12} /> Shared Agents
+                  </div>
+                  <div className="relative mb-1">
+                    <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2"
+                      style={{ color: 'var(--color-text-secondary)' }} />
+                    <input
+                      type="text"
+                      value={agentSearchQuery}
+                      onChange={e => setAgentSearchQuery(e.target.value)}
+                      placeholder="Search shared agents..."
+                      className="w-full pl-7 pr-2 py-1.5 rounded-lg border text-xs outline-none"
+                      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                    />
+                  </div>
+                  {agentSearchQuery.length > 0 && (
+                    <div className="max-h-[200px] overflow-auto">
+                      {loadingOtherAgents ? (
+                        <div className="text-center py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                          Loading...
+                        </div>
+                      ) : otherAgents.filter(a =>
+                        (a.status === 'PUBLISHED' || a.type === 'local') &&
+                        a.name.toLowerCase().includes(agentSearchQuery.toLowerCase())
+                      ).length === 0 ? (
+                        <div className="text-center py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                          No agents found
+                        </div>
+                      ) : (
+                        otherAgents.filter(a =>
+                          (a.status === 'PUBLISHED' || a.type === 'local') &&
+                          a.name.toLowerCase().includes(agentSearchQuery.toLowerCase())
+                        ).map(a => (
+                          <button key={a.id}
+                            onClick={() => { handleNewChat(); setSelectedAgentId(a.id); setAgentDropdownOpen(false); setAgentSearchQuery(''); }}
+                            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
+                            style={{
+                              background: selectedAgentId === a.id ? 'var(--color-bg-tertiary)' : 'transparent',
+                              color: 'var(--color-text)',
+                            }}
+                            onMouseEnter={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
+                            onMouseLeave={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'transparent'; }}>
+                            <Star size={14} style={{ color: 'var(--color-text-secondary)' }} />
+                            <span className="flex-1 truncate">{a.name}</span>
+                            <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{a.created_by}</span>
+                            {selectedAgentId === a.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           {selectedAgent && (
             <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               {selectedAgent.model || 'default model'}

@@ -6,6 +6,7 @@ import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
+import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.server.agent.AgentDefinitionService;
@@ -34,9 +35,13 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     }
 
     @Override
-    public ListAgentsResponse list() {
+    public ListAgentsResponse list(ListAgentsRequest request) {
         var userId = AuthContext.userId(webContext);
-        return agentDefinitionService.list(userId);
+        Boolean myAgentsFilter = null;
+        if (request.myAgents != null) {
+            myAgentsFilter = "true".equalsIgnoreCase(request.myAgents) || "1".equals(request.myAgents);
+        }
+        return agentDefinitionService.list(userId, myAgentsFilter);
     }
 
     @Override

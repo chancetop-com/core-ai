@@ -6,10 +6,9 @@ import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.ToolCall;
 import ai.core.tool.function.Functions;
 import ai.core.utils.JsonUtil;
-import com.fasterxml.jackson.annotation.JsonCreator;
+import core.framework.api.json.Property;
 
 import java.util.List;
-import java.util.Locale;
 
 public class WriteTodosTool {
     private static final String WT_TOOL_DESC = """
@@ -82,7 +81,7 @@ public class WriteTodosTool {
 
     @CoreAiMethod(name = WT_TOOL_NAME, description = WT_TOOL_DESC)
     public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos, ExecutionContext context) {
-        String todosJson = JsonUtil.toJson(todos);
+        var todosJson = JsonUtil.toJson(todos);
         return """
                   Todos have been modified successfully.
                   <system-reminder>
@@ -97,18 +96,12 @@ public class WriteTodosTool {
     }
 
     public enum Status {
-        PENDING, IN_PROGRESS, COMPLETED;
-
-        @JsonCreator
-        public static Status fromString(String value) {
-            if (value == null) return null;
-            return switch (value.toUpperCase(Locale.getDefault())) {
-                case "PENDING" -> PENDING;
-                case "IN_PROGRESS" -> IN_PROGRESS;
-                case "COMPLETED" -> COMPLETED;
-                default -> throw new IllegalArgumentException("Unknown status: " + value);
-            };
-        }
+        @Property(name = "pending")
+        PENDING,
+        @Property(name = "in_progress")
+        IN_PROGRESS,
+        @Property(name = "completed")
+        COMPLETED;
     }
 
     public static class Todo {

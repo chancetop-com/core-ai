@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -18,32 +18,52 @@ function toExportData(a: AgentDefinition): Record<string, unknown> {
 }
 
 export default function AgentList() {
-  const [agents, setAgents] = useState<AgentDefinition[]>([]);
+  const [myAgents, setMyAgents] = useState<AgentDefinition[]>([]);
+  const [otherAgents, setOtherAgents] = useState<AgentDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [offset, setOffset] = useState(0);
+  const [activeTab, setActiveTab] = useState<'my' | 'other'>('my');
+  const [myOffset, setMyOffset] = useState(0);
+  const [otherOffset, setOtherOffset] = useState(0);
   const [limit, setLimit] = useState(10);
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated_at' | 'created_at'>('updated_at');
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const load = () => {
+  const loadMyAgents = () => {
     setLoading(true);
-    api.agents.list().then(res => setAgents(res.agents || [])).finally(() => setLoading(false));
+    api.agents.list(true).then(res => setMyAgents(res.agents || [])).finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  const loadOtherAgents = () => {
+    api.agents.list(false).then(res => setOtherAgents(res.agents || [])).catch(() => setOtherAgents([]));
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.agents.list(true),
+      api.agents.list(false),
+    ]).then(([myRes, otherRes]) => {
+      setMyAgents(myRes.agents || []);
+      setOtherAgents(otherRes.agents || []);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const currentAgents = activeTab === 'my' ? myAgents : otherAgents;
+  const currentOffset = activeTab === 'my' ? myOffset : otherOffset;
+  const setCurrentOffset = activeTab === 'my' ? setMyOffset : setOtherOffset;
 
   const trimmedQuery = query.trim().toLowerCase();
-  const userAgents = agents
+  const filteredAgents = currentAgents
     .filter(a => !a.system_default)
     .filter(a => !trimmedQuery || a.name.toLowerCase().includes(trimmedQuery))
     .slice()
     .sort((a, b) => (b[sortBy] || '').localeCompare(a[sortBy] || ''));
-  const pagedAgents = userAgents.slice(offset, offset + limit);
+  const pagedAgents = filteredAgents.slice(currentOffset, currentOffset + limit);
 
   const handleCreate = async () => {
     const name = `New Agent ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
@@ -61,15 +81,15 @@ export default function AgentList() {
   };
 
   const toggleSelectAll = () => {
-    if (selected.size === userAgents.length) {
+    if (selected.size === filteredAgents.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(userAgents.map(a => a.id)));
+      setSelected(new Set(filteredAgents.map(a => a.id)));
     }
   };
 
   const handleExport = () => {
-    const toExport = userAgents.filter(a => selected.has(a.id));
+    const toExport = filteredAgents.filter(a => selected.has(a.id));
     if (toExport.length === 0) return;
     const exportData = toExport.map(toExportData);
     const json = JSON.stringify(exportData.length === 1 ? exportData[0] : exportData, null, 2);
@@ -95,7 +115,7 @@ export default function AgentList() {
       const text = await file.text();
       const data = JSON.parse(text);
       const items = Array.isArray(data) ? data : [data];
-      const existingNames = new Set(agents.map(a => a.name));
+      const existingNames = new Set([...myAgents, ...otherAgents].map(a => a.name));
       let created = 0;
       for (const item of items) {
         if (!item.name) continue;
@@ -113,7 +133,7 @@ export default function AgentList() {
         }
       }
       alert(`Imported ${created} of ${items.length} agent(s)`);
-      load();
+      loadMyAgents();
     } catch {
       alert('Invalid JSON file');
     } finally {
@@ -133,17 +153,26 @@ export default function AgentList() {
     return d.toLocaleDateString();
   };
 
+  const handleTabChange = (tab: 'my' | 'other') => {
+    setActiveTab(tab);
+    setSelectMode(false);
+    setSelected(new Set());
+    setQuery('');
+    setMyOffset(0);
+    setOtherOffset(0);
+  };
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold">Agents</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Create and manage your AI agents
+            Create and manage your AI agents, or browse shared agents from others
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {selectMode ? (
+          {activeTab === 'my' && selectMode ? (
             <>
               <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                 {selected.size} selected
@@ -151,7 +180,7 @@ export default function AgentList() {
               <button onClick={toggleSelectAll}
                 className="px-3 py-2 rounded-lg text-sm border cursor-pointer"
                 style={{ borderColor: 'var(--color-border)' }}>
-                {selected.size === userAgents.length ? 'Deselect All' : 'Select All'}
+                {selected.size === filteredAgents.length ? 'Deselect All' : 'Select All'}
               </button>
               <button onClick={handleExport} disabled={selected.size === 0}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
@@ -166,58 +195,94 @@ export default function AgentList() {
             </>
           ) : (
             <>
-              {userAgents.length > 0 && (
+              {activeTab === 'my' && myAgents.length > 0 && (
                 <button onClick={() => setSelectMode(true)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
                   style={{ borderColor: 'var(--color-border)' }}>
                   <Download size={14} /> Export
                 </button>
               )}
-              <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
-                style={{ borderColor: 'var(--color-border)', opacity: importing ? 0.5 : 1 }}>
-                <FileUp size={14} /> {importing ? 'Importing...' : 'Import'}
-                <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} disabled={importing} />
-              </label>
-              <button onClick={handleCreate}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-                style={{ background: 'var(--color-primary)' }}>
-                <Plus size={16} /> New Agent
-              </button>
+              {activeTab === 'my' && (
+                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+                  style={{ borderColor: 'var(--color-border)', opacity: importing ? 0.5 : 1 }}>
+                  <FileUp size={14} /> {importing ? 'Importing...' : 'Import'}
+                  <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} disabled={importing} />
+                </label>
+              )}
+              {activeTab === 'my' && (
+                <button onClick={handleCreate}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                  style={{ background: 'var(--color-primary)' }}>
+                  <Plus size={16} /> New Agent
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
 
-      <div className="mb-4 flex items-center gap-2">
-        <div className="relative max-w-md flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
-            style={{ color: 'var(--color-text-secondary)' }} />
-          <input type="text" value={query}
-            onChange={e => { setQuery(e.target.value); setOffset(0); }}
-            placeholder="Search by name..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
-            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
+          <button
+            onClick={() => handleTabChange('my')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            style={{
+              background: activeTab === 'my' ? 'var(--color-bg-tertiary)' : 'transparent',
+              color: activeTab === 'my' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+            }}>
+            <Bot size={14} />
+            My Agents
+            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)' }}>
+              {myAgents.filter(a => !a.system_default).length}
+            </span>
+          </button>
+          <button
+            onClick={() => handleTabChange('other')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            style={{
+              background: activeTab === 'other' ? 'var(--color-bg-tertiary)' : 'transparent',
+              color: activeTab === 'other' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+            }}>
+            <Star size={14} />
+            Shared Agents
+            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)' }}>
+              {otherAgents.filter(a => !a.system_default).length}
+            </span>
+          </button>
         </div>
-        <select value={sortBy}
-          onChange={e => { setSortBy(e.target.value as 'updated_at' | 'created_at'); setOffset(0); }}
-          className="px-3 py-2 rounded-lg border text-sm outline-none cursor-pointer"
-          style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-          <option value="updated_at">Sort: Updated ↓</option>
-          <option value="created_at">Sort: Created ↓</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <div className="relative w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--color-text-secondary)' }} />
+            <input type="text" value={query}
+              onChange={e => { setQuery(e.target.value); setMyOffset(0); setOtherOffset(0); }}
+              placeholder="Search by name..."
+              className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
+              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
+          </div>
+          <select value={sortBy}
+            onChange={e => { setSortBy(e.target.value as 'updated_at' | 'created_at'); setMyOffset(0); setOtherOffset(0); }}
+            className="px-3 py-2 rounded-lg border text-sm outline-none cursor-pointer"
+            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+            <option value="updated_at">Sort: Updated ↓</option>
+            <option value="created_at">Sort: Created ↓</option>
+          </select>
+        </div>
       </div>
 
       <div className="grid gap-4">
         {loading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
-        ) : userAgents.length === 0 ? (
+        ) : pagedAgents.length === 0 ? (
           <div className="text-center py-12 rounded-xl border"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-            No agents yet. Click "New Agent" to create one, or import from a JSON file.
+            {activeTab === 'my'
+              ? 'No agents yet. Click "New Agent" to create one, or import from a JSON file.'
+              : 'No shared agents available yet.'}
           </div>
         ) : pagedAgents.map(a => (
           <div key={a.id}
-            onClick={() => selectMode ? toggleSelect(a.id, { stopPropagation: () => {} } as React.MouseEvent) : navigate(`/agents/${a.id}`)}
+            onClick={() => activeTab === 'my' && selectMode ? toggleSelect(a.id, { stopPropagation: () => {} } as React.MouseEvent) : navigate(`/agents/${a.id}`)}
             className="rounded-xl border p-4 cursor-pointer transition-colors"
             style={{
               background: selected.has(a.id) ? 'var(--color-bg-tertiary)' : 'var(--color-bg-secondary)',
@@ -227,7 +292,7 @@ export default function AgentList() {
             onMouseLeave={e => { if (!selected.has(a.id)) e.currentTarget.style.background = selected.has(a.id) ? 'var(--color-bg-tertiary)' : 'var(--color-bg-secondary)'; }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                {selectMode ? (
+                {activeTab === 'my' && selectMode ? (
                   <div className="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0"
                     style={{
                       borderColor: selected.has(a.id) ? 'var(--color-primary)' : 'var(--color-border)',
@@ -261,26 +326,26 @@ export default function AgentList() {
         ))}
       </div>
 
-      {userAgents.length > 0 && (
+      {filteredAgents.length > 0 && (
         <div className="flex items-center justify-between mt-4">
           <div className="flex items-center gap-3">
             <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              Showing {offset + 1}-{Math.min(offset + limit, userAgents.length)} of {userAgents.length}
+              Showing {currentOffset + 1}-{Math.min(currentOffset + limit, filteredAgents.length)} of {filteredAgents.length}
             </span>
             <select value={limit}
-              onChange={e => { setLimit(Number(e.target.value)); setOffset(0); }}
+              onChange={e => { setLimit(Number(e.target.value)); setMyOffset(0); setOtherOffset(0); }}
               className="px-2 py-1 rounded-lg border text-xs"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
               {[10, 20, 50].map(n => <option key={n} value={n}>{n} / page</option>)}
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0}
+            <button onClick={() => setCurrentOffset(Math.max(0, currentOffset - limit))} disabled={currentOffset === 0}
               className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
               <ChevronLeft size={14} /> Prev
             </button>
-            <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= userAgents.length}
+            <button onClick={() => setCurrentOffset(currentOffset + limit)} disabled={currentOffset + limit >= filteredAgents.length}
               className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
               Next <ChevronRight size={14} />
