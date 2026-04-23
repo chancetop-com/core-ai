@@ -375,7 +375,8 @@ export default function Chat() {
     if (sessionId === urlSessionId && messages.length > 0) return;
     let cancelled = false;
     (async () => {
-      await hydrateSession(urlSessionId);
+      const session = await sessionApi.getSession(urlSessionId);
+      await hydrateSession(session);
       if (!cancelled) setSearchParams({}, { replace: true });
     })();
     return () => { cancelled = true; };

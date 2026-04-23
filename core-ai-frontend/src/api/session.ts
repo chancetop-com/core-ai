@@ -209,6 +209,9 @@ export const sessionApi = {
     return request<{ sessions: ChatSessionSummary[] }>(`/api/chat/sessions?${qs.join('&')}`);
   },
 
+  getSession: (sessionId: string) =>
+    request<ChatSessionSummary>(`/api/chat/sessions/${sessionId}`),
+
   deleteChatSession: (sessionId: string) =>
     request<{ deleted: boolean }>(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' }),
 
