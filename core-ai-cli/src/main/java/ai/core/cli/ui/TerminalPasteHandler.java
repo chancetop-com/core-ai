@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.Locale;
 
 /**
  * Handles paste-related logic for TerminalUI including bracketed paste mode,
@@ -122,10 +121,7 @@ class TerminalPasteHandler {
             return true;
         });
 
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("win")) {
-            impl.getKeyMaps().get(LineReader.MAIN)
-                    .bind(new Reference("bracketed-paste"), "\u001B[200~");
-        }
+        impl.getKeyMaps().get(LineReader.MAIN)
+                .bind(new Reference("bracketed-paste"), "\u001B[200~");
     }
 }

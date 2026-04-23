@@ -270,7 +270,6 @@ public class TerminalUI {
         reader.setOpt(LineReader.Option.AUTO_LIST);
         reader.setOpt(LineReader.Option.AUTO_MENU);
         reader.setOpt(LineReader.Option.LIST_PACKED);
-        reader.setOpt(LineReader.Option.BRACKETED_PASTE);
         reader.setOpt(LineReader.Option.AUTO_FRESH_LINE);
         reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference(LineReader.MENU_COMPLETE), "\t");
         registerSlashWidget(reader);
