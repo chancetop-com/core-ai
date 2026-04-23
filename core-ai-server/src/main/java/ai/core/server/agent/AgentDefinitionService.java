@@ -88,7 +88,7 @@ public class AgentDefinitionService {
         } else if (myAgents != null) {
             entities = agentDefinitionCollection.find(Filters.and(
                 Filters.ne(AIRAGENT_USER_ID_FIELD, userId),
-                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+                Filters.ne(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
             ));
         } else {
             entities = agentDefinitionCollection.find(Filters.empty());

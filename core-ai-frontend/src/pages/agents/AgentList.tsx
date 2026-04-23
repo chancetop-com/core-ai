@@ -55,7 +55,7 @@ export default function AgentList() {
 
   const trimmedQuery = query.trim().toLowerCase();
   const filteredAgents = currentAgents
-    .filter(a => !a.system_default)
+    .filter(a => activeTab === 'my' || !a.system_default)
     .filter(a => !trimmedQuery || a.name.toLowerCase().includes(trimmedQuery))
     .slice()
     .sort((a, b) => (b[sortBy] || '').localeCompare(a[sortBy] || ''));
