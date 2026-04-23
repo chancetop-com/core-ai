@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.introspect.VisibilityChecker;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.util.StdDateFormat;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import ai.core.internal.json.CaseInsensitiveEnumDeserializerModifier;
 import ai.core.internal.json.CoreAiAnnotationIntrospector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +37,8 @@ public class JsonUtil {
             .setVisibility(new VisibilityChecker.Std(NONE, NONE, NONE, NONE, PUBLIC_ONLY))
             .setAnnotationIntrospector(new CoreAiAnnotationIntrospector())
             .registerModule(new JavaTimeModule())
+            .registerModule(new SimpleModule()
+                .setDeserializerModifier(new CaseInsensitiveEnumDeserializerModifier()))
             .setDateFormat(new StdDateFormat())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
@@ -44,6 +48,8 @@ public class JsonUtil {
             .setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL)
             .setAnnotationIntrospector(new CoreAiAnnotationIntrospector())
             .registerModule(new JavaTimeModule())
+            .registerModule(new com.fasterxml.jackson.databind.module.SimpleModule()
+                .setDeserializerModifier(new CaseInsensitiveEnumDeserializerModifier()))
             .setDateFormat(new StdDateFormat())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
