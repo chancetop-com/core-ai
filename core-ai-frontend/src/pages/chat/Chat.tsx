@@ -939,7 +939,7 @@ export default function Chat() {
             <button
               onClick={() => setAgentDropdownOpen(prev => !prev)}
               disabled={status === 'running'}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer disabled:opacity-40"
+              className="flex w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm cursor-pointer disabled:opacity-40"
               style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
               <Bot size={14} style={{ color: 'var(--color-primary)' }} />
               <span>{selectedAgent?.name || 'Select Agent'}</span>
