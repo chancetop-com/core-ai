@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Brain, Wrench, ListTodo, Sparkles, Users, Copy, Check, Search, Star } from 'lucide-react';
@@ -261,7 +261,6 @@ export default function Chat() {
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const [agentSearchQuery, setAgentSearchQuery] = useState('');
-  const [loadingOtherAgents, setLoadingOtherAgents] = useState(false);
   const agentDropdownRef = useRef<HTMLDivElement>(null);
 
   // Loaded tools/skills (confirmed on server)
@@ -293,7 +292,10 @@ export default function Chat() {
   const streamingThinkingRef = useRef('');
 
   // All published agents for chat (my + others, filtered by status)
-  const agents = [...myAgents, ...otherAgents].filter(a => a.status === 'PUBLISHED' || a.type === 'local');
+  const agents = useMemo(() =>
+    [...myAgents, ...otherAgents].filter(a => a.status === 'PUBLISHED' || a.type === 'local'),
+    [myAgents, otherAgents]
+  );
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -992,11 +994,7 @@ export default function Chat() {
                   </div>
                   {agentSearchQuery.length > 0 && (
                     <div className="max-h-[200px] overflow-auto">
-                      {loadingOtherAgents ? (
-                        <div className="text-center py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                          Loading...
-                        </div>
-                      ) : otherAgents.filter(a =>
+                      {otherAgents.filter(a =>
                         (a.status === 'PUBLISHED' || a.type === 'local') &&
                         a.name.toLowerCase().includes(agentSearchQuery.toLowerCase())
                       ).length === 0 ? (

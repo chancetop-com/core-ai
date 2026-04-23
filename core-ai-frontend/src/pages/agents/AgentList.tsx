@@ -38,10 +38,6 @@ export default function AgentList() {
     api.agents.list(true).then(res => setMyAgents(res.agents || [])).finally(() => setLoading(false));
   };
 
-  const loadOtherAgents = () => {
-    api.agents.list(false).then(res => setOtherAgents(res.agents || [])).catch(() => setOtherAgents([]));
-  };
-
   useEffect(() => {
     setLoading(true);
     Promise.all([
