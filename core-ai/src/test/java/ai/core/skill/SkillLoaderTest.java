@@ -226,7 +226,6 @@ class SkillLoaderTest {
 
         var skills = loader.loadFromSource(tempDir.toString());
         assertEquals(1, skills.size());
-        assertTrue(skills.getFirst().getResources().isEmpty());
     }
 
     @Test

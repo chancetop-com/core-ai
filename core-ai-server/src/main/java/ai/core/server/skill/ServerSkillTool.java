@@ -121,11 +121,24 @@ public class ServerSkillTool extends ToolCall {
         private SkillArchiveBuilder archiveBuilder;
 
         @Override
-        protected Builder self() { return this; }
+        protected Builder self() {
+            return this;
+        }
 
-        public Builder registry(SkillRegistry registry) { this.registry = registry; return this; }
-        public Builder skillService(SkillService skillService) { this.skillService = skillService; return this; }
-        public Builder archiveBuilder(SkillArchiveBuilder archiveBuilder) { this.archiveBuilder = archiveBuilder; return this; }
+        public Builder registry(SkillRegistry registry) {
+            this.registry = registry;
+            return this;
+        }
+
+        public Builder skillService(SkillService skillService) {
+            this.skillService = skillService;
+            return this;
+        }
+
+        public Builder archiveBuilder(SkillArchiveBuilder archiveBuilder) {
+            this.archiveBuilder = archiveBuilder;
+            return this;
+        }
 
         public ServerSkillTool build() {
             if (registry == null || skillService == null || archiveBuilder == null) {

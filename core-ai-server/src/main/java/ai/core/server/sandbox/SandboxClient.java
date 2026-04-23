@@ -8,6 +8,7 @@ import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
+import core.framework.http.HTTPResponse;
 import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,19 +96,24 @@ public class SandboxClient {
     public void materializeSkill(String name, String version, byte[] archiveBytes) {
         var url = baseUrl + "/skills/" + name;
         var req = new HTTPRequest(HTTPMethod.POST, url);
-        if (version != null) req.headers.put("X-Skill-Version", version);
+        if (version != null) {
+            req.headers.put("X-Skill-Version", version);
+        }
         req.body(archiveBytes, ContentType.parse("application/zip"));
+
+        HTTPResponse response;
         try {
-            var response = httpClient.execute(req);
-            if (response.statusCode != 200 && response.statusCode != 204) {
-                throw new RuntimeException("materialize skill failed: status=" + response.statusCode
-                    + ", body=" + response.text());
-            }
-            LOGGER.info("materialized skill to sandbox: name={}, version={}, size={}bytes", name, version, archiveBytes.length);
+            response = httpClient.execute(req);
         } catch (Exception e) {
             LOGGER.error("materialize skill request failed: url={}, name={}", url, name, e);
             throw new RuntimeException("failed to materialize skill: " + name, e);
         }
+
+        if (response.statusCode != 200 && response.statusCode != 204) {
+            throw new RuntimeException("materialize skill failed: status=" + response.statusCode
+                + ", body=" + response.text());
+        }
+        LOGGER.info("materialized skill to sandbox: name={}, version={}, size={}bytes", name, version, archiveBytes.length);
     }
 
     public ToolCallResult pollTask(String taskId) {
