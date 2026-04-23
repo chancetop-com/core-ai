@@ -30,4 +30,12 @@ public interface AuthWebService {
     @POST
     @Path("/api/auth/users/update-status")
     void updateUserStatus(UpdateUserStatusRequest request);
+
+    @POST
+    @Path("/api/auth/users/reset-admin-password")
+    void resetAdminPassword();
+
+    @POST
+    @Path("/api/auth/users/delete")
+    void deleteUser(DeleteUserRequest request);
 }

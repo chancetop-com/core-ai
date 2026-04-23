@@ -133,6 +133,33 @@ public class AuthService {
         LOGGER.info("user status updated, email={}, newStatus={}", normalizedEmail, newStatus);
     }
 
+    public void resetAdminPassword(String adminUserId) {
+        requireAdmin(adminUserId);
+
+        var adminEmailLower = this.adminEmail.toLowerCase(Locale.getDefault());
+        var user = userCollection.get(adminEmailLower)
+            .orElseThrow(() -> new BadRequestException("admin user not found"));
+
+        user.passwordHash = hashPassword(this.adminPassword);
+        userCollection.replace(user);
+        LOGGER.info("admin password reset to configured value");
+    }
+
+    public void deleteUser(String adminUserId, String targetEmail) {
+        requireAdmin(adminUserId);
+
+        var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
+        var user = userCollection.get(normalizedEmail)
+            .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
+
+        if ("admin".equals(user.role)) {
+            throw new BadRequestException("cannot delete admin user");
+        }
+
+        userCollection.delete(normalizedEmail);
+        LOGGER.info("user deleted, email={}", normalizedEmail);
+    }
+
     public void invite(String adminUserId, String email) {
         requireAdmin(adminUserId);
 
@@ -170,7 +197,7 @@ public class AuthService {
             view.name = user.name;
             view.role = user.role;
             view.status = user.status;
-            view.createdAt = user.createdAt.toString();
+            view.createdAt = user.createdAt;
             response.users.add(view);
         }
         return response;

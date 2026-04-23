@@ -77,6 +77,10 @@ export const adminApi = {
     requestWithAuth<ListUsersResponse>('/api/auth/users'),
   updateUserStatus: (email: string, status: string) =>
     requestWithAuth<void>('/api/auth/users/update-status', { method: 'POST', body: JSON.stringify({ email, status }) }),
+  resetAdminPassword: () =>
+    requestWithAuth<void>('/api/auth/users/reset-admin-password', { method: 'POST' }),
+  deleteUser: (email: string) =>
+    requestWithAuth<void>('/api/auth/users/delete', { method: 'POST', body: JSON.stringify({ email }) }),
 };
 
 export interface Trace {

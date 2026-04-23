@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { Users, CheckCircle, XCircle, RefreshCw, Trash2, Key } from 'lucide-react';
 import { adminApi } from '../../api/client';
 
 interface UserStatus {
@@ -39,6 +39,29 @@ export default function UserManagement() {
       await loadUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update user');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResetAdminPassword = async () => {
+    if (!confirm('Reset admin password to the value configured in environment?')) return;
+    try {
+      await adminApi.resetAdminPassword();
+      alert('Admin password has been reset. Restart the server to apply changes.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset admin password');
+    }
+  };
+
+  const handleDeleteUser = async (email: string) => {
+    if (!confirm(`Delete user "${email}"? This action cannot be undone.`)) return;
+    setActionLoading(email);
+    try {
+      await adminApi.deleteUser(email);
+      await loadUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete user');
     } finally {
       setActionLoading(null);
     }
@@ -86,12 +109,20 @@ export default function UserManagement() {
             </p>
           </div>
         </div>
-        <button onClick={loadUsers}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
-          style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-          <RefreshCw size={14} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleResetAdminPassword}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
+            style={{ background: '#8b5cf620', color: '#8b5cf6' }}>
+            <Key size={14} />
+            Reset Admin Password
+          </button>
+          <button onClick={loadUsers}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
+            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+            <RefreshCw size={14} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -136,28 +167,41 @@ export default function UserManagement() {
                     {user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {user.role !== 'admin' && (
+                    {user.role !== 'admin' ? (
                       actionLoading === user.email ? (
                         <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                          Updating...
+                          Processing...
                         </span>
-                      ) : user.status === 'pending' ? (
-                        <button
-                          onClick={() => handleUpdateStatus(user.email, 'active')}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer"
-                          style={{ background: '#22c55e' }}>
-                          <CheckCircle size={12} />
-                          Approve
-                        </button>
                       ) : (
-                        <button
-                          onClick={() => handleUpdateStatus(user.email, 'pending')}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-                          style={{ background: '#f59e0b', color: 'white' }}>
-                          <XCircle size={12} />
-                          Deactivate
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          {user.status === 'pending' ? (
+                            <button
+                              onClick={() => handleUpdateStatus(user.email, 'active')}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer"
+                              style={{ background: '#22c55e' }}>
+                              <CheckCircle size={12} />
+                              Approve
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleUpdateStatus(user.email, 'pending')}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                              style={{ background: '#f59e0b', color: 'white' }}>
+                              <XCircle size={12} />
+                              Deactivate
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteUser(user.email)}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                            style={{ background: '#ef444420', color: '#ef4444' }}>
+                            <Trash2 size={12} />
+                            Delete
+                          </button>
+                        </div>
                       )
+                    ) : (
+                      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Admin</span>
                     )}
                   </td>
                 </tr>

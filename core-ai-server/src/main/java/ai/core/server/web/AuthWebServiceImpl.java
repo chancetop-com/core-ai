@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.api.server.auth.AuthWebService;
+import ai.core.api.server.auth.DeleteUserRequest;
 import ai.core.api.server.auth.InviteRequest;
 import ai.core.api.server.auth.ListUsersResponse;
 import ai.core.api.server.auth.LoginRequest;
@@ -52,5 +53,17 @@ public class AuthWebServiceImpl implements AuthWebService {
     public void updateUserStatus(UpdateUserStatusRequest request) {
         var userId = AuthContext.userId(webContext);
         authService.updateUserStatus(userId, request.email, request.status);
+    }
+
+    @Override
+    public void resetAdminPassword() {
+        var userId = AuthContext.userId(webContext);
+        authService.resetAdminPassword(userId);
+    }
+
+    @Override
+    public void deleteUser(DeleteUserRequest request) {
+        var userId = AuthContext.userId(webContext);
+        authService.deleteUser(userId, request.email);
     }
 }

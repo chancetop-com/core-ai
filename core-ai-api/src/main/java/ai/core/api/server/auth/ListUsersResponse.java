@@ -2,6 +2,7 @@ package ai.core.api.server.auth;
 
 import core.framework.api.json.Property;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
@@ -25,6 +26,6 @@ public class ListUsersResponse {
         public String status;
 
         @Property(name = "created_at")
-        public String createdAt;
+        public ZonedDateTime createdAt;
     }
 }
