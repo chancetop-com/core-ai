@@ -27,6 +27,7 @@ import java.util.UUID;
  */
 public class AgentDefinitionService {
     private static final String AIRAGENT_USER_ID_FIELD = "user_id";
+    private static final String AIRAGENT_SYSTEM_DEFAULT_FIELD = "system_default";
 
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
@@ -80,9 +81,15 @@ public class AgentDefinitionService {
     public ListAgentsResponse list(String userId, Boolean myAgents) {
         List<AgentDefinition> entities;
         if (myAgents != null && myAgents) {
-            entities = agentDefinitionCollection.find(Filters.eq(AIRAGENT_USER_ID_FIELD, userId));
-        } else if (myAgents != null && !myAgents) {
-            entities = agentDefinitionCollection.find(Filters.ne(AIRAGENT_USER_ID_FIELD, userId));
+            entities = agentDefinitionCollection.find(Filters.or(
+                Filters.eq(AIRAGENT_USER_ID_FIELD, userId),
+                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+            ));
+        } else if (myAgents != null) {
+            entities = agentDefinitionCollection.find(Filters.and(
+                Filters.ne(AIRAGENT_USER_ID_FIELD, userId),
+                Filters.eq(AIRAGENT_SYSTEM_DEFAULT_FIELD, true)
+            ));
         } else {
             entities = agentDefinitionCollection.find(Filters.empty());
         }

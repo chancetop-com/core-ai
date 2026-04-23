@@ -948,15 +948,41 @@ export default function Chat() {
             {agentDropdownOpen && (
               <div className="absolute left-0 top-11 z-50 w-[380px] rounded-xl border shadow-lg"
                 style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
-                {/* My Agents Section */}
-                {myAgents.filter(a => a.status === 'PUBLISHED' || a.type === 'local').length > 0 && (
+                {/* Default Agents Section */}
+                {myAgents.filter(a => a.system_default && (a.status === 'PUBLISHED' || a.type === 'local')).length > 0 && (
                   <div className="p-2">
+                    <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium"
+                      style={{ color: 'var(--color-text-secondary)' }}>
+                      <Bot size={12} /> Default
+                    </div>
+                    <div className="max-h-[200px] overflow-auto">
+                      {myAgents.filter(a => a.system_default && (a.status === 'PUBLISHED' || a.type === 'local')).map(a => (
+                        <button key={a.id}
+                          onClick={() => { handleNewChat(); setSelectedAgentId(a.id); setAgentDropdownOpen(false); setAgentSearchQuery(''); }}
+                          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
+                          style={{
+                            background: selectedAgentId === a.id ? 'var(--color-bg-tertiary)' : 'transparent',
+                            color: 'var(--color-text)',
+                          }}
+                          onMouseEnter={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
+                          onMouseLeave={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'transparent'; }}>
+                          <Bot size={14} style={{ color: 'var(--color-primary)' }} />
+                          <span className="flex-1 truncate">{a.name}</span>
+                          {selectedAgentId === a.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* My Agents Section */}
+                {myAgents.filter(a => !a.system_default && (a.status === 'PUBLISHED' || a.type === 'local')).length > 0 && (
+                  <div className="p-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
                     <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium"
                       style={{ color: 'var(--color-text-secondary)' }}>
                       <Bot size={12} /> My Agents
                     </div>
                     <div className="max-h-[200px] overflow-auto">
-                      {myAgents.filter(a => a.status === 'PUBLISHED' || a.type === 'local').map(a => (
+                      {myAgents.filter(a => !a.system_default && (a.status === 'PUBLISHED' || a.type === 'local')).map(a => (
                         <button key={a.id}
                           onClick={() => { handleNewChat(); setSelectedAgentId(a.id); setAgentDropdownOpen(false); setAgentSearchQuery(''); }}
                           className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
