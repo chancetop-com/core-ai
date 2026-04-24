@@ -2,6 +2,7 @@ package ai.core.cli.ui;
 
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.tool.DiffGenerator;
+import ai.core.tool.tools.ShellCommandTool;
 import ai.core.tool.tools.TaskTool;
 import ai.core.utils.JsonUtil;
 
@@ -40,6 +41,8 @@ public class OutputPanel {
     static String specialTaskSummary(String toolName, Map<String, Object> argsMap) {
         if (TaskTool.TOOL_NAME.equals(toolName)) {
             return "%s:%s".formatted(argsMap.get("subagent_type"), argsMap.get("description"));
+        } else if (ShellCommandTool.TOOL_NAME.equals(toolName)) {
+            return (String) argsMap.get("command");
         } else {
             return extractPrimaryArgs(argsMap);
         }
@@ -258,8 +261,8 @@ public class OutputPanel {
 
     public void turnSummary(long elapsedMs, Long inputTokens, Long outputTokens) {
         String tokens = (inputTokens != null && outputTokens != null)
-            ? String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", inputTokens + outputTokens, inputTokens, outputTokens)
-            : "";
+                ? String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", inputTokens + outputTokens, inputTokens, outputTokens)
+                : "";
         writer.println("\n" + INDENT + "\u2726 " + ThinkingSpinner.formatElapsed(elapsedMs) + tokens + AnsiTheme.RESET);
         writer.flush();
     }
