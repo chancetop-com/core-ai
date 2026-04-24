@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 public class ShellCommandTool extends ToolCall {
     public static final String TOOL_NAME = "run_bash_command";
 
-    private static final int DEFAULT_TIMEOUT_SECONDS = 120;
+    private static final int DEFAULT_TIMEOUT_MILLISECONDS = 2 * 60 * 1000;
     private static final long ASYNC_TIMEOUT_SECONDS = 600;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
     private static final String TOOL_DESC = Strings.format("""
@@ -161,7 +161,7 @@ public class ShellCommandTool extends ToolCall {
             
             # Other common operations
             - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
-            """, ReadFileTool.TOOL_NAME, EditFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME, TOOL_NAME, DEFAULT_TIMEOUT_SECONDS * 1000, DEFAULT_TIMEOUT_SECONDS / 60, WriteTodosTool.WT_TOOL_NAME, TOOL_NAME, WriteTodosTool.WT_TOOL_NAME, TOOL_NAME, TOOL_NAME);
+            """, ReadFileTool.TOOL_NAME, EditFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME, TOOL_NAME, DEFAULT_TIMEOUT_MILLISECONDS, DEFAULT_TIMEOUT_MILLISECONDS / 60000, WriteTodosTool.WT_TOOL_NAME, TOOL_NAME, WriteTodosTool.WT_TOOL_NAME, TOOL_NAME, TOOL_NAME);
 
     public static Builder builder() {
         return new Builder();
@@ -293,7 +293,8 @@ public class ShellCommandTool extends ToolCall {
             var argsMap = JSON.fromJSON(Map.class, text);
             var command = (String) argsMap.get("command");
             var description = (String) argsMap.get("description");
-            var timeout = argsMap.get("timeout") == null ? DEFAULT_TIMEOUT_SECONDS : (Integer) argsMap.get("timeout");
+            var timeMilliseconds = argsMap.get("timeout") == null ? DEFAULT_TIMEOUT_MILLISECONDS : (Integer) argsMap.get("timeout");
+            var timeoutSeconds = timeMilliseconds / 1000;
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
             var workspaceDir = context.getCustomVariable("workspace") == null ? (String) argsMap.get("workspace") : (String) context.getCustomVariable("workspace");
             var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(SystemUtil.detectPlatform()).trim();
@@ -303,12 +304,12 @@ public class ShellCommandTool extends ToolCall {
             commands.add(command);
             if (runInBackground && taskManager != null) {
                 var taskId = UUID.randomUUID().toString().replace("-", "");
-                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeout));
+                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds));
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), context));
                 return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description))
                         .withDuration(System.currentTimeMillis() - startTime);
             } else {
-                return ToolCallResult.completed(exec(commands, workspaceDir, timeout))
+                return ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds))
                         .withDuration(System.currentTimeMillis() - startTime)
                         .withStats("command", command != null ? (command.length() > 50 ? command.substring(0, 50) + "..." : command) : null);
             }
