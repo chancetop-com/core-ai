@@ -69,6 +69,7 @@ public class OutputPanel {
     }
 
     static String truncateError(String message) {
+        if (message == null) return null;
         return message.length() > 200 ? message.substring(0, 197) + "..." : message;
     }
 
@@ -241,7 +242,7 @@ public class OutputPanel {
         mdRenderer.reset();
         String hint = parseErrorHint(message);
         writer.println("\n" + INDENT + AnsiTheme.ERROR + "\u2717 " + hint + AnsiTheme.RESET);
-        if (!hint.equals(message)) {
+        if (message != null && !hint.equals(message)) {
             writer.println(AnsiTheme.MUTED + INDENT + "  " + truncateError(message) + AnsiTheme.RESET);
         }
         writer.flush();
