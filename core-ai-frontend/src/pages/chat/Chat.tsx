@@ -935,7 +935,7 @@ export default function Chat() {
       {/* Top bar: agent selector */}
       <div className="border-b px-6 py-3 flex items-center justify-between"
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="flex items-center gap-3 min-w-0 overflow-hidden">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="relative" ref={agentDropdownRef}>
             <button
               onClick={() => setAgentDropdownOpen(prev => !prev)}
