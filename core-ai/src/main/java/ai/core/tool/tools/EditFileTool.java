@@ -13,6 +13,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 
 /**
@@ -21,6 +23,8 @@ import java.util.Map;
 public class EditFileTool extends ToolCall {
     public static final String TOOL_NAME = "edit_file";
 
+    private static final long WARN_FILE_SIZE = 10L * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = 100L * 1024 * 1024;
     private static final Logger LOGGER = LoggerFactory.getLogger(EditFileTool.class);
     private static final String TOOL_DESC = """
             Performs exact string replacements in files.
@@ -109,9 +113,21 @@ public class EditFileTool extends ToolCall {
         if (!file.exists()) return "Error: File does not exist: " + filePath;
         if (!file.isFile()) return "Error: Path is not a file: " + filePath;
 
+        long fileSize = file.length();
+        if (fileSize > MAX_FILE_SIZE) {
+            return String.format("Error: File too large to edit (%dMB), max 100MB: %s", fileSize / 1024 / 1024, filePath);
+        }
+        if (fileSize > WARN_FILE_SIZE) {
+            LOGGER.warn("Large file being edited: {} ({}MB)", filePath, fileSize / 1024 / 1024);
+        }
+
         String content;
+        long readTimestamp;
+        String contentHash;
         try {
             content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            readTimestamp = file.lastModified();
+            contentHash = hashContent(content);
         } catch (IOException e) {
             LOGGER.error("Error reading file: {}", e.getMessage(), e);
             return "Error reading file: " + e.getMessage();
@@ -133,11 +149,15 @@ public class EditFileTool extends ToolCall {
             return String.format("Error: old_string appears %d times in the file. Either provide a larger string with more surrounding context to make it unique, or set replace_all=true to replace all occurrences.", occurrences);
         }
 
-        String newContent = content.replace(matchedText, normalizedNew);
+        String resolvedMatchedText = resolveDeleteTarget(content, matchedText, normalizedNew);
+        String newContent = content.replace(resolvedMatchedText, normalizedNew);
         if (!"exact".equals(strategy)) {
             LOGGER.info("Fuzzy matched using strategy '{}' in file: {}", strategy, filePath);
         }
         LOGGER.debug("Replacing {} occurrence(s) in file: {}", occurrences, filePath);
+
+        String concurrentError = checkFileNotModified(file, readTimestamp, contentHash);
+        if (concurrentError != null) return concurrentError;
 
         try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
             writer.write(newContent);
@@ -175,6 +195,40 @@ public class EditFileTool extends ToolCall {
         if (newLines.length > maxLines) sb.append("+ ...\n");
         sb.append("```");
         return sb.toString();
+    }
+
+    private String resolveDeleteTarget(String content, String matchedText, String newString) {
+        if (!newString.isEmpty()) return matchedText;
+        if (!matchedText.endsWith("\n") && content.contains(matchedText + "\n")) {
+            return matchedText + "\n";
+        }
+        return matchedText;
+    }
+
+    private String checkFileNotModified(File file, long readTimestamp, String contentHash) {
+        long currentTimestamp = file.lastModified();
+        if (currentTimestamp == readTimestamp) return null;
+        try {
+            String currentContent = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            if (hashContent(currentContent).equals(contentHash)) return null;
+            return "Error: File was modified by another process between read and write, please re-read the file and retry: " + file.getPath();
+        } catch (IOException e) {
+            return "Error: Cannot verify file state before writing: " + e.getMessage();
+        }
+    }
+
+    private String hashContent(String content) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            var bytes = digest.digest(content.getBytes(StandardCharsets.UTF_8));
+            var sb = new StringBuilder(32);
+            for (int i = 0; i < 16; i++) {
+                sb.append(String.format("%02x", bytes[i]));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            return String.valueOf(content.hashCode());
+        }
     }
 
     private String normalizeLineEndings(String text, String fileContent) {
