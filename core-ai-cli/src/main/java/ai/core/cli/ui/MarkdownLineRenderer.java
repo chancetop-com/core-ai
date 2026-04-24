@@ -12,38 +12,42 @@ public final class MarkdownLineRenderer {
             return line;
         }
 
-        // ATX headers: # through ######
-        if (line.startsWith("#")) {
+        String stripped = line.stripLeading();
+        int indent = line.length() - stripped.length();
+        String spaces = indent > 0 ? " ".repeat(indent) : "";
+
+        // ATX headers: # through ###### (leading spaces allowed — injected by OutputPanel.indentAfterNewline)
+        if (stripped.startsWith("#")) {
             int level = 0;
-            while (level < line.length() && level < 6 && line.charAt(level) == '#') {
+            while (level < stripped.length() && level < 6 && stripped.charAt(level) == '#') {
                 level++;
             }
-            if (level < line.length() && line.charAt(level) == ' ') {
-                String content = line.substring(level + 1);
-                return AnsiTheme.MD_HEADER + "#".repeat(level) + " " + content + R;
+            if (level < stripped.length() && stripped.charAt(level) == ' ') {
+                String content = stripped.substring(level + 1);
+                String style = level == 1 ? AnsiTheme.MD_H1
+                        : level == 2 ? AnsiTheme.MD_H2
+                        : level == 3 ? AnsiTheme.MD_H3
+                        : AnsiTheme.MD_H4;
+                return spaces + style + renderInline(content) + R;
             }
         }
 
-        // Unordered list: - or * at start
-        if (line.startsWith("- ") || line.startsWith("* ")) {
-            String bullet = line.substring(0, 1);
-            String content = line.substring(2);
-            return AnsiTheme.MD_BULLET + bullet + R + " " + renderInline(content);
-        }
-
-        // Indented list items
-        String stripped = line.stripLeading();
+        // Unordered list items (indented or not)
         if (stripped.startsWith("- ") || stripped.startsWith("* ")) {
-            int indent = line.length() - stripped.length();
             String bullet = stripped.substring(0, 1);
             String content = stripped.substring(2);
-            return " ".repeat(indent) + AnsiTheme.MD_BULLET + bullet + R + " " + renderInline(content);
+            return spaces + AnsiTheme.MD_BULLET + bullet + R + " " + renderInline(content);
+        }
+
+        // Thematic break: ---, ***, ___
+        if (isThematicBreak(line)) {
+            return spaces + AnsiTheme.MUTED + "─".repeat(64) + R;
         }
 
         // Blockquote: > text
-        if (line.startsWith("> ")) {
-            String content = line.substring(2);
-            return AnsiTheme.MUTED + "> " + R + renderInline(content);
+        if (stripped.startsWith("> ")) {
+            String content = stripped.substring(2);
+            return spaces + AnsiTheme.MUTED + "> " + R + renderInline(content);
         }
 
         return renderInline(line);
@@ -97,6 +101,11 @@ public final class MarkdownLineRenderer {
             i++;
         }
         return sb.toString();
+    }
+
+    private static boolean isThematicBreak(String line) {
+        String t = line.strip();
+        return t.matches("-{3,}") || t.matches("\\*{3,}") || t.matches("_{3,}");
     }
 
     private MarkdownLineRenderer() {

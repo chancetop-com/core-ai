@@ -30,6 +30,10 @@ public final class AnsiTheme {
 
     // Markdown header (bold + blue)
     public static final String MD_HEADER = "\u001B[1;38;5;75m";
+    public static final String MD_H1     = "\u001B[1;38;5;75m";
+    public static final String MD_H2     = "\u001B[1;38;5;114m";
+    public static final String MD_H3     = "\u001B[1;38;5;216m";
+    public static final String MD_H4     = "\u001B[1m";
 
     // Inline code
     public static final String MD_INLINE_CODE = "\u001B[38;5;216m";
@@ -88,24 +92,48 @@ public final class AnsiTheme {
     public static int displayWidth(String text) {
         int width = 0;
         boolean inEscape = false;
-        for (int i = 0; i < text.length(); i++) {
+        int i = 0;
+        while (i < text.length()) {
             char c = text.charAt(i);
+
             if (c == '\033') {
                 inEscape = true;
+                i++;
                 continue;
             }
             if (inEscape) {
-                if (c == 'm') {
-                    inEscape = false;
-                }
+                if (c == 'm') inEscape = false;
+                i++;
                 continue;
             }
-            if (c >= 0x4E00 && c <= 0x9FFF || c >= 0x3000 && c <= 0x303F
-                    || c >= 0xFF00 && c <= 0xFFEF || c >= 0xAC00 && c <= 0xD7AF) {
-                width += 2;
-            } else {
-                width++;
+
+            // zero-width: variation selectors, ZWJ, combining enclosing keycap
+            if (c == '️' || c == '︎' || c == '‍' || c == '⃣') {
+                i++;
+                continue;
             }
+
+            // surrogate pair → supplementary codepoint (emoji, symbols) → width 2
+            if (Character.isHighSurrogate(c) && i + 1 < text.length()
+                    && Character.isLowSurrogate(text.charAt(i + 1))) {
+                width += 2;
+                i += 2;
+                continue;
+            }
+
+            if ((c >= 0x4E00 && c <= 0x9FFF)   // CJK Unified Ideographs
+                    || (c >= 0x3000 && c <= 0x303F)  // CJK Symbols and Punctuation
+                    || (c >= 0xFF00 && c <= 0xFFEF)  // Halfwidth and Fullwidth Forms
+                    || (c >= 0xAC00 && c <= 0xD7AF)  // Hangul Syllables
+                    || (c >= 0x2600 && c <= 0x27BF)  // Misc Symbols + Dingbats (☁ ✅ ❌ ✈ …)
+                    || (c >= 0x2B00 && c <= 0x2BFF)) { // Misc Symbols and Arrows (⭐ …)
+                width += 2;
+                i++;
+                continue;
+            }
+
+            width++;
+            i++;
         }
         return width;
     }
