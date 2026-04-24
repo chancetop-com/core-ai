@@ -15,6 +15,8 @@ import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.api.server.session.SessionStatusResponse;
 import ai.core.api.server.session.SessionStatus;
+import ai.core.api.server.session.UnloadSkillsRequest;
+import ai.core.api.server.session.UnloadSkillsResponse;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.agent.AgentDefinitionService;
@@ -67,9 +69,10 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         state.userId = userId;
         state.config = request.config;
         var loadedSubAgents = new ArrayList<String>();
+        var loadedSkills = new ArrayList<String>();
 
         if (request.agentId != null && !request.agentId.isBlank()) {
-            sessionId = createSessionFromAgent(request.agentId, state, userId, loadedSubAgents);
+            sessionId = createSessionFromAgent(request.agentId, state, userId, loadedSubAgents, loadedSkills);
         } else {
             sessionId = sessionManager.createSession(request.config, userId);
             state.fromAgent = false;
@@ -77,7 +80,12 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         state.sessionId = sessionId;
 
         var loadedTools = loadToolsOnSessionCreate(sessionId, request);
-        var loadedSkills = loadSkillsOnSessionCreate(sessionId, request);
+        var extraLoadedSkills = loadSkillsOnSessionCreate(sessionId, request);
+        if (extraLoadedSkills != null) {
+            for (var skill : extraLoadedSkills) {
+                if (!loadedSkills.contains(skill)) loadedSkills.add(skill);
+            }
+        }
         loadExtraSubAgentsOnSessionCreate(sessionId, request, loadedSubAgents);
 
         saveSessionState(sessionId, state);
@@ -85,18 +93,22 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var response = new CreateSessionResponse();
         response.sessionId = sessionId;
         response.loadedTools = loadedTools;
-        response.loadedSkills = loadedSkills;
+        response.loadedSkills = loadedSkills.isEmpty() ? null : loadedSkills;
         response.loadedSubAgents = loadedSubAgents.isEmpty() ? null : loadedSubAgents;
         return response;
     }
 
-    private String createSessionFromAgent(String agentId, SessionState state, String userId, List<String> loadedSubAgents) {
+    private String createSessionFromAgent(String agentId, SessionState state, String userId,
+                                          List<String> loadedSubAgents, List<String> loadedSkills) {
         var agent = agentDefinitionService.getEntity(agentId);
         var result = sessionManager.createSessionFromAgent(agent, state.config, userId);
         state.fromAgent = true;
         state.agentConfig = buildAgentConfigSnapshot(agent);
         if (result.loadedSubAgents() != null && !result.loadedSubAgents().isEmpty()) {
             loadedSubAgents.addAll(result.loadedSubAgents());
+        }
+        if (result.loadedSkills() != null && !result.loadedSkills().isEmpty()) {
+            loadedSkills.addAll(result.loadedSkills());
         }
         return result.sessionId();
     }
@@ -281,6 +293,17 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
         var response = new LoadSkillsResponse();
         response.loadedSkills = loadedSkills;
+        return response;
+    }
+
+    @Override
+    public UnloadSkillsResponse unloadSkills(String sessionId, UnloadSkillsRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        ActionLogContext.put("session_id", sessionId);
+        var remainingSkills = sessionManager.unloadSkills(sessionId, request.skillIds);
+        var response = new UnloadSkillsResponse();
+        response.remainingSkills = remainingSkills;
         return response;
     }
 

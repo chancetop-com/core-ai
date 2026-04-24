@@ -137,10 +137,11 @@ public class AgentSessionManager {
 
         sessions.put(sessionId, session);
 
-        // Auto-load subagents configured in the agent definition
+        // Auto-load skills and subagents configured in the agent definition
+        var loadedSkills = loadSkillsFromDefinition(sessionId, definition);
         var loadedSubAgents = loadSubAgentsFromDefinition(session, definition);
 
-        return new SessionCreationResult(sessionId, loadedSubAgents);
+        return new SessionCreationResult(sessionId, loadedSubAgents, loadedSkills);
     }
 
     public InProcessAgentSession getSession(String sessionId) {
@@ -314,6 +315,29 @@ public class AgentSessionManager {
         return tools.stream().map(ToolCall::getName).toList();
     }
 
+    public List<String> unloadSkills(String sessionId, List<String> skillIds) {
+        var state = sessionSkillStates.get(sessionId);
+        if (state == null || skillIds == null || skillIds.isEmpty()) {
+            return state == null ? List.of() : List.copyOf(state.allowedIds);
+        }
+        state.allowedIds.removeAll(skillIds);
+        state.registry.invalidateCache();
+        return List.copyOf(state.allowedIds);
+    }
+
+    private List<String> loadSkillsFromDefinition(String sessionId, AgentDefinition definition) {
+        var skillIds = definition.publishedConfig != null && definition.publishedConfig.skillIds != null
+                ? definition.publishedConfig.skillIds
+                : definition.skillIds;
+        if (skillIds == null || skillIds.isEmpty()) return List.of();
+        try {
+            return loadSkills(sessionId, skillIds);
+        } catch (Exception e) {
+            logger.warn("failed to load skills from definition, sessionId={}, skillIds={}", sessionId, skillIds, e);
+            return List.of();
+        }
+    }
+
     public List<String> loadSkills(String sessionId, List<String> skillIds) {
         var session = getSession(sessionId);
         var skills = skillService.resolveSkills(skillIds);
@@ -447,6 +471,6 @@ public class AgentSessionManager {
         return builder.build();
     }
 
-    public record SessionCreationResult(String sessionId, List<String> loadedSubAgents) {
+    public record SessionCreationResult(String sessionId, List<String> loadedSubAgents, List<String> loadedSkills) {
     }
 }

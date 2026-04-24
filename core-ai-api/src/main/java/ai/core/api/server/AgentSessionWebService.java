@@ -13,6 +13,8 @@ import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.api.server.session.SessionStatusResponse;
+import ai.core.api.server.session.UnloadSkillsRequest;
+import ai.core.api.server.session.UnloadSkillsResponse;
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.DELETE;
 import core.framework.api.web.service.GET;
@@ -63,6 +65,10 @@ public interface AgentSessionWebService {
     @Path("/api/sessions/:sessionId/skills")
     @ResponseStatus(HTTPStatus.CREATED)
     LoadSkillsResponse loadSkills(@PathParam("sessionId") String sessionId, LoadSkillsRequest request);
+
+    @POST
+    @Path("/api/sessions/:sessionId/skills/remove")
+    UnloadSkillsResponse unloadSkills(@PathParam("sessionId") String sessionId, UnloadSkillsRequest request);
 
     @POST
     @Path("/api/sessions/:sessionId/subagents")
