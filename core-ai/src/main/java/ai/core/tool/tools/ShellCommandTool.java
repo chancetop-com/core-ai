@@ -10,7 +10,6 @@ import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.utils.InputStreamUtil;
 import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -290,13 +289,13 @@ public class ShellCommandTool extends ToolCall {
     private ToolCallResult doExecute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            var command = (String) argsMap.get("command");
-            var description = (String) argsMap.get("description");
+            var argsMap = parseArguments(text);
+            var command = getStringValue(argsMap, "command");
+            var description = getStringValue(argsMap, "description");
             var timeMilliseconds = argsMap.get("timeout") == null ? DEFAULT_TIMEOUT_MILLISECONDS : (Integer) argsMap.get("timeout");
             var timeoutSeconds = timeMilliseconds / 1000;
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
-            var workspaceDir = context.getCustomVariable("workspace") == null ? (String) argsMap.get("workspace") : (String) context.getCustomVariable("workspace");
+            var workspaceDir = context.getCustomVariable("workspace") == null ? getStringValue(argsMap, "workspace") : (String) context.getCustomVariable("workspace");
             var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(SystemUtil.detectPlatform()).trim();
             var prefixParts = shellPrefix.split(" ");
             var taskManager = context.getTaskManager();

@@ -11,7 +11,6 @@ import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 
 import java.util.List;
-import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -30,8 +29,8 @@ public class SubAgentToolCall extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         try {
-            var args = JSON.fromJSON(Map.class, arguments);
-            var query = (String) args.get("query");
+            var args = parseArguments(arguments);
+            var query = getStringValue(args, "query");
 
             if (query == null || query.isBlank()) {
                 return ToolCallResult.failed("Parameter 'query' is required for subagent " + getName());

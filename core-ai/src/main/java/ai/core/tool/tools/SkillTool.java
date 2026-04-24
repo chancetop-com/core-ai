@@ -13,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Tool that allows the agent to load and use skills by name.
@@ -74,8 +73,8 @@ public class SkillTool extends ToolCall {
     public ToolCallResult execute(String arguments) {
         long startTime = System.currentTimeMillis();
         try {
-            var args = JSON.fromJSON(Map.class, arguments);
-            String name = (String) args.get("name");
+            var args = parseArguments(arguments);
+            String name = getStringValue(args, "name");
             if (name == null || name.isBlank()) {
                 return ToolCallResult.failed("'name' is required. Available skills: " + skillNameList())
                         .withDuration(System.currentTimeMillis() - startTime);

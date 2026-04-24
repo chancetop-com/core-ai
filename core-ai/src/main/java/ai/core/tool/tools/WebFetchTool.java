@@ -3,7 +3,6 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
 import org.jsoup.Jsoup;
@@ -23,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -106,11 +104,11 @@ public class WebFetchTool extends ToolCall {
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            var url = (String) argsMap.get("url");
-            var method = (String) argsMap.get("method");
-            var contentType = (String) argsMap.get("content_type");
-            var body = (String) argsMap.get("body");
+            var argsMap = parseArguments(text);
+            var url = getStringValue(argsMap, "url");
+            var method = getStringValue(argsMap, "method");
+            var contentType = getStringValue(argsMap, "content_type");
+            var body = getStringValue(argsMap, "body");
             var format = argsMap.get("format") instanceof String s ? s : "markdown";
 
             var result = executeRequest(url, method, contentType, body, format);

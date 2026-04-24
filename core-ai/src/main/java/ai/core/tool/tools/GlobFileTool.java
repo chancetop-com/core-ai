@@ -3,7 +3,6 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -21,7 +20,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author stephen
@@ -57,9 +55,9 @@ public class GlobFileTool extends ToolCall {
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            var pattern = (String) argsMap.get("pattern");
-            var path = (String) argsMap.get("path");
+            var argsMap = parseArguments(text);
+            var pattern = getStringValue(argsMap, "pattern");
+            var path = getStringValue(argsMap, "path");
 
             if (Strings.isBlank(pattern)) {
                 return ToolCallResult.failed("Error: pattern parameter is required")

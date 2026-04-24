@@ -7,7 +7,6 @@ import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author stephen
@@ -41,8 +40,8 @@ public class AsyncTaskOutputTool extends ToolCall {
         var startTime = System.currentTimeMillis();
         try {
             var args = parseArguments(arguments);
-            var action = (String) args.get("action");
-            var taskId = (String) args.get("task_id");
+            var action = getStringValue(args, "action");
+            var taskId = getStringValue(args, "task_id");
 
             if (taskId == null || taskId.isBlank()) {
                 return ToolCallResult.failed("Error: task_id is required.")
@@ -80,15 +79,6 @@ public class AsyncTaskOutputTool extends ToolCall {
 
     private ToolCallResult cancelTask(AsyncToolTaskExecutor executor, String taskId) {
         return executor.cancel(taskId);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> parseArguments(String arguments) {
-        try {
-            return core.framework.json.JSON.fromJSON(Map.class, arguments);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid JSON arguments: " + arguments, e);
-        }
     }
 
     public static class Builder extends ToolCall.Builder<Builder, AsyncTaskOutputTool> {

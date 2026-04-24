@@ -32,7 +32,7 @@ public class Function extends ToolCall {
 
     @SuppressWarnings("unchecked")
     private String executeSupport(String text, ExecutionContext context) throws InvocationTargetException, IllegalAccessException {
-        var argsMap = JsonUtil.fromJson(Map.class, text);
+        var argsMap = parseArguments(text);
         if (context != null && context.getCustomVariables() != null) {
             argsMap.putAll(context.getCustomVariables());
         }

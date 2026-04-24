@@ -6,7 +6,6 @@ import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.utils.InputStreamUtil;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -191,9 +189,9 @@ public class PythonScriptTool extends ToolCall {
     private ToolCallResult doExecute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            var code = (String) argsMap.get("code");
-            var scriptPathStr = (String) argsMap.get("script_path");
+            var argsMap = parseArguments(text);
+            var code = getStringValue(argsMap, "code");
+            var scriptPathStr = getStringValue(argsMap, "script_path");
             var asyncMode = Boolean.TRUE.equals(argsMap.get("async"));
 
             if (Strings.isBlank(code) && Strings.isBlank(scriptPathStr)) {

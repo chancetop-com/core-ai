@@ -8,9 +8,6 @@ import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
-
-import java.util.Map;
 
 /**
  * author: lim chen
@@ -93,13 +90,13 @@ public class TaskTool extends ToolCall {
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, arguments);
-            var prompt = (String) argsMap.get("prompt");
-            var subagentType = (String) argsMap.get("subagent_type");
+            var argsMap = parseArguments(arguments);
+            var prompt = getStringValue(argsMap, "prompt");
+            var subagentType = getStringValue(argsMap, "subagent_type");
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
 
             var taskManager = context.getTaskManager();
-            var description = (String) argsMap.get("description");
+            var description = getStringValue(argsMap, "description");
             var taskId = String.valueOf(argsMap.get("task_id"));
             var subContext = buildSubContext(subagentType, context, taskId, description);
             var subAgent = createAgent(subagentType, subContext);

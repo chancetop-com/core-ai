@@ -5,11 +5,8 @@ import ai.core.skill.SkillRegistry;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Map;
 
 /**
  * Tool that lets the agent read a resource file belonging to a loaded skill.
@@ -40,9 +37,9 @@ public class ReadSkillResourceTool extends ToolCall {
     public ToolCallResult execute(String arguments) {
         long startTime = System.currentTimeMillis();
         try {
-            var args = JSON.fromJSON(Map.class, arguments);
-            String name = (String) args.get("name");
-            String path = (String) args.get("path");
+            var args = parseArguments(arguments);
+            String name = getStringValue(args, "name");
+            String path = getStringValue(args, "path");
             if (name == null || name.isBlank() || path == null || path.isBlank()) {
                 return ToolCallResult.failed("'name' and 'path' are required")
                     .withDuration(System.currentTimeMillis() - startTime);

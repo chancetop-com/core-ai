@@ -9,7 +9,6 @@ import ai.core.tool.tools.search.ExaSearchProvider;
 import ai.core.tool.tools.search.FallbackSearchProvider;
 import ai.core.tool.tools.search.SearchProvider;
 import ai.core.tool.tools.search.SearchResult;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +16,6 @@ import org.slf4j.LoggerFactory;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author stephen
@@ -66,8 +64,8 @@ public class WebSearchTool extends ToolCall {
     public ToolCallResult execute(String text) {
         var startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            var query = (String) argsMap.get("query");
+            var argsMap = parseArguments(text);
+            var query = getStringValue(argsMap, "query");
             var allowedDomains = (List<String>) argsMap.get("allowed_domains");
             var blockedDomains = (List<String>) argsMap.get("blocked_domains");
             var numResults = argsMap.get("num_results") instanceof Number n

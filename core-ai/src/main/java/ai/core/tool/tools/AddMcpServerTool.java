@@ -7,7 +7,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.mcp.McpToolCalls;
-import core.framework.json.JSON;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,8 +50,8 @@ public class AddMcpServerTool extends ToolCall {
     public ToolCallResult execute(String arguments) {
         long startTime = System.currentTimeMillis();
         try {
-            var args = JSON.fromJSON(Map.class, arguments);
-            String name = (String) args.get("name");
+            var args = parseArguments(arguments);
+            String name = getStringValue(args, "name");
             if (name == null || name.isBlank()) {
                 return ToolCallResult.failed("'name' is required");
             }

@@ -3,7 +3,6 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +14,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Map;
 
 /**
  * @author stephen
@@ -63,10 +61,10 @@ public class EditFileTool extends ToolCall {
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            var filePath = (String) argsMap.get("file_path");
-            var oldString = (String) argsMap.get("old_string");
-            var newString = (String) argsMap.get("new_string");
+            var argsMap = parseArguments(text);
+            var filePath = getStringValue(argsMap, "file_path");
+            var oldString = getStringValue(argsMap, "old_string");
+            var newString = getStringValue(argsMap, "new_string");
             var replaceAll = argsMap.get("replace_all") != null && (Boolean) argsMap.get("replace_all");
 
             var result = editFile(filePath, oldString, newString, replaceAll);

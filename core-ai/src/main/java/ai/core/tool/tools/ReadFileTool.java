@@ -15,7 +15,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Base64;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -87,8 +86,8 @@ public class ReadFileTool extends ToolCall {
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            var filePath = (String) argsMap.get("file_path");
+            var argsMap = parseArguments(text);
+            var filePath = getStringValue(argsMap, "file_path");
             var offset = argsMap.get("offset") != null ? ((Number) argsMap.get("offset")).intValue() : null;
             var limit = argsMap.get("limit") != null ? ((Number) argsMap.get("limit")).intValue() : null;
 

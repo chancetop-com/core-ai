@@ -3,7 +3,6 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +12,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.Map;
 
 /**
  * @author stephen
@@ -59,9 +57,9 @@ public class WriteFileTool extends ToolCall {
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            var filePath = (String) argsMap.get("file_path");
-            var content = (String) argsMap.get("content");
+            var argsMap = parseArguments(text);
+            var filePath = getStringValue(argsMap, "file_path");
+            var content = getStringValue(argsMap, "content");
 
             var result = writeFile(filePath, content);
             return ToolCallResult.completed(result)

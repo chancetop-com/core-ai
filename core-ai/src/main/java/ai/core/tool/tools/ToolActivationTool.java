@@ -4,14 +4,12 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * @author stephen
@@ -71,10 +69,10 @@ public class ToolActivationTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments) {
         try {
-            var argsMap = JSON.fromJSON(Map.class, arguments);
+            var argsMap = parseArguments(arguments);
             @SuppressWarnings("unchecked")
             var toolNames = (List<String>) argsMap.get("tool_names");
-            var query = (String) argsMap.get("query");
+            var query = getStringValue(argsMap, "query");
 
             if (query != null && !query.isBlank()) {
                 return executeSearch(query);

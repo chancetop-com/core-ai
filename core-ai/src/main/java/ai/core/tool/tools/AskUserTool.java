@@ -3,9 +3,6 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
-
-import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -42,8 +39,8 @@ public class AskUserTool extends ToolCall {
     public ToolCallResult execute(String arguments) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, arguments);
-            var question = (String) argsMap.get("question");
+            var argsMap = parseArguments(arguments);
+            var question = getStringValue(argsMap, "question");
             if (question == null || question.isBlank()) {
                 return ToolCallResult.failed("Error: 'question' parameter is required")
                         .withDuration(System.currentTimeMillis() - startTime);

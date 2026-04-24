@@ -12,6 +12,7 @@ import core.framework.util.Strings;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -152,7 +153,7 @@ public abstract class ToolCall {
         var required = parameters.stream().filter(p -> Boolean.TRUE.equals(p.isRequired())).toList();
         if (required.isEmpty()) return List.of();
         try {
-            var args = JsonUtil.fromJson(Map.class, arguments);
+            var args = parseArguments(arguments);
             return required.stream()
                     .filter(p -> !args.containsKey(p.getName()) || args.get(p.getName()) == null)
                     .map(ToolCallParameter::getName)
@@ -160,6 +161,50 @@ public abstract class ToolCall {
         } catch (Exception e) {
             return List.of("(arguments is not valid JSON)");
         }
+    }
+
+    /**
+     * Parses tool call arguments with lenient handling for string-typed fields.
+     * <p>
+     * Some LLMs may pass nested JSON objects/arrays as the value of a string-typed field
+     * (e.g., write_file content containing JSON), instead of properly escaping it as a JSON string.
+     * This method detects such cases and automatically converts the nested value to a JSON string.
+     *
+     * @param arguments the raw JSON arguments string from the LLM tool call
+     * @return a Map of parsed arguments with string fields normalized
+     */
+    public Map<String, Object> parseArguments(String arguments) {
+        var args = JsonUtil.toMap(arguments);
+        if (parameters != null) {
+            for (var param : parameters) {
+                var value = args.get(param.getName());
+                if (value != null && !(value instanceof String) && isStringTyped(param)) {
+                    args.put(param.getName(), JsonUtil.toJson(value));
+                }
+            }
+        }
+        return args;
+    }
+
+    private boolean isStringTyped(ToolCallParameter param) {
+        var type = param.getType();
+        return (type != null && type == ToolCallParameterType.STRING)
+                || (type == null && param.getClassType() == String.class);
+    }
+
+    /**
+     * Safely extracts a string value from parsed arguments, handling cases where
+     * an LLM may have passed a nested JSON object/array instead of an escaped string.
+     *
+     * @param args the parsed arguments map
+     * @param key  the parameter name
+     * @return the string value, or null if not present; nested objects/arrays are serialized to JSON strings
+     */
+    public static String getStringValue(Map<String, Object> args, String key) {
+        var value = args.get(key);
+        if (value == null) return null;
+        if (value instanceof String s) return s;
+        return JsonUtil.toJson(value);
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {
