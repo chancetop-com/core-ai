@@ -14,6 +14,7 @@ import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.messaging.EventPublisher;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
@@ -73,9 +74,15 @@ public class AgentSessionManager {
     @Inject
     SkillArchiveBuilder skillArchiveBuilder;
 
+    EventPublisher eventPublisher;
+
+    public void setEventPublisher(EventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
         session.onEvent(chatMessageService.listener(sessionId));
-        session.onEvent(new ai.core.server.web.sse.SseEventBridge(sessionId, sessionChannelService));
+        session.onEvent(new ai.core.server.web.sse.SseEventBridge(sessionId, eventPublisher));
     }
 
     public String createSession(SessionConfig config, String userId) {

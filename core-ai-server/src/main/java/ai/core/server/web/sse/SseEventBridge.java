@@ -24,6 +24,7 @@ import ai.core.api.server.session.sse.SseToolApprovalRequestEvent;
 import ai.core.api.server.session.sse.SseToolResultEvent;
 import ai.core.api.server.session.sse.SseToolStartEvent;
 import ai.core.api.server.session.sse.SseTurnCompleteEvent;
+import ai.core.server.messaging.EventPublisher;
 import core.framework.json.JSON;
 
 import java.util.Map;
@@ -33,11 +34,11 @@ import java.util.Map;
  */
 public class SseEventBridge implements AgentEventListener {
     private final String sessionId;
-    private final SessionChannelService sessionChannelService;
+    private final EventPublisher eventPublisher;
 
-    public SseEventBridge(String sessionId, SessionChannelService sessionChannelService) {
+    public SseEventBridge(String sessionId, EventPublisher eventPublisher) {
         this.sessionId = sessionId;
-        this.sessionChannelService = sessionChannelService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -45,7 +46,7 @@ public class SseEventBridge implements AgentEventListener {
         var sse = new SseTextChunkEvent();
         sse.content = event.chunk;
         sse.isFinalChunk = false;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -53,7 +54,7 @@ public class SseEventBridge implements AgentEventListener {
         var sse = new SseReasoningChunkEvent();
         sse.content = event.chunk;
         sse.isFinalChunk = false;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -61,7 +62,7 @@ public class SseEventBridge implements AgentEventListener {
         var sse = new SseReasoningChunkEvent();
         sse.content = "";
         sse.isFinalChunk = true;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -76,7 +77,7 @@ public class SseEventBridge implements AgentEventListener {
             var args = JSON.fromJSON(Map.class, event.arguments);
             sse.toolArgs = args;
         }
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -86,7 +87,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.toolName = event.toolName;
         sse.status = event.status;
         sse.result = event.result;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -96,7 +97,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.toolName = event.toolName;
         sse.arguments = event.arguments;
         sse.suggestedPattern = event.suggestedPattern;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -107,7 +108,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.maxTurnsReached = event.maxTurnsReached;
         sse.inputTokens = event.inputTokens;
         sse.outputTokens = event.outputTokens;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -115,14 +116,14 @@ public class SseEventBridge implements AgentEventListener {
         var sse = new SseErrorEvent();
         sse.message = event.message;
         sse.detail = event.detail;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
     public void onStatusChange(StatusChangeEvent event) {
         var sse = new SseStatusChangeEvent();
         sse.status = event.status;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -131,7 +132,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.todos = event.todos.stream()
                 .map(item -> new SsePlanUpdateEvent.TodoItem(item.content, item.status))
                 .toList();
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -140,7 +141,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.beforeCount = event.beforeCount;
         sse.afterCount = event.afterCount;
         sse.completed = event.completed;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 
     @Override
@@ -150,6 +151,6 @@ public class SseEventBridge implements AgentEventListener {
         sse.sandboxType = event.type;
         sse.message = event.message;
         sse.durationMs = event.durationMs;
-        sessionChannelService.send(sessionId, sse);
+        eventPublisher.publish(sessionId, sse);
     }
 }

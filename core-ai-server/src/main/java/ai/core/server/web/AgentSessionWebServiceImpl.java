@@ -23,6 +23,8 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.api.server.session.Message;
+import ai.core.server.messaging.CommandPublisher;
+import ai.core.server.messaging.SessionCommand;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
@@ -58,6 +60,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     ToolRegistryService toolRegistryService;
     @Inject
     ChatMessageService chatMessageService;
+    @Inject
+    CommandPublisher commandPublisher;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
@@ -186,13 +190,12 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     @Override
     public void sendMessage(String sessionId, SendMessageRequest request) {
-        ActionLogContext.triggerTrace(true);
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
-        chatMessageService.writeUserMessage(sessionId, request.message);
-        session.sendMessage(request.message, request.variables != null ? new HashMap<>(request.variables) : null);
+        var command = SessionCommand.sendMessage(sessionId, userId, request.message,
+                request.variables != null ? new HashMap<>(request.variables) : null);
+        commandPublisher.publish(command);
     }
 
     @Override
@@ -200,8 +203,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
-        session.approveToolCall(request.callId, request.decision);
+        var command = SessionCommand.approveToolCall(sessionId, userId, request.callId, request.decision);
+        commandPublisher.publish(command);
     }
 
     @Override
@@ -248,8 +251,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
-        session.cancelTurn();
+        var command = SessionCommand.cancelTurn(sessionId, userId);
+        commandPublisher.publish(command);
     }
 
     @Override
@@ -326,7 +329,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        sessionManager.closeSession(sessionId);
+        var command = SessionCommand.closeSession(sessionId, userId);
+        commandPublisher.publish(command);
     }
 
     private SessionState resolveSessionState(String sessionId) {

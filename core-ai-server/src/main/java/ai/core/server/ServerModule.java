@@ -15,6 +15,11 @@ import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.llmcall.LLMCallBuilderTools;
+import ai.core.server.messaging.CommandPublisher;
+import ai.core.server.messaging.EventPublisher;
+import ai.core.server.messaging.EventSubscriber;
+import ai.core.server.messaging.InProcessCommandHandler;
+import ai.core.server.messaging.JedisConfig;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.TokenResolver;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
@@ -107,6 +112,8 @@ public class ServerModule extends Module {
         onStartup(() -> toolRegistry.initialize(mcpConfig));
         onStartup(builderTools::initialize);
 
+        registerMessaging();
+
         bindWebService();
         http().route(HTTPMethod.POST, "/api/webhooks/:agentId", bind(WebhookController.class));
 
@@ -120,6 +127,32 @@ public class ServerModule extends Module {
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
 
         registerStaticFiles();
+    }
+
+    private void registerMessaging() {
+        var redisHost = property("sys.jedis.host").orElse("localhost");
+        var redisPort = Integer.parseInt(property("sys.jedis.port").orElse("6379"));
+
+        var redisConfig = new JedisConfig(redisHost, redisPort);
+        var jedisPool = redisConfig.createJedisPool();
+        onShutdown(jedisPool::close);
+
+        // Publishers
+        bind(new CommandPublisher(jedisPool));
+        bind(new EventPublisher(jedisPool));
+
+        // Wire EventPublisher into the already-bound AgentSessionManager
+        bean(AgentSessionManager.class).setEventPublisher(bean(EventPublisher.class));
+
+        // Subscribers (combined mode: consume events and commands in the same JVM)
+        var eventSubscriber = new EventSubscriber(jedisPool, bean(SessionChannelService.class));
+        onStartup(eventSubscriber::start);
+        onShutdown(eventSubscriber::stop);
+
+        var chatMessageService = bean(ChatMessageService.class);
+        var commandHandler = new InProcessCommandHandler(jedisPool, bean(AgentSessionManager.class), chatMessageService);
+        onStartup(commandHandler::start);
+        onShutdown(commandHandler::stop);
     }
 
     private void bindAuthService() {
