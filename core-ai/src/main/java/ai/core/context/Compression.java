@@ -192,7 +192,7 @@ public class Compression {
     private List<Message> buildCompressedResult(Message systemMsg, String summary, Message preservedUserMsg, List<Message> toKeep) {
         var toolCallId = COMPRESSION_TOOL_NAME + "_" + System.currentTimeMillis();
         var compressCall = FunctionCall.of(toolCallId, "function", COMPRESSION_TOOL_NAME, "{}");
-        var toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, List.of(compressCall));
+        var toolCallMsg = Message.of(RoleType.ASSISTANT, null, null, null, List.of(compressCall),"");
         var toolResultMsg = Message.of(RoleType.TOOL, summary, COMPRESSION_TOOL_NAME, toolCallId, null);
 
         var result = new ArrayList<Message>();
