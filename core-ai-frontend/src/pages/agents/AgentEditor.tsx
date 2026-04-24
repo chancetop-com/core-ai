@@ -8,12 +8,22 @@ import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import StatusBadge from '../../components/StatusBadge';
 
+const NEW_AGENT_SKELETON: AgentDefinition = {
+  id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
+  model: '', temperature: 0.7, max_turns: 20, timeout_seconds: 600,
+  tools: [], input_template: '', variables: {}, webhook_secret: '',
+  system_default: false, type: 'AGENT', response_schema: null,
+  created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
+  subagent_ids: [], skill_ids: [],
+};
+
 export default function AgentEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isNew = id === 'new';
 
-  const [agent, setAgent] = useState<AgentDefinition | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [agent, setAgent] = useState<AgentDefinition | null>(isNew ? { ...NEW_AGENT_SKELETON } : null);
+  const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -71,11 +81,11 @@ export default function AgentEditor() {
 
   useEffect(() => {
     if (!id) return;
-    api.agents.get(id).then(setAgent).catch(console.error).finally(() => setLoading(false));
+
+    // Load auxiliary data in both create and edit modes
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
     api.tools.list().then(res => setAllTools(res.tools || [])).catch(console.error);
     api.agents.list().then(res => {
-      // Include both AGENT type and local type (CLI mode), exclude current agent
       const published = (res.agents || []).filter(a =>
         a.id !== id &&
         (a.status === 'PUBLISHED' || a.status === 'DRAFT') &&
@@ -84,12 +94,19 @@ export default function AgentEditor() {
       setAllAgents(published);
     }).catch(console.error);
     api.skills.list().then(res => setAllSkills(res.skills || [])).catch(console.error);
+
+    if (isNew) {
+      setLoading(false);
+      return;
+    }
+
+    api.agents.get(id).then(setAgent).catch(console.error).finally(() => setLoading(false));
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
-  }, [id]);
+  }, [id, isNew]);
 
   const loadRuns = useCallback(async () => {
-    if (!id) return;
+    if (!id || isNew) return;
     setRunsLoading(true);
     try {
       const res = await api.agents.runs(id);
@@ -97,7 +114,7 @@ export default function AgentEditor() {
     } finally {
       setRunsLoading(false);
     }
-  }, [id]);
+  }, [id, isNew]);
 
   if (loading) return <div className="p-6" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>;
   if (!agent) return <div className="p-6">Agent not found</div>;
@@ -178,7 +195,30 @@ export default function AgentEditor() {
     setSaving(true);
     setSaveSuccess(false);
     setSaveError('');
+
     try {
+      if (isNew) {
+        const created = await api.agents.create({
+          name: agent.name || `New Agent ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+          description: agent.description,
+          type: agent.type,
+          system_prompt: agent.system_prompt,
+          system_prompt_id: agent.system_prompt_id,
+          model: agent.model,
+          temperature: agent.temperature,
+          max_turns: agent.max_turns,
+          timeout_seconds: agent.timeout_seconds,
+          tools: agent.tools,
+          input_template: agent.input_template,
+          variables: agent.variables,
+          response_schema: agent.response_schema,
+          subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined,
+          skill_ids: (agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined,
+        });
+        navigate(`/agents/${created.id}`);
+        return;
+      }
+
       const updated = await api.agents.update(id, {
         name: agent.name,
         description: agent.description,
@@ -223,7 +263,12 @@ export default function AgentEditor() {
   };
 
   const handleDelete = async () => {
-    if (!id || !confirm('Delete this agent?')) return;
+    if (!id) return;
+    if (isNew) {
+      navigate('/agents');
+      return;
+    }
+    if (!confirm('Delete this agent?')) return;
     await api.agents.delete(id);
     navigate('/agents');
   };
@@ -484,7 +529,7 @@ export default function AgentEditor() {
             style={{ borderColor: 'var(--color-border)' }}>
             <Download size={14} /> Export
           </button>
-          <button onClick={handlePublish} disabled={publishing}
+          <button onClick={handlePublish} disabled={publishing || isNew}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50"
             style={{
               borderColor: publishSuccess ? 'var(--color-success)' : 'var(--color-border)',
@@ -1063,7 +1108,7 @@ export default function AgentEditor() {
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3">Info</h3>
             <dl className="text-xs space-y-2" style={{ color: 'var(--color-text-secondary)' }}>
-              <div className="flex justify-between"><dt>ID</dt><dd className="font-mono truncate ml-2 max-w-32">{agent.id}</dd></div>
+                <div className="flex justify-between"><dt>ID</dt><dd className="font-mono truncate ml-2 max-w-32">{isNew ? '(new)' : agent.id}</dd></div>
               <div className="flex justify-between"><dt>Status</dt><dd>{agent.status}</dd></div>
               <div className="flex justify-between"><dt>Created by</dt><dd>{agent.created_by || '-'}</dd></div>
               <div className="flex justify-between"><dt>Timeout</dt><dd>{agent.timeout_seconds || 600}s</dd></div>

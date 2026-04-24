@@ -61,10 +61,8 @@ export default function AgentList() {
     .sort((a, b) => (b[sortBy] || '').localeCompare(a[sortBy] || ''));
   const pagedAgents = filteredAgents.slice(currentOffset, currentOffset + limit);
 
-  const handleCreate = async () => {
-    const name = `New Agent ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
-    const created = await api.agents.create({ name, type: 'AGENT' });
-    if (created?.id) navigate(`/agents/${created.id}`);
+  const handleCreate = () => {
+    navigate('/agents/new');
   };
 
   const toggleSelect = (id: string, e: React.MouseEvent) => {
