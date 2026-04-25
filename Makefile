@@ -35,7 +35,7 @@ endif
 CLI_BINARY = $(CLI_NAME)-$(DETECTED_OS)-$(ARCH)$(CLI_EXT)
 CLI_BUILD_DIR = build/core-ai-cli/native/nativeCompile
 
-.PHONY: server sandbox push cli release builder
+.PHONY: server sandbox push cli release builder update-model-context
 
 server: builder
 	@test -n "$(DOCKER_USER)" || (echo "ERROR: set DOCKER_USERNAME env var" && exit 1)
@@ -64,6 +64,11 @@ cli:
 	$(GRADLEW) :core-ai-cli:nativeCompile
 	cp $(CLI_BUILD_DIR)/core-ai-cli$(CLI_EXT) $(CLI_BUILD_DIR)/$(CLI_BINARY)
 	@echo "Built: $(CLI_BUILD_DIR)/$(CLI_BINARY)"
+
+update-model-context:
+	curl -fsSL https://raw.githubusercontent.com/BerriAI/litellm/litellm_internal_staging/model_prices_and_context_window.json \
+		-o core-ai/src/main/resources/model_prices_and_context_window.json
+	@echo "Updated model_prices_and_context_window.json from litellm"
 
 release: cli
 	@test -n "$(VERSION)" -a "$(VERSION)" != "latest" || (echo "ERROR: set VERSION (e.g. make release VERSION=1.0.0)" && exit 1)
