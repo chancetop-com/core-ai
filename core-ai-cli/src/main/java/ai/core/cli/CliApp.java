@@ -312,14 +312,16 @@ public class CliApp {
             LOGGER.info("Starting new session: {}", currentSessionId);
         }
 
+        CliLogger.initialize(currentSessionId);
+
         var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
         });
 
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
-        var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore);
-        var server = new A2AServer(port, runManager, chatSessionManager, webDir);
+        var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, sessionManager, sessionPersistence, workspace);
+        var server = new A2AServer(port, runManager, chatSessionManager, sessionPersistence, webDir);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();

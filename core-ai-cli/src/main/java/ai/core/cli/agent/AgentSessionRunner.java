@@ -74,6 +74,10 @@ public class AgentSessionRunner {
     }
 
     public String run() {
+        // Load session history if resuming an existing session
+        if (agent.hasPersistenceProvider()) {
+            agent.load(sessionId);
+        }
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
         var listener = new CliEventListener(ui, session, agent);
         session.onEvent(listener);
@@ -94,6 +98,10 @@ public class AgentSessionRunner {
     }
 
     public void runPrompt(String prompt) {
+        // Load session history if resuming an existing session
+        if (agent.hasPersistenceProvider()) {
+            agent.load(sessionId);
+        }
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
         var listener = new CliEventListener(ui, session, agent);
         session.onEvent(listener);

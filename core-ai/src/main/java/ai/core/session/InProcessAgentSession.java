@@ -58,10 +58,27 @@ public class InProcessAgentSession implements AgentSession {
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
         setupCompressionListener();
+    }
 
-        if (agent.hasPersistenceProvider()) {
-            agent.load(sessionId);
+    /**
+     * Constructor that skips loading from persistence (used when session is already loaded).
+     */
+    public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore, boolean skipLoad) {
+        this.sessionId = sessionId;
+        this.agent = agent;
+        this.permissionGate = new PermissionGate();
+        this.commandQueue = new SessionCommandQueue();
+        this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
+        var context = agent.getExecutionContext();
+        if (context.getSubagentOutputSinkFactory() != null) {
+            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
+        agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
+        agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
+        agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
+        agent.setAuthenticated(true);
+        setupCompressionListener();
+        // Skip loading when skipLoad is true (session already loaded by caller)
     }
 
     @Override

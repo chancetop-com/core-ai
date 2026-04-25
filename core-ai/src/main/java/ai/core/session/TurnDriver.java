@@ -26,6 +26,7 @@ public class TurnDriver {
     }
 
     private void driveLoop() {
+        logger.info("TurnDriver started, thread={}", Thread.currentThread().getName());
         while (running) {
             try {
                 commandQueue.awaitNonEmpty();
@@ -36,16 +37,20 @@ public class TurnDriver {
                 //noinspection ResultOfMethodCallIgnored
                 Thread.interrupted();
             } catch (InterruptedException e) {
+                logger.info("TurnDriver interrupted, running={}, exiting driveLoop", running);
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
                 logger.error("unexpected error in TurnDriver", e);
             }
         }
+        logger.info("TurnDriver exited driveLoop, thread={}", Thread.currentThread().getName());
     }
 
     public void shutdown() {
+        logger.info("TurnDriver.shutdown called, running={}, thread={}", running, driverThread.getName());
         running = false;
         driverThread.interrupt();
+        logger.info("TurnDriver.shutdown completed");
     }
 }

@@ -11,7 +11,9 @@ import ai.core.cli.a2a.handler.TaskHandler;
 import ai.core.cli.a2a.handler.chat.ChatSessionActionHandler;
 import ai.core.cli.a2a.handler.chat.ChatSessionCreateHandler;
 import ai.core.cli.a2a.handler.chat.ChatSessionSSEHandler;
+import ai.core.cli.a2a.handler.chat.ChatSessionsHandler;
 import ai.core.cli.session.LocalChatSessionManager;
+import ai.core.session.FileSessionPersistence;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.handlers.PathTemplateHandler;
@@ -23,6 +25,7 @@ import io.undertow.util.HttpString;
 import io.undertow.util.Methods;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.xnio.Options;
 
 import java.nio.file.Path;
 
@@ -47,15 +50,17 @@ public class A2AServer {
     private final Undertow server;
     private final A2ARunManager runManager;
     private final LocalChatSessionManager chatSessionManager;
+    private final FileSessionPersistence fileSessionPersistence;
     private final int port;
 
-    public A2AServer(int port, A2ARunManager runManager, LocalChatSessionManager chatSessionManager, Path webDir) {
+    public A2AServer(int port, A2ARunManager runManager, LocalChatSessionManager chatSessionManager, FileSessionPersistence fileSessionPersistence, Path webDir) {
         silenceUndertowLogs();
         this.port = port;
         this.runManager = runManager;
         this.chatSessionManager = chatSessionManager;
+        this.fileSessionPersistence = fileSessionPersistence;
 
-        var apiPathHandler = buildApiRoutes(chatSessionManager);
+        var apiPathHandler = buildApiRoutes(chatSessionManager, fileSessionPersistence);
         var staticHandler = staticFileHandler(webDir);
 
         var spaHandler = buildSpaHandler(apiPathHandler, webDir);
@@ -69,16 +74,20 @@ public class A2AServer {
                         spaHandler.handleRequest(exchange);
                     }
                 }))
+                .setWorkerThreads(4)
+                // Set worker threads to daemon mode so they don't prevent JVM shutdown
+                .setWorkerOption(Options.THREAD_DAEMON, true)
                 .build();
     }
 
-    private PathTemplateHandler buildApiRoutes(LocalChatSessionManager chatSessionManager) {
+    private PathTemplateHandler buildApiRoutes(LocalChatSessionManager chatSessionManager, FileSessionPersistence fileSessionPersistence) {
         var agentCardHandler = new AgentCardHandler(runManager);
         var messageHandler = new MessageHandler(runManager);
         var taskHandler = new TaskHandler(runManager);
         var chatSessionCreateHandler = new ChatSessionCreateHandler(chatSessionManager);
-        var chatSessionActionHandler = new ChatSessionActionHandler(chatSessionManager);
+        var chatSessionActionHandler = new ChatSessionActionHandler(chatSessionManager, fileSessionPersistence);
         var chatSessionSSEHandler = new ChatSessionSSEHandler(chatSessionManager);
+        var chatSessionsHandler = new ChatSessionsHandler(chatSessionManager, fileSessionPersistence);
 
         var handler = new PathTemplateHandler(notFoundHandler());
         handler.add("/.well-known/agent-card.json", agentCardHandler);
@@ -96,6 +105,7 @@ public class A2AServer {
         handler.add("/api/sessions/{sessionId}/tools", chatSessionActionHandler);
         handler.add("/api/sessions/{sessionId}/skills", chatSessionActionHandler);
         handler.add("/api/sessions/events", chatSessionSSEHandler);
+        handler.add("/api/chat/sessions", chatSessionsHandler);
         handler.add("/api/agents", new LocalAgentHandler(runManager.getAgentFactory()));
         handler.add("/api/agents/{id}", new LocalAgentHandler(runManager.getAgentFactory()));
         handler.add("/api/tools", new LocalToolHandler());

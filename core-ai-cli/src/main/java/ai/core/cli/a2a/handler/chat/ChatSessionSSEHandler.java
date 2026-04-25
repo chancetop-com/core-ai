@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -40,13 +41,18 @@ public class ChatSessionSSEHandler implements HttpHandler {
     private static final String SSE_CLOSE_MARKER = "__SSE_CLOSE__";
 
     static String buildSseEvent(String eventType, Map<String, Object> data, String sessionId) {
-        Map<String, Object> payload = Map.of(
-            "type", eventType,
-            "sessionId", sessionId,
-            "timestamp", java.time.ZonedDateTime.now().toString(),
-            "data", JsonUtil.toJson(data)
-        );
-        return "data: " + JsonUtil.toJson(payload) + "\n\n";
+        // Build the event flattening data fields into the top level for front-end compatibility
+        var event = new java.util.LinkedHashMap<String, Object>();
+        event.put("type", eventType);
+        event.put("sessionId", sessionId);
+        event.put("timestamp", ZonedDateTime.now().toString());
+        // Flatten data fields into top level
+        if (data != null) {
+            for (var entry : data.entrySet()) {
+                event.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return "data: " + JsonUtil.toJson(event) + "\n\n";
     }
 
     static Map<String, Object> toMap(Object... keyValuePairs) {
@@ -110,9 +116,12 @@ public class ChatSessionSSEHandler implements HttpHandler {
         var listener = new SseListener(sessionId, eventQueue);
 
         chatSession.addListener(listener);
+        chatSession.setSseHandlerThread(Thread.currentThread());
         exchange.addExchangeCompleteListener((ex, next) -> {
+            // Note: do NOT call listener.close() here - the SSE connection should only be closed
+            // when the turn completes (in onTurnComplete) to ensure all tool events are sent.
+            // If the client disconnects, sendFrame will fail and drainEventQueue will break.
             chatSession.removeListener(listener);
-            listener.close();
             chatSession.signalSseClose();
             next.proceed();
         });
@@ -214,14 +223,17 @@ public class ChatSessionSSEHandler implements HttpHandler {
         @Override
         public void onTextChunk(TextChunkEvent event) {
             enqueueSseEvent("text_chunk", toMap(
-                "text", event.chunk,
+                "content", event.chunk,
                 "is_final_chunk", false
             ));
         }
 
         @Override
         public void onReasoningChunk(ReasoningChunkEvent event) {
-            enqueueSseEvent("reasoning_chunk", toMap("text", event.chunk));
+            enqueueSseEvent("reasoning_chunk", toMap(
+                "content", event.chunk,
+                "is_final_chunk", false
+            ));
         }
 
         @Override
@@ -232,17 +244,17 @@ public class ChatSessionSSEHandler implements HttpHandler {
         @Override
         public void onToolStart(ToolStartEvent event) {
             enqueueSseEvent("tool_start", toMap(
-                "callId", event.callId,
-                "name", event.toolName,
-                "arguments", nullToEmpty(event.arguments)
+                "call_id", event.callId,
+                "tool_name", event.toolName,
+                "tool_args", event.arguments != null ? Map.of("raw", event.arguments) : null
             ));
         }
 
         @Override
         public void onToolResult(ToolResultEvent event) {
             enqueueSseEvent("tool_result", toMap(
-                "callId", event.callId,
-                "name", event.toolName,
+                "call_id", event.callId,
+                "tool_name", event.toolName,
                 "status", event.status,
                 "result", nullToEmpty(event.result)
             ));
@@ -251,23 +263,34 @@ public class ChatSessionSSEHandler implements HttpHandler {
         @Override
         public void onToolApprovalRequest(ToolApprovalRequestEvent event) {
             enqueueSseEvent("tool_approval_request", toMap(
-                "callId", event.callId,
-                "name", event.toolName,
+                "call_id", event.callId,
+                "tool_name", event.toolName,
                 "arguments", nullToEmpty(event.arguments)
             ));
         }
 
         @Override
         public void onTurnComplete(TurnCompleteEvent event) {
+            LOGGER.info("[SSE] onTurnComplete: sessionId={}, cancelled={}, output={}",
+                sessionId, event.cancelled, event.output != null ? event.output.substring(0, Math.min(50, event.output.length())) : "null");
             Map<String, Object> data = new HashMap<>();
             if (event.output != null) {
                 data.put("output", event.output);
             }
+            if (Boolean.TRUE.equals(event.cancelled)) {
+                data.put("cancelled", true);
+            }
+            if (event.maxTurnsReached != null && event.maxTurnsReached) {
+                data.put("max_turns_reached", true);
+            }
             if (event.inputTokens != null || event.outputTokens != null) {
-                data.put("inputTokens", event.inputTokens);
-                data.put("outputTokens", event.outputTokens);
+                data.put("input_tokens", event.inputTokens);
+                data.put("output_tokens", event.outputTokens);
             }
             enqueueSseEvent("turn_complete", data);
+            // Close SSE connection after turn complete to ensure all tool events are sent
+            // This is the proper time to close - after all events for this turn have been dispatched
+            close();
         }
 
         @Override
@@ -290,12 +313,23 @@ public class ChatSessionSSEHandler implements HttpHandler {
         }
 
         void enqueueSseEvent(String eventType, Map<String, Object> data) {
+            String frame = buildSseEvent(eventType, data, sessionId);
             try {
-                String frame = buildSseEvent(eventType, data, sessionId);
-                eventQueue.offer(frame, 10, TimeUnit.SECONDS);
+                // Use non-blocking offer to avoid blocking the agent thread
+                // If queue is full, drop the event and log a warning
+                // This prevents slow SSE clients from blocking tool execution
+                if (!eventQueue.offer(frame, 100, TimeUnit.MILLISECONDS)) {
+                    LOGGER.warn("[SSE] event queue full, dropping event: {} for session {}", eventType, sessionId);
+                }
             } catch (InterruptedException e) {
+                // Restore interrupt flag - we still want to send the event even during cancel
                 Thread.currentThread().interrupt();
-                LOGGER.warn("[SSE] enqueue interrupted for session {}", sessionId);
+                // Try non-blocking offer as last resort
+                if (!eventQueue.offer(frame)) {
+                    LOGGER.warn("[SSE] event queue full, dropping event after interrupt: {} for session {}", eventType, sessionId);
+                } else {
+                    LOGGER.debug("[SSE] event sent via non-blocking offer after interrupt: {} for session {}", eventType, sessionId);
+                }
             }
         }
 
@@ -304,6 +338,10 @@ public class ChatSessionSSEHandler implements HttpHandler {
                 eventQueue.offer(SSE_CLOSE_MARKER, 5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                // Try non-blocking offer as last resort
+                if (!eventQueue.offer(SSE_CLOSE_MARKER)) {
+                    LOGGER.debug("[SSE] close marker dropped for session {}", sessionId);
+                }
             }
         }
 

@@ -32,7 +32,7 @@ else
 	CLI_EXT =
 endif
 
-CLI_BINARY = $(CLI_NAME)-$(DETECTED_OS)-$(ARCH)$(CLI_EXT)
+CLI_BINARY = $(CLI_NAME)$(CLI_EXT)
 CLI_BUILD_DIR = build/core-ai-cli/native/nativeCompile
 
 .PHONY: server sandbox push cli release builder update-model-context
@@ -62,7 +62,6 @@ builder:
 
 cli:
 	$(GRADLEW) :core-ai-cli:nativeCompile
-	cp $(CLI_BUILD_DIR)/core-ai-cli$(CLI_EXT) $(CLI_BUILD_DIR)/$(CLI_BINARY)
 	@echo "Built: $(CLI_BUILD_DIR)/$(CLI_BINARY)"
 
 update-model-context:

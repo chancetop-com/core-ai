@@ -102,6 +102,27 @@ function ThinkingBlock({ thinking, isStreaming }: { thinking: string; isStreamin
   );
 }
 
+function normalizeArgs(argsJson: string | undefined): Record<string, unknown> | null {
+  if (!argsJson || argsJson === '{}') return null;
+  try {
+    const args = JSON.parse(argsJson);
+    // backend wraps tool_args as {raw: "..."}, unwrap it
+    if (args && typeof args === 'object' && !Array.isArray(args) && Object.keys(args).length === 1 && 'raw' in args && typeof args.raw === 'string') {
+      try { return JSON.parse(args.raw); } catch { return args; }
+    }
+    return args;
+  } catch {
+    return null;
+  }
+}
+
+function getArgDescription(argsJson: string | undefined): string | null {
+  const args = normalizeArgs(argsJson);
+  if (!args) return null;
+  if (typeof args.description === 'string' && args.description) return args.description;
+  return null;
+}
+
 function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
   const [expanded, setExpanded] = useState(true);
   const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set());
@@ -132,14 +153,21 @@ function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
               style={{ background: 'var(--color-bg-secondary)' }}>
               <div className="px-3 py-2 flex items-center gap-2"
                 style={{ color: 'var(--color-text-secondary)' }}>
+                {t.type === 'start' ? (
+                  <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-warning)' }} />
+                ) : (
+                  <span style={{ color: (t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? 'var(--color-success)' : 'var(--color-error)' }}>
+                    {(t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? '\u2713' : '\u2717'}
+                  </span>
+                )}
                 <span className="font-mono font-medium" style={{ color: 'var(--color-primary)' }}>{t.tool}</span>
-                {t.type === 'start' && t.arguments && (
-                  <span className="opacity-70 truncate">{t.arguments.length > 80 ? t.arguments.slice(0, 80) + '...' : t.arguments}</span>
+                {t.arguments && normalizeArgs(t.arguments) && getArgDescription(t.arguments) && (
+                  <span className="opacity-70">{getArgDescription(t.arguments)}</span>
                 )}
                 {t.type === 'result' && (
                   <>
-                    <span style={{ color: t.resultStatus === 'COMPLETED' ? 'var(--color-success)' : 'var(--color-error)' }}>
-                      {t.resultStatus === 'COMPLETED' ? '✓ done' : t.resultStatus}
+                    <span style={{ color: (t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? 'var(--color-success)' : 'var(--color-error)' }}>
+                      {(t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? 'done' : (t.resultStatus || 'error')}
                     </span>
                     {t.result && (
                       <button onClick={() => toggleResult(j)}

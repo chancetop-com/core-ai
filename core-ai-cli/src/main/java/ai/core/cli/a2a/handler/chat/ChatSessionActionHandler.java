@@ -6,6 +6,7 @@ import ai.core.api.server.session.SendMessageRequest;
 import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.llm.domain.RoleType;
 import ai.core.session.FileSessionPersistence;
+import ai.core.cli.utils.PathUtils;
 import ai.core.utils.JsonUtil;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
@@ -17,7 +18,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -27,14 +27,13 @@ import java.util.Optional;
  */
 public class ChatSessionActionHandler implements HttpHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatSessionActionHandler.class);
-    private static final String SESSIONS_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "sessions").toString();
 
     private final LocalChatSessionManager sessionManager;
     private final FileSessionPersistence filePersistence;
 
-    public ChatSessionActionHandler(LocalChatSessionManager sessionManager) {
+    public ChatSessionActionHandler(LocalChatSessionManager sessionManager, FileSessionPersistence filePersistence) {
         this.sessionManager = sessionManager;
-        this.filePersistence = new FileSessionPersistence(SESSIONS_DIR);
+        this.filePersistence = filePersistence;
     }
 
     @Override
@@ -111,6 +110,8 @@ public class ChatSessionActionHandler implements HttpHandler {
             var messages = new ArrayList<HistoryMessage>();
             if (domain.messages != null) {
                 for (var msg : domain.messages) {
+                    // Skip system messages
+                    if (msg.role == RoleType.SYSTEM) continue;
                     String text = msg.getTextContent();
                     String role = msg.role == RoleType.USER ? "user" : "agent";
                     messages.add(new HistoryMessage(role, text != null ? text : ""));
@@ -135,6 +136,8 @@ public class ChatSessionActionHandler implements HttpHandler {
             var messages = new ArrayList<SimpleMessage>();
             if (domain.messages != null) {
                 for (var msg : domain.messages) {
+                    // Skip system messages
+                    if (msg.role == RoleType.SYSTEM) continue;
                     String text = msg.getTextContent();
                     String role = msg.role == RoleType.USER ? "user" : "agent";
                     messages.add(new SimpleMessage(role, text != null ? text : ""));

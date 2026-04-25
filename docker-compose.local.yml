@@ -1,0 +1,57 @@
+services:
+  # ============================================================
+  # MongoDB (requires replica set for core-ng framework)
+  # ============================================================
+  mongo:
+    image: mongo:7
+    container_name: core-ai-mongo
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Initialize MongoDB replica set (runs once after mongo is healthy)
+  mongo-init:
+    image: mongo:7
+    container_name: core-ai-mongo-init
+    depends_on:
+      mongo:
+        condition: service_healthy
+    entrypoint:
+      - bash
+      - -c
+      - |
+        echo "Waiting for MongoDB to be ready..."
+        sleep 3
+        mongosh --host mongo:27017 --eval "rs.initiate({
+          _id: 'rs0',
+          members: [{ _id: 0, host: 'localhost:27017' }]
+        })"
+        echo "Replica set initialized."
+
+  # ============================================================
+  # Redis
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: core-ai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  mongo-data:
+  redis-data:
