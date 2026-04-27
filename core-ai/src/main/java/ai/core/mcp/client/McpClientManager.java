@@ -1,5 +1,7 @@
 package ai.core.mcp.client;
 
+import ai.core.tool.ToolCallResult;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -179,6 +181,53 @@ public class McpClientManager implements AutoCloseable {
         return Map.copyOf(clients);
     }
 
+    public List<McpSchema.Tool> safeListTools(String serverName) {
+        return safeListTools(serverName, null);
+    }
+
+    public List<McpSchema.Tool> safeListTools(String serverName, List<String> namespaces) {
+        try {
+            return getClient(serverName).listTools(namespaces);
+        } catch (Exception first) {
+            LOGGER.warn("MCP listTools failed for {}, sync reconnect once: {}", serverName, first.getMessage());
+            handleDisconnection(serverName);
+            if (!reconnectNow(serverName)) {
+                throw first;
+            }
+            getConnectionMonitor().resetReconnectAttempts(serverName);
+            return getClient(serverName).listTools(namespaces);
+        }
+    }
+
+    public ToolCallResult safeCallTool(String serverName, String name, String text) {
+        try {
+            return getClient(serverName).callToolWithResult(name, text);
+        } catch (Exception e) {
+            LOGGER.warn("MCP callTool failed for {}/{}, scheduling reconnect: {}", serverName, name, e.getMessage());
+            if (clients.containsKey(serverName)) {
+                handleDisconnection(serverName);
+                getConnectionMonitor().scheduleReconnect(serverName);
+            }
+            return ToolCallResult.failed("MCP server " + serverName + " unavailable: " + e.getMessage());
+        }
+    }
+
+    private boolean reconnectNow(String serverName) {
+        var config = configs.get(serverName);
+        if (config == null) return false;
+        try {
+            updateState(serverName, ConnectionState.CONNECTING);
+            var client = new McpClientService(config);
+            clients.put(serverName, client);
+            updateState(serverName, ConnectionState.CONNECTED);
+            return true;
+        } catch (Exception e) {
+            LOGGER.warn("Sync reconnect failed for server {}: {}", serverName, e.getMessage());
+            updateState(serverName, ConnectionState.FAILED);
+            return false;
+        }
+    }
+
     public void addListener(ConnectionStateListener listener) {
         listeners.add(listener);
     }
@@ -322,16 +371,7 @@ public class McpClientManager implements AutoCloseable {
 
         @Override
         public boolean attemptReconnect(String serverName, McpServerConfig config) {
-            try {
-                updateState(serverName, ConnectionState.CONNECTING);
-                var client = new McpClientService(config);
-                clients.put(serverName, client);
-                updateState(serverName, ConnectionState.CONNECTED);
-                return true;
-            } catch (Exception e) {
-                LOGGER.error("Reconnect failed for server {}: {}", serverName, e.getMessage());
-                return false;
-            }
+            return reconnectNow(serverName);
         }
 
         @Override

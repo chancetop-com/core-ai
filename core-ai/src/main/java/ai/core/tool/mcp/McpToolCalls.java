@@ -1,7 +1,6 @@
 package ai.core.tool.mcp;
 
 import ai.core.mcp.client.McpClientManager;
-import ai.core.mcp.client.McpClientService;
 import ai.core.tool.ToolCallParameter;
 import io.modelcontextprotocol.spec.McpSchema;
 
@@ -28,29 +27,30 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
         var mcpToolCalls = new McpToolCalls();
         for (var serverName : serverNames) {
             if (mcpClientManager.hasServer(serverName)) {
-                addToolsFromClient(mcpToolCalls, mcpClientManager.getClient(serverName), serverName, includes, excludes);
+                addToolsFromClient(mcpToolCalls, mcpClientManager, serverName, includes, excludes);
             }
         }
         return mcpToolCalls;
     }
 
-    private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientService client, String serverName, List<String> includes, List<String> excludes) {
-        var tools = client.listTools();
+    private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientManager manager, String serverName, List<String> includes, List<String> excludes) {
+        var tools = manager.safeListTools(serverName);
         for (var tool : tools) {
             if (includes != null && includes.stream().noneMatch(t -> Pattern.compile(t).matcher(tool.name()).matches())) continue;
             if (excludes != null && excludes.stream().anyMatch(t -> Pattern.compile(t).matcher(tool.name()).matches())) continue;
-            mcpToolCalls.add(buildToolCall(tool, client, serverName));
+            mcpToolCalls.add(buildToolCall(tool, manager, serverName));
         }
     }
 
-    private static McpToolCall buildToolCall(McpSchema.Tool tool, McpClientService client, String serverName) {
+    private static McpToolCall buildToolCall(McpSchema.Tool tool, McpClientManager manager, String serverName) {
         return McpToolCall.builder()
                 .name(tool.name())
                 .namespace(serverName)
                 .description(tool.description())
-                .needAuth(false)  // SDK Tool doesn't have needAuth field
+                .needAuth(false)
                 .parameters(buildParameters(tool.inputSchema()))
-                .mcpClientService(client)
+                .mcpClientManager(manager)
+                .serverName(serverName)
                 .build();
     }
 

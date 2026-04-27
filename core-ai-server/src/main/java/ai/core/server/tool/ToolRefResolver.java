@@ -1,5 +1,6 @@
 package ai.core.server.tool;
 
+import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistry;
@@ -77,7 +78,7 @@ public class ToolRefResolver {
         }
 
         if (mcpManager.hasServer(serverName)) {
-            result.addAll(McpToolCalls.from(mcpManager, List.of(serverName), null));
+            result.addAll(loadMcpToolsSafe(mcpManager, serverName));
         }
     }
 
@@ -117,14 +118,23 @@ public class ToolRefResolver {
     private List<ToolCall> resolveMcpTools(ToolRegistry entry) {
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager != null && mcpManager.hasServer(entry.id)) {
-            return new ArrayList<>(McpToolCalls.from(mcpManager, List.of(entry.id), null));
+            return loadMcpToolsSafe(mcpManager, entry.id);
         } else if (entry.id.startsWith(CONFIG_PREFIX)) {
             var serverName = entry.id.substring(CONFIG_PREFIX.length());
             if (mcpManager != null && mcpManager.hasServer(serverName)) {
-                return new ArrayList<>(McpToolCalls.from(mcpManager, List.of(serverName), null));
+                return loadMcpToolsSafe(mcpManager, serverName);
             }
         }
         return List.of();
+    }
+
+    private List<ToolCall> loadMcpToolsSafe(McpClientManager mcpManager, String serverName) {
+        try {
+            return new ArrayList<>(McpToolCalls.from(mcpManager, List.of(serverName), null));
+        } catch (Exception e) {
+            LOGGER.warn("skip MCP server {} due to load failure: {}", serverName, e.getMessage());
+            return List.of();
+        }
     }
 
     private List<ToolCall> resolveApiTools(ToolRegistry entry) {

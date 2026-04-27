@@ -1,6 +1,6 @@
 package ai.core.tool.mcp;
 
-import ai.core.mcp.client.McpClientService;
+import ai.core.mcp.client.McpClientManager;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 
@@ -13,13 +13,14 @@ public class McpToolCall extends ToolCall {
         return new Builder();
     }
 
-    McpClientService mcpClientService;
+    McpClientManager mcpClientManager;
+    String serverName;
 
     @Override
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var result = mcpClientService.callToolWithResult(this.getName(), text);
+            var result = mcpClientManager.safeCallTool(serverName, this.getName(), text);
             return result.withDuration(System.currentTimeMillis() - startTime).withDirectReturn(isDirectReturn());
         } catch (Exception e) {
             return ToolCallResult.failed("MCP call failed: " + e.getMessage(), e)
@@ -28,20 +29,30 @@ public class McpToolCall extends ToolCall {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, ToolCall> {
-        private McpClientService mcpClientService;
+        private McpClientManager mcpClientManager;
+        private String serverName;
 
-        public Builder mcpClientService(McpClientService mcpClientService) {
-            this.mcpClientService = mcpClientService;
+        public Builder mcpClientManager(McpClientManager mcpClientManager) {
+            this.mcpClientManager = mcpClientManager;
+            return this;
+        }
+
+        public Builder serverName(String serverName) {
+            this.serverName = serverName;
             return this;
         }
 
         public McpToolCall build() {
             var toolCall = new McpToolCall();
-            if (mcpClientService == null) {
-                throw new RuntimeException("MCPClientService is required");
+            if (mcpClientManager == null) {
+                throw new RuntimeException("McpClientManager is required");
+            }
+            if (serverName == null || serverName.isBlank()) {
+                throw new RuntimeException("serverName is required");
             }
             build(toolCall);
-            toolCall.mcpClientService = mcpClientService;
+            toolCall.mcpClientManager = mcpClientManager;
+            toolCall.serverName = serverName;
             return toolCall;
         }
 
