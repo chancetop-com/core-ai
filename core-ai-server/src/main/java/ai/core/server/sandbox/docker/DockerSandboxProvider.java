@@ -167,9 +167,13 @@ public class DockerSandboxProvider implements SandboxProvider {
         binds.add(workspacePath + ":/workspace:ro");
         hostConfig.put("Binds", binds);
 
-        // Mount tmpfs for /tmp (writable, size-limited)
+        // Mount tmpfs for /tmp and /skill (writable, size-limited)
         var tmpSizeBytes = parseSizeToBytes(config.tmpSizeLimit != null ? config.tmpSizeLimit : "100Mi");
-        var tmpfs = Map.of("/tmp", "size=" + tmpSizeBytes);
+        var skillSizeBytes = parseSizeToBytes("50Mi");
+        var tmpfs = Map.of(
+                "/tmp", "size=" + tmpSizeBytes,
+                "/skill", "size=" + skillSizeBytes
+        );
         hostConfig.put("Tmpfs", tmpfs);
 
         // Security options
