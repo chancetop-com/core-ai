@@ -208,9 +208,6 @@ public class CliAgent {
                          PersistenceProvider persistenceProvider, Path workspace,
                          Function<String, String> askUserHandler,
                          boolean memoryEnabled) {
-        public Config {
-            memoryEnabled = true; // default to enabled
-        }
 
         public Config(LLMProviders providers, String modelOverride, int maxTurn,
                       PersistenceProvider persistenceProvider, Path workspace,

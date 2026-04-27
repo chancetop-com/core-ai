@@ -438,9 +438,6 @@ public class AgentSessionRunner {
                          MdMemoryProvider memory, ModelRegistry modelRegistry,
                          SessionPersistence sessionPersistence,
                          boolean memoryEnabled) {
-        public Config {
-            memoryEnabled = true; // default to enabled
-        }
 
         public Config(String modelName, boolean autoApproveAll, String sessionId,
                       SessionManager sessionManager, ToolPermissionStore permissionStore,
