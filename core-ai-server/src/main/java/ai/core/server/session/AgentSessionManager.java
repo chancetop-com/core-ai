@@ -15,6 +15,7 @@ import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.messaging.EventPublisher;
+import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
@@ -75,9 +76,14 @@ public class AgentSessionManager {
     SkillArchiveBuilder skillArchiveBuilder;
 
     EventPublisher eventPublisher;
+    SessionOwnershipRegistry ownershipRegistry;
 
     public void setEventPublisher(EventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
+    }
+
+    public void setOwnershipRegistry(SessionOwnershipRegistry ownershipRegistry) {
+        this.ownershipRegistry = ownershipRegistry;
     }
 
     private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
@@ -104,6 +110,9 @@ public class AgentSessionManager {
         }
 
         sessions.put(sessionId, session);
+        if (ownershipRegistry != null) {
+            ownershipRegistry.claim(sessionId);
+        }
         return sessionId;
     }
 
@@ -144,6 +153,10 @@ public class AgentSessionManager {
 
         sessions.put(sessionId, session);
 
+        if (ownershipRegistry != null) {
+            ownershipRegistry.claim(sessionId);
+        }
+
         // Auto-load skills and subagents configured in the agent definition
         var loadedSkills = loadSkillsFromDefinition(sessionId, definition);
         var loadedSubAgents = loadSubAgentsFromDefinition(session, definition);
@@ -158,6 +171,15 @@ public class AgentSessionManager {
     public InProcessAgentSession getSession(String sessionId, SessionState state) {
         var session = sessions.get(sessionId);
         if (session != null) return session;
+
+        // If this session is owned by another Pod, don't rebuild locally
+        if (ownershipRegistry != null) {
+            var owner = ownershipRegistry.getOwner(sessionId);
+            if (owner != null && !ownershipRegistry.isOwner(sessionId)) {
+                logger.info("session owned by another pod, not rebuilding locally, sessionId={}, owner={}", sessionId, owner);
+                throw new NotFoundException("session not found locally, sessionId=" + sessionId + ", owner=" + owner);
+            }
+        }
 
         var effectiveState = state != null ? state : buildStateFromDb(sessionId);
         if (effectiveState != null) {
@@ -304,12 +326,25 @@ public class AgentSessionManager {
         }
     }
 
+    /**
+     * Renew session ownership. Should be called periodically while the session is active
+     * (e.g., after each SSE event or command completion).
+     */
+    public void touchSession(String sessionId) {
+        if (ownershipRegistry != null) {
+            ownershipRegistry.renew(sessionId);
+        }
+    }
+
     public void closeSession(String sessionId) {
         var session = sessions.remove(sessionId);
         if (session != null) session.close();
         sessionSkillStates.remove(sessionId);
         sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
+        if (ownershipRegistry != null) {
+            ownershipRegistry.release(sessionId);
+        }
     }
 
     public List<String> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {

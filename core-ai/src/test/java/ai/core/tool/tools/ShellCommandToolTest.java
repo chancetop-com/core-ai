@@ -226,7 +226,7 @@ class ShellCommandToolTest {
             workspaceDir.replace("\\", "\\\\"), command);
 
         logger.info("Testing command output with spaces in filename: {}", jsonArgs);
-        String result = shellCommandTool.execute(jsonArgs).getResult();
+        String result = shellCommandTool.execute(jsonArgs, ExecutionContext.builder().build()).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -247,7 +247,7 @@ class ShellCommandToolTest {
             workspaceDir.replace("\\", "\\\\"), command.replace("\"", "\\\""));
 
         logger.info("Testing command with empty output: {}", jsonArgs);
-        String result = shellCommandTool.execute(jsonArgs).getResult();
+        String result = shellCommandTool.execute(jsonArgs, ExecutionContext.builder().build()).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");
@@ -264,7 +264,7 @@ class ShellCommandToolTest {
             workspaceDir.replace("\\", "\\\\"));
 
         logger.info("Testing with missing command parameter: {}", jsonArgs);
-        String result = shellCommandTool.execute(jsonArgs).getResult();
+        String result = shellCommandTool.execute(jsonArgs, ExecutionContext.builder().build()).getResult();
         logger.info("Result: {}", result);
 
         assertNotNull(result, "Result should not be null");

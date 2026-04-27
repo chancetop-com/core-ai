@@ -15,11 +15,14 @@ import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.llmcall.LLMCallBuilderTools;
+import ai.core.server.messaging.CommandConsumer;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.EventSubscriber;
 import ai.core.server.messaging.InProcessCommandHandler;
 import ai.core.server.messaging.JedisConfig;
+import ai.core.server.messaging.SessionCommand;
+import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.TokenResolver;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
@@ -79,14 +82,19 @@ import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.sse.PatchedServerSentEventConfig;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 
 /**
  * @author stephen
  */
 public class ServerModule extends Module {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ServerModule.class);
+
     @Override
     protected void initialize() {
         var migrationManager = bind(SchemaMigrationManager.class);
@@ -137,22 +145,46 @@ public class ServerModule extends Module {
         var jedisPool = redisConfig.createJedisPool();
         onShutdown(jedisPool::close);
 
+        // Ownership registry
+        var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
+
         // Publishers
-        bind(new CommandPublisher(jedisPool));
+        bind(new CommandPublisher(jedisPool, ownershipRegistry));
         bind(new EventPublisher(jedisPool));
 
         // Wire EventPublisher into the already-bound AgentSessionManager
         bean(AgentSessionManager.class).setEventPublisher(bean(EventPublisher.class));
+        // Wire SessionOwnershipRegistry into AgentSessionManager
+        bean(AgentSessionManager.class).setOwnershipRegistry(ownershipRegistry);
 
-        // Subscribers (combined mode: consume events and commands in the same JVM)
+        // Event subscriber (Redis Pub/Sub → local SSE channels)
         var eventSubscriber = new EventSubscriber(jedisPool, bean(SessionChannelService.class));
         onStartup(eventSubscriber::start);
         onShutdown(eventSubscriber::stop);
 
+        // Command handler (stateless dispatcher, receives commands from CommandConsumer)
         var chatMessageService = bean(ChatMessageService.class);
-        var commandHandler = new InProcessCommandHandler(jedisPool, bean(AgentSessionManager.class), chatMessageService);
-        onStartup(commandHandler::start);
-        onShutdown(commandHandler::stop);
+        var commandHandler = new InProcessCommandHandler(
+                bean(AgentSessionManager.class), chatMessageService, ownershipRegistry);
+
+        // Command consumer (per-Pod stream + unowned stream)
+        var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);
+        onStartup(commandConsumer::start);
+        onShutdown(() -> {
+            // 1. Stop consuming
+            commandConsumer.stop();
+            // 2. Drain per-Pod stream and republish to unowned
+            var pending = new ArrayList<SessionCommand>();
+            commandConsumer.drainPodStream(pending);
+            if (!pending.isEmpty()) {
+                LOGGER.info("republishing {} pending commands to unowned stream", pending.size());
+                try (var jedis = jedisPool.getResource()) {
+                    for (var cmd : pending) {
+                        jedis.xadd(SessionCommand.UNOWNED_STREAM, redis.clients.jedis.StreamEntryID.NEW_ENTRY, cmd.toStreamMap());
+                    }
+                }
+            }
+        });
     }
 
     private void bindAuthService() {

@@ -12,16 +12,27 @@ public class CommandPublisher {
     private static final Logger LOGGER = LoggerFactory.getLogger(CommandPublisher.class);
 
     private final JedisPool jedisPool;
+    private final SessionOwnershipRegistry ownershipRegistry;
 
-    public CommandPublisher(JedisPool jedisPool) {
+    public CommandPublisher(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry) {
         this.jedisPool = jedisPool;
+        this.ownershipRegistry = ownershipRegistry;
     }
 
     public void publish(SessionCommand command) {
+        var targetStream = resolveTargetStream(command.sessionId());
         try (var jedis = jedisPool.getResource()) {
-            var map = command.toStreamMap();
-            var messageId = jedis.xadd(SessionCommand.streamKey(), StreamEntryID.NEW_ENTRY, map);
-            LOGGER.debug("command published: type={}, sessionId={}, messageId={}", command.type(), command.sessionId(), messageId);
+            var messageId = jedis.xadd(targetStream, StreamEntryID.NEW_ENTRY, command.toStreamMap());
+            LOGGER.debug("command published to stream={}, type={}, sessionId={}, messageId={}",
+                    targetStream, command.type(), command.sessionId(), messageId);
         }
+    }
+
+    private String resolveTargetStream(String sessionId) {
+        var owner = ownershipRegistry.getOwner(sessionId);
+        if (owner != null) {
+            return SessionCommand.podStreamKey(owner);
+        }
+        return SessionCommand.UNOWNED_STREAM;
     }
 }

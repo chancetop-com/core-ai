@@ -11,15 +11,12 @@ import java.util.Map;
  * @author stephen
  */
 public record SessionCommand(CommandType type, String sessionId, String userId, String payload) {
-    private static final String STREAM_KEY = "coreai:commands";
-    private static final String CONSUMER_GROUP = "coreai-workers";
+    public static final String POD_STREAM_PREFIX = "coreai:commands:pod:";
+    public static final String UNOWNED_STREAM = "coreai:commands:unowned";
+    public static final String UNOWNED_CONSUMER_GROUP = "cg:unowned";
 
-    public static String streamKey() {
-        return STREAM_KEY;
-    }
-
-    public static String consumerGroup() {
-        return CONSUMER_GROUP;
+    static String podStreamKey(String hostname) {
+        return POD_STREAM_PREFIX + hostname;
     }
 
     public static SessionCommand fromMap(Map<String, String> map) {

@@ -25,6 +25,7 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.api.server.session.Message;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
+import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
@@ -34,6 +35,7 @@ import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.Session;
 import core.framework.web.WebContext;
+import core.framework.web.exception.TooManyRequestsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,6 +64,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     ChatMessageService chatMessageService;
     @Inject
     CommandPublisher commandPublisher;
+    @Inject
+    SessionOwnershipRegistry ownershipRegistry;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
@@ -239,7 +243,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
     @Override
     public SessionStatusResponse status(String sessionId) {
-        sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         var response = new SessionStatusResponse();
         response.sessionId = sessionId;
         response.status = SessionStatus.IDLE;
@@ -260,6 +263,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireLocalSession(sessionId);
         var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         return agentDraftGenerator.generate(session);
     }
@@ -269,6 +273,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireLocalSession(sessionId);
         List<String> loadedTools;
         if (request.tools != null && !request.tools.isEmpty()) {
             var toolRefs = request.tools.stream()
@@ -293,6 +298,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireLocalSession(sessionId);
         var loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
         var response = new LoadSkillsResponse();
         response.loadedSkills = loadedSkills;
@@ -304,6 +310,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireLocalSession(sessionId);
         var remainingSkills = sessionManager.unloadSkills(sessionId, request.skillIds);
         var response = new UnloadSkillsResponse();
         response.remainingSkills = remainingSkills;
@@ -315,6 +322,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireLocalSession(sessionId);
         var definitions = request.agentIds.stream()
                 .map(agentDefinitionService::getEntity)
                 .toList();
@@ -338,5 +346,21 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         if (httpSession == null) return null;
         var json = httpSession.get(SESSION_STATE_KEY + ":" + sessionId).orElse(null);
         return SessionState.fromJson(json);
+    }
+
+    /**
+     * Check that the session is owned by this Pod. Sync endpoints (loadTools,
+     * loadSkills, etc.) need a local InProcessAgentSession, which only exists
+     * on the owning Pod. If the request lands on a non-owner Pod, throw 503
+     * so the frontend can retry (K8s service will typically route to the owner).
+     * <p>
+     * This is a transient condition — in steady state the frontend always hits
+     * the same Pod that created the session.
+     */
+    private void requireLocalSession(String sessionId) {
+        var owner = ownershipRegistry.getOwner(sessionId);
+        if (owner != null && !owner.equals(ownershipRegistry.getHostname())) {
+            throw new TooManyRequestsException("session owned by " + owner + ", retry on this pod");
+        }
     }
 }
