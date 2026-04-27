@@ -134,28 +134,30 @@ public class CliAgent {
                 ? "(empty - create .core-ai/instructions.md when project conventions or rules need to persist across sessions)"
                 : instructions));
 
-        var mdMemoryProvider = new MdMemoryProvider(config.workspace);
-        var mdMemoryContent = mdMemoryProvider.load();
-        sb.append("""
-                
-                ## Memory
+        if (config.memoryEnabled) {
+            var mdMemoryProvider = new MdMemoryProvider(config.workspace);
+            var mdMemoryContent = mdMemoryProvider.load();
+            sb.append("""
+                    
+                    ## Memory
 
-                Persistent structured memory at .core-ai/memory/.
-                Index: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
-                Each topic file has YAML frontmatter (name, description, type: user/feedback/project/reference).
+                    Persistent structured memory at .core-ai/memory/.
+                    Index: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
+                    Each topic file has YAML frontmatter (name, description, type: user/feedback/project/reference).
 
-                Index structure: | File | Description | Created | Updated |
-                Description column: use the `description` field from the file's YAML frontmatter.
+                    Index structure: | File | Description | Created | Updated |
+                    Description column: use the `description` field from the file's YAML frontmatter.
 
-                Reading: use md_memory_tool to search/get, or read_file for full content.
-                Writing: use write_file/edit_file to create/update topic files. \
-                Update MEMORY.md index when adding or removing files. \
-                Check existing memories first to avoid duplicates; merge into existing files when possible.
-                
-                <memories>
-                %s
-                </memories>
-                """.formatted(mdMemoryContent.isBlank() ? "(empty - initialize when user shares preferences or asks to remember)" : mdMemoryContent));
+                    Reading: use md_memory_tool to search/get, or read_file for full content.
+                    Writing: use write_file/edit_file to create/update topic files. \
+                    Update MEMORY.md index when adding or removing files. \
+                    Check existing memories first to avoid duplicates; merge into existing files when possible.
+                    
+                    <memories>
+                    %s
+                    </memories>
+                    """.formatted(mdMemoryContent.isBlank() ? "(empty - initialize when user shares preferences or asks to remember)" : mdMemoryContent));
+        }
 
         return sb.toString();
     }
@@ -204,6 +206,16 @@ public class CliAgent {
 
     public record Config(LLMProviders providers, String modelOverride, int maxTurn,
                          PersistenceProvider persistenceProvider, Path workspace,
-                         Function<String, String> askUserHandler) {
+                         Function<String, String> askUserHandler,
+                         boolean memoryEnabled) {
+        public Config {
+            memoryEnabled = true; // default to enabled
+        }
+
+        public Config(LLMProviders providers, String modelOverride, int maxTurn,
+                      PersistenceProvider persistenceProvider, Path workspace,
+                      Function<String, String> askUserHandler) {
+            this(providers, modelOverride, maxTurn, persistenceProvider, workspace, askUserHandler, true);
+        }
     }
 }

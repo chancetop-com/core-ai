@@ -54,6 +54,7 @@ public class AgentSessionRunner {
     private final ToolPermissionStore permissionStore;
     private final ModelRegistry modelRegistry;
     private final MemoryCommandHandler memoryCommand;
+    private final boolean memoryEnabled;
     private final SessionPersistence sessionPersistence;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
@@ -69,7 +70,8 @@ public class AgentSessionRunner {
         this.sessionManager = config.sessionManager;
         this.permissionStore = config.permissionStore;
         this.modelRegistry = config.modelRegistry;
-        this.memoryCommand = new MemoryCommandHandler(ui, config.memory);
+        this.memoryCommand = config.memoryEnabled ? new MemoryCommandHandler(ui, config.memory) : null;
+        this.memoryEnabled = config.memoryEnabled;
         this.sessionPersistence = config.sessionPersistence;
     }
 
@@ -119,6 +121,7 @@ public class AgentSessionRunner {
     }
 
     private void extractPreviousSession() {
+        if (!memoryEnabled || memoryCommand == null) return;
         var extractor = new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel(), sessionPersistence);
         if (!extractor.hasPendingSessions(sessionId)) return;
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Extracting memories from last session..." + AnsiTheme.RESET + "\n");
@@ -186,7 +189,7 @@ public class AgentSessionRunner {
     }
 
     private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {
-        var dispatcher = new CommandDispatcher(ui, this, switchSessionId, remoteConfig, commands, memoryCommand);
+        var dispatcher = new CommandDispatcher(ui, this, switchSessionId, remoteConfig, commands, memoryCommand, memoryEnabled);
         boolean showFrame = true;
         while (true) {
             try {
@@ -433,6 +436,17 @@ public class AgentSessionRunner {
     public record Config(String modelName, boolean autoApproveAll, String sessionId,
                          SessionManager sessionManager, ToolPermissionStore permissionStore,
                          MdMemoryProvider memory, ModelRegistry modelRegistry,
-                         SessionPersistence sessionPersistence) {
+                         SessionPersistence sessionPersistence,
+                         boolean memoryEnabled) {
+        public Config {
+            memoryEnabled = true; // default to enabled
+        }
+
+        public Config(String modelName, boolean autoApproveAll, String sessionId,
+                      SessionManager sessionManager, ToolPermissionStore permissionStore,
+                      MdMemoryProvider memory, ModelRegistry modelRegistry,
+                      SessionPersistence sessionPersistence) {
+            this(modelName, autoApproveAll, sessionId, sessionManager, permissionStore, memory, modelRegistry, sessionPersistence, true);
+        }
     }
 }

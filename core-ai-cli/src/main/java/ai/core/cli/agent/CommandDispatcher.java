@@ -6,6 +6,7 @@ import ai.core.cli.command.ReplCommandHandler;
 import ai.core.cli.command.SkillCommandHandler;
 import ai.core.cli.command.plugins.PluginCommandHandler;
 import ai.core.cli.remote.RemoteCommandHandler;
+import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 
 import java.util.Locale;
@@ -25,17 +26,20 @@ public class CommandDispatcher {
     private final AtomicReference<ai.core.cli.remote.RemoteConfig> remoteConfig;
     private final ReplCommandHandler commands;
     private final MemoryCommandHandler memoryCommand;
+    private final boolean memoryEnabled;
 
     public CommandDispatcher(TerminalUI ui, AgentSessionRunner session,
                             AtomicReference<String> switchSessionId,
                             AtomicReference<ai.core.cli.remote.RemoteConfig> remoteConfig,
-                            ReplCommandHandler commands, MemoryCommandHandler memoryCommand) {
+                            ReplCommandHandler commands, MemoryCommandHandler memoryCommand,
+                            boolean memoryEnabled) {
         this.ui = ui;
         this.session = session;
         this.switchSessionId = switchSessionId;
         this.remoteConfig = remoteConfig;
         this.commands = commands;
         this.memoryCommand = memoryCommand;
+        this.memoryEnabled = memoryEnabled;
     }
 
     public void dispatch(String trimmed, BlockingQueue<String> queue) {
@@ -57,7 +61,11 @@ public class CommandDispatcher {
         } else if (lower.startsWith("/export")) {
             session.handleExport(trimmed);
         } else if (lower.startsWith("/memory")) {
-            memoryCommand.handle(trimmed);
+            if (!memoryEnabled || memoryCommand == null) {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory is disabled. Set agent.memory.enabled=true in agent.properties to enable.\n" + AnsiTheme.RESET);
+            } else {
+                memoryCommand.handle(trimmed);
+            }
         } else if ("/skill".equals(lower) || "/skills".equals(lower)) {
             new SkillCommandHandler(ui).handle();
         } else if (lower.startsWith("/skill ")) {

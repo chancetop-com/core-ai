@@ -118,15 +118,16 @@ public class CliApp {
 
         restoreActiveProvider(props, result.llmProviders);
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
+        boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true);
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
         var sessionManager = new SessionManager(sessionPersistence);
         var modelName = modelOverride != null ? modelOverride : result.llmProviders.getDefaultProvider().config.getModel();
         String currentSessionId = resolveOrCreateSessionId(sessionManager, ui);
         CliLogger.initialize(currentSessionId);
         var permissionStore = whiteToolsPermissionStore();
-        var noteMemory = new MdMemoryProvider(workspace);
+        var noteMemory = memoryEnabled ? new MdMemoryProvider(workspace) : null;
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
-        return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName, currentSessionId, permissionStore, noteMemory, modelRegistry);
+        return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName, currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled);
     }
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
@@ -164,9 +165,9 @@ public class CliApp {
             ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
             ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
             return ui.readRawLine();
-        });
+        }, ctx.memoryEnabled);
         var agent = CliAgent.of(agentConfig);
-        var config = new AgentSessionRunner.Config(ctx.modelName, autoApproveAll, sessionId, ctx.sessionManager, ctx.permissionStore, ctx.noteMemory, ctx.modelRegistry, ctx.sessionPersistence);
+        var config = new AgentSessionRunner.Config(ctx.modelName, autoApproveAll, sessionId, ctx.sessionManager, ctx.permissionStore, ctx.noteMemory, ctx.modelRegistry, ctx.sessionPersistence, ctx.memoryEnabled);
         return new AgentSessionRunner(ui, agent, ctx.result.llmProviders, config);
     }
 
@@ -300,6 +301,7 @@ public class CliApp {
         restoreActiveProvider(props, result.llmProviders);
 
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
+        boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true);
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
         var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = whiteToolsPermissionStore();
@@ -317,7 +319,7 @@ public class CliApp {
         var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
-        });
+        }, memoryEnabled);
 
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
         var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, sessionManager, sessionPersistence, workspace);
@@ -451,6 +453,6 @@ public class CliApp {
     private record SessionContext(BootstrapResult result, PropertiesFileSource props, int maxTurn,
             FileSessionPersistence sessionPersistence, SessionManager sessionManager, String modelName,
             String currentSessionId, ToolPermissionStore permissionStore, MdMemoryProvider noteMemory,
-            ModelRegistry modelRegistry) { }
+            ModelRegistry modelRegistry, boolean memoryEnabled) { }
 
 }
