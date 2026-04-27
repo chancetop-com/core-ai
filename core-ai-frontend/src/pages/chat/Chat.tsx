@@ -311,6 +311,7 @@ export default function Chat() {
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const [variablesExpanded, setVariablesExpanded] = useState(false);
+  const [chipsExpanded, setChipsExpanded] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1241,8 +1242,30 @@ export default function Chat() {
       <div className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
         <div className="max-w-4xl mx-auto">
           {/* Loaded / pre-selected tools/skills chips */}
-          {(loadedToolIds.size > 0 || loadedSkillIds.size > 0 || loadedSubAgentIds.size > 0 || preToolIds.size > 0 || preSkillIds.size > 0 || preSubAgentIds.size > 0) && (
-            <div className="flex flex-wrap gap-1.5 mb-2 min-h-[24px]">
+          {(() => {
+            const totalChips = loadedToolIds.size + loadedSkillIds.size + loadedSubAgentIds.size + preToolIds.size + preSkillIds.size + preSubAgentIds.size;
+            if (totalChips === 0) return null;
+            const COLLAPSE_THRESHOLD = 8;
+            const collapsible = totalChips > COLLAPSE_THRESHOLD;
+            const collapsed = collapsible && !chipsExpanded;
+            return (
+            <div className="mb-2">
+              {collapsible && (
+                <button
+                  onClick={() => setChipsExpanded(v => !v)}
+                  className="inline-flex items-center gap-1 text-xs mb-1.5 cursor-pointer hover:opacity-80"
+                  style={{ color: 'var(--color-text-secondary)' }}>
+                  {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  <span>
+                    {loadedToolIds.size + preToolIds.size > 0 && `${loadedToolIds.size + preToolIds.size} tools`}
+                    {loadedSkillIds.size + preSkillIds.size > 0 && `${loadedToolIds.size + preToolIds.size > 0 ? ', ' : ''}${loadedSkillIds.size + preSkillIds.size} skills`}
+                    {loadedSubAgentIds.size + preSubAgentIds.size > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0) ? ', ' : ''}${loadedSubAgentIds.size + preSubAgentIds.size} agents`}
+                    {' loaded'}
+                  </span>
+                </button>
+              )}
+              {!collapsed && (
+            <div className="flex flex-wrap gap-1.5 min-h-[24px]">
               {Array.from(loadedToolIds).map(name => (
                 <span key={`t-${name}`}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
@@ -1319,7 +1342,10 @@ export default function Chat() {
                 </span>
               ))}
             </div>
-          )}
+              )}
+            </div>
+            );
+          })()}
 
           <div className="flex gap-2 items-end">
             {/* Tool picker button — enabled when agent is selected */}
