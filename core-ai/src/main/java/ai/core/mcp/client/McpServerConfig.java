@@ -336,8 +336,23 @@ public class McpServerConfig {
 
         private HttpBuilder(String url) {
             config.transportType = TransportType.STREAMABLE_HTTP;
-            config.url = url;
+            config.url = sanitizeUrl(url);
             config.headers = new HashMap<>();
+        }
+
+        // strip BOM, zero-width chars and surrounding whitespace/quotes that may
+        // sneak in via copy-paste or DB import and break URI parsing
+        private static String sanitizeUrl(String url) {
+            if (url == null) return null;
+            var cleaned = url.replaceAll("[\\uFEFF\\u200B\\u200C\\u200D\\u2060]", "").strip();
+            if (cleaned.length() >= 2) {
+                char first = cleaned.charAt(0);
+                char last = cleaned.charAt(cleaned.length() - 1);
+                if ((first == '"' || first == '\'') && first == last) {
+                    cleaned = cleaned.substring(1, cleaned.length() - 1).strip();
+                }
+            }
+            return cleaned;
         }
 
         public HttpBuilder name(String name) {
