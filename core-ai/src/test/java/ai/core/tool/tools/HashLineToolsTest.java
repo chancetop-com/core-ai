@@ -300,6 +300,13 @@ class HashLineToolsTest {
         assertFalse(Files.exists(src));
         assertTrue(Files.exists(dst));
     }
+    @Test
+    void argJsonError(){
+        var llmFc = """
+                {"edits": "[{\\"path\\": \\"AgentBootstrap.java\\", \\"loc\\": {\\"range\\": {\\"pos\\": \\"40#BN\\", \\"end\\": \\"42#BK\\"}}, \\"content\\": \\"/**\\\\n * AgentBootstrap is the central initialization entry point for the core-ai framework.\\\\n *\\\\n * <p>It reads configuration from a {@link PropertySource} and wires together all core\\\\n * components required for an AI agent runtime, including:\\\\n *\\\\n * <ul>\\\\n *   <li><b>Persistence providers</b> — Redis, temporary, and file-based persistence;\\\\n *   <li><b>Vector stores</b> — Milvus and HNSWLib for vector similarity search;\\\\n *   <li><b>Telemetry</b> — OpenTelemetry-based tracing (LLM, agent, flow, group tracers);\\\\n *   <li><b>Prompt management</b> — Langfuse-backed prompt templates;\\\\n *   <li><b>LLM providers</b> — LiteLLM, OpenAI, Azure OpenAI, DeepSeek, and OpenRouter;\\\\n *   <li><b>MCP clients</b> — Model Context Protocol server connections;\\\\n *   <li><b>Tokenizer warmup</b> — Pre-loads the tokenizer for performance.\\\\n * </ul>\\\\n *\\\\n * <p>Call {@link #initialize()} to bootstrap all components. The resulting\\\\n * {@link BootstrapResult} holds references to every initialized service for\\\\n * later use by the application.\\\\n *\\\\n * @author stephen\\\\n */\\"}]"}
+                """;
+        var editResult = editTool.execute(llmFc);
+    }
 
     // ── HashEditFileTool: conflict detection ──────────────────────────────────
 

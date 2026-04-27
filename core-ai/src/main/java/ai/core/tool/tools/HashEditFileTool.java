@@ -4,7 +4,8 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
+import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,28 +41,28 @@ public class HashEditFileTool extends ToolCall {
 
     private static final String TOOL_DESC = """
             Applies precise file edits using LINE#ID anchors from hash_read_file output.
-
+            
             Read the file first. Copy anchors exactly from the latest hash_read_file output.
             After any successful edit, re-read before editing that file again.
-
+            
             **Top level**
             - `edits` — array of edit entries
-
+            
             **Edit entry**: `{ path, loc, content }` or `{ path, delete: true }` or `{ path, move: "new/path" }`
             - `path` — file path
             - `loc` — where to apply the edit (see below)
             - `content` — replacement/inserted lines (array of strings preferred, null to delete)
             - `delete` — delete the file
             - `move` — move/rename the file
-
+            
             **`loc` values**
             - `"append"` / `"prepend"` — insert at end/start of file
             - `{ "append": "N#ID" }` / `{ "prepend": "N#ID" }` — insert after/before anchored line
             - `{ "range": { "pos": "N#ID", "end": "N#ID" } }` — replace inclusive range pos..end with new content (set pos == end for single-line replace)
-
+            
             If any anchor hash does not match current file content, ALL edits are rejected.
             Re-read with hash_read_file and retry using the corrected anchors shown in the error.
-
+            
             - Make the minimum exact edit. Do not rewrite nearby code unless the range requires it.
             - Copy anchors exactly as N#ID from the latest hash_read_file output.
             - `content` must be literal file content with matching indentation.
@@ -74,21 +76,22 @@ public class HashEditFileTool extends ToolCall {
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {
-            var argsMap = JSON.fromJSON(Map.class, text);
-            @SuppressWarnings("unchecked")
-            var rawEdits = (List<Map<String, Object>>) argsMap.get("edits");
+            var argsMap = parseArguments(text);
+            var rawEdits = argsMap.get("edits");
 
-            if (rawEdits == null || rawEdits.isEmpty()) {
+            if (rawEdits == null ) {
                 return ToolCallResult.failed("Error: edits must be a non-empty array")
                         .withDuration(System.currentTimeMillis() - startTime);
             }
+            var edits = JsonUtil.fromJson(new TypeReference<List<Map<String, Object>>>() {
+            }, String.valueOf(rawEdits));
 
-            var result = applyEdits(rawEdits);
+            var result = applyEdits(edits);
             return result.startsWith("Error:") || result.startsWith("Edit rejected:")
                     ? ToolCallResult.failed(result).withDuration(System.currentTimeMillis() - startTime)
                     : ToolCallResult.completed(result)
-                            .withDuration(System.currentTimeMillis() - startTime)
-                            .withStats("editCount", rawEdits.size());
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("editCount", edits.size());
         } catch (Exception e) {
             return ToolCallResult.failed("Failed to parse hash_edit_file arguments: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
@@ -97,7 +100,7 @@ public class HashEditFileTool extends ToolCall {
 
     private String applyEdits(List<Map<String, Object>> rawEdits) {
         // Group edits by path so each file is read/written once
-        var byPath = new java.util.LinkedHashMap<String, List<Map<String, Object>>>();
+        var byPath = new LinkedHashMap<String, List<Map<String, Object>>>();
         for (var edit : rawEdits) {
             var path = (String) edit.get("path");
             if (Strings.isBlank(path)) return "Error: each edit must have a 'path' field";
@@ -153,35 +156,15 @@ public class HashEditFileTool extends ToolCall {
 
         boolean hasCRLF = rawContent.contains("\r\n");
         boolean hasTrailingNewline = rawContent.endsWith("\n");
-        String[] lineArray = rawContent.replace("\r\n", "\n").replace("\r", "\n").split("\n", -1);
-        List<String> lines;
-        if (hasTrailingNewline && lineArray.length > 0 && lineArray[lineArray.length - 1].isEmpty()) {
-            lines = new ArrayList<>(Arrays.asList(Arrays.copyOf(lineArray, lineArray.length - 1)));
-        } else {
-            lines = new ArrayList<>(Arrays.asList(lineArray));
-        }
 
-        // Parse all ops and validate refs upfront
-        List<Op> ops;
+        String result;
         try {
-            ops = parseOps(edits, lines);
+            result = simulateEdits(rawContent, edits, hasCRLF, hasTrailingNewline);
         } catch (IllegalArgumentException e) {
             return "Error: " + e.getMessage();
         } catch (MismatchException e) {
             return e.getMessage();
         }
-
-        // Sort bottom-up; same line: replace(0) > append_at(1) > prepend_at(2)
-        ops.sort(Comparator.comparingInt((Op o) -> o.sortLine).reversed()
-                .thenComparingInt(o -> o.precedence));
-
-        for (var op : ops) {
-            applyOp(op, lines);
-        }
-
-        String lineEnding = hasCRLF ? "\r\n" : "\n";
-        String result = String.join(lineEnding, lines);
-        if (hasTrailingNewline) result += lineEnding;
 
         try {
             Files.writeString(file.toPath(), result, StandardCharsets.UTF_8);
@@ -189,12 +172,12 @@ public class HashEditFileTool extends ToolCall {
             return "Error writing file: " + e.getMessage();
         }
 
-        LOGGER.debug("Applied {} edit(s) to: {}", ops.size(), path);
-        return "Successfully applied " + ops.size() + " edit(s) to: " + path;
+        LOGGER.debug("Applied edit(s) to: {}", path);
+        return "Successfully applied edit(s) to: " + path;
     }
 
     @SuppressWarnings("unchecked")
-    private List<Op> parseOps(List<Map<String, Object>> edits, List<String> lines) {
+    static List<Op> parseOps(List<Map<String, Object>> edits, List<String> lines) {
         var ops = new ArrayList<Op>();
         for (var edit : edits) {
             var locRaw = edit.get("loc");
@@ -204,7 +187,8 @@ public class HashEditFileTool extends ToolCall {
 
             if (locRaw instanceof String locStr) {
                 switch (locStr) {
-                    case "append" -> ops.add(new Op(OpKind.APPEND_FILE, 0, null, 0, null, content, lines.size() + 1, 1));
+                    case "append" ->
+                            ops.add(new Op(OpKind.APPEND_FILE, 0, null, 0, null, content, lines.size() + 1, 1));
                     case "prepend" -> ops.add(new Op(OpKind.PREPEND_FILE, 0, null, 0, null, content, 0, 2));
                     default -> throw new IllegalArgumentException("Unknown loc string: " + locStr);
                 }
@@ -234,7 +218,7 @@ public class HashEditFileTool extends ToolCall {
         return ops;
     }
 
-    private HashLine.LineRef validateRef(HashLine.LineRef ref, List<String> lines) {
+    static HashLine.LineRef validateRef(HashLine.LineRef ref, List<String> lines) {
         if (ref.lineNumber() < 1 || ref.lineNumber() > lines.size()) {
             throw new IllegalArgumentException(
                     "Line " + ref.lineNumber() + " does not exist (file has " + lines.size() + " lines)");
@@ -247,7 +231,7 @@ public class HashEditFileTool extends ToolCall {
         return ref;
     }
 
-    private void applyOp(Op op, List<String> lines) {
+    static void applyOp(Op op, List<String> lines) {
         switch (op.kind) {
             case REPLACE_RANGE -> {
                 int from = op.posLine - 1;
@@ -272,7 +256,7 @@ public class HashEditFileTool extends ToolCall {
         }
     }
 
-    private String buildMismatchMessage(List<Mismatch> mismatches, List<String> lines) {
+    static String buildMismatchMessage(List<Mismatch> mismatches, List<String> lines) {
         var mismatchLines = new java.util.HashSet<Integer>();
         for (var m : mismatches) mismatchLines.add(m.line);
 
@@ -305,20 +289,53 @@ public class HashEditFileTool extends ToolCall {
         return sb.toString();
     }
 
+    // ── Public static helpers ──────────────────────────────────────────────────
+
+    /**
+     * Simulates edits on raw file content in memory and returns the resulting content.
+     * Does not write to disk. Used by permission systems to generate diff previews.
+     *
+     * @throws MismatchException if any anchor hash does not match current content
+     */
+    public static String simulateEdits(String rawContent, List<Map<String, Object>> edits,
+                                       boolean hasCRLF, boolean hasTrailingNewline) {
+        String[] lineArray = rawContent.replace("\r\n", "\n").replace("\r", "\n").split("\n", -1);
+        List<String> lines;
+        if (hasTrailingNewline && lineArray.length > 0 && lineArray[lineArray.length - 1].isEmpty()) {
+            lines = new ArrayList<>(Arrays.asList(Arrays.copyOf(lineArray, lineArray.length - 1)));
+        } else {
+            lines = new ArrayList<>(Arrays.asList(lineArray));
+        }
+
+        List<Op> ops = parseOps(edits, lines);
+        ops.sort(Comparator.comparingInt((Op o) -> o.sortLine).reversed()
+                .thenComparingInt(o -> o.precedence));
+        for (var op : ops) applyOp(op, lines);
+
+        String lineEnding = hasCRLF ? "\r\n" : "\n";
+        String result = String.join(lineEnding, lines);
+        if (hasTrailingNewline) result += lineEnding;
+        return result;
+    }
+
     // ── Internal types ────────────────────────────────────────────────────────
 
-    private enum OpKind { REPLACE_RANGE, APPEND_AT, PREPEND_AT, APPEND_FILE, PREPEND_FILE }
+    enum OpKind {REPLACE_RANGE, APPEND_AT, PREPEND_AT, APPEND_FILE, PREPEND_FILE}
 
-    private record Op(OpKind kind, int posLine, String posHash, int endLine, String endHash,
-                      String[] content, int sortLine, int precedence) {}
+    record Op(OpKind kind, int posLine, String posHash, int endLine, String endHash,
+              String[] content, int sortLine, int precedence) {
+    }
 
-    private record Mismatch(int line, String expected, String actual) {}
+    private record Mismatch(int line, String expected, String actual) {
+    }
 
-    private static class MismatchException extends RuntimeException {
+    static class MismatchException extends RuntimeException {
         @java.io.Serial
         private static final long serialVersionUID = 1L;
 
-        MismatchException(String message) { super(message); }
+        MismatchException(String message) {
+            super(message);
+        }
     }
 
     // ── Builder ───────────────────────────────────────────────────────────────
