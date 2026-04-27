@@ -34,7 +34,7 @@ public class DynamicApiCaller {
     }
 
     public DynamicApiCaller(List<ApiDefinition> apiDefinitions, DynamicApiCallerRequestInterceptor interceptor) {
-        ActionLogContext.triggerTrace(true);
+        ActionLogContext.triggerTrace(false);
         this.interceptor = interceptor;
         this.operationMap = apiDefinitions.stream()
                 .flatMap(api -> api.services.stream()
