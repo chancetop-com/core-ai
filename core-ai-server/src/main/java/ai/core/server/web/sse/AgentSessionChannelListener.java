@@ -26,7 +26,7 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
 
     @Override
     public void onConnect(Request request, Channel<SseBaseEvent> channel, String lastEventId) {
-        ActionLogContext.triggerTrace(true);
+        ActionLogContext.triggerTrace(false);
         var sessionId = request.queryParams().get(SESSION_ID_KEY);
         if (sessionId == null || sessionId.isBlank()) {
             channel.close();

@@ -34,7 +34,6 @@ public class DynamicApiCaller {
     }
 
     public DynamicApiCaller(List<ApiDefinition> apiDefinitions, DynamicApiCallerRequestInterceptor interceptor) {
-        ActionLogContext.triggerTrace(false);
         this.interceptor = interceptor;
         this.operationMap = apiDefinitions.stream()
                 .flatMap(api -> api.services.stream()
@@ -50,7 +49,7 @@ public class DynamicApiCaller {
     }
 
     public String callApi(String name, String args) {
-        ActionLogContext.triggerTrace(true);
+        ActionLogContext.triggerTrace(false);
         return callApiWithRsp(name, args).text();
     }
 
