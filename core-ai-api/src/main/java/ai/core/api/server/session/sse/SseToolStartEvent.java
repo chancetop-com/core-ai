@@ -23,4 +23,10 @@ public class SseToolStartEvent extends SseBaseEvent {
 
     @Property(name = "tool_notes")
     public String toolNotes;
+
+    @Property(name = "task_id")
+    public String taskId;
+
+    @Property(name = "run_in_background")
+    public Boolean runInBackground;
 }

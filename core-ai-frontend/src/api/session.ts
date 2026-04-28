@@ -35,6 +35,8 @@ export interface SseToolStartEvent extends SseBaseEvent {
   tool_name: string;
   tool_args?: Record<string, unknown>;
   tool_notes?: string;
+  task_id?: string;
+  run_in_background?: boolean;
 }
 
 export interface SseToolResultEvent extends SseBaseEvent {

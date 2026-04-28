@@ -45,13 +45,6 @@ public class AgentSessionManager {
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, SessionSkillState> sessionSkillStates = new ConcurrentHashMap<>();
 
-    /** Per-session skill whitelist + registry. loadSkills appends to the id set and invalidates
-     *  the registry cache so the Agent only ever sees skills explicitly attached to this session. */
-    private static final class SessionSkillState {
-        final Set<String> allowedIds = ConcurrentHashMap.newKeySet();
-        final SkillRegistry registry = new SkillRegistry();
-    }
-
     @Inject
     LLMProviders llmProviders;
     @Inject
@@ -102,17 +95,10 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, source));
-
-        // Create sandbox after session so events can be dispatched
         var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
-        if (sandbox != null) {
-            context.sandbox(sandbox);
-        }
-
+        if (sandbox != null) context.sandbox(sandbox);
         sessions.put(sessionId, session);
-        if (ownershipRegistry != null) {
-            ownershipRegistry.claim(sessionId);
-        }
+        claimOwnership(sessionId);
         return sessionId;
     }
 
@@ -128,40 +114,27 @@ public class AgentSessionManager {
             if (overrides.systemPrompt != null) config.systemPrompt = overrides.systemPrompt;
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
         }
-        List<ToolCall> tools;
-        if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
-            tools = toolRegistryService.resolveToolRefs(definition.publishedConfig.tools);
-        } else if (definition.tools != null && !definition.tools.isEmpty()) {
-            tools = toolRegistryService.resolveToolRefs(definition.tools);
-        } else {
-            tools = List.of();
-        }
-
+        var tools = resolveTools(definition);
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var agent = buildAgent(config, tools.isEmpty() ? null : tools, context, definition.name);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, definition.id, source));
-
-        // Create sandbox after session so events can be dispatched
         var sandboxConfig = sandboxService.getEffectiveConfig(definition);
-        var sandbox = sandboxService.createSandbox(sandboxConfig, sessionId, userId, session::dispatchEvent);
-        if (sandbox != null) {
-            context.sandbox(sandbox);
-        }
-
+        var sandbox2 = sandboxService.createSandbox(sandboxConfig, sessionId, userId, session::dispatchEvent);
+        if (sandbox2 != null) context.sandbox(sandbox2);
         sessions.put(sessionId, session);
+        claimOwnership(sessionId);
+        var loadedSkills = loadSkillsFromDefinition(sessionId, definition);
+        var loadedSubAgents = loadSubAgentsFromDefinition(session, definition);
+        return new SessionCreationResult(sessionId, loadedSubAgents, loadedSkills);
+    }
 
+    private void claimOwnership(String sessionId) {
         if (ownershipRegistry != null) {
             ownershipRegistry.claim(sessionId);
         }
-
-        // Auto-load skills and subagents configured in the agent definition
-        var loadedSkills = loadSkillsFromDefinition(sessionId, definition);
-        var loadedSubAgents = loadSubAgentsFromDefinition(session, definition);
-
-        return new SessionCreationResult(sessionId, loadedSubAgents, loadedSkills);
     }
 
     public InProcessAgentSession getSession(String sessionId) {
@@ -171,8 +144,6 @@ public class AgentSessionManager {
     public InProcessAgentSession getSession(String sessionId, SessionState state) {
         var session = sessions.get(sessionId);
         if (session != null) return session;
-
-        // If this session is owned by another Pod, don't rebuild locally
         if (ownershipRegistry != null) {
             var owner = ownershipRegistry.getOwner(sessionId);
             if (owner != null && !ownershipRegistry.isOwner(sessionId)) {
@@ -180,7 +151,6 @@ public class AgentSessionManager {
                 throw new NotFoundException("session not found locally, sessionId=" + sessionId + ", owner=" + owner);
             }
         }
-
         var effectiveState = state != null ? state : buildStateFromDb(sessionId);
         if (effectiveState != null) {
             logger.info("session not found locally, attempting to rebuild, sessionId={}", sessionId);
@@ -191,7 +161,6 @@ public class AgentSessionManager {
                 return session;
             }
         }
-
         throw new NotFoundException("session not found, sessionId=" + sessionId);
     }
 
@@ -250,45 +219,24 @@ public class AgentSessionManager {
         config.model = snapshot.model;
         config.temperature = snapshot.temperature;
         config.maxTurns = snapshot.maxTurns;
-
-        List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty())
-                ? toolRegistryService.resolveToolRefs(snapshot.tools)
-                : List.of();
-        var context = userId != null
-                ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build()
-                : null;
-        var agent = buildAgent(config, tools.isEmpty() ? null : tools, context, snapshot.agentName);
-        var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
-        attachSessionListeners(session, sessionId);
-        registerSessionFromDb(sessionId, userId);
-
-        if (context != null) {
-            var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
-            if (sandbox != null) {
-                context.sandbox(sandbox);
-            }
-        }
-
-        restoreAgentHistory(agent, sessionId);
-        return session;
+        List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty()) ? toolRegistryService.resolveToolRefs(snapshot.tools) : List.of();
+        return doRebuild(sessionId, config, tools, userId, snapshot.agentName);
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId) {
-        var context = userId != null
-                ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build()
-                : null;
-        var agent = buildAgent(config, null, context, null);
+        return doRebuild(sessionId, config, null, userId, null);
+    }
+
+    private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ToolCall> tools, String userId, String agentName) {
+        var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build() : null;
+        var agent = buildAgent(config, tools, context, agentName);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         registerSessionFromDb(sessionId, userId);
-
         if (context != null) {
             var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
-            if (sandbox != null) {
-                context.sandbox(sandbox);
-            }
+            if (sandbox != null) context.sandbox(sandbox);
         }
-
         restoreAgentHistory(agent, sessionId);
         return session;
     }
@@ -326,10 +274,6 @@ public class AgentSessionManager {
         }
     }
 
-    /**
-     * Renew session ownership. Should be called periodically while the session is active
-     * (e.g., after each SSE event or command completion).
-     */
     public void touchSession(String sessionId) {
         if (ownershipRegistry != null) {
             ownershipRegistry.renew(sessionId);
@@ -386,21 +330,23 @@ public class AgentSessionManager {
         if (skills.isEmpty()) {
             throw new NotFoundException("no skills found for ids: " + skillIds);
         }
-        var state = sessionSkillStates.computeIfAbsent(sessionId, k -> {
-            var fresh = new SessionSkillState();
-            fresh.registry.addProvider(mongoSkillProvider.scoped(fresh.allowedIds));
-            ToolCall skillTool = ServerSkillTool.builder()
-                .registry(fresh.registry)
-                .skillService(skillService)
-                .archiveBuilder(skillArchiveBuilder)
-                .build();
-            ToolCall readResourceTool = ReadSkillResourceTool.builder().registry(fresh.registry).build();
-            session.loadTools(List.of(skillTool, readResourceTool));
-            return fresh;
-        });
+        var state = sessionSkillStates.computeIfAbsent(sessionId, k -> initSkillState(session));
         state.allowedIds.addAll(skillIds);
         state.registry.invalidateCache();
         return skills.stream().map(SkillMetadata::getQualifiedName).toList();
+    }
+
+    private SessionSkillState initSkillState(InProcessAgentSession session) {
+        var fresh = new SessionSkillState();
+        fresh.registry.addProvider(mongoSkillProvider.scoped(fresh.allowedIds));
+        ToolCall skillTool = ServerSkillTool.builder()
+            .registry(fresh.registry)
+            .skillService(skillService)
+            .archiveBuilder(skillArchiveBuilder)
+            .build();
+        ToolCall readResourceTool = ReadSkillResourceTool.builder().registry(fresh.registry).build();
+        session.loadTools(List.of(skillTool, readResourceTool));
+        return fresh;
     }
 
     public List<String> loadSubAgents(String sessionId, List<AgentDefinition> definitions) {
@@ -439,45 +385,29 @@ public class AgentSessionManager {
 
     private Agent buildSubAgent(AgentDefinition definition) {
         var config = toSessionConfig(definition);
-        List<ToolCall> tools;
+        var tools = resolveTools(definition);
+        return buildAgent(config, tools.isEmpty() ? null : tools, null, definition.name);
+    }
+
+    private List<ToolCall> resolveTools(AgentDefinition definition) {
         if (definition.publishedConfig != null && definition.publishedConfig.tools != null && !definition.publishedConfig.tools.isEmpty()) {
-            tools = toolRegistryService.resolveToolRefs(definition.publishedConfig.tools);
+            return toolRegistryService.resolveToolRefs(definition.publishedConfig.tools);
         } else if (definition.tools != null && !definition.tools.isEmpty()) {
-            tools = toolRegistryService.resolveToolRefs(definition.tools);
-        } else {
-            tools = List.of();
+            return toolRegistryService.resolveToolRefs(definition.tools);
         }
-
-        var builder = Agent.builder()
-                .name(definition.name.replaceAll("\\s+", "-"))
-                .description(definition.description != null ? definition.description : definition.name)
-                .llmProvider(llmProviders.getProvider())
-                .toolCalls(tools.isEmpty() ? BuiltinTools.ALL : tools)
-                .temperature(config.temperature != null ? config.temperature : 0.8);
-
-        if (config.systemPrompt != null) {
-            builder.systemPrompt(config.systemPrompt);
-        }
-        if (config.model != null) {
-            builder.model(config.model);
-        }
-        if (config.maxTurns != null) {
-            builder.maxTurn(config.maxTurns);
-        }
-
-
-        return builder.build();
+        return List.of();
     }
 
     private SessionConfig toSessionConfig(AgentDefinition definition) {
         var config = new SessionConfig();
-        var source = definition.publishedConfig != null ? definition.publishedConfig : null;
-        var systemPromptId = source != null && source.systemPromptId != null ? source.systemPromptId : definition.systemPromptId;
-        var inlineSystemPrompt = source != null && source.systemPrompt != null ? source.systemPrompt : definition.systemPrompt;
+        var source = definition.publishedConfig;
+        var hasSource = source != null;
+        var systemPromptId = hasSource && source.systemPromptId != null ? source.systemPromptId : definition.systemPromptId;
+        var inlineSystemPrompt = hasSource && source.systemPrompt != null ? source.systemPrompt : definition.systemPrompt;
         config.systemPrompt = systemPromptId != null ? systemPromptService.resolveContent(systemPromptId) : inlineSystemPrompt;
-        config.model = source != null && source.model != null ? source.model : definition.model;
-        config.temperature = source != null && source.temperature != null ? source.temperature : definition.temperature;
-        config.maxTurns = source != null && source.maxTurns != null ? source.maxTurns : definition.maxTurns;
+        config.model = hasSource && source.model != null ? source.model : definition.model;
+        config.temperature = hasSource && source.temperature != null ? source.temperature : definition.temperature;
+        config.maxTurns = hasSource && source.maxTurns != null ? source.maxTurns : definition.maxTurns;
         return config;
     }
 
@@ -485,34 +415,30 @@ public class AgentSessionManager {
         var builder = Agent.builder()
                 .name(agentName != null ? agentName.replaceAll("\\s+", "-") : "assistant")
                 .llmProvider(llmProviders.getProvider())
-                .toolCalls(tools != null ? tools : BuiltinTools.ALL)
+                .toolCalls(tools != null && !tools.isEmpty() ? tools : BuiltinTools.ALL)
                 .temperature(config != null && config.temperature != null ? config.temperature : 0.8);
-
-        if (config != null && config.systemPrompt != null) {
-            builder.systemPrompt(config.systemPrompt);
+        if (config != null) {
+            if (config.systemPrompt != null) {
+                builder.systemPrompt(config.systemPrompt);
+            } else {
+                builder.systemPrompt("You are a helpful AI assistant.");
+            }
+            if (config.model != null) builder.model(config.model);
+            if (config.maxTurns != null) builder.maxTurn(config.maxTurns);
         } else {
             builder.systemPrompt("You are a helpful AI assistant.");
         }
-        if (config != null && config.model != null) {
-            builder.model(config.model);
-        }
-        if (config != null && config.maxTurns != null) {
-            builder.maxTurn(config.maxTurns);
-        }
-
-        if (context != null) {
-            builder.executionContext(context);
-        }
-
-
+        if (context != null) builder.executionContext(context);
         var provider = persistenceProviders.getDefaultPersistenceProvider();
-        if (provider != null) {
-            builder.persistenceProvider(provider);
-        }
-
+        if (provider != null) builder.persistenceProvider(provider);
         return builder.build();
     }
 
     public record SessionCreationResult(String sessionId, List<String> loadedSubAgents, List<String> loadedSkills) {
+    }
+
+    private static final class SessionSkillState {
+        final Set<String> allowedIds = ConcurrentHashMap.newKeySet();
+        final SkillRegistry registry = new SkillRegistry();
     }
 }

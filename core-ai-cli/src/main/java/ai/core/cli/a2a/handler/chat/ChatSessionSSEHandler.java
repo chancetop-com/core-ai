@@ -246,7 +246,9 @@ public class ChatSessionSSEHandler implements HttpHandler {
             enqueueSseEvent("tool_start", toMap(
                 "call_id", event.callId,
                 "tool_name", event.toolName,
-                "tool_args", event.arguments != null ? Map.of("raw", event.arguments) : null
+                "tool_args", event.arguments != null ? Map.of("raw", event.arguments) : null,
+                "task_id", event.taskId,
+                "run_in_background", event.runInBackground
             ));
         }
 

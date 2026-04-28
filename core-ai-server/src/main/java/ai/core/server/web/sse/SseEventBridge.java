@@ -72,6 +72,8 @@ public class SseEventBridge implements AgentEventListener {
         sse.callId = event.callId;
         sse.toolName = event.toolName;
         sse.toolNotes = event.diff;
+        sse.taskId = event.taskId;
+        sse.runInBackground = event.runInBackground;
         if (event.arguments != null) {
             @SuppressWarnings("unchecked")
             var args = JSON.fromJSON(Map.class, event.arguments);
