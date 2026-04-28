@@ -355,12 +355,12 @@
             <path d="M 187 311 L 187 333" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)" stroke-dasharray="4,2"/>
             <text x="197" y="327" font-size="7" fill="#a78bfa" font-family="sans-serif">Independent Agent 提取</text>
 
-            <!-- ④ knowledge -->
-            <rect x="18" y="335" width="338" height="68" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
-            <text x="38" y="355" font-size="10" fill="#4ade80" font-weight="bold" font-family="sans-serif">④ knowledge / domain</text>
-            <text x="38" y="371" font-size="9" fill="#94a3b8" font-family="sans-serif">Memory.md 索引 + 领域文件</text>
-            <text x="38" y="386" font-size="8" fill="#22d3ee" font-family="sans-serif">最终知识检索层 · project / user / feedback / reference</text>
-            <text x="38" y="400" font-size="8" fill="#22d3ee" font-family="sans-serif">Main Agent and Independent Agent 执行最终结果目标</text>
+<!-- ④ Wiki -->
+             <rect x="18" y="335" width="338" height="68" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+             <text x="38" y="355" font-size="10" fill="#4ade80" font-weight="bold" font-family="sans-serif">④ Wiki / knowledge</text>
+             <text x="38" y="371" font-size="9" fill="#94a3b8" font-family="sans-serif">Memory.md 索引 + log.md 时间线 + knowledge/*.md 页面网络</text>
+             <text x="38" y="386" font-size="8" fill="#22d3ee" font-family="sans-serif">持久化 Wiki · project / user / feedback / reference</text>
+             <text x="38" y="400" font-size="8" fill="#22d3ee" font-family="sans-serif">编译一次持续保鲜 · 交叉引用 · 矛盾标记 refs:[](confuse)</text>
 
             <!-- ④→⑤ Promotion arrow — Dream Task -->
             <path d="M 187 403 L 187 425" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowYellow)" stroke-dasharray="4,2"/>
@@ -488,10 +488,10 @@
             <rect x="664" y="298" width="418" height="100" rx="8" fill="rgba(148,163,184,0.04)" stroke="rgba(148,163,184,0.18)" stroke-width="1"/>
             <text x="873" y="316" text-anchor="middle" font-size="9" fill="#94a3b8" font-weight="bold" font-family="sans-serif">按需加载（agentic search）</text>
 
-            <rect x="672" y="324" width="192" height="64" rx="7" fill="#0f172a" stroke="#4ade80" stroke-width="1"/>
-            <text x="768" y="343" text-anchor="middle" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">Memory.md</text>
-            <text x="768" y="358" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">知识索引 · &lt;200行</text>
-            <text x="768" y="382" text-anchor="middle" font-size="7" fill="#64748b" font-family="sans-serif">按需展开 domain files</text>
+<rect x="672" y="324" width="192" height="64" rx="7" fill="#0f172a" stroke="#4ade80" stroke-width="1"/>
+             <text x="768" y="343" text-anchor="middle" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">Memory.md</text>
+             <text x="768" y="358" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">Wiki 目录 · &lt;200行</text>
+             <text x="768" y="382" text-anchor="middle" font-size="7" fill="#64748b" font-family="sans-serif">按需展开 wiki pages</text>
 
             <rect x="876" y="324" width="196" height="64" rx="7" fill="#0f172a" stroke="#a78bfa" stroke-width="1"/>
             <text x="974" y="343" text-anchor="middle" font-size="9" fill="#a78bfa" font-weight="bold" font-family="sans-serif">episodes / YYYY-MM-DD</text>
@@ -733,6 +733,392 @@ headless=True 反爬效果差，
     </div>
 
     
+<!-- ===== 1.6 Domain Knowledge as Wiki ===== -->
+    <h2><span class="section-num" style="background:var(--accent-purple);color:var(--bg-primary);">W</span>Domain Knowledge: Memory.md 驱动的 Wiki 知识库</h2>
+
+    <div class="info-box">
+        <strong>核心范式转变：</strong>Domain Knowledge 不是被动检索的 flat files，而是一个
+        <strong style="color:var(--accent-purple);">LLM 增量构建和维护的持久化 Wiki</strong>——
+        以 <code>Memory.md</code> 为索引中枢，<code>log.md</code> 为时间线，knowledge/ 下为交叉引用知识页面网络。
+        知识被<strong>编译一次，持续保鲜</strong>，而非每次查询时重新推导。
+    </div>
+
+    <!-- Wiki Architecture Diagram -->
+    <div class="svg-container">
+        <svg viewBox="0 0 1100 440" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:760px;">
+            <defs>
+                <marker id="wA1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a78bfa"/></marker>
+                <marker id="wA2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4ade80"/></marker>
+                <marker id="wA3" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#22d3ee"/></marker>
+            </defs>
+            <rect width="1100" height="440" fill="#0f172a" rx="8"/>
+
+            <!-- LEFT: Sources -->
+            <rect x="20" y="20" width="200" height="400" rx="10" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+            <text x="120" y="48" text-anchor="middle" font-size="12" fill="#94a3b8" font-weight="bold" font-family="sans-serif">Raw Sources</text>
+            <text x="120" y="68" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">不可变 · 只读</text>
+            <line x1="36" y1="78" x2="204" y2="78" stroke="#334155" stroke-width="0.5"/>
+
+            <rect x="32" y="88" width="176" height="36" rx="6" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.2)" stroke-width="1"/>
+            <text x="120" y="103" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="sans-serif">② daily-logs/</text>
+            <text x="120" y="117" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">结构化事件记录</text>
+
+            <rect x="32" y="132" width="176" height="36" rx="6" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.2)" stroke-width="1"/>
+            <text x="120" y="147" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="sans-serif">③ episodes/</text>
+            <text x="120" y="161" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">每日叙事摘要</text>
+
+            <rect x="32" y="176" width="176" height="36" rx="6" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.2)" stroke-width="1"/>
+            <text x="120" y="191" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="sans-serif">Session 上下文</text>
+            <text x="120" y="205" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">当前对话内容</text>
+
+            <!-- Arrow Sources → Wiki -->
+            <path d="M 220 260 L 278 260" stroke="#a78bfa" stroke-width="2" marker-end="url(#wA1)"/>
+            <text x="249" y="253" text-anchor="middle" font-size="8" fill="#a78bfa" font-family="sans-serif">Ingest</text>
+
+            <!-- CENTER: Wiki -->
+            <rect x="280" y="20" width="540" height="400" rx="10" fill="#1e293b" stroke="#a78bfa" stroke-width="2.5"/>
+            <text x="550" y="48" text-anchor="middle" font-size="13" fill="#a78bfa" font-weight="bold" font-family="sans-serif">Wiki  —  LLM 拥有并维护</text>
+            <text x="550" y="66" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">持久化 · 交叉引用 · 矛盾标记 · 持续保鲜</text>
+
+            <!-- Navigation files -->
+            <rect x="294" y="78" width="250" height="58" rx="7" fill="rgba(74,222,128,0.06)" stroke="#4ade80" stroke-width="1.5"/>
+            <text x="419" y="98" text-anchor="middle" font-size="10" fill="#4ade80" font-weight="bold" font-family="monospace">Memory.md</text>
+            <text x="419" y="114" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">内容目录 · 每页一行摘要 · 按类别组织</text>
+            <text x="419" y="128" text-anchor="middle" font-size="8" fill="#22d3ee" font-family="sans-serif">agentic search 入口 · 始终加载</text>
+
+            <rect x="556" y="78" width="250" height="58" rx="7" fill="rgba(34,211,238,0.06)" stroke="#22d3ee" stroke-width="1.5"/>
+            <text x="681" y="98" text-anchor="middle" font-size="10" fill="#22d3ee" font-weight="bold" font-family="monospace">log.md</text>
+            <text x="681" y="114" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">时间线记录 · append-only · 可 grep 解析</text>
+            <text x="681" y="128" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">## [2026-04-28] ingest | Topic</text>
+
+            <!-- Wiki pages grid -->
+            <text x="550" y="158" text-anchor="middle" font-size="9" fill="#94a3b8" font-weight="bold" font-family="sans-serif">Wiki Pages — 相互链接的知识网络</text>
+
+            <rect x="294" y="168" width="120" height="80" rx="7" fill="#0f172a" stroke="#fb923c" stroke-width="1.2"/>
+            <text x="354" y="188" text-anchor="middle" font-size="9" fill="#fb923c" font-weight="bold" font-family="sans-serif">project/</text>
+            <text x="354" y="204" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">踩坑解法 · 可复用模式</text>
+            <text x="354" y="218" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">架构决策 · 技术原则</text>
+            <text x="354" y="238" text-anchor="middle" font-size="7" fill="#22d3ee" font-family="sans-serif">← → 双向链接</text>
+
+            <rect x="422" y="168" width="120" height="80" rx="7" fill="#0f172a" stroke="#4ade80" stroke-width="1.2"/>
+            <text x="482" y="188" text-anchor="middle" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">user/</text>
+            <text x="482" y="204" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">用户画像 · 工作风格</text>
+            <text x="482" y="218" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">目标偏好 · 技术背景</text>
+            <text x="482" y="238" text-anchor="middle" font-size="7" fill="#22d3ee" font-family="sans-serif">← → 双向链接</text>
+
+            <rect x="550" y="168" width="120" height="80" rx="7" fill="#0f172a" stroke="#f472b6" stroke-width="1.2"/>
+            <text x="610" y="188" text-anchor="middle" font-size="9" fill="#f472b6" font-weight="bold" font-family="sans-serif">feedback/</text>
+            <text x="610" y="204" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">行为纠正 · 用户确认</text>
+            <text x="610" y="218" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">agent 行为指导</text>
+            <text x="610" y="238" text-anchor="middle" font-size="7" fill="#22d3ee" font-family="sans-serif">← → 双向链接</text>
+
+            <rect x="678" y="168" width="120" height="80" rx="7" fill="#0f172a" stroke="#fbbf24" stroke-width="1.2"/>
+            <text x="738" y="188" text-anchor="middle" font-size="9" fill="#fbbf24" font-weight="bold" font-family="sans-serif">reference/</text>
+            <text x="738" y="204" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">API 端点 · 工具文档</text>
+            <text x="738" y="218" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">外部系统指针</text>
+            <text x="738" y="238" text-anchor="middle" font-size="7" fill="#22d3ee" font-family="sans-serif">← → 双向链接</text>
+
+            <!-- Cross-reference illustration -->
+            <rect x="294" y="262" width="512" height="48" rx="7" fill="rgba(34,211,238,0.04)" stroke="rgba(34,211,238,0.15)" stroke-width="1"/>
+            <text x="550" y="280" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">交叉引用网络：正文内 refs:[] 标记具体引用位置 · [[link]] 关联相关页面 · 按需加载读取</text>
+            <text x="550" y="298" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">新来源可能更新 10-15 个页面 · 矛盾标记 refs:[](confuse) · Memory.md 始终加载，wiki pages 按需展开</text>
+
+            <!-- Operations -->
+            <text x="550" y="332" text-anchor="middle" font-size="9" fill="#94a3b8" font-weight="bold" font-family="sans-serif">Operations — LLM 执行的维护操作</text>
+
+            <rect x="294" y="342" width="164" height="72" rx="7" fill="rgba(167,139,250,0.06)" stroke="#a78bfa" stroke-width="1"/>
+            <text x="376" y="362" text-anchor="middle" font-size="10" fill="#a78bfa" font-weight="bold" font-family="sans-serif">Ingest 摄取</text>
+            <text x="376" y="378" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">读 source → 写 summary</text>
+            <text x="376" y="392" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">更新 Memory.md + 相关页面</text>
+            <text x="376" y="406" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">追加 log · 标记矛盾</text>
+
+            <rect x="466" y="342" width="164" height="72" rx="7" fill="rgba(74,222,128,0.06)" stroke="#4ade80" stroke-width="1"/>
+            <text x="548" y="362" text-anchor="middle" font-size="10" fill="#4ade80" font-weight="bold" font-family="sans-serif">Query 查询</text>
+            <text x="548" y="378" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">读 Memory.md → 按 refs/[[link]] 渐进加载</text>
+            <text x="548" y="392" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">综合答案 + 标注来源</text>
+            <text x="548" y="406" text-anchor="middle" font-size="8" fill="#4ade80" font-family="sans-serif">好答案 → 写回 wiki</text>
+
+            <rect x="638" y="342" width="168" height="72" rx="7" fill="rgba(251,191,36,0.06)" stroke="#fbbf24" stroke-width="1"/>
+            <text x="722" y="362" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="bold" font-family="sans-serif">Lint 健康检查</text>
+            <text x="722" y="378" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">矛盾检测 · 过期声明</text>
+            <text x="722" y="392" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">孤立页面 · 缺失链接</text>
+            <text x="722" y="406" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">建议新探索方向</text>
+
+            <!-- Arrow Wiki → Agent Context -->
+            <path d="M 820 260 L 878 260" stroke="#4ade80" stroke-width="2" marker-end="url(#wA2)"/>
+            <text x="849" y="253" text-anchor="middle" font-size="8" fill="#4ade80" font-family="sans-serif">Query</text>
+
+            <!-- RIGHT: Agent Context -->
+            <rect x="880" y="20" width="200" height="400" rx="10" fill="#1e293b" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <text x="980" y="48" text-anchor="middle" font-size="12" fill="#22d3ee" font-weight="bold" font-family="sans-serif">Agent Context</text>
+            <text x="980" y="68" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">对话时消费 Wiki</text>
+            <line x1="896" y1="78" x2="1064" y2="78" stroke="#334155" stroke-width="0.5"/>
+
+            <text x="896" y="100" font-size="9" fill="#4ade80" font-family="sans-serif">✓ Memory.md 始终加载</text>
+            <text x="896" y="118" font-size="9" fill="#94a3b8" font-family="sans-serif">✓ 按需深入 wiki pages</text>
+            <text x="896" y="136" font-size="9" fill="#94a3b8" font-family="sans-serif">✓ 交叉引用已就绪</text>
+            <text x="896" y="154" font-size="9" fill="#94a3b8" font-family="sans-serif">✓ 综合已反映全量</text>
+
+            <line x1="896" y1="170" x2="1064" y2="170" stroke="#334155" stroke-width="0.5"/>
+            <text x="980" y="192" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">关键差异 vs RAG:</text>
+            <text x="896" y="214" font-size="8" fill="#f87171" font-family="sans-serif">✗ RAG: 每次查询从</text>
+            <text x="896" y="228" font-size="8" fill="#f87171" font-family="sans-serif">  原始文档重新推导</text>
+            <text x="896" y="250" font-size="8" fill="#4ade80" font-family="sans-serif">✓ Wiki: 知识编译一次</text>
+            <text x="896" y="264" font-size="8" fill="#4ade80" font-family="sans-serif">  持续保鲜 · 累积增长</text>
+        </svg>
+        <div class="svg-caption">图 W1 — Domain Knowledge Wiki 架构：Raw Sources → Wiki (index/log/pages) → Agent Context</div>
+    </div>
+
+    <!-- Wiki 核心原则 -->
+    <h3>Wiki 的核心原则 — 与 RAG 的本质区别</h3>
+    <div class="grid grid-2">
+        <div class="card" style="border-color:var(--accent-red);">
+            <h3 style="color:var(--accent-red);">传统 RAG 模式</h3>
+            <ul style="font-size:0.85rem;color:var(--text-secondary);padding-left:1.2rem;line-height:2;">
+                <li>每次查询从原始文档检索相关 chunk</li>
+                <li>LLM 从零开始重新发现知识</li>
+                <li><strong>无累积</strong>：跨文档综合每次都重新拼接</li>
+                <li>交叉引用不存在，矛盾不被标记</li>
+                <li>知识不随使用而增长</li>
+            </ul>
+        </div>
+        <div class="card" style="border-color:var(--accent-green);">
+            <h3 style="color:var(--accent-green);">Wiki 模式（本设计）</h3>
+            <ul style="font-size:0.85rem;color:var(--text-secondary);padding-left:1.2rem;line-height:2;">
+                <li>LLM 增量构建和维护持久化 Wiki</li>
+                <li>知识<strong>编译一次，持续保鲜</strong></li>
+                <li><strong>持续累积</strong>：每个来源和查询都丰富 Wiki</li>
+                <li>交叉引用已就绪，矛盾已标记 refs:[](confuse)</li>
+                <li>Wiki 随每次 Ingest 和 Query 不断增长</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Memory.md 详解 -->
+    <h3>Memory.md — Wiki 索引中枢</h3>
+    <div class="grid grid-2">
+        <div class="card">
+            <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.8rem;">
+                <strong style="color:var(--accent-green);">定位：</strong>Wiki 的<strong>平面索引</strong>，每条一行摘要 + 文件路径，按类别组织。
+                是 agentic search 的<strong>唯一入口</strong>，始终加载进上下文。
+            </p>
+            <p style="font-size:0.88rem;color:var(--text-secondary);">
+                <strong style="color:var(--accent-green);">规模：</strong>&lt;200行，中等规模（~100 sources, ~数百 pages）下无需 embedding-based RAG。
+            </p>
+        </div>
+        <div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.78rem;line-height:1.8;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;"># Wiki Index</span>
+<span style="color:#64748b;">## project</span>
+<span style="color:#94a3b8;">- [spa-scraping](knowledge/project/spa-scraping.md) — SPA 爬虫策略与踩坑</span>
+<span style="color:#94a3b8;">- [two-phase-intercept](knowledge/project/two-phase-intercept.md) — 两阶段拦截模式</span>
+<span style="color:#94a3b8;">- [crawler-comparison](knowledge/project/crawler-comparison.md) — 爬虫方案对比</span>
+<span style="color:#64748b;">## user</span>
+<span style="color:#94a3b8;">- [profile](knowledge/user/profile.md) — 用户画像与工作偏好</span>
+<span style="color:#64748b;">## feedback</span>
+<span style="color:#94a3b8;">- [crawler-behavior](knowledge/feedback/crawler-behavior.md) — 爬虫行为反馈</span>
+<span style="color:#64748b;">## reference</span>
+<span style="color:#94a3b8;">- [grubhub-api](knowledge/reference/grubhub-api.md) — API 端点与数据结构</span>
+<span style="color:#94a3b8;">- [nodriver](knowledge/reference/nodriver.md) — 浏览器自动化工具用法</span></pre>
+        </div>
+    </div>
+
+    <!-- log.md 详解 -->
+    <h3>log.md — 时间线记录</h3>
+    <div class="grid grid-2">
+        <div class="card">
+            <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0.8rem;">
+                <strong style="color:var(--accent-cyan);">定位：</strong>append-only 时间线，记录每次 Ingest / Query / Lint 操作。
+                统一前缀格式 <code>## [YYYY-MM-DD] operation | Title</code>，可用 grep 解析。
+            </p>
+            <p style="font-size:0.88rem;color:var(--text-secondary);">
+                <strong style="color:var(--accent-cyan);">价值：</strong>让 LLM 了解 Wiki 的演化历史，知道最近做了什么。
+                <code>grep "^## \[" log.md | tail -5</code> 即可获取最近 5 条操作。
+            </p>
+        </div>
+        <div>
+            <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.78rem;line-height:1.8;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#64748b;"># Wiki Operations Log</span>
+
+<span style="color:#fbbf24;">## [2026-03-28] ingest | grubhub 菜单爬虫</span>
+<span style="color:#94a3b8;">- 新增: reference/grubhub-api.md</span>
+<span style="color:#94a3b8;">- 更新: project/spa-scraping.md (5 条新踩坑)</span>
+<span style="color:#94a3b8;">- 更新: user/profile.md (结果验证偏好)</span>
+<span style="color:#94a3b8;">- 更新: Memory.md</span>
+
+<span style="color:#4ade80;">## [2026-03-28] query | SPA 爬虫最佳实践</span>
+<span style="color:#94a3b8;">- 综合 3 个 wiki 页面生成对比分析</span>
+<span style="color:#94a3b8;">- 结果写回: project/crawler-comparison.md</span>
+
+<span style="color:#fbbf24;">## [2026-03-29] lint | 周健康检查</span>
+<span style="color:#94a3b8;">- 发现: project/spa-scraping.md 与 reference/nodriver.md 矛盾 refs: grubhub-2026-03-28, doordash-2026-04-10(confuse)</span>
+<span style="color:#94a3b8;">- 修复: 统一 headless 策略描述</span></pre>
+        </div>
+    </div>
+
+    <!-- Wiki Page 结构规范 -->
+    <h3>Wiki Page 标准结构</h3>
+    <div class="card" style="border-color:var(--accent-purple);">
+        <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:1rem;">
+            每个 Wiki 页面遵循统一结构，确保 LLM 能高效读写。YAML frontmatter 提供元数据，
+            正文包含交叉引用、来源标注和矛盾标记。<code>refs:[]</code> 在正文具体位置标记引用来源，<code>[[link]]</code> 关联相关页面，<code>refs:[](confuse)</code> 标记矛盾。
+        </p>
+        <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:1rem 1.2rem;font-size:0.78rem;line-height:1.75;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#fbbf24;"># SPA 爬虫策略</span>
+
+<span style="color:#fbbf24;">## 核心原则</span>
+对 SPA 站点，<strong>优先拦截 Network API</strong>，避免 DOM 抓取。
+DOM 在虚拟化渲染下不可靠；API 响应更稳定且包含完整数据。
+
+<span style="color:#fbbf24;">## 踩坑与解法</span>
+<span style="color:#a78bfa;">### networkidle 超时</span> <span style="color:#475569;">refs: grubhub-2026-03-28, doordash-2026-04-10</span>
+- <span style="color:#f87171;">现象</span>: Timeout 30000ms，SPA 持续后台请求
+- <span style="color:#4ade80;">解法</span>: 改用目标元素出现作为就绪信号 → [[nodriver]]
+- <span style="color:#22d3ee;">验证</span>: 2/2 站点有效 ✓
+
+<span style="color:#a78bfa;">### Virtual Scroll 数据丢失</span> <span style="color:#475569;">refs: grubhub-2026-03-28</span>
+- <span style="color:#f87171;">现象</span>: 滚动后 section 数量骤减
+- <span style="color:#4ade80;">解法</span>: 放弃 DOM，改为 API 拦截
+- <span style="color:#fbbf24;">refs: grubhub-2026-03-28, doordash-2026-04-10(confuse)</span>: headless 策略在 Grubhub 有效但 Doordash 检测 headless，结论冲突
+  → 需先判断是否虚拟化渲染，再选择策略
+
+<span style="color:#fbbf24;">## 可复用模式</span>
+- 页面就绪: 等待业务元素，不用 networkidle
+- 懒加载: 遍历点击交互，间隔 ≥ 0.6s
+- 数据获取: API 拦截 > DOM 抓取（虚拟化渲染时）
+
+<span style="color:#fbbf24;">## 相关页面</span>
+- [[two-phase-intercept]] — 两阶段拦截实现细节
+- [[nodriver]] — 浏览器自动化工具配置
+- [[anti-bot-strategies]] — 反爬策略汇总</pre>
+    </div>
+
+    <!-- Ingest 流程详解 -->
+    <h3>Ingest 流程 — 单个 Source 如何融入 Wiki</h3>
+    <div class="info-box">
+        <strong>关键特征：</strong>一个 Source（如一次 session 的 daily-log）可能<strong>触及 10-15 个 wiki 页面</strong>。
+        LLM 不只是创建一个 summary 页面，而是<strong>更新所有相关的 project、user、feedback、reference 页面</strong>，
+        保持整个 Wiki 的一致性。
+    </div>
+
+    <div class="svg-container">
+        <svg viewBox="0 0 1000 280" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:660px;">
+            <defs>
+                <marker id="ig1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a78bfa"/></marker>
+            </defs>
+            <rect width="1000" height="280" fill="#0f172a" rx="8"/>
+
+            <!-- Source -->
+            <rect x="20" y="100" width="160" height="60" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
+            <text x="100" y="125" text-anchor="middle" font-size="10" fill="#a78bfa" font-weight="bold" font-family="sans-serif">New Source</text>
+            <text x="100" y="143" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">daily-log / episode</text>
+
+            <!-- Step 1 -->
+            <path d="M 180 130 L 228 130" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ig1)"/>
+            <rect x="230" y="30" width="140" height="200" rx="8" fill="rgba(167,139,250,0.05)" stroke="rgba(167,139,250,0.25)" stroke-width="1"/>
+            <text x="300" y="55" text-anchor="middle" font-size="9" fill="#a78bfa" font-weight="bold" font-family="sans-serif">Step 1: 读取</text>
+            <text x="300" y="75" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">读 source 全文</text>
+            <text x="300" y="91" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">提取关键信息</text>
+            <text x="300" y="107" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">识别实体/概念/模式</text>
+            <text x="300" y="123" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">标记用户反馈</text>
+
+            <!-- Step 2 -->
+            <path d="M 370 130 L 418 130" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ig1)"/>
+            <rect x="420" y="30" width="140" height="200" rx="8" fill="rgba(74,222,128,0.05)" stroke="rgba(74,222,128,0.25)" stroke-width="1"/>
+            <text x="490" y="55" text-anchor="middle" font-size="9" fill="#4ade80" font-weight="bold" font-family="sans-serif">Step 2: 写入</text>
+            <text x="490" y="75" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">创建/更新 summary</text>
+            <text x="490" y="91" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">更新 project 页面</text>
+            <text x="490" y="107" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">更新 user/feedback 页面</text>
+            <text x="490" y="123" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">更新 reference 页面</text>
+
+            <!-- Step 3 -->
+            <path d="M 560 130 L 608 130" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ig1)"/>
+            <rect x="610" y="30" width="140" height="200" rx="8" fill="rgba(251,191,36,0.05)" stroke="rgba(251,191,36,0.25)" stroke-width="1"/>
+            <text x="680" y="55" text-anchor="middle" font-size="9" fill="#fbbf24" font-weight="bold" font-family="sans-serif">Step 3: 维护</text>
+            <text x="680" y="75" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">更新 Memory.md</text>
+            <text x="680" y="91" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">追加 log.md</text>
+            <text x="680" y="107" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">标记新旧矛盾 refs:[](confuse)</text>
+            <text x="680" y="123" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">补充交叉引用 [[link]]</text>
+
+            <!-- Step 4 -->
+            <path d="M 750 130 L 798 130" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ig1)"/>
+            <rect x="800" y="30" width="180" height="200" rx="8" fill="rgba(34,211,238,0.05)" stroke="rgba(34,211,238,0.25)" stroke-width="1"/>
+            <text x="890" y="55" text-anchor="middle" font-size="9" fill="#22d3ee" font-weight="bold" font-family="sans-serif">Step 4: 结果</text>
+            <text x="890" y="80" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">1 个 source → 触及</text>
+            <text x="890" y="96" text-anchor="middle" font-size="8" fill="#a78bfa" font-family="sans-serif">10-15 个 wiki 页面</text>
+            <text x="890" y="118" text-anchor="middle" font-size="8" fill="#4ade80" font-family="sans-serif">Wiki 持续增长</text>
+            <text x="890" y="134" text-anchor="middle" font-size="8" fill="#4ade80" font-family="sans-serif">交叉引用自动形成</text>
+        </svg>
+        <div class="svg-caption">图 W2 — Ingest 流程：一个 Source 融入 Wiki 的 4 个步骤</div>
+    </div>
+
+    <!-- Query 说明 -->
+    <h3>Query — 渐进式读取，按需加载</h3>
+    <div class="card" style="border-color:var(--accent-green);">
+        <p style="font-size:0.88rem;color:var(--text-secondary);">
+            Query 从 <code>Memory.md</code> 定位入口，沿正文 <code>refs:[]</code> 和 <code>[[link]]</code> 渐进加载相关页面，综合答案。
+            读取过程中若产生新的综合见解（跨页面对比、模式发现等），触发一次 <strong style="color:var(--accent-purple);">Ingest</strong> 写入 Wiki，
+            让探索成果在知识库中累积。
+        </p>
+    </div>
+
+    <!-- Lint 健康检查 -->
+    <h3>Lint — Wiki 健康检查</h3>
+    <div class="grid grid-2">
+        <div class="card" style="border-color:var(--accent-yellow);">
+            <h3 style="color:var(--accent-yellow);">检查项目</h3>
+            <ul style="font-size:0.85rem;color:var(--text-secondary);padding-left:1.2rem;line-height:2;">
+                <li><strong>矛盾检测：</strong>不同页面是否存在冲突声明</li>
+                <li><strong>过期声明：</strong>新来源是否已取代旧结论</li>
+                <li><strong>孤立页面：</strong>无入站链接的页面</li>
+                <li><strong>缺失页面：</strong>重要概念被提及但无专属页面</li>
+                <li><strong>交叉引用缺口：</strong>相关页面未互相链接</li>
+                <li><strong>数据缺口：</strong>可通过 web search 补充的信息</li>
+            </ul>
+        </div>
+        <div class="card" style="border-color:var(--accent-cyan);">
+            <h3 style="color:var(--accent-cyan);">执行时机</h3>
+            <ul style="font-size:0.85rem;color:var(--text-secondary);padding-left:1.2rem;line-height:2;">
+                <li><strong>T3 Dream Task 中：</strong>作为深度整理的一部分</li>
+                <li><strong>用户主动触发：</strong><code>/lint</code> 命令</li>
+                <li><strong>Wiki 增长后：</strong>每 50 个 page 建议 lint</li>
+                <li><strong>LLM 主动建议：</strong>发现可疑矛盾时</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="warning-box">
+        <strong>Wiki 维护成本接近零：</strong>维护知识库最繁琐的不是阅读或思考，而是<strong>簿记工作</strong>——
+        更新交叉引用、保持摘要最新、标记新旧矛盾、维护数十个页面的一致性。
+        人类放弃 Wiki 是因为维护负担增长快于价值。LLM 不厌倦、不遗忘，能一次触及 15 个文件。
+        <strong>Wiki 持续保鲜是因为维护成本趋近于零。</strong>
+    </div>
+
+    <!-- Wiki 目录结构 -->
+    <h3>Wiki 目录结构</h3>
+    <div class="file-tree">
+<span class="ft-dir">.core-ai/</span>
+<span class="ft-dir">├── knowledge/</span>                          <span class="ft-comment">← Knowledge 根目录（LLM 拥有并维护）</span>
+<span class="ft-index">│   ├── Memory.md</span>                    <span class="ft-comment">← Wiki 目录 · 每页一行摘要 · 始终加载</span>
+<span class="ft-file">│   ├── log.md</span>                      <span class="ft-comment">← 操作时间线 · append-only · 可 grep</span>
+<span class="ft-dir">│   ├── reference/</span>                   <span class="ft-comment">← 外部参考页（API 端点/工具文档/站点）</span>
+<span class="ft-file">│   │   ├── grubhub-api.md</span>
+<span class="ft-file">│   │   ├── nodriver.md</span>
+<span class="ft-file">│   │   └── doordash-api.md</span>
+<span class="ft-dir">│   ├── project/</span>                    <span class="ft-comment">← 项目知识页（模式/原则/决策/对比）</span>
+<span class="ft-file">│   │   ├── spa-scraping.md</span>
+<span class="ft-file">│   │   ├── two-phase-intercept.md</span>
+<span class="ft-file">│   │   ├── anti-bot-strategies.md</span>
+<span class="ft-file">│   │   ├── crawler-comparison.md</span>
+<span class="ft-file">│   │   └── scraping-evolution.md</span>
+<span class="ft-dir">│   ├── user/</span>                       <span class="ft-comment">← 用户画像页</span>
+<span class="ft-file">│   │   └── profile.md</span>
+<span class="ft-dir">│   └── feedback/</span>                   <span class="ft-comment">← 反馈与纠正页</span>
+<span class="ft-file">│       └── crawler-behavior.md</span>
+<span class="ft-dir">├── daily-logs/</span>                     <span class="ft-comment">← ② 结构化事件记录</span>
+<span class="ft-dir">├── episodes/</span>                      <span class="ft-comment">← ③ 每日叙事摘要</span>
+<span class="ft-file">├── preferences.md</span>                  <span class="ft-comment">← ⑤ 用户偏好（~/.core-ai/）</span>
+<span class="ft-file">├── soul.md</span>                         <span class="ft-comment">← ⑤ Agent 思维原则</span>
+<span class="ft-file">└── CLAUDE.md</span>                       <span class="ft-comment">← ⑤ 强制规则（./.core-ai/）</span>
+    </div>
+
 <!-- ===== 12. 本设计的具体映射确认 ===== -->
     <h2><span class="section-num">2</span>存储层详解 Storage Layers</h2>
 
@@ -837,31 +1223,31 @@ headless=True 反爬效果差，
             <path d="M 790 190 L 828 190" stroke="#4ade80" stroke-width="2" marker-end="url(#pm4)"/>
             <text x="809" y="183" text-anchor="middle" font-size="8" fill="#4ade80" font-family="sans-serif">更新</text>
 
-            <!-- Layer 4: knowledge / Memory.md -->
-            <rect x="830" y="20" width="210" height="340" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
-            <rect x="830" y="20" width="210" height="36" rx="10" fill="#4ade80" opacity="0.12"/>
-            <text x="935" y="44" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="bold" font-family="sans-serif">④ knowledge / domain</text>
-            <text x="935" y="66" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">Memory.md + 领域详细文件</text>
-            <text x="935" y="82" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">最终检索层</text>
+<!-- Layer 4: Wiki (knowledge / domain) -->
+             <rect x="830" y="20" width="210" height="340" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+             <rect x="830" y="20" width="210" height="36" rx="10" fill="#4ade80" opacity="0.12"/>
+             <text x="935" y="44" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="bold" font-family="sans-serif">④ Wiki (knowledge)</text>
+             <text x="935" y="66" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="sans-serif">Memory.md + log.md + knowledge/*.md</text>
+             <text x="935" y="82" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">持久化 Wiki · 交叉引用</text>
 
-            <line x1="850" y1="100" x2="1025" y2="100" stroke="#334155" stroke-width="0.5"/>
-            <text x="845" y="118" font-size="9" fill="#94a3b8" font-family="sans-serif">写入时机: T1/T2 如果Daily-logs 存在可复用知识</text>
-            <text x="845" y="133" font-size="9" fill="#94a3b8" font-family="sans-serif">提取持久知识后</text>
+             <line x1="850" y1="100" x2="1025" y2="100" stroke="#334155" stroke-width="0.5"/>
+             <text x="845" y="118" font-size="9" fill="#94a3b8" font-family="sans-serif">写入时机: T1/T2 Ingest</text>
+             <text x="845" y="133" font-size="9" fill="#94a3b8" font-family="sans-serif">提取持久知识后融入 Wiki</text>
 
-            <line x1="850" y1="150" x2="1025" y2="150" stroke="#334155" stroke-width="0.5"/>
-            <text x="845" y="168" font-size="9" fill="#4ade80" font-family="sans-serif">Memory.md — 索引层</text>
-            <text x="845" y="184" font-size="9" fill="#64748b" font-family="sans-serif">· 领域文件一行摘要</text>
-            <text x="845" y="199" font-size="9" fill="#64748b" font-family="sans-serif">· agentic search 入口</text>
-            <text x="845" y="218" font-size="9" fill="#4ade80" font-family="sans-serif">domain/*.md — 详细层</text>
-            <text x="845" y="234" font-size="9" fill="#64748b" font-family="sans-serif">· 踩坑解法 · 技术决策</text>
-            <text x="845" y="249" font-size="9" fill="#64748b" font-family="sans-serif">· 类型层级: project / user</text>
-            <text x="845" y="264" font-size="9" fill="#64748b" font-family="sans-serif">  feedback / reference</text>
+             <line x1="850" y1="150" x2="1025" y2="150" stroke="#334155" stroke-width="0.5"/>
+             <text x="845" y="168" font-size="9" fill="#4ade80" font-family="sans-serif">Memory.md — Wiki 索引中枢</text>
+             <text x="845" y="184" font-size="9" fill="#64748b" font-family="sans-serif">· 每页一行摘要 · 始终加载</text>
+             <text x="845" y="199" font-size="9" fill="#22d3ee" font-family="sans-serif">log.md — 操作时间线</text>
+             <text x="845" y="215" font-size="9" fill="#64748b" font-family="sans-serif">· append-only · 可 grep</text>
+             <text x="845" y="234" font-size="9" fill="#a78bfa" font-family="sans-serif">knowledge/ — 知识页面网络</text>
+             <text x="845" y="249" font-size="9" fill="#64748b" font-family="sans-serif">· project / user / feedback / reference</text>
+             <text x="845" y="264" font-size="9" fill="#64748b" font-family="sans-serif">· user / feedback · 双向链接</text>
 
-            <line x1="850" y1="275" x2="1025" y2="275" stroke="#334155" stroke-width="0.5"/>
-            <text x="935" y="295" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">最终知识检索入口</text>
-            <text x="935" y="310" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">状态: 持久化 · 精炼</text>
-            <text x="935" y="326" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">写入者: T1 / T2 (用户命令)</text>
-            <text x="935" y="342" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">读取者: T3 知识晋升、agentic search</text>
+             <line x1="850" y1="275" x2="1025" y2="275" stroke="#334155" stroke-width="0.5"/>
+             <text x="935" y="295" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">编译一次 · 持续保鲜</text>
+             <text x="935" y="310" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">状态: 持久化 · 交叉引用</text>
+             <text x="935" y="326" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">写入者: T1/T2 Ingest</text>
+             <text x="935" y="342" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">读取者: T3 知识晋升、agentic search</text>
 
             <!-- Arrow 4→5 -->
             <path d="M 1040 190 L 1063 190" stroke="#fbbf24" stroke-width="2" marker-end="url(#pm5)"/>
@@ -923,10 +1309,10 @@ headless=True 反爬效果差，
                 <td>不直接检索</td>
             </tr>
             <tr>
-                <td><span class="dot" style="background:var(--accent-green)"></span>④ Knowledge</td>
-                <td><code>Memory.md</code> + <code>domain/*.md</code></td>
-                <td>Memory.md 为领域索引（agentic search 入口）；domain 文件存领域详细知识，按 project/user/feedback/reference 分类</td>
-                <td><span class="tag tag-green">持久化</span></td>
+                <td><span class="dot" style="background:var(--accent-green)"></span>④ Wiki (Knowledge)</td>
+                <td><code>Memory.md</code> + <code>log.md</code> + <code>knowledge/*.md</code></td>
+                <td><strong>持久化 Wiki</strong>：Memory.md 为 Wiki 索引中枢（agentic search 入口）；log.md 为操作时间线；knowledge/ 下按 project/user/feedback/reference 组织的交叉引用知识网络</td>
+                <td><span class="tag tag-green">持久化</span><span class="tag tag-purple">交叉引用</span></td>
                 <td>主要检索层</td>
             </tr>
             <tr>
@@ -946,11 +1332,11 @@ headless=True 反爬效果差，
     </div>
 
     <div class="info-box">
-        <strong>Knowledge 层的两级结构：</strong>
-        <code>Memory.md</code> 是跨领域的<strong>平面索引</strong>（每条一行摘要，&lt;200行），供 agent 快速定位。
-        <code>domain/*.md</code> 是按领域划分的<strong>详细知识文件</strong>，包含类型层级
-        （project / feedback / reference / user）。
-        Memory.md 始终加载进上下文；domain 文件按需加载。
+        <strong>Knowledge 层的 Wiki 结构：</strong>
+        <code>Memory.md</code> 是 Wiki 的<strong>索引中枢</strong>（每条一行摘要，&lt;200行），供 agent 快速定位，始终加载进上下文。
+        <code>log.md</code> 是<strong>操作时间线</strong>（append-only），记录每次 Ingest/Query/Lint。
+        <code>knowledge/</code> 是按领域划分的<strong>交叉引用知识网络</strong>，包含 project（项目技术）、user（用户画像）、feedback（行为反馈）、reference（外部参考）四类页面。
+        每个页面通过 <code>[[wiki-link]]</code> 双向链接，矛盾用 <code>refs:[](confuse)</code> 标记，来源用 refs 标注。
     </div>
 
     <h3>⑤ Preference Promotion — 从 ①②③④ 到常驻上下文</h3>
@@ -988,10 +1374,10 @@ headless=True 反爬效果差，
             <div class="trigger-desc">每 10 轮对话验证触发条件（hot events 数量 / issue 出现 / 重要 learning），满足条件后 fork 独立 agent 异步整理，不阻塞主流程。<strong style="color:var(--accent-purple);">负责完整提炼链 Session → ② → ③ → ④。</strong></div>
             <ul class="step-list">
                 <li><span class="step-num">1</span>直接读取当前 Session，提取结构化事件</li>
-                <li><span class="step-num">2</span>写入 <code>②&nbsp;.learning/</code> — 事件明细（障碍、反馈、结果）</li>
+                <li><span class="step-num">2</span>写入 <code>②&nbsp;daily-logs/</code> — 事件明细（障碍、反馈、结果）</li>
                 <li><span class="step-num">3</span>生成/更新 <code>③&nbsp;episodes/</code> — 当日叙事摘要</li>
-                <li><span class="step-num">4</span>提取持久知识 → 写入 <code>④&nbsp;knowledge/&lt;type&gt;</code> 领域文件</li>
-                <li><span class="step-num">5</span>更新 MEMORY.md 索引，保持 &lt;200 行</li>
+                <li><span class="step-num">4</span>Ingest 持久知识 → 融入 <code>④&nbsp;Wiki</code>（更新 project/user/feedback/reference 页面）</li>
+                <li><span class="step-num">5</span>更新 Memory.md 索引 + 追加 log.md 时间线</li>
             </ul>
             <div style="margin-top:0.8rem;">
                 <span class="tag tag-purple">async</span>
@@ -1012,11 +1398,11 @@ headless=True 反爬效果差，
             <div class="trigger-title" style="color:var(--accent-yellow);">T3 · Dream Task (24h)</div>
             <div class="trigger-desc">每 24 小时离线运行一次深度整理。<strong style="color:var(--accent-yellow);">读取全部历史内容（② .learning + ③ episodes + ④ knowledge + 更早归档）</strong>，跨 session 聚合，执行 Preference Promotion → ⑤。</div>
             <ul class="step-list">
-                <li><span class="step-num">1</span>加载全部历史：<code>② .learning</code> + <code>③ episodes</code> + <code>④ knowledge</code> + 更早内容</li>
-                <li><span class="step-num">2</span>跨 session 聚合，识别稳定规律与一次性偏差（验证knowledge 在跨session 的执行使用情况，评估置信度）</li>
-                <li><span class="step-num">3</span>Preference Promotion：稳定模式路由到 <code>preferences.md</code> / <code>soul.md</code> / <code>CLAUDE.md</code></li>
-                <li><span class="step-num">4</span>补充 ③④ 层内容，去除跨文件冗余</li>
-                <li><span class="step-num">5</span>重组 MEMORY.md 索引，移除早期的spisodes</li>
+                <li><span class="step-num">1</span>加载全部历史：<code>② daily-logs</code> + <code>③ episodes</code> + <code>④ Wiki</code> + 更早内容</li>
+                <li><span class="step-num">2</span>跨 session 聚合，识别稳定规律与一次性偏差（验证 Wiki 知识在跨 session 的执行使用情况，评估置信度）</li>
+                <li><span class="step-num">3</span>Wiki Lint：检测矛盾 refs:[](confuse)、过期声明、孤立页面、缺失交叉引用</li>
+                <li><span class="step-num">4</span>Preference Promotion：稳定模式路由到 <code>preferences.md</code> / <code>soul.md</code> / <code>CLAUDE.md</code></li>
+                <li><span class="step-num">5</span>重组 Memory.md 索引，移除早期 episodes</li>
             </ul>
             <div style="margin-top:0.8rem;">
                 <span class="tag tag-yellow">cron 24h</span>
@@ -1062,7 +1448,7 @@ headless=True 反爬效果差，
                     每 10 轮检查\或者5轮执行后超过10s 没有新的输入，满足任一
                 </td>
                 <td>Fork 独立 agent，<br>异步非阻塞</td>
-                <td>② .learning<br>③ episodes<br>④ knowledge<br>MEMORY.md</td>
+                <td>② daily-logs<br>③ episodes<br>④ Wiki<br>Memory.md</td>
                 <td>中</td>
             </tr>
             <tr>
@@ -1108,7 +1494,7 @@ headless=True 反爬效果差，
                 <td><span class="tag tag-purple">Independent Agent</span></td>
                 <td>
                     <strong style="color:var(--accent-blue);">① 命中缓存</strong> — 加装主 agent session 后，消息前缀与主 agent 完全一致，Claude 服务端直接命中缓存，大幅降低 input token 成本。<br>
-                    <strong style="color:var(--accent-green);">② 按需加载</strong> — 通过 MEMORY.md 索引定向读取相关 ④ knowledge 文件，无需全量预加载；知识库增长后仍保持高效。<br>
+                    <strong style="color:var(--accent-green);">② 按需加载</strong> — 通过 Memory.md 目录定向读取相关 Wiki 页面，无需全量预加载；知识库增长后仍保持高效。<br>
                     <strong style="color:var(--accent-orange);">③ 增量写入</strong> — 使用 <code>edit_file</code> 只输出变更部分，无需输出整个文件覆盖；单次 LLM Call 全量覆盖写的 output token 成本随文件增长线性上升。<br>
                     <strong style="color:var(--accent-cyan);">④ 执行一致性</strong> — 复用主 agent 的 llmProvider、systemPrompt、toolCalls，提取行为与主 agent 完全一致，不存在"提取逻辑与主流程理解偏差"的问题。<br>
                     <strong style="color:var(--accent-purple);">⑤ 行业验证</strong> — Claude Code、Hermes Agent、Open Claw 均采用 Agent 模式执行记忆提取，工程实践已验证。
@@ -1585,9 +1971,9 @@ headless=True 反爬效果差，
                 以下内容默认<strong>不全量注入</strong>；episodes 例外：最新 2 日启动时自动预加载，更早历史由 agent 按需检索。
             </p>
             <div class="layer-block" style="background:rgba(74,222,128,0.04);border-color:#4ade8066;margin-bottom:0.6rem;">
-                <code style="color:var(--accent-green);font-weight:700;">MEMORY.md</code>
-                <span style="font-size:0.82rem;color:var(--text-secondary);margin-left:0.5rem;">④ knowledge 索引，&lt;200行</span>
-                <p style="font-size:0.83rem;color:var(--text-secondary);margin-top:0.3rem;">Knowledge 领域文件的平面索引，每条一行摘要 + 文件路径。Agent 查询时先搜此文件定位领域。</p>
+                <code style="color:var(--accent-green);font-weight:700;">Memory.md</code>
+                <span style="font-size:0.82rem;color:var(--text-secondary);margin-left:0.5rem;">④ Wiki 索引中枢，&lt;200行</span>
+                <p style="font-size:0.83rem;color:var(--text-secondary);margin-top:0.3rem;">Wiki 知识页面的索引中枢，每条一行摘要 + 文件路径。Agent 查询时先搜此文件定位相关页面。</p>
             </div>
             <div class="layer-block" style="background:rgba(167,139,250,0.04);border-color:#a78bfa66;">
                 <code style="color:var(--accent-purple);font-weight:700;">episodes/YYYY-MM-DD.md</code>
@@ -1607,8 +1993,8 @@ headless=True 反爬效果差，
             <tbody>
                 <tr>
                     <td><span class="tag tag-blue">启动</span></td>
-                    <td>preferences.md + soul.md + CLAUDE.md 常驻注入；最新 2 日 episodes 默认预加载；检测 .learning/ 是否有待处理内容</td>
-                    <td>读: ⑤ 常驻文件 + ③ 最近 2日</td>
+                    <td>preferences.md + soul.md + CLAUDE.md 常驻注入；Memory.md 始终加载；最新 2 日 episodes 默认预加载；检测 daily-logs/ 是否有待处理内容</td>
+                    <td>读: ⑤ 常驻文件 + ③ 最近 2日 + Memory.md</td>
                 </tr>
                 <tr>
                     <td><span class="tag tag-purple">对话中 T1</span></td>
@@ -1819,7 +2205,7 @@ headless=True 反爬效果差，
 <footer>
         <p>Knowledge System Design v2 · 2026-04 · core-ai project</p>
         <p style="margin-top:0.3rem;font-size:0.78rem;">
-            current.jsonl → daily-logs → episodes → knowledge → preferences.md / soul.md / CLAUDE.md
+            Session → daily-logs → episodes → Wiki (Memory.md + log.md + knowledge/*.md) → preferences.md / soul.md / CLAUDE.md
         </p>
     </footer>
 
