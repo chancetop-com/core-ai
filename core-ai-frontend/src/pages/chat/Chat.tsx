@@ -10,12 +10,20 @@ import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from
 import ResourcePicker from './ResourcePicker';
 import ToolPickerModal from './ToolPickerModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
-import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo } from './types';
-import { historyToChatMessages } from './utils';
+import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment } from './types';
+import { historyToChatMessages, getMessageText } from './utils';
 import ToolsBlock from './components/ToolsBlock';
 import CopyButton from './components/CopyButton';
 import ThinkingBlock from './components/ThinkingBlock';
 import PlanUpdateBlock from './components/PlanUpdateBlock';
+
+function hasTextSegments(segments?: MessageSegment[]): boolean {
+  return segments?.some(s => s.type === 'text' && s.content.trim()) ?? false;
+}
+
+function hasAnySegments(segments?: MessageSegment[]): boolean {
+  return segments != null && segments.length > 0;
+}
 
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -216,7 +224,24 @@ export default function Chat() {
           setMessages(prev => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
-            if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: (last.content || '') + chunk };
+            if (last?.role === 'agent') {
+              const segments = [...(last.segments || [])];
+              const lastSeg = segments[segments.length - 1];
+              if (lastSeg?.type === 'text') {
+                // Consecutive text: just append
+                segments[segments.length - 1] = { ...lastSeg, content: lastSeg.content + chunk };
+              } else {
+                // Non-consecutive: merge with any existing text segment
+                const existingIdx = segments.findIndex(s => s.type === 'text');
+                if (existingIdx >= 0) {
+                  const existing = segments[existingIdx] as MessageSegment & { type: 'text' };
+                  segments[existingIdx] = { ...existing, content: existing.content + chunk };
+                } else {
+                  segments.push({ type: 'text', content: chunk });
+                }
+              }
+              updated[updated.length - 1] = { ...last, segments };
+            }
             return updated;
           });
         }
@@ -229,11 +254,27 @@ export default function Chat() {
         const isFinalChunk = chunkEvent.is_final_chunk;
 
         if (!isFinalChunk && chunk) {
-          // Update thinking
           setMessages(prev => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
-            if (last?.role === 'agent') updated[updated.length - 1] = { ...last, thinking: (last.thinking || '') + chunk };
+            if (last?.role === 'agent') {
+              const segments = [...(last.segments || [])];
+              const lastSeg = segments[segments.length - 1];
+              if (lastSeg?.type === 'thinking') {
+                // Consecutive thinking: just append
+                segments[segments.length - 1] = { ...lastSeg, content: lastSeg.content + chunk };
+              } else {
+                // Non-consecutive: merge with any existing thinking segment
+                const existingIdx = segments.findIndex(s => s.type === 'thinking');
+                if (existingIdx >= 0) {
+                  const existing = segments[existingIdx] as MessageSegment & { type: 'thinking' };
+                  segments[existingIdx] = { ...existing, content: existing.content + chunk };
+                } else {
+                  segments.push({ type: 'thinking', content: chunk });
+                }
+              }
+              updated[updated.length - 1] = { ...last, segments };
+            }
             return updated;
           });
         }
@@ -246,7 +287,21 @@ export default function Chat() {
           const updated = [...prev];
           const last = updated[updated.length - 1];
           if (last?.role === 'agent') {
-            const tools = [...(last.tools || [])];
+            const segments = [...(last.segments || [])];
+            // Find or reuse any existing tools segment
+            let toolsSeg: ToolsSegment;
+            let toolsSegIdx: number;
+            const existingToolsIdx = segments.findIndex(s => s.type === 'tools');
+            if (existingToolsIdx >= 0) {
+              toolsSeg = segments[existingToolsIdx] as ToolsSegment;
+              toolsSegIdx = existingToolsIdx;
+            } else {
+              toolsSeg = { type: 'tools', tools: [] };
+              toolsSegIdx = segments.length;
+              segments.push(toolsSeg);
+            }
+
+            const tools = [...toolsSeg.tools];
             const newTool: ToolEvent = {
               type: 'start', tool: toolEvent.tool_name, callId: toolEvent.call_id,
               arguments: toolEvent.tool_args ? JSON.stringify(toolEvent.tool_args) : undefined,
@@ -260,11 +315,11 @@ export default function Chat() {
                 const parent = { ...tools[parentIdx] };
                 parent.children = [...(parent.children || []), newTool];
                 tools[parentIdx] = parent;
-                updated[updated.length - 1] = { ...last, tools };
+                segments[toolsSegIdx] = { ...toolsSeg, tools };
+                updated[updated.length - 1] = { ...last, segments };
                 return updated;
               }
               // No parent yet — check if any existing top-level tools have the same taskId
-              // and should become children of this new tool (it arrived early as orphan)
               const orphanIdx = tools.findIndex(t => t.taskId === toolEvent.task_id && t.callId !== toolEvent.call_id);
               if (orphanIdx >= 0) {
                 // Move the orphans under this new parent
@@ -272,13 +327,15 @@ export default function Chat() {
                 const remaining = tools.filter(t => t.taskId !== toolEvent.task_id || t.callId === toolEvent.call_id);
                 newTool.children = orphans;
                 remaining.push(newTool);
-                updated[updated.length - 1] = { ...last, tools: remaining };
+                segments[toolsSegIdx] = { ...toolsSeg, tools: remaining };
+                updated[updated.length - 1] = { ...last, segments };
                 return updated;
               }
             }
             // Otherwise add at top level
             tools.push(newTool);
-            updated[updated.length - 1] = { ...last, tools };
+            segments[toolsSegIdx] = { ...toolsSeg, tools };
+            updated[updated.length - 1] = { ...last, segments };
           }
           return updated;
         });
@@ -291,25 +348,34 @@ export default function Chat() {
           const updated = [...prev];
           const last = updated[updated.length - 1];
           if (last?.role === 'agent') {
-            const tools = [...(last.tools || [])];
-            // Try to find at top level first
-            const idx = tools.findIndex(t => t.callId === resultEvent.call_id);
-            if (idx >= 0) {
-              tools[idx] = { ...tools[idx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED' };
-              updated[updated.length - 1] = { ...last, tools };
-              return updated;
-            }
-            // Try to find in children of any top-level tool
-            for (let i = 0; i < tools.length; i++) {
-              const parent = tools[i];
-              if (parent.children) {
-                const childIdx = parent.children.findIndex(t => t.callId === resultEvent.call_id);
-                if (childIdx >= 0) {
-                  const children = [...parent.children];
-                  children[childIdx] = { ...children[childIdx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED' };
-                  tools[i] = { ...parent, children };
-                  updated[updated.length - 1] = { ...last, tools };
+            const segments = [...(last.segments || [])];
+            // Search all tools segments for this callId
+            for (let si = 0; si < segments.length; si++) {
+              const seg = segments[si];
+              if (seg.type === 'tools') {
+                const tools = [...seg.tools];
+                // Try to find at top level
+                const idx = tools.findIndex(t => t.callId === resultEvent.call_id);
+                if (idx >= 0) {
+                  tools[idx] = { ...tools[idx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED' };
+                  segments[si] = { ...seg, tools };
+                  updated[updated.length - 1] = { ...last, segments };
                   return updated;
+                }
+                // Try to find in children
+                for (let i = 0; i < tools.length; i++) {
+                  const parent = tools[i];
+                  if (parent.children) {
+                    const childIdx = parent.children.findIndex(t => t.callId === resultEvent.call_id);
+                    if (childIdx >= 0) {
+                      const children = [...parent.children];
+                      children[childIdx] = { ...children[childIdx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED' };
+                      tools[i] = { ...parent, children };
+                      segments[si] = { ...seg, tools };
+                      updated[updated.length - 1] = { ...last, segments };
+                      return updated;
+                    }
+                  }
                 }
               }
             }
@@ -349,7 +415,11 @@ export default function Chat() {
         setMessages(prev => {
           const updated = [...prev];
           const last = updated[updated.length - 1];
-          if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: `Error: ${errMsg}` };
+          if (last?.role === 'agent') {
+            const segments = [...(last.segments || [])];
+            segments.push({ type: 'text', content: `Error: ${errMsg}` });
+            updated[updated.length - 1] = { ...last, segments };
+          }
           return updated;
         });
         setStatus('idle');
@@ -409,9 +479,9 @@ export default function Chat() {
         setMessages(prev => {
           if (prev.length === 0) return prev;
           const last = prev[prev.length - 1];
-          if (last.role !== 'agent' || last.content || last.thinking) return prev;
+          if (last.role !== 'agent' || hasAnySegments(last.segments)) return prev;
           const updated = [...prev];
-          updated[updated.length - 1] = { ...last, content: `Error: ${msg}` };
+          updated[updated.length - 1] = { ...last, segments: [{ type: 'text', content: `Error: ${msg}` }] };
           return updated;
         });
       },
@@ -482,12 +552,12 @@ export default function Chat() {
     if (!text || status !== 'idle' || !selectedAgentId) return;
 
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: text }]);
+    setMessages(prev => [...prev, { role: 'user', segments: [{ type: 'text', content: text }] }]);
     setStatus('running');
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     setPlanTodos(null);
-    setMessages(prev => [...prev, { role: 'agent', content: '', thinking: '', tools: [] }]);
+    setMessages(prev => [...prev, { role: 'agent', segments: [] }]);
 
     try {
       const sid = await ensureSession();
@@ -498,7 +568,9 @@ export default function Chat() {
       setMessages(prev => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
-        if (last?.role === 'agent') updated[updated.length - 1] = { ...last, content: `Error: ${msg}` };
+        if (last?.role === 'agent') {
+          updated[updated.length - 1] = { ...last, segments: [{ type: 'text', content: `Error: ${msg}` }] };
+        }
         return updated;
       });
       setStatus('idle');
@@ -956,7 +1028,7 @@ export default function Chat() {
               <span>Context compressed: {compressionInfo.before} → {compressionInfo.after} messages</span>
             </div>
           )}
-          {messages.filter((msg, idx) => msg.role === 'user' || msg.content?.trim() || msg.thinking || (msg.tools && msg.tools.length > 0) || msg.approval || (status === 'running' && msg.role === 'agent' && idx === messages.length - 1)).map((msg, i) => (
+          {messages.filter((msg, idx) => msg.role === 'user' || hasAnySegments(msg.segments) || msg.approval || (status === 'running' && msg.role === 'agent' && idx === messages.length - 1)).map((msg, i) => (
             <div key={i} className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'agent' && (
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
@@ -965,33 +1037,60 @@ export default function Chat() {
                 </div>
               )}
               <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
-                {msg.thinking && <ThinkingBlock thinking={msg.thinking} isStreaming={status === 'running' && i === messages.length - 1 && !msg.content} />}
-                {msg.tools && msg.tools.length > 0 && <ToolsBlock tools={msg.tools} />}
-                {planTodos && planTodos.length > 0 && msg.role === 'agent' && i === messages.length - 1 && <PlanUpdateBlock todos={planTodos} />}
-                <div className="rounded-xl px-4 py-3 text-sm overflow-x-auto"
-                  style={{
-                    background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
-                    color: msg.role === 'user' ? 'white' : 'var(--color-text)',
-                    border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
-                  }}>
-                  <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                  </div>
-                  {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && !msg.content && !msg.thinking && !(msg.tools && msg.tools.length > 0) && (
-                    <div className="flex items-center gap-2 py-1">
-                      <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-                      <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Thinking...</span>
-                    </div>
-                  )}
-                  {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && msg.content && (
-                    <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
-                  )}
-                </div>
-                {msg.content?.trim() && (
-                  <div className={`flex mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user' ? 'justify-end' : ''}`}>
-                    <CopyButton text={msg.content} />
+                {/* Render segments in fixed order: thinking → tools → text */}
+                {(() => {
+                  const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
+                  const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
+                  const textSeg = msg.segments?.find(s => s.type === 'text');
+                  return (
+                    <>
+                      {thinkingSeg && (
+                        <div className="mb-3">
+                          <ThinkingBlock thinking={thinkingSeg.content} isStreaming={false} />
+                        </div>
+                      )}
+                      {toolsSeg && toolsSeg.tools.length > 0 && (
+                        <div className="mb-3">
+                          <ToolsBlock tools={toolsSeg.tools} />
+                        </div>
+                      )}
+                      {textSeg && (
+                        <div className="mb-3">
+                          <div className="rounded-xl px-4 py-3 text-sm overflow-x-auto"
+                            style={{
+                              background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
+                              color: msg.role === 'user' ? 'white' : 'var(--color-text)',
+                              border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
+                            }}>
+                            <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{textSeg.content}</ReactMarkdown>
+                            </div>
+                            {/* Cursor: show after text content when streaming */}
+                            {status === 'running' && i === messages.length - 1 && textSeg.content && (
+                              <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+                {/* Empty state (no segments yet) for streaming agent message */}
+                {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && !hasAnySegments(msg.segments) && (
+                  <div className="flex items-center gap-2 py-2 px-1">
+                    <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+                    <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Thinking...</span>
                   </div>
                 )}
+                {/* Plan update block */}
+                {planTodos && planTodos.length > 0 && msg.role === 'agent' && i === messages.length - 1 && <PlanUpdateBlock todos={planTodos} />}
+                {/* Copy button: shown if any text segments exist */}
+                {hasTextSegments(msg.segments) && (
+                  <div className={`flex mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                    <CopyButton text={getMessageText(msg)} />
+                  </div>
+                )}
+                {/* Approval block */}
                 {msg.approval && (
                   <div className="mt-2 rounded-xl border px-4 py-3"
                     style={{ borderColor: 'var(--color-warning)', background: 'var(--color-bg-secondary)' }}>

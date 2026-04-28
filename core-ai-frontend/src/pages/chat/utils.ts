@@ -1,4 +1,4 @@
-import type { ChatMessage, ToolEvent } from './types';
+import type { ChatMessage, MessageSegment, TextSegment } from './types';
 import type { HistoryMessage } from '../../api/session';
 
 export function normalizeArgs(argsJson: string | undefined): Record<string, unknown> | null {
@@ -33,21 +33,41 @@ export function getArgsPreview(argsJson: string | undefined): string | null {
   return preview;
 }
 
+function buildSegments(m: HistoryMessage): MessageSegment[] {
+  const segments: MessageSegment[] = [];
+  if (m.thinking) {
+    segments.push({ type: 'thinking', content: m.thinking });
+  }
+  if (m.tools && m.tools.length > 0) {
+    segments.push({
+      type: 'tools',
+      tools: m.tools.map(t => ({
+        type: 'result',
+        tool: t.name,
+        callId: t.call_id,
+        arguments: t.arguments,
+        result: t.result,
+        resultStatus: t.status,
+      })),
+    });
+  }
+  if (m.content) {
+    segments.push({ type: 'text', content: m.content });
+  }
+  return segments;
+}
+
 export function historyToChatMessages(messages: HistoryMessage[]): ChatMessage[] {
-  return messages.map(m => {
-    const tools: ToolEvent[] | undefined = m.tools?.map(t => ({
-      type: 'result',
-      tool: t.name,
-      callId: t.call_id,
-      arguments: t.arguments,
-      result: t.result,
-      resultStatus: t.status,
-    }));
-    return {
-      role: m.role === 'user' ? 'user' : 'agent',
-      content: m.content ?? '',
-      thinking: m.thinking || undefined,
-      tools: tools && tools.length > 0 ? tools : undefined,
-    };
-  });
+  return messages.map(m => ({
+    role: m.role === 'user' ? 'user' : 'agent',
+    segments: buildSegments(m),
+  }));
+}
+
+/** Extract concatenated text from all text segments (for copy) */
+export function getMessageText(msg: ChatMessage): string {
+  return (msg.segments || [])
+    .filter((s): s is TextSegment => s.type === 'text')
+    .map(s => s.content)
+    .join('\n\n');
 }

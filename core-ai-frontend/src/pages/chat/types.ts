@@ -21,10 +21,25 @@ export interface PlanTodo {
   status: string;
 }
 
+export interface TextSegment {
+  type: 'text';
+  content: string;
+}
+
+export interface ThinkingSegment {
+  type: 'thinking';
+  content: string;
+}
+
+export interface ToolsSegment {
+  type: 'tools';
+  tools: ToolEvent[];
+}
+
+export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment;
+
 export interface ChatMessage {
   role: 'user' | 'agent';
-  content: string;
-  thinking?: string;
-  tools?: ToolEvent[];
+  segments: MessageSegment[];
   approval?: AwaitInfo;
 }
