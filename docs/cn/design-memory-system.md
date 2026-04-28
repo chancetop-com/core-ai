@@ -1,9 +1,5 @@
 # 知识系统设计 v2
 
-> Unified Memory Architecture for AI Agent — Session / Domain / User Preference
-
----
-
 ## 1. 总体架构
 
 知识系统围绕一个核心问题设计：**Agent 对话中产生的知识如何被持久化、组织和复用？**
@@ -151,13 +147,13 @@ Append-only 时间线，记录每次 Ingest / Query / Lint 操作。统一前缀
 - 结果写回: project/crawler-comparison.md
 
 ## [2026-03-29] lint | 周健康检查
-- 发现: project/spa-scraping.md 与 reference/nodriver.md 矛盾 refs: grubhub-2026-03-28, doordash-2026-04-10(confuse)
+- 发现: project/spa-scraping.md 与 reference/nodriver.md 矛盾 refs:[knowledge/reference/nodriver.md](confuse)
 - 修复: 统一 headless 策略描述
 ```
 
 ### 2.5 Wiki Page 格式
 
-正文内通过 `refs:[uri]` 标记引用来源，`refs:[uri](confuse)` 标记矛盾。
+正文内通过 `refs:[uri]` 标记外部 Wiki 引用，`refs:[uri](confuse)` 标记引用间矛盾，`source:[相对路径]` 标记来源（daily-logs）。
 
 ```markdown
 # SPA 爬虫策略
@@ -167,16 +163,18 @@ Append-only 时间线，记录每次 Ingest / Query / Lint 操作。统一前缀
 DOM 在虚拟化渲染下不可靠；API 响应更稳定且包含完整数据。
 
 ## 踩坑与解法
-### networkidle 超时 refs: grubhub-2026-03-28, doordash-2026-04-10
+### networkidle 超时 source:[daily-logs/2026-03-28/grubhub_menu_crawler.md] source:[daily-logs/2026-04-10/doordash_menu_crawler.md]
 - 现象: Timeout 30000ms，SPA 持续后台请求
 - 解法: 改用目标元素出现作为就绪信号 → [[nodriver]]
 - 验证: 2/2 站点有效 ✓
 
-### Virtual Scroll 数据丢失 refs: grubhub-2026-03-28
+### Virtual Scroll 数据丢失 source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]
 - 现象: 滚动后 section 数量骤减
 - 解法: 放弃 DOM，改为 API 拦截
 
-refs: grubhub-2026-03-28, doordash-2026-04-10(confuse): headless 策略在 Grubhub 有效但 Doordash 检测 headless，结论冲突
+source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]
+source:[daily-logs/2026-04-10/doordash_menu_crawler.md]
+refs:[knowledge/reference/nodriver.md](confuse): headless 策略在 Grubhub 有效但 Doordash 检测 headless，结论冲突
 ```
 
 ### 2.6 三种维护操作
@@ -187,7 +185,7 @@ refs: grubhub-2026-03-28, doordash-2026-04-10(confuse): headless 策略在 Grubh
 
 **Query（查询）** — 渐进式读取，按需加载
 
-从 Memory.md 定位入口 → 沿正文 `refs:[]` 和 `[[link]]` 渐进加载相关页面 → 综合答案 + 标注来源。读取过程中若产生新的综合见解，触发一次 Ingest 写入 Wiki。
+从 Memory.md 定位入口 → 沿正文 `refs:[]` 和 `[[link]]` 渐进加载相关 Wiki 页面 → 综合答案 + 标注来源。读取过程中若产生新的综合见解，触发一次 Ingest 写入 Wiki。
 
 **Lint（健康检查）** — Wiki 质量维护
 
