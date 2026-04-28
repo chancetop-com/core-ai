@@ -34,15 +34,13 @@ public class ChatSessionCreateHandler implements HttpHandler {
 
         try {
             String body = readBody(exchange);
-            String agentId = null;
-
             if (body != null && !body.isEmpty()) {
                 var request = JsonUtil.fromJson(CreateSessionRequest.class, body);
                 // For local mode, agent_id is ignored - we always use the local agent
-                agentId = request.agentId != null ? request.agentId : null;
             }
 
-            String id = sessionManager.createSession(agentId);
+            // Always generate a new UUID for each chat session, so multiple browser tabs can have independent conversations
+            String id = sessionManager.createSession(null);
             var response = new CreateSessionResponse();
             response.sessionId = id;
             sendJson(exchange, JsonUtil.toJson(response));
