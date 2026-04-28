@@ -21,6 +21,8 @@ import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.EventSubscriber;
 import ai.core.server.messaging.InProcessCommandHandler;
 import ai.core.server.messaging.JedisConfig;
+import ai.core.server.messaging.RpcClient;
+import ai.core.server.messaging.RpcResponseSubscriber;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxService;
@@ -157,6 +159,14 @@ public class ServerModule extends Module {
         // Wire SessionOwnershipRegistry into AgentSessionManager
         bean(AgentSessionManager.class).setOwnershipRegistry(ownershipRegistry);
 
+        // RPC client (for forwarding sync requests to owner Pod)
+        var rpcClient = bind(new RpcClient(jedisPool, ownershipRegistry));
+
+        // RPC response subscriber (Redis Pub/Sub → dispatches to pending RPC calls)
+        var rpcResponseSubscriber = new RpcResponseSubscriber(jedisPool, rpcClient);
+        onStartup(rpcResponseSubscriber::start);
+        onShutdown(rpcResponseSubscriber::stop);
+
         // Event subscriber (Redis Pub/Sub → local SSE channels)
         var eventSubscriber = new EventSubscriber(jedisPool, bean(SessionChannelService.class));
         onStartup(eventSubscriber::start);
@@ -165,7 +175,8 @@ public class ServerModule extends Module {
         // Command handler (stateless dispatcher, receives commands from CommandConsumer)
         var chatMessageService = bean(ChatMessageService.class);
         var commandHandler = new InProcessCommandHandler(
-                bean(AgentSessionManager.class), chatMessageService, ownershipRegistry);
+                bean(AgentSessionManager.class), chatMessageService, ownershipRegistry,
+                bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class), jedisPool);
 
         // Command consumer (per-Pod stream + unowned stream)
         var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);

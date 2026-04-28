@@ -24,6 +24,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.api.server.session.Message;
 import ai.core.server.messaging.CommandPublisher;
+import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
@@ -31,17 +32,18 @@ import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCall;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.Session;
 import core.framework.web.WebContext;
-import core.framework.web.exception.TooManyRequestsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -66,6 +68,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     CommandPublisher commandPublisher;
     @Inject
     SessionOwnershipRegistry ownershipRegistry;
+    @Inject
+    RpcClient rpcClient;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
@@ -263,9 +267,14 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        requireLocalSession(sessionId);
-        var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
-        return agentDraftGenerator.generate(session);
+
+        if (isLocalOwner(sessionId)) {
+            var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
+            return agentDraftGenerator.generate(session);
+        } else {
+            var command = SessionCommand.generateAgentDraft(sessionId, userId, rpcClient.newRequestId());
+            return rpcClient.call(command, GenerateAgentDraftResponse.class);
+        }
     }
 
     @Override
@@ -273,24 +282,38 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        requireLocalSession(sessionId);
-        List<String> loadedTools;
-        if (request.tools != null && !request.tools.isEmpty()) {
-            var toolRefs = request.tools.stream()
+
+        if (isLocalOwner(sessionId)) {
+            List<String> loadedTools;
+            if (request.tools != null && !request.tools.isEmpty()) {
+                var toolRefs = request.tools.stream()
+                        .map(v -> {
+                            var ref = new ToolRef();
+                            ref.id = v.id;
+                            ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
+                            ref.source = v.source;
+                            return ref;
+                        }).toList();
+                loadedTools = sessionManager.loadToolRefs(sessionId, toolRefs);
+            } else {
+                loadedTools = List.of();
+            }
+            var response = new LoadToolsResponse();
+            response.loadedTools = loadedTools;
+            return response;
+        } else {
+            var toolRefs = request.tools != null ? request.tools.stream()
                     .map(v -> {
                         var ref = new ToolRef();
                         ref.id = v.id;
                         ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
                         ref.source = v.source;
                         return ref;
-                    }).toList();
-            loadedTools = sessionManager.loadToolRefs(sessionId, toolRefs);
-        } else {
-            loadedTools = List.of();
+                    }).toList() : null;
+            var payload = JsonUtil.toJson(Map.of("tools", toolRefs != null ? toolRefs : List.of()));
+            var command = SessionCommand.loadTools(sessionId, userId, payload, rpcClient.newRequestId());
+            return rpcClient.call(command, LoadToolsResponse.class);
         }
-        var response = new LoadToolsResponse();
-        response.loadedTools = loadedTools;
-        return response;
     }
 
     @Override
@@ -298,11 +321,17 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        requireLocalSession(sessionId);
-        var loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
-        var response = new LoadSkillsResponse();
-        response.loadedSkills = loadedSkills;
-        return response;
+
+        if (isLocalOwner(sessionId)) {
+            var loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
+            var response = new LoadSkillsResponse();
+            response.loadedSkills = loadedSkills;
+            return response;
+        } else {
+            var payload = JsonUtil.toJson(Map.of("skillIds", request.skillIds != null ? request.skillIds : List.of()));
+            var command = SessionCommand.loadSkills(sessionId, userId, payload, rpcClient.newRequestId());
+            return rpcClient.call(command, LoadSkillsResponse.class);
+        }
     }
 
     @Override
@@ -310,11 +339,17 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        requireLocalSession(sessionId);
-        var remainingSkills = sessionManager.unloadSkills(sessionId, request.skillIds);
-        var response = new UnloadSkillsResponse();
-        response.remainingSkills = remainingSkills;
-        return response;
+
+        if (isLocalOwner(sessionId)) {
+            var remainingSkills = sessionManager.unloadSkills(sessionId, request.skillIds);
+            var response = new UnloadSkillsResponse();
+            response.remainingSkills = remainingSkills;
+            return response;
+        } else {
+            var payload = JsonUtil.toJson(Map.of("skillIds", request.skillIds != null ? request.skillIds : List.of()));
+            var command = SessionCommand.unloadSkills(sessionId, userId, payload, rpcClient.newRequestId());
+            return rpcClient.call(command, UnloadSkillsResponse.class);
+        }
     }
 
     @Override
@@ -322,14 +357,20 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        requireLocalSession(sessionId);
-        var definitions = request.agentIds.stream()
-                .map(agentDefinitionService::getEntity)
-                .toList();
-        var loadedSubAgents = sessionManager.loadSubAgents(sessionId, definitions);
-        var response = new LoadSubAgentsResponse();
-        response.loadedSubAgents = loadedSubAgents;
-        return response;
+
+        if (isLocalOwner(sessionId)) {
+            var definitions = request.agentIds.stream()
+                    .map(agentDefinitionService::getEntity)
+                    .toList();
+            var loadedSubAgents = sessionManager.loadSubAgents(sessionId, definitions);
+            var response = new LoadSubAgentsResponse();
+            response.loadedSubAgents = loadedSubAgents;
+            return response;
+        } else {
+            var payload = JsonUtil.toJson(Map.of("agentIds", request.agentIds != null ? request.agentIds : List.of()));
+            var command = SessionCommand.loadSubAgents(sessionId, userId, payload, rpcClient.newRequestId());
+            return rpcClient.call(command, LoadSubAgentsResponse.class);
+        }
     }
 
     @Override
@@ -349,18 +390,11 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     }
 
     /**
-     * Check that the session is owned by this Pod. Sync endpoints (loadTools,
-     * loadSkills, etc.) need a local InProcessAgentSession, which only exists
-     * on the owning Pod. If the request lands on a non-owner Pod, throw 503
-     * so the frontend can retry (K8s service will typically route to the owner).
-     * <p>
-     * This is a transient condition — in steady state the frontend always hits
-     * the same Pod that created the session.
+     * Check if this Pod owns the session. If not, the caller should fall through
+     * to the RPC path which forwards the request to the owning Pod.
      */
-    private void requireLocalSession(String sessionId) {
-        var owner = ownershipRegistry.getOwner(sessionId);
-        if (owner != null && !owner.equals(ownershipRegistry.getHostname())) {
-            throw new TooManyRequestsException("session owned by " + owner + ", retry on this pod");
-        }
+    private boolean isLocalOwner(String sessionId) {
+        if (ownershipRegistry == null) return true;  // CLI / no-Redis mode
+        return ownershipRegistry.isOwner(sessionId);
     }
 }
