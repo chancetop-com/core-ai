@@ -13,7 +13,7 @@
 数据从原始对话到常驻上下文，经过逐层提炼：
 
 ```
-Session → daily-logs → episodes → Wiki (knowledge) → Preference Promotion
+Session → daily-logs → episodes → Wiki (knowledge) → 晋升为常驻知识
   (①)        (②)          (③)         (④)                  (⑤)
 ```
 
@@ -23,7 +23,7 @@ Session → daily-logs → episodes → Wiki (knowledge) → Preference Promotio
 | ② daily-logs | `daily-logs/YYYY-MM-DD/任务名.md` | 结构化事件记录：处理内容、障碍与应对、用户反馈、结果 | T1/T2/T4 | Agent 历史查询 |
 | ③ episodes | `episodes/YYYY-MM-DD.md` | 当日叙事摘要，按日索引 | T1/T2 | Agent 历史查询（按日检索） |
 | ④ Knowledge(Wiki) | `Memory.md` + `log.md` + `knowledge/*.md` | 持久化交叉引用知识网络 | T1/T2 Ingest | Agentic search（主要检索层） |
-| ⑤ Promotion | `preferences.md` / `soul.md` / `CLAUDE.md` | 常驻注入的稳定知识 | T3 Dream Task | 每次对话自动加载 |
+| ⑤ 晋升为常驻知识 | `preferences.md` / `soul.md` / `instructions.md` | 常驻注入的稳定知识 | T3 Dream Task | 每次对话自动加载 |
 
 ### 1.2 各层内容示例（以 grubhub 爬虫开发为例）
 
@@ -54,12 +54,10 @@ result: grubhub_menu.py，11 分类，95 菜品，耗时约 20s
 **③ episodes** — 当日摘要索引
 
 ```markdown
----
-date: 2026-03-28 | sessions: 1 | key_skills: [crawler]
----
-## 今日摘要
+## 摘要
 进行 grubhub.com 菜单爬虫开发，获取 11 分类 95 菜品。
-关键用户反馈：验证结果正确。[daily-logs/2026-03-28/grubhub_menu_crawler.md]
+关键用户反馈：验证结果正确。
+→ [daily-logs/2026-03-28/grubhub_menu_crawler.md]
 ```
 
 **④ knowledge** — Wiki 知识页面（四类）
@@ -69,15 +67,15 @@ date: 2026-03-28 | sessions: 1 | key_skills: [crawler]
 - **feedback/** — 行为反馈（用户对 agent 行为的纠正或确认）
 - **reference/** — 外部参考（API 端点、工具文档、数据路径）
 
-**⑤ Promotion** — 常驻上下文三目标
+**⑤ 晋升为常驻知识** — 常驻上下文三目标
 
 | 文件 | 路径 | 内容 | 定位 |
 |---|---|---|---|
 | `preferences.md` | `~/` 用户级 | 沟通风格、工作方式、反馈偏好 | 跨项目用户画像 |
 | `soul.md` | `./` 项目级 | 技术判断原则、解题模式、决策倾向 | Agent 能力积累 |
-| `CLAUDE.md` | `./` 项目级 | 强制规则、禁止行为、开发规范 | 外部约束（<100行） |
+| `instructions.md` | `./` 项目级 | 强制规则、禁止行为、开发规范 | 外部约束（<100行） |
 
-> **稳定性验证：** 仅跨多个 session 反复出现的模式才执行 Promotion。一次性偶发行为停留在 ④ 不提升。
+> **稳定性验证：** 仅跨多个 session 反复出现的模式才执行晋升。一次性偶发行为停留在 ④ 不提升。
 
 ---
 
@@ -118,7 +116,7 @@ Domain Knowledge 不是被动检索的 flat files，而是 **LLM 增量构建和
 
 ### 2.3 Memory.md — Wiki 索引中枢
 
-Wiki 的平面索引，每条一行摘要 + 文件路径，按类别组织。是 agentic search 的唯一入口，始终加载进上下文。规模 <200 行，中等规模下无需 embedding-based RAG。
+Wiki 的平面索引，每条一行摘要 + 文件路径，按类别组织。是 agentic search 的唯一入口，始终加载进上下文。规模 <200 行。
 
 ```markdown
 # Wiki Index
@@ -159,7 +157,7 @@ Append-only 时间线，记录每次 Ingest / Query / Lint 操作。统一前缀
 
 ### 2.5 Wiki Page 格式
 
-纯 markdown，无 YAML frontmatter。标题即 h1，正文内通过 `refs:[]` 标记引用来源，`[[link]]` 关联相关页面，`refs:[](confuse)` 标记矛盾。
+正文内通过 `refs:[uri]` 标记引用来源，`refs:[uri](confuse)` 标记矛盾。
 
 ```markdown
 # SPA 爬虫策略
@@ -181,15 +179,7 @@ DOM 在虚拟化渲染下不可靠；API 响应更稳定且包含完整数据。
 refs: grubhub-2026-03-28, doordash-2026-04-10(confuse): headless 策略在 Grubhub 有效但 Doordash 检测 headless，结论冲突
 ```
 
-### 2.6 引用与交叉引用机制
-
-| 语法 | 位置 | 含义 |
-|---|---|---|
-| `refs: source-a, source-b` | 正文段落尾部 | 标记该段知识来源于哪些 daily-log |
-| `refs: source-a, source-b(confuse)` | 正文段落尾部 | 标记来源间存在矛盾 |
-| `[[page-name]]` | 正文任意位置 | 关联另一个 wiki 页面 |
-
-### 2.7 三种维护操作
+### 2.6 三种维护操作
 
 **Ingest（摄取）** — 从 Raw Sources 提取知识写入 Wiki
 
@@ -229,7 +219,7 @@ refs: grubhub-2026-03-28, doordash-2026-04-10(confuse): headless 策略在 Grubh
   1. 加载全部历史（② + ③ + ④ + 更早归档）
   2. 跨 session 聚合，识别稳定规律与一次性偏差
   3. Wiki Lint（矛盾检测、过期声明、孤立页面、缺失交叉引用）
-  4. Preference Promotion：稳定模式路由到 `preferences.md` / `soul.md` / `CLAUDE.md`
+  4. 晋升为常驻知识：稳定模式路由到 `preferences.md` / `soul.md` / `instructions.md`
   5. 重组 Memory.md 索引
 
 ### T4 · Session Close（快速快照）
@@ -267,7 +257,7 @@ refs: grubhub-2026-03-28, doordash-2026-04-10(confuse): headless 策略在 Grubh
 
 - `preferences.md` — 用户偏好（沟通风格、工作方式、反馈偏好）
 - `soul.md` — Agent 思维原则（技术判断、决策倾向、解题模式）
-- `CLAUDE.md` — 强制规则（项目约束、禁止行为、开发规范，<100行）
+- `instructions.md` — 强制规则（项目约束、禁止行为、开发规范，<100行）
 
 ### 按需加载（Agentic Search）
 
@@ -278,23 +268,10 @@ refs: grubhub-2026-03-28, doordash-2026-04-10(confuse): headless 策略在 Grubh
 ### 对话生命周期
 
 ```
-启动:    prefs + soul + CLAUDE.md 常驻注入 · Memory.md 按需
+启动:    prefs + soul + instructions.md 常驻注入 · Memory.md 按需
 对话中:  T1 Independent Agent 每10轮 读 Session → 写 ②③④ 提炼链
 随时:    T2 Main Agent 用户命令 · sync · Session → ② → ③ → ④ · 即时反馈
 关闭:    T4 Session Close 快摘要写 ② · 下次启动 T1 融合
-每日:    T3 Dream Task 读全部历史 → 深度整理 + Promotion → ⑤
+每日:    T3 Dream Task 读全部历史 → 深度整理 + 晋升 → ⑤
 ```
 
----
-
-## 5. 参考架构
-
-本设计参考 AFU (Agent Friendly Universal) Memory System 的渐进式提炼管道思想：
-
-- **Write-once, read-optimized** — 原始数据写入后不可变，提炼产物为读取优化
-- **Progressive summarization** — 从 raw → structured → indexed → synthesized 逐层压缩
-- **Separation of concerns** — 写入者、读取者、提炼者职责分离，各层独立演化
-
----
-
-*Knowledge System Design v2 · 2026-04 · core-ai project*
