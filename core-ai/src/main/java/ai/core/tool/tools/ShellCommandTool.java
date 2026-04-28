@@ -11,6 +11,7 @@ import ai.core.utils.InputStreamUtil;
 import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
 import core.framework.util.Strings;
+import io.undertow.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,24 +35,28 @@ public class ShellCommandTool extends ToolCall {
     private static final int DEFAULT_TIMEOUT_MILLISECONDS = 2 * 60 * 1000;
     private static final long ASYNC_TIMEOUT_SECONDS = 600;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
-    private static final String TOOL_DESC = Strings.format("""
-            Executes a given bash command and returns its output.
+    private static final String TOOL_DESC = """
+            Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
             
-            The working directory persists between commands, but shell state does not. The shell environment is initialized from the user's profile (bash or zsh).
+            Be aware: OS: ${os}
             
-            IMPORTANT: Avoid using this tool to run `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:
-            
-             - Read files: Use {} (NOT cat/head/tail)
-             - Edit files: Use {} (NOT sed/awk)
-             - Write files: Use {} (NOT echo >/cat <<EOF)
+            All commands run in the current working directory by default. Use the `workdir` parameter if you need to run a command in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workspace` instead.
+
+            IMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:
+
+             - Read files: Use ${tool_read_file} (NOT cat/head/tail)
+             - Edit files: Use ${tool_edit_file} (NOT sed/awk)
+             - File search: Use ${tool_glob} (NOT find or ls)
+             - Content search: Use ${tool_grep} (NOT grep or rg)
+             - Write files: Use ${tool_write_file} (NOT echo >/cat <<EOF)
              - Communication: Output text directly (NOT echo/printf)
-            While the {} tool can do similar things, it’s better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.
-            
+            While the ${tool_shell} tool can do similar things, it's better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.
+
             # Instructions
              - If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.
              - Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")
              - Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `cd`. You may use `cd` if the User explicitly requests it. In particular, never prepend `cd <current-directory>` to a `git` command — `git` already operates on the current working tree, and the compound triggers a permission prompt.
-             - You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). By default, your command will timeout after {}ms ({} minutes).
+             - You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). By default, your command will timeout after ${default_timeout_ms}ms (${default_timeout_minutes} minutes).
              - you can use the `mode` parameter indicates whether this is a read or write operation.
                 - "read": Only reads data, no modifications (e.g., ls, cat, grep, find without -delete). Permission may be auto-approved.
                 - "write": Modifies files or system state (e.g., rm, mkdir, echo >, sed -i). Requires explicit approval.
@@ -73,24 +78,24 @@ public class ShellCommandTool extends ToolCall {
               - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
               - If you must sleep, keep the duration short to avoid blocking the user.
              - When using `find -regex` with alternation, put the longest alternative first. Example: use `'.*\\.\\(tsx\\|ts\\)'` not `'.*\\.\\(ts\\|tsx\\)'` — the second form silently skips `.tsx` files.
-            
-            
+
+
             # Committing changes with git
-            
+
             Only create commits when requested by the user. If unclear, ask first. When the user asks you to create a new git commit, follow these steps carefully:
-            
+
             You can call multiple tools in a single response. When multiple independent pieces of information are requested and all commands are likely to succeed, run multiple tool calls in parallel for optimal performance. The numbered steps below indicate which commands should be batched in parallel.
-            
+
             Git Safety Protocol:
             - NEVER update the git config
-            - NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions\s
+            - NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions
             - NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
             - NEVER run force push to main/master, warn the user if they request it
             - CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen — so --amend would modify the PREVIOUS commit, which may result in destroying work or losing previous changes. Instead, after hook failure, fix the issue, re-stage, and create a NEW commit
             - When staging files, prefer adding specific files by name rather than using "git add -A" or "git add .", which can accidentally include sensitive files (.env, credentials) or large binaries
             - NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTANT to only commit when explicitly asked, otherwise the user will feel that you are being too proactive
-            
-            1. Run the following bash commands in parallel, each using the {} tool:
+
+            1. Run the following bash commands in parallel, each using the ${tool_shell} tool:
               - Run a git status command to see all untracked files. IMPORTANT: Never use the -uall flag as it can cause memory issues on large repos.
               - Run a git diff command to see both staged and unstaged changes that will be committed.
               - Run a git log command to see recent commit messages, so that you can follow this repository's commit message style.
@@ -106,10 +111,10 @@ public class ShellCommandTool extends ToolCall {
                - Run git status after the commit completes to verify success.
                Note: git status depends on the commit completing, so run it sequentially after the commit.
             4. If the commit fails due to pre-commit hook: fix the issue and create a NEW commit
-            
+
             Important notes:
             - NEVER run additional commands to read or explore code, besides git bash commands
-            - NEVER use the {} or Agent tools
+            - NEVER use the ${tool_todo} or ${tool_task} tools
             - DO NOT push to the remote repository unless the user explicitly asks you to do so
             - IMPORTANT: Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported.
             - IMPORTANT: Do not use --no-edit with git rebase commands, as the --no-edit flag is not a valid option for git rebase.
@@ -118,18 +123,18 @@ public class ShellCommandTool extends ToolCall {
             <example>
             git commit -m "$(cat <<'EOF'
                Commit message here.
-            
+
                Co-Authored-By: core-ai-cli <noreply@chancetop.com>
                EOF
                )"
             </example>
-            
+
             # Creating pull requests
-            Use the gh command via the {} tool for ALL GitHub-related tasks including working with issues, pull requests, checks, and releases. If given a Github URL use the gh command to get the information needed.
-            
+            Use the gh command via the ${tool_shell} tool for ALL GitHub-related tasks including working with issues, pull requests, checks, and releases. If given a Github URL use the gh command to get the information needed.
+
             IMPORTANT: When the user asks you to create a pull request, follow these steps carefully:
-            
-            1. Run the following bash commands in parallel using the {} tool, in order to understand the current state of the branch since it diverged from the main branch:
+
+            1. Run the following bash commands in parallel using the ${tool_shell} tool, in order to understand the current state of the branch since it diverged from the main branch:
                - Run a git status command to see all untracked files (never use -uall flag)
                - Run a git diff command to see both staged and unstaged changes that will be committed
                - Check if the current branch tracks a remote branch and is up to date with the remote, so you know if you need to push to the remote
@@ -145,22 +150,34 @@ public class ShellCommandTool extends ToolCall {
             gh pr create --title "the pr title" --body "$(cat <<'EOF'
             ## Summary
             <1-3 bullet points>
-            
+
             ## Test plan
             [Bulleted markdown checklist of TODOs for testing the pull request...]
-            
+
             🤖 Generated with core-ai-cli
             EOF
             )"
             </example>
-            
+
             Important:
-            - DO NOT use the {} or Agent tools
+            - DO NOT use the ${tool_todo} or ${tool_task} tools
             - Return the PR URL when you're done, so the user can see it
-            
+
             # Other common operations
             - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
-            """, ReadFileTool.TOOL_NAME, EditFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME, TOOL_NAME, DEFAULT_TIMEOUT_MILLISECONDS, DEFAULT_TIMEOUT_MILLISECONDS / 60000, WriteTodosTool.WT_TOOL_NAME, TOOL_NAME, WriteTodosTool.WT_TOOL_NAME, TOOL_NAME, TOOL_NAME);
+            """
+            .replace("${tool_read_file}", ReadFileTool.TOOL_NAME)
+            .replace("${tool_edit_file}", EditFileTool.TOOL_NAME)
+            .replace("${tool_glob}", GlobFileTool.TOOL_NAME)
+            .replace("${tool_grep}", GrepFileTool.TOOL_NAME)
+            .replace("${tool_write_file}", WriteFileTool.TOOL_NAME)
+            .replace("${tool_shell}", TOOL_NAME)
+            .replace("${default_timeout_ms}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS))
+            .replace("${default_timeout_minutes}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS / 60000))
+            .replace("${tool_todo}", WriteTodosTool.WT_TOOL_NAME)
+            .replace("${os}",System.getProperty("os.name"))
+            .replace("${tool_task}", TaskTool.TOOL_NAME);
+
 
     public static Builder builder() {
         return new Builder();
