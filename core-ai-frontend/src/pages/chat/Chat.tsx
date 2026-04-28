@@ -119,11 +119,22 @@ function normalizeArgs(argsJson: string | undefined): Record<string, unknown> | 
   }
 }
 
-function getArgDescription(argsJson: string | undefined): string | null {
+function getArgsPreview(argsJson: string | undefined): string | null {
   const args = normalizeArgs(argsJson);
   if (!args) return null;
+  // Prefer description if present
   if (typeof args.description === 'string' && args.description) return args.description;
-  return null;
+  // Otherwise show first few key-value pairs as a compact preview
+  const entries = Object.entries(args).filter(([k]) => k !== 'raw');
+  if (entries.length === 0) return null;
+  const preview = entries.slice(0, 2).map(([k, v]) => {
+    const val = typeof v === 'string' ? v : JSON.stringify(v);
+    // Truncate long values
+    const shortVal = val.length > 60 ? val.slice(0, 60) + '...' : val;
+    return `${k}: ${shortVal}`;
+  }).join(', ');
+  if (entries.length > 2) return preview + ', ...';
+  return preview;
 }
 
 function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
@@ -174,8 +185,8 @@ function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
             ({t.children!.length} sub-tools)
           </span>
         )}
-        {t.arguments && normalizeArgs(t.arguments) && getArgDescription(t.arguments) && (
-          <span className="opacity-70 truncate min-w-0">{getArgDescription(t.arguments)}</span>
+        {t.arguments && normalizeArgs(t.arguments) && getArgsPreview(t.arguments) && (
+          <span className="opacity-70 truncate min-w-0">{getArgsPreview(t.arguments)}</span>
         )}
         {t.type === 'result' && (
           <>
