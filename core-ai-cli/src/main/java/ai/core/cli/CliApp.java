@@ -178,17 +178,15 @@ public class CliApp {
 
     private ToolPermissionStore whiteToolsPermissionStore() {
         var permissionStore = new FileRuleBasedPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.json"));
-        permissionStore.allowDirs(List.of(
-                ReadFileTool.TOOL_NAME,
-                GlobFileTool.TOOL_NAME,
-                GrepFileTool.TOOL_NAME
-        ), workspace.toString());
         permissionStore.allow(WriteTodosTool.WT_TOOL_NAME);
         permissionStore.allow(TaskTool.TOOL_NAME);
         permissionStore.allow(WebFetchTool.TOOL_NAME);
         permissionStore.allow(WebSearchTool.TOOL_NAME);
         permissionStore.allow(AskUserTool.TOOL_NAME);
         permissionStore.allow(MemoryTool.TOOL_NAME);
+        permissionStore.allow(ReadFileTool.TOOL_NAME);
+        permissionStore.allow(GlobFileTool.TOOL_NAME);
+        permissionStore.allow(GrepFileTool.TOOL_NAME);
         return permissionStore;
 
     }
