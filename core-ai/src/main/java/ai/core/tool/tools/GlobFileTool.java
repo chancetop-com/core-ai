@@ -151,13 +151,17 @@ public class GlobFileTool extends ToolCall {
     private record FileMatch(String path, long mtime) {
     }
 
+    private static String cleanPath(String file) {
+        return file.replaceFirst("^\\./", "");
+    }
+
     private List<FileMatch> parseOutput(String rawOutput, File searchDir) {
         var lines = rawOutput.split("\n");
         List<FileMatch> matches = new ArrayList<>();
 
         for (String line : lines) {
             if (line.isEmpty()) continue;
-            var absolutePath = new File(searchDir, line).toPath();
+            var absolutePath = new File(searchDir, cleanPath(line)).toPath();
             matches.add(new FileMatch(absolutePath.toString(), RipGrepUtil.getModifyTime(absolutePath)));
         }
         return matches;
