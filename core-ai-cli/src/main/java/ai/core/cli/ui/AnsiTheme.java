@@ -121,21 +121,19 @@ public final class AnsiTheme {
                 continue;
             }
 
-            if ((c >= 0x4E00 && c <= 0x9FFF)   // CJK Unified Ideographs
-                    || (c >= 0x3000 && c <= 0x303F)  // CJK Symbols and Punctuation
-                    || (c >= 0xFF00 && c <= 0xFFEF)  // Halfwidth and Fullwidth Forms
-                    || (c >= 0xAC00 && c <= 0xD7AF)  // Hangul Syllables
-                    || (c >= 0x2600 && c <= 0x27BF)  // Misc Symbols + Dingbats (☁ ✅ ❌ ✈ …)
-                    || (c >= 0x2B00 && c <= 0x2BFF)) { // Misc Symbols and Arrows (⭐ …)
-                width += 2;
-                i++;
-                continue;
-            }
-
-            width++;
+            width += isWideChar(c) ? 2 : 1;
             i++;
         }
         return width;
+    }
+
+    public static boolean isWideChar(char c) {
+        return (c >= 0x4E00 && c <= 0x9FFF)   // CJK Unified Ideographs
+                || (c >= 0x3000 && c <= 0x303F)  // CJK Symbols and Punctuation
+                || (c >= 0xFF00 && c <= 0xFFEF)  // Halfwidth and Fullwidth Forms
+                || (c >= 0xAC00 && c <= 0xD7AF)  // Hangul Syllables
+                || (c >= 0x2600 && c <= 0x27BF)  // Misc Symbols + Dingbats (☁ ✅ ❌ ✈ …)
+                || (c >= 0x2B00 && c <= 0x2BFF);  // Misc Symbols and Arrows (⭐ …)
     }
 
     private AnsiTheme() {

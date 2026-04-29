@@ -288,20 +288,24 @@ public class OutputPanel {
                 case "IN_PROGRESS" -> AnsiTheme.WARNING + "\u25B6";
                 default -> AnsiTheme.MUTED + "\u25CB";
             };
-            String statusText = statusIcon + " " + formatStatus(todo.status) + AnsiTheme.RESET;
+            String statusCore = statusIcon + " " + formatStatus(todo.status);
+            String statusText = padToDisplayWidth(statusCore, statusWidth) + AnsiTheme.RESET;
             String content = wrapContent(todo.content, contentWidth);
 
             String[] contentLines = content.split("\n");
             for (int i = 0; i < contentLines.length; i++) {
                 writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u2502");
                 if (i == 0) {
-                    writer.printf(" %-13s ", statusText);
+                    writer.print(" ");
+                    writer.print(statusText);
+                    writer.print(" ");
                 } else {
                     writer.print(" ".repeat(statusWidth + 2));
-                    writer.print(" ");
                 }
                 writer.print("\u2502");
-                writer.printf(" %-" + contentWidth + "s ", contentLines[i]);
+                writer.print(" ");
+                writer.print(padToDisplayWidth(contentLines[i], contentWidth));
+                writer.print(" ");
                 writer.println("\u2502" + AnsiTheme.RESET);
             }
         }
@@ -332,9 +336,13 @@ public class OutputPanel {
         writer.println("\u256E" + AnsiTheme.RESET);
 
         writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u2502");
-        writer.printf(" %-13s ", "STATUS");
+        writer.print(" ");
+        writer.print(padToDisplayWidth("STATUS", statusWidth));
+        writer.print(" ");
         writer.print("\u2502");
-        writer.printf(" %-" + contentWidth + "s ", "TASK");
+        writer.print(" ");
+        writer.print(padToDisplayWidth("TASK", contentWidth));
+        writer.print(" ");
         writer.println("\u2502" + AnsiTheme.RESET);
 
         writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u251C");
@@ -352,10 +360,31 @@ public class OutputPanel {
         };
     }
 
-    private String wrapContent(String content, int width) {
+    private String wrapContent(String content, int maxDisplayWidth) {
         if (content == null) return "";
-        if (content.length() <= width) return content;
-        return content.substring(0, width - 3) + "...";
+        if (AnsiTheme.displayWidth(content) <= maxDisplayWidth) return content;
+        var sb = new StringBuilder();
+        int cur = 0;
+        int target = maxDisplayWidth - 3;
+        for (int i = 0; i < content.length(); i++) {
+            char c = content.charAt(i);
+            boolean surrogate = Character.isHighSurrogate(c) && i + 1 < content.length()
+                    && Character.isLowSurrogate(content.charAt(i + 1));
+            int w = surrogate || AnsiTheme.isWideChar(c) ? 2 : 1;
+            if (cur + w > target) break;
+            sb.append(c);
+            if (surrogate) {
+                sb.append(content.charAt(++i));
+            }
+            cur += w;
+        }
+        return sb + "...";
+    }
+
+    private static String padToDisplayWidth(String text, int targetWidth) {
+        int current = AnsiTheme.displayWidth(text);
+        if (current >= targetWidth) return text;
+        return text + " ".repeat(targetWidth - current);
     }
 
     public void endTurn() {
