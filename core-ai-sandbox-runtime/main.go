@@ -724,6 +724,7 @@ func minimalEnv() []string {
 		"LANG=en_US.UTF-8",
 		"PYTHONIOENCODING=utf-8",
 		"PYTHONDONTWRITEBYTECODE=1",
+		"PIP_USER=1",
 	}
 }
 

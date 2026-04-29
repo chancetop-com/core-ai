@@ -147,6 +147,7 @@ public class KubernetesPodSpecBuilder {
         env.add(Map.of("name", "HOME", "value", "/tmp"));
         env.add(Map.of("name", "LANG", "value", "en_US.UTF-8"));
         env.add(Map.of("name", "PYTHONIOENCODING", "value", "utf-8"));
+        env.add(Map.of("name", "PIP_USER", "value", "1"));
         env.add(Map.of("name", "MAX_ASYNC_TASKS", "value", String.valueOf(maxAsync)));
         return env;
     }
