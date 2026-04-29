@@ -341,10 +341,7 @@ func executeReadFile(args string) (string, string) {
 		return "file_path is required", "failed"
 	}
 
-	safePath, err := resolveSafePath(parsed.FilePath)
-	if err != nil {
-		return err.Error(), "failed"
-	}
+	safePath := resolvePath(parsed.FilePath)
 
 	data, err := os.ReadFile(safePath)
 	if err != nil {
@@ -390,10 +387,7 @@ func executeWriteFile(args string) (string, string) {
 		return "file_path is required", "failed"
 	}
 
-	safePath, err := resolveSafePath(parsed.FilePath)
-	if err != nil {
-		return err.Error(), "failed"
-	}
+	safePath := resolvePath(parsed.FilePath)
 
 	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 		return fmt.Sprintf("failed to create directory: %v", err), "failed"
@@ -418,10 +412,7 @@ func executeEditFile(args string) (string, string) {
 		return "file_path and old_string are required", "failed"
 	}
 
-	safePath, err := resolveSafePath(parsed.FilePath)
-	if err != nil {
-		return err.Error(), "failed"
-	}
+	safePath := resolvePath(parsed.FilePath)
 
 	data, err := os.ReadFile(safePath)
 	if err != nil {
@@ -460,11 +451,7 @@ func executeGlob(args string) (string, string) {
 
 	baseDir := workspaceDir
 	if parsed.Path != "" {
-		safe, err := resolveSafePath(parsed.Path)
-		if err != nil {
-			return err.Error(), "failed"
-		}
-		baseDir = safe
+		baseDir = resolvePath(parsed.Path)
 	}
 
 	var results []string
@@ -513,11 +500,7 @@ func executeGrep(args string) (string, string) {
 
 	baseDir := workspaceDir
 	if parsed.Path != "" {
-		safe, err := resolveSafePath(parsed.Path)
-		if err != nil {
-			return err.Error(), "failed"
-		}
-		baseDir = safe
+		baseDir = resolvePath(parsed.Path)
 	}
 
 	pattern := parsed.Pattern
@@ -600,26 +583,18 @@ func executeGrep(args string) (string, string) {
 
 // ---- Helpers ----
 
-func resolveSafePath(requested string) (string, error) {
+func resolvePath(requested string) string {
 	if !filepath.IsAbs(requested) {
 		requested = filepath.Join(workspaceDir, requested)
 	}
-	abs := filepath.Clean(requested)
-	if strings.HasPrefix(abs, workspaceDir) || strings.HasPrefix(abs, "/tmp") || strings.HasPrefix(abs, skillBaseDir) {
-		return abs, nil
-	}
-	return "", fmt.Errorf("path outside allowed directories: %s", requested)
+	return filepath.Clean(requested)
 }
 
 func sanitizePath(requested, defaultPath string) string {
 	if requested == "" {
 		return defaultPath
 	}
-	abs := filepath.Clean(requested)
-	if strings.HasPrefix(abs, "/workspace") || strings.HasPrefix(abs, "/tmp") || strings.HasPrefix(abs, skillBaseDir) {
-		return abs
-	}
-	return defaultPath
+	return filepath.Clean(requested)
 }
 
 // ---- Skill materialization ----
