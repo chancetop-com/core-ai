@@ -37,15 +37,11 @@ T3:(session close agent)   快速总结session 要点 -》写入  daily-logs ，
 
 ### knowledge层更新通知机制
 
-1、Knowledge 更新会将变跟日志  log.md （追加部分），同时通知到 main agent 。addKnowledgeLog 是需要知道主agent 关联。只通知，不更新systemprompt，避免缓存失效,
+1、触发压缩的时候，systemprompt Memory.md部分重建，一些会话中的内容如果沉淀到了 knowledge，压缩会丢失message 明细，用最新 memory 补偿丢失的上下文，有必要重建 systemprompt Memory.md部分。
 
-```
-  // Message.java 新增
-  @Property(name = "hidden")
-  public boolean hidden;
-```
 
-2、Resume ，systemprompt 部分重建，就会载入新的 Memory.md，更新message list 
+
+2、Resume ，systemprompt Memory.md部分重建，就会载入新的 Memory.md，更新message list 
 
 
 
