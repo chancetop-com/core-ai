@@ -4,6 +4,7 @@ import ai.core.AgentRuntimeException;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.Task;
+import ai.core.defaultagents.DefaultCodeSimplifierAgent;
 import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
@@ -170,6 +171,9 @@ public class TaskTool extends ToolCall {
         if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
             return DefaultExploreAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle());
         }
+        if (DefaultCodeSimplifierAgent.AGENT_NAME.equals(subagentType)) {
+            return DefaultCodeSimplifierAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle());
+        }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
     }
 
@@ -180,7 +184,10 @@ public class TaskTool extends ToolCall {
         }
 
         public TaskTool build() {
-            var subagentType = "- " + String.join(":", DefaultExploreAgent.AGENT_NAME, DefaultExploreAgent.AGENT_DESCRIPTION);
+            var subagentType = "- "
+                    + String.join(":", DefaultExploreAgent.AGENT_NAME, DefaultExploreAgent.AGENT_DESCRIPTION)
+                    + "\n- "
+                    + String.join(":", DefaultCodeSimplifierAgent.AGENT_NAME, DefaultCodeSimplifierAgent.AGENT_DESCRIPTION);
             this.name(TOOL_NAME);
             this.description(TOOL_DESC.replace("%s", subagentType));
             this.parameters(ToolCallParameters.of(

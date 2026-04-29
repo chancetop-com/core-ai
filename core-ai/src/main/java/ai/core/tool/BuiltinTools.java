@@ -8,6 +8,7 @@ import ai.core.tool.tools.PythonScriptTool;
 import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.ShellCommandTool;
 import ai.core.tool.tools.SummarizePdfTool;
+import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WebFetchTool;
 import ai.core.tool.tools.WebSearchTool;
 import ai.core.tool.tools.WriteFileTool;
@@ -24,6 +25,7 @@ public final class BuiltinTools {
     public static final List<ToolCall> ALL = List.of(
             // Plan
             WriteTodosTool.self(),
+            TaskTool.builder().build(),
             // File operations
             ReadFileTool.builder().build(),
             WriteFileTool.builder().build(),
@@ -42,7 +44,8 @@ public final class BuiltinTools {
     );
 
     public static final List<ToolCall> PLANNING = List.of(
-            WriteTodosTool.self()
+            WriteTodosTool.self(),
+            TaskTool.builder().build()
     );
 
     public static final List<ToolCall> FILE_OPERATIONS = List.of(
