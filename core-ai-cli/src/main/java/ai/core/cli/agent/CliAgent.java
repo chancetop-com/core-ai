@@ -94,7 +94,6 @@ public class CliAgent {
         List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
-        tools.add(TaskTool.builder().build());
         tools.add(SkillTool.builder()
                 .sources(skillConfig.getSources())
                 .maxFileSize(skillConfig.getMaxSkillFileSize())
