@@ -11,13 +11,13 @@ Session -> daily-logs ->episodes ->knowledge
 | session    | {项目文件名}/cli-{time}.data                         | ~/.core-ai          | 原始用户对话                                                 | 否       |
 | daily-logs | daily-logs/{date}/{taskName}.md                      | {项目文件}/.core-ai | 定期从session 中，总结相关任务，以任务日志的形式存在，重点记录 ：处理的任务描述、任务过程、agent遇到的障碍与以应对、用户反馈与应对、任务结果 | 是       |
 | episodes   | episodes/{date}.md                                   | {项目文件}/.core-ai | 按日汇总的，任务详情索引表。记录任务描述、对应daily-logs     | 是       |
-| knowledge  | Memory.md` + `log.md` + `knowledge/{type}/{name}.md` | {项目文件}/.core-ai | 三个文件，Memory.md作为知识索引（现在200条），log.md(只做的knowledge层变跟日志)，`knowledge/{type}/{name}.md   wiki 形式管理的知识详情 | 是       |
+| knowledge  | Memory.md` + `log.md` + `knowledge/{type}/{name}.md | {项目文件}/.core-ai |Memory.md作为知识索引（现在200条），log.md(只做的knowledge层变跟日志)，`knowledge/{type}/{name}.md   wiki 形式管理的知识详情|是|
 
 ### 触发方式
 
 T1（independent agent）: 根据用户对话情况，每10轮会话（或3分钟没有新的操作）尝试提取记忆。
 
-T2:(main agent) 在主对话框，用户直接要求记录相关历史，整理成记记忆
+T2:(main agent) 在主对话框，用户直接要求记录相关历史，整理成记忆
 
 T3:(session close agent)   快速总结session 要点 -》写入  daily-logs ，并记录相关daily-logs 未提取知识，下次启动时 通过T1触发处理未提取知识
 
@@ -29,15 +29,15 @@ T3:(session close agent)   快速总结session 要点 -》写入  daily-logs ，
 
 2、independent agent 的处理不做消息持久化，只记录处理日志
 
-3、轮次限制最多10轮，避免异常
+3、提取是告知上次提取内容和对应message uuid ，如果提取到内容更新游标 message uuid，否则不更新
+
+4、轮次限制最多10轮，避免异常
 
 
 
 ### knowledge层更新通知机制
 
-1、Knowledge 更新会将变跟日志  log.md （追加部分），同时通知到 main agent 。
-
-​	只通知，不更新systemprompt，避免缓存失效
+1、Knowledge 更新会将变跟日志  log.md （追加部分），同时通知到 main agent 。addKnowledgeLog 是需要知道主agent 关联。只通知，不更新systemprompt，避免缓存失效,
 
 ```
   // Message.java 新增
@@ -141,7 +141,7 @@ result: grubhub_menu.py，11 分类，95 菜品，耗时约 20s
 
 以tool 的形式对外提供添加和删除，添加
 
-​		addknowledgelog(String logInfo)
+​		addKnowledgeLog(String logInfo)
 
 参数格式：
 
@@ -171,7 +171,7 @@ result: grubhub_menu.py，11 分类，95 菜品，耗时约 20s
 - 修复: 统一 headless 策略描述
 ```
 
-deleteknowledgelog(String logName)
+deleteKnowledgeLog(String logName)
 
 ```
 ## [2026-03-28] ingest | grubhub 菜单爬虫
