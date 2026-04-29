@@ -1,97 +1,110 @@
 package ai.core.tool.tools;
 
+import ai.core.AgentRuntimeException;
+import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import ai.core.vender.VendorManagement;
 import ai.core.vender.vendors.RipgrepVendor;
-import com.fasterxml.jackson.databind.JsonNode;
+import core.framework.util.Strings;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author stephen
  */
 public class GrepFileTool extends ToolCall {
     public static final String TOOL_NAME = "grep_file";
+    private static final int MAX_MATCHES = 100;
+    private static final int MAX_LINE_LENGTH = 2000;
+    private static final int MAX_READ_LINES = 10000;
 
     private static final String TOOL_DESC = """
-            A powerful search tool built on ripgrep
-            
-              Usage:
-              - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
-              - Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
-              - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
-              - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
-              - Use Task tool for open-ended searches requiring multiple rounds
-              - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\\{\\}` to find `interface{}` in Go code)
-              - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \\{[\\s\\S]*?field`, use `multiline: true`
-            
-            """;
+            - Fast content search tool that works with any codebase size
+            - Searches file contents using regular expressions
+            - Supports full regex syntax (eg. "log.*Error", "function\\s+\\w+", etc.)
+            - Filter files by pattern with the include parameter (eg. "*.js", "*.{ts,tsx}")
+            - Returns file paths and line numbers with at least one match sorted by modification time
+            - Use this tool when you need to find files containing specific patterns
+            - If you need to identify/count the number of matches within files, use the Bash tool with `rg` (ripgrep) directly. Do NOT use `grep`.
+            - When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the `${tool_task}` tool instead
+            """.replace("${tool_task}", TaskTool.TOOL_NAME);
 
     public static Builder builder() {
         return new Builder();
     }
 
     @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
+        return doExecute(arguments, context);
+    }
+
+    @Override
     public ToolCallResult execute(String text) {
+        throw new AgentRuntimeException(TOOL_NAME, "run requires ExecutionContext");
+    }
+
+    private ToolCallResult doExecute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         Process process = null;
         try {
-            // Parse input parameters
-            var params = JsonUtil.OBJECT_MAPPER.readTree(text);
+            var argsMap = parseArguments(text);
+            var pattern = getStringValue(argsMap, "pattern");
+            var searchPath = getStringValue(argsMap, "path");
+            var include = getStringValue(argsMap, "include");
 
-            // Get ripgrep executable path
-            var rgPath = VendorManagement.getInstance().getExecutablePath(RipgrepVendor.class);
+            var absoluteSearchPath = resolveAbsolutePath(context, searchPath);
 
-            // Build ripgrep command
-            var command = buildRipgrepCommand(rgPath.toString(), params);
-
-            // Execute ripgrep
-            var pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
-
-            process = pb.start();
-
-            // Read output with interruption check
-            var output = readProcessOutput(process);
-
-            // Wait for process with timeout (use tool timeout minus elapsed time)
-            long elapsed = System.currentTimeMillis() - startTime;
-            long remainingTimeout = Math.max(1000, getTimeoutMs() - elapsed);
-            boolean finished = process.waitFor(remainingTimeout, TimeUnit.MILLISECONDS);
-
-            if (!finished) {
-                process.destroyForcibly();
-                return ToolCallResult.failed("Ripgrep process timed out")
+            var searchCtx = resolveSearchContext(absoluteSearchPath);
+            if (searchCtx == null) {
+                return ToolCallResult.failed("Error: path does not exist: " + searchPath)
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            int exitCode = process.exitValue();
+            var rgPath = VendorManagement.getInstance().getExecutablePath(RipgrepVendor.class);
+            var command = buildRipGrepCommand(rgPath.toString(), pattern, include, searchCtx.file);
 
-            // Exit code 0 = matches found, 1 = no matches, 2+ = error
-            if (exitCode > 1) {
+            var pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            pb.directory(searchCtx.cwd);
+            process = pb.start();
+
+            var processResult = RipGrepUtil.executeProcess(process, MAX_READ_LINES, getTimeoutMs());
+            int exitCode = processResult.exitCode();
+            var output = processResult.output();
+
+            if (exitCode > 2) {
                 return ToolCallResult.failed("Error executing ripgrep (exit code " + exitCode + "): " + output)
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
             if (output.isEmpty()) {
-                return ToolCallResult.completed("No matches found")
+                return ToolCallResult.completed("No files found")
                         .withDuration(System.currentTimeMillis() - startTime)
-                        .withStats("pattern", params.path("pattern").asText());
+                        .withStats("pattern", pattern);
             }
 
-            return ToolCallResult.completed(output.trim())
+            var result = formatResults(output, searchCtx.cwd, exitCode == 2);
+            return ToolCallResult.completed(result)
                     .withDuration(System.currentTimeMillis() - startTime)
-                    .withStats("pattern", params.path("pattern").asText());
+                    .withStats("pattern", pattern);
 
+        } catch (RipGrepUtil.RipGrepTimeoutException e) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            return ToolCallResult.failed("Ripgrep process timed out")
+                    .withDuration(System.currentTimeMillis() - startTime);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             process.destroyForcibly();
@@ -106,100 +119,162 @@ public class GrepFileTool extends ToolCall {
         }
     }
 
-    private String readProcessOutput(Process process) throws IOException, InterruptedException {
-        var output = new StringBuilder();
-        try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line = reader.readLine();
-            while (line != null) {
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new InterruptedException("Read interrupted");
-                }
-                output.append(line).append('\n');
-                line = reader.readLine();
+    private static String resolveAbsolutePath(ExecutionContext context, String searchPath) {
+        if (Strings.isBlank(searchPath)) {
+            searchPath = RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME);
+        } else {
+            var path = Paths.get(searchPath);
+            if (!path.isAbsolute()) {
+                var workspace = RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME);
+                searchPath = Paths.get(workspace).resolve(searchPath).toString();
             }
         }
-        return output.toString();
+        return searchPath;
     }
 
-    private List<String> buildRipgrepCommand(String rgPath, JsonNode params) {
+    private record SearchContext(File cwd, String file) {
+    }
+
+    private SearchContext resolveSearchContext(String searchPath) {
+        var path = Paths.get(searchPath);
+        if (!Files.exists(path)) {
+            return null;
+        }
+        if (Files.isDirectory(path)) {
+            return new SearchContext(path.toFile(), null);
+        }
+        return new SearchContext(path.getParent().toFile(), path.getFileName().toString());
+    }
+
+    private List<String> buildRipGrepCommand(String rgPath, String pattern, String include, String file) {
         var command = new ArrayList<String>();
         command.add(rgPath);
-        command.add(params.path("pattern").asText());
+        command.add("--no-config");
+        command.add("--json");
+        command.add("--hidden");
+        command.add("--no-messages");
+        command.add("--glob=!.git/*");
 
-        addOptionalSearchPath(command, params);
-        addFileFilters(command, params);
-        addSearchOptions(command, params);
-        addOutputMode(command, params);
+        if (!Strings.isBlank(include)) {
+            command.add("--glob=" + include);
+        }
+
+        command.add("--");
+        command.add(pattern);
+
+        if (!Strings.isBlank(file)) {
+            command.add(file);
+        } else {
+            command.add(".");
+        }
 
         return command;
     }
 
-    private void addOptionalSearchPath(List<String> command, JsonNode params) {
-        if (params.has("path") && !params.get("path").isNull()) {
-            command.add(params.get("path").asText());
+    private record GrepMatch(String filePath, int lineNumber, String text) {
+    }
+
+    private String formatResults(String rawOutput, File cwd, boolean partial) {
+        var lines = rawOutput.split("\n");
+        var matches = new ArrayList<GrepMatch>();
+
+        for (String line : lines) {
+            if (line.isEmpty()) continue;
+            var match = parseJsonMatch(line);
+            if (match != null) {
+                matches.add(match);
+            }
+        }
+
+        if (matches.isEmpty()) {
+            return "No files found";
+        }
+
+        var fileTime = getFileTimes(matches, cwd);
+
+        matches.sort(Comparator.comparingLong(
+                (GrepMatch m) -> fileTime.getOrDefault(m.filePath(), 0L)
+        ).reversed());
+
+        return buildOutput(matches, cwd, partial);
+    }
+
+    private static String cleanPath(String file) {
+        return file.replaceFirst("^\\./", "");
+    }
+
+    private GrepMatch parseJsonMatch(String line) {
+        try {
+            var node = JsonUtil.OBJECT_MAPPER.readTree(line);
+            if (!"match".equals(node.path("type").asText())) {
+                return null;
+            }
+            var data = node.path("data");
+            var filePath = cleanPath(data.path("path").path("text").asText());
+            var lineNumber = data.path("line_number").asInt();
+            var text = data.path("lines").path("text").asText();
+            return new GrepMatch(filePath, lineNumber, text);
+        } catch (Exception e) {
+            return null;
         }
     }
 
-    private void addFileFilters(List<String> command, JsonNode params) {
-        if (params.has("glob") && !params.get("glob").isNull()) {
-            command.add("--glob");
-            command.add(params.get("glob").asText());
-        }
+    private Map<String, Long> getFileTimes(List<GrepMatch> matches, File cwd) {
+        var uniqueFiles = matches.stream()
+                .map(GrepMatch::filePath)
+                .distinct()
+                .toList();
 
-        if (params.has("type") && !params.get("type").isNull()) {
-            command.add("--type");
-            command.add(params.get("type").asText());
-        }
+        var mTime = new ConcurrentHashMap<String, Long>(uniqueFiles.size());
+        uniqueFiles.parallelStream().forEach(file -> {
+            mTime.put(file, RipGrepUtil.getModifyTime(new File(cwd, file).toPath()));
+        });
+        return mTime;
     }
 
-    private void addSearchOptions(List<String> command, JsonNode params) {
-        if (params.has("-i") && params.get("-i").asBoolean()) {
-            command.add("-i");
+    private String buildOutput(List<GrepMatch> matches, File cwd, boolean partial) {
+        int total = matches.size();
+        boolean truncated = total > MAX_MATCHES;
+        if (truncated) {
+            matches = matches.subList(0, MAX_MATCHES);
         }
 
-        if (params.has("multiline") && params.get("multiline").asBoolean()) {
-            command.add("-U");
-            command.add("--multiline-dotall");
-        }
-    }
-
-    private void addOutputMode(List<String> command, JsonNode params) {
-        var outputMode = params.has("output_mode") ? params.get("output_mode").asText() : "files_with_matches";
-        switch (outputMode) {
-            case "files_with_matches":
-                command.add("-l");
-                break;
-            case "count":
-                command.add("--count");
-                break;
-            case "content":
-                addContentModeOptions(command, params);
-                break;
-            default:
-                // Default to files_with_matches
-                command.add("-l");
-                break;
-        }
-    }
-
-    private void addContentModeOptions(List<String> command, JsonNode params) {
-        boolean showLineNumbers = !params.has("-n") || params.get("-n").asBoolean();
-        if (showLineNumbers) {
-            command.add("-n");
+        var output = new StringBuilder(128);
+        output.append("Found ").append(total).append(" matches");
+        if (truncated) {
+            output.append(" (showing first ").append(MAX_MATCHES).append(")");
         }
 
-        if (params.has("-A") && !params.get("-A").isNull()) {
-            command.add("-A");
-            command.add(params.get("-A").asText());
+        String currentFile = "";
+        for (var match : matches) {
+            if (!currentFile.equals(match.filePath())) {
+                if (!currentFile.isEmpty()) {
+                    output.append('\n');
+                }
+                currentFile = match.filePath();
+                var absolutePath = new File(cwd, match.filePath()).toString();
+                output.append('\n').append(absolutePath).append(':');
+            }
+            var text = match.text().length() > MAX_LINE_LENGTH
+                    ? match.text().substring(0, MAX_LINE_LENGTH) + "..."
+                    : match.text();
+            output.append('\n').append("  Line ").append(match.lineNumber()).append(": ").append(text);
         }
-        if (params.has("-B") && !params.get("-B").isNull()) {
-            command.add("-B");
-            command.add(params.get("-B").asText());
+
+        if (truncated) {
+            output.append('\n').append('\n');
+            output.append("(Results truncated: showing ").append(MAX_MATCHES)
+                    .append(" of ").append(total).append(" matches (")
+                    .append(total - MAX_MATCHES)
+                    .append(" hidden). Consider using a more specific path or pattern.)");
         }
-        if (params.has("-C") && !params.get("-C").isNull()) {
-            command.add("-C");
-            command.add(params.get("-C").asText());
+
+        if (partial) {
+            output.append('\n').append('\n');
+            output.append("(Some paths were inaccessible and skipped)");
         }
+
+        return output.toString().trim();
     }
 
     public static class Builder extends ToolCall.Builder<Builder, GrepFileTool> {
@@ -212,18 +287,9 @@ public class GrepFileTool extends ToolCall {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
-                    ToolCallParameters.ParamSpec.of(String.class, "pattern", "The regular expression pattern to search for in file contents").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "path", "File or directory to search in (rg PATH). Defaults to current working directory.").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "glob", "Glob pattern to filter files (e.g. \"*.js\", \"*.{ts,tsx}\") - maps to rg --glob"),
-                    ToolCallParameters.ParamSpec.of(String.class, "output_mode", "Output mode: \"content\" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), \"files_with_matches\" shows file paths (supports head_limit), \"count\" shows match counts (supports head_limit). Defaults to \"files_with_matches\".").enums(List.of("content", "files_with_matches", "count")),
-                    ToolCallParameters.ParamSpec.of(Integer.class, "-B", "Number of lines to show before each match (rg -B). Requires output_mode: \"content\", ignored otherwise."),
-                    ToolCallParameters.ParamSpec.of(Integer.class, "-A", "Number of lines to show after each match (rg -A). Requires output_mode: \"content\", ignored otherwise."),
-                    ToolCallParameters.ParamSpec.of(Integer.class, "-C", "Number of lines to show before and after each match (rg -C). Requires output_mode: \"content\", ignored otherwise."),
-                    ToolCallParameters.ParamSpec.of(Boolean.class, "-n", "Show line numbers in output (rg -n). Requires output_mode: \"content\", ignored otherwise. Defaults to true."),
-                    ToolCallParameters.ParamSpec.of(Boolean.class, "-i", "Case insensitive search (rg -i)"),
-                    ToolCallParameters.ParamSpec.of(String.class, "type", "File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types."),
-                    ToolCallParameters.ParamSpec.of(Integer.class, "head_limit", "Limit output to first N lines/entries, equivalent to \"| head -N\". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults based on \"cap\" experiment value: 0 (unlimited), 20, or 100."),
-                    ToolCallParameters.ParamSpec.of(Boolean.class, "multiline", "Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false.")
+                    ToolCallParameters.ParamSpec.of(String.class, "pattern", "The regex pattern to search for in file contents").required(),
+                    ToolCallParameters.ParamSpec.of(String.class, "path", "The directory to search in. Defaults to the current working directory."),
+                    ToolCallParameters.ParamSpec.of(String.class, "include", "File pattern to include in the search (e.g. \"*.js\", \"*.{ts,tsx}\")")
             ));
             var tool = new GrepFileTool();
             build(tool);
