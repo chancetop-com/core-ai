@@ -1,22 +1,19 @@
 package ai.core.tool.tools;
 
+import ai.core.AgentRuntimeException;
+import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.vender.VendorManagement;
+import ai.core.vender.vendors.RipgrepVendor;
 import core.framework.util.Strings;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.FileSystems;
-import java.nio.file.FileVisitResult;
+import java.io.File;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -27,21 +24,20 @@ import java.util.List;
 public class GlobFileTool extends ToolCall {
     public static final String TOOL_NAME = "glob_file";
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(GlobFileTool.class);
-    private static final int MAX_RESULTS = 1000;
+    private static final int MAX_RESULTS = 100;
 
     private static final String TOOL_DESC = """
             - Fast file pattern matching tool that works with any codebase size
-            
+
             - Supports glob patterns like "**/*.js" or "src/**/*.ts"
-            
+
             - Returns matching file paths sorted by modification time
-            
+
             - Use this tool when you need to find files by name patterns
-            
+
             - When you are doing an open ended search that may require multiple rounds of
             globbing and grepping, use the Agent tool instead
-            
+
             - You have the capability to call multiple tools in a single response. It is
             always better to speculatively perform multiple searches as a batch that are
             potentially useful.
@@ -52,119 +48,148 @@ public class GlobFileTool extends ToolCall {
     }
 
     @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
+        return doExecute(arguments, context);
+    }
+
+    @Override
     public ToolCallResult execute(String text) {
+        throw new AgentRuntimeException(TOOL_NAME, "run requires ExecutionContext");
+    }
+
+    private ToolCallResult doExecute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
+        Process process = null;
         try {
             var argsMap = parseArguments(text);
             var pattern = getStringValue(argsMap, "pattern");
-            var path = getStringValue(argsMap, "path");
+            var searchPath = getStringValue(argsMap, "path");
 
             if (Strings.isBlank(pattern)) {
                 return ToolCallResult.failed("Error: pattern parameter is required")
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
-            var result = globFiles(pattern, path);
+            if (Strings.isBlank(searchPath)) {
+                searchPath = RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME);
+            }
+
+            var searchDir = resolveSearchDir(searchPath);
+            if (searchDir == null) {
+                return ToolCallResult.failed("Error: path must be a directory: " + searchPath)
+                        .withDuration(System.currentTimeMillis() - startTime);
+            }
+
+            var rgPath = VendorManagement.getInstance().getExecutablePath(RipgrepVendor.class);
+            var command = buildRipGrepCommand(rgPath.toString(), pattern, searchDir);
+
+            var pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            pb.directory(searchDir);
+            process = pb.start();
+            var processResult = RipGrepUtil.executeProcess(process, MAX_RESULTS + 1, getTimeoutMs());
+            int exitCode = processResult.exitCode();
+            var output = processResult.output();
+
+            if (exitCode > 1) {
+                return ToolCallResult.failed("Error executing ripgrep (exit code " + exitCode + "): " + output)
+                        .withDuration(System.currentTimeMillis() - startTime);
+            }
+
+            if (output.isEmpty()) {
+                return ToolCallResult.completed("No files found")
+                        .withDuration(System.currentTimeMillis() - startTime)
+                        .withStats("pattern", pattern);
+            }
+
+            var result = formatResults(output, searchDir);
             return ToolCallResult.completed(result)
                     .withDuration(System.currentTimeMillis() - startTime)
                     .withStats("pattern", pattern);
+
+        } catch (RipGrepUtil.RipGrepTimeoutException e) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            return ToolCallResult.failed("Ripgrep process timed out")
+                    .withDuration(System.currentTimeMillis() - startTime);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            process.destroyForcibly();
+            return ToolCallResult.failed("Glob interrupted")
+                    .withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
-            var error = "Failed to parse glob file arguments: " + e.getMessage();
-            return ToolCallResult.failed(error, e)
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            return ToolCallResult.failed("Error executing glob: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
-    private String globFiles(String pattern, String searchPath) {
-        var basePath = validateAndGetBasePath(searchPath);
-        if (basePath == null) {
-            return searchPath == null ? "Error: Invalid path" : "Error: Directory does not exist or is not a directory: " + searchPath;
-        }
-
-        try {
-            var matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
-            var matches = new ArrayList<FileMatch>();
-
-            var visitor = new GlobFileVisitor(basePath, matcher, matches);
-            Files.walkFileTree(basePath, visitor);
-
-            return formatResults(pattern, matches);
-        } catch (IOException e) {
-            var error = "Error searching files: " + e.getMessage();
-            LOGGER.error(error, e);
-            return error;
-        }
+    private List<String> buildRipGrepCommand(String rgPath, String pattern, File searchDir) {
+        var command = new ArrayList<String>();
+        command.add(rgPath);
+        command.add("--no-config");
+        command.add("--files");
+        command.add("--hidden");
+        command.add("--glob=!.git/*");
+        command.add("--glob");
+        command.add(pattern);
+        command.add(".");
+        return command;
     }
 
-    private Path validateAndGetBasePath(String searchPath) {
-        if (Strings.isBlank(searchPath)) {
-            Path basePath = Paths.get(System.getProperty("user.dir"));
-            LOGGER.debug("Using current working directory: {}", basePath);
-            return basePath;
-        }
-
-        Path basePath = Paths.get(searchPath);
-        if (!Files.exists(basePath) || !Files.isDirectory(basePath)) {
+    private File resolveSearchDir(String searchPath) {
+        var path = Paths.get(searchPath);
+        if (!Files.exists(path) || !Files.isDirectory(path)) {
             return null;
         }
-        LOGGER.debug("Searching in directory: {}", basePath);
-        return basePath;
+        return path.toFile();
     }
 
-    private String formatResults(String pattern, List<FileMatch> matches) {
+    private record FileMatch(String path, long mtime) {
+    }
+
+    private List<FileMatch> parseOutput(String rawOutput, File searchDir) {
+        var lines = rawOutput.split("\n");
+        List<FileMatch> matches = new ArrayList<>();
+
+        for (String line : lines) {
+            if (line.isEmpty()) continue;
+            var absolutePath = new File(searchDir, line).toPath();
+            matches.add(new FileMatch(absolutePath.toString(), RipGrepUtil.getModifyTime(absolutePath)));
+        }
+        return matches;
+    }
+
+    private String formatResults(String rawOutput, File searchDir) {
+        List<FileMatch> matches = parseOutput(rawOutput, searchDir);
+
         if (matches.isEmpty()) {
-            LOGGER.debug("No files found matching pattern: {}", pattern);
-            return "No files found matching pattern: " + pattern;
+            return "No files found";
         }
 
-        matches.sort(Comparator.comparingLong(FileMatch::lastModified).reversed());
+        matches.sort(Comparator.comparingLong(FileMatch::mtime).reversed());
+
+        boolean truncated = matches.size() > MAX_RESULTS;
+        if (truncated) {
+            matches = matches.subList(0, MAX_RESULTS);
+        }
 
         var result = new StringBuilder(64);
-        result.append("Found ").append(matches.size()).append(" file(s) matching pattern '").append(pattern).append("':\n");
         for (FileMatch match : matches) {
             result.append(match.path()).append('\n');
         }
 
-        LOGGER.debug("Found {} file(s) matching pattern: {}", matches.size(), pattern);
+        if (truncated) {
+            result.append('\n');
+            result.append("(Results are truncated: showing first ").append(MAX_RESULTS)
+                    .append(" results. Consider using a more specific path or pattern.)");
+        }
+
         return result.toString().trim();
     }
-
-    private static class GlobFileVisitor extends SimpleFileVisitor<Path> {
-        private final Path basePath;
-        private final PathMatcher matcher;
-        private final List<FileMatch> matches;
-
-        GlobFileVisitor(Path basePath, PathMatcher matcher, List<FileMatch> matches) {
-            this.basePath = basePath;
-            this.matcher = matcher;
-            this.matches = matches;
-        }
-
-        @NotNull
-        @Override
-        public FileVisitResult visitFile(Path file, @NotNull BasicFileAttributes attrs) {
-            var relativePath = basePath.relativize(file);
-            if (matcher.matches(relativePath) || matcher.matches(file.getFileName())) {
-                matches.add(new FileMatch(file, attrs.lastModifiedTime().toMillis()));
-            }
-
-            if (matches.size() >= MAX_RESULTS) {
-                return FileVisitResult.TERMINATE;
-            }
-            return FileVisitResult.CONTINUE;
-        }
-
-        @NotNull
-        @Override
-        public FileVisitResult visitFileFailed(Path file, IOException exc) {
-            LOGGER.warn("Failed to visit file: {}, error: {}", file, exc.getMessage());
-            return FileVisitResult.CONTINUE;
-        }
-    }
-
-    private record FileMatch(Path path, long lastModified) {
-    }
-
 
     public static class Builder extends ToolCall.Builder<Builder, GlobFileTool> {
         @Override
@@ -177,7 +202,7 @@ public class GlobFileTool extends ToolCall {
             this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "pattern", "The glob pattern to match files against").required(),
-                    ToolCallParameters.ParamSpec.of(String.class, "path", "The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter \"undefined\" or \"null\" - simply omit it for the default behavior. Must be a valid directory path if provided.").required()
+                    ToolCallParameters.ParamSpec.of(String.class, "path", "The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter \"undefined\" or \"null\" - simply omit it for the default behavior. Must be a valid directory path if provided.")
             ));
             var tool = new GlobFileTool();
             build(tool);
