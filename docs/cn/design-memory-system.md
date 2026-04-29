@@ -35,7 +35,7 @@ T3:(session close agent)   快速总结session 要点 -》写入  daily-logs ，
 
 
 
-### knowledge层更新通知机制
+### knowledge层更新影响点
 
 1、触发压缩的时候，systemprompt Memory.md部分重建，一些会话中的内容如果沉淀到了 knowledge，压缩会丢失message 明细，用最新 memory 补偿丢失的上下文，有必要重建 systemprompt Memory.md部分。
 
