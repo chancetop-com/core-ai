@@ -580,23 +580,23 @@ description: 项目/技术维度的知识，踩坑解法、
 ---</span>
 
 <span style="color:#fbbf24;">## 踩坑与解法</span>
-<span style="color:#a78bfa;">### networkidle 超时</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#a78bfa;">### networkidle 超时</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 - <span style="color:#f87171;">现象</span>: Timeout 30000ms，SPA 持续后台请求
 - <span style="color:#4ade80;">解法</span>: 改用目标元素出现作为就绪信号
 
-<span style="color:#a78bfa;">### Virtual Scroll 数据丢失</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#a78bfa;">### Virtual Scroll 数据丢失</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 - <span style="color:#f87171;">现象</span>: 滚动后 section 从 4 变 1
 - <span style="color:#4ade80;">解法</span>: 放弃 DOM，改为 API 拦截
 
-<span style="color:#a78bfa;">### feed API 返回空结果</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#a78bfa;">### feed API 返回空结果</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 - <span style="color:#f87171;">现象</span>: enhanced_feed 只是骨架
 - <span style="color:#4ade80;">解法</span>: 遍历点击分类 tab，每次 0.6s 间隔
 
-<span style="color:#a78bfa;">### nodriver handler 注入失效</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#a78bfa;">### nodriver handler 注入失效</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 - <span style="color:#f87171;">现象</span>: functools.partial 覆盖自动注入
 - <span style="color:#4ade80;">解法</span>: `async def handler(event, tab=None)`
 
-<span style="color:#a78bfa;">### ResponseReceived body 未就绪</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#a78bfa;">### ResponseReceived body 未就绪</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 - <span style="color:#f87171;">现象</span>: get_response_body 抛异常
 - <span style="color:#4ade80;">解法</span>: 两阶段拦截，LoadingFinished 才读 body
 
@@ -605,7 +605,7 @@ description: 项目/技术维度的知识，踩坑解法、
 - 页面就绪：等待导航元素，不用 networkidle
 - 两阶段拦截：ResponseReceived→ID，LoadingFinished→body
 - 反爬：headless=False 效果最佳
-<span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span></pre>
+<span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span></pre>
         </div>
 
         <!-- user -->
@@ -620,14 +620,14 @@ description: 用户角色、工作风格、目标偏好、
              技术背景等跨项目持久信息
 ---</span>
 
-<span style="color:#fbbf24;">## 爬虫任务偏好</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#fbbf24;">## 爬虫任务偏好</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 任务完成后用户会主动要求提炼
 "可复用模式"，重视跨项目经验
 积累。
 → 每次爬虫完成后主动建议提炼
   并写入 knowledge/project/。
 
-<span style="color:#fbbf24;">## 交付标准</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#fbbf24;">## 交付标准</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 用户以实际抓取数量验收结果：
 grubhub 案例：11 分类，95 菜品，
 耗时 ~20s 被视为达标。</pre>
@@ -645,13 +645,13 @@ description: 用户对 agent 行为的纠正或确认，
              指导 agent 未来的处理方式
 ---</span>
 
-<span style="color:#fbbf24;">## 探索策略：优先拦截 API</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#fbbf24;">## 探索策略：优先拦截 API</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 用户接受了从 DOM 切换到 API 拦截
 的建议，未提出异议。
 → 对 SPA 站点，agent 应主动推荐
   API 拦截方案，不必等用户确认。
 
-<span style="color:#fbbf24;">## 结果验证方式</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#fbbf24;">## 结果验证方式</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 用户以数量（分类数 × 菜品数）验
 证结果，不逐条核对内容。
 → 汇报时给出数量摘要即可。</pre>
@@ -669,7 +669,7 @@ description: 外部系统的指针与查阅入口，
              API 端点、工具文档、数据路径
 ---</span>
 
-<span style="color:#fbbf24;">## grubhub 菜单 API</span> <span style="color:#475569;font-size:0.85em;">refs: 2026-03-28-grubhub_menu_crawler</span>
+<span style="color:#fbbf24;">## grubhub 菜单 API</span> <span style="color:#475569;font-size:0.85em;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 
 | 端点                              | 用途         |
 |----------------------------------|------------|
@@ -695,7 +695,7 @@ description: 外部系统的指针与查阅入口，
             </div>
             <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:0.9rem 1rem;font-size:0.75rem;line-height:1.65;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#fbbf24;">## 爬虫任务完成后</span>
 用户在任务完成后会主动
-要求提炼"可复用模式"。(source: grubhub-2026-03-28)
+要求提炼"可复用模式"。source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]
 每次爬虫完成后，主动
 提议提炼并写入知识库。
 
@@ -817,7 +817,7 @@ headless=True 反爬效果差，
 
             <!-- Cross-reference illustration -->
             <rect x="294" y="262" width="512" height="48" rx="7" fill="rgba(34,211,238,0.04)" stroke="rgba(34,211,238,0.15)" stroke-width="1"/>
-            <text x="550" y="280" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">交叉引用网络：正文内 refs:[] 标记具体引用位置 · [[link]] 关联相关页面 · 按需加载读取</text>
+            <text x="550" y="280" text-anchor="middle" font-size="9" fill="#22d3ee" font-family="sans-serif">交叉引用网络：refs:[] 标记 Wiki 引用 · source:[] 标记 daily-logs 来源 · [[link]] 关联页面 · 按需加载</text>
             <text x="550" y="298" text-anchor="middle" font-size="8" fill="#64748b" font-family="sans-serif">新来源可能更新 10-15 个页面 · 矛盾标记 refs:[](confuse) · Memory.md 始终加载，wiki pages 按需展开</text>
 
             <!-- Operations -->
@@ -838,8 +838,7 @@ headless=True 反爬效果差，
             <rect x="638" y="342" width="168" height="72" rx="7" fill="rgba(251,191,36,0.06)" stroke="#fbbf24" stroke-width="1"/>
             <text x="722" y="362" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="bold" font-family="sans-serif">Lint 健康检查</text>
             <text x="722" y="378" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">矛盾检测 · 过期声明</text>
-            <text x="722" y="392" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">孤立页面 · 缺失链接</text>
-            <text x="722" y="406" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">建议新探索方向</text>
+            <text x="722" y="392" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">建议新探索方向</text>
 
             <!-- Arrow Wiki → Agent Context -->
             <path d="M 820 260 L 878 260" stroke="#4ade80" stroke-width="2" marker-end="url(#wA2)"/>
@@ -946,7 +945,7 @@ headless=True 反爬效果差，
 <span style="color:#94a3b8;">- 结果写回: project/crawler-comparison.md</span>
 
 <span style="color:#fbbf24;">## [2026-03-29] lint | 周健康检查</span>
-<span style="color:#94a3b8;">- 发现: project/spa-scraping.md 与 reference/nodriver.md 矛盾 refs: grubhub-2026-03-28, doordash-2026-04-10(confuse)</span>
+<span style="color:#94a3b8;">- 发现: project/spa-scraping.md 与 reference/nodriver.md 矛盾 refs:[knowledge/reference/nodriver.md](confuse)</span>
 <span style="color:#94a3b8;">- 修复: 统一 headless 策略描述</span></pre>
         </div>
     </div>
@@ -956,7 +955,7 @@ headless=True 反爬效果差，
     <div class="card" style="border-color:var(--accent-purple);">
         <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:1rem;">
             每个 Wiki 页面遵循统一结构，确保 LLM 能高效读写。YAML frontmatter 提供元数据，
-            正文包含交叉引用、来源标注和矛盾标记。<code>refs:[]</code> 在正文具体位置标记引用来源，<code>[[link]]</code> 关联相关页面，<code>refs:[](confuse)</code> 标记矛盾。
+            正文包含交叉引用、来源标注和矛盾标记。<code>refs:[相对路径]</code> 标记外部 Wiki 引用，<code>refs:[...](confuse)</code> 标记引用间矛盾，<code>source:[相对路径]</code> 标记来源（daily-logs），<code>[[link]]</code> 关联相关页面。
         </p>
         <pre style="background:#0d1520;border:1px solid #334155;border-radius:8px;padding:1rem 1.2rem;font-size:0.78rem;line-height:1.75;overflow-x:auto;color:#e2e8f0;margin:0;"><span style="color:#fbbf24;"># SPA 爬虫策略</span>
 
@@ -965,15 +964,15 @@ headless=True 反爬效果差，
 DOM 在虚拟化渲染下不可靠；API 响应更稳定且包含完整数据。
 
 <span style="color:#fbbf24;">## 踩坑与解法</span>
-<span style="color:#a78bfa;">### networkidle 超时</span> <span style="color:#475569;">refs: grubhub-2026-03-28, doordash-2026-04-10</span>
+<span style="color:#a78bfa;">### networkidle 超时</span> <span style="color:#475569;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md] source:[daily-logs/2026-04-10/doordash_menu_crawler.md]</span>
 - <span style="color:#f87171;">现象</span>: Timeout 30000ms，SPA 持续后台请求
 - <span style="color:#4ade80;">解法</span>: 改用目标元素出现作为就绪信号 → [[nodriver]]
 - <span style="color:#22d3ee;">验证</span>: 2/2 站点有效 ✓
 
-<span style="color:#a78bfa;">### Virtual Scroll 数据丢失</span> <span style="color:#475569;">refs: grubhub-2026-03-28</span>
+<span style="color:#a78bfa;">### Virtual Scroll 数据丢失</span> <span style="color:#475569;">source:[daily-logs/2026-03-28/grubhub_menu_crawler.md]</span>
 - <span style="color:#f87171;">现象</span>: 滚动后 section 数量骤减
 - <span style="color:#4ade80;">解法</span>: 放弃 DOM，改为 API 拦截
-- <span style="color:#fbbf24;">refs: grubhub-2026-03-28, doordash-2026-04-10(confuse)</span>: headless 策略在 Grubhub 有效但 Doordash 检测 headless，结论冲突
+- <span style="color:#fbbf24;">refs:[knowledge/reference/nodriver.md](confuse)</span>: headless 策略在 Grubhub 有效但 Doordash 检测 headless，结论冲突
   → 需先判断是否虚拟化渲染，再选择策略
 
 <span style="color:#fbbf24;">## 可复用模式</span>
@@ -1064,10 +1063,6 @@ DOM 在虚拟化渲染下不可靠；API 响应更稳定且包含完整数据。
             <ul style="font-size:0.85rem;color:var(--text-secondary);padding-left:1.2rem;line-height:2;">
                 <li><strong>矛盾检测：</strong>不同页面是否存在冲突声明</li>
                 <li><strong>过期声明：</strong>新来源是否已取代旧结论</li>
-                <li><strong>孤立页面：</strong>无入站链接的页面</li>
-                <li><strong>缺失页面：</strong>重要概念被提及但无专属页面</li>
-                <li><strong>交叉引用缺口：</strong>相关页面未互相链接</li>
-                <li><strong>数据缺口：</strong>可通过 web search 补充的信息</li>
             </ul>
         </div>
         <div class="card" style="border-color:var(--accent-cyan);">
@@ -1333,7 +1328,7 @@ DOM 在虚拟化渲染下不可靠；API 响应更稳定且包含完整数据。
         <code>Memory.md</code> 是 Wiki 的<strong>索引中枢</strong>（每条一行摘要，&lt;200行），供 agent 快速定位，始终加载进上下文。
         <code>log.md</code> 是<strong>操作时间线</strong>（append-only），记录每次 Ingest/Query/Lint。
         <code>knowledge/</code> 是按领域划分的<strong>交叉引用知识网络</strong>，包含 project（项目技术）、user（用户画像）、feedback（行为反馈）、reference（外部参考）四类页面。
-        每个页面通过 <code>[[wiki-link]]</code> 双向链接，矛盾用 <code>refs:[](confuse)</code> 标记，来源用 refs 标注。
+        每个页面通过 <code>[[wiki-link]]</code> 双向链接，矛盾用 <code>refs:[](confuse)</code> 标记，来源用 <code>source:[]</code> 标注。
     </div>
 
     <h3>⑤ 晋升为常驻知识 — 从 ①②③④ 到常驻上下文</h3>
@@ -1397,7 +1392,7 @@ DOM 在虚拟化渲染下不可靠；API 响应更稳定且包含完整数据。
             <ul class="step-list">
                 <li><span class="step-num">1</span>加载全部历史：<code>② daily-logs</code> + <code>③ episodes</code> + <code>④ Wiki</code> + 更早内容</li>
                 <li><span class="step-num">2</span>跨 session 聚合，识别稳定规律与一次性偏差（验证 Wiki 知识在跨 session 的执行使用情况，评估置信度）</li>
-                <li><span class="step-num">3</span>Wiki Lint：检测矛盾 refs:[](confuse)、过期声明、孤立页面、缺失交叉引用</li>
+                <li><span class="step-num">3</span>Wiki Lint：检测矛盾 refs:[](confuse)、过期声明</li>
                 <li><span class="step-num">4</span>晋升为常驻知识：稳定模式路由到 <code>preferences.md</code> / <code>soul.md</code> / <code>instructions.md</code></li>
                 <li><span class="step-num">5</span>重组 Memory.md 索引，移除早期 episodes</li>
             </ul>
