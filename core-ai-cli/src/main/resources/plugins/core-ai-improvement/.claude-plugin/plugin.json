@@ -1,0 +1,6 @@
+{
+  "name": "core-ai-improvement",
+  "version": "1.0.0",
+  "description": "Built-in skills, hooks, and commands for core-ai",
+  "skills": ["./skills/"]
+}
