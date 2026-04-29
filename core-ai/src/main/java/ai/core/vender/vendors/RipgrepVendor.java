@@ -1,22 +1,28 @@
 package ai.core.vender.vendors;
 
 import ai.core.utils.Platform;
+import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
 import ai.core.vender.Vendor;
 import ai.core.vender.VendorException;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * @author stephen
  */
 public class RipgrepVendor extends Vendor {
-    private static final String VERSION = "14.1.1";
-    private static final String GITHUB_RELEASE_URL = "https://github.com/BurntSushi/ripgrep/releases/download";
+    private static final String VERSION = "15.1.0";
+    private static final String GITHUB_RELEASE_URL = "https://gh-proxy.org/https://github.com/BurntSushi/ripgrep/releases/download";
 
     private Path downloadedArchive;
+    private Path systemRgPath;
 
     public RipgrepVendor(Path customVendorHome) {
         super(customVendorHome);
@@ -34,12 +40,46 @@ public class RipgrepVendor extends Vendor {
 
     @Override
     protected boolean isInstalled() {
+        systemRgPath = resolveSystemRgPath();
+        if (systemRgPath != null) {
+            logger.debug("Found system ripgrep at: {}", systemRgPath);
+            return true;
+        }
         try {
             var execPath = getExecutablePathInternal();
             return Files.exists(execPath) && Files.isExecutable(execPath);
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private Path resolveSystemRgPath() {
+        var platform = SystemUtil.detectPlatform();
+        if (!ShellUtil.isCommandExists(platform, "rg")) {
+            return null;
+        }
+        return resolveWhichOutput(platform, "rg");
+    }
+
+    private Path resolveWhichOutput(Platform platform, String command) {
+        try {
+            var whichCmd = platform.isWindows() ? "where.exe" : "which";
+            var pb = new ProcessBuilder(whichCmd, command);
+            var process = pb.start();
+            try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                var line = reader.readLine();
+                if (line != null && !line.isBlank()) {
+                    var path = Paths.get(line.trim());
+                    if (Files.exists(path) && Files.isExecutable(path)) {
+                        return path;
+                    }
+                }
+            }
+            process.waitFor();
+        } catch (Exception e) {
+            logger.debug("Failed to resolve system rg path: {}", e.getMessage());
+        }
+        return null;
     }
 
     @Override
@@ -105,6 +145,9 @@ public class RipgrepVendor extends Vendor {
 
     @Override
     protected Path getExecutablePathInternal() {
+        if (systemRgPath != null) {
+            return systemRgPath;
+        }
         var platform = SystemUtil.detectPlatform();
         var dirName = getExtractedDirName(platform);
         var execName = platform.isWindows() ? "rg.exe" : "rg";
