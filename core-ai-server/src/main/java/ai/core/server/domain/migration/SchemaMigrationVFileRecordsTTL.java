@@ -22,6 +22,8 @@ public class SchemaMigrationVFileRecordsTTL implements SchemaMigration {
 
     @Override
     public void migrate(Mongo mongo) {
+        // Drop existing non-TTL index on created_at if it exists, then create TTL index
+        mongo.dropIndex("file_records", Indexes.ascending("created_at"));
         // TTL index: documents auto-delete 24 hours after created_at
         // MongoDB's TTL thread runs every 60s, so deletion may be slightly delayed
         mongo.createIndex("file_records",
