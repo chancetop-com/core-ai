@@ -523,6 +523,7 @@ export default function Chat() {
     });
     const id = res.sessionId;
     setSessionId(id);
+    doConnectSSE(id);
 
     // Update loaded state from server response
     if (res.loaded_tools && res.loaded_tools.length > 0) {
