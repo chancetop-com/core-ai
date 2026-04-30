@@ -8,8 +8,6 @@ import ai.core.tool.ToolCallResult;
 import ai.core.vender.VendorManagement;
 import ai.core.vender.vendors.RipgrepVendor;
 import core.framework.util.Strings;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -47,6 +45,10 @@ public class GlobFileTool extends ToolCall {
         return new Builder();
     }
 
+    private static String cleanPath(String file) {
+        return file.replaceFirst("^\\./", "");
+    }
+
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         return doExecute(arguments, context);
@@ -59,75 +61,70 @@ public class GlobFileTool extends ToolCall {
 
     private ToolCallResult doExecute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
-        Process process = null;
         try {
-            var argsMap = parseArguments(text);
-            var pattern = getStringValue(argsMap, "pattern");
-            var searchPath = getStringValue(argsMap, "path");
-
-            if (Strings.isBlank(pattern)) {
-                return ToolCallResult.failed("Error: pattern parameter is required")
-                        .withDuration(System.currentTimeMillis() - startTime);
-            }
-
-            if (Strings.isBlank(searchPath)) {
-                searchPath = RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME);
-            }
-
-            var searchDir = resolveSearchDir(searchPath);
-            if (searchDir == null) {
-                return ToolCallResult.failed("Error: path must be a directory: " + searchPath)
-                        .withDuration(System.currentTimeMillis() - startTime);
-            }
-
-            var rgPath = VendorManagement.getInstance().getExecutablePath(RipgrepVendor.class);
-            var command = buildRipGrepCommand(rgPath.toString(), pattern, searchDir);
-
-            var pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
-            pb.directory(searchDir);
-            process = pb.start();
-            var processResult = RipGrepUtil.executeProcess(process, MAX_RESULTS + 1, getTimeoutMs());
-            int exitCode = processResult.exitCode();
-            var output = processResult.output();
-
-            if (exitCode > 1) {
-                return ToolCallResult.failed("Error executing ripgrep (exit code " + exitCode + "): " + output)
-                        .withDuration(System.currentTimeMillis() - startTime);
-            }
-
-            if (output.isEmpty()) {
-                return ToolCallResult.completed("No files found")
-                        .withDuration(System.currentTimeMillis() - startTime)
-                        .withStats("pattern", pattern);
-            }
-
-            var result = formatResults(output, searchDir);
-            return ToolCallResult.completed(result)
-                    .withDuration(System.currentTimeMillis() - startTime)
-                    .withStats("pattern", pattern);
-
+            return runRipgrep(text, context, startTime);
         } catch (RipGrepUtil.RipGrepTimeoutException e) {
-            if (process != null) {
-                process.destroyForcibly();
-            }
             return ToolCallResult.failed("Ripgrep process timed out")
                     .withDuration(System.currentTimeMillis() - startTime);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            process.destroyForcibly();
             return ToolCallResult.failed("Glob interrupted")
                     .withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
-            if (process != null) {
-                process.destroyForcibly();
-            }
             return ToolCallResult.failed("Error executing glob: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
-    private List<String> buildRipGrepCommand(String rgPath, String pattern, File searchDir) {
+    private ToolCallResult runRipgrep(String text, ExecutionContext context, long startTime) throws Exception {
+        var argsMap = parseArguments(text);
+        var pattern = getStringValue(argsMap, "pattern");
+        var searchPath = getStringValue(argsMap, "path");
+
+        if (Strings.isBlank(pattern)) {
+            return ToolCallResult.failed("Error: pattern parameter is required")
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+
+        var resolvedPath = Strings.isBlank(searchPath)
+                ? RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME)
+                : searchPath;
+
+        var searchDir = resolveSearchDir(resolvedPath);
+        if (searchDir == null) {
+            return ToolCallResult.failed("Error: path must be a directory: " + searchPath)
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+
+        var rgPath = VendorManagement.getInstance().getExecutablePath(RipgrepVendor.class);
+        var command = buildRipGrepCommand(rgPath.toString(), pattern);
+
+        var pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        pb.directory(searchDir);
+        var process = pb.start();
+        var processResult = RipGrepUtil.executeProcess(process, MAX_RESULTS + 1, getTimeoutMs());
+        int exitCode = processResult.exitCode();
+        var output = processResult.output();
+
+        if (exitCode > 1) {
+            return ToolCallResult.failed("Error executing ripgrep (exit code " + exitCode + "): " + output)
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+
+        if (output.isEmpty()) {
+            return ToolCallResult.completed("No files found")
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("pattern", pattern);
+        }
+
+        var result = formatResults(output, searchDir);
+        return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("pattern", pattern);
+    }
+
+    private List<String> buildRipGrepCommand(String rgPath, String pattern) {
         var command = new ArrayList<String>();
         command.add(rgPath);
         command.add("--no-config");
@@ -148,13 +145,6 @@ public class GlobFileTool extends ToolCall {
         return path.toFile();
     }
 
-    private record FileMatch(String path, long mtime) {
-    }
-
-    private static String cleanPath(String file) {
-        return file.replaceFirst("^\\./", "");
-    }
-
     private List<FileMatch> parseOutput(String rawOutput, File searchDir) {
         var lines = rawOutput.split("\n");
         List<FileMatch> matches = new ArrayList<>();
@@ -168,31 +158,31 @@ public class GlobFileTool extends ToolCall {
     }
 
     private String formatResults(String rawOutput, File searchDir) {
-        List<FileMatch> matches = parseOutput(rawOutput, searchDir);
+        var allMatches = parseOutput(rawOutput, searchDir);
 
-        if (matches.isEmpty()) {
+        if (allMatches.isEmpty()) {
             return "No files found";
         }
 
-        matches.sort(Comparator.comparingLong(FileMatch::mtime).reversed());
+        allMatches.sort(Comparator.comparingLong(FileMatch::mtime).reversed());
 
-        boolean truncated = matches.size() > MAX_RESULTS;
-        if (truncated) {
-            matches = matches.subList(0, MAX_RESULTS);
-        }
+        boolean truncated = allMatches.size() > MAX_RESULTS;
+        var displayMatches = truncated ? allMatches.subList(0, MAX_RESULTS) : allMatches;
 
-        var result = new StringBuilder(64);
-        for (FileMatch match : matches) {
+        var result = new StringBuilder(256);
+        for (FileMatch match : displayMatches) {
             result.append(match.path()).append('\n');
         }
 
         if (truncated) {
-            result.append('\n');
-            result.append("(Results are truncated: showing first ").append(MAX_RESULTS)
+            result.append("\n(Results are truncated: showing first ").append(MAX_RESULTS)
                     .append(" results. Consider using a more specific path or pattern.)");
         }
 
         return result.toString().trim();
+    }
+
+    private record FileMatch(String path, long mtime) {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, GlobFileTool> {

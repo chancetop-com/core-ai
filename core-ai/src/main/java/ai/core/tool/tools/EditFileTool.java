@@ -20,7 +20,6 @@ import java.security.NoSuchAlgorithmException;
  */
 public class EditFileTool extends ToolCall {
     public static final String TOOL_NAME = "edit_file";
-
     private static final long WARN_FILE_SIZE = 10L * 1024 * 1024;
     private static final long MAX_FILE_SIZE = 100L * 1024 * 1024;
     private static final Logger LOGGER = LoggerFactory.getLogger(EditFileTool.class);
@@ -106,11 +105,9 @@ public class EditFileTool extends ToolCall {
     private String editFile(String filePath, String oldString, String newString, Boolean replaceAll) {
         var validationError = validateEditParameters(filePath, oldString, newString);
         if (validationError != null) return validationError;
-
         var file = new File(filePath);
         if (!file.exists()) return "Error: File does not exist: " + filePath;
         if (!file.isFile()) return "Error: Path is not a file: " + filePath;
-
         long fileSize = file.length();
         if (fileSize > MAX_FILE_SIZE) {
             return String.format("Error: File too large to edit (%dMB), max 100MB: %s", fileSize / 1024 / 1024, filePath);
@@ -119,6 +116,27 @@ public class EditFileTool extends ToolCall {
             LOGGER.warn("Large file being edited: {} ({}MB)", filePath, fileSize / 1024 / 1024);
         }
 
+        var result = readAndReplaceContent(file, oldString, newString, replaceAll);
+        if (result.content().startsWith("Error:") || result.content().startsWith("File was modified")) {
+            return result.content();
+        }
+
+        try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
+            writer.write(result.content());
+            writer.flush();
+            String successMsg = replaceAll
+                    ? String.format("Successfully replaced %d occurrence(s) in file: %s", result.occurrences(), result.filePath())
+                    : String.format("Successfully replaced 1 occurrence in file: %s", result.filePath());
+            LOGGER.debug(successMsg);
+            return successMsg + "\n" + buildMiniDiff(oldString, newString);
+        } catch (IOException e) {
+            String error = "Error writing file: " + e.getMessage();
+            LOGGER.error(error, e);
+            return error;
+        }
+    }
+
+    private ReplaceResult readAndReplaceContent(File file, String oldString, String newString, Boolean replaceAll) {
         String content;
         long readTimestamp;
         String contentHash;
@@ -128,51 +146,29 @@ public class EditFileTool extends ToolCall {
             contentHash = hashContent(content);
         } catch (IOException e) {
             LOGGER.error("Error reading file: {}", e.getMessage(), e);
-            return "Error reading file: " + e.getMessage();
+            return new ReplaceResult("Error reading file: " + e.getMessage(), 0, file.getPath());
         }
-
         var normalizedOld = normalizeLineEndings(oldString, content);
         var normalizedNew = normalizeLineEndings(newString, content);
-
         var matches = FuzzyMatchReplacer.findMatches(content, normalizedOld);
         if (matches.isEmpty()) {
-            return "Error: old_string not found in file. Make sure the text is similar to the actual file content including structure and line breaks.";
+            return new ReplaceResult("Error: old_string not found in file. Make sure the text is similar to the actual file content including structure and line breaks.", 0, file.getPath());
         }
-
         String matchedText = matches.getFirst().matched;
         String strategy = matches.getFirst().strategyName;
-
         int occurrences = countOccurrences(content, matchedText);
         if (!replaceAll && occurrences > 1) {
-            return String.format("Error: old_string appears %d times in the file. Either provide a larger string with more surrounding context to make it unique, or set replace_all=true to replace all occurrences.", occurrences);
+            return new ReplaceResult(String.format("Error: old_string appears %d times in the file. Either provide a larger string with more surrounding context to make it unique, or set replace_all=true to replace all occurrences.", occurrences), 0, file.getPath());
         }
-
         String resolvedMatchedText = resolveDeleteTarget(content, matchedText, normalizedNew);
         String newContent = content.replace(resolvedMatchedText, normalizedNew);
         if (!"exact".equals(strategy)) {
-            LOGGER.info("Fuzzy matched using strategy '{}' in file: {}", strategy, filePath);
+            LOGGER.info("Fuzzy matched using strategy '{}' in file: {}", strategy, file.getPath());
         }
-        LOGGER.debug("Replacing {} occurrence(s) in file: {}", occurrences, filePath);
-
+        LOGGER.debug("Replacing {} occurrence(s) in file: {}", occurrences, file.getPath());
         String concurrentError = checkFileNotModified(file, readTimestamp, contentHash);
-        if (concurrentError != null) return concurrentError;
-
-        try (BufferedWriter writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
-            writer.write(newContent);
-            writer.flush();
-
-            String successMsg = replaceAll
-                    ? String.format("Successfully replaced %d occurrence(s) in file: %s", occurrences, filePath)
-                    : String.format("Successfully replaced 1 occurrence in file: %s", filePath);
-
-            LOGGER.debug(successMsg);
-            return successMsg + "\n" + buildMiniDiff(oldString, newString);
-
-        } catch (IOException e) {
-            String error = "Error writing file: " + e.getMessage();
-            LOGGER.error(error, e);
-            return error;
-        }
+        if (concurrentError != null) return new ReplaceResult(concurrentError, 0, file.getPath());
+        return new ReplaceResult(newContent, occurrences, file.getPath());
     }
 
     private String buildMiniDiff(String oldString, String newString) {
@@ -252,6 +248,8 @@ public class EditFileTool extends ToolCall {
         }
         return count;
     }
+
+    private record ReplaceResult(String content, int occurrences, String filePath) { }
 
     public static class Builder extends ToolCall.Builder<Builder, EditFileTool> {
         @Override

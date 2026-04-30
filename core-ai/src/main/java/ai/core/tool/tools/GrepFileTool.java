@@ -12,7 +12,6 @@ import core.framework.util.Strings;
 
 import java.io.File;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,6 +43,26 @@ public class GrepFileTool extends ToolCall {
         return new Builder();
     }
 
+    private static String resolveAbsolutePath(ExecutionContext context, String searchPath) {
+        String result;
+        if (Strings.isBlank(searchPath)) {
+            result = RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME);
+        } else {
+            var path = Paths.get(searchPath);
+            if (!path.isAbsolute()) {
+                var workspace = RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME);
+                result = Paths.get(workspace).resolve(searchPath).toString();
+            } else {
+                result = searchPath;
+            }
+        }
+        return result;
+    }
+
+    private static String cleanPath(String file) {
+        return file.replaceFirst("^\\./", "");
+    }
+
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         return doExecute(arguments, context);
@@ -56,83 +75,62 @@ public class GrepFileTool extends ToolCall {
 
     private ToolCallResult doExecute(String text, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
-        Process process = null;
         try {
-            var argsMap = parseArguments(text);
-            var pattern = getStringValue(argsMap, "pattern");
-            var searchPath = getStringValue(argsMap, "path");
-            var include = getStringValue(argsMap, "include");
-
-            var absoluteSearchPath = resolveAbsolutePath(context, searchPath);
-
-            var searchCtx = resolveSearchContext(absoluteSearchPath);
-            if (searchCtx == null) {
-                return ToolCallResult.failed("Error: path does not exist: " + searchPath)
-                        .withDuration(System.currentTimeMillis() - startTime);
-            }
-
-            var rgPath = VendorManagement.getInstance().getExecutablePath(RipgrepVendor.class);
-            var command = buildRipGrepCommand(rgPath.toString(), pattern, include, searchCtx.file);
-
-            var pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
-            pb.directory(searchCtx.cwd);
-            process = pb.start();
-
-            var processResult = RipGrepUtil.executeProcess(process, MAX_READ_LINES, getTimeoutMs());
-            int exitCode = processResult.exitCode();
-            var output = processResult.output();
-
-            if (exitCode > 2) {
-                return ToolCallResult.failed("Error executing ripgrep (exit code " + exitCode + "): " + output)
-                        .withDuration(System.currentTimeMillis() - startTime);
-            }
-
-            if (output.isEmpty()) {
-                return ToolCallResult.completed("No files found")
-                        .withDuration(System.currentTimeMillis() - startTime)
-                        .withStats("pattern", pattern);
-            }
-
-            var result = formatResults(output, searchCtx.cwd, exitCode == 2);
-            return ToolCallResult.completed(result)
-                    .withDuration(System.currentTimeMillis() - startTime)
-                    .withStats("pattern", pattern);
-
+            return runRipgrep(text, context, startTime);
         } catch (RipGrepUtil.RipGrepTimeoutException e) {
-            if (process != null) {
-                process.destroyForcibly();
-            }
             return ToolCallResult.failed("Ripgrep process timed out")
                     .withDuration(System.currentTimeMillis() - startTime);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            process.destroyForcibly();
             return ToolCallResult.failed("Grep interrupted")
                     .withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
-            if (process != null) {
-                process.destroyForcibly();
-            }
             return ToolCallResult.failed("Error executing grep: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
-    private static String resolveAbsolutePath(ExecutionContext context, String searchPath) {
-        if (Strings.isBlank(searchPath)) {
-            searchPath = RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME);
-        } else {
-            var path = Paths.get(searchPath);
-            if (!path.isAbsolute()) {
-                var workspace = RipGrepUtil.resolveWorkspaceDir(context, TOOL_NAME);
-                searchPath = Paths.get(workspace).resolve(searchPath).toString();
-            }
-        }
-        return searchPath;
-    }
+    private ToolCallResult runRipgrep(String text, ExecutionContext context, long startTime) throws Exception {
+        var argsMap = parseArguments(text);
+        var pattern = getStringValue(argsMap, "pattern");
+        var searchPath = getStringValue(argsMap, "path");
+        var include = getStringValue(argsMap, "include");
 
-    private record SearchContext(File cwd, String file) {
+        var absoluteSearchPath = resolveAbsolutePath(context, searchPath);
+
+        var searchCtx = resolveSearchContext(absoluteSearchPath);
+        if (searchCtx == null) {
+            return ToolCallResult.failed("Error: path does not exist: " + searchPath)
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+
+        var rgPath = VendorManagement.getInstance().getExecutablePath(RipgrepVendor.class);
+        var command = buildRipGrepCommand(rgPath.toString(), pattern, include, searchCtx.file);
+
+        var pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        pb.directory(searchCtx.cwd);
+        var process = pb.start();
+
+        var processResult = RipGrepUtil.executeProcess(process, MAX_READ_LINES, getTimeoutMs());
+        int exitCode = processResult.exitCode();
+        var output = processResult.output();
+
+        if (exitCode > 2) {
+            return ToolCallResult.failed("Error executing ripgrep (exit code " + exitCode + "): " + output)
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+
+        if (output.isEmpty()) {
+            return ToolCallResult.completed("No files found")
+                    .withDuration(System.currentTimeMillis() - startTime)
+                    .withStats("pattern", pattern);
+        }
+
+        var result = formatResults(output, searchCtx.cwd, exitCode == 2);
+        return ToolCallResult.completed(result)
+                .withDuration(System.currentTimeMillis() - startTime)
+                .withStats("pattern", pattern);
     }
 
     private SearchContext resolveSearchContext(String searchPath) {
@@ -171,9 +169,6 @@ public class GrepFileTool extends ToolCall {
         return command;
     }
 
-    private record GrepMatch(String filePath, int lineNumber, String text) {
-    }
-
     private String formatResults(String rawOutput, File cwd, boolean partial) {
         var lines = rawOutput.split("\n");
         var matches = new ArrayList<GrepMatch>();
@@ -197,10 +192,6 @@ public class GrepFileTool extends ToolCall {
         ).reversed());
 
         return buildOutput(matches, cwd, partial);
-    }
-
-    private static String cleanPath(String file) {
-        return file.replaceFirst("^\\./", "");
     }
 
     private GrepMatch parseJsonMatch(String line) {
@@ -235,18 +226,16 @@ public class GrepFileTool extends ToolCall {
     private String buildOutput(List<GrepMatch> matches, File cwd, boolean partial) {
         int total = matches.size();
         boolean truncated = total > MAX_MATCHES;
-        if (truncated) {
-            matches = matches.subList(0, MAX_MATCHES);
-        }
+        var displayMatches = truncated ? matches.subList(0, MAX_MATCHES) : matches;
 
-        var output = new StringBuilder(128);
+        var output = new StringBuilder(256);
         output.append("Found ").append(total).append(" matches");
         if (truncated) {
-            output.append(" (showing first ").append(MAX_MATCHES).append(")");
+            output.append(" (showing first ").append(MAX_MATCHES).append(')');
         }
 
         String currentFile = "";
-        for (var match : matches) {
+        for (var match : displayMatches) {
             if (!currentFile.equals(match.filePath())) {
                 if (!currentFile.isEmpty()) {
                     output.append('\n');
@@ -258,23 +247,28 @@ public class GrepFileTool extends ToolCall {
             var text = match.text().length() > MAX_LINE_LENGTH
                     ? match.text().substring(0, MAX_LINE_LENGTH) + "..."
                     : match.text();
-            output.append('\n').append("  Line ").append(match.lineNumber()).append(": ").append(text);
+            output.append("\n  Line ").append(match.lineNumber()).append(": ").append(text);
+
         }
 
         if (truncated) {
-            output.append('\n').append('\n');
-            output.append("(Results truncated: showing ").append(MAX_MATCHES)
+            output.append("\n\n(Results truncated: showing ").append(MAX_MATCHES)
                     .append(" of ").append(total).append(" matches (")
                     .append(total - MAX_MATCHES)
                     .append(" hidden). Consider using a more specific path or pattern.)");
         }
 
         if (partial) {
-            output.append('\n').append('\n');
-            output.append("(Some paths were inaccessible and skipped)");
+            output.append("\n\n(Some paths were inaccessible and skipped)");
         }
 
         return output.toString().trim();
+    }
+
+    private record SearchContext(File cwd, String file) {
+    }
+
+    private record GrepMatch(String filePath, int lineNumber, String text) {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, GrepFileTool> {
