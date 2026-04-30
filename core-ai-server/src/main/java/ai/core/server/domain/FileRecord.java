@@ -30,7 +30,9 @@ public class FileRecord {
     @Field(name = "size")
     public Long size;
 
-    @NotNull
+    @Field(name = "data")
+    public String data;
+
     @Field(name = "storage_path")
     public String storagePath;
 

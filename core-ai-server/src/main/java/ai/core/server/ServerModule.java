@@ -64,6 +64,7 @@ import ai.core.server.web.sse.ChannelService;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.server.web.AgentSessionWebServiceImpl;
 import ai.core.server.web.FileWebServiceImpl;
+import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
 import ai.core.server.web.AuthWebServiceImpl;
 import ai.core.server.web.UserWebServiceImpl;
@@ -123,6 +124,7 @@ public class ServerModule extends Module {
         onStartup(builderTools::initialize);
 
         registerMessaging();
+        bind(PodLocalExecutor.class);
 
         bindWebService();
         http().route(HTTPMethod.POST, "/api/webhooks/:agentId", bind(WebhookController.class));
@@ -340,8 +342,7 @@ public class ServerModule extends Module {
     }
 
     private void registerFile() {
-        var storagePath = property("sys.file.storagePath").orElse("./data/files");
-        bind(new FileService(Path.of(storagePath)));
+        bind(FileService.class);
         api().service(FileWebService.class, bind(FileWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
         http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));

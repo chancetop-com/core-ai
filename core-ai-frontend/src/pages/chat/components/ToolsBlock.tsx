@@ -25,6 +25,14 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
     try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
   };
   const doneCount = tools.filter(t => t.type === 'result' && (t.resultStatus === 'success' || t.resultStatus === 'COMPLETED')).length;
+
+  // Check if any tool (including nested) is still running
+  const isRunning = (t: ToolEvent): boolean => {
+    if (t.type === 'start') return true;
+    if (t.children && t.children.some(isRunning)) return true;
+    return false;
+  };
+  const hasRunning = tools.some(isRunning);
    // Render a single tool row (used for both top-level and children)
   const renderToolRow = (t: ToolEvent, key: string, level: number = 0) => {
     const hasChildren = t.children && t.children.length > 0;
@@ -145,6 +153,7 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
         style={{ color: 'var(--color-text-secondary)' }}>
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <Wrench size={14} />
+        {hasRunning && <Loader2 size={12} className="animate-spin" style={{ color: 'var(--color-warning)' }} />}
         <span className="font-medium">Tools ({tools.length})</span>
         {doneCount > 0 && <span className="opacity-60">({doneCount} done)</span>}
       </button>

@@ -185,14 +185,7 @@ public class AgentRunner {
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
             var timeout = scheduleTimeout(runEntity, agent, timeoutSeconds, completed);
-            try {
-                var output = agent.run(runEntity.input);
-                if (completed.compareAndSet(false, true)) {
-                    updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
-                }
-            } finally {
-                timeout.cancel(false);
-            }
+            runWithTimeout(runEntity, agent, timeout, completed);
         } catch (Exception e) {
             if (unwrapCause(e) instanceof MaxTurnsExceededException maxTurnsEx) {
                 LOGGER.warn("agent run exceeded max turns, runId={}, maxTurns={}", runId, maxTurnsEx.maxTurns);
@@ -205,6 +198,17 @@ public class AgentRunner {
             if (completed.compareAndSet(false, true)) {
                 updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), agent);
             }
+        }
+    }
+
+    private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed) {
+        try {
+            if (completed.compareAndSet(false, true)) {
+                var output = agent.run(runEntity.input);
+                updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
+            }
+        } finally {
+            timeout.cancel(false);
         }
     }
 
@@ -274,24 +278,17 @@ public class AgentRunner {
             tools = List.of();
         }
         tools = new ArrayList<>(tools);
-        if (sandbox != null) {
-            tools.add(SubmitArtifactsTool.create(runEntity.id, definition.userId, fileService, agentRunCollection));
-        }
-
+        if (sandbox != null) tools.add(SubmitArtifactsTool.create(runEntity.id, definition.userId, fileService, agentRunCollection));
         var context = ExecutionContext.builder()
             .sessionId("run:" + definition.id)
             .userId(definition.userId)
             .customVariables(variables)
             .build();
-        if (sandbox != null) {
-            context.sandbox(sandbox);
-        }
-
+        if (sandbox != null) context.sandbox(sandbox);
         var systemPrompt = appendArtifactInstructions(resolveSystemPrompt(config, definition), sandbox != null);
         var model = config != null ? config.model : definition.model;
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
-
         var skillIds = config != null ? config.skillIds : definition.skillIds;
         SkillRegistry skillRegistry = null;
         if (skillIds != null && !skillIds.isEmpty()) {
@@ -304,20 +301,15 @@ public class AgentRunner {
                 .build());
             tools.add(ReadSkillResourceTool.builder().registry(skillRegistry).build());
         }
-
         var builder = Agent.builder()
             .llmProvider(llmProviders.getProvider())
             .toolCalls(tools)
             .executionContext(context);
-
         if (systemPrompt != null) builder.systemPrompt(systemPrompt);
         if (model != null) builder.model(model);
         if (temperature != null) builder.temperature(temperature);
         if (maxTurns != null) builder.maxTurn(maxTurns);
-        if (skillRegistry != null) {
-            builder.skillRegistry(skillRegistry);
-        }
-
+        if (skillRegistry != null) builder.skillRegistry(skillRegistry);
         var agent = builder.build();
         agent.setAuthenticated(true);
         return agent;

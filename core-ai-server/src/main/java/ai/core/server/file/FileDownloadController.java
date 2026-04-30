@@ -1,5 +1,6 @@
 package ai.core.server.file;
 
+import core.framework.http.ContentType;
 import core.framework.inject.Inject;
 import core.framework.web.Controller;
 import core.framework.web.Request;
@@ -16,7 +17,8 @@ public class FileDownloadController implements Controller {
     public Response execute(Request request) {
         var id = request.pathParam("id");
         var record = fileService.get(id);
-        var filePath = fileService.resolve(record);
-        return Response.file(filePath);
+        var data = fileService.getBytes(record);
+        var contentType = record.contentType != null ? ContentType.parse(record.contentType) : ContentType.APPLICATION_OCTET_STREAM;
+        return Response.bytes(data).contentType(contentType);
     }
 }

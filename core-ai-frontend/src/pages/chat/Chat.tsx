@@ -32,6 +32,7 @@ export default function Chat() {
   });
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<'idle' | 'running'>('idle');
+  const [isThinking, setIsThinking] = useState(false);
   const [awaitInfo, setAwaitInfo] = useState<AwaitInfo | null>(null);
   const [planTodos, setPlanTodos] = useState<PlanTodo[] | null>(null);
   const [compressionInfo, setCompressionInfo] = useState<{ before: number; after: number } | null>(null);
@@ -254,6 +255,7 @@ export default function Chat() {
         const isFinalChunk = chunkEvent.is_final_chunk;
 
         if (!isFinalChunk && chunk) {
+          setIsThinking(true);
           setMessages(prev => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
@@ -282,6 +284,7 @@ export default function Chat() {
       }
       case 'TOOL_START':
       case 'tool_start': {
+        setIsThinking(false);
         const toolEvent = event as SseToolStartEvent;
         setMessages(prev => {
           const updated = [...prev];
@@ -403,6 +406,7 @@ export default function Chat() {
       }
       case 'TURN_COMPLETE':
       case 'turn_complete': {
+        setIsThinking(false);
         setStatus('idle');
         setAwaitInfo(null);
         setSidebarRefreshKey(k => k + 1);
@@ -410,6 +414,7 @@ export default function Chat() {
       }
       case 'ERROR':
       case 'error': {
+        setIsThinking(false);
         const errorEvent = event as SseErrorEvent;
         const errMsg = errorEvent.message || 'Unknown error';
         setMessages(prev => {
@@ -1046,7 +1051,7 @@ export default function Chat() {
                     <>
                       {thinkingSeg && (
                         <div className="mb-3">
-                          <ThinkingBlock thinking={thinkingSeg.content} isStreaming={false} />
+                          <ThinkingBlock thinking={thinkingSeg.content} isStreaming={isThinking} />
                         </div>
                       )}
                       {toolsSeg && toolsSeg.tools.length > 0 && (

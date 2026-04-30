@@ -21,7 +21,7 @@ import java.util.Map;
 /**
  * @author xander
  */
-public class SubmitArtifactsTool extends ToolCall {
+public final class SubmitArtifactsTool extends ToolCall {
     public static final String TOOL_NAME = "submit_artifacts";
     private static final String TOOL_DESC = """
             Submit files created in the sandbox as downloadable run artifacts.
@@ -31,11 +31,6 @@ public class SubmitArtifactsTool extends ToolCall {
             sandbox, usually under /tmp or /workspace. Do not include file contents in this tool call; provide
             only the sandbox path and optional metadata.
             """;
-
-    private final String runId;
-    private final String userId;
-    private final FileService fileService;
-    private final MongoCollection<AgentRun> agentRunCollection;
 
     public static SubmitArtifactsTool create(String runId, String userId, FileService fileService, MongoCollection<AgentRun> agentRunCollection) {
         var tool = new SubmitArtifactsTool(runId, userId, fileService, agentRunCollection);
@@ -48,6 +43,21 @@ public class SubmitArtifactsTool extends ToolCall {
         tool.setDiscoverable(false);
         return tool;
     }
+
+    private static List<ToolCallParameter> parameters() {
+        return ToolCallParameters.of(
+            ToolCallParameters.ParamSpec.of(List.class, "artifacts", """
+                Array of artifact objects. Each item must include path, the sandbox file path to submit.
+                Optional item fields: name, title, description, content_type.
+                Example: [{"path":"/tmp/report.pdf","name":"report.pdf","title":"Analysis report","content_type":"application/pdf"}]
+                """).required()
+        );
+    }
+
+    private final String runId;
+    private final String userId;
+    private final FileService fileService;
+    private final MongoCollection<AgentRun> agentRunCollection;
 
     private SubmitArtifactsTool(String runId, String userId, FileService fileService, MongoCollection<AgentRun> agentRunCollection) {
         this.runId = runId;
@@ -82,46 +92,48 @@ public class SubmitArtifactsTool extends ToolCall {
         var submitted = new ArrayList<Map<String, Object>>();
         var failed = new ArrayList<Map<String, Object>>();
         for (var item : request.artifacts) {
-            if (item == null || Strings.isBlank(item.path)) {
-                failed.add(Map.of("path", "", "error", "path is required"));
-                continue;
-            }
-            try {
-                var sandboxFile = sandbox.downloadFile(item.path);
-                var fileName = !Strings.isBlank(item.name) ? item.name : sandboxFile.fileName();
-                var contentType = !Strings.isBlank(item.contentType) ? item.contentType : sandboxFile.contentType();
-                var record = fileService.upload(userId, fileName, contentType, sandboxFile.path());
-
-                var artifact = new AgentRunArtifact();
-                artifact.fileId = record.id;
-                artifact.fileName = record.fileName;
-                artifact.contentType = record.contentType;
-                artifact.size = record.size;
-                artifact.sourcePath = item.path;
-                artifact.title = item.title;
-                artifact.description = item.description;
-                artifact.createdAt = ZonedDateTime.now();
-                appendArtifact(artifact);
-
-                submitted.add(Map.of(
-                    "path", item.path,
-                    "file_id", record.id,
-                    "file_name", record.fileName,
-                    "download_url", "/api/files/" + record.id + "/content"
-                ));
-            } catch (Exception e) {
-                failed.add(Map.of("path", item.path, "error", errorMessage(e)));
-            }
+            processArtifact(item, sandbox, submitted, failed);
         }
 
-        var result = Map.of(
-            "submitted", submitted,
-            "failed", failed
-        );
+        var result = Map.of("submitted", submitted, "failed", failed);
         if (submitted.isEmpty()) {
             return ToolCallResult.failed(JsonUtil.toJson(result));
         }
         return ToolCallResult.completed(JsonUtil.toJson(result));
+    }
+
+    private void processArtifact(ArtifactRequest item, ai.core.sandbox.Sandbox sandbox,
+                                 List<Map<String, Object>> submitted, List<Map<String, Object>> failed) {
+        if (item == null || Strings.isBlank(item.path)) {
+            failed.add(Map.of("path", "", "error", "path is required"));
+            return;
+        }
+        try {
+            var sandboxFile = sandbox.downloadFile(item.path);
+            var fileName = !Strings.isBlank(item.name) ? item.name : sandboxFile.fileName();
+            var contentType = !Strings.isBlank(item.contentType) ? item.contentType : sandboxFile.contentType();
+            var record = fileService.upload(userId, fileName, contentType, sandboxFile.path());
+
+            var artifact = new AgentRunArtifact();
+            artifact.fileId = record.id;
+            artifact.fileName = record.fileName;
+            artifact.contentType = record.contentType;
+            artifact.size = record.size;
+            artifact.sourcePath = item.path;
+            artifact.title = item.title;
+            artifact.description = item.description;
+            artifact.createdAt = ZonedDateTime.now();
+            appendArtifact(artifact);
+
+            submitted.add(Map.of(
+                "path", item.path,
+                "file_id", record.id,
+                "file_name", record.fileName,
+                "download_url", "/api/files/" + record.id + "/content"
+            ));
+        } catch (Exception e) {
+            failed.add(Map.of("path", item.path, "error", errorMessage(e)));
+        }
     }
 
     private String errorMessage(Exception e) {
@@ -135,16 +147,6 @@ public class SubmitArtifactsTool extends ToolCall {
         artifacts.add(artifact);
         run.artifacts = artifacts;
         agentRunCollection.replace(run);
-    }
-
-    private static List<ToolCallParameter> parameters() {
-        return ToolCallParameters.of(
-            ToolCallParameters.ParamSpec.of(List.class, "artifacts", """
-                Array of artifact objects. Each item must include path, the sandbox file path to submit.
-                Optional item fields: name, title, description, content_type.
-                Example: [{"path":"/tmp/report.pdf","name":"report.pdf","title":"Analysis report","content_type":"application/pdf"}]
-                """).required()
-        );
     }
 
     public static class Request {

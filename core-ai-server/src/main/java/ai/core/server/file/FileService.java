@@ -12,7 +12,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.UUID;
 
 /**
@@ -20,42 +20,41 @@ import java.util.UUID;
  */
 public class FileService {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileService.class);
-    private static final DateTimeFormatter DIR_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
-
-    private final Path storageRoot;
 
     @Inject
     MongoCollection<FileRecord> fileRecordCollection;
 
-    public FileService(Path storageRoot) {
-        this.storageRoot = storageRoot;
-    }
-
     public FileRecord upload(String userId, String fileName, String contentType, Path tempFile) {
         var id = UUID.randomUUID().toString();
-        var now = ZonedDateTime.now();
-        var relativePath = now.format(DIR_FORMAT) + "/" + id + "_" + sanitizeFileName(fileName);
 
-        var targetPath = storageRoot.resolve(relativePath);
+        byte[] raw;
         try {
-            Files.createDirectories(targetPath.getParent());
-            Files.move(tempFile, targetPath);
+            raw = Files.readAllBytes(tempFile);
         } catch (IOException e) {
-            throw new UncheckedIOException("failed to store file", e);
+            throw new UncheckedIOException("failed to read file", e);
         }
+        deleteTempFile(tempFile);
 
         var record = new FileRecord();
         record.id = id;
         record.userId = userId;
         record.fileName = fileName;
         record.contentType = contentType;
-        record.size = fileSize(targetPath);
-        record.storagePath = relativePath;
-        record.createdAt = now;
+        record.size = (long) raw.length;
+        record.data = Base64.getEncoder().encodeToString(raw);
+        record.createdAt = ZonedDateTime.now();
 
         fileRecordCollection.insert(record);
         LOGGER.info("file uploaded, id={}, fileName={}, size={}", id, fileName, record.size);
         return record;
+    }
+
+    private void deleteTempFile(Path tempFile) {
+        try {
+            Files.deleteIfExists(tempFile);
+        } catch (IOException e) {
+            LOGGER.warn("failed to delete temp file, path={}", tempFile, e);
+        }
     }
 
     public FileRecord get(String id) {
@@ -63,30 +62,18 @@ public class FileService {
             .orElseThrow(() -> new NotFoundException("file not found, id=" + id));
     }
 
-    public Path resolve(FileRecord record) {
-        return storageRoot.resolve(record.storagePath);
+    /**
+     * Get the decoded file bytes for a record.
+     */
+    public byte[] getBytes(FileRecord record) {
+        if (record.data == null) {
+            throw new NotFoundException("file content not available, id=" + record.id
+                + " (file may have expired or been stored on a different instance)");
+        }
+        return Base64.getDecoder().decode(record.data);
     }
 
     public void delete(String id) {
-        var record = get(id);
-        var filePath = storageRoot.resolve(record.storagePath);
-        try {
-            Files.deleteIfExists(filePath);
-        } catch (IOException e) {
-            LOGGER.warn("failed to delete file from disk, path={}", filePath, e);
-        }
         fileRecordCollection.delete(id);
-    }
-
-    private long fileSize(Path path) {
-        try {
-            return Files.size(path);
-        } catch (IOException e) {
-            return 0;
-        }
-    }
-
-    private String sanitizeFileName(String fileName) {
-        return fileName.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 }
