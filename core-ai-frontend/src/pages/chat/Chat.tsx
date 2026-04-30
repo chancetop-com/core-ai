@@ -492,16 +492,15 @@ export default function Chat() {
     sseControllerRef.current = controller;
   }, [handleSSEEvent, showToast]);
 
-  // Only useEffect manages SSE lifecycle - prevents double connections
+  // Cleanup SSE on session change or unmount.
+  // Connection is managed lazily by ensureSession() so that clicking a
+  // conversation to view history does not waste a server worker thread.
   useEffect(() => {
-    if (sessionId && !sseControllerRef.current) {
-      doConnectSSE(sessionId);
-    }
     return () => {
       sseControllerRef.current?.abort();
       sseControllerRef.current = null;
     };
-  }, [sessionId, doConnectSSE]);
+  }, [sessionId]);
 
   const ensureSession = async (): Promise<string> => {
     if (sessionId) {

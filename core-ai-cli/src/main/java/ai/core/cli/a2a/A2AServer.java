@@ -74,7 +74,7 @@ public class A2AServer {
                         spaHandler.handleRequest(exchange);
                     }
                 }))
-                .setWorkerThreads(4)
+                .setWorkerThreads(8)
                 // Set worker threads to daemon mode so they don't prevent JVM shutdown
                 .setWorkerOption(Options.THREAD_DAEMON, true)
                 .build();

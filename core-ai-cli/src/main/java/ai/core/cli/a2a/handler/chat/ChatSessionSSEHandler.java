@@ -48,9 +48,7 @@ public class ChatSessionSSEHandler implements HttpHandler {
         event.put("timestamp", ZonedDateTime.now().toString());
         // Flatten data fields into top level
         if (data != null) {
-            for (var entry : data.entrySet()) {
-                event.put(entry.getKey(), entry.getValue());
-            }
+            event.putAll(data);
         }
         return "data: " + JsonUtil.toJson(event) + "\n\n";
     }
@@ -118,11 +116,9 @@ public class ChatSessionSSEHandler implements HttpHandler {
         chatSession.addListener(listener);
         chatSession.setSseHandlerThread(Thread.currentThread());
         exchange.addExchangeCompleteListener((ex, next) -> {
-            // Note: do NOT call listener.close() here - the SSE connection should only be closed
-            // when the turn completes (in onTurnComplete) to ensure all tool events are sent.
-            // If the client disconnects, sendFrame will fail and drainEventQueue will break.
-            chatSession.removeListener(listener);
             chatSession.signalSseClose();
+            chatSession.interruptSseHandler();
+            chatSession.removeListener(listener);
             next.proceed();
         });
 
@@ -159,7 +155,7 @@ public class ChatSessionSSEHandler implements HttpHandler {
 
     private String pollEvent(BlockingQueue<String> eventQueue) {
         try {
-            return eventQueue.poll(30, TimeUnit.SECONDS);
+            return eventQueue.poll(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return SSE_CLOSE_MARKER;
