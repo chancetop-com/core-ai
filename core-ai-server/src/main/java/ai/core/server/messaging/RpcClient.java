@@ -15,17 +15,22 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Makes synchronous RPC calls to the session-owning Pod via Redis Streams + Pub/Sub.
- * <p>
- * Flow: non-owner Pod publishes a command to the owner's per-Pod stream, then
- * blocks waiting for the response on a unique Redis Pub/Sub channel.
- *
  * @author stephen
  */
 public class RpcClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(RpcClient.class);
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(15);
-    private static final String RPC_CHANNEL_PREFIX = "coreai:rpc:";
+
+    /**
+     * Build an RPC response JSON for the handler to publish.
+     */
+    public static String okResponse(String payloadJson) {
+        return JsonUtil.toJson(Map.of("ok", true, "payload", payloadJson));
+    }
+
+    public static String errorResponse(String message) {
+        return JsonUtil.toJson(Map.of("ok", false, "message", message));
+    }
 
     private final JedisPool jedisPool;
     private final SessionOwnershipRegistry ownershipRegistry;
@@ -66,15 +71,9 @@ public class RpcClient {
         pending.put(requestId, future);
 
         try {
-            // Publish the command to the owner's per-Pod stream
             var targetStream = resolveTargetStream(command.sessionId());
-            try (var jedis = jedisPool.getResource()) {
-                jedis.xadd(targetStream, StreamEntryID.NEW_ENTRY, command.toStreamMap());
-                LOGGER.debug("RPC command published to stream={}, type={}, sessionId={}, requestId={}",
-                        targetStream, command.type(), command.sessionId(), requestId);
-            }
+            publishCommand(targetStream, command);
 
-            // Wait for the response
             var json = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
             return parseResponse(json, responseType);
         } catch (java.util.concurrent.TimeoutException e) {
@@ -90,7 +89,6 @@ public class RpcClient {
             throw new RuntimeException("RPC call interrupted, type=" + command.type() + ", sessionId=" + command.sessionId(), e);
         } catch (Exception e) {
             pending.remove(requestId);
-            if (e instanceof RuntimeException re) throw re;
             throw new RuntimeException("RPC call failed, type=" + command.type() + ", sessionId=" + command.sessionId(), e);
         }
     }
@@ -102,6 +100,14 @@ public class RpcClient {
         return call(command, responseType, DEFAULT_TIMEOUT);
     }
 
+    private void publishCommand(String targetStream, SessionCommand command) {
+        try (var jedis = jedisPool.getResource()) {
+            jedis.xadd(targetStream, StreamEntryID.NEW_ENTRY, command.toStreamMap());
+            LOGGER.debug("RPC command published to stream={}, type={}, sessionId={}, requestId={}",
+                    targetStream, command.type(), command.sessionId(), command.requestId());
+        }
+    }
+
     private String resolveTargetStream(String sessionId) {
         var owner = ownershipRegistry.getOwner(sessionId);
         if (owner != null) {
@@ -110,7 +116,6 @@ public class RpcClient {
         return SessionCommand.UNOWNED_STREAM;
     }
 
-    @SuppressWarnings("unchecked")
     private <T> T parseResponse(String json, Class<T> responseType) {
         var map = JsonUtil.fromJson(Map.class, json);
         var ok = Boolean.TRUE.equals(map.get("ok"));
@@ -127,16 +132,5 @@ public class RpcClient {
      */
     public String newRequestId() {
         return UUID.randomUUID().toString();
-    }
-
-    /**
-     * Build an RPC response JSON for the handler to publish.
-     */
-    public static String okResponse(String payloadJson) {
-        return JsonUtil.toJson(Map.of("ok", true, "payload", payloadJson));
-    }
-
-    public static String errorResponse(String message) {
-        return JsonUtil.toJson(Map.of("ok", false, "message", message));
     }
 }

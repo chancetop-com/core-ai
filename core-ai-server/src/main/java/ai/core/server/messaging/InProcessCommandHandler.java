@@ -1,6 +1,5 @@
 package ai.core.server.messaging;
 
-import ai.core.api.server.agent.GenerateAgentDraftResponse;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
