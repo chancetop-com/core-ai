@@ -55,6 +55,7 @@ public class AgentRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentRunner.class);
     private static final int MAX_CONCURRENT_RUNS = 10;
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
+    private static final int SANDBOX_RELEASE_DELAY_SECONDS = 60;
     private static final int MAX_TRANSCRIPT_RESULT_LENGTH = 10240;
     private static final String ARTIFACT_SYSTEM_INSTRUCTIONS = """
 
@@ -122,16 +123,26 @@ public class AgentRunner {
 
         var sandbox = sandboxService.createSandbox(sandboxConfig, runId, definition.userId);
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-            try (sandbox) {
+            try {
                 execute(runEntity, definition, sandbox, resolvedVariables);
             } finally {
-                sandboxService.releaseSandbox(runId);
+                scheduleSandboxRelease(runId);
             }
         }, executorService);
         runningFutures.put(runId, future);
         future.whenComplete((result, error) -> runningFutures.remove(runId));
 
         return runId;
+    }
+
+    private void scheduleSandboxRelease(String runId) {
+        timeoutScheduler.schedule(() -> {
+            try {
+                sandboxService.releaseSandbox(runId);
+            } catch (Exception e) {
+                LOGGER.warn("failed to release sandbox for runId={}", runId, e);
+            }
+        }, SANDBOX_RELEASE_DELAY_SECONDS, TimeUnit.SECONDS);
     }
 
     public void cancel(String runId) {
