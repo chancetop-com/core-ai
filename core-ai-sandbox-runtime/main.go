@@ -20,9 +20,10 @@ import (
 	"time"
 )
 
-const maxOutputSize = 30 * 1024        // 30KB
-const skillBaseDir = "/skill"           // sandbox-side mount target for materialized skills
-const maxSkillArchiveSize = 5 << 20     // 5 MB
+const maxOutputSize = 30 * 1024       // 30KB
+const skillBaseDir = "/skill"         // sandbox-side mount target for materialized skills
+const maxSkillArchiveSize = 5 << 20   // 5 MB
+const maxDownloadFileSize = 100 << 20 // 100 MB
 
 // ---- Request / Response ----
 
@@ -32,7 +33,7 @@ type ExecuteRequest struct {
 }
 
 type ExecuteResponse struct {
-	Status     string `json:"status"`               // completed, failed, timeout, pending
+	Status     string `json:"status"` // completed, failed, timeout, pending
 	Result     string `json:"result"`
 	TaskID     string `json:"task_id,omitempty"`
 	DurationMs int64  `json:"duration_ms,omitempty"`
@@ -162,6 +163,7 @@ func main() {
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/execute", handleExecute)
 	http.HandleFunc("/tasks/", handleTaskPoll)
+	http.HandleFunc("/files/content", handleFileContent)
 	http.HandleFunc("/skills/", handleSkillMaterialize)
 
 	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d", port, workspaceDir, maxAsync)
@@ -242,6 +244,71 @@ func handleTaskPoll(w http.ResponseWriter, r *http.Request) {
 		TaskID:     task.ID,
 		DurationMs: task.DurationMs,
 	})
+}
+
+// handleFileContent handles GET /files/content?path=/tmp/report.pdf.
+// It returns raw file bytes for server-side artifact collection.
+func handleFileContent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	requested := r.URL.Query().Get("path")
+	if requested == "" {
+		http.Error(w, "path is required", http.StatusBadRequest)
+		return
+	}
+
+	safePath, err := resolveDownloadPath(requested)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	info, err := os.Stat(safePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "file not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "failed to stat file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "path is a directory", http.StatusBadRequest)
+		return
+	}
+	if !info.Mode().IsRegular() {
+		http.Error(w, "path is not a regular file", http.StatusBadRequest)
+		return
+	}
+	if info.Size() > maxDownloadFileSize {
+		http.Error(w, fmt.Sprintf("file exceeds max size (%d bytes)", maxDownloadFileSize), http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	file, err := os.Open(safePath)
+	if err != nil {
+		http.Error(w, "failed to open file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	contentType := mimeType(safePath, file)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.Header().Set("X-File-Name", filepath.Base(safePath))
+	if r.Method == http.MethodHead {
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		http.Error(w, "failed to read file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := io.Copy(w, file); err != nil {
+		log.Printf("failed to stream file %s: %v", safePath, err)
+	}
 }
 
 // ---- Code execution tools ----
@@ -590,6 +657,59 @@ func resolvePath(requested string) string {
 	return filepath.Clean(requested)
 }
 
+func resolveDownloadPath(requested string) (string, error) {
+	cleaned := resolvePath(requested)
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", err
+		}
+		return "", fmt.Errorf("failed to resolve path: %w", err)
+	}
+	allowedRoots := []string{workspaceDir, os.TempDir()}
+	for _, root := range allowedRoots {
+		rootResolved, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			rootResolved = filepath.Clean(root)
+		}
+		if isPathWithin(resolved, rootResolved) {
+			return resolved, nil
+		}
+	}
+	return "", fmt.Errorf("path is outside allowed directories")
+}
+
+func isPathWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
+}
+
+func mimeType(path string, file *os.File) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".csv":
+		return "text/csv; charset=utf-8"
+	case ".json":
+		return "application/json"
+	case ".pdf":
+		return "application/pdf"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".svg":
+		return "image/svg+xml"
+	}
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err == nil && n > 0 {
+		return http.DetectContentType(buffer[:n])
+	}
+	return "application/octet-stream"
+}
+
 func sanitizePath(requested, defaultPath string) string {
 	if requested == "" {
 		return defaultPath
@@ -767,4 +887,3 @@ func writeJSON(w http.ResponseWriter, resp ExecuteResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
-

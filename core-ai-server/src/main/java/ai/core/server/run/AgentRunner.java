@@ -14,6 +14,7 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
+import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.systemprompt.SystemPromptService;
@@ -73,6 +74,9 @@ public class AgentRunner {
 
     @Inject
     SandboxService sandboxService;
+
+    @Inject
+    FileService fileService;
 
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
         return run(definition, input, trigger, null);
@@ -138,12 +142,12 @@ public class AgentRunner {
 
     private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var runId = runEntity.id;
-        var agent = buildAgent(definition, sandbox, variables);
+        var agent = buildAgent(runEntity, definition, sandbox, variables);
         try {
             var config = definition.publishedConfig;
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
-            var output = executeWithTimeout(agent, runEntity.input, timeoutSeconds, variables);
+            var output = executeWithTimeout(agent, runEntity.input, timeoutSeconds);
             updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
         } catch (TimeoutException e) {
             var config = definition.publishedConfig;
@@ -207,8 +211,8 @@ public class AgentRunner {
         return transcript;
     }
 
-    private String executeWithTimeout(Agent agent, String input, int timeoutSeconds, Map<String, Object> variables) throws Exception {
-        var future = CompletableFuture.supplyAsync(() -> agent.run(input, ExecutionContext.builder().customVariables(variables).build()), executorService);
+    private String executeWithTimeout(Agent agent, String input, int timeoutSeconds) throws Exception {
+        var future = CompletableFuture.supplyAsync(() -> agent.run(input), executorService);
         try {
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
@@ -217,7 +221,7 @@ public class AgentRunner {
         }
     }
 
-    private Agent buildAgent(AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
+    private Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var config = definition.publishedConfig;
         List<ToolCall> tools;
         if (config != null && config.tools != null && !config.tools.isEmpty()) {
@@ -226,6 +230,10 @@ public class AgentRunner {
             tools = toolRegistryService.resolveToolRefs(definition.tools);
         } else {
             tools = List.of();
+        }
+        tools = new ArrayList<>(tools);
+        if (sandbox != null) {
+            tools.add(SubmitArtifactsTool.create(runEntity.id, definition.userId, fileService, agentRunCollection));
         }
 
         var context = ExecutionContext.builder()
@@ -265,6 +273,8 @@ public class AgentRunner {
     }
 
     private void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, Agent agent) {
+        var latestRun = agentRunCollection.get(runEntity.id).orElse(runEntity);
+        runEntity.artifacts = latestRun.artifacts;
         runEntity.status = status;
         runEntity.output = output;
         runEntity.error = error;

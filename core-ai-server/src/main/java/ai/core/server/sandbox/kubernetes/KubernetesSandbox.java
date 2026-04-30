@@ -3,6 +3,7 @@ package ai.core.server.sandbox.kubernetes;
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConstants;
+import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.server.sandbox.SandboxClient;
 import ai.core.tool.ToolCallResult;
@@ -70,6 +71,11 @@ public class KubernetesSandbox implements Sandbox {
     @Override
     public void materializeSkill(String name, String version, byte[] tarBytes) {
         runtimeClient.materializeSkill(name, version, tarBytes);
+    }
+
+    @Override
+    public SandboxFile downloadFile(String path) {
+        return runtimeClient.downloadFile(path);
     }
 
     @Override

@@ -20,6 +20,10 @@ public interface Sandbox extends AutoCloseable {
         throw new UnsupportedOperationException("materializeSkill not supported by this sandbox");
     }
 
+    default SandboxFile downloadFile(String path) {
+        throw new UnsupportedOperationException("downloadFile not supported by this sandbox");
+    }
+
     @Override
     void close();
 }

@@ -192,6 +192,21 @@ public class AgentRunService {
                 return entry;
             }).toList();
         }
+        if (entity.artifacts != null) {
+            view.artifacts = entity.artifacts.stream().map(a -> {
+                var artifact = new AgentRunDetailView.ArtifactView();
+                artifact.fileId = a.fileId;
+                artifact.fileName = a.fileName;
+                artifact.contentType = a.contentType;
+                artifact.size = a.size;
+                artifact.sourcePath = a.sourcePath;
+                artifact.title = a.title;
+                artifact.description = a.description;
+                artifact.downloadUrl = "/api/files/" + a.fileId + "/content";
+                artifact.createdAt = a.createdAt;
+                return artifact;
+            }).toList();
+        }
         return view;
     }
 }

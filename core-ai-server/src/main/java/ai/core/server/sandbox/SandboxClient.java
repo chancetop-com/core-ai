@@ -1,6 +1,7 @@
 package ai.core.server.sandbox;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.tool.ToolCallResult;
 import core.framework.api.json.Property;
@@ -13,6 +14,11 @@ import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.time.Duration;
 
 /**
@@ -128,6 +134,36 @@ public class SandboxClient {
             return ToolCallResult.failed("Failed to poll task: " + e.getMessage())
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    public SandboxFile downloadFile(String path) {
+        try {
+            var url = baseUrl + "/files/content?path=" + URLEncoder.encode(path, StandardCharsets.UTF_8);
+            var req = new HTTPRequest(HTTPMethod.GET, url);
+            var response = httpClient.execute(req);
+            if (response.statusCode != 200) {
+                throw new RuntimeException("sandbox file download failed: status=" + response.statusCode
+                        + ", body=" + response.text());
+            }
+
+            var tempFile = Files.createTempFile("sandbox-artifact-", ".bin");
+            Files.write(tempFile, response.body);
+            var fileName = header(response, "X-File-Name");
+            if (fileName == null || fileName.isBlank()) {
+                fileName = java.nio.file.Path.of(path).getFileName().toString();
+            }
+            var contentType = response.contentType != null ? response.contentType.toString() : header(response, "Content-Type");
+            if (contentType == null || contentType.isBlank()) {
+                contentType = "application/octet-stream";
+            }
+            return new SandboxFile(tempFile, fileName, contentType, response.body.length);
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to write sandbox file to temp file", e);
+        }
+    }
+
+    private String header(HTTPResponse response, String name) {
+        return response.headers.get(name);
     }
 
     private ToolCallResult parseResponse(String responseBody, long durationMs) {

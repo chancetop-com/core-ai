@@ -6,6 +6,7 @@ import ai.core.api.server.session.SandboxEventType;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxConstants;
+import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
@@ -55,6 +56,12 @@ public class LazySandbox implements Sandbox {
     public void materializeSkill(String name, String version, byte[] tarBytes) {
         ensureReady();
         delegate.materializeSkill(name, version, tarBytes);
+    }
+
+    @Override
+    public SandboxFile downloadFile(String path) {
+        ensureReady();
+        return delegate.downloadFile(path);
     }
 
     @Override

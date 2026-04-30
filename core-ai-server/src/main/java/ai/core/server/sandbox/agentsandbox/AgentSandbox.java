@@ -3,6 +3,7 @@ package ai.core.server.sandbox.agentsandbox;
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConstants;
+import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.server.sandbox.SandboxClient;
 import ai.core.tool.ToolCallResult;
@@ -65,6 +66,11 @@ public class AgentSandbox implements Sandbox {
     }
 
     @Override
+    public SandboxFile downloadFile(String path) {
+        return runtimeClient.downloadFile(path);
+    }
+
+    @Override
     public SandboxStatus getStatus() {
         return status;
     }
@@ -93,4 +99,3 @@ public class AgentSandbox implements Sandbox {
         return false;
     }
 }
-

@@ -41,6 +41,9 @@ public class AgentRun {
     @Field(name = "transcript")
     public List<TranscriptEntry> transcript;
 
+    @Field(name = "artifacts")
+    public List<AgentRunArtifact> artifacts;
+
     @Field(name = "token_usage")
     public TokenUsage tokenUsage;
 
