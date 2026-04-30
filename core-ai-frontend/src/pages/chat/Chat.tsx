@@ -492,15 +492,15 @@ export default function Chat() {
     sseControllerRef.current = controller;
   }, [handleSSEEvent, showToast]);
 
-  // Cleanup SSE on session change or unmount.
-  // Connection is managed lazily by ensureSession() so that clicking a
-  // conversation to view history does not waste a server worker thread.
+  // Cleanup SSE on unmount. Session changes are handled explicitly by
+  // doConnectSSE() and handleNewChat(); aborting from this effect can cancel
+  // the first connection created immediately after a new sessionId is set.
   useEffect(() => {
     return () => {
       sseControllerRef.current?.abort();
       sseControllerRef.current = null;
     };
-  }, [sessionId]);
+  }, []);
 
   const ensureSession = async (): Promise<string> => {
     if (sessionId) {
