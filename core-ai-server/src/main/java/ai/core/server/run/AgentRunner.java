@@ -17,9 +17,13 @@ import ai.core.server.domain.TriggerType;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
+import ai.core.server.skill.ServerSkillTool;
+import ai.core.server.skill.SkillArchiveBuilder;
+import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.skill.SkillRegistry;
+import ai.core.tool.tools.ReadSkillResourceTool;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -65,6 +69,12 @@ public class AgentRunner {
 
     @Inject
     MongoSkillProvider mongoSkillProvider;
+
+    @Inject
+    SkillService skillService;
+
+    @Inject
+    SkillArchiveBuilder skillArchiveBuilder;
 
     @Inject
     SystemPromptService systemPromptService;
@@ -264,6 +274,12 @@ public class AgentRunner {
         if (skillIds != null && !skillIds.isEmpty()) {
             var skillRegistry = new SkillRegistry();
             skillRegistry.addProvider(mongoSkillProvider.scoped(new HashSet<>(skillIds)));
+            tools.add(ServerSkillTool.builder()
+                .registry(skillRegistry)
+                .skillService(skillService)
+                .archiveBuilder(skillArchiveBuilder)
+                .build());
+            tools.add(ReadSkillResourceTool.builder().registry(skillRegistry).build());
             builder.skillRegistry(skillRegistry);
         }
 
