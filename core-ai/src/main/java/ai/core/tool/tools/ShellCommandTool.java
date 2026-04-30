@@ -8,9 +8,11 @@ import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.utils.InputStreamUtil;
+import ai.core.utils.Platform;
 import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
 import core.framework.util.Strings;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,10 +34,17 @@ public class ShellCommandTool extends ToolCall {
 
     private static final int DEFAULT_TIMEOUT_MILLISECONDS = 2 * 60 * 1000;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
-    private static final String TOOL_DESC = """
+    private static final String TOOL_DESC = buildToolDescription();
+
+    private static String buildToolDescription() {
+        var platform = SystemUtil.detectPlatform();
+        var shell = ShellUtil.getPreferredShell(platform);
+        String shellSpecific = getShellSpecific(platform, shell);
+
+        return """
             Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
             
-            Be aware: OS: ${os}
+            Be aware: OS: ${os}${shell_specific}
             
             All commands run in the current working directory by default. Use the `workdir` parameter if you need to run a command in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workspace` instead.
             
@@ -173,8 +182,26 @@ public class ShellCommandTool extends ToolCall {
             .replace("${default_timeout_minutes}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS / 60000))
             .replace("${tool_todo}", WriteTodosTool.WT_TOOL_NAME)
             .replace("${os}", System.getProperty("os.name"))
+            .replace("${shell_specific}", shellSpecific)
             .replace("${tool_task}", TaskTool.TOOL_NAME);
+    }
 
+    @NotNull
+    private static String getShellSpecific(Platform platform, String shell) {
+        var isPowerShell = platform.isWindows() && (shell.contains("pwsh") || shell.contains("powershell"));
+        String shellSpecific = "";
+        if (isPowerShell) {
+            shellSpecific = """
+                    PowerShell-specific notes:
+                    - Pipeline chain operators && and || are NOT available — they cause a parser error. To run B only if A succeeds: A; if ($?) { B }. To chain unconditionally: A; B.
+                    - Ternary (?:), null-coalescing (??), and null-conditional (?.) operators are NOT available. Use if/else and explicit $null -eq checks instead.
+                    - Avoid 2>&1 on native executables. In PowerShell, redirecting a native command's stderr inside PowerShell wraps each line in an ErrorRecord (NativeCommandError) and sets $? to $false even when the exe returned exit code 0. stderr is already captured for you — don't redirect it.
+                    - Default file encoding is UTF-16 LE (with BOM). When writing files other tools will read, pass -Encoding utf8 to Out-File/Set-Content.
+                    - ConvertFrom-Json returns a PSCustomObject, not a hashtable. -AsHashtable is not available.
+                    """;
+        }
+        return shellSpecific;
+    }
 
     public static Builder builder() {
         return new Builder();
