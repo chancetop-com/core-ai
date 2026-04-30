@@ -77,7 +77,7 @@ public final class PatchedHTTPClientBuilder {
     // like external domain can be under DDos attack constantly (DNS hijacking) or unstable DNS query between countries
     // this is trying to use previous success resolution to reduce intermittent dns resolve failures
     private boolean enableFallbackDNSCache = false;
-    private String userAgent = "HTTPClient";
+    private String userAgent = "core-ai";
     private boolean trustAll = false;
     @Nullable
     private KeyStore trustStore;
