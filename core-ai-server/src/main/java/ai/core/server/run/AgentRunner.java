@@ -39,12 +39,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author stephen
@@ -54,8 +56,21 @@ public class AgentRunner {
     private static final int MAX_CONCURRENT_RUNS = 10;
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
     private static final int MAX_TRANSCRIPT_RESULT_LENGTH = 10240;
+    private static final String ARTIFACT_SYSTEM_INSTRUCTIONS = """
+
+        # Platform artifact delivery
+
+        When you create or update files in the sandbox that are intended for the caller to download or reuse
+        (for example PDFs, reports, charts, CSVs, spreadsheets, images, or archives), you must call the
+        `submit_artifacts` tool before your final response. Submit the sandbox file paths, usually under
+        `/tmp` or `/workspace`, with concise names and content types when known.
+
+        This is a platform delivery requirement. It does not change the user's requested final response format:
+        after submitting artifacts, still answer exactly as the task instructions require.
+        """;
 
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_CONCURRENT_RUNS);
+    private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
     private final Map<String, Future<?>> runningFutures = new ConcurrentHashMap<>();
 
     @Inject
@@ -153,25 +168,32 @@ public class AgentRunner {
     private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var runId = runEntity.id;
         var agent = buildAgent(runEntity, definition, sandbox, variables);
+        var completed = new AtomicBoolean(false);
         try {
             var config = definition.publishedConfig;
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
-            var output = executeWithTimeout(agent, runEntity.input, timeoutSeconds);
-            updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
-        } catch (TimeoutException e) {
-            var config = definition.publishedConfig;
-            var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
-                : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
-            updateRunStatus(runEntity, RunStatus.TIMEOUT, null, "execution timed out after " + timeoutSeconds + "s", null);
+            var timeout = scheduleTimeout(runEntity, agent, timeoutSeconds, completed);
+            try {
+                var output = agent.run(runEntity.input);
+                if (completed.compareAndSet(false, true)) {
+                    updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
+                }
+            } finally {
+                timeout.cancel(false);
+            }
         } catch (Exception e) {
             if (unwrapCause(e) instanceof MaxTurnsExceededException maxTurnsEx) {
                 LOGGER.warn("agent run exceeded max turns, runId={}, maxTurns={}", runId, maxTurnsEx.maxTurns);
-                updateRunStatus(runEntity, RunStatus.COMPLETED, agent.getOutput(), "max turns reached: " + maxTurnsEx.maxTurns, agent);
+                if (completed.compareAndSet(false, true)) {
+                    updateRunStatus(runEntity, RunStatus.COMPLETED, agent.getOutput(), "max turns reached: " + maxTurnsEx.maxTurns, agent);
+                }
                 return;
             }
             LOGGER.error("agent run failed, runId={}", runId, e);
-            updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), null);
+            if (completed.compareAndSet(false, true)) {
+                updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), agent);
+            }
         }
     }
 
@@ -221,14 +243,13 @@ public class AgentRunner {
         return transcript;
     }
 
-    private String executeWithTimeout(Agent agent, String input, int timeoutSeconds) throws Exception {
-        var future = CompletableFuture.supplyAsync(() -> agent.run(input), executorService);
-        try {
-            return future.get(timeoutSeconds, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            future.cancel(true);
-            throw e;
-        }
+    private ScheduledFuture<?> scheduleTimeout(AgentRun runEntity, Agent agent, int timeoutSeconds, AtomicBoolean completed) {
+        return timeoutScheduler.schedule(() -> {
+            if (!completed.compareAndSet(false, true)) return;
+            LOGGER.warn("agent run timed out, runId={}, timeoutSeconds={}", runEntity.id, timeoutSeconds);
+            agent.cancel();
+            updateRunStatus(runEntity, RunStatus.TIMEOUT, null, "execution timed out after " + timeoutSeconds + "s", agent);
+        }, timeoutSeconds, TimeUnit.SECONDS);
     }
 
     private Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
@@ -255,24 +276,15 @@ public class AgentRunner {
             context.sandbox(sandbox);
         }
 
-        var builder = Agent.builder()
-            .llmProvider(llmProviders.getProvider())
-            .toolCalls(tools)
-            .executionContext(context);
-
-        var systemPrompt = resolveSystemPrompt(config, definition);
+        var systemPrompt = appendArtifactInstructions(resolveSystemPrompt(config, definition), sandbox != null);
         var model = config != null ? config.model : definition.model;
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
 
-        if (systemPrompt != null) builder.systemPrompt(systemPrompt);
-        if (model != null) builder.model(model);
-        if (temperature != null) builder.temperature(temperature);
-        if (maxTurns != null) builder.maxTurn(maxTurns);
-
         var skillIds = config != null ? config.skillIds : definition.skillIds;
+        SkillRegistry skillRegistry = null;
         if (skillIds != null && !skillIds.isEmpty()) {
-            var skillRegistry = new SkillRegistry();
+            skillRegistry = new SkillRegistry();
             skillRegistry.addProvider(mongoSkillProvider.scoped(new HashSet<>(skillIds)));
             tools.add(ServerSkillTool.builder()
                 .registry(skillRegistry)
@@ -280,6 +292,18 @@ public class AgentRunner {
                 .archiveBuilder(skillArchiveBuilder)
                 .build());
             tools.add(ReadSkillResourceTool.builder().registry(skillRegistry).build());
+        }
+
+        var builder = Agent.builder()
+            .llmProvider(llmProviders.getProvider())
+            .toolCalls(tools)
+            .executionContext(context);
+
+        if (systemPrompt != null) builder.systemPrompt(systemPrompt);
+        if (model != null) builder.model(model);
+        if (temperature != null) builder.temperature(temperature);
+        if (maxTurns != null) builder.maxTurn(maxTurns);
+        if (skillRegistry != null) {
             builder.skillRegistry(skillRegistry);
         }
 
@@ -344,6 +368,12 @@ public class AgentRunner {
             return systemPromptService.resolveContent(promptId);
         }
         return config != null ? config.systemPrompt : definition.systemPrompt;
+    }
+
+    private String appendArtifactInstructions(String systemPrompt, boolean sandboxEnabled) {
+        if (!sandboxEnabled) return systemPrompt;
+        if (systemPrompt == null || systemPrompt.isBlank()) return ARTIFACT_SYSTEM_INSTRUCTIONS.strip();
+        return systemPrompt + ARTIFACT_SYSTEM_INSTRUCTIONS;
     }
 
     private Throwable unwrapCause(Throwable e) {

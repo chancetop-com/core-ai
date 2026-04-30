@@ -11,6 +11,8 @@ COPY package/app /opt/app
 
 RUN chmod +x /opt/app/bin/core-ai-server && chown -R 1001:1001 /opt/app
 
+WORKDIR /opt/app
+
 USER 1001
 
 EXPOSE 8080
