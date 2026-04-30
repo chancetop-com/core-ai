@@ -138,7 +138,14 @@ public class CliEventListener extends BaseEventListener {
     @Override
     public void onToolApprovalRequest(ToolApprovalRequestEvent event) {
         LOGGER.debug("tool approval request: {} callId={}", event.toolName, event.callId);
-        super.onToolApprovalRequest(event);
+        stopEscReader();
+        try {
+            super.onToolApprovalRequest(event);
+        } finally {
+            if (turnRunning.get()) {
+                startEscReader();
+            }
+        }
         LOGGER.debug("tool approval sent: {} callId={}", event.toolName, event.callId);
     }
 
