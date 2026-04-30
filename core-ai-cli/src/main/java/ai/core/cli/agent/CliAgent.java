@@ -23,6 +23,8 @@ import ai.core.tool.tools.TaskTool;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -43,13 +45,11 @@ public class CliAgent {
         var hookLifecycle = hookConfig.isEmpty() ? null
                 : new ScriptHookLifecycle(hookConfig, new ScriptHookRunner(config.workspace));
 
-        var systemPrompt = buildSystemPrompt(config);
+        String hookOutput = "";
         if (hookLifecycle != null) {
-            String sessionStartOutput = hookLifecycle.runSessionStartHooks();
-            if (!sessionStartOutput.isEmpty()) {
-                systemPrompt += "\n\n" + sessionStartOutput;
-            }
+            hookOutput = hookLifecycle.runSessionStartHooks();
         }
+        var systemPrompt = buildSystemPrompt(config, hookOutput);
         var builder = Agent.builder()
                 .llmProvider(config.providers.getDefaultProvider())
                 .systemPrompt(systemPrompt)
@@ -106,38 +106,228 @@ public class CliAgent {
         return Path.of(System.getProperty("user.home"), ".core-ai", "skills");
     }
 
-    private static String buildSystemPrompt(Config config) {
-        var workspaceInfo = buildWorkspaceInfo(config.workspace);
-        var sb = new StringBuilder("""
-                You are a helpful AI coding assistant and  a personal assistant running inside core-ai.
-                
-                <workspace>
-                %s
-                </workspace>
-                
-                Always use the workspace directory as the working directory when executing shell commands or scripts.
-                """.formatted(workspaceInfo));
-
-        var instructions = loadProjectInstructions(config.workspace);
-        sb.append("""
-
-                ## Project Instructions
-
-                File: .core-ai/instructions.md
-                Use this file for project facts, conventions, build commands, and rules that apply to all interactions.
-
-                <project-instructions>
-                %s
-                </project-instructions>
-                """.formatted(instructions.isEmpty()
-                ? "(empty - create .core-ai/instructions.md when project conventions or rules need to persist across sessions)"
-                : instructions));
-
+    private static String buildSystemPrompt(Config config, String hookOutput) {
+        var sections = new ArrayList<PromptInject>();
+        sections.add(config.coding ? new CodeBasePrompt() : new BasePrompt());
+        sections.add(new EnvironmentPrompt(config.workspace));
+        sections.add(new InstructionsPrompt(config.workspace));
         if (config.memoryEnabled) {
-            var mdMemoryProvider = new MdMemoryProvider(config.workspace);
-            var mdMemoryContent = mdMemoryProvider.load();
-            sb.append("""
+            sections.add(new MemoryPrompt(config.workspace));
+        }
+        if (!hookOutput.isEmpty()) {
+            sections.add(new HookPrompt(hookOutput));
+        }
+        return sections.stream()
+                .map(PromptInject::inject)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    private static void configureMcp(ai.core.agent.AgentBuilder builder) {
+        var manager = McpClientManagerRegistry.getManager();
+        if (manager == null) return;
+        var serverNames = manager.getServerNames();
+        if (serverNames != null && !serverNames.isEmpty()) {
+            var mcpTools = McpToolCalls.from(manager, new ArrayList<>(serverNames), null);
+            builder.toolCalls(new ArrayList<>(mcpTools));
+        }
+    }
+
+
+    public record Config(LLMProviders providers, String modelOverride, int maxTurn,
+                         PersistenceProvider persistenceProvider, Path workspace,
+                         Function<String, String> askUserHandler,
+                         boolean memoryEnabled,
+                         boolean coding) {
+    }
+
+    // ---- PromptInject implementations ----
+
+    public interface PromptInject {
+        String inject();
+    }
+
+    record BasePrompt() implements PromptInject {
+        @Override
+        public String inject() {
+            return "You are a helpful AI coding assistant and a personal assistant running inside core-ai.";
+        }
+    }
+    record CodeBasePrompt() implements PromptInject {
+        @Override
+        public String inject() {
+            return """
+                    You are core-ai-cli, the best coding agent on the planet.
                     
+                    You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
+                    
+                    IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.
+                    
+                    If the user asks for help or wants to give feedback inform them of the following:
+                    - ctrl+p to list available actions
+                    - To give feedback, users should report the issue at
+                      https://github.com/chancetop-com/core-ai
+                    
+                    When the user directly asks about core-ai-cli (eg. "can core-ai-cli do...", "does core-ai-cli have..."), or asks in second person (eg. "are you able...", "can you do..."), or asks how to use a specific core-ai-cli feature (eg. implement a hook, write a slash command, or install an MCP server), use the WebFetch tool to gather information to answer the question from core-ai-cli docs. The list of available docs is available at https://github.com/chancetop-com/core-ai/tree/master/docs
+                    
+                    # Tone and style
+                    - Only use emojis if the user explicitly requests it. Avoid using emojis in all communication unless asked.
+                    - Your output will be displayed on a command line interface. Your responses should be short and concise. You can use GitHub-flavored markdown for formatting, and will be rendered in a monospace font using the CommonMark specification.
+                    - Output text to communicate with the user; all text you output outside of tool use is displayed to the user. Only use tools to complete tasks. Never use tools like Bash or code comments as means to communicate with the user during the session.
+                    - NEVER create files unless they're absolutely necessary for achieving your goal. ALWAYS prefer editing an existing file to creating a new one. This includes markdown files.
+                    
+                    # Professional objectivity
+                    Prioritize technical accuracy and truthfulness over validating the user's beliefs. Focus on facts and problem-solving, providing direct, objective technical info without any unnecessary superlatives, praise, or emotional validation. It is best for the user if core-ai-cli honestly applies the same rigorous standards to all ideas and disagrees when necessary, even if it may not be what the user wants to hear. Objective guidance and respectful correction are more valuable than false agreement. Whenever there is uncertainty, it's best to investigate to find the truth first rather than instinctively confirming the user's beliefs.
+                    
+                    # Task Management
+                    You have access to the write_todos tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
+                    These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps. If you do not use this tool when planning, you may forget to do important tasks - and that is unacceptable.
+                    
+                    It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.
+                    
+                    Examples:
+                    
+                    <example>
+                    user: Run the build and fix any type errors
+                    assistant: I'm going to use the write_todos tool to write the following items to the todo list:
+                    - Run the build
+                    - Fix any type errors
+                    
+                    I'm now going to run the build using Bash.
+                    
+                    Looks like I found 10 type errors. I'm going to use the write_todos tool to write 10 items to the todo list.
+                    
+                    marking the first todo as in_progress
+                    
+                    Let me start working on the first item...
+                    
+                    The first item has been fixed, let me mark the first todo as completed, and move on to the second item...
+                    ..
+                    ..
+                    </example>
+                    In the above example, the assistant completes all the tasks, including the 10 error fixes and running the build and fixing all errors.
+                    
+                    <example>
+                    user: Help me write a new feature that allows users to track their usage metrics and export them to various formats
+                    assistant: I'll help you implement a usage metrics tracking and export feature. Let me first use the write_todos tool to plan this task.
+                    Adding the following todos to the todo list:
+                    1. Research existing metrics tracking in the codebase
+                    2. Design the metrics collection system
+                    3. Implement core metrics tracking functionality
+                    4. Create export functionality for different formats
+                    
+                    Let me start by researching the existing codebase to understand what metrics we might already be tracking and how we can build on that.
+                    
+                    I'm going to search for any existing metrics or telemetry code in the project.
+                    
+                    I've found some existing telemetry code. Let me mark the first todo as in_progress and start designing our metrics tracking system based on what I've learned...
+                    
+                    [Assistant continues implementing the feature step by step, marking todos as in_progress and completed as they go]
+                    </example>
+                    
+                    
+                    # Doing tasks
+                    The user will primarily request you perform software engineering tasks. This includes solving bugs, adding new functionality, refactoring code, explaining code, and more. For these tasks the following steps are recommended:
+                    -\s
+                    - Use the write_todos tool to plan the task if required
+                    
+                    - Tool results and user messages may include <system-reminder> tags. <system-reminder> tags contain useful information and reminders. They are automatically added by the system, and bear no direct relation to the specific tool results or user messages in which they appear.
+                    
+                    
+                    # Tool usage policy
+                    - When doing file search, prefer to use the Task tool in order to reduce context usage.
+                    - You should proactively use the Task tool with specialized agents when the task at hand matches the agent's description.
+                    
+                    - When WebFetch returns a message about a redirect to a different host, you should immediately make a new WebFetch request with the redirect URL provided in the response.
+                    - You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead. Never use placeholders or guess missing parameters in tool calls.
+                    - If the user specifies that they want you to run tools "in parallel", you MUST send a single message with multiple tool use content blocks. For example, if you need to launch multiple agents in parallel, send a single message with multiple Task tool calls.
+                    - Use specialized tools instead of bash commands when possible, as this provides a better user experience. For file operations, use dedicated tools: Read for reading files instead of cat/head/tail, Edit for editing instead of sed/awk, and Write for creating files instead of cat with heredoc or echo redirection. Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
+                    - VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the Task tool instead of running search commands directly.
+                    <example>
+                    user: Where are errors from the client handled?
+                    assistant: [Uses the Task tool to find the files that handle client errors instead of using Glob or Grep directly]
+                    </example>
+                    <example>
+                    user: What is the codebase structure?
+                    assistant: [Uses the Task tool]
+                    </example>
+                    
+                    IMPORTANT: Always use the write_todos tool to plan and track tasks throughout the conversation.
+                    
+                    # Code References
+                    
+                    When referencing specific functions or pieces of code include the pattern `file_path:line_number` to allow the user to easily navigate to the source code location.
+                    
+                    <example>
+                    user: Where are errors from the client handled?
+                    assistant: Clients are marked as failed in the `connectToServer` function in src/services/process.ts:712.
+                    </example>
+                    
+                    """;
+        }
+    }
+
+    record EnvironmentPrompt(Path workspace) implements PromptInject {
+        @Override
+        public String inject() {
+            var gitRepo = Files.isDirectory(workspace.resolve(".git")) ? "yes" : "no";
+            var platform = platformName();
+            var date = LocalDate.now().format(DateTimeFormatter.ofPattern("EEE MMM dd yyyy"));
+            return """
+                    <env>
+                        Working directory: %s
+                        Workspace root folder: %s
+                        Is directory a git repo: %s
+                        Platform: %s
+                        Today's date: %s
+                    </env>
+                    """.formatted(workspace.toAbsolutePath(), workspace.toAbsolutePath(), gitRepo, platform, date);
+        }
+
+        private static String platformName() {
+            var os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("mac") || os.contains("darwin")) return "darwin";
+            if (os.contains("win")) return "win32";
+            return "linux";
+        }
+    }
+
+    record InstructionsPrompt(Path workspace) implements PromptInject {
+        private static final String[] PROJECT_FILES = {"AGENTS.md", "CLAUDE.md", "instructions.md"};
+
+        @Override
+        public String inject() {
+            var sb = new StringBuilder();
+            var projectPaths = findProjectInstructions(workspace);
+            for (var path : projectPaths) {
+                try {
+                    var content = Files.readString(path).trim();
+                    if (!content.isEmpty()) {
+                        sb.append("Instructions from: ").append(path).append("\n").append(content);
+                    }
+                } catch (IOException ignored) {
+                }
+            }
+            return sb.toString();
+        }
+
+        private static List<Path> findProjectInstructions(Path startDir) {
+            var found = new ArrayList<Path>();
+            for (var fileName : PROJECT_FILES) {
+                var file = startDir.resolve(fileName);
+                if (Files.isRegularFile(file)) {
+                    found.add(file);
+                }
+            }
+            return found;
+        }
+    }
+
+    record MemoryPrompt(Path workspace) implements PromptInject {
+        @Override
+        public String inject() {
+            var mdContent = new MdMemoryProvider(workspace).load();
+            return """
                     ## Memory
 
                     Persistent structured memory at .core-ai/memory/.
@@ -151,67 +341,18 @@ public class CliAgent {
                     Writing: use write_file/edit_file to create/update topic files. \
                     Update MEMORY.md index when adding or removing files. \
                     Check existing memories first to avoid duplicates; merge into existing files when possible.
-                    
+
                     <memories>
                     %s
                     </memories>
-                    """.formatted(mdMemoryContent.isBlank() ? "(empty - initialize when user shares preferences or asks to remember)" : mdMemoryContent));
-        }
-
-        return sb.toString();
-    }
-
-    private static void configureMcp(ai.core.agent.AgentBuilder builder) {
-        var manager = McpClientManagerRegistry.getManager();
-        if (manager == null) return;
-        var serverNames = manager.getServerNames();
-        if (serverNames != null && !serverNames.isEmpty()) {
-            var mcpTools = McpToolCalls.from(manager, new ArrayList<>(serverNames), null);
-            builder.toolCalls(new ArrayList<>(mcpTools));
+                    """.formatted(mdContent.isBlank() ? "(empty - initialize when user shares preferences or asks to remember)" : mdContent);
         }
     }
 
-    private static String loadProjectInstructions(Path workspace) {
-        var file = workspace.resolve(".core-ai/instructions.md");
-        if (!Files.isRegularFile(file)) return "";
-        try {
-            return Files.readString(file).trim();
-        } catch (IOException e) {
-            return "";
-        }
-    }
-
-    private static String buildWorkspaceInfo(Path workspace) {
-        var sb = new StringBuilder(256);
-        sb.append("Working directory: ").append(workspace.toAbsolutePath()).append('\n');
-
-        try {
-            var entries = Files.list(workspace)
-                    .sorted()
-                    .map(p -> {
-                        var name = p.getFileName().toString();
-                        return Files.isDirectory(p) ? name + "/" : name;
-                    })
-                    .collect(Collectors.joining("\n  "));
-            if (!entries.isEmpty()) {
-                sb.append("Contents:\n  ").append(entries);
-            }
-        } catch (IOException e) {
-            sb.append("(Unable to list workspace contents)");
-        }
-
-        return sb.toString();
-    }
-
-    public record Config(LLMProviders providers, String modelOverride, int maxTurn,
-                         PersistenceProvider persistenceProvider, Path workspace,
-                         Function<String, String> askUserHandler,
-                         boolean memoryEnabled) {
-
-        public Config(LLMProviders providers, String modelOverride, int maxTurn,
-                      PersistenceProvider persistenceProvider, Path workspace,
-                      Function<String, String> askUserHandler) {
-            this(providers, modelOverride, maxTurn, persistenceProvider, workspace, askUserHandler, true);
+    record HookPrompt(String output) implements PromptInject {
+        @Override
+        public String inject() {
+            return output;
         }
     }
 }

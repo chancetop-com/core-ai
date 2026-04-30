@@ -83,7 +83,8 @@ public class InteractiveConfigSetup {
                     + "litellm.stream.buffer.size=256\n"
                     + "litellm.timeout.seconds=300\n"
                     + "litellm.models=" + model + "\n"
-                    + "username=" + username + "\n";
+                    + "username=" + username + "\n"
+                    + "agent.coding.enabled=false\n";
             Files.writeString(CONFIG_FILE, content);
         } catch (IOException e) {
             throw new RuntimeException("Failed to write config to " + CONFIG_FILE, e);
