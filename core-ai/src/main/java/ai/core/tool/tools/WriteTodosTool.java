@@ -101,7 +101,7 @@ public class WriteTodosTool {
         @Property(name = "in_progress")
         IN_PROGRESS,
         @Property(name = "completed")
-        COMPLETED;
+        COMPLETED
     }
 
     public static class Todo {

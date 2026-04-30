@@ -8,7 +8,6 @@ import ai.core.skill.SkillSource;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

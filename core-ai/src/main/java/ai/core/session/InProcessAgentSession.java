@@ -1,7 +1,6 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
-import ai.core.agent.ExecutionContext;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.agent.lifecycle.PlanUpdateLifecycle;
 import ai.core.api.server.session.AgentEvent;

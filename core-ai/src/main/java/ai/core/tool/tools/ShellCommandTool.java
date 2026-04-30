@@ -11,7 +11,6 @@ import ai.core.utils.InputStreamUtil;
 import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
 import core.framework.util.Strings;
-import io.undertow.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +21,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -33,7 +31,6 @@ public class ShellCommandTool extends ToolCall {
     public static final String TOOL_NAME = "run_bash_command";
 
     private static final int DEFAULT_TIMEOUT_MILLISECONDS = 2 * 60 * 1000;
-    private static final long ASYNC_TIMEOUT_SECONDS = 600;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
     private static final String TOOL_DESC = """
             Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
@@ -41,9 +38,9 @@ public class ShellCommandTool extends ToolCall {
             Be aware: OS: ${os}
             
             All commands run in the current working directory by default. Use the `workdir` parameter if you need to run a command in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workspace` instead.
-
+            
             IMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:
-
+            
              - Read files: Use ${tool_read_file} (NOT cat/head/tail)
              - Edit files: Use ${tool_edit_file} (NOT sed/awk)
              - File search: Use ${tool_glob} (NOT find or ls)
@@ -51,7 +48,7 @@ public class ShellCommandTool extends ToolCall {
              - Write files: Use ${tool_write_file} (NOT echo >/cat <<EOF)
              - Communication: Output text directly (NOT echo/printf)
             While the ${tool_shell} tool can do similar things, it's better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.
-
+            
             # Instructions
              - If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.
              - Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")
@@ -78,14 +75,14 @@ public class ShellCommandTool extends ToolCall {
               - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
               - If you must sleep, keep the duration short to avoid blocking the user.
              - When using `find -regex` with alternation, put the longest alternative first. Example: use `'.*\\.\\(tsx\\|ts\\)'` not `'.*\\.\\(ts\\|tsx\\)'` — the second form silently skips `.tsx` files.
-
-
+            
+            
             # Committing changes with git
-
+            
             Only create commits when requested by the user. If unclear, ask first. When the user asks you to create a new git commit, follow these steps carefully:
-
+            
             You can call multiple tools in a single response. When multiple independent pieces of information are requested and all commands are likely to succeed, run multiple tool calls in parallel for optimal performance. The numbered steps below indicate which commands should be batched in parallel.
-
+            
             Git Safety Protocol:
             - NEVER update the git config
             - NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions
@@ -94,7 +91,7 @@ public class ShellCommandTool extends ToolCall {
             - CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen — so --amend would modify the PREVIOUS commit, which may result in destroying work or losing previous changes. Instead, after hook failure, fix the issue, re-stage, and create a NEW commit
             - When staging files, prefer adding specific files by name rather than using "git add -A" or "git add .", which can accidentally include sensitive files (.env, credentials) or large binaries
             - NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTANT to only commit when explicitly asked, otherwise the user will feel that you are being too proactive
-
+            
             1. Run the following bash commands in parallel, each using the ${tool_shell} tool:
               - Run a git status command to see all untracked files. IMPORTANT: Never use the -uall flag as it can cause memory issues on large repos.
               - Run a git diff command to see both staged and unstaged changes that will be committed.
@@ -111,7 +108,7 @@ public class ShellCommandTool extends ToolCall {
                - Run git status after the commit completes to verify success.
                Note: git status depends on the commit completing, so run it sequentially after the commit.
             4. If the commit fails due to pre-commit hook: fix the issue and create a NEW commit
-
+            
             Important notes:
             - NEVER run additional commands to read or explore code, besides git bash commands
             - NEVER use the ${tool_todo} or ${tool_task} tools
@@ -123,17 +120,17 @@ public class ShellCommandTool extends ToolCall {
             <example>
             git commit -m "$(cat <<'EOF'
                Commit message here.
-
+            
                Co-Authored-By: core-ai-cli <noreply@chancetop.com>
                EOF
                )"
             </example>
-
+            
             # Creating pull requests
             Use the gh command via the ${tool_shell} tool for ALL GitHub-related tasks including working with issues, pull requests, checks, and releases. If given a Github URL use the gh command to get the information needed.
-
+            
             IMPORTANT: When the user asks you to create a pull request, follow these steps carefully:
-
+            
             1. Run the following bash commands in parallel using the ${tool_shell} tool, in order to understand the current state of the branch since it diverged from the main branch:
                - Run a git status command to see all untracked files (never use -uall flag)
                - Run a git diff command to see both staged and unstaged changes that will be committed
@@ -150,19 +147,19 @@ public class ShellCommandTool extends ToolCall {
             gh pr create --title "the pr title" --body "$(cat <<'EOF'
             ## Summary
             <1-3 bullet points>
-
+            
             ## Test plan
             [Bulleted markdown checklist of TODOs for testing the pull request...]
-
+            
             🤖 Generated with core-ai-cli
             EOF
             )"
             </example>
-
+            
             Important:
             - DO NOT use the ${tool_todo} or ${tool_task} tools
             - Return the PR URL when you're done, so the user can see it
-
+            
             # Other common operations
             - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
             """
@@ -175,7 +172,7 @@ public class ShellCommandTool extends ToolCall {
             .replace("${default_timeout_ms}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS))
             .replace("${default_timeout_minutes}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS / 60000))
             .replace("${tool_todo}", WriteTodosTool.WT_TOOL_NAME)
-            .replace("${os}",System.getProperty("os.name"))
+            .replace("${os}", System.getProperty("os.name"))
             .replace("${tool_task}", TaskTool.TOOL_NAME);
 
 
@@ -308,7 +305,6 @@ public class ShellCommandTool extends ToolCall {
         try {
             var argsMap = parseArguments(text);
             var command = getStringValue(argsMap, "command");
-            var description = getStringValue(argsMap, "description");
             var timeMilliseconds = argsMap.get("timeout") == null ? DEFAULT_TIMEOUT_MILLISECONDS : (Integer) argsMap.get("timeout");
             var timeoutSeconds = timeMilliseconds / 1000;
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
@@ -320,6 +316,7 @@ public class ShellCommandTool extends ToolCall {
             commands.add(command);
             if (runInBackground && taskManager != null) {
                 var taskId = UUID.randomUUID().toString().replace("-", "");
+                var description = getStringValue(argsMap, "description");
                 var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds));
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), context));
                 return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description))
@@ -346,7 +343,7 @@ public class ShellCommandTool extends ToolCall {
                   your response.
                   output_file: %s
                   If asked, you can check progress before completion by using %s or %s tail on the output file.
-                """.formatted(taskId, outputRef, ReadFileTool.TOOL_NAME, ShellCommandTool.TOOL_NAME);
+                """.formatted(taskId, outputRef, ReadFileTool.TOOL_NAME, TOOL_NAME);
         return """
                 <task-notification>
                 <task-id>%s</task-id>
@@ -357,29 +354,6 @@ public class ShellCommandTool extends ToolCall {
                 <system-reminder>%s</system-reminder>
                 </task-notification>
                 """.formatted(taskId, "bash", description, "async_launched", outputRefXml, reminder);
-    }
-
-    private ToolCallResult executeAsync(String command, Path scriptPath, String workspaceDir, long startTime) {
-        var asyncExecutor = AsyncToolTaskExecutor.getInstance();
-        var taskId = asyncExecutor.submit("sh", TOOL_NAME, () -> {
-            if (!Strings.isBlank(command)) {
-                var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(SystemUtil.detectPlatform()).trim();
-                var prefixParts = shellPrefix.split(" ");
-                var commands = new ArrayList<>(Arrays.asList(prefixParts));
-                commands.add(command);
-                return exec(commands, workspaceDir, ASYNC_TIMEOUT_SECONDS);
-            } else {
-                return execScript(scriptPath, workspaceDir, ASYNC_TIMEOUT_SECONDS);
-            }
-        });
-
-        var message = scriptPath != null
-                ? "Executing script: " + scriptPath
-                : "Executing command: " + (command.length() > 50 ? command.substring(0, 50) + "..." : command);
-
-        return ToolCallResult.pending(taskId, message)
-                .withDuration(System.currentTimeMillis() - startTime)
-                .withStats("async", true);
     }
 
     @Override

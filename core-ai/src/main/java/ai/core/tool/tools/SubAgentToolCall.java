@@ -8,7 +8,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import core.framework.json.JSON;
 
 import java.util.List;
 import java.util.function.Supplier;

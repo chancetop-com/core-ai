@@ -191,13 +191,11 @@ public class Agent extends Node<Agent> {
         history.complete(determineCompletionStatus(history));
         if (reflectionListener != null) reflectionListener.onReflectionComplete(this, history);
     }
-
     private void notifyTerminationReason(ReflectionEvaluation eval, int round) {
         if (reflectionListener == null) return;
         if (eval.isPass() && eval.getScore() >= 8) reflectionListener.onScoreAchieved(this, eval.getScore(), round);
         else if (!eval.isShouldContinue()) reflectionListener.onNoImprovement(this, eval.getScore(), round);
     }
-
     private ReflectionStatus determineCompletionStatus(ReflectionHistory history) {
         if (history.getRounds().size() >= reflectionConfig.maxRound()) return ReflectionStatus.COMPLETED_MAX_ROUNDS;
         if (history.getRounds().isEmpty()) return ReflectionStatus.COMPLETED_SUCCESS;
@@ -205,7 +203,6 @@ public class Agent extends Node<Agent> {
         if (lastEval.isPass() && lastEval.getScore() >= 8) return ReflectionStatus.COMPLETED_SUCCESS;
         return lastEval.isShouldContinue() ? ReflectionStatus.COMPLETED_SUCCESS : ReflectionStatus.COMPLETED_NO_IMPROVEMENT;
     }
-
     protected void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         buildUserQueryToMessage(query, variables);
         runTurnsLoop(constructionAssistantMsg);
@@ -242,7 +239,6 @@ public class Agent extends Node<Agent> {
             return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall)));
         }
     }
-
     public List<Message> turn(List<Message> messages, List<Tool> tools, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         var resultMsg = new ArrayList<Message>();
         var choice = constructionAssistantMsg.apply(messages, tools);
@@ -253,7 +249,6 @@ public class Agent extends Node<Agent> {
         }
         return resultMsg;
     }
-
     private Choice handLLM(List<Message> messages, List<Tool> tools) {
         var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), model, this.getName(), null, null, reasoningEffort));
         return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback())), req);
@@ -408,7 +403,6 @@ public class Agent extends Node<Agent> {
     public SubAgentToolCall toSubAgentToolCall(Class<?>... classes) {
         return SubAgentToolCall.builder().subAgent(this, classes).build();
     }
-
     public void addTools(List<ToolCall> tools) {
         if (tools == null) return;
         for (var tool : tools) {

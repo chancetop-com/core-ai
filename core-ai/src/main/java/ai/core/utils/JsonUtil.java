@@ -48,7 +48,7 @@ public class JsonUtil {
             .setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL)
             .setAnnotationIntrospector(new CoreAiAnnotationIntrospector())
             .registerModule(new JavaTimeModule())
-            .registerModule(new com.fasterxml.jackson.databind.module.SimpleModule()
+            .registerModule(new SimpleModule()
                 .setDeserializerModifier(new CaseInsensitiveEnumDeserializerModifier()))
             .setDateFormat(new StdDateFormat())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);

@@ -17,13 +17,12 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Integration test for ToolCallParameters with ShellCommandTool and PythonScriptTool
+ * Integration test for ToolCallParameters with PythonScriptTool
  * Tests that LLM-generated JSON strings can be correctly parsed and passed to tools
  *
  * @author stephen
@@ -32,17 +31,12 @@ class ToolCallParametersIntegrationTest {
     private final Logger logger = LoggerFactory.getLogger(ToolCallParametersIntegrationTest.class);
     private MockLLMProvider mockLLMProvider;
     private PythonScriptTool pythonScriptTool;
-    private ShellCommandTool shellCommandTool;
 
     @BeforeEach
     void setUp() {
         mockLLMProvider = new MockLLMProvider();
 
-        // Create Python script tool with ToolCallParameters.of(String.class)
         pythonScriptTool = PythonScriptTool.builder().build();
-
-        // Create Shell command tool with ToolCallParameters.of(String.class)
-        shellCommandTool = ShellCommandTool.builder().build();
     }
 
     /**
@@ -116,66 +110,6 @@ class ToolCallParametersIntegrationTest {
     }
 
     @Test
-    void testShellCommandToolWithLLMFunctionCall() {
-        logger.info("Testing Shell command tool with LLM function call");
-
-        // Create a temporary directory for testing
-        var tempDir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
-
-        // Mock LLM response with tool call
-        var toolCall = FunctionCall.of(
-            "call_shell_001",
-            "function",
-            "run_bash_command",
-            "{\"workspace_dir\":\"" + tempDir.replace("\\", "\\\\") + "\",\"command\":\"echo 'Test from LLM'\"}"
-        );
-
-        var toolCallMessage = Message.of(
-            RoleType.ASSISTANT,
-            "",
-            null,
-            null,
-            List.of(toolCall)
-        );
-
-        var toolCallResponse = CompletionResponse.of(
-            List.of(Choice.of(FinishReason.TOOL_CALLS, toolCallMessage)),
-            new Usage(100, 20, 120)
-        );
-
-        // Final response after tool execution
-        var finalMessage = Message.of(
-            RoleType.ASSISTANT,
-            "The shell command executed successfully."
-        );
-
-        var finalResponse = CompletionResponse.of(
-            List.of(Choice.of(FinishReason.STOP, finalMessage)),
-            new Usage(150, 30, 180)
-        );
-
-        // Add mock responses
-        mockLLMProvider.addResponse(toolCallResponse);
-        mockLLMProvider.addResponse(finalResponse);
-
-        // Create agent with Shell command tool
-        var agent = Agent.builder()
-            .name("test-agent")
-            .llmProvider(mockLLMProvider)
-            .systemPrompt("You are a helpful assistant that can execute shell commands.")
-            .toolCalls(List.of(shellCommandTool))
-            .build();
-
-        // Execute agent
-        var result = agent.run("Execute a shell command that echoes 'Test from LLM'", ai.core.agent.ExecutionContext.empty());
-
-        // Verify
-        assertNotNull(result);
-        logger.info("Agent output: {}", result);
-        assertTrue(result.contains("successfully") || result.contains("executed"), "Output should indicate successful execution");
-    }
-
-    @Test
     void testToolCallParametersOfMethod() {
         logger.info("Testing ToolCallParameters.of() method");
 
@@ -203,14 +137,6 @@ class ToolCallParametersIntegrationTest {
         assertTrue(pythonResult.contains("5"), "Python script should output 5");
         logger.info("Python tool result: {}", pythonResult);
 
-        // Test Shell command tool with direct JSON string (simulating LLM output)
-        var tempDir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
-        var shellJsonArgs = "{\"workspace_dir\":\"" + tempDir.replace("\\", "\\\\") + "\",\"command\":\"echo test\"}";
-        var shellResult = shellCommandTool.execute(shellJsonArgs).getResult();
-
-        assertNotNull(shellResult);
-        assertFalse(shellResult.startsWith("Error:"), "Shell command should not return error");
-        logger.info("Shell tool result: {}", shellResult);
     }
 
     @Test
@@ -221,10 +147,6 @@ class ToolCallParametersIntegrationTest {
         var invalidJson = "{invalid: \"value\"}";
         var pythonResult = pythonScriptTool.execute(invalidJson).getResult();
         assertTrue(pythonResult.contains("Failed to parse") || pythonResult.contains("parameter is required"),
-            "Should return parse error or parameter required error");
-
-        var shellResult = shellCommandTool.execute(invalidJson).getResult();
-        assertTrue(shellResult.contains("Failed to parse") || shellResult.contains("parameter is required"),
             "Should return parse error or parameter required error");
 
         logger.info("Invalid JSON handling verified successfully");

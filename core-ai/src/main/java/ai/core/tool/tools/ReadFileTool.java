@@ -4,7 +4,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.ImageUtil;
-import core.framework.json.JSON;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

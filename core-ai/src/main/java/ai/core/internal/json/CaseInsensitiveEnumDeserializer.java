@@ -10,7 +10,7 @@ import java.io.IOException;
 /**
  * @author stephen
  */
-@SuppressWarnings({"rawtypes", "unchecked"})
+@SuppressWarnings("rawtypes")
 public class CaseInsensitiveEnumDeserializer extends JsonDeserializer<Enum> {
 
     private final Class enumClass;
@@ -20,13 +20,12 @@ public class CaseInsensitiveEnumDeserializer extends JsonDeserializer<Enum> {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Enum deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
         var value = p.getValueAsString();
         if (value == null || value.isEmpty()) {
             return null;
         }
-
-        var lowerValue = value.toLowerCase();
 
         try {
             var valuesMethod = enumClass.getMethod("values");
@@ -34,7 +33,7 @@ public class CaseInsensitiveEnumDeserializer extends JsonDeserializer<Enum> {
 
             for (var constant : constants) {
                 var e = (Enum) constant;
-                if (e.name().toLowerCase().equals(lowerValue)) {
+                if (e.name().equalsIgnoreCase(value)) {
                     return e;
                 }
             }

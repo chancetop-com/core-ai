@@ -10,8 +10,6 @@ import ai.core.tool.tools.search.FallbackSearchProvider;
 import ai.core.tool.tools.search.SearchProvider;
 import ai.core.tool.tools.search.SearchResult;
 import core.framework.util.Strings;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -22,8 +20,6 @@ import java.util.List;
  */
 public class WebSearchTool extends ToolCall {
     public static final String TOOL_NAME = "web_search";
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(WebSearchTool.class);
 
     private static final String TOOL_DESC = Strings.format("""
             - Search the web and use the results to inform responses

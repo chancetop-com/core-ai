@@ -11,40 +11,10 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class CaseInsensitiveEnumDeserializerTest {
-
-    public enum TestStatus {
-        PENDING,
-        IN_PROGRESS,
-        COMPLETED
-    }
-
-    public enum TestStatusWithProperty {
-        @Property(name = "pending")
-        PENDING,
-        @Property(name = "in_progress")
-        IN_PROGRESS,
-        @Property(name = "completed")
-        COMPLETED
-    }
-
-    public static class EntityWithEnum {
-        public String name;
-        public TestStatus status;
-    }
-
-    public static class EntityWithEnumProperty {
-        public String name;
-        public TestStatusWithProperty status;
-    }
-
-    public static class EntityWithEnumList {
-        public String name;
-        public List<TestStatus> statuses;
-    }
+class CaseInsensitiveEnumDeserializerTest {
 
     @Test
-    public void testEnumCaseInsensitive() {
+    void testEnumCaseInsensitive() {
         // Test UPPERCASE
         String json = "{\"name\":\"test\",\"status\":\"IN_PROGRESS\"}";
         EntityWithEnum entity = JsonUtil.fromJson(EntityWithEnum.class, json);
@@ -80,7 +50,7 @@ public class CaseInsensitiveEnumDeserializerTest {
     }
 
     @Test
-    public void testEnumWithPropertyAnnotation() {
+    void testEnumWithPropertyAnnotation() {
         // Test lowercase (as defined in @Property)
         String json = "{\"name\":\"test\",\"status\":\"in_progress\"}";
         EntityWithEnumProperty entity = JsonUtil.fromJson(EntityWithEnumProperty.class, json);
@@ -98,9 +68,9 @@ public class CaseInsensitiveEnumDeserializerTest {
     }
 
     @Test
-    public void testEnumListCaseInsensitive() {
+    void testEnumListCaseInsensitive() {
         String json = "{\"name\":\"test\",\"statuses\":[\"PENDING\",\"in_progress\",\"Completed\"]}";
-        Type type = new TypeReference<Map<String, Object>>() {}.getType();
+        Type type = new TypeReference<Map<String, Object>>() { }.getType();
         Map<String, Object> map = JsonUtil.fromJson(type, json);
 
         EntityWithEnumList entity = JsonUtil.fromJson(EntityWithEnumList.class, JsonUtil.toJson(map));
@@ -111,7 +81,7 @@ public class CaseInsensitiveEnumDeserializerTest {
     }
 
     @Test
-    public void testEnumSerialization() {
+    void testEnumSerialization() {
         EntityWithEnum entity = new EntityWithEnum();
         entity.name = "test";
         entity.status = TestStatus.IN_PROGRESS;
@@ -121,7 +91,7 @@ public class CaseInsensitiveEnumDeserializerTest {
     }
 
     @Test
-    public void testEnumWithPropertySerialization() {
+    void testEnumWithPropertySerialization() {
         EntityWithEnumProperty entity = new EntityWithEnumProperty();
         entity.name = "test";
         entity.status = TestStatusWithProperty.IN_PROGRESS;
@@ -132,10 +102,10 @@ public class CaseInsensitiveEnumDeserializerTest {
     }
 
     @Test
-    public void testWriteTodosToolStatus() {
+    void testWriteTodosToolStatus() {
         // Test the actual WriteTodosTool.Status enum used in production
         String json = "[{\"content\":\"Task 1\",\"status\":\"IN_PROGRESS\"}]";
-        Type type = new TypeReference<List<ai.core.tool.tools.WriteTodosTool.Todo>>() {}.getType();
+        Type type = new TypeReference<List<ai.core.tool.tools.WriteTodosTool.Todo>>() { }.getType();
         List<ai.core.tool.tools.WriteTodosTool.Todo> todos = JsonUtil.fromJson(type, json);
         assertEquals(ai.core.tool.tools.WriteTodosTool.Status.IN_PROGRESS, todos.get(0).status);
 
@@ -148,5 +118,35 @@ public class CaseInsensitiveEnumDeserializerTest {
         json = "[{\"content\":\"Task 3\",\"status\":\"Completed\"}]";
         todos = JsonUtil.fromJson(type, json);
         assertEquals(ai.core.tool.tools.WriteTodosTool.Status.COMPLETED, todos.get(0).status);
+    }
+
+    enum TestStatus {
+        PENDING,
+        IN_PROGRESS,
+        COMPLETED
+    }
+
+    enum TestStatusWithProperty {
+        @Property(name = "pending")
+        PENDING,
+        @Property(name = "in_progress")
+        IN_PROGRESS,
+        @Property(name = "completed")
+        COMPLETED
+    }
+
+    static class EntityWithEnum {
+        public String name;
+        public TestStatus status;
+    }
+
+    static class EntityWithEnumProperty {
+        public String name;
+        public TestStatusWithProperty status;
+    }
+
+    static class EntityWithEnumList {
+        public String name;
+        public List<TestStatus> statuses;
     }
 }

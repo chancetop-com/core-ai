@@ -12,13 +12,27 @@ import core.framework.util.Strings;
 
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * @author stephen
  */
 public abstract class ToolCall {
     public static final long DEFAULT_TIMEOUT_MS = 5 * 60 * 1000L;
+
+    /**
+     * Safely extracts a string value from parsed arguments, handling cases where
+     * an LLM may have passed a nested JSON object/array instead of an escaped string.
+     *
+     * @param args the parsed arguments map
+     * @param key  the parameter name
+     * @return the string value, or null if not present; nested objects/arrays are serialized to JSON strings
+     */
+    public static String getStringValue(Map<String, Object> args, String key) {
+        var value = args.get(key);
+        if (value == null) return null;
+        if (value instanceof String s) return s;
+        return JsonUtil.toJson(value);
+    }
 
     String namespace;
     String name;
@@ -188,23 +202,8 @@ public abstract class ToolCall {
 
     private boolean isStringTyped(ToolCallParameter param) {
         var type = param.getType();
-        return (type != null && type == ToolCallParameterType.STRING)
-                || (type == null && param.getClassType() == String.class);
-    }
-
-    /**
-     * Safely extracts a string value from parsed arguments, handling cases where
-     * an LLM may have passed a nested JSON object/array instead of an escaped string.
-     *
-     * @param args the parsed arguments map
-     * @param key  the parameter name
-     * @return the string value, or null if not present; nested objects/arrays are serialized to JSON strings
-     */
-    public static String getStringValue(Map<String, Object> args, String key) {
-        var value = args.get(key);
-        if (value == null) return null;
-        if (value instanceof String s) return s;
-        return JsonUtil.toJson(value);
+        return type != null && type == ToolCallParameterType.STRING
+                || type == null && param.getClassType() == String.class;
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {
