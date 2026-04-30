@@ -35,6 +35,7 @@ export default function Layout() {
       '/tasks': 'Tasks',
       '/mcp': 'MCP',
       '/tools': 'Tools',
+      '/tools/builtin': 'Built-in Tools',
       '/api-tools': 'API Tools',
       '/skills': 'Skills',
       '/settings': 'Settings',
@@ -57,6 +58,7 @@ export default function Layout() {
     if (to === '/') return pathname === '/' || pathname.startsWith('/traces');
     if (to === '/agents') return pathname === '/agents' || pathname.startsWith('/agents/');
     if (to === '/system-prompts') return pathname === '/system-prompts' || pathname.startsWith('/system-prompts/');
+    if (to === '/tools') return pathname === '/tools' || pathname.startsWith('/tools/');
     if (to === '/api-tools') return pathname === '/api-tools' || pathname.startsWith('/api-tools/');
     if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
@@ -72,6 +74,7 @@ export default function Layout() {
     { to: '/scheduler', icon: Calendar, label: 'Scheduler', show: true },
     { to: '/tasks', icon: ListChecks, label: 'Tasks', show: true },
     { to: '/tools', icon: Wrench, label: 'Tools', show: true, children: [
+      { to: '/tools/builtin', icon: Wrench, label: 'Builtin Tools', show: true },
       { to: '/mcp', icon: Network, label: 'MCP', show: true },
       { to: '/api-tools', icon: Key, label: 'API Tools', show: true },
     ]},

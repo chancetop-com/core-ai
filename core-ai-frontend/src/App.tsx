@@ -21,6 +21,7 @@ import Scheduler from './pages/scheduler/Scheduler';
 import Tasks from './pages/tasks/Tasks';
 import Mcp from './pages/mcp/Mcp';
 import Tools from './pages/tools/Tools';
+import BuiltinTools from './pages/tools/BuiltinTools';
 import ApiTools from './pages/api-tools/ApiTools';
 import ApiToolDetail from './pages/api-tools/ApiToolDetail';
 import SkillList from './pages/skills/SkillList';
@@ -97,7 +98,9 @@ export default function App() {
                 <Route path="/scheduler" element={<Scheduler />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/mcp" element={<Mcp />} />
-                <Route path="/tools" element={<Tools />} />
+                <Route path="/tools" element={<Tools />}>
+                  <Route path="builtin" element={<BuiltinTools />} />
+                </Route>
                 <Route path="/api-tools" element={<ApiTools />} />
                 <Route path="/api-tools/:id" element={<ApiToolDetail />} />
                 <Route path="/skills" element={<SkillList />} />
