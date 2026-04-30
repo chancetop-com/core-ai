@@ -72,6 +72,152 @@ public class HashEditFileTool extends ToolCall {
         return new Builder();
     }
 
+    @SuppressWarnings("unchecked")
+    private static Op buildRangeOp(Map<?, ?> locMap, String[] content, List<String> lines) {
+        var range = (Map<String, Object>) locMap.get("range");
+        var pos = validateRef(HashLine.parseRef(range.get("pos").toString()), lines);
+        var end = validateRef(HashLine.parseRef(range.get("end").toString()), lines);
+        if (pos.lineNumber() > end.lineNumber()) {
+            throw new IllegalArgumentException(
+                    "range pos (" + pos.lineNumber() + ") must be <= end (" + end.lineNumber() + ")");
+        }
+        return new Op(OpKind.REPLACE_RANGE, pos.lineNumber(), pos.hash(),
+                end.lineNumber(), end.hash(), content, pos.lineNumber(), 0);
+    }
+
+    @SuppressWarnings("unchecked")
+    static List<Op> parseOps(List<Map<String, Object>> edits, List<String> lines) {
+        var ops = new ArrayList<Op>();
+        for (var edit : edits) {
+            var locRaw = edit.get("loc");
+            var content = HashLine.parseContent(edit.get("content"));
+
+            if (locRaw == null) continue; // no loc = no-op content edit
+
+            if (locRaw instanceof String locStr) {
+                switch (locStr) {
+                    case "append" ->
+                        ops.add(new Op(OpKind.APPEND_FILE, 0, null, 0, null, content, lines.size() + 1, 1));
+                    case "prepend" ->
+                        ops.add(new Op(OpKind.PREPEND_FILE, 0, null, 0, null, content, 0, 2));
+                    default -> throw new IllegalArgumentException("Unknown loc string: " + locStr);
+                }
+            } else if (locRaw instanceof Map<?, ?> locMap) {
+                if (locMap.containsKey("range")) {
+                    ops.add(buildRangeOp(locMap, content, lines));
+                } else if (locMap.containsKey("append")) {
+                    var ref = validateRef(HashLine.parseRef((String) locMap.get("append")), lines);
+                    ops.add(new Op(OpKind.APPEND_AT, ref.lineNumber(), ref.hash(), 0, null, content, ref.lineNumber(), 1));
+                } else if (locMap.containsKey("prepend")) {
+                    var ref = validateRef(HashLine.parseRef((String) locMap.get("prepend")), lines);
+                    ops.add(new Op(OpKind.PREPEND_AT, ref.lineNumber(), ref.hash(), 0, null, content, ref.lineNumber(), 2));
+                } else {
+                    throw new IllegalArgumentException("Unknown loc map keys: " + locMap.keySet());
+                }
+            }
+        }
+        return ops;
+    }
+
+    static HashLine.LineRef validateRef(HashLine.LineRef ref, List<String> lines) {
+        if (ref.lineNumber() < 1 || ref.lineNumber() > lines.size()) {
+            throw new IllegalArgumentException(
+                    "Line " + ref.lineNumber() + " does not exist (file has " + lines.size() + " lines)");
+        }
+        String actual = HashLine.computeHash(lines.get(ref.lineNumber() - 1), ref.lineNumber());
+        if (!actual.equals(ref.hash())) {
+            throw new MismatchException(buildMismatchMessage(
+                    List.of(new Mismatch(ref.lineNumber(), ref.hash(), actual)), lines));
+        }
+        return ref;
+    }
+
+    static void applyOp(Op op, List<String> lines) {
+        switch (op.kind) {
+            case REPLACE_RANGE -> {
+                int from = op.posLine - 1;
+                int to = op.endLine - 1;
+                lines.subList(from, to + 1).clear();
+                for (int i = op.content.length - 1; i >= 0; i--) lines.add(from, op.content[i]);
+            }
+            case APPEND_AT -> {
+                int after = op.posLine; // insert after posLine (0-indexed = posLine)
+                for (int i = op.content.length - 1; i >= 0; i--) lines.add(after, op.content[i]);
+            }
+            case PREPEND_AT -> {
+                int before = op.posLine - 1;
+                for (int i = op.content.length - 1; i >= 0; i--) lines.add(before, op.content[i]);
+            }
+            case APPEND_FILE -> {
+                lines.addAll(Arrays.asList(op.content));
+            }
+            case PREPEND_FILE -> {
+                for (int i = op.content.length - 1; i >= 0; i--) lines.add(0, op.content[i]);
+            }
+            default -> throw new IllegalArgumentException("Unknown OpKind: " + op.kind);
+        }
+    }
+
+    static String buildMismatchMessage(List<Mismatch> mismatches, List<String> lines) {
+        var mismatchLines = new java.util.HashSet<Integer>();
+        for (var m : mismatches) mismatchLines.add(m.line);
+
+        var displayLines = new java.util.TreeSet<Integer>();
+        for (var m : mismatches) {
+            for (int i = Math.max(1, m.line - MISMATCH_CONTEXT);
+                 i <= Math.min(lines.size(), m.line + MISMATCH_CONTEXT); i++) {
+                displayLines.add(i);
+            }
+        }
+
+        var sb = new StringBuilder(256);
+        sb.append("Edit rejected: ").append(mismatches.size()).append(" line")
+                .append(mismatches.size() > 1 ? "s have" : " has")
+                .append(" changed since the last read. The edit was NOT applied."
+                        + " Use the updated LINE#ID references shown below (>>> marks changed lines) and retry the edit.\n\n");
+
+        int prev = -1;
+        for (int lineNum : displayLines) {
+            if (prev != -1 && lineNum > prev + 1) sb.append("    ...\n");
+            prev = lineNum;
+            String lineText = lines.get(lineNum - 1);
+            String hash = HashLine.computeHash(lineText, lineNum);
+            if (mismatchLines.contains(lineNum)) {
+                sb.append(">>> ").append(lineNum).append('#').append(hash).append(':').append(lineText).append('\n');
+            } else {
+                sb.append("    ").append(lineNum).append('#').append(hash).append(':').append(lineText).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Simulates edits on raw file content in memory and returns the resulting content.
+     * Does not write to disk. Used by permission systems to generate diff previews.
+     *
+     * @throws MismatchException if any anchor hash does not match current content
+     */
+    public static String simulateEdits(String rawContent, List<Map<String, Object>> edits,
+                                       boolean hasCRLF, boolean hasTrailingNewline) {
+        String[] lineArray = rawContent.replace("\r\n", "\n").replace("\r", "\n").split("\n", -1);
+        List<String> lines;
+        if (hasTrailingNewline && lineArray.length > 0 && lineArray[lineArray.length - 1].isEmpty()) {
+            lines = new ArrayList<>(Arrays.asList(Arrays.copyOf(lineArray, lineArray.length - 1)));
+        } else {
+            lines = new ArrayList<>(Arrays.asList(lineArray));
+        }
+
+        List<Op> ops = parseOps(edits, lines);
+        ops.sort(Comparator.comparingInt((Op o) -> o.sortLine).reversed()
+                .thenComparingInt(o -> o.precedence));
+        for (var op : ops) applyOp(op, lines);
+
+        String lineEnding = hasCRLF ? "\r\n" : "\n";
+        String result = String.join(lineEnding, lines);
+        if (hasTrailingNewline) result += lineEnding;
+        return result;
+    }
+
     @Override
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
@@ -79,7 +225,7 @@ public class HashEditFileTool extends ToolCall {
             var argsMap = parseArguments(text);
             var rawEdits = argsMap.get("edits");
 
-            if (rawEdits == null ) {
+            if (rawEdits == null) {
                 return ToolCallResult.failed("Error: edits must be a non-empty array")
                         .withDuration(System.currentTimeMillis() - startTime);
             }
@@ -176,151 +322,9 @@ public class HashEditFileTool extends ToolCall {
         return "Successfully applied edit(s) to: " + path;
     }
 
-    @SuppressWarnings("unchecked")
-    static List<Op> parseOps(List<Map<String, Object>> edits, List<String> lines) {
-        var ops = new ArrayList<Op>();
-        for (var edit : edits) {
-            var locRaw = edit.get("loc");
-            var content = HashLine.parseContent(edit.get("content"));
-
-            if (locRaw == null) continue; // no loc = no-op content edit
-
-            if (locRaw instanceof String locStr) {
-                switch (locStr) {
-                    case "append" ->
-                            ops.add(new Op(OpKind.APPEND_FILE, 0, null, 0, null, content, lines.size() + 1, 1));
-                    case "prepend" -> ops.add(new Op(OpKind.PREPEND_FILE, 0, null, 0, null, content, 0, 2));
-                    default -> throw new IllegalArgumentException("Unknown loc string: " + locStr);
-                }
-            } else if (locRaw instanceof Map<?, ?> locMap) {
-                if (locMap.containsKey("range")) {
-                    @SuppressWarnings("unchecked")
-                    var range = (Map<String, Object>) locMap.get("range");
-                    var pos = validateRef(HashLine.parseRef(range.get("pos").toString()), lines);
-                    var end = validateRef(HashLine.parseRef(range.get("end").toString()), lines);
-                    if (pos.lineNumber() > end.lineNumber()) {
-                        throw new IllegalArgumentException(
-                                "range pos (" + pos.lineNumber() + ") must be <= end (" + end.lineNumber() + ")");
-                    }
-                    ops.add(new Op(OpKind.REPLACE_RANGE, pos.lineNumber(), pos.hash(),
-                            end.lineNumber(), end.hash(), content, pos.lineNumber(), 0));
-                } else if (locMap.containsKey("append")) {
-                    var ref = validateRef(HashLine.parseRef((String) locMap.get("append")), lines);
-                    ops.add(new Op(OpKind.APPEND_AT, ref.lineNumber(), ref.hash(), 0, null, content, ref.lineNumber(), 1));
-                } else if (locMap.containsKey("prepend")) {
-                    var ref = validateRef(HashLine.parseRef((String) locMap.get("prepend")), lines);
-                    ops.add(new Op(OpKind.PREPEND_AT, ref.lineNumber(), ref.hash(), 0, null, content, ref.lineNumber(), 2));
-                } else {
-                    throw new IllegalArgumentException("Unknown loc map keys: " + locMap.keySet());
-                }
-            }
-        }
-        return ops;
-    }
-
-    static HashLine.LineRef validateRef(HashLine.LineRef ref, List<String> lines) {
-        if (ref.lineNumber() < 1 || ref.lineNumber() > lines.size()) {
-            throw new IllegalArgumentException(
-                    "Line " + ref.lineNumber() + " does not exist (file has " + lines.size() + " lines)");
-        }
-        String actual = HashLine.computeHash(lines.get(ref.lineNumber() - 1), ref.lineNumber());
-        if (!actual.equals(ref.hash())) {
-            throw new MismatchException(buildMismatchMessage(
-                    List.of(new Mismatch(ref.lineNumber(), ref.hash(), actual)), lines));
-        }
-        return ref;
-    }
-
-    static void applyOp(Op op, List<String> lines) {
-        switch (op.kind) {
-            case REPLACE_RANGE -> {
-                int from = op.posLine - 1;
-                int to = op.endLine - 1;
-                lines.subList(from, to + 1).clear();
-                for (int i = op.content.length - 1; i >= 0; i--) lines.add(from, op.content[i]);
-            }
-            case APPEND_AT -> {
-                int after = op.posLine; // insert after posLine (0-indexed = posLine)
-                for (int i = op.content.length - 1; i >= 0; i--) lines.add(after, op.content[i]);
-            }
-            case PREPEND_AT -> {
-                int before = op.posLine - 1;
-                for (int i = op.content.length - 1; i >= 0; i--) lines.add(before, op.content[i]);
-            }
-            case APPEND_FILE -> {
-                lines.addAll(Arrays.asList(op.content));
-            }
-            case PREPEND_FILE -> {
-                for (int i = op.content.length - 1; i >= 0; i--) lines.add(0, op.content[i]);
-            }
-        }
-    }
-
-    static String buildMismatchMessage(List<Mismatch> mismatches, List<String> lines) {
-        var mismatchLines = new java.util.HashSet<Integer>();
-        for (var m : mismatches) mismatchLines.add(m.line);
-
-        var displayLines = new java.util.TreeSet<Integer>();
-        for (var m : mismatches) {
-            for (int i = Math.max(1, m.line - MISMATCH_CONTEXT);
-                 i <= Math.min(lines.size(), m.line + MISMATCH_CONTEXT); i++) {
-                displayLines.add(i);
-            }
-        }
-
-        var sb = new StringBuilder();
-        sb.append("Edit rejected: ").append(mismatches.size()).append(" line")
-                .append(mismatches.size() > 1 ? "s have" : " has")
-                .append(" changed since the last read. The edit was NOT applied.")
-                .append(" Use the updated LINE#ID references shown below (>>> marks changed lines) and retry the edit.\n\n");
-
-        int prev = -1;
-        for (int lineNum : displayLines) {
-            if (prev != -1 && lineNum > prev + 1) sb.append("    ...\n");
-            prev = lineNum;
-            String lineText = lines.get(lineNum - 1);
-            String hash = HashLine.computeHash(lineText, lineNum);
-            if (mismatchLines.contains(lineNum)) {
-                sb.append(">>> ").append(lineNum).append('#').append(hash).append(':').append(lineText).append('\n');
-            } else {
-                sb.append("    ").append(lineNum).append('#').append(hash).append(':').append(lineText).append('\n');
-            }
-        }
-        return sb.toString();
-    }
-
-    // ── Public static helpers ──────────────────────────────────────────────────
-
-    /**
-     * Simulates edits on raw file content in memory and returns the resulting content.
-     * Does not write to disk. Used by permission systems to generate diff previews.
-     *
-     * @throws MismatchException if any anchor hash does not match current content
-     */
-    public static String simulateEdits(String rawContent, List<Map<String, Object>> edits,
-                                       boolean hasCRLF, boolean hasTrailingNewline) {
-        String[] lineArray = rawContent.replace("\r\n", "\n").replace("\r", "\n").split("\n", -1);
-        List<String> lines;
-        if (hasTrailingNewline && lineArray.length > 0 && lineArray[lineArray.length - 1].isEmpty()) {
-            lines = new ArrayList<>(Arrays.asList(Arrays.copyOf(lineArray, lineArray.length - 1)));
-        } else {
-            lines = new ArrayList<>(Arrays.asList(lineArray));
-        }
-
-        List<Op> ops = parseOps(edits, lines);
-        ops.sort(Comparator.comparingInt((Op o) -> o.sortLine).reversed()
-                .thenComparingInt(o -> o.precedence));
-        for (var op : ops) applyOp(op, lines);
-
-        String lineEnding = hasCRLF ? "\r\n" : "\n";
-        String result = String.join(lineEnding, lines);
-        if (hasTrailingNewline) result += lineEnding;
-        return result;
-    }
-
     // ── Internal types ────────────────────────────────────────────────────────
 
-    enum OpKind {REPLACE_RANGE, APPEND_AT, PREPEND_AT, APPEND_FILE, PREPEND_FILE}
+    enum OpKind { REPLACE_RANGE, APPEND_AT, PREPEND_AT, APPEND_FILE, PREPEND_FILE }
 
     record Op(OpKind kind, int posLine, String posHash, int endLine, String endHash,
               String[] content, int sortLine, int precedence) {
@@ -356,9 +360,9 @@ public class HashEditFileTool extends ToolCall {
                             .classType(String.class).required(true).build(),
                     ToolCallParameter.builder()
                             .name("loc")
-                            .description("Insert location. One of: \"append\", \"prepend\", " +
-                                    "{\"append\":\"N#ID\"}, {\"prepend\":\"N#ID\"}, " +
-                                    "or {\"range\":{\"pos\":\"N#ID\",\"end\":\"N#ID\"}}")
+                            .description("Insert location. One of: \"append\", \"prepend\", "
+                                    + "{\"append\":\"N#ID\"}, {\"prepend\":\"N#ID\"}, "
+                                    + "or {\"range\":{\"pos\":\"N#ID\",\"end\":\"N#ID\"}}")
                             .classType(String.class).required(false).build(),
                     ToolCallParameter.builder()
                             .name("content")

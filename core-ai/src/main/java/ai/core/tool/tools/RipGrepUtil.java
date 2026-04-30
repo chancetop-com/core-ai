@@ -18,12 +18,6 @@ import java.util.concurrent.TimeUnit;
 final class RipGrepUtil {
     private static final Logger LOGGER = LoggerFactory.getLogger(RipGrepUtil.class);
 
-    private RipGrepUtil() {
-    }
-
-    record ProcessResult(int exitCode, String output) {
-    }
-
     static ProcessResult executeProcess(Process process, int maxLines, long timeoutMs) throws InterruptedException {
         var output = new StringBuilder();
         var readerThread = getReaderThread(process, maxLines, output);
@@ -45,12 +39,14 @@ final class RipGrepUtil {
             try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 int count = 0;
                 String line;
-                while ((line = reader.readLine()) != null && count < maxLines) {
+                while (true) {
+                    line = reader.readLine();
+                    if (line == null || count >= maxLines) break;
                     output.append(line).append('\n');
                     count++;
                 }
             } catch (IOException e) {
-                // stream closed when process destroyed
+                LOGGER.debug("Stream closed when process destroyed", e);
             }
         }, "rg-output-reader");
         readerThread.setDaemon(true);
@@ -75,6 +71,12 @@ final class RipGrepUtil {
             LOGGER.warn("Failed to get mtime for file: {}", filePath, e);
         }
         return 0;
+    }
+
+    private RipGrepUtil() {
+    }
+
+    record ProcessResult(int exitCode, String output) {
     }
 
     static final class RipGrepTimeoutException extends RuntimeException {

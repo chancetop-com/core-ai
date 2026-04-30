@@ -27,11 +27,18 @@ public final class HashLine {
     private static final Pattern HASHLINE_PREFIX =
             Pattern.compile("^\\s*[>+\\-]*\\s*\\d+#[ZPMQVRWSNKTXJBYH]{2}:");
 
+    // ── xxHash32 constants ──────────────────────────────────────────────
+    private static final int PRIME1 = (int) 2654435761L;
+    private static final int PRIME2 = (int) 2246822519L;
+    private static final int PRIME3 = (int) 3266489917L;
+    private static final int PRIME4 = (int) 668265263L;
+    private static final int PRIME5 = (int) 374761393L;
+
     static {
         for (int i = 0; i < 256; i++) {
             int h = (i >>> 4) & 0xF;
             int l = i & 0xF;
-            DICT[i] = "" + NIBBLE_ALPHABET.charAt(h) + NIBBLE_ALPHABET.charAt(l);
+            DICT[i] = String.valueOf(NIBBLE_ALPHABET.charAt(h)) + NIBBLE_ALPHABET.charAt(l);
         }
     }
 
@@ -94,12 +101,6 @@ public final class HashLine {
 
     // ── xxHash32 (little-endian, spec-compliant) ──────────────────────────────
 
-    private static final int PRIME1 = (int) 2654435761L;
-    private static final int PRIME2 = (int) 2246822519L;
-    private static final int PRIME3 = (int) 3266489917L;
-    private static final int PRIME4 = (int) 668265263L;
-    private static final int PRIME5 = (int) 374761393L;
-
     static int xxHash32(byte[] data, int seed) {
         int len = data.length;
         int offset = 0;
@@ -112,10 +113,14 @@ public final class HashLine {
             int v4 = seed - PRIME1;
 
             do {
-                v1 = Integer.rotateLeft(v1 + (leInt(data, offset) * PRIME2), 13) * PRIME1; offset += 4;
-                v2 = Integer.rotateLeft(v2 + (leInt(data, offset) * PRIME2), 13) * PRIME1; offset += 4;
-                v3 = Integer.rotateLeft(v3 + (leInt(data, offset) * PRIME2), 13) * PRIME1; offset += 4;
-                v4 = Integer.rotateLeft(v4 + (leInt(data, offset) * PRIME2), 13) * PRIME1; offset += 4;
+                v1 = Integer.rotateLeft(v1 + (leInt(data, offset) * PRIME2), 13) * PRIME1;
+                offset += 4;
+                v2 = Integer.rotateLeft(v2 + (leInt(data, offset) * PRIME2), 13) * PRIME1;
+                offset += 4;
+                v3 = Integer.rotateLeft(v3 + (leInt(data, offset) * PRIME2), 13) * PRIME1;
+                offset += 4;
+                v4 = Integer.rotateLeft(v4 + (leInt(data, offset) * PRIME2), 13) * PRIME1;
+                offset += 4;
             } while (offset <= len - 16);
 
             h32 = Integer.rotateLeft(v1, 1) + Integer.rotateLeft(v2, 7)
@@ -152,7 +157,9 @@ public final class HashLine {
                 | ((data[offset + 3] & 0xFF) << 24);
     }
 
-    public record LineRef(int lineNumber, String hash) {}
+    private HashLine() {
+    }
 
-    private HashLine() {}
+    public record LineRef(int lineNumber, String hash) {
+    }
 }

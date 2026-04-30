@@ -64,20 +64,24 @@ public class RipgrepVendor extends Vendor {
     private Path resolveWhichOutput(Platform platform, String command) {
         try {
             var whichCmd = platform.isWindows() ? "where.exe" : "which";
-            var pb = new ProcessBuilder(whichCmd, command);
-            var process = pb.start();
-            try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                var line = reader.readLine();
-                if (line != null && !line.isBlank()) {
-                    var path = Paths.get(line.trim());
-                    if (Files.exists(path) && Files.isExecutable(path)) {
-                        return path;
-                    }
-                }
-            }
+            var process = new ProcessBuilder(whichCmd, command).start();
+            var path = readFirstLine(process);
             process.waitFor();
+            if (path != null && Files.exists(path) && Files.isExecutable(path)) {
+                return path;
+            }
         } catch (Exception e) {
             logger.debug("Failed to resolve system rg path: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private Path readFirstLine(Process process) throws IOException {
+        try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            var line = reader.readLine();
+            if (line != null && !line.isBlank()) {
+                return Paths.get(line.trim());
+            }
         }
         return null;
     }

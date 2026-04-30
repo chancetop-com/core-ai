@@ -332,13 +332,6 @@ public class McpServerConfig {
     }
 
     public static final class HttpBuilder implements CommonConfigBuilder<HttpBuilder> {
-        private final McpServerConfig config = new McpServerConfig();
-
-        private HttpBuilder(String url) {
-            config.transportType = TransportType.STREAMABLE_HTTP;
-            config.url = sanitizeUrl(url);
-            config.headers = new HashMap<>();
-        }
 
         // strip BOM, zero-width chars and surrounding whitespace/quotes that may
         // sneak in via copy-paste or DB import and break URI parsing
@@ -353,6 +346,14 @@ public class McpServerConfig {
                 }
             }
             return cleaned;
+        }
+
+        private final McpServerConfig config = new McpServerConfig();
+
+        private HttpBuilder(String url) {
+            config.transportType = TransportType.STREAMABLE_HTTP;
+            config.url = sanitizeUrl(url);
+            config.headers = new HashMap<>();
         }
 
         public HttpBuilder name(String name) {
