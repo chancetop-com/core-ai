@@ -15,6 +15,9 @@ public class Usage {
     private int totalTokens;
     @Property(name = "completion_tokens_details")
     private CompletionTokensDetails completionTokensDetails;
+    @Property(name = "prompt_tokens_details")
+    private PromptTokensDetails promptTokensDetails;
+
 
     public Usage(int promptTokens, int completionTokens, int totalTokens) {
         this.promptTokens = promptTokens;
@@ -27,14 +30,19 @@ public class Usage {
 
     @Override
     public String toString() {
-        String details = null;
+        String reasoningDetails = null;
+        String promptDetails = null;
         if (completionTokensDetails != null) {
-            details = String.valueOf(completionTokensDetails.reasoningTokens);
+            reasoningDetails = String.valueOf(completionTokensDetails.reasoningTokens);
+        }
+        if (promptTokensDetails != null) {
+            promptDetails = String.valueOf(promptTokensDetails.cachedTokens);
         }
         return "Usage{"
                 + "promptTokens=" + promptTokens
                 + ", completionTokens=" + completionTokens
-                + ", completionTokensDetails=" + details
+                + ", completionTokensDetails=" + reasoningDetails
+                + ", promptTokensDetails=" + promptDetails
                 + ", totalTokens=" + totalTokens
                 + '}';
     }
@@ -51,12 +59,19 @@ public class Usage {
         return totalTokens;
     }
 
+    public PromptTokensDetails getPromptTokensDetails() {
+        return promptTokensDetails;
+    }
+
     public void setPromptTokens(int promptTokens) {
         this.promptTokens = promptTokens;
     }
 
     public void setCompletionTokens(int completionTokens) {
         this.completionTokens = completionTokens;
+    }
+    public void setPromptTokensDetails(PromptTokensDetails promptTokensDetails) {
+        this.promptTokensDetails = promptTokensDetails;
     }
 
     public void setTotalTokens(int totalTokens) {
@@ -67,10 +82,27 @@ public class Usage {
         this.promptTokens += usage.promptTokens;
         this.completionTokens += usage.completionTokens;
         this.totalTokens += usage.totalTokens;
+        if (usage.promptTokensDetails != null) {
+            if (this.promptTokensDetails == null) {
+                this.promptTokensDetails = new PromptTokensDetails();
+            }
+            this.promptTokensDetails.cachedTokens += usage.promptTokensDetails.cachedTokens;
+        }
+        if (usage.completionTokensDetails != null) {
+            if (this.completionTokensDetails == null) {
+                this.completionTokensDetails = new CompletionTokensDetails();
+            }
+            this.completionTokensDetails.reasoningTokens += usage.completionTokensDetails.reasoningTokens;
+        }
     }
 
     public static class CompletionTokensDetails {
         @Property(name = "reasoning_tokens")
         public int reasoningTokens;
+    }
+
+    public static class PromptTokensDetails{
+        @Property(name = "cached_tokens")
+        public int cachedTokens;
     }
 }

@@ -260,11 +260,19 @@ public class OutputPanel {
         writer.flush();
     }
 
-    public void turnSummary(long elapsedMs, Long inputTokens, Long outputTokens) {
-        String tokens = (inputTokens != null && outputTokens != null)
-                ? String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", inputTokens + outputTokens, inputTokens, outputTokens)
-                : "";
-        writer.println("\n" + INDENT + "\u2726 " + ThinkingSpinner.formatElapsed(elapsedMs) + tokens + AnsiTheme.RESET);
+    public void turnSummary(long elapsedMs, Long inputTokens, Long outputTokens, Long cachedTokens) {
+        String tokens;
+        if (inputTokens != null && outputTokens != null) {
+            long total = inputTokens + outputTokens;
+            if (cachedTokens != null && cachedTokens > 0) {
+                tokens = String.format(" | %,d tokens (\u2191 %,d \u2193 %,d ~%,d)", total, inputTokens, outputTokens, cachedTokens);
+            } else {
+                tokens = String.format(" | %,d tokens (\u2191 %,d \u2193 %,d)", total, inputTokens, outputTokens);
+            }
+        } else {
+            tokens = "";
+        }
+        writer.println("\n" + AnsiTheme.MUTED + INDENT + "\u2726 " + ThinkingSpinner.formatElapsed(elapsedMs) + tokens + AnsiTheme.RESET);
         writer.flush();
     }
 

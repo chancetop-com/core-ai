@@ -33,7 +33,7 @@ public class BaseEventListener implements AgentEventListener {
     protected final AgentSession session;
     protected final OutputPanel panel;
     protected volatile CompletableFuture<Void> turnFuture;
-    private final AtomicReference<TurnCompleteEvent> lastTurnComplete = new AtomicReference<>();
+    protected final AtomicReference<TurnCompleteEvent> lastTurnComplete = new AtomicReference<>();
     private final Map<String, RuntimeTask> runTasks = new ConcurrentHashMap<>();
 
     protected BaseEventListener(TerminalUI ui, AgentSession session) {
@@ -185,9 +185,9 @@ public class BaseEventListener implements AgentEventListener {
         long elapsed = panel.getSpinner().getElapsedMs();
         var event = lastTurnComplete.get();
         if (event != null && event.inputTokens != null && event.outputTokens != null) {
-            panel.turnSummary(elapsed, event.inputTokens, event.outputTokens);
+            panel.turnSummary(elapsed, event.inputTokens, event.outputTokens, null);
         } else {
-            panel.turnSummary(elapsed, null, null);
+            panel.turnSummary(elapsed, null, null, null);
         }
     }
 

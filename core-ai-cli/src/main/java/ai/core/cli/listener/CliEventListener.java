@@ -10,6 +10,7 @@ import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
+import org.jline.terminal.Attributes;
 import org.jline.utils.NonBlockingReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,13 +32,18 @@ public class CliEventListener extends BaseEventListener {
         return text.length() <= 200 ? text : text.substring(0, 200) + "...(" + text.length() + " chars)";
     }
 
+    private static String fmtK(long n) {
+        return String.format("%.1fk", n / 1000.0);
+    }
+
     private final Agent agent;
     private final AtomicBoolean turnRunning = new AtomicBoolean(false);
     private volatile long turnTokensBefore;
     private volatile long turnInputBefore;
     private volatile long turnOutputBefore;
+    private volatile long turnCachedBefore;
     private Thread escReaderThread;
-    private org.jline.terminal.Attributes savedTerminalAttributes;
+    private Attributes savedTerminalAttributes;
 
     public CliEventListener(TerminalUI ui, AgentSession session, Agent agent) {
         super(ui, session);
@@ -57,6 +63,8 @@ public class CliEventListener extends BaseEventListener {
         turnTokensBefore = usage.getTotalTokens();
         turnInputBefore = usage.getPromptTokens();
         turnOutputBefore = usage.getCompletionTokens();
+        var details = usage.getPromptTokensDetails();
+        turnCachedBefore = details != null ? details.cachedTokens : 0;
         var subagentUsage = new Usage();
         agent.getExecutionContext().setTokenCostCallback(subagentUsage::add);
         panel.getSpinner().setStatsSupplier(() -> {
@@ -66,7 +74,13 @@ public class CliEventListener extends BaseEventListener {
             long input = u.getPromptTokens() - turnInputBefore + subagentUsage.getPromptTokens();
             long output = u.getCompletionTokens() - turnOutputBefore + subagentUsage.getCompletionTokens();
             var sb = new StringBuilder(64);
-            sb.append(String.format("%,d tokens (\u2191 %,d \u2193 %,d)", tokens, input, output));
+            sb.append(String.format("%s tokens (\u2191 %s \u2193 %s", fmtK(tokens), fmtK(input), fmtK(output)));
+            var promptDetails = u.getPromptTokensDetails();
+            long cached = promptDetails != null ? promptDetails.cachedTokens - turnCachedBefore : 0;
+            if (cached > 0) {
+                sb.append(" ~").append(fmtK(cached));
+            }
+            sb.append(")");
             int tasks = Math.max(0, getRunTasksCount());
             int tools = getRunTasksToolCount();
             if (tasks > 0) sb.append(" | ").append(tasks).append(tasks == 1 ? " task" : " tasks");
@@ -74,6 +88,17 @@ public class CliEventListener extends BaseEventListener {
             return sb.toString();
         });
         startEscReader();
+    }
+
+    @Override
+    protected void printTurnSummary() {
+        long elapsed = panel.getSpinner().getElapsedMs();
+        var event = lastTurnComplete.get();
+        Long inputTokens = event != null ? event.inputTokens : null;
+        Long outputTokens = event != null ? event.outputTokens : null;
+        var details = agent.getCurrentTokenUsage().getPromptTokensDetails();
+        Long cachedTokens = details != null ? (long) details.cachedTokens : null;
+        panel.turnSummary(elapsed, inputTokens, outputTokens, cachedTokens);
     }
 
     @Override
