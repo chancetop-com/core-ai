@@ -2,7 +2,10 @@ package ai.core.utils;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * @author stephen
@@ -25,6 +28,7 @@ class ShellUtilTest {
 
     @Test
     void getPreferredShellOnWindowsReturnsUnixShellWhenAvailable() {
+        assumeTrue(SystemUtil.detectPlatform().isWindows());
         var shell = ShellUtil.getPreferredShell(Platform.WINDOWS_X64);
         // If bash/zsh/sh are available on this Windows system, they should be preferred
         // Otherwise fall back to pwsh/powershell/cmd
@@ -49,6 +53,7 @@ class ShellUtilTest {
 
     @Test
     void getPreferredShellCommandPrefixOnWindowsUsesCorrectFlag() {
+        assumeTrue(SystemUtil.detectPlatform().isWindows());
         var shell = ShellUtil.getPreferredShell(Platform.WINDOWS_X64);
         var prefix = ShellUtil.getPreferredShellCommandPrefix(Platform.WINDOWS_X64);
         if (java.util.List.of("bash", "zsh", "sh").contains(shell)) {
@@ -62,6 +67,7 @@ class ShellUtilTest {
 
     @Test
     void isCommandExistsOnWindowsHandlesKnownCommands() {
+        assumeTrue(SystemUtil.detectPlatform().isWindows());
         // cmd.exe should always exist on Windows
         assertTrue(ShellUtil.isCommandExists(Platform.WINDOWS_X64, "cmd.exe"));
     }
