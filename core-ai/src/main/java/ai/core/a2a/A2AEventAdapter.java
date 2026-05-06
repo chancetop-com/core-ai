@@ -155,6 +155,10 @@ public class A2AEventAdapter implements AgentEventListener {
         streamSender = null;
     }
 
+    public void startStreaming(Consumer<StreamResponse> streamSender) {
+        this.streamSender = streamSender;
+    }
+
     private void sendSseEvent(StreamResponse data) {
         var sender = streamSender;
         if (sender == null) return;

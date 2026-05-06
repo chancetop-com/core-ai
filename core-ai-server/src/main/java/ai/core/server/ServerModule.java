@@ -42,6 +42,7 @@ import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.web.auth.AuthInterceptor;
+import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
@@ -114,6 +115,7 @@ public class ServerModule extends Module {
         var migrationManager = bind(SchemaMigrationManager.class);
         onStartup(migrationManager::migrate);
 
+        bind(RequestAuthenticator.class);
         http().intercept(bind(AuthInterceptor.class));
 
         var toolRegistry = bind(ToolRegistryService.class);
@@ -328,9 +330,9 @@ public class ServerModule extends Module {
         var taskController = bind(A2ATaskController.class);
 
         http().route(HTTPMethod.GET, "/api/a2a/agents/:agentId/.well-known/agent-card.json", agentCardController::get);
+        http().route(HTTPMethod.POST, "/api/a2a/message:send", messageController::send);
         http().route(HTTPMethod.POST, "/api/a2a/agents/:agentId/message:send", messageController::send);
         http().route(HTTPMethod.GET, "/api/a2a/tasks/:taskId", taskController::get);
-        http().route(HTTPMethod.POST, "/api/a2a/tasks/:taskId", taskController::cancel);
         http().route(HTTPMethod.POST, "/api/a2a/tasks/:taskId/cancel", taskController::cancel);
     }
 

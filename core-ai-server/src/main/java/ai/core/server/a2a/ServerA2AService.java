@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -41,6 +42,7 @@ import java.util.function.Consumer;
  */
 public class ServerA2AService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerA2AService.class);
+    private static final long TERMINAL_TASK_TTL_MILLIS = TimeUnit.MINUTES.toMillis(30);
 
     private static boolean isValidDecision(String decision) {
         return "approve".equalsIgnoreCase(decision) || "deny".equalsIgnoreCase(decision);
@@ -123,10 +125,11 @@ public class ServerA2AService {
     }
 
     public A2AInvocationResult send(String agentId, SendMessageRequest request, String userId) {
+        pruneTerminalTasks();
         validateMessageRequest(request);
         if (request.message.taskId != null && !request.message.taskId.isBlank()) {
-            var task = resumeTask(request.message);
-            return A2AInvocationResult.ofTask(task);
+            var state = resumeTask(request.message);
+            return A2AInvocationResult.ofTask(state.toTask());
         }
         if (request.configuration != null && Boolean.TRUE.equals(request.configuration.returnImmediately)) {
             var state = createTask(agentId, request, userId, null, null, null);
@@ -137,11 +140,16 @@ public class ServerA2AService {
 
     public A2ATaskState stream(String agentId, SendMessageRequest request, String userId,
                                Consumer<StreamResponse> streamSender, Runnable closeStream) {
+        pruneTerminalTasks();
         validateMessageRequest(request);
+        if (request.message.taskId != null && !request.message.taskId.isBlank()) {
+            return resumeTask(request.message, streamSender, closeStream);
+        }
         return createTask(agentId, request, userId, streamSender, closeStream, null);
     }
 
     public Task getTask(GetTaskRequest request) {
+        pruneTerminalTasks();
         var task = tasks.get(taskId(request));
         if (task == null) {
             throw new NotFoundException("task not found");
@@ -150,6 +158,7 @@ public class ServerA2AService {
     }
 
     public Task cancelTask(CancelTaskRequest request) {
+        pruneTerminalTasks();
         var id = taskId(request);
         var task = tasks.get(id);
         if (task == null) {
@@ -169,14 +178,13 @@ public class ServerA2AService {
             return future.get(5, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            state.setState(TaskState.FAILED);
-            state.errorMessage = e.getMessage();
-            state.detachEventListener();
+            cancelAndFail(state, e);
+            return state.toTask();
+        } catch (TimeoutException e) {
+            cancelAndFail(state, e);
             return state.toTask();
         } catch (Exception e) {
-            state.setState(TaskState.FAILED);
-            state.errorMessage = e.getMessage();
-            state.detachEventListener();
+            fail(state, e);
             return state.toTask();
         }
     }
@@ -215,7 +223,11 @@ public class ServerA2AService {
         return sessionManager.getSession(result.sessionId());
     }
 
-    private Task resumeTask(Message message) {
+    private A2ATaskState resumeTask(Message message) {
+        return resumeTask(message, null, null);
+    }
+
+    private A2ATaskState resumeTask(Message message, Consumer<StreamResponse> streamSender, Runnable closeStream) {
         var state = tasks.get(message.taskId);
         if (state == null) {
             throw new NotFoundException("task not found");
@@ -235,8 +247,12 @@ public class ServerA2AService {
         var approvalDecision = "deny".equalsIgnoreCase(decision) ? ApprovalDecision.DENY : ApprovalDecision.APPROVE;
         state.setState(TaskState.WORKING);
         state.clearAwait();
+        if (streamSender != null) {
+            state.resumeStream(streamSender, closeStream);
+            streamSender.accept(StreamResponse.ofTask(state.toTask()));
+        }
         state.session.approveToolCall(resolvedCallId, approvalDecision);
-        return state.toTask();
+        return state;
     }
 
     private List<AgentCard.Skill> skills(AgentDefinition definition) {
@@ -262,5 +278,23 @@ public class ServerA2AService {
         if (request == null || request.message == null || request.message.parts == null || request.message.parts.isEmpty()) {
             throw new BadRequestException("message.parts required");
         }
+    }
+
+    private void cancelAndFail(A2ATaskState state, Exception e) {
+        state.session.cancelTurn();
+        fail(state, e);
+    }
+
+    private void fail(A2ATaskState state, Exception e) {
+        state.setState(TaskState.FAILED);
+        state.errorMessage = e.getMessage();
+        state.clearAwait();
+        state.detachEventListener();
+    }
+
+    void pruneTerminalTasks() {
+        var cutoff = System.currentTimeMillis() - TERMINAL_TASK_TTL_MILLIS;
+        tasks.entrySet().removeIf(entry -> entry.getValue().isTerminal()
+                && entry.getValue().updatedAtMillis() < cutoff);
     }
 }

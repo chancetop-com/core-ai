@@ -2,6 +2,7 @@ package ai.core.a2a;
 
 import ai.core.api.a2a.Artifact;
 import ai.core.api.a2a.Message;
+import ai.core.api.a2a.StreamResponse;
 import ai.core.api.a2a.Task;
 import ai.core.api.a2a.TaskState;
 import ai.core.api.a2a.TaskStatus;
@@ -10,6 +11,7 @@ import ai.core.api.server.session.AgentSession;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * @author stephen
@@ -26,6 +28,7 @@ public class A2ATaskState {
     private volatile String awaitArguments;
     private volatile AgentEventListener eventListener;
     private volatile Runnable streamCloser;
+    private volatile long updatedAtMillis = System.currentTimeMillis();
     private final StringBuilder outputBuffer = new StringBuilder();
 
     public volatile Long inputTokens;
@@ -44,6 +47,7 @@ public class A2ATaskState {
 
     public void setState(TaskState state) {
         this.state = state;
+        touch();
     }
 
     public boolean isTerminal() {
@@ -71,6 +75,17 @@ public class A2ATaskState {
         this.streamCloser = streamCloser;
     }
 
+    public void resumeStream(Consumer<StreamResponse> streamSender, Runnable streamCloser) {
+        var listener = eventListener;
+        if (listener instanceof A2AEventAdapter adapter) {
+            adapter.startStreaming(streamSender);
+            setStreamCloser(() -> {
+                adapter.stopStreaming();
+                if (streamCloser != null) streamCloser.run();
+            });
+        }
+    }
+
     public void closeStream() {
         var closer = streamCloser;
         if (closer != null) {
@@ -86,12 +101,14 @@ public class A2ATaskState {
         this.awaitCallId = callId;
         this.awaitTool = tool;
         this.awaitArguments = arguments;
+        touch();
     }
 
     public void clearAwait() {
         this.awaitCallId = null;
         this.awaitTool = null;
         this.awaitArguments = null;
+        touch();
     }
 
     public String getAwaitTool() {
@@ -106,12 +123,21 @@ public class A2ATaskState {
         synchronized (outputBuffer) {
             outputBuffer.append(chunk);
         }
+        touch();
     }
 
     public String getFullOutput() {
         synchronized (outputBuffer) {
             return outputBuffer.toString();
         }
+    }
+
+    public long updatedAtMillis() {
+        return updatedAtMillis;
+    }
+
+    private void touch() {
+        updatedAtMillis = System.currentTimeMillis();
     }
 
     public Task toTask() {

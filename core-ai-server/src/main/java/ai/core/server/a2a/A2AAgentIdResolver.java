@@ -27,6 +27,9 @@ final class A2AAgentIdResolver {
         if (agentId != null && !agentId.isBlank()) return agentId;
         agentId = request.queryParams().get("agentId");
         if (agentId != null && !agentId.isBlank()) return agentId;
+        if (messageRequest != null && messageRequest.tenant != null && !messageRequest.tenant.isBlank()) {
+            return messageRequest.tenant;
+        }
         if (messageRequest != null && messageRequest.metadata != null) {
             var value = messageRequest.metadata.get("agentId");
             if (value != null) return String.valueOf(value);
