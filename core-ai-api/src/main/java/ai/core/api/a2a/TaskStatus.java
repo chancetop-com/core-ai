@@ -2,6 +2,8 @@ package ai.core.api.a2a;
 
 import core.framework.api.json.Property;
 
+import java.time.Instant;
+
 /**
  * @author stephen
  */
@@ -24,4 +26,7 @@ public class TaskStatus {
 
     @Property(name = "message")
     public Message message;
+
+    @Property(name = "timestamp")
+    public Instant timestamp;
 }

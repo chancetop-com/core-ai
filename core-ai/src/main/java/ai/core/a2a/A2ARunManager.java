@@ -2,7 +2,9 @@ package ai.core.a2a;
 
 import ai.core.agent.Agent;
 import ai.core.api.a2a.AgentCard;
+import ai.core.api.a2a.A2ATransport;
 import ai.core.api.a2a.SendMessageRequest;
+import ai.core.api.a2a.StreamResponse;
 import ai.core.api.a2a.Task;
 import ai.core.api.a2a.TaskState;
 import ai.core.api.server.session.ApprovalDecision;
@@ -10,6 +12,7 @@ import ai.core.session.FileSessionPersistence;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
+import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +69,10 @@ public class A2ARunManager {
         card.name = "core-ai";
         card.description = "AI coding assistant with file operations and shell access";
         card.version = "1.0.0";
+        var interfaceConfig = new AgentCard.AgentInterface();
+        interfaceConfig.protocolBinding = A2ATransport.HTTP_JSON;
+        interfaceConfig.protocolVersion = "1.0";
+        card.supportedInterfaces = List.of(interfaceConfig);
         var caps = new AgentCard.AgentCapabilities();
         caps.streaming = true;
         caps.pushNotifications = false;
@@ -81,51 +88,68 @@ public class A2ARunManager {
     }
 
     public Task createSyncTask(SendMessageRequest request) {
-        var session = getOrCreateSession();
-        var taskId = session.id();
-        var state = new A2ATaskState(taskId, taskId, session);
+        var contextId = request != null && request.message != null && request.message.contextId != null
+                ? request.message.contextId
+                : persistentSessionId;
+        var session = getOrCreateSession(contextId);
+        var taskId = UUID.randomUUID().toString();
+        var state = new A2ATaskState(taskId, session.id(), session);
         state.setState(TaskState.WORKING);
         tasks.put(taskId, state);
 
         var future = new CompletableFuture<Task>();
         var adapter = new A2AEventAdapter(taskId, state, null, future);
-        session.onEvent(adapter);
+        state.attachEventListener(adapter);
 
-        var userText = request.extractUserText();
+        var userText = request != null ? request.extractUserText() : "";
         LOGGER.info("creating sync task, taskId={}, message={}", taskId, truncate(userText));
         session.sendMessage(userText);
 
         try {
             return future.get(5, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            state.setState(TaskState.FAILED);
+            state.errorMessage = e.getMessage();
+            state.detachEventListener();
+            return state.toTask();
         } catch (Exception e) {
             state.setState(TaskState.FAILED);
             state.errorMessage = e.getMessage();
+            state.detachEventListener();
             return state.toTask();
         }
     }
 
     public A2ATaskState createStreamingTask(SendMessageRequest request, Consumer<String> sseSender) {
-        var session = getOrCreateSession();
-        var taskId = session.id();
-        var state = new A2ATaskState(taskId, taskId, session);
+        var contextId = request != null && request.message != null && request.message.contextId != null
+                ? request.message.contextId
+                : persistentSessionId;
+        var session = getOrCreateSession(contextId);
+        var taskId = UUID.randomUUID().toString();
+        var state = new A2ATaskState(taskId, session.id(), session);
         state.setState(TaskState.WORKING);
         tasks.put(taskId, state);
 
         var adapter = new A2AEventAdapter(taskId, state, sseSender, null);
-        session.onEvent(adapter);
+        state.attachEventListener(adapter);
+        state.setStreamCloser(adapter::stopStreaming);
+        if (sseSender != null) {
+            sseSender.accept(JsonUtil.toJson(StreamResponse.ofTask(state.toTask())));
+        }
 
-        var userText = request.extractUserText();
+        var userText = request != null ? request.extractUserText() : "";
         LOGGER.info("creating streaming task, taskId={}, message={}", taskId, truncate(userText));
         session.sendMessage(userText);
 
         return state;
     }
 
-    private InProcessAgentSession getOrCreateSession() {
+    private InProcessAgentSession getOrCreateSession(String contextId) {
         if (persistentSession != null) {
             return persistentSession;
         }
-        return createSession(UUID.randomUUID().toString());
+        return createSession(contextId != null ? contextId : UUID.randomUUID().toString());
     }
 
     private InProcessAgentSession createSession(String sessionId) {
@@ -160,6 +184,9 @@ public class A2ARunManager {
         if (state == null) throw new IllegalArgumentException("task not found: " + taskId);
         LOGGER.info("cancelling task, taskId={}", taskId);
         state.session.cancelTurn();
+        state.setState(TaskState.CANCELED);
+        state.clearAwait();
+        state.detachEventListener();
     }
 
     public void close() {

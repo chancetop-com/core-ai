@@ -50,7 +50,6 @@ public class A2AServer {
     private final Undertow server;
     private final A2ARunManager runManager;
     private final LocalChatSessionManager chatSessionManager;
-    private final FileSessionPersistence fileSessionPersistence;
     private final int port;
 
     public A2AServer(int port, A2ARunManager runManager, LocalChatSessionManager chatSessionManager, FileSessionPersistence fileSessionPersistence, Path webDir) {
@@ -58,7 +57,6 @@ public class A2AServer {
         this.port = port;
         this.runManager = runManager;
         this.chatSessionManager = chatSessionManager;
-        this.fileSessionPersistence = fileSessionPersistence;
 
         var apiPathHandler = buildApiRoutes(chatSessionManager, fileSessionPersistence);
         var staticHandler = staticFileHandler(webDir);
@@ -91,10 +89,9 @@ public class A2AServer {
 
         var handler = new PathTemplateHandler(notFoundHandler());
         handler.add("/.well-known/agent-card.json", agentCardHandler);
-        handler.add("/message/send", messageHandler);
+        handler.add("/message:send", messageHandler);
+        handler.add("/message:stream", messageHandler);
         handler.add("/tasks/{taskId}", taskHandler);
-        handler.add("/tasks/{taskId}/cancel", taskHandler);
-        handler.add("/tasks/{taskId}/message/send", taskHandler);
         handler.add("/api/capabilities", new CapabilitiesHandler());
         handler.add("/api/sessions", chatSessionCreateHandler);
         handler.add("/api/sessions/{sessionId}", chatSessionActionHandler);
@@ -196,7 +193,7 @@ public class A2AServer {
         return exchange -> {
             exchange.getResponseHeaders().put(ACCESS_CONTROL_ALLOW_ORIGIN, "*");
             exchange.getResponseHeaders().put(ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, PUT, DELETE, OPTIONS");
-            exchange.getResponseHeaders().put(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, Accept, Authorization");
+            exchange.getResponseHeaders().put(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, Accept, Authorization, A2A-Version, A2A-Extensions");
             exchange.getResponseHeaders().put(ACCESS_CONTROL_MAX_AGE, "86400");
 
             if (Methods.OPTIONS.equals(exchange.getRequestMethod())) {

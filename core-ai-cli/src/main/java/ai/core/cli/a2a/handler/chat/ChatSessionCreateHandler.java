@@ -35,7 +35,7 @@ public class ChatSessionCreateHandler implements HttpHandler {
         try {
             String body = readBody(exchange);
             if (body != null && !body.isEmpty()) {
-                var request = JsonUtil.fromJson(CreateSessionRequest.class, body);
+                JsonUtil.fromJson(CreateSessionRequest.class, body);
                 // For local mode, agent_id is ignored - we always use the local agent
             }
 

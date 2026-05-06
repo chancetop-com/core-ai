@@ -1,8 +1,6 @@
 package ai.core.cli.a2a.handler;
 
 import ai.core.a2a.A2ARunManager;
-import ai.core.api.a2a.Message;
-import ai.core.api.a2a.SendMessageRequest;
 import ai.core.utils.JsonUtil;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
@@ -12,35 +10,13 @@ import io.undertow.util.PathTemplateMatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Locale;
+import java.util.Map;
 
 /**
  * @author stephen
  */
 public class TaskHandler implements HttpHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskHandler.class);
-
-    private static String extractDecision(Message msg) {
-        if (msg.parts == null) return null;
-        for (var part : msg.parts) {
-            if (!"data".equals(part.type) || part.data == null) continue;
-            var d = part.data.get("decision");
-            if (d != null) return String.valueOf(d);
-        }
-        return null;
-    }
-
-    private static String extractCallId(Message msg) {
-        if (msg.parts == null) return null;
-        for (var part : msg.parts) {
-            if (!"data".equals(part.type) || part.data == null) continue;
-            var c = part.data.get("call_id");
-            if (c != null) return String.valueOf(c);
-        }
-        return null;
-    }
 
     private final A2ARunManager runManager;
 
@@ -59,16 +35,15 @@ public class TaskHandler implements HttpHandler {
         var taskId = match != null ? match.getParameters().get("taskId") : null;
         if (taskId == null) {
             exchange.setStatusCode(400);
-            sendJson(exchange, "{\"error\":\"taskId required\"}");
+            sendError(exchange, "taskId required");
             return;
         }
 
         try {
             var path = exchange.getRelativePath();
-            if (path.endsWith("/cancel") && Methods.POST.equals(exchange.getRequestMethod())) {
+            if (path.endsWith(":cancel") && Methods.POST.equals(exchange.getRequestMethod())) {
+                taskId = taskId.substring(0, taskId.length() - ":cancel".length());
                 handleCancel(exchange, taskId);
-            } else if (path.endsWith("/message/send") && Methods.POST.equals(exchange.getRequestMethod())) {
-                handleResume(exchange, taskId);
             } else if (Methods.GET.equals(exchange.getRequestMethod())) {
                 handleGet(exchange, taskId);
             } else {
@@ -77,14 +52,14 @@ public class TaskHandler implements HttpHandler {
             }
         } catch (IllegalArgumentException e) {
             exchange.setStatusCode(404);
-            sendJson(exchange, "{\"error\":\"" + e.getMessage() + "\"}");
+            sendError(exchange, e.getMessage());
         } catch (IllegalStateException e) {
             exchange.setStatusCode(409);
-            sendJson(exchange, "{\"error\":\"" + e.getMessage() + "\"}");
+            sendError(exchange, e.getMessage());
         } catch (Exception e) {
             LOGGER.error("error handling task request", e);
             exchange.setStatusCode(500);
-            sendJson(exchange, "{\"error\":\"internal server error\"}");
+            sendError(exchange, "internal server error");
         }
     }
 
@@ -92,46 +67,24 @@ public class TaskHandler implements HttpHandler {
         var task = runManager.getTask(taskId);
         if (task == null) {
             exchange.setStatusCode(404);
-            sendJson(exchange, "{\"error\":\"task not found\"}");
+            sendError(exchange, "task not found");
             return;
         }
         sendJson(exchange, JsonUtil.toJson(task));
     }
 
-    private void handleResume(HttpServerExchange exchange, String taskId) throws IOException {
-        var body = readBody(exchange);
-        var request = JsonUtil.fromJson(SendMessageRequest.class, body);
-
-        var decision = "approve";
-        String callId = null;
-
-        if (request.message != null) {
-            var text = request.message.extractText().trim().toLowerCase(Locale.ROOT);
-            if ("deny".equals(text) || "reject".equals(text)) {
-                decision = "deny";
-            }
-            var d = extractDecision(request.message);
-            if (d != null) decision = d;
-            var c = extractCallId(request.message);
-            if (c != null) callId = c;
-        }
-
-        runManager.resumeTask(taskId, decision, callId);
-        sendJson(exchange, "{\"status\":\"resumed\"}");
-    }
-
     private void handleCancel(HttpServerExchange exchange, String taskId) {
         runManager.cancelTask(taskId);
-        sendJson(exchange, "{\"status\":\"canceled\"}");
-    }
-
-    private String readBody(HttpServerExchange exchange) throws IOException {
-        exchange.startBlocking();
-        return new String(exchange.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        sendJson(exchange, JsonUtil.toJson(runManager.getTask(taskId)));
     }
 
     private void sendJson(HttpServerExchange exchange, String json) {
-        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/a2a+json");
         exchange.getResponseSender().send(json);
     }
+
+    private void sendError(HttpServerExchange exchange, String message) {
+        sendJson(exchange, JsonUtil.toJson(Map.of("error", message != null ? message : "unknown error")));
+    }
+
 }

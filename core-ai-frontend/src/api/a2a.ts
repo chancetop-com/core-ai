@@ -4,35 +4,56 @@ export interface AgentCard {
   name: string;
   description: string;
   version: string;
-  capabilities: { streaming: boolean; pushNotifications: boolean };
+  supportedInterfaces: { url?: string; protocolBinding: string; protocolVersion: string; tenant?: string }[];
+  capabilities: { streaming?: boolean; pushNotifications?: boolean; extendedAgentCard?: boolean };
   skills: { name: string; description: string }[];
   defaultInputModes: string[];
   defaultOutputModes: string[];
 }
 
 export interface Part {
-  type: 'text' | 'file' | 'data';
   text?: string;
-  file?: { name: string; mimeType: string; uri: string };
+  raw?: string;
+  url?: string;
   data?: Record<string, unknown>;
-  metadata?: Record<string, string>;
+  filename?: string;
+  mediaType?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Message {
-  role: 'user' | 'agent';
+  role: 'ROLE_USER' | 'ROLE_AGENT';
   parts: Part[];
   messageId?: string;
   taskId?: string;
+  contextId?: string;
+  referenceTaskIds?: string[];
+  metadata?: Record<string, unknown>;
+  extensions?: string[];
 }
 
 export interface TaskStatus {
-  state: 'submitted' | 'working' | 'input-required' | 'completed' | 'canceled' | 'failed';
+  state:
+    | 'TASK_STATE_UNSPECIFIED'
+    | 'TASK_STATE_SUBMITTED'
+    | 'TASK_STATE_WORKING'
+    | 'TASK_STATE_COMPLETED'
+    | 'TASK_STATE_FAILED'
+    | 'TASK_STATE_CANCELED'
+    | 'TASK_STATE_INPUT_REQUIRED'
+    | 'TASK_STATE_REJECTED'
+    | 'TASK_STATE_AUTH_REQUIRED';
   message?: Message;
+  timestamp?: string;
 }
 
 export interface Artifact {
+  artifactId: string;
   name?: string;
+  description?: string;
   parts: Part[];
+  metadata?: Record<string, unknown>;
+  extensions?: string[];
 }
 
 export interface Task {
@@ -55,29 +76,51 @@ export interface SessionMessage {
   content: string;
 }
 
-export interface StreamEvent {
-  type: 'status' | 'artifact';
+export interface SendMessageResponse {
+  task?: Task;
+  message?: Message;
+}
+
+export interface TaskStatusUpdateEvent {
   taskId: string;
-  status?: TaskStatus;
-  artifact?: Artifact;
-  metadata?: Record<string, string>;
+  contextId: string;
+  status: TaskStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TaskArtifactUpdateEvent {
+  taskId: string;
+  contextId: string;
+  artifact: Artifact;
+  append?: boolean;
+  lastChunk?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface StreamEvent {
+  task?: Task;
+  message?: Message;
+  statusUpdate?: TaskStatusUpdateEvent;
+  artifactUpdate?: TaskArtifactUpdateEvent;
 }
 
 export const a2aApi = {
   agentCard: async (): Promise<AgentCard> => {
-    const res = await fetch(`${BASE}/.well-known/agent-card.json`);
+    const res = await fetch(`${BASE}/.well-known/agent-card.json`, { headers: { 'A2A-Version': '1.0' } });
     return res.json();
   },
 
   sendMessage: async (text: string): Promise<Task> => {
-    const res = await fetch(`${BASE}/message/send`, {
+    const res = await fetch(`${BASE}/message:send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/a2a+json', 'A2A-Version': '1.0' },
       body: JSON.stringify({
-        message: { role: 'user', parts: [{ type: 'text', text }] },
+        message: { role: 'ROLE_USER', messageId: crypto.randomUUID(), parts: [{ text, mediaType: 'text/plain' }] },
       }),
     });
-    return res.json();
+    const body = (await res.json()) as SendMessageResponse;
+    if (!body.task) throw new Error('SendMessage response did not contain a task');
+    return body.task;
   },
 
   sendMessageStream: async (
@@ -85,11 +128,11 @@ export const a2aApi = {
     onEvent: (event: StreamEvent) => void,
     onDone: () => void,
   ): Promise<void> => {
-    const res = await fetch(`${BASE}/message/send`, {
+    const res = await fetch(`${BASE}/message:stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: { 'Content-Type': 'application/a2a+json', Accept: 'text/event-stream', 'A2A-Version': '1.0' },
       body: JSON.stringify({
-        message: { role: 'user', parts: [{ type: 'text', text }] },
+        message: { role: 'ROLE_USER', messageId: crypto.randomUUID(), parts: [{ text, mediaType: 'text/plain' }] },
       }),
     });
 
@@ -123,25 +166,27 @@ export const a2aApi = {
   },
 
   getTask: async (taskId: string): Promise<Task> => {
-    const res = await fetch(`${BASE}/tasks/${taskId}`);
+    const res = await fetch(`${BASE}/tasks/${taskId}`, { headers: { 'A2A-Version': '1.0' } });
     return res.json();
   },
 
   resumeTask: async (taskId: string, decision: 'approve' | 'deny', callId: string): Promise<void> => {
-    await fetch(`${BASE}/tasks/${taskId}/message/send`, {
+    await fetch(`${BASE}/message:send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/a2a+json', 'A2A-Version': '1.0' },
       body: JSON.stringify({
         message: {
-          role: 'user',
-          parts: [{ type: 'data', data: { decision, call_id: callId } }],
+          role: 'ROLE_USER',
+          messageId: crypto.randomUUID(),
+          taskId,
+          parts: [{ data: { decision, call_id: callId }, mediaType: 'application/json' }],
         },
       }),
     });
   },
 
   cancelTask: async (taskId: string): Promise<void> => {
-    await fetch(`${BASE}/tasks/${taskId}/cancel`, { method: 'POST' });
+    await fetch(`${BASE}/tasks/${taskId}:cancel`, { method: 'POST', headers: { 'A2A-Version': '1.0' } });
   },
 
   listSessions: async (): Promise<SessionItem[]> => {

@@ -6,6 +6,8 @@ import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
 
+import java.util.List;
+
 /**
  * @author stephen
  */
@@ -18,7 +20,15 @@ public class AgentCardHandler implements HttpHandler {
 
     @Override
     public void handleRequest(HttpServerExchange exchange) {
-        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
-        exchange.getResponseSender().send(JsonUtil.toJson(runManager.getAgentCard()));
+        var card = runManager.getAgentCard();
+        if (card.supportedInterfaces == null || card.supportedInterfaces.isEmpty()) {
+            card.supportedInterfaces = List.of(new ai.core.api.a2a.AgentCard.AgentInterface());
+        }
+        var primaryInterface = card.supportedInterfaces.getFirst();
+        if (primaryInterface.url == null) {
+            primaryInterface.url = exchange.getRequestScheme() + "://" + exchange.getHostAndPort();
+        }
+        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/a2a+json");
+        exchange.getResponseSender().send(JsonUtil.toJson(card));
     }
 }

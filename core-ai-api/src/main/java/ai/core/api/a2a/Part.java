@@ -10,52 +10,52 @@ import java.util.Map;
 public class Part {
     public static Part text(String text) {
         var part = new Part();
-        part.type = "text";
         part.text = text;
+        part.mediaType = "text/plain";
         return part;
     }
 
     public static Part file(String name, String mimeType, String uri) {
         var part = new Part();
-        part.type = "file";
-        var file = new FileContent();
-        file.name = name;
-        file.mimeType = mimeType;
-        file.uri = uri;
-        part.file = file;
+        part.filename = name;
+        part.mediaType = mimeType;
+        part.url = uri;
         return part;
     }
 
-    public static Part data(Map<String, Object> data) {
+    public static Part raw(String name, String mimeType, String bytes) {
         var part = new Part();
-        part.type = "data";
-        part.data = data;
+        part.filename = name;
+        part.mediaType = mimeType;
+        part.raw = bytes;
         return part;
     }
 
-    @Property(name = "type")
-    public String type;
+    public static Part data(Object data) {
+        var part = new Part();
+        part.data = data;
+        part.mediaType = "application/json";
+        return part;
+    }
 
     @Property(name = "text")
     public String text;
 
-    @Property(name = "file")
-    public FileContent file;
+    @Property(name = "raw")
+    public String raw;
+
+    @Property(name = "url")
+    public String url;
 
     @Property(name = "data")
-    public Map<String, Object> data;
+    public Object data;
+
+    @Property(name = "filename")
+    public String filename;
+
+    @Property(name = "mediaType")
+    public String mediaType;
 
     @Property(name = "metadata")
-    public Map<String, String> metadata;
-
-    public static class FileContent {
-        @Property(name = "name")
-        public String name;
-
-        @Property(name = "mimeType")
-        public String mimeType;
-
-        @Property(name = "uri")
-        public String uri;
-    }
+    public Map<String, Object> metadata;
 }

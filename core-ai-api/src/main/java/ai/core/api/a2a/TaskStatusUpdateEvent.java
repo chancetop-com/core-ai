@@ -2,27 +2,22 @@ package ai.core.api.a2a;
 
 import core.framework.api.json.Property;
 
-import java.util.List;
 import java.util.Map;
 
 /**
- * @author stephen
+ * Streaming update for a task status transition.
+ *
+ * @author xander
  */
-public class Task {
-    @Property(name = "id")
-    public String id;
+public class TaskStatusUpdateEvent {
+    @Property(name = "taskId")
+    public String taskId;
 
     @Property(name = "contextId")
     public String contextId;
 
     @Property(name = "status")
     public TaskStatus status;
-
-    @Property(name = "artifacts")
-    public List<Artifact> artifacts;
-
-    @Property(name = "history")
-    public List<Message> history;
 
     @Property(name = "metadata")
     public Map<String, Object> metadata;
