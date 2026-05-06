@@ -189,7 +189,8 @@ public class AgentSessionRunner {
     }
 
     private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {
-        var dispatcher = new CommandDispatcher(ui, this, switchSessionId, remoteConfig, commands, memoryCommand, memoryEnabled);
+        var dispatcher = new CommandDispatcher(new CommandDispatcher.Config(
+                ui, this, switchSessionId, remoteConfig, commands, memoryCommand, memoryEnabled));
         boolean showFrame = true;
         while (true) {
             try {
@@ -438,12 +439,5 @@ public class AgentSessionRunner {
                          MdMemoryProvider memory, ModelRegistry modelRegistry,
                          SessionPersistence sessionPersistence,
                          boolean memoryEnabled) {
-
-        public Config(String modelName, boolean autoApproveAll, String sessionId,
-                      SessionManager sessionManager, ToolPermissionStore permissionStore,
-                      MdMemoryProvider memory, ModelRegistry modelRegistry,
-                      SessionPersistence sessionPersistence) {
-            this(modelName, autoApproveAll, sessionId, sessionManager, permissionStore, memory, modelRegistry, sessionPersistence, true);
-        }
     }
 }

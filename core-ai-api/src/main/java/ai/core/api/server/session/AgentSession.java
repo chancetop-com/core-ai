@@ -14,6 +14,9 @@ public interface AgentSession {
 
     void onEvent(AgentEventListener listener);
 
+    default void removeEvent(AgentEventListener listener) {
+    }
+
     void approveToolCall(String callId, ApprovalDecision decision);
 
     void cancelTurn();
