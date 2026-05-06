@@ -25,6 +25,8 @@ public final class CliLogger extends AbstractLogger {
 
     private static volatile PrintWriter fileWriter;
     private static volatile Path logsDir;
+    private static volatile String currentSessionId = "default";
+    private static volatile PrintWriter terminalWriter;
 
     private static Path logsDir() {
         if (logsDir == null) {
@@ -36,8 +38,6 @@ public final class CliLogger extends AbstractLogger {
         }
         return logsDir;
     }
-    private static volatile String currentSessionId = "default";
-    private static volatile PrintWriter terminalWriter;
 
     public static void initialize(String sessionId) {
         currentSessionId = sessionId;

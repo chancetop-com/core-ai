@@ -95,6 +95,12 @@ public class OutputPanel {
         return sb.toString();
     }
 
+    private static String padToDisplayWidth(String text, int targetWidth) {
+        int current = AnsiTheme.displayWidth(text);
+        if (current >= targetWidth) return text;
+        return text + " ".repeat(targetWidth - current);
+    }
+
     private final PrintWriter writer;
     private final StreamingMarkdownRenderer mdRenderer;
     private final ThinkingSpinner spinner;
@@ -374,25 +380,23 @@ public class OutputPanel {
         var sb = new StringBuilder();
         int cur = 0;
         int target = maxDisplayWidth - 3;
-        for (int i = 0; i < content.length(); i++) {
-            char c = content.charAt(i);
-            boolean surrogate = Character.isHighSurrogate(c) && i + 1 < content.length()
-                    && Character.isLowSurrogate(content.charAt(i + 1));
+        int index = 0;
+        while (index < content.length()) {
+            char c = content.charAt(index);
+            boolean surrogate = Character.isHighSurrogate(c) && index + 1 < content.length()
+                    && Character.isLowSurrogate(content.charAt(index + 1));
             int w = surrogate || AnsiTheme.isWideChar(c) ? 2 : 1;
             if (cur + w > target) break;
             sb.append(c);
             if (surrogate) {
-                sb.append(content.charAt(++i));
+                sb.append(content.charAt(index + 1));
+                index += 2;
+            } else {
+                index++;
             }
             cur += w;
         }
         return sb + "...";
-    }
-
-    private static String padToDisplayWidth(String text, int targetWidth) {
-        int current = AnsiTheme.displayWidth(text);
-        if (current >= targetWidth) return text;
-        return text + " ".repeat(targetWidth - current);
     }
 
     public void endTurn() {

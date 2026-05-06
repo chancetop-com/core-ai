@@ -4,6 +4,11 @@ package ai.core.sandbox;
  * @author stephen
  */
 public class SandboxConfig {
+    public static SandboxConfig enabled() {
+        var config = new SandboxConfig();
+        config.enabled = true;
+        return config;
+    }
 
     public Boolean enabled = false;
 
@@ -24,14 +29,6 @@ public class SandboxConfig {
     public String tmpSizeLimit = SandboxConstants.DEFAULT_TMP_SIZE_LIMIT;
 
     public Integer maxAsyncTasks = SandboxConstants.DEFAULT_MAX_ASYNC_TASKS;
-
-    public SandboxConfig() {}
-
-    public static SandboxConfig enabled() {
-        var config = new SandboxConfig();
-        config.enabled = true;
-        return config;
-    }
 
     public void validate() {
         if (memoryLimitMb != null) {

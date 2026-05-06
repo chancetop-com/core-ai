@@ -14,9 +14,6 @@ import java.util.Set;
  * @author stephen
  */
 public final class SandboxConstants {
-
-    private SandboxConstants() {}
-
     public static final Set<String> INTERCEPTED_TOOLS = Set.of(
             ShellCommandTool.TOOL_NAME,
             PythonScriptTool.TOOL_NAME,
@@ -54,4 +51,7 @@ public final class SandboxConstants {
     public static final int DEFAULT_MAX_ASYNC_TASKS = 5;
 
     public static final int DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS = 60;
+
+    private SandboxConstants() {
+    }
 }

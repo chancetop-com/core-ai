@@ -34,14 +34,7 @@ public class ShellCommandTool extends ToolCall {
 
     private static final int DEFAULT_TIMEOUT_MILLISECONDS = 2 * 60 * 1000;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
-    private static final String TOOL_DESC = buildToolDescription();
-
-    private static String buildToolDescription() {
-        var platform = SystemUtil.detectPlatform();
-        var shell = ShellUtil.getPreferredShell(platform);
-        String shellSpecific = getShellSpecific(platform, shell);
-
-        return """
+    private static final String TOOL_DESC_TEMPLATE = """
             Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
             
             Be aware: OS: ${os}${shell_specific}
@@ -171,7 +164,15 @@ public class ShellCommandTool extends ToolCall {
             
             # Other common operations
             - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
-            """
+            """;
+    private static final String TOOL_DESC = buildToolDescription();
+
+    private static String buildToolDescription() {
+        var platform = SystemUtil.detectPlatform();
+        var shell = ShellUtil.getPreferredShell(platform);
+        String shellSpecific = getShellSpecific(platform, shell);
+
+        return TOOL_DESC_TEMPLATE
             .replace("${tool_read_file}", ReadFileTool.TOOL_NAME)
             .replace("${tool_edit_file}", EditFileTool.TOOL_NAME)
             .replace("${tool_glob}", GlobFileTool.TOOL_NAME)

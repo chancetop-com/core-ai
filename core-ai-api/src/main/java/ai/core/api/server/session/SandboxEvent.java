@@ -4,20 +4,6 @@ package ai.core.api.server.session;
  * @author stephen
  */
 public class SandboxEvent implements AgentEvent {
-
-    @Override
-    public String sessionId() {
-        return sessionId;
-    }
-
-    public String sessionId;
-    public String sandboxId;
-    public SandboxEventType type;
-    public String message;
-    public Long durationMs;
-
-    public SandboxEvent() {}
-
     public static SandboxEvent creating(String sessionId, String sandboxId) {
         var event = new SandboxEvent();
         event.sessionId = sessionId;
@@ -62,5 +48,16 @@ public class SandboxEvent implements AgentEvent {
         event.type = SandboxEventType.TERMINATED;
         event.message = "Sandbox terminated";
         return event;
+    }
+
+    public String sessionId;
+    public String sandboxId;
+    public SandboxEventType type;
+    public String message;
+    public Long durationMs;
+
+    @Override
+    public String sessionId() {
+        return sessionId;
     }
 }

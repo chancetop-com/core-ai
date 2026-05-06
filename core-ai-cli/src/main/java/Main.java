@@ -1,4 +1,5 @@
 import ai.core.cli.CliApp;
+import ai.core.cli.CliAppOptions;
 import ai.core.cli.DebugLog;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -86,14 +87,13 @@ public class Main implements Callable<Integer> {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
+        var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace);
         if (serve) {
-            new CliApp(configFile, model, prompt, skipPermissions, continueSession, resume, workspace)
-                    .startServe(port, !headless, webDir);
+            new CliApp(options).startServe(port, !headless, webDir);
         } else if (serverUrl != null) {
-            new CliApp(configFile, model, prompt, skipPermissions, continueSession, resume, workspace)
-                    .startRemote(serverUrl, apiKey, agentId);
+            new CliApp(options).startRemote(serverUrl, apiKey, agentId);
         } else {
-            new CliApp(configFile, model, prompt, skipPermissions, continueSession, resume, workspace).start();
+            new CliApp(options).start();
         }
         return 0;
     }

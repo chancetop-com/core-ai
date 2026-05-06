@@ -230,6 +230,11 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     @Override
+    public void removeEvent(AgentEventListener listener) {
+        listeners.remove(listener);
+    }
+
+    @Override
     public void approveToolCall(String callId, ApprovalDecision decision) {
         logger.debug("approveToolCall: callId={}, decision={}, sessionId={}", callId, decision, sessionId);
         permissionGate.respond(callId, decision);

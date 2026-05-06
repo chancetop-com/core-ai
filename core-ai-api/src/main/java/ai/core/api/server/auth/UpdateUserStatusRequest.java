@@ -1,8 +1,6 @@
 package ai.core.api.server.auth;
 
 import core.framework.api.json.Property;
-import core.framework.api.web.service.POST;
-import core.framework.api.web.service.Path;
 
 /**
  * @author stephen

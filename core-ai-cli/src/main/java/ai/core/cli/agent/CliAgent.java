@@ -18,7 +18,6 @@ import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.SkillTool;
-import ai.core.tool.tools.TaskTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,6 +26,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -155,6 +155,7 @@ public class CliAgent {
     }
     record CodeBasePrompt() implements PromptInject {
         @Override
+        @SuppressWarnings("MethodLength")
         public String inject() {
             return """
                     You are core-ai-cli, the best coding agent on the planet.
@@ -285,7 +286,7 @@ public class CliAgent {
         }
 
         private static String platformName() {
-            var os = System.getProperty("os.name").toLowerCase();
+            var os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
             if (os.contains("mac") || os.contains("darwin")) return "darwin";
             if (os.contains("win")) return "win32";
             return "linux";
@@ -297,15 +298,16 @@ public class CliAgent {
 
         @Override
         public String inject() {
-            var sb = new StringBuilder();
+            var sb = new StringBuilder(256);
             var projectPaths = findProjectInstructions(workspace);
             for (var path : projectPaths) {
                 try {
                     var content = Files.readString(path).trim();
                     if (!content.isEmpty()) {
-                        sb.append("Instructions from: ").append(path).append("\n").append(content);
+                        sb.append("Instructions from: ").append(path).append('\n').append(content);
                     }
                 } catch (IOException ignored) {
+                    // Ignore unreadable optional project instruction files.
                 }
             }
             return sb.toString();

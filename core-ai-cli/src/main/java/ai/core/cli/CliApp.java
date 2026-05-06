@@ -54,23 +54,6 @@ public class CliApp {
 
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    private static void openBrowser(String url) {
-        try {
-            var os = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT);
-            ProcessBuilder pb;
-            if (os.contains("win")) {
-                pb = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url);
-            } else if (os.contains("mac")) {
-                pb = new ProcessBuilder("open", url);
-            } else {
-                pb = new ProcessBuilder("xdg-open", url);
-            }
-            pb.start();
-        } catch (Exception e) {
-            LOGGER.warn("failed to open browser: {}", e.getMessage());
-        }
-    }
-
     private final Path configFile;
     private final String modelOverride;
     private final String prompt;
@@ -79,14 +62,14 @@ public class CliApp {
     private final boolean resume;
     private final Path workspace;
 
-    public CliApp(Path configFile, String modelOverride, String prompt, boolean autoApproveAll, boolean continueSession, boolean resume, Path workspace) {
-        this.configFile = configFile != null ? configFile : PathUtils.DEFAULT_CONFIG;
-        this.modelOverride = modelOverride;
-        this.prompt = prompt;
-        this.autoApproveAll = autoApproveAll;
-        this.continueSession = continueSession;
-        this.resume = resume;
-        this.workspace = workspace != null ? workspace.toAbsolutePath() : Paths.get("").toAbsolutePath();
+    public CliApp(CliAppOptions options) {
+        this.configFile = options.configFile() != null ? options.configFile() : PathUtils.DEFAULT_CONFIG;
+        this.modelOverride = options.modelOverride();
+        this.prompt = options.prompt();
+        this.autoApproveAll = options.autoApproveAll();
+        this.continueSession = options.continueSession();
+        this.resume = options.resume();
+        this.workspace = options.workspace() != null ? options.workspace().toAbsolutePath() : Paths.get("").toAbsolutePath();
     }
 
     public void start() {
@@ -332,21 +315,24 @@ public class CliApp {
 
         server.start();
         var url = "http://localhost:" + port;
-        ConsoleWriter.println("A2A server running at " + url);
-        if (!currentSessionId.startsWith("serve-")) {
-            ConsoleWriter.println("Session: " + currentSessionId);
-        }
-
-        if (openBrowser) {
-            openBrowser(url);
-        } else {
-            ConsoleWriter.println("Headless mode - use any A2A client to connect");
-        }
+        printServeStarted(url, currentSessionId, openBrowser);
 
         try {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private void printServeStarted(String url, String currentSessionId, boolean openBrowser) {
+        ConsoleWriter.println("A2A server running at " + url);
+        if (!currentSessionId.startsWith("serve-")) {
+            ConsoleWriter.println("Session: " + currentSessionId);
+        }
+        if (openBrowser) {
+            BrowserLauncher.open(url);
+        } else {
+            ConsoleWriter.println("Headless mode - use any A2A client to connect");
         }
     }
 

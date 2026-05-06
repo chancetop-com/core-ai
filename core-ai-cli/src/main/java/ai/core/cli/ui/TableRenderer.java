@@ -156,7 +156,7 @@ public final class TableRenderer {
             String cell = i < cells.length ? cells[i] : "";
             String rendered = MarkdownLineRenderer.renderInline(cell);
             if (isHeader) {
-                rendered = AnsiTheme.MD_BOLD + rendered + AnsiTheme.RESET;
+                rendered = AnsiTheme.MD_BOLD.concat(rendered).concat(AnsiTheme.RESET);
             }
             sb.append(' ').append(pad(rendered, widths[i], aligns[i])).append(' ');
             sb.append(TC).append('│').append(R);

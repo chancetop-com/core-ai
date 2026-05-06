@@ -80,7 +80,7 @@ public class CliEventListener extends BaseEventListener {
             if (cached > 0) {
                 sb.append(" ~").append(fmtK(cached));
             }
-            sb.append(")");
+            sb.append(')');
             int tasks = Math.max(0, getRunTasksCount());
             int tools = getRunTasksToolCount();
             if (tasks > 0) sb.append(" | ").append(tasks).append(tasks == 1 ? " task" : " tasks");

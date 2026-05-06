@@ -6,6 +6,7 @@ import ai.core.cli.ui.TerminalUI;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Properties;
 
 /**
@@ -81,9 +82,9 @@ public class InteractiveConfigSetup {
             if (line == null || line.isBlank()) {
                 return defaultValue;
             }
-            line = line.trim().toLowerCase();
-            if (line.equals("y") || line.equals("yes")) return true;
-            if (line.equals("n") || line.equals("no")) return false;
+            line = line.trim().toLowerCase(Locale.ROOT);
+            if ("y".equals(line) || "yes".equals(line)) return true;
+            if ("n".equals(line) || "no".equals(line)) return false;
         }
     }
 

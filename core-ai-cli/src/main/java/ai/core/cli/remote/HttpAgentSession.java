@@ -208,6 +208,11 @@ public final class HttpAgentSession implements AgentSession {
     }
 
     @Override
+    public void removeEvent(AgentEventListener listener) {
+        listeners.remove(listener);
+    }
+
+    @Override
     public void approveToolCall(String callId, ApprovalDecision decision) {
         api.post("/api/sessions/" + sessionId + "/approve", Map.of("callId", callId, "decision", decision.name()));
     }

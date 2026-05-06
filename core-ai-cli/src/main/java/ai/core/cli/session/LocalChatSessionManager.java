@@ -160,7 +160,7 @@ public class LocalChatSessionManager {
     }
 
     public List<ChatSession> getAllSessions() {
-        return new java.util.ArrayList<>(sessions.values());
+        return new ArrayList<>(sessions.values());
     }
 
     public void closeAll() {
@@ -198,6 +198,7 @@ public class LocalChatSessionManager {
         public void removeListener(AgentEventListener listener) {
             synchronized (this) {
                 listeners.remove(listener);
+                session.removeEvent(listener);
             }
         }
 

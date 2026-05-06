@@ -7,6 +7,7 @@ import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.Reference;
+import org.jline.reader.UserInterruptException;
 import org.jline.reader.impl.LineReaderImpl;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -181,7 +182,7 @@ public class TerminalUI {
         if (jlineReader != null) {
             try {
                 return prompt != null ? jlineReader.readLine(prompt) : jlineReader.readLine();
-            } catch (org.jline.reader.UserInterruptException | org.jline.reader.EndOfFileException e) {
+            } catch (UserInterruptException | EndOfFileException e) {
                 return null;
             }
         }
@@ -303,7 +304,7 @@ public class TerminalUI {
                 if (result != null) return result;
             }
             return line;
-        } catch (org.jline.reader.UserInterruptException e) {
+        } catch (UserInterruptException e) {
             return "/exit";
         } catch (EndOfFileException | IllegalStateException e) {
             return null;
