@@ -9,16 +9,6 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Filters Slack (or other webhook) events before running the agent,
- * so that only matching events consume tokens.
- *
- * <p>Filter rules are stored in {@code actionConfig} as comma-separated values:
- * <ul>
- *   <li>{@code filter_event_types} — only process events whose {@code event.type} is in this list</li>
- *   <li>{@code filter_ignore_subtypes} — skip events whose {@code event.subtype} is in this list</li>
- *   <li>{@code filter_channels} — only process events whose {@code event.channel} is in this list</li>
- * </ul>
- *
  * @author stephen
  */
 public class EventFilter {
