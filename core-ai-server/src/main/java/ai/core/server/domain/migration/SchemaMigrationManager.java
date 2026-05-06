@@ -68,7 +68,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVChatSessionIndexes(),
             new SchemaMigrationVChatSessionSourceIndexes(),
             new SchemaMigrationVUsersIndexes(),
-            new SchemaMigrationVFileRecordsTTL()
+            new SchemaMigrationVFileRecordsTTL(),
+            new SchemaMigrationVTriggerIndexes()
         );
     }
 }
