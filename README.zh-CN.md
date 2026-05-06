@@ -109,6 +109,9 @@ System.out.println(output.getOutput());
 - [Skills 系统](./docs/cn/tutorial-skills.md) - 模块化领域知识包
 - [流程编排](./docs/cn/tutorial-flow.md) - 构建复杂工作流
 
+**设计文档**
+- [A2A 框架与 CLI/Server 集成](./docs/cn/design-cli-server-a2a.md) - 框架级 A2A、server-only Tool/MCP、CLI/server 集成设计
+
 ### 🏗️ 架构设计
 
 ```

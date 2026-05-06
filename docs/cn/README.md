@@ -67,6 +67,7 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
   - [Server 架构设计](design-server-architecture.md) - 设计原则、领域模型、执行流程、追踪
   - [Agent 平台架构](../en/design-agent-platform-architecture.md) - 企业 Agent 平台设计
   - [客户端/服务端架构](../en/design-client-server-architecture.md) - C/S 架构、会话模型、SSE 事件
+  - [A2A 框架与 CLI/Server 集成](design-cli-server-a2a.md) - 框架级 A2A、server-only Tool/MCP、CLI/server 集成设计
 
 ### 🚀 快速导航
 
@@ -100,6 +101,7 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | [Server Architecture](../en/design-server-architecture.md) | [Server 架构设计](design-server-architecture.md) | Design principles, domain model, execution flows, tracing |
 | [Agent Platform](../en/design-agent-platform-architecture.md) | — | Enterprise agent platform design |
 | [Client/Server](../en/design-client-server-architecture.md) | — | C/S architecture, session model, SSE events |
+| — | [A2A 框架与 CLI/Server 集成](design-cli-server-a2a.md) | Framework-level A2A design, server-only tools/MCP, CLI/server integration |
 
 ### Deep Dive / 深入解析
 

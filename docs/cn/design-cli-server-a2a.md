@@ -1,423 +1,466 @@
-# CLI ↔ core-ai-server A2A 交互机制技术设计
+# Core-AI A2A 框架与 CLI/Server 集成设计
 
-> 版本：v1.0
-> 作者：Xander
-> 日期：2026-04-20
-> 状态：Draft
+> 版本：v2.0
+> 日期：2026-05-06
+> 状态：Design Draft
 
-## 1. 背景与目标
+## 1. 背景
 
-当前 `core-ai-cli` 通过进程内 `LocalAgentSession` 直接运行 Agent，所有推理、工具调用都在本地进程。随着业务演进，需要：
+Core-AI 是通用 Agent 框架，`core-ai-cli` 和 `core-ai-server` 都是基于 Core-AI 构建出来的产品形态。
 
-- Server 侧托管多个 Agent（coder、planner 等），统一管理模型配额、工具集、会话存储
-- CLI 作为轻量远程客户端，用户机器上不再运行大模型推理
-- 仍保留"本地文件读写、shell 执行"等必须在用户机器执行的能力
-- 与外部 A2A 生态互通（未来可被其他 Agent 调用，或调用其他 Agent）
+参考协议：
 
-本设计采用 [A2A (Agent-to-Agent) 协议](https://google-a2a.github.io/A2A/)，通过**双 Agent 模式**解决"远程推理 + 本地工具"的矛盾。
+- A2A official specification: https://a2a-protocol.org/dev/specification/
+- A2A and MCP: https://a2a-protocol.org/dev/topics/a2a-and-mcp/
 
-## 2. 设计约束
+当前需要解决的问题不是单纯的 CLI 远程调用 server，而是让任意 Core-AI Agent 都具备标准化的跨进程、跨框架协作能力：
 
-| 项 | 决策 |
+- 有些 Tool 或 MCP 只能在 server 端执行，例如企业内部系统、集中托管的 MCP 连接、受控凭证、集群资源。
+- CLI 是本地终端进程，无法直接访问这些 server-only Tool/MCP。
+- `core-ai-server` 需要把 server 端 Agent 作为可发现、可调用、可流式订阅的远端 Agent 暴露出来。
+- `core-ai-cli` 需要能像调用本地 `AgentSession` 一样调用远端 Agent。
+- 未来还需要适配 LiteLLM、LangGraph、OpenAI Agents SDK 等非 Core-AI Agent 运行时。
+
+因此，A2A 在 Core-AI 中被定位为**框架级 Agent 互操作层**，而不是 `core-ai-cli` 和 `core-ai-server` 之间的私有协议。
+
+## 2. A2A 在 Core-AI 中是什么
+
+A2A（Agent-to-Agent）在 Core-AI 中承担四件事：
+
+| 能力 | Core-AI 中的含义 |
 |---|---|
-| 协议 | 标准 A2A（JSON-RPC 2.0 + SSE） |
-| 用户模型 | 单用户单账号（server.token） |
-| Agent 部署 | Server 侧多 Agent；CLI 内嵌一个 LocalAgent |
-| Tool 执行位置 | 默认 server 侧；本地文件/shell 走 LocalAgent |
-| 网络 | CLI 在用户内网，不要求公网可达 |
-| 向后兼容 | 保留 `LocalAgentSession` 纯本地模式 |
+| Agent 发现 | 通过 Agent Card 描述一个 Agent 的身份、能力、输入输出模式、鉴权方式和协议入口。 |
+| 消息发送 | 把用户或其他 Agent 的一次输入封装为 `Message`，交给远端 Agent 执行。 |
+| 任务管理 | 每次远端执行形成一个 `Task`，有独立 `taskId`，并通过 `contextId` 关联多轮上下文。 |
+| 事件流 | 通过 SSE 推送状态变化、文本增量、产物增量、input-required、完成、失败和取消。 |
 
-## 3. 整体架构
+Core-AI 不要求调用方理解被调用 Agent 的内部实现。调用方只依赖 A2A 的外部契约：
 
-```
-┌─────────────────────────────────────┐             ┌────────────────────────────────┐
-│  本地机器 (core-ai-cli)              │             │  core-ai-server                │
-│                                     │             │                                │
-│  TerminalUI                         │             │  A2A Gateway                   │
-│  └─ StreamingMarkdownRenderer       │             │   /agents/{id}/.well-known/    │
-│                                     │             │   /agents/{id}/a2a   (RPC+SSE) │
-│  AgentSession (interface)           │  ① 主链路   │   /agents/{id}/reverse-ws      │
-│  ├─ LocalAgentSession (legacy)      │             │                                │
-│  └─ RemoteAgentSession ─────────────┼─JSON-RPC ──▶│  MainAgent (coder/planner/…)   │
-│       └─ A2AClient                  │  + SSE      │  ├─ Server-side Tools          │
-│                                     │             │  │   search/build/test/...    │
-│  LocalAgent (in-process A2A server) │             │  │                              │
-│   ├─ 127.0.0.1:<random>             │             │  └─ LocalAgentProxy            │
-│   ├─ fs.read / fs.write / fs.edit   │             │      (A2A client 反向调 CLI)   │
-│   └─ shell.exec (workspace 白名单)   │             │          ▲                     │
-│       ▲                             │             │          │                     │
-│       │  ② 反向通道 (JSON-RPC/WS)   │             │          │                     │
-│       └─────reverse WebSocket ──────┼─────────────┘          │                     │
-└─────────────────────────────────────┘                        └──────────────────────┘
-```
+- `AgentCard`
+- `Message`
+- `Part`
+- `Task`
+- `TaskStatus`
+- `TaskArtifactUpdateEvent`
+- `TaskStatusUpdateEvent`
 
-两条独立链路：
+被调用方可以是 Core-AI Agent，也可以是其他框架 Agent，只要能适配成这个契约即可。
 
-| 链路 | 物理方向 | 协议 | 职责 |
-|---|---|---|---|
-| ① 主链路 | CLI → Server | JSON-RPC + SSE | 用户消息、token 流、Task 状态 |
-| ② 反向通道 | CLI → Server (TCP)，逻辑上 Server → CLI | JSON-RPC over WebSocket | MainAgent 调 LocalAgent 的本地工具 |
+## 3. 设计原则
 
-## 4. A2A 协议映射
-
-### 4.1 概念映射
-
-| CLI / 现有概念 | A2A / Server 概念 |
+| 原则 | 决策 |
 |---|---|
-| `SessionId`（本地） | `contextId`（server 持久化） |
-| 一次用户输入 | 一个 `Task`（新 `taskId`，复用 `contextId`） |
-| `AgentEvent`（TOKEN/TOOL/DONE） | `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` |
-| `/resume <id>` | `tasks/get` 拉历史 + 新 Task 复用 contextId |
-| `/agent <id>` | 切换 endpoint 到 `/agents/<id>/a2a` |
-| `/tools` | 读取 Agent Card 的 `skills` 字段 |
-| Ctrl+C 双击 | `tasks/cancel` RPC |
-| SSE 断线重连 | `tasks/resubscribe` RPC |
+| 框架优先 | A2A 抽象放在 `core-ai` / `core-ai-api`，CLI 和 server 只是接入方。 |
+| 新协议优先 | 旧 A2A/ACP 草案没有外部用户，不保留兼容层，直接按新模型改。 |
+| 传输层可替换 | DTO 和运行时不绑定 Undertow 或 core-ng，HTTP handler 只是薄适配层。 |
+| 事件系统复用 | 继续复用 `AgentEvent` / `AgentEventListener`，通过 adapter 转成 A2A stream event。 |
+| Tool/MCP 位置显式 | Tool 是否只能 server 端执行，由 Agent 能力、Tool registry 和路由策略决定。 |
+| 第三方可适配 | LiteLLM 等运行时通过 adapter 实现 Core-AI A2A provider/client 契约。 |
 
-### 4.2 URL 约定
+## 4. 模块边界
 
 ```
-GET  /agents                                    # 列出所有 server Agent
-GET  /agents/{agentId}/.well-known/agent.json   # Agent Card
-POST /agents/{agentId}/a2a                      # JSON-RPC 入口
-GET  /agents/{agentId}/a2a/stream?taskId=...    # SSE (message/stream, tasks/resubscribe)
-WS   /agents/{agentId}/reverse-ws               # 反向通道（LocalAgent 注册）
+core-ai-api
+  └─ ai.core.api.a2a
+       AgentCard / Message / Part / Task / TaskStatus / StreamResponse ...
+
+core-ai
+  └─ ai.core.a2a
+       A2AAgentProvider      // provider 侧契约
+       A2AClient             // client 侧契约
+       A2ARunManager         // Core-AI Agent -> A2A Task runtime
+       A2AEventAdapter       // AgentEvent -> A2A stream event
+       A2ATaskState          // task 状态、输出、等待输入、listener 生命周期
+
+core-ai-cli
+  └─ ai.core.cli.a2a
+       Undertow A2A endpoint
+       CLI 本地 serve 模式
+       后续 RemoteAgentSession 通过 A2AClient 调 server Agent
+
+core-ai-server
+  └─ 后续新增 A2A web 层
+       core-ng handler/web service
+       复用 core-ai-api DTO 和 core-ai runtime
+       暴露企业 server 端 Agent
 ```
 
-### 4.3 A2A RPC 方法支持
+核心边界：
 
-| 方法 | 支持 | 用途 |
-|---|---|---|
-| `message/send` | ✅ | 非流式发送（少用） |
-| `message/stream` | ✅ | 主路径，CLI 每次输入走这个 |
-| `tasks/get` | ✅ | `/resume` 拉历史 |
-| `tasks/cancel` | ✅ | Ctrl+C |
-| `tasks/resubscribe` | ✅ | SSE 断线恢复 |
-| `tasks/pushNotificationConfig/set` | ❌ | CLI 常驻，不需要 webhook |
+- `core-ai-api` 只放协议 DTO，不依赖运行时。
+- `core-ai` 放框架级 A2A runtime 和抽象，不依赖 CLI/server。
+- `core-ai-cli` 和 `core-ai-server` 只负责 HTTP、安全、配置、进程生命周期。
+- 第三方框架 adapter 不应反向污染 Core-AI Agent 核心模型。
 
-## 5. 事件桥接
+## 5. 协议模型
 
-### 5.1 Server 侧：`AgentEvent` → A2A 事件
+### 5.1 Agent Card
 
-新增 `A2AEventBridge implements AgentEventListener`，订阅本地 Agent 事件并转为 A2A 流事件推 SSE：
+Agent Card 是远端 Agent 的自描述文件。Core-AI 使用它做发现、能力协商和 UI 展示。
 
-| 本地 AgentEvent | A2A 事件 | 字段说明 |
-|---|---|---|
-| `TOKEN_DELTA` | `TaskArtifactUpdateEvent` | `append=true`，text part |
-| `TOOL_CALL_START` | `TaskStatusUpdateEvent` | `state=working`，message 描述工具 |
-| `TOOL_CALL_RESULT` | `TaskArtifactUpdateEvent` | data part，结构化结果 |
-| `MESSAGE_DONE` | `TaskArtifactUpdateEvent` | `lastChunk=true` |
-| `TASK_COMPLETED` | `TaskStatusUpdateEvent` | `state=completed`，`final=true` |
-| `ERROR` | `TaskStatusUpdateEvent` | `state=failed`，`final=true` |
+推荐入口：
 
-**不改动现有本地事件系统**，只增加一个 listener 实现。
+```
+GET /.well-known/agent-card.json
+```
 
-### 5.2 CLI 侧：SSE → `AgentEvent`
+Core-AI 使用的关键字段：
 
-`RemoteAgentSession` 把 SSE 事件反向翻译成 `AgentEvent`，喂给现有的 `CliEventListener`。
+| 字段 | 用途 |
+|---|---|
+| `name` / `description` / `version` | Agent 身份和版本。 |
+| `supportedInterfaces` | 声明 HTTP+JSON、协议版本和 endpoint。 |
+| `capabilities.streaming` | 是否支持 `/message:stream`。 |
+| `capabilities.pushNotifications` | 是否支持 webhook 异步通知，首版不支持。 |
+| `capabilities.extendedAgentCard` | 是否支持认证后的扩展 Agent Card。 |
+| `skills` | Agent 可对外声明的能力，例如代码修改、文件操作、企业知识检索。 |
+| `defaultInputModes` / `defaultOutputModes` | 默认输入输出 MIME 类型。 |
+| `securitySchemes` / `securityRequirements` | server 端鉴权声明。 |
 
-**UI 层（TerminalUI、StreamingMarkdownRenderer、TableRenderer）零改动。**
-
-## 6. 反向通道设计（方案 1：双 Agent）
-
-### 6.1 为什么需要
-
-MainAgent 在 server 上，要读写的是用户本地文件。纯正向链路做不到，必须有从 server → CLI 的调用通道。
-
-### 6.2 反向 WebSocket 协议
-
-CLI 启动时主动连 server 的 `/agents/{id}/reverse-ws`，建立长连接后**通过 WS 承载 JSON-RPC**，server 内的 `LocalAgentProxy` 通过这条 WS 发请求、收响应。
-
-**帧格式（WS text frame，JSON）**：
+示例：
 
 ```json
-// 1. 注册 (CLI → Server，连接后首帧)
 {
-  "type": "register",
-  "clientVersion": "core-ai-cli/1.0.0",
-  "agentCard": {
-    "name": "local-agent",
-    "capabilities": { "streaming": false },
-    "skills": [
-      {"id":"fs.read",   "name":"read_file",   "inputModes":["data"], "outputModes":["data"]},
-      {"id":"fs.write",  "name":"write_file",  "inputModes":["data"], "outputModes":["data"]},
-      {"id":"fs.edit",   "name":"edit_file",   "inputModes":["data"], "outputModes":["data"]},
-      {"id":"shell.exec","name":"bash",        "inputModes":["data"], "outputModes":["data"]}
-    ]
-  },
-  "workspace": "/Users/xander/git_repo/core-ai"
-}
-
-// 2. 注册确认 (Server → CLI)
-{
-  "type": "register-ack",
-  "sessionId": "sess-abc123",
-  "mainAgentId": "coder",
-  "serverTime": "2026-04-20T10:00:00Z"
-}
-
-// 3. 反向 RPC 请求 (Server → CLI)
-{
-  "type": "rpc-req",
-  "id": "r-123",
-  "method": "message/send",
-  "params": {
-    "message": {
-      "role": "user",
-      "parts": [{
-        "kind": "data",
-        "data": { "tool": "fs.write", "path": "src/Foo.java", "content": "..." }
-      }]
+  "name": "core-ai-coder",
+  "description": "Core-AI coding agent with server-side tools and MCP access",
+  "version": "1.0.0",
+  "supportedInterfaces": [
+    {
+      "url": "https://core-ai.example.com/a2a/agents/coder",
+      "protocolBinding": "HTTP_JSON",
+      "protocolVersion": "1.0"
     }
-  }
+  ],
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "extendedAgentCard": true
+  },
+  "skills": [
+    {
+      "id": "code-review",
+      "name": "code-review",
+      "description": "Review code changes and propose fixes",
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["text/plain", "application/json"]
+    }
+  ],
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"]
 }
-
-// 4. 反向 RPC 响应 (CLI → Server)
-{
-  "type": "rpc-res",
-  "id": "r-123",
-  "result": {
-    "kind": "task",
-    "id": "local-task-xxx",
-    "status": { "state": "completed" },
-    "artifacts": [{
-      "parts": [{ "kind": "data", "data": { "bytesWritten": 1024 } }]
-    }]
-  }
-}
-
-// 5. 心跳 (双向，30s 间隔)
-{ "type": "ping", "ts": 1713600000000 }
-{ "type": "pong", "ts": 1713600000000 }
-
-// 6. 错误
-{ "type": "rpc-err", "id": "r-123", "error": { "code": -32603, "message": "path not allowed" } }
 ```
 
-### 6.3 连接生命周期
+### 5.2 Message 和 Part
 
-```
-CLI 启动
-  └─ 读 agent.properties (server.url, server.token)
-  └─ 启动 in-process LocalAgent (127.0.0.1:random)
-  └─ WS 连 /agents/main/reverse-ws (Bearer server.token)
-      └─ register 帧
-      └─ 收到 register-ack
-      └─ 进入 REPL，准备接收用户输入
-
-运行期
-  └─ 每 30s 心跳
-  └─ 收到 rpc-req → 路由到 LocalAgent → 回 rpc-res
-  └─ 连接断开
-      └─ 指数退避重连 (1s, 2s, 4s, 8s, max 30s)
-      └─ server 侧：该 contextId 正在执行的 Task 挂起 60s 等重连
-      └─ 60s 未恢复 → Task 进入 failed
-
-CLI 退出
-  └─ 主动 close WS (正常关闭码 1000)
-  └─ server 清理 LocalAgentProxy 绑定
-```
-
-### 6.4 能力协商
-
-MainAgent 的 Agent Card 声明所需的 LocalAgent skill：
+`Message` 表示一次通信 turn：
 
 ```json
-"requiredLocalSkills": ["fs.read", "fs.write", "shell.exec"]
+{
+  "role": "ROLE_USER",
+  "messageId": "m-1",
+  "contextId": "ctx-1",
+  "parts": [
+    {
+      "text": "帮我检查这个 PR 的风险",
+      "mediaType": "text/plain"
+    }
+  ]
+}
 ```
 
-CLI register 时 server 校验，缺失 skill 直接返回错误并提示升级 CLI。避免 server 演进导致老 client 静默异常。
+`Part` 使用 oneof 风格表达内容。一个 part 一般只设置以下字段之一：
 
-## 7. 会话与状态管理
-
-### 7.1 Session 存储
-
-| 项 | 实现 |
+| 字段 | 用途 |
 |---|---|
-| Key | `contextId` |
-| Value | `{ messages, createdAt, lastActiveAt, metadata }` |
-| 首版 | 内存 `ConcurrentHashMap` |
-| 正式 | SQLite（CLI 侧本地缓存用于展示）+ server 侧持久化（真相） |
+| `text` | 文本内容。 |
+| `raw` | base64 或其他原始字节文本表示。 |
+| `url` | 文件或资源 URI。 |
+| `data` | JSON 结构化数据。 |
 
-### 7.2 `/resume` 流程
+辅助字段：
+
+| 字段 | 用途 |
+|---|---|
+| `filename` | 文件名。 |
+| `mediaType` | MIME 类型。 |
+| `metadata` | 扩展元数据。 |
+
+设计决策：
+
+- 不保留旧草案中的 `type`。
+- 当前 DTO 也不依赖 discriminator 字段；通过 `text/raw/url/data` 哪个字段存在判断具体内容类型。
+- 如果未来需要适配仍发送 `kind` 的旧客户端，应放到独立兼容 adapter，不进入核心 DTO。
+
+### 5.3 Task 和 Context
+
+| 概念 | 含义 |
+|---|---|
+| `taskId` | 一次远端执行的唯一 ID。 |
+| `contextId` | 多轮对话上下文 ID，可被多个 task 复用。 |
+| `Task.status` | 当前执行状态。 |
+| `Task.artifacts` | Agent 已产生的输出产物。 |
+| `Task.history` | 可选的消息历史。 |
+
+状态机：
 
 ```
-CLI: /resume <contextId>
-  └─ RemoteAgentSession 调 tasks/get → 拉最后 N 条消息
-  └─ CLI 本地回放展示
-  └─ 后续 message/stream 都带上这个 contextId
+SUBMITTED
+  └─ WORKING
+       ├─ INPUT_REQUIRED ── 用户/调用方补输入 ──> WORKING
+       ├─ AUTH_REQUIRED  ── 补充认证 ──────────> WORKING
+       ├─ COMPLETED
+       ├─ FAILED
+       ├─ CANCELED
+       └─ REJECTED
 ```
 
-### 7.3 中断与取消
+Core-AI 内部映射：
 
-- 正在执行的 Task：CLI 调 `tasks/cancel` → server 触发 `AgentSession.cancel()` → 推 `final=true` 的 `canceled` 事件
-- SSE 断：CLI 用 `tasks/resubscribe` 重建流，不丢事件（server 按 `eventId` 做断点续传）
+| Core-AI 事件 | A2A 状态或事件 |
+|---|---|
+| session 创建 | `TASK_STATE_SUBMITTED` / `TASK_STATE_WORKING` |
+| 文本 token/chunk | `TaskArtifactUpdateEvent` |
+| 工具开始/进度 | `TaskStatusUpdateEvent(state=WORKING)` |
+| 工具审批请求 | `TaskStatusUpdateEvent(state=INPUT_REQUIRED)` |
+| turn 完成 | `TaskStatusUpdateEvent(state=COMPLETED, final=true)` |
+| 用户取消 | `TaskStatusUpdateEvent(state=CANCELED, final=true)` |
+| 异常 | `TaskStatusUpdateEvent(state=FAILED, final=true)` |
 
-## 8. 鉴权与安全
+## 6. HTTP Binding
 
-### 8.1 凭证
+Core-AI 首选 HTTP+JSON binding。当前 CLI serve 模式已经使用以下 endpoint，server 侧后续保持同构：
+
+| Endpoint | 方法 | 用途 |
+|---|---|---|
+| `/.well-known/agent-card.json` | `GET` | 获取 Agent Card。 |
+| `/message:send` | `POST` | 非流式发送消息；返回 `SendMessageResponse`。 |
+| `/message:stream` | `POST` | 流式发送消息；返回 SSE `StreamResponse`。 |
+| `/tasks/{taskId}` | `GET` | 查询 task 当前状态。 |
+| `/tasks/{taskId}:cancel` | `POST` | 取消 task。 |
+
+请求头：
+
+| Header | 用途 |
+|---|---|
+| `Content-Type: application/a2a+json` | A2A JSON 请求体。 |
+| `Accept: text/event-stream` | 请求 SSE 流式响应。 |
+| `A2A-Version` | 客户端声明协议版本。 |
+| `A2A-Extensions` | 后续扩展协商。 |
+| `Authorization` | server 端鉴权。 |
+
+流式响应使用 SSE，每个 `data:` 是一个 `StreamResponse` oneof：
+
+```json
+{"task":{"id":"t-1","contextId":"ctx-1","status":{"state":"TASK_STATE_WORKING"}}}
+```
+
+```json
+{"artifactUpdate":{"taskId":"t-1","contextId":"ctx-1","append":false,"lastChunk":false,"artifact":{"artifactId":"a-1","parts":[{"text":"正在检查","mediaType":"text/plain"}]}}}
+```
+
+```json
+{"statusUpdate":{"taskId":"t-1","contextId":"ctx-1","status":{"state":"TASK_STATE_COMPLETED"}}}
+```
+
+## 7. 端到端调用流程
+
+### 7.1 CLI 调 server Agent
 
 ```
-~/.core-ai/agent.properties
-─────────────────────────────
-server.url=https://ai.example.com
-server.token=<long-lived-token>
+core-ai-cli
+  └─ 读取 server.url / token / agentId
+  └─ GET /.well-known/agent-card.json
+  └─ 根据 Agent Card 选择 HTTP_JSON + streaming
+  └─ 用户输入
+      └─ POST /message:stream
+          └─ server 创建/复用 AgentSession(contextId)
+          └─ server 返回 Task + SSE updates
+          └─ CLI 把 A2A stream event 转成本地 AgentEvent
+          └─ 现有 TerminalUI 渲染
 ```
 
-- 所有 HTTP/WS 请求带 `Authorization: Bearer <server.token>`
-- Server 颁发 per-session 的 `sessionToken`（短期），绑定 `contextId` + 反向 WS 连接
-
-### 8.2 本地安全（关键）
-
-LocalAgent 面向 server，**必须假设 server 可能被攻破**：
-
-1. **路径白名单**：fs.* 工具只允许 `workspace` 目录及其子目录，拒绝 `..`、符号链接逃逸
-2. **Shell 白名单 + 超时**：`shell.exec` 默认 30s 超时；可配置命令前缀白名单（git、npm、gradle 等）
-3. **大小限制**：写入文件 ≤ 10 MB；shell 输出 ≤ 1 MB
-4. **拒绝敏感路径**：`.ssh`、`.aws`、`~/.core-ai` 本身等硬编码拒绝
-5. **仅绑 127.0.0.1**：LocalAgent 不监听公网
-
-### 8.3 审计
-
-所有 LocalAgent 工具调用本地打 audit log（`~/.core-ai/audit.log`），含时间、taskId、tool、参数摘要、结果 size。
-
-## 9. CLI 侧改造
-
-### 9.1 抽象 `AgentSession`
+CLI 侧的目标不是重写 UI，而是新增一个远端 session 实现：
 
 ```java
-public interface AgentSession {
-    CompletableFuture<Void> send(String input);
-    void cancel();
-    void addEventListener(AgentEventListener listener);
-    String sessionId();
-    void close();
-}
+AgentSession
+  ├─ InProcessAgentSession   // 本地 Agent
+  └─ RemoteAgentSession      // A2A client，后续新增
 ```
 
-两个实现：
-- `LocalAgentSession`（现有，纯本地 Agent，不连 server）
-- `RemoteAgentSession`（新增，A2A client）
+这样 `CliEventListener`、`TerminalUI`、slash command 的大部分逻辑可以继续复用。
 
-选择逻辑：`agent.properties` 中 `server.url` 有值 → Remote；否则 Local。
-
-### 9.2 `RemoteAgentSession` 内部组件
+### 7.2 server 暴露企业 Agent
 
 ```
-RemoteAgentSession
- ├─ A2AClient            // JSON-RPC + SSE client
- ├─ contextId            // 会话绑定
- ├─ SseEventTranslator   // SSE → AgentEvent
- └─ (持有) LocalAgentHost // 启动本地 A2A server + reverse WS
+core-ai-server
+  └─ AgentDefinition / AgentRouter
+      └─ 构建 Core-AI Agent
+          └─ A2ARunManager
+              └─ AgentSession
+                  └─ AgentEvent
+                      └─ A2AEventAdapter
+                          └─ StreamResponse SSE
 ```
 
-### 9.3 Slash 命令适配
+server 侧新增 web 层只做：
 
-| 命令 | 本地模式 | 远程模式 |
-|---|---|---|
-| `/model` | 本地切 LLMProvider | `message/send` metadata 带 model 提示（server 决定是否允许） |
-| `/agent <id>` | N/A | 切 endpoint |
-| `/tools` | 本地列表 | 读 Agent Card `skills` + LocalAgent skills |
-| `/resume <id>` | 本地文件恢复 | `tasks/get` + 复用 contextId |
-| `/stats` | 本地统计 | 拉 server 端统计 |
-| `/copy` `/clear` `/help` | 不变 | 不变 |
-| `/compact` | 本地 | server 侧压缩（新增 RPC `sessions/compact`，非 A2A 标准） |
+- 鉴权和租户解析。
+- agentId 到 Agent 定义的路由。
+- HTTP request/response 与 `A2AAgentProvider` 的桥接。
+- task/context 的持久化和恢复策略。
 
-## 10. Server 侧改造
+核心执行仍在 `core-ai`。
 
-### 10.1 新增模块 / 组件
+## 8. server-only Tool/MCP 路由
 
-```
-core-ai-server/
- ├─ a2a/
- │   ├─ A2AController          // /agents/{id}/a2a, /.well-known/
- │   ├─ ReverseWsHandler       // /agents/{id}/reverse-ws
- │   ├─ A2AEventBridge         // AgentEvent → SSE
- │   ├─ SessionStore           // contextId → messages
- │   ├─ TaskRegistry           // taskId → running AgentSession
- │   └─ LocalAgentProxy        // 以 A2A client 形式调反向 WS
- └─ agent/
-     ├─ AgentRouter            // agentId → MainAgent 实例
-     └─ MainAgentFactory
-```
+### 8.1 问题
 
-### 10.2 `LocalAgentProxy` 实现要点
+CLI 本地进程不能访问某些 Tool/MCP：
 
-- 对 MainAgent 呈现为一个标准 A2A `Agent` 接口（像调外部 agent 一样调 sub-agent）
-- 内部所有 RPC 请求通过已注册的反向 WS 发出
-- 未注册 / 已断开 → 立即返回错误（让 MainAgent 决定 retry 或放弃）
-- 支持并发请求（`rpc-req` 的 `id` 区分响应）
+- 企业内网 API。
+- 集中注册的 MCP server。
+- server 侧托管的密钥和 OAuth token。
+- 沙箱、构建集群、知识库索引等集中资源。
 
-## 11. 附录：A2A 消息示例
+这些能力应由 server Agent 执行，而不是要求 CLI 本地安装和授权。
 
-### 11.1 用户发送消息（正向）
+### 8.2 设计
+
+Tool/MCP 注册时声明执行位置：
+
+| 执行位置 | 含义 |
+|---|---|
+| `LOCAL` | 只能本地执行，例如用户 workspace 文件编辑。 |
+| `SERVER` | 只能 server 执行，例如企业 MCP、集中凭证。 |
+| `ANY` | 本地/server 都可执行，由策略选择。 |
+
+路由策略：
+
+| 场景 | 行为 |
+|---|---|
+| CLI 用户选择 server Agent | 用户消息直接通过 A2A 发到 server，server 使用 server-side Tool/MCP。 |
+| 本地 Agent 发现需要 server-only tool | 把能力封装成远端 Agent/tool，通过 A2A 委托给 server。 |
+| server Agent 需要本地 workspace 操作 | 首版不做反向通道；后续可通过 LocalAgent Provider 或受控 tool approval 扩展。 |
+
+首版优先级：
+
+1. 支持 CLI 作为 A2A client 调 server Agent。
+2. 支持 server Agent 使用 server-only Tool/MCP。
+3. 暂不实现 server 反向调用 CLI 本地文件/shell。
+
+反向本地工具调用是更高风险能力，需要单独设计安全边界、路径白名单、审批、审计和断线恢复。
+
+## 9. input-required 和审批
+
+当远端 Agent 需要调用方补充输入或审批时，task 进入 `TASK_STATE_INPUT_REQUIRED`。
+
+工具审批示例：
 
 ```json
-// CLI → Server: POST /agents/coder/a2a
 {
-  "jsonrpc": "2.0", "id": "1",
-  "method": "message/stream",
-  "params": {
-    "message": {
-      "role": "user",
-      "messageId": "m-1",
-      "contextId": "ctx-abc",
-      "parts": [{ "kind": "text", "text": "帮我在 Foo.java 里加个 hello 方法" }]
-    }
-  }
-}
-
-// Server → CLI: SSE stream
-event: status
-data: {"taskId":"t-1","contextId":"ctx-abc","status":{"state":"working"}}
-
-event: artifact
-data: {"taskId":"t-1","artifact":{"artifactId":"a-1","parts":[{"kind":"text","text":"好的，"}],"append":true}}
-
-event: artifact
-data: {"taskId":"t-1","artifact":{"artifactId":"a-1","parts":[{"kind":"text","text":"我来修改"}],"append":true,"lastChunk":true}}
-
-event: status
-data: {"taskId":"t-1","status":{"state":"completed"},"final":true}
-```
-
-### 13.2 本地工具调用（反向）
-
-```json
-// Server (LocalAgentProxy) → CLI (via reverse WS)
-{
-  "type": "rpc-req",
-  "id": "r-42",
-  "method": "message/send",
-  "params": {
-    "message": {
-      "role": "user",
-      "parts": [{
-        "kind": "data",
-        "data": {
-          "skill": "fs.edit",
-          "args": {
-            "path": "src/Foo.java",
-            "oldString": "class Foo {",
-            "newString": "class Foo {\n    public void hello() {}\n"
+  "statusUpdate": {
+    "taskId": "t-1",
+    "contextId": "ctx-1",
+    "status": {
+      "state": "TASK_STATE_INPUT_REQUIRED",
+      "message": {
+        "role": "ROLE_AGENT",
+        "parts": [
+          {
+            "data": {
+              "type": "tool_approval",
+              "callId": "call-1",
+              "tool": "shell.exec",
+              "command": "./gradlew check"
+            },
+            "mediaType": "application/json"
           }
-        }
-      }]
+        ]
+      }
     }
   }
 }
+```
 
-// CLI → Server
+调用方恢复 task：
+
+```json
 {
-  "type": "rpc-res",
-  "id": "r-42",
-  "result": {
-    "kind": "task",
-    "id": "local-t-7",
-    "status": { "state": "completed" },
-    "artifacts": [{
-      "artifactId": "local-a-1",
-      "parts": [{ "kind": "data", "data": { "ok": true, "bytesWritten": 128 } }]
-    }]
+  "message": {
+    "role": "ROLE_USER",
+    "messageId": "m-approve-1",
+    "taskId": "t-1",
+    "parts": [
+      {
+        "data": {
+          "decision": "approve",
+          "call_id": "call-1"
+        },
+        "mediaType": "application/json"
+      }
+    ]
   }
 }
+```
+
+Core-AI runtime 映射：
+
+```
+ToolApprovalRequestEvent
+  -> A2AEventAdapter
+  -> TaskStatusUpdateEvent(INPUT_REQUIRED)
+  -> client approve/deny
+  -> A2ARunManager.resumeTask()
+  -> AgentSession.approveToolCall()
+```
+
+## 10. 第三方 Agent 适配
+
+A2A adapter 的目标是让外部 Agent 运行时接入 Core-AI，而不是把外部框架模型泄漏进核心。
+
+建议抽象：
+
+```java
+public interface RemoteAgentClient extends AutoCloseable {
+    AgentCard getAgentCard();
+
+    A2AInvocationResult send(SendMessageRequest request);
+
+    Flow.Publisher<A2AStreamEvent> stream(SendMessageRequest request);
+
+    Task getTask(GetTaskRequest request);
+
+    Task cancelTask(CancelTaskRequest request);
+}
+```
+
+```java
+public interface RemoteAgentProvider {
+    AgentCard getAgentCard();
+
+    A2AInvocationResult send(SendMessageRequest request);
+
+    Flow.Publisher<A2AStreamEvent> stream(SendMessageRequest request);
+
+    Task getTask(GetTaskRequest request);
+
+    Task cancelTask(CancelTaskRequest request);
+}
+```
+
+现有 `A2AClient` / `A2AAgentProvider` 已经接近这个形态。后续可以选择：
+
+- 直接沿用 `A2AClient` / `A2AAgentProvider` 命名。
+- 或重命名为更通用的 `RemoteAgentClient` / `RemoteAgentProvider`，A2A 只是首个协议实现。
+
+LiteLLM adapter 形态：
+
+```
+LiteLLM Agent
+  └─ LiteLLMAgentProvider implements A2AAgentProvider
+       ├─ AgentCard: 从模型、工具、metadata 生成
+       ├─ send: 调 LiteLLM 非流式接口
+       ├─ stream: 调 LiteLLM streaming 并转 A2AStreamEvent
+       ├─ getTask: 从 adapter task registry 查询
+       └─ cancelTask: 尽力取消或标记 canceled
 ```
