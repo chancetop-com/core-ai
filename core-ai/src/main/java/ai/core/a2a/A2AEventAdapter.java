@@ -17,7 +17,6 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
-import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,14 +33,14 @@ public class A2AEventAdapter implements AgentEventListener {
     private final String taskId;
     private final A2ATaskState taskState;
     private final CompletableFuture<Task> syncFuture;
-    private volatile Consumer<String> sseSender;
+    private volatile Consumer<StreamResponse> streamSender;
     private String pendingTextChunk;
     private boolean artifactStarted;
 
-    public A2AEventAdapter(String taskId, A2ATaskState taskState, Consumer<String> sseSender, CompletableFuture<Task> syncFuture) {
+    public A2AEventAdapter(String taskId, A2ATaskState taskState, Consumer<StreamResponse> streamSender, CompletableFuture<Task> syncFuture) {
         this.taskId = taskId;
         this.taskState = taskState;
-        this.sseSender = sseSender;
+        this.streamSender = streamSender;
         this.syncFuture = syncFuture;
     }
 
@@ -153,14 +152,14 @@ public class A2AEventAdapter implements AgentEventListener {
     }
 
     public void stopStreaming() {
-        sseSender = null;
+        streamSender = null;
     }
 
     private void sendSseEvent(StreamResponse data) {
-        var sender = sseSender;
+        var sender = streamSender;
         if (sender == null) return;
         try {
-            sender.accept(JsonUtil.toJson(data));
+            sender.accept(data);
         } catch (Exception e) {
             LOGGER.debug("failed to send SSE event, taskId={}", taskId, e);
         }

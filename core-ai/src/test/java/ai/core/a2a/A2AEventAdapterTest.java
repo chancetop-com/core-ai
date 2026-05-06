@@ -61,7 +61,7 @@ class A2AEventAdapterTest {
         var session = new FakeSession();
         var state = new A2ATaskState("task-1", "ctx-1", session);
         var events = new ArrayList<String>();
-        var adapter = new A2AEventAdapter("task-1", state, events::add, null);
+        var adapter = new A2AEventAdapter("task-1", state, event -> events.add(JsonUtil.toJson(event)), null);
         state.attachEventListener(adapter);
         state.setStreamCloser(adapter::stopStreaming);
 
@@ -91,7 +91,7 @@ class A2AEventAdapterTest {
         var session = new FakeSession();
         var state = new A2ATaskState("task-1", "ctx-1", session);
         var events = new ArrayList<String>();
-        var adapter = new A2AEventAdapter("task-1", state, events::add, null);
+        var adapter = new A2AEventAdapter("task-1", state, event -> events.add(JsonUtil.toJson(event)), null);
         state.attachEventListener(adapter);
 
         adapter.stopStreaming();

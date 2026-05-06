@@ -41,6 +41,16 @@ public class A2AStreamEvent {
         return event;
     }
 
+    public static A2AStreamEvent ofResponse(StreamResponse response) {
+        if (response.task != null) return ofTask(response.task);
+        if (response.message != null) return ofMessage(response.message);
+        if (response.statusUpdate != null) return ofStatusUpdate(response.statusUpdate);
+        if (response.artifactUpdate != null) return ofArtifactUpdate(response.artifactUpdate);
+        var event = new A2AStreamEvent();
+        event.response = response;
+        return event;
+    }
+
     public static A2AStreamEvent ofError(JsonRpcError error) {
         var event = new A2AStreamEvent();
         event.error = error;

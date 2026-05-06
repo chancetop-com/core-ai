@@ -3,6 +3,9 @@ package ai.core.a2a;
 import ai.core.agent.Agent;
 import ai.core.api.a2a.AgentCard;
 import ai.core.api.a2a.A2ATransport;
+import ai.core.api.a2a.CancelTaskRequest;
+import ai.core.api.a2a.GetTaskRequest;
+import ai.core.api.a2a.Message;
 import ai.core.api.a2a.SendMessageRequest;
 import ai.core.api.a2a.StreamResponse;
 import ai.core.api.a2a.Task;
@@ -17,10 +20,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -28,11 +34,47 @@ import java.util.function.Supplier;
 /**
  * @author stephen
  */
-public class A2ARunManager {
+public class A2ARunManager implements A2AAgentProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(A2ARunManager.class);
 
     private static String truncate(String text) {
         return text.length() > 100 ? text.substring(0, 100) + "..." : text;
+    }
+
+    private static String requireTaskId(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("taskId required");
+        }
+        return taskId;
+    }
+
+    private static String extractDecision(Message msg) {
+        var text = msg.extractText().trim().toLowerCase(Locale.ROOT);
+        if ("approve".equals(text) || "allow".equals(text)) return "approve";
+        if ("deny".equals(text) || "reject".equals(text)) return "deny";
+        if (msg.parts == null) return null;
+        for (var part : msg.parts) {
+            if (!(part.data instanceof Map<?, ?> data)) continue;
+            var decision = data.get("decision");
+            if (decision != null) return String.valueOf(decision);
+        }
+        return null;
+    }
+
+    private static String extractCallId(Message msg) {
+        if (msg.parts == null) return null;
+        for (var part : msg.parts) {
+            if (!(part.data instanceof Map<?, ?> data)) continue;
+            var callId = data.get("call_id");
+            if (callId != null) return String.valueOf(callId);
+            callId = data.get("callId");
+            if (callId != null) return String.valueOf(callId);
+        }
+        return null;
+    }
+
+    private static boolean isValidDecision(String decision) {
+        return "approve".equalsIgnoreCase(decision) || "deny".equalsIgnoreCase(decision);
     }
 
     private final Supplier<Agent> agentFactory;
@@ -64,6 +106,7 @@ public class A2ARunManager {
         }
     }
 
+    @Override
     public AgentCard getAgentCard() {
         var card = new AgentCard();
         card.name = "core-ai";
@@ -85,6 +128,27 @@ public class A2ARunManager {
         card.defaultInputModes = List.of("text/plain");
         card.defaultOutputModes = List.of("text/plain");
         return card;
+    }
+
+    @Override
+    public A2AInvocationResult send(SendMessageRequest request) {
+        if (request != null && request.message != null && request.message.taskId != null && !request.message.taskId.isBlank()) {
+            var decision = extractDecision(request.message);
+            if (!isValidDecision(decision)) {
+                throw new IllegalArgumentException("decision must be approve or deny");
+            }
+            resumeTask(request.message.taskId, decision, extractCallId(request.message));
+            return A2AInvocationResult.ofTask(getTask(request.message.taskId));
+        }
+        if (request != null && request.configuration != null && Boolean.TRUE.equals(request.configuration.returnImmediately)) {
+            return A2AInvocationResult.ofTask(createStreamingTaskEvents(request, null).toTask());
+        }
+        return A2AInvocationResult.ofTask(createSyncTask(request));
+    }
+
+    @Override
+    public Flow.Publisher<A2AStreamEvent> stream(SendMessageRequest request) {
+        return new A2AStreamPublisher(sender -> createStreamingTaskEvents(request, sender));
     }
 
     public Task createSyncTask(SendMessageRequest request) {
@@ -122,6 +186,11 @@ public class A2ARunManager {
     }
 
     public A2ATaskState createStreamingTask(SendMessageRequest request, Consumer<String> sseSender) {
+        Consumer<StreamResponse> streamSender = sseSender == null ? null : response -> sseSender.accept(JsonUtil.toJson(response));
+        return createStreamingTaskEvents(request, streamSender);
+    }
+
+    public A2ATaskState createStreamingTaskEvents(SendMessageRequest request, Consumer<StreamResponse> streamSender) {
         var contextId = request != null && request.message != null && request.message.contextId != null
                 ? request.message.contextId
                 : persistentSessionId;
@@ -131,11 +200,11 @@ public class A2ARunManager {
         state.setState(TaskState.WORKING);
         tasks.put(taskId, state);
 
-        var adapter = new A2AEventAdapter(taskId, state, sseSender, null);
+        var adapter = new A2AEventAdapter(taskId, state, streamSender, null);
         state.attachEventListener(adapter);
         state.setStreamCloser(adapter::stopStreaming);
-        if (sseSender != null) {
-            sseSender.accept(JsonUtil.toJson(StreamResponse.ofTask(state.toTask())));
+        if (streamSender != null) {
+            streamSender.accept(StreamResponse.ofTask(state.toTask()));
         }
 
         var userText = request != null ? request.extractUserText() : "";
@@ -163,6 +232,11 @@ public class A2ARunManager {
         return state.toTask();
     }
 
+    @Override
+    public Task getTask(GetTaskRequest request) {
+        return getTask(requireTaskId(request != null ? request.id : null));
+    }
+
     public void resumeTask(String taskId, String decision, String callId) {
         var state = tasks.get(taskId);
         if (state == null) throw new IllegalArgumentException("task not found: " + taskId);
@@ -187,6 +261,13 @@ public class A2ARunManager {
         state.setState(TaskState.CANCELED);
         state.clearAwait();
         state.detachEventListener();
+    }
+
+    @Override
+    public Task cancelTask(CancelTaskRequest request) {
+        var taskId = requireTaskId(request != null ? request.id : null);
+        cancelTask(taskId);
+        return getTask(taskId);
     }
 
     public void close() {
