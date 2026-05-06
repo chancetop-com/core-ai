@@ -276,7 +276,7 @@ public class AgentSessionManager {
 
     public void touchSession(String sessionId) {
         if (ownershipRegistry != null) {
-            ownershipRegistry.renew(sessionId);
+            ownershipRegistry.claimOrRenew(sessionId);
         }
     }
 

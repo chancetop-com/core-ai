@@ -76,6 +76,19 @@ public record SessionCommand(CommandType type, String sessionId, String userId, 
         return new SessionCommand(CommandType.GENERATE_AGENT_DRAFT, sessionId, userId, "{}", requestId);
     }
 
+    public static SessionCommand a2aCancelTask(String sessionId, String userId, String taskId, String requestId) {
+        var payload = JsonUtil.toJson(Map.of("taskId", taskId));
+        return new SessionCommand(CommandType.A2A_CANCEL_TASK, sessionId, userId, payload, requestId);
+    }
+
+    public static SessionCommand a2aStartTask(String sessionId, String userId, String payloadJson, String requestId) {
+        return new SessionCommand(CommandType.A2A_START_TASK, sessionId, userId, payloadJson, requestId);
+    }
+
+    public static SessionCommand a2aResumeTask(String sessionId, String userId, String messageJson, String requestId) {
+        return new SessionCommand(CommandType.A2A_RESUME_TASK, sessionId, userId, messageJson, requestId);
+    }
+
     public Map<String, String> toStreamMap() {
         var map = new HashMap<String, String>();
         map.put("sessionId", sessionId);

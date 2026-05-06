@@ -48,6 +48,11 @@ public class SessionOwnershipRegistry {
         }
     }
 
+    public boolean claimOrRenew(String sessionId) {
+        if (renew(sessionId)) return true;
+        return claim(sessionId);
+    }
+
     public String getOwner(String sessionId) {
         try (var jedis = jedisPool.getResource()) {
             return jedis.get(ownerKey(sessionId));

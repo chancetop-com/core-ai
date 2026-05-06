@@ -14,9 +14,11 @@ import ai.core.api.a2a.StreamResponse;
 import ai.core.a2a.A2AHttpPaths;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.a2a.A2AAgentCardController;
+import ai.core.server.a2a.A2AEventRelay;
 import ai.core.server.a2a.A2AMessageController;
 import ai.core.server.a2a.A2AStreamChannelListener;
 import ai.core.server.a2a.A2ATaskController;
+import ai.core.server.a2a.A2ATaskRegistry;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
@@ -28,6 +30,7 @@ import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.EventSubscriber;
 import ai.core.server.messaging.InProcessCommandHandler;
+import ai.core.server.messaging.InProcessCommandHandlerDependencies;
 import ai.core.server.messaging.JedisConfig;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.RpcResponseSubscriber;
@@ -166,25 +169,31 @@ public class ServerModule extends Module {
         var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
         bind(new CommandPublisher(jedisPool, ownershipRegistry));
         bind(new EventPublisher(jedisPool));
+        var a2aTaskRegistry = bind(new A2ATaskRegistry(jedisPool, ownershipRegistry));
+        var a2aEventRelay = bind(new A2AEventRelay(jedisPool));
         bean(AgentSessionManager.class).setEventPublisher(bean(EventPublisher.class));
         bean(AgentSessionManager.class).setOwnershipRegistry(ownershipRegistry);
         var rpcClient = bind(new RpcClient(jedisPool, ownershipRegistry));
+        bean(ServerA2AService.class).setTaskRouting(a2aTaskRegistry, ownershipRegistry, rpcClient, a2aEventRelay);
         var rpcResponseSubscriber = new RpcResponseSubscriber(jedisPool, rpcClient);
         onStartup(rpcResponseSubscriber::start);
         onShutdown(rpcResponseSubscriber::stop);
         var eventSubscriber = new EventSubscriber(jedisPool, bean(SessionChannelService.class));
         onStartup(eventSubscriber::start);
         onShutdown(eventSubscriber::stop);
-        var chatMessageService = bean(ChatMessageService.class);
-        var commandHandler = new InProcessCommandHandler(
-                bean(AgentSessionManager.class), chatMessageService, ownershipRegistry,
-                bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class), jedisPool);
+        var handlerDependencies = new InProcessCommandHandlerDependencies();
+        handlerDependencies.sessionManager = bean(AgentSessionManager.class);
+        handlerDependencies.chatMessageService = bean(ChatMessageService.class);
+        handlerDependencies.ownershipRegistry = ownershipRegistry;
+        handlerDependencies.agentDraftGenerator = bean(AgentDraftGenerator.class);
+        handlerDependencies.agentDefinitionService = bean(AgentDefinitionService.class);
+        handlerDependencies.serverA2AService = bean(ServerA2AService.class);
+        handlerDependencies.jedisPool = jedisPool;
+        var commandHandler = new InProcessCommandHandler(handlerDependencies);
         var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);
         onStartup(commandConsumer::start);
         onShutdown(() -> {
-            // 1. Stop consuming
             commandConsumer.stop();
-            // 2. Drain per-Pod stream and republish to unowned
             var pending = new ArrayList<SessionCommand>();
             commandConsumer.drainPodStream(pending);
             if (!pending.isEmpty()) {
@@ -343,11 +352,9 @@ public class ServerModule extends Module {
         var webDir = Path.of(webPath);
         if (!webDir.toFile().exists()) return;
         var controller = new StaticFileController(webDir);
-        // static assets
         http().route(HTTPMethod.GET, "/favicon.svg", controller::serve);
         http().route(HTTPMethod.GET, "/icons.svg", controller::serve);
         http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
-        // SPA routes (return index.html for all frontend paths)
         var spaRoutes = new String[]{
             "/", "/login", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
@@ -357,7 +364,6 @@ public class ServerModule extends Module {
         for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);
         }
-        // SPA dynamic routes
         http().route(HTTPMethod.GET, "/agents/:id", controller::serve);
         http().route(HTTPMethod.GET, "/runs/:id", controller::serve);
         http().route(HTTPMethod.GET, "/system-prompts/:id", controller::serve);

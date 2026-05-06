@@ -62,6 +62,28 @@ public class RpcClient {
      * @return deserialized response
      */
     public <T> T call(SessionCommand command, Class<T> responseType, Duration timeout) {
+        return callInternal(resolveTargetStream(command.sessionId()), command, responseType, timeout);
+    }
+
+    /**
+     * Convenience method with default timeout.
+     */
+    public <T> T call(SessionCommand command, Class<T> responseType) {
+        return call(command, responseType, DEFAULT_TIMEOUT);
+    }
+
+    public <T> T callToPod(String hostname, SessionCommand command, Class<T> responseType, Duration timeout) {
+        if (hostname == null || hostname.isBlank()) {
+            return call(command, responseType, timeout);
+        }
+        return callInternal(SessionCommand.podStreamKey(hostname), command, responseType, timeout);
+    }
+
+    public <T> T callToPod(String hostname, SessionCommand command, Class<T> responseType) {
+        return callToPod(hostname, command, responseType, DEFAULT_TIMEOUT);
+    }
+
+    private <T> T callInternal(String targetStream, SessionCommand command, Class<T> responseType, Duration timeout) {
         var requestId = command.requestId();
         if (requestId == null) {
             throw new IllegalArgumentException("RPC command must have a non-null requestId");
@@ -71,7 +93,6 @@ public class RpcClient {
         pending.put(requestId, future);
 
         try {
-            var targetStream = resolveTargetStream(command.sessionId());
             publishCommand(targetStream, command);
 
             var json = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -91,13 +112,6 @@ public class RpcClient {
             pending.remove(requestId);
             throw new RuntimeException("RPC call failed, type=" + command.type() + ", sessionId=" + command.sessionId(), e);
         }
-    }
-
-    /**
-     * Convenience method with default timeout.
-     */
-    public <T> T call(SessionCommand command, Class<T> responseType) {
-        return call(command, responseType, DEFAULT_TIMEOUT);
     }
 
     private void publishCommand(String targetStream, SessionCommand command) {

@@ -1,10 +1,8 @@
 package ai.core.server.a2a;
 
-import ai.core.a2a.A2AEventAdapter;
 import ai.core.a2a.A2AInvocationResult;
 import ai.core.a2a.A2ATaskState;
 import ai.core.api.a2a.AgentCard;
-import ai.core.api.a2a.A2ATransport;
 import ai.core.api.a2a.CancelTaskRequest;
 import ai.core.api.a2a.GetTaskRequest;
 import ai.core.api.a2a.Message;
@@ -14,17 +12,18 @@ import ai.core.api.a2a.Task;
 import ai.core.api.a2a.TaskState;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.server.agent.AgentDefinitionService;
-import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.ToolRef;
+import ai.core.server.messaging.RpcClient;
+import ai.core.server.messaging.SessionCommand;
+import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -73,13 +72,6 @@ public class ServerA2AService {
         return null;
     }
 
-    private static List<ToolRef> effectiveTools(AgentDefinition definition) {
-        if (definition.publishedConfig != null && definition.publishedConfig.tools != null) {
-            return definition.publishedConfig.tools;
-        }
-        return definition.tools;
-    }
-
     private static String taskId(GetTaskRequest request) {
         if (request == null || request.id == null || request.id.isBlank()) {
             throw new BadRequestException("taskId required");
@@ -99,40 +91,33 @@ public class ServerA2AService {
     @Inject
     AgentSessionManager sessionManager;
 
+    private final ServerA2ARouting routing = new ServerA2ARouting();
     private final ConcurrentMap<String, A2ATaskState> tasks = new ConcurrentHashMap<>();
 
+    public void setTaskRouting(A2ATaskRegistry taskRegistry, SessionOwnershipRegistry ownershipRegistry,
+                               RpcClient rpcClient, A2AEventRelay eventRelay) {
+        routing.taskRegistry = taskRegistry;
+        routing.ownershipRegistry = ownershipRegistry;
+        routing.rpcClient = rpcClient;
+        routing.eventRelay = eventRelay;
+    }
+
     public AgentCard agentCard(String agentId) {
-        var definition = agentDefinitionService.getEntity(agentId);
-        var card = new AgentCard();
-        card.name = definition.name;
-        card.description = definition.description != null ? definition.description : "core-ai-server agent";
-        card.version = definition.publishedAt != null ? definition.publishedAt.toInstant().toString() : "draft";
-        var interfaceConfig = new AgentCard.AgentInterface();
-        interfaceConfig.protocolBinding = A2ATransport.HTTP_JSON;
-        interfaceConfig.protocolVersion = "1.0";
-        interfaceConfig.url = "/api/a2a";
-        interfaceConfig.tenant = agentId;
-        card.supportedInterfaces = List.of(interfaceConfig);
-        var capabilities = new AgentCard.AgentCapabilities();
-        capabilities.streaming = true;
-        capabilities.pushNotifications = false;
-        capabilities.stateTransitionHistory = false;
-        card.capabilities = capabilities;
-        card.skills = skills(definition);
-        card.defaultInputModes = List.of("text/plain", "application/json");
-        card.defaultOutputModes = List.of("text/plain", "application/json");
-        return card;
+        return ServerA2AAgentCardFactory.from(agentDefinitionService.getEntity(agentId));
     }
 
     public A2AInvocationResult send(String agentId, SendMessageRequest request, String userId) {
         pruneTerminalTasks();
         validateMessageRequest(request);
         if (request.message.taskId != null && !request.message.taskId.isBlank()) {
-            var state = resumeTask(request.message);
-            return A2AInvocationResult.ofTask(state.toTask());
+            return A2AInvocationResult.ofTask(resumeTask(request.message, userId));
+        }
+        if (contextOwnedByAnotherPod(request.message.contextId)) {
+            var returnImmediately = request.configuration != null && Boolean.TRUE.equals(request.configuration.returnImmediately);
+            return A2AInvocationResult.ofTask(startTaskRemotely(agentId, request, userId, !returnImmediately));
         }
         if (request.configuration != null && Boolean.TRUE.equals(request.configuration.returnImmediately)) {
-            var state = createTask(agentId, request, userId, null, null, null);
+            var state = createTask(agentId, request, userId, ServerA2ATaskOptions.empty());
             return A2AInvocationResult.ofTask(state.toTask());
         }
         return A2AInvocationResult.ofTask(createSyncTask(agentId, request, userId));
@@ -143,37 +128,49 @@ public class ServerA2AService {
         pruneTerminalTasks();
         validateMessageRequest(request);
         if (request.message.taskId != null && !request.message.taskId.isBlank()) {
-            return resumeTask(request.message, streamSender, closeStream);
+            return resumeTask(request.message, userId, streamSender, closeStream);
         }
-        return createTask(agentId, request, userId, streamSender, closeStream, null);
+        if (contextOwnedByAnotherPod(request.message.contextId)) {
+            return streamTaskRemotely(agentId, request, userId, streamSender, closeStream);
+        }
+        return createTask(agentId, request, userId, ServerA2ATaskOptions.stream(streamSender, closeStream));
     }
 
     public Task getTask(GetTaskRequest request) {
         pruneTerminalTasks();
-        var task = tasks.get(taskId(request));
-        if (task == null) {
+        var id = taskId(request);
+        var task = tasks.get(id);
+        if (task != null) {
+            return task.toTask();
+        }
+        var snapshot = routing.taskRegistry != null ? routing.taskRegistry.get(id) : null;
+        if (snapshot == null) {
             throw new NotFoundException("task not found");
         }
-        return task.toTask();
+        return snapshot.toTask();
     }
 
     public Task cancelTask(CancelTaskRequest request) {
         pruneTerminalTasks();
         var id = taskId(request);
         var task = tasks.get(id);
-        if (task == null) {
-            throw new NotFoundException("task not found");
+        if (task != null) {
+            if (task.isTerminal()) return task.toTask();
+            return cancelLocalTask(task);
         }
-        task.session.cancelTurn();
-        task.setState(TaskState.CANCELED);
-        task.clearAwait();
-        task.detachEventListener();
-        return task.toTask();
+        var snapshot = routing.taskRegistry != null ? routing.taskRegistry.get(id) : null;
+        if (snapshot == null) throw new NotFoundException("task not found");
+        if (snapshot.isTerminal()) return snapshot.toTask();
+        return callTaskOwner(snapshot, SessionCommand.a2aCancelTask(snapshot.contextId, null, id, routing.rpcClient.newRequestId()));
     }
 
     private Task createSyncTask(String agentId, SendMessageRequest request, String userId) {
+        return createSyncTask(null, agentId, request, userId);
+    }
+
+    private Task createSyncTask(String taskId, String agentId, SendMessageRequest request, String userId) {
         var future = new CompletableFuture<Task>();
-        var state = createTask(agentId, request, userId, null, null, future);
+        var state = createTask(agentId, request, userId, ServerA2ATaskOptions.sync(taskId, future));
         try {
             return future.get(5, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
@@ -190,26 +187,26 @@ public class ServerA2AService {
     }
 
     private A2ATaskState createTask(String agentId, SendMessageRequest request, String userId,
-                                    Consumer<StreamResponse> streamSender, Runnable closeStream,
-                                    CompletableFuture<Task> syncFuture) {
+                                    ServerA2ATaskOptions options) {
         var session = session(request.message.contextId, agentId, userId);
-        var taskId = UUID.randomUUID().toString();
-        var state = new A2ATaskState(taskId, session.id(), session);
+        var resolvedTaskId = options.taskId != null && !options.taskId.isBlank() ? options.taskId : UUID.randomUUID().toString();
+        var state = new A2ATaskState(resolvedTaskId, session.id(), session);
         state.setState(TaskState.WORKING);
-        tasks.put(taskId, state);
+        tasks.put(resolvedTaskId, state);
+        saveTask(state);
 
-        var adapter = new A2AEventAdapter(taskId, state, streamSender, syncFuture);
+        var adapter = new ServerA2AEventAdapter(state, options, routing, sessionManager);
         state.attachEventListener(adapter);
         state.setStreamCloser(() -> {
             adapter.stopStreaming();
-            if (closeStream != null) closeStream.run();
+            if (options.closeStream != null) options.closeStream.run();
         });
-        if (streamSender != null) {
-            streamSender.accept(StreamResponse.ofTask(state.toTask()));
+        if (options.streamSender != null) {
+            options.streamSender.accept(StreamResponse.ofTask(state.toTask()));
         }
 
         var userText = request.extractUserText();
-        LOGGER.info("creating server A2A task, agentId={}, taskId={}, contextId={}", agentId, taskId, session.id());
+        LOGGER.info("creating server A2A task, agentId={}, taskId={}, contextId={}", agentId, resolvedTaskId, session.id());
         session.sendMessage(userText);
         return state;
     }
@@ -223,12 +220,28 @@ public class ServerA2AService {
         return sessionManager.getSession(result.sessionId());
     }
 
-    private A2ATaskState resumeTask(Message message) {
-        return resumeTask(message, null, null);
+    private Task resumeTask(Message message, String userId) {
+        var state = tasks.get(message.taskId);
+        if (state != null) {
+            return resumeLocalTask(state, message, null, null).toTask();
+        }
+        var snapshot = snapshot(message.taskId);
+        return callTaskOwner(snapshot, SessionCommand.a2aResumeTask(snapshot.contextId, userId,
+                JsonUtil.toJson(message), routing.rpcClient.newRequestId()));
     }
 
-    private A2ATaskState resumeTask(Message message, Consumer<StreamResponse> streamSender, Runnable closeStream) {
+    private A2ATaskState resumeTask(Message message, String userId,
+                                    Consumer<StreamResponse> streamSender, Runnable closeStream) {
         var state = tasks.get(message.taskId);
+        if (state != null) {
+            return resumeLocalTask(state, message, streamSender, closeStream);
+        }
+        var snapshot = snapshot(message.taskId);
+        return streamResumeRemotely(snapshot, message, userId, streamSender, closeStream);
+    }
+
+    private A2ATaskState resumeLocalTask(A2ATaskState state, Message message,
+                                         Consumer<StreamResponse> streamSender, Runnable closeStream) {
         if (state == null) {
             throw new NotFoundException("task not found");
         }
@@ -247,6 +260,7 @@ public class ServerA2AService {
         var approvalDecision = "deny".equalsIgnoreCase(decision) ? ApprovalDecision.DENY : ApprovalDecision.APPROVE;
         state.setState(TaskState.WORKING);
         state.clearAwait();
+        saveTask(state);
         if (streamSender != null) {
             state.resumeStream(streamSender, closeStream);
             streamSender.accept(StreamResponse.ofTask(state.toTask()));
@@ -255,23 +269,130 @@ public class ServerA2AService {
         return state;
     }
 
-    private List<AgentCard.Skill> skills(AgentDefinition definition) {
-        var skills = new ArrayList<AgentCard.Skill>();
-        var primary = AgentCard.Skill.of(definition.id, definition.description != null ? definition.description : definition.name);
-        primary.name = definition.name;
-        primary.inputModes = List.of("text/plain", "application/json");
-        primary.outputModes = List.of("text/plain", "application/json");
-        skills.add(primary);
-        var toolRefs = effectiveTools(definition);
-        if (toolRefs != null) {
-            for (var tool : toolRefs) {
-                if (tool == null || tool.id == null) continue;
-                var skill = AgentCard.Skill.of(tool.id, "Server-side tool: " + tool.id);
-                skill.tags = tool.type != null ? List.of(tool.type.name()) : null;
-                skills.add(skill);
-            }
+    public Task startTaskOnOwner(A2AStartTaskCommandPayload payload, String userId) {
+        if (payload == null || payload.request == null) throw new BadRequestException("request required");
+        validateMessageRequest(payload.request);
+        if (Boolean.TRUE.equals(payload.synchronous)) {
+            return createSyncTask(payload.taskId, payload.agentId, payload.request, userId);
         }
-        return skills;
+        return createTask(payload.agentId, payload.request, userId, ServerA2ATaskOptions.taskId(payload.taskId)).toTask();
+    }
+
+    public Task cancelTaskOnOwner(String taskId) {
+        var state = tasks.get(taskId);
+        if (state == null) throw new NotFoundException("task not found");
+        return cancelLocalTask(state);
+    }
+
+    public Task resumeTaskOnOwner(Message message) {
+        var state = tasks.get(message.taskId);
+        if (state == null) throw new NotFoundException("task not found");
+        return resumeLocalTask(state, message, null, null).toTask();
+    }
+
+    private Task cancelLocalTask(A2ATaskState task) {
+        if (task.isTerminal()) return task.toTask();
+        task.session.cancelTurn();
+        task.setState(TaskState.CANCELED);
+        task.clearAwait();
+        task.detachEventListener();
+        saveTask(task);
+        return task.toTask();
+    }
+
+    private Task startTaskRemotely(String agentId, SendMessageRequest request, String userId, boolean synchronous) {
+        var taskId = UUID.randomUUID().toString();
+        var snapshot = remoteSnapshot(taskId, request.message.contextId);
+        var payload = startTaskPayload(taskId, agentId, request, synchronous);
+        var command = SessionCommand.a2aStartTask(snapshot.contextId, userId, JsonUtil.toJson(payload),
+                routing.rpcClient.newRequestId());
+        var timeout = synchronous ? Duration.ofMinutes(5) : Duration.ofSeconds(15);
+        return callTaskOwner(snapshot, command, timeout);
+    }
+
+    private A2ATaskState streamTaskRemotely(String agentId, SendMessageRequest request, String userId,
+                                            Consumer<StreamResponse> streamSender, Runnable closeStream) {
+        var taskId = UUID.randomUUID().toString();
+        var snapshot = remoteSnapshot(taskId, request.message.contextId);
+        var payload = startTaskPayload(taskId, agentId, request, false);
+        var command = SessionCommand.a2aStartTask(snapshot.contextId, userId, JsonUtil.toJson(payload),
+                routing.rpcClient.newRequestId());
+        proxyStream(snapshot, command, streamSender, closeStream);
+        return null;
+    }
+
+    private A2ATaskState streamResumeRemotely(A2ATaskSnapshot snapshot, Message message, String userId,
+                                              Consumer<StreamResponse> streamSender, Runnable closeStream) {
+        var command = SessionCommand.a2aResumeTask(snapshot.contextId, userId, JsonUtil.toJson(message),
+                routing.rpcClient.newRequestId());
+        proxyStream(snapshot, command, streamSender, closeStream);
+        return null;
+    }
+
+    private void proxyStream(A2ATaskSnapshot snapshot, SessionCommand command,
+                             Consumer<StreamResponse> streamSender, Runnable closeStream) {
+        A2AEventRelay.Subscription subscription = null;
+        if (routing.eventRelay != null) {
+            subscription = routing.eventRelay.subscribe(snapshot.taskId, streamSender, closeStream);
+        }
+        try {
+            var task = callTaskOwner(snapshot, command, Duration.ofSeconds(15));
+            streamSender.accept(StreamResponse.ofTask(task));
+            if (routing.eventRelay == null && closeStream != null) closeStream.run();
+        } catch (RuntimeException e) {
+            if (subscription != null) subscription.close();
+            throw e;
+        }
+    }
+
+    private A2ATaskSnapshot remoteSnapshot(String taskId, String contextId) {
+        var snapshot = new A2ATaskSnapshot();
+        snapshot.taskId = taskId;
+        snapshot.contextId = contextId;
+        snapshot.ownerPod = routing.ownershipRegistry != null ? routing.ownershipRegistry.getOwner(contextId) : null;
+        snapshot.state = TaskState.WORKING;
+        snapshot.updatedAtMillis = System.currentTimeMillis();
+        if (routing.taskRegistry != null) routing.taskRegistry.save(snapshot);
+        return snapshot;
+    }
+
+    private A2AStartTaskCommandPayload startTaskPayload(String taskId, String agentId, SendMessageRequest request, boolean synchronous) {
+        var payload = new A2AStartTaskCommandPayload();
+        payload.taskId = taskId;
+        payload.agentId = agentId;
+        payload.request = request;
+        payload.synchronous = synchronous;
+        return payload;
+    }
+
+    private Task callTaskOwner(A2ATaskSnapshot snapshot, SessionCommand command) {
+        return callTaskOwner(snapshot, command, Duration.ofSeconds(15));
+    }
+
+    private Task callTaskOwner(A2ATaskSnapshot snapshot, SessionCommand command, Duration timeout) {
+        if (routing.rpcClient == null) throw new NotFoundException("task not found");
+        return routing.rpcClient.callToPod(snapshot.ownerPod, command, Task.class, timeout);
+    }
+
+    private A2ATaskSnapshot snapshot(String taskId) {
+        var snapshot = routing.taskRegistry != null ? routing.taskRegistry.get(taskId) : null;
+        if (snapshot == null) throw new NotFoundException("task not found");
+        return snapshot;
+    }
+
+    private boolean contextOwnedByAnotherPod(String contextId) {
+        if (contextId == null || contextId.isBlank() || routing.ownershipRegistry == null) return false;
+        var owner = routing.ownershipRegistry.getOwner(contextId);
+        return owner != null && !owner.equals(routing.ownershipRegistry.getHostname());
+    }
+
+    private void saveTask(A2ATaskState state) {
+        if (sessionManager != null) {
+            sessionManager.touchSession(state.contextId);
+        }
+        if (routing.taskRegistry != null) {
+            routing.taskRegistry.save(state);
+        }
     }
 
     private void validateMessageRequest(SendMessageRequest request) {
@@ -290,6 +411,7 @@ public class ServerA2AService {
         state.errorMessage = e.getMessage();
         state.clearAwait();
         state.detachEventListener();
+        saveTask(state);
     }
 
     void pruneTerminalTasks() {

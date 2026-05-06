@@ -1,6 +1,8 @@
 package ai.core.server.messaging;
 
+import ai.core.api.a2a.Message;
 import ai.core.api.server.session.ApprovalDecision;
+import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.session.AgentSessionManager;
@@ -25,20 +27,17 @@ public class InProcessCommandHandler {
     private final SessionOwnershipRegistry ownershipRegistry;
     private final AgentDraftGenerator agentDraftGenerator;
     private final AgentDefinitionService agentDefinitionService;
+    private final ServerA2AService serverA2AService;
     private final JedisPool jedisPool;
 
-    public InProcessCommandHandler(AgentSessionManager sessionManager,
-                                   ChatMessageService chatMessageService,
-                                   SessionOwnershipRegistry ownershipRegistry,
-                                   AgentDraftGenerator agentDraftGenerator,
-                                   AgentDefinitionService agentDefinitionService,
-                                   JedisPool jedisPool) {
-        this.sessionManager = sessionManager;
-        this.chatMessageService = chatMessageService;
-        this.ownershipRegistry = ownershipRegistry;
-        this.agentDraftGenerator = agentDraftGenerator;
-        this.agentDefinitionService = agentDefinitionService;
-        this.jedisPool = jedisPool;
+    public InProcessCommandHandler(InProcessCommandHandlerDependencies dependencies) {
+        this.sessionManager = dependencies.sessionManager;
+        this.chatMessageService = dependencies.chatMessageService;
+        this.ownershipRegistry = dependencies.ownershipRegistry;
+        this.agentDraftGenerator = dependencies.agentDraftGenerator;
+        this.agentDefinitionService = dependencies.agentDefinitionService;
+        this.serverA2AService = dependencies.serverA2AService;
+        this.jedisPool = dependencies.jedisPool;
     }
 
     /**
@@ -57,6 +56,9 @@ public class InProcessCommandHandler {
                 case UNLOAD_SKILLS -> handleUnloadSkills(command);
                 case LOAD_SUB_AGENTS -> handleLoadSubAgents(command);
                 case GENERATE_AGENT_DRAFT -> handleGenerateAgentDraft(command);
+                case A2A_START_TASK -> handleA2AStartTask(command);
+                case A2A_CANCEL_TASK -> handleA2ACancelTask(command);
+                case A2A_RESUME_TASK -> handleA2AResumeTask(command);
                 default -> LOGGER.warn("unknown command type: {}", command.type());
             }
         } catch (Exception e) {
@@ -162,6 +164,25 @@ public class InProcessCommandHandler {
         var draft = agentDraftGenerator.generate(session);
         var result = JsonUtil.toJson(draft);
         respondOk(command, result);
+    }
+
+    private void handleA2AStartTask(SessionCommand command) {
+        var payload = JsonUtil.fromJson(ai.core.server.a2a.A2AStartTaskCommandPayload.class, command.payload());
+        var task = serverA2AService.startTaskOnOwner(payload, command.userId());
+        respondOk(command, JsonUtil.toJson(task));
+    }
+
+    private void handleA2ACancelTask(SessionCommand command) {
+        var payload = JsonUtil.fromJson(Map.class, command.payload());
+        var taskId = (String) payload.get("taskId");
+        var task = serverA2AService.cancelTaskOnOwner(taskId);
+        respondOk(command, JsonUtil.toJson(task));
+    }
+
+    private void handleA2AResumeTask(SessionCommand command) {
+        var message = JsonUtil.fromJson(Message.class, command.payload());
+        var task = serverA2AService.resumeTaskOnOwner(message);
+        respondOk(command, JsonUtil.toJson(task));
     }
 
     // --- RPC response helpers ---
