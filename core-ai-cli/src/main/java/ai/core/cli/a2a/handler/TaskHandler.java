@@ -1,6 +1,7 @@
 package ai.core.cli.a2a.handler;
 
 import ai.core.a2a.A2ARunManager;
+import ai.core.a2a.A2AHttpPaths;
 import ai.core.utils.JsonUtil;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
@@ -41,8 +42,7 @@ public class TaskHandler implements HttpHandler {
 
         try {
             var path = exchange.getRelativePath();
-            if (path.endsWith(":cancel") && Methods.POST.equals(exchange.getRequestMethod())) {
-                taskId = taskId.substring(0, taskId.length() - ":cancel".length());
+            if (path.endsWith(A2AHttpPaths.TASK_CANCEL) && Methods.POST.equals(exchange.getRequestMethod())) {
                 handleCancel(exchange, taskId);
             } else if (Methods.GET.equals(exchange.getRequestMethod())) {
                 handleGet(exchange, taskId);

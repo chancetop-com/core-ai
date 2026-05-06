@@ -111,7 +111,7 @@ export const a2aApi = {
   },
 
   sendMessage: async (text: string): Promise<Task> => {
-    const res = await fetch(`${BASE}/message:send`, {
+    const res = await fetch(`${BASE}/message/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/a2a+json', 'A2A-Version': '1.0' },
       body: JSON.stringify({
@@ -128,7 +128,7 @@ export const a2aApi = {
     onEvent: (event: StreamEvent) => void,
     onDone: () => void,
   ): Promise<void> => {
-    const res = await fetch(`${BASE}/message:stream`, {
+    const res = await fetch(`${BASE}/message/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/a2a+json', Accept: 'text/event-stream', 'A2A-Version': '1.0' },
       body: JSON.stringify({
@@ -171,7 +171,7 @@ export const a2aApi = {
   },
 
   resumeTask: async (taskId: string, decision: 'approve' | 'deny', callId: string): Promise<void> => {
-    await fetch(`${BASE}/message:send`, {
+    await fetch(`${BASE}/message/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/a2a+json', 'A2A-Version': '1.0' },
       body: JSON.stringify({
@@ -186,7 +186,7 @@ export const a2aApi = {
   },
 
   cancelTask: async (taskId: string): Promise<void> => {
-    await fetch(`${BASE}/tasks/${taskId}:cancel`, { method: 'POST', headers: { 'A2A-Version': '1.0' } });
+    await fetch(`${BASE}/tasks/${taskId}/cancel`, { method: 'POST', headers: { 'A2A-Version': '1.0' } });
   },
 
   listSessions: async (): Promise<SessionItem[]> => {

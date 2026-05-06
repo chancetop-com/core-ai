@@ -11,6 +11,7 @@ import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.UserWebService;
 import ai.core.api.server.trigger.TriggerWebService;
 import ai.core.api.a2a.StreamResponse;
+import ai.core.a2a.A2AHttpPaths;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.a2a.A2AAgentCardController;
 import ai.core.server.a2a.A2AMessageController;
@@ -149,7 +150,7 @@ public class ServerModule extends Module {
 
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
-        sseConfig.listen(HTTPMethod.POST, "/api/a2a/message:stream", StreamResponse.class, bind(A2AStreamChannelListener.class));
+        sseConfig.listen(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class));
 
         registerStaticFiles();
     }
@@ -296,8 +297,8 @@ public class ServerModule extends Module {
         bind(SessionChannelService.class);
         bind(ChatMessageService.class);
         bind(AgentSessionManager.class);
-        bind(ServerA2AService.class);
         bind(AgentDefinitionService.class);
+        bind(ServerA2AService.class);
         bind(JavaToSchemaService.class);
         bind(AgentDraftGenerator.class);
         bind(AgentRunService.class);
@@ -330,10 +331,10 @@ public class ServerModule extends Module {
         var taskController = bind(A2ATaskController.class);
 
         http().route(HTTPMethod.GET, "/api/a2a/agents/:agentId/.well-known/agent-card.json", agentCardController::get);
-        http().route(HTTPMethod.POST, "/api/a2a/message:send", messageController::send);
-        http().route(HTTPMethod.POST, "/api/a2a/agents/:agentId/message:send", messageController::send);
+        http().route(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_SEND, messageController::send);
+        http().route(HTTPMethod.POST, "/api/a2a/agents/:agentId/message/send", messageController::send);
         http().route(HTTPMethod.GET, "/api/a2a/tasks/:taskId", taskController::get);
-        http().route(HTTPMethod.POST, "/api/a2a/tasks/:taskId/cancel", taskController::cancel);
+        http().route(HTTPMethod.POST, "/api/a2a/tasks/:taskId" + A2AHttpPaths.TASK_CANCEL, taskController::cancel);
     }
 
     private void registerStaticFiles() {

@@ -110,7 +110,7 @@ Core-AI 使用的关键字段：
 |---|---|
 | `name` / `description` / `version` | Agent 身份和版本。 |
 | `supportedInterfaces` | 声明 HTTP+JSON、协议版本和 endpoint。 |
-| `capabilities.streaming` | 是否支持 `/message:stream`。 |
+| `capabilities.streaming` | 是否支持 `/message/stream`。 |
 | `capabilities.pushNotifications` | 是否支持 webhook 异步通知，首版不支持。 |
 | `capabilities.extendedAgentCard` | 是否支持认证后的扩展 Agent Card。 |
 | `skills` | Agent 可对外声明的能力，例如代码修改、文件操作、企业知识检索。 |
@@ -233,10 +233,10 @@ Core-AI 首选 HTTP+JSON binding。当前 CLI serve 模式已经使用以下 end
 | Endpoint | 方法 | 用途 |
 |---|---|---|
 | `/.well-known/agent-card.json` | `GET` | 获取 Agent Card。 |
-| `/message:send` | `POST` | 非流式发送消息；返回 `SendMessageResponse`。 |
-| `/message:stream` | `POST` | 流式发送消息；返回 SSE `StreamResponse`。 |
+| `/message/send` | `POST` | 非流式发送消息；返回 `SendMessageResponse`。 |
+| `/message/stream` | `POST` | 流式发送消息；返回 SSE `StreamResponse`。 |
 | `/tasks/{taskId}` | `GET` | 查询 task 当前状态。 |
-| `/tasks/{taskId}:cancel` | `POST` | 取消 task。 |
+| `/tasks/{taskId}/cancel` | `POST` | 取消 task。 |
 
 请求头：
 
@@ -272,7 +272,7 @@ core-ai-cli
   └─ GET /.well-known/agent-card.json
   └─ 根据 Agent Card 选择 HTTP_JSON + streaming
   └─ 用户输入
-      └─ POST /message:stream
+      └─ POST /message/stream
           └─ server 创建/复用 AgentSession(contextId)
           └─ server 返回 Task + SSE updates
           └─ CLI 把 A2A stream event 转成本地 AgentEvent

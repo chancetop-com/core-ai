@@ -1,6 +1,7 @@
 package ai.core.cli.a2a;
 
 import ai.core.a2a.A2ARunManager;
+import ai.core.a2a.A2AHttpPaths;
 import ai.core.cli.a2a.handler.AgentCardHandler;
 import ai.core.cli.a2a.handler.CapabilitiesHandler;
 import ai.core.cli.a2a.handler.LocalAgentHandler;
@@ -88,10 +89,11 @@ public class A2AServer {
         var chatSessionsHandler = new ChatSessionsHandler(chatSessionManager, fileSessionPersistence);
 
         var handler = new PathTemplateHandler(notFoundHandler());
-        handler.add("/.well-known/agent-card.json", agentCardHandler);
-        handler.add("/message:send", messageHandler);
-        handler.add("/message:stream", messageHandler);
+        handler.add(A2AHttpPaths.AGENT_CARD, agentCardHandler);
+        handler.add(A2AHttpPaths.MESSAGE_SEND, messageHandler);
+        handler.add(A2AHttpPaths.MESSAGE_STREAM, messageHandler);
         handler.add("/tasks/{taskId}", taskHandler);
+        handler.add("/tasks/{taskId}" + A2AHttpPaths.TASK_CANCEL, taskHandler);
         handler.add("/api/capabilities", new CapabilitiesHandler());
         handler.add("/api/sessions", chatSessionCreateHandler);
         handler.add("/api/sessions/{sessionId}", chatSessionActionHandler);

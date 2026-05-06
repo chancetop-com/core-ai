@@ -77,7 +77,7 @@ class HttpA2AClientTest {
 
         assertEquals("task-1", result.task.id);
         assertEquals(HTTPMethod.POST, http.lastRequest.method);
-        assertEquals("http://server/api/a2a/message:send", http.lastRequest.uri);
+        assertEquals("http://server/api/a2a/message/send", http.lastRequest.uri);
         assertTrue(new String(http.lastRequest.body, StandardCharsets.UTF_8).contains("\"tenant\":\"agent-1\""));
     }
 
@@ -101,7 +101,7 @@ class HttpA2AClientTest {
         assertEquals(2, subscriber.events.size());
         assertEquals("task-1", subscriber.events.getFirst().task.id);
         assertEquals(TaskState.COMPLETED, subscriber.events.get(1).statusUpdate.status.state);
-        assertEquals("http://server/api/a2a/message:stream", http.lastRequest.uri);
+        assertEquals("http://server/api/a2a/message/stream", http.lastRequest.uri);
         assertEquals("text/event-stream", http.lastRequest.headers.get("Accept"));
         assertTrue(new String(http.lastRequest.body, StandardCharsets.UTF_8).contains("\"tenant\":\"agent-1\""));
     }

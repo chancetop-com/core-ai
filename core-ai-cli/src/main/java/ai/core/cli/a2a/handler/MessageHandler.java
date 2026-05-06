@@ -1,6 +1,7 @@
 package ai.core.cli.a2a.handler;
 
 import ai.core.a2a.A2ARunManager;
+import ai.core.a2a.A2AHttpPaths;
 import ai.core.api.a2a.Message;
 import ai.core.api.a2a.SendMessageRequest;
 import ai.core.api.a2a.SendMessageResponse;
@@ -76,7 +77,7 @@ public class MessageHandler implements HttpHandler {
             }
 
             var accept = exchange.getRequestHeaders().getFirst(Headers.ACCEPT);
-            if (exchange.getRelativePath().endsWith(":stream") || accept != null && accept.contains("text/event-stream")) {
+            if (exchange.getRelativePath().endsWith(A2AHttpPaths.MESSAGE_STREAM) || accept != null && accept.contains("text/event-stream")) {
                 handleStream(exchange, request);
             } else {
                 handleSync(exchange, request);

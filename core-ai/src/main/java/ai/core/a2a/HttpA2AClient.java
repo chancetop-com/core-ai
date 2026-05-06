@@ -80,19 +80,19 @@ public class HttpA2AClient implements A2AClient {
     @Override
     public AgentCard getAgentCard() {
         if (tenant == null || tenant.isBlank()) {
-            return get("/.well-known/agent-card.json", AgentCard.class);
+            return get(A2AHttpPaths.AGENT_CARD, AgentCard.class);
         }
         try {
-            return get("/agents/" + pathSegment(tenant) + "/.well-known/agent-card.json", AgentCard.class);
+            return get("/agents/" + pathSegment(tenant) + A2AHttpPaths.AGENT_CARD, AgentCard.class);
         } catch (IllegalStateException e) {
-            return get("/.well-known/agent-card.json", AgentCard.class);
+            return get(A2AHttpPaths.AGENT_CARD, AgentCard.class);
         }
     }
 
     @Override
     public A2AInvocationResult send(SendMessageRequest request) {
         applyTenant(request);
-        var response = post("/message:send", request, SendMessageResponse.class);
+        var response = post(A2AHttpPaths.MESSAGE_SEND, request, SendMessageResponse.class);
         if (response.task != null) return A2AInvocationResult.ofTask(response.task);
         if (response.message != null) return A2AInvocationResult.ofMessage(response.message);
         var result = new A2AInvocationResult();
@@ -115,13 +115,13 @@ public class HttpA2AClient implements A2AClient {
     @Override
     public Task getTask(GetTaskRequest request) {
         var id = requireTaskId(request != null ? request.id : null);
-        return get("/tasks/" + pathSegment(id), Task.class);
+        return get(A2AHttpPaths.TASKS + "/" + pathSegment(id), Task.class);
     }
 
     @Override
     public Task cancelTask(CancelTaskRequest request) {
         var id = requireTaskId(request != null ? request.id : null);
-        return post("/tasks/" + pathSegment(id) + "/cancel", request, Task.class);
+        return post(A2AHttpPaths.TASKS + "/" + pathSegment(id) + A2AHttpPaths.TASK_CANCEL, request, Task.class);
     }
 
     private String requireTaskId(String id) {
@@ -132,7 +132,7 @@ public class HttpA2AClient implements A2AClient {
     }
 
     private void consumeStream(SendMessageRequest request, SubmissionPublisher<A2AStreamEvent> publisher) {
-        try (EventSource source = sse("/message:stream", request)) {
+        try (EventSource source = sse(A2AHttpPaths.MESSAGE_STREAM, request)) {
             for (var event : source) {
                 if (event.data() == null || event.data().isBlank()) continue;
                 var response = JsonUtil.fromJson(StreamResponse.class, event.data());
