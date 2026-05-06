@@ -284,10 +284,17 @@ CLI 侧的目标不是重写 UI，而是新增一个远端 session 实现：
 ```java
 AgentSession
   ├─ InProcessAgentSession   // 本地 Agent
-  └─ RemoteAgentSession      // A2A client，后续新增
+  └─ RemoteAgentSession      // A2A client，已通过 A2AClient 接入
 ```
 
 这样 `CliEventListener`、`TerminalUI`、slash command 的大部分逻辑可以继续复用。
+
+当前实现中：
+
+- `HttpA2AClient` 提供框架级 HTTP+JSON A2A client。
+- `RemoteAgentSession` 把 `A2AStreamEvent` 转回现有 `AgentEvent`，CLI 渲染链路不需要重写。
+- `core-ai-cli --server` 优先按 A2A Agent Card 发现远端 endpoint；如果传入的是 `core-ai-server` 根地址，会自动尝试 `/api/a2a`。
+- 通用 A2A 会话只保留聊天、流式输出、取消和 tool approval 这类协议内能力；`/tools`、`/skill`、`/mcp` 等 core-ai-server 私有管理命令不属于通用 A2A session。
 
 ### 7.2 server 暴露企业 Agent
 

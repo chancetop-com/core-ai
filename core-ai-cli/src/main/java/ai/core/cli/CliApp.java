@@ -1,14 +1,10 @@
 package ai.core.cli;
 
+import ai.core.a2a.A2ARunManager;
+import ai.core.a2a.RemoteAgentSession;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
-import ai.core.cli.utils.PathUtils;
-import ai.core.llm.LLMProviderType;
-import ai.core.llm.LLMProviders;
-import ai.core.mcp.client.McpClientManager;
-import ai.core.mcp.client.McpClientManagerRegistry;
-import ai.core.a2a.A2ARunManager;
 import ai.core.cli.a2a.A2AServer;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
@@ -16,17 +12,21 @@ import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MdMemoryProvider;
-import ai.core.cli.remote.HttpAgentSession;
-import ai.core.cli.remote.RemoteApiClient;
+import ai.core.cli.plugin.PluginManager;
+import ai.core.cli.remote.A2ARemoteConnector;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.remote.RemoteSessionRunner;
-import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.cli.utils.PathUtils;
+import ai.core.llm.LLMProviderType;
+import ai.core.llm.LLMProviders;
+import ai.core.mcp.client.McpClientManager;
+import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.session.FileRuleBasedPermissionStore;
 import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence.SessionInfo;
-import ai.core.session.FileRuleBasedPermissionStore;
 import ai.core.session.ToolPermissionStore;
 import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.tool.tools.AskUserTool;
@@ -253,10 +253,6 @@ public class CliApp {
     }
 
     public void startRemote(String serverUrl, String apiKey, String agentId) {
-        if (apiKey == null || apiKey.isBlank()) {
-            ConsoleWriter.println("Error: --api-key is required for remote mode.");
-            return;
-        }
         var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant", null);
         var ui = new TerminalUI();
         try {
@@ -387,9 +383,10 @@ public class CliApp {
 
     private void runRemoteSession(TerminalUI ui, RemoteConfig config, String promptText) {
         try {
-            var api = new RemoteApiClient(config.serverUrl(), config.apiKey());
-            var session = HttpAgentSession.connect(api, config.agentId());
-            var runner = new RemoteSessionRunner(ui, session, api, config.name(), config.agentId());
+            var connection = new A2ARemoteConnector().connect(config);
+            var session = RemoteAgentSession.connect(connection.client());
+            var name = config.name() != null ? config.name() : connection.agentName();
+            var runner = new RemoteSessionRunner(ui, session, connection.baseUrl(), name, connection.agentId());
             if (promptText != null) {
                 runner.runPrompt(promptText);
             } else {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import core.framework.api.json.Property;
 
 import java.io.IOException;
 
@@ -33,7 +34,7 @@ public class CaseInsensitiveEnumDeserializer extends JsonDeserializer<Enum> {
 
             for (var constant : constants) {
                 var e = (Enum) constant;
-                if (e.name().equalsIgnoreCase(value)) {
+                if (e.name().equalsIgnoreCase(value) || propertyName(e).equalsIgnoreCase(value)) {
                     return e;
                 }
             }
@@ -42,5 +43,11 @@ public class CaseInsensitiveEnumDeserializer extends JsonDeserializer<Enum> {
         }
 
         throw new InvalidFormatException(p, "Cannot deserialize value of type " + enumClass.getName() + " from String \"" + value + "\"", value, enumClass);
+    }
+
+    private String propertyName(Enum<?> value) throws NoSuchFieldException {
+        var field = enumClass.getField(value.name());
+        var property = field.getAnnotation(Property.class);
+        return property != null ? property.name() : value.name();
     }
 }

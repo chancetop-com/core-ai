@@ -1,5 +1,6 @@
 package ai.core.cli.remote;
 
+import ai.core.api.server.session.AgentSession;
 import ai.core.cli.DebugLog;
 import ai.core.cli.command.SlashCommand;
 import ai.core.cli.listener.RemoteEventListener;
@@ -33,6 +34,12 @@ public class RemoteSessionRunner {
         new SlashCommand("/clear", "Clear screen"),
         new SlashCommand("/exit", "Disconnect and return to local mode")
     );
+    private static final List<SlashCommand> A2A_REMOTE_COMMANDS = List.of(
+        new SlashCommand("/help", "Show available commands"),
+        new SlashCommand("/debug", "Toggle debug mode"),
+        new SlashCommand("/clear", "Clear screen"),
+        new SlashCommand("/exit", "Disconnect and return to local mode")
+    );
 
     static String truncate(String text, int max) {
         if (text == null) return "";
@@ -42,6 +49,7 @@ public class RemoteSessionRunner {
 
     static String buildPromptPrefix(String name, String serverUrl) {
         String host = URI.create(serverUrl).getHost();
+        if (host == null || host.isBlank()) host = serverUrl;
         if (name != null && !name.isBlank()) {
             return name + "@" + host;
         }
@@ -50,8 +58,9 @@ public class RemoteSessionRunner {
 
     private final TerminalUI ui;
     private final RemoteApiClient api;
+    private final String serverUrl;
     private final String promptPrefix;
-    private volatile HttpAgentSession session;
+    private volatile AgentSession session;
     private volatile RemoteEventListener listener;
     private volatile String currentPrompt;
     private final Set<String> loadedToolIds = new HashSet<>();
@@ -60,13 +69,24 @@ public class RemoteSessionRunner {
     private final RemoteSessionCommandHandler commandHandler;
 
     public RemoteSessionRunner(TerminalUI ui, HttpAgentSession session, RemoteApiClient api, String name, String agentId) {
+        this(ui, session, api, api.serverUrl(), name, agentId);
+    }
+
+    public RemoteSessionRunner(TerminalUI ui, AgentSession session, String serverUrl, String name, String agentId) {
+        this(ui, session, null, serverUrl, name, agentId);
+    }
+
+    private RemoteSessionRunner(TerminalUI ui, AgentSession session, RemoteApiClient api, String serverUrl, String name, String agentId) {
         this.ui = ui;
         this.api = api;
-        this.promptPrefix = buildPromptPrefix(name, api.serverUrl());
+        this.serverUrl = serverUrl;
+        this.promptPrefix = buildPromptPrefix(name, serverUrl);
         this.session = session;
         this.listener = new RemoteEventListener(ui, session);
-        this.currentPrompt = promptPrefix + ":" + agentId + "> ";
-        this.commandHandler = new RemoteSessionCommandHandler(ui, api, session.id(), loadedToolIds, loadedSkillIds, loadedSubAgentIds);
+        this.currentPrompt = promptPrefix + ":" + (agentId != null ? agentId : "agent") + "> ";
+        this.commandHandler = api != null
+                ? new RemoteSessionCommandHandler(ui, api, session.id(), loadedToolIds, loadedSkillIds, loadedSubAgentIds)
+                : null;
     }
 
     public void run() {
@@ -75,7 +95,7 @@ public class RemoteSessionRunner {
         BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
         Semaphore readyForInput = new Semaphore(1);
 
-        ui.setSlashCommands(REMOTE_COMMANDS);
+        ui.setSlashCommands(commandHandler != null ? REMOTE_COMMANDS : A2A_REMOTE_COMMANDS);
         try {
             printBanner();
             startSenderThread(messageQueue, readyForInput);
@@ -99,6 +119,10 @@ public class RemoteSessionRunner {
     }
 
     private void switchAgent(String agentId, String agentName) {
+        if (api == null) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  Agent switching is not available for generic A2A sessions." + AnsiTheme.RESET + "\n");
+            return;
+        }
         session.close();
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Switching to " + agentName + "..." + AnsiTheme.RESET + "\n");
         try {
@@ -118,7 +142,7 @@ public class RemoteSessionRunner {
     private void printBanner() {
         ui.printStreamingChunk("\n" + AnsiTheme.WARNING + "  [REMOTE]" + AnsiTheme.RESET + " "
                 + AnsiTheme.PROMPT + "core-ai" + AnsiTheme.RESET
-                + AnsiTheme.MUTED + " → " + api.serverUrl() + AnsiTheme.RESET + "\n");
+                + AnsiTheme.MUTED + " → " + serverUrl + AnsiTheme.RESET + "\n");
         ui.printStreamingChunk(AnsiTheme.MUTED + "  session: " + session.id() + AnsiTheme.RESET + "\n");
         ui.printStreamingChunk(AnsiTheme.MUTED + "  /help for commands, /exit to return to local mode" + AnsiTheme.RESET + "\n");
     }
@@ -175,28 +199,12 @@ public class RemoteSessionRunner {
         var lower = cmd.toLowerCase(Locale.ROOT);
         switch (lower) {
             case "/help" -> printHelp();
-            case "/build-agent" -> commandHandler.handleBuildAgent();
-            case "/agents" -> {
-                var action = commandHandler.handleAgentSwitch();
-                if (action instanceof AgentCommandHandler.AgentSwitch(String agentId, String agentName)) {
-                    switchAgent(agentId, agentName);
-                } else if (action instanceof AgentCommandHandler.LoadAsSubAgent s) {
-                    commandHandler.loadSubAgentToSession(s.agentId());
-                }
-            }
-            case "/tools" -> commandHandler.handleTools();
-            case "/skill" -> commandHandler.handleSkills();
-            case "/mcp" -> new McpServerCommandHandler(ui, api).handle();
-            case "/debug" -> {
-                if (DebugLog.isEnabled()) {
-                    DebugLog.disable();
-                    ui.printStreamingChunk("Debug mode: OFF\n");
-                } else {
-                    DebugLog.enable();
-                    System.setProperty("core.ai.debug", "true");
-                    ui.printStreamingChunk("Debug mode: ON\n");
-                }
-            }
+            case "/build-agent" -> handleBuildAgent(cmd);
+            case "/agents" -> handleAgents(cmd);
+            case "/tools" -> handleTools(cmd);
+            case "/skill" -> handleSkills(cmd);
+            case "/mcp" -> handleMcp(cmd);
+            case "/debug" -> handleDebug();
             case "/clear" -> ui.printStreamingChunk("\u001B[2J\u001B[H");
             default -> {
                 if (lower.startsWith("/stats") || lower.startsWith("/model")
@@ -211,14 +219,66 @@ public class RemoteSessionRunner {
         return true;
     }
 
+    private void handleBuildAgent(String cmd) {
+        if (commandHandler != null) commandHandler.handleBuildAgent();
+        else printA2ACommandUnavailable(cmd);
+    }
+
+    private void handleAgents(String cmd) {
+        if (commandHandler == null) {
+            printA2ACommandUnavailable(cmd);
+            return;
+        }
+        var action = commandHandler.handleAgentSwitch();
+        if (action instanceof AgentCommandHandler.AgentSwitch(String agentId, String agentName)) {
+            switchAgent(agentId, agentName);
+        } else if (action instanceof AgentCommandHandler.LoadAsSubAgent s) {
+            commandHandler.loadSubAgentToSession(s.agentId());
+        }
+    }
+
+    private void handleTools(String cmd) {
+        if (commandHandler != null) commandHandler.handleTools();
+        else printA2ACommandUnavailable(cmd);
+    }
+
+    private void handleSkills(String cmd) {
+        if (commandHandler != null) commandHandler.handleSkills();
+        else printA2ACommandUnavailable(cmd);
+    }
+
+    private void handleMcp(String cmd) {
+        if (api != null) new McpServerCommandHandler(ui, api).handle();
+        else printA2ACommandUnavailable(cmd);
+    }
+
+    private void handleDebug() {
+        if (DebugLog.isEnabled()) {
+            DebugLog.disable();
+            ui.printStreamingChunk("Debug mode: OFF\n");
+        } else {
+            DebugLog.enable();
+            System.setProperty("core.ai.debug", "true");
+            ui.printStreamingChunk("Debug mode: ON\n");
+        }
+    }
+
+    private void printA2ACommandUnavailable(String cmd) {
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  " + cmd + " is not part of the generic A2A session protocol.\n" + AnsiTheme.RESET);
+    }
+
     private void printHelp() {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote Commands:" + AnsiTheme.RESET + "\n");
-        String[][] cmds = {
+        String[][] cmds = commandHandler != null ? new String[][]{
                 {"/build-agent", "Build agent from current conversation, so it can be scheduled periodically on the server"},
                 {"/agents", "Switch agent or manage agents"},
                 {"/tools", "List and load available tools"},
                 {"/skill", "Browse and load server skills"},
                 {"/mcp", "Manage MCP server connections (add, enable, disable, edit, delete)"},
+                {"/debug", "Toggle debug mode"},
+                {"/clear", "Clear screen"},
+                {"/exit", "Disconnect and return to local mode"}
+        } : new String[][]{
                 {"/debug", "Toggle debug mode"},
                 {"/clear", "Clear screen"},
                 {"/exit", "Disconnect and return to local mode"}

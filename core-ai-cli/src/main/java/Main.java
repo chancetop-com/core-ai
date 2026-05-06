@@ -60,13 +60,13 @@ public class Main implements Callable<Integer> {
     @Option(names = "--workspace", description = "Set the working directory for the agent session")
     Path workspace;
 
-    @Option(names = "--server", description = "Connect to remote core-ai-server (e.g. http://localhost:8080)")
+    @Option(names = "--server", description = "Connect to a remote A2A agent or core-ai-server (e.g. http://localhost:8080)")
     String serverUrl;
 
-    @Option(names = "--api-key", description = "API key for remote server authentication")
+    @Option(names = "--api-key", description = "Bearer token for remote server authentication")
     String apiKey;
 
-    @Option(names = "--agent-id", description = "Agent ID to use on remote server (default: default-assistant)")
+    @Option(names = "--agent-id", description = "Agent ID or A2A tenant to use on remote server (default: default-assistant)")
     String agentId;
 
     @Option(names = "--serve", description = "Start A2A web server mode")
