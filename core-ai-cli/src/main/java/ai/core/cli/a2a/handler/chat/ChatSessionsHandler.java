@@ -13,9 +13,10 @@ import io.undertow.util.Headers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
+import java.io.IOException;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,63 +50,65 @@ public class ChatSessionsHandler implements HttpHandler {
 
         try {
             var params = exchange.getQueryParameters();
-            int offset = 0;
-            int limit = 50;
-
-            var offsetParam = params.get("offset");
-            if (offsetParam != null && !offsetParam.isEmpty()) {
-                offset = Integer.parseInt(offsetParam.getFirst());
-            }
-
-            var limitParam = params.get("limit");
-            if (limitParam != null && !limitParam.isEmpty()) {
-                limit = Integer.parseInt(limitParam.getFirst());
-            }
-
-            // Get all sessions: persisted + in-memory
-            var persistedSessions = sessionManager.listSessions();
-            var activeSessions = sessionManager.getAllSessions();
-
-            // Combine and deduplicate by session ID
-            var allSessions = Stream.concat(
-                       persistedSessions.stream().map(this::toPersistedSessionSummary),
-                    activeSessions.stream().map(this::toActiveSessionSummary)
-            ).collect(Collectors.toMap(
-                    m -> (String) m.get("id"),
-                    m -> m,
-                    (existing, replacement) -> existing  // Keep existing if duplicate
-            )).values().stream()
-                    // Sort by last_message_at descending (newest first)
-                    .sorted((a, b) -> {
-                        var tsA = a.get("last_message_at");
-                        var tsB = b.get("last_message_at");
-                        if (tsA == null && tsB == null) return 0;
-                        if (tsA == null) return 1;
-                        if (tsB == null) return -1;
-                        return ((String) tsB).compareTo((String) tsA);
-                    })
-                    .toList();
-
-            var total = allSessions.size();
-            var pagedSessions = allSessions.stream()
-                    .skip(offset)
-                    .limit(limit)
-                    .collect(Collectors.toList());
-
-            var response = new LinkedHashMap<String, Object>();
-            response.put("sessions", pagedSessions);
-            response.put("total", total);
-
-            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
-            exchange.setStatusCode(200);
-            exchange.getResponseSender().send(MAPPER.writeValueAsString(response));
-
+            sendSessionsResponse(exchange, page(parseParam(params, "offset", 0), parseParam(params, "limit", 50)));
         } catch (Exception e) {
             LOGGER.error("failed to list sessions", e);
             exchange.setStatusCode(500);
             exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
             exchange.getResponseSender().send("{\"error\":\"failed to list sessions\"}");
         }
+    }
+
+    private int parseParam(Map<String, Deque<String>> params, String name, int defaultValue) {
+        var param = params.get(name);
+        if (param == null || param.isEmpty()) {
+            return defaultValue;
+        }
+        return Integer.parseInt(param.getFirst());
+    }
+
+    private Map<String, Object> page(int offset, int limit) {
+        var allSessions = listSessionSummaries();
+        var pagedSessions = allSessions.stream()
+                .skip(offset)
+                .limit(limit)
+                .collect(Collectors.toList());
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("sessions", pagedSessions);
+        response.put("total", allSessions.size());
+        return response;
+    }
+
+    private List<Map<String, Object>> listSessionSummaries() {
+        var persistedSessions = sessionManager.listSessions();
+        var activeSessions = sessionManager.getAllSessions();
+
+        return Stream.concat(
+                persistedSessions.stream().map(this::toPersistedSessionSummary),
+                activeSessions.stream().map(this::toActiveSessionSummary)
+        ).collect(Collectors.toMap(
+                m -> (String) m.get("id"),
+                m -> m,
+                (existing, replacement) -> existing
+        )).values().stream()
+                .sorted(this::compareLastMessageAtDesc)
+                .toList();
+    }
+
+    private int compareLastMessageAtDesc(Map<String, Object> left, Map<String, Object> right) {
+        var tsLeft = left.get("last_message_at");
+        var tsRight = right.get("last_message_at");
+        if (tsLeft == null && tsRight == null) return 0;
+        if (tsLeft == null) return 1;
+        if (tsRight == null) return -1;
+        return ((String) tsRight).compareTo((String) tsLeft);
+    }
+
+    private void sendSessionsResponse(HttpServerExchange exchange, Map<String, Object> response) throws IOException {
+        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+        exchange.setStatusCode(200);
+        exchange.getResponseSender().send(MAPPER.writeValueAsString(response));
     }
 
     private Map<String, Object> toPersistedSessionSummary(SessionPersistence.SessionInfo info) {
@@ -143,9 +146,9 @@ public class ChatSessionsHandler implements HttpHandler {
 
     private String truncateTitle(String text) {
         if (text == null) return null;
-        text = text.trim().replaceAll("\\s+", " ");
-        if (text.length() <= TITLE_MAX_LENGTH) return text;
-        return text.substring(0, TITLE_MAX_LENGTH - 3) + "...";
+        var normalized = text.trim().replaceAll("\\s+", " ");
+        if (normalized.length() <= TITLE_MAX_LENGTH) return normalized;
+        return normalized.substring(0, TITLE_MAX_LENGTH - 3) + "...";
     }
 
     private Map<String, Object> toActiveSessionSummary(ChatSession chatSession) {
