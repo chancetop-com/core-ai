@@ -13,6 +13,10 @@ interface EditorState {
   verifierType: 'bearer' | 'slack' | 'none';
   secret: string;
   slackSigningSecret: string;
+  // Event filter settings
+  filterEventTypes: string;
+  filterIgnoreSubtypes: string;
+  filterChannels: string;
 }
 
 function emptyEditor(): EditorState {
@@ -26,6 +30,9 @@ function emptyEditor(): EditorState {
     verifierType: 'none',
     secret: '',
     slackSigningSecret: '',
+    filterEventTypes: '',
+    filterIgnoreSubtypes: '',
+    filterChannels: '',
   };
 }
 
@@ -97,6 +104,9 @@ export default function TriggersWebhook() {
       verifierType,
       secret: cfg.secret ?? '',
       slackSigningSecret: cfg.slack_signing_secret ?? '',
+      filterEventTypes: t.action_config?.filter_event_types ?? '',
+      filterIgnoreSubtypes: t.action_config?.filter_ignore_subtypes ?? '',
+      filterChannels: t.action_config?.filter_channels ?? '',
     });
   };
 
@@ -115,6 +125,15 @@ export default function TriggersWebhook() {
       const actionConfig: Record<string, string> = { agent_id: editor.agentId };
       if (editor.inputTemplate.trim()) {
         actionConfig.input_template = editor.inputTemplate.trim();
+      }
+      if (editor.filterEventTypes.trim()) {
+        actionConfig.filter_event_types = editor.filterEventTypes.trim();
+      }
+      if (editor.filterIgnoreSubtypes.trim()) {
+        actionConfig.filter_ignore_subtypes = editor.filterIgnoreSubtypes.trim();
+      }
+      if (editor.filterChannels.trim()) {
+        actionConfig.filter_channels = editor.filterChannels.trim();
       }
 
       const config: Record<string, string> = { verifier_type: editor.verifierType };
@@ -330,6 +349,58 @@ export default function TriggersWebhook() {
                   placeholder="Leave empty to forward raw request body. Use {{payload}} to inject request body into template."
                   className="w-full px-3 py-2 rounded-lg border text-sm font-mono"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              </div>
+
+              <div className="pt-2 pb-1">
+                <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>
+                  Event Filters
+                </div>
+                <p className="text-xs mt-1 mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Optional: skip events that don't match. Leave empty to process all events.
+                  For Slack events, the filter checks fields inside the <code className="text-[11px] px-1 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>event</code> object.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Allowed Event Types
+                </label>
+                <input value={editor.filterEventTypes}
+                  onChange={e => setEditor({ ...editor, filterEventTypes: e.target.value })}
+                  placeholder="e.g. message (comma-separated, leave empty for all)"
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Only process these Slack event types. Common: <code className="text-[11px]">message</code>, <code className="text-[11px]">app_mention</code>.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Ignore Subtypes
+                </label>
+                <input value={editor.filterIgnoreSubtypes}
+                  onChange={e => setEditor({ ...editor, filterIgnoreSubtypes: e.target.value })}
+                  placeholder="e.g. bot_message, channel_join"
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Skip events with these subtypes. Common: <code className="text-[11px]">bot_message</code> (ignore bot messages), <code className="text-[11px]">channel_join</code>.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Allowed Channel IDs
+                </label>
+                <input value={editor.filterChannels}
+                  onChange={e => setEditor({ ...editor, filterChannels: e.target.value })}
+                  placeholder="e.g. C123ABC, C456DEF (comma-separated)"
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Only process events from these Slack channel IDs. Leave empty for all channels.
+                </p>
               </div>
 
               <div>

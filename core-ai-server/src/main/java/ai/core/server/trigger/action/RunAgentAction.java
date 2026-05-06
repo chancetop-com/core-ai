@@ -4,6 +4,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.run.AgentRunner;
 import ai.core.server.trigger.domain.Trigger;
+import ai.core.server.trigger.filter.EventFilter;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
@@ -42,6 +43,13 @@ public class RunAgentAction implements TriggerAction {
         if (definition == null) {
             LOGGER.warn("agent not found for trigger {}, agentId={}", trigger.id, agentId);
             return TriggerActionResult.skipped("agent not found: " + agentId);
+        }
+
+        // Apply event filter before running agent to avoid wasting tokens
+        var filter = new EventFilter(trigger.actionConfig);
+        if (!filter.matches(payload)) {
+            LOGGER.info("trigger {} skipped by event filter for agentId={}", trigger.id, agentId);
+            return TriggerActionResult.skipped("filtered by event filter");
         }
 
         var inputTemplate = trigger.actionConfig != null ? trigger.actionConfig.get("input_template") : null;
