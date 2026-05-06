@@ -103,6 +103,7 @@ public class GlobFileTool extends ToolCall {
         pb.redirectErrorStream(true);
         pb.directory(searchDir);
         var process = pb.start();
+        process.getOutputStream().close();
         var processResult = RipGrepUtil.executeProcess(process, MAX_RESULTS + 1, getTimeoutMs());
         int exitCode = processResult.exitCode();
         var output = processResult.output();
