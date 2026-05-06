@@ -89,7 +89,6 @@ public class LocalAgentHandler implements HttpHandler {
         view.tools = List.of();
         view.inputTemplate = "";
         view.variables = null;
-        view.webhookSecret = "";
         view.systemDefault = true;
         view.type = "local";
         view.responseSchema = null;

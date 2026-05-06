@@ -20,12 +20,12 @@ import SettingsPage from './pages/settings/Settings';
 import Scheduler from './pages/scheduler/Scheduler';
 import Tasks from './pages/tasks/Tasks';
 import Mcp from './pages/mcp/Mcp';
-import Tools from './pages/tools/Tools';
 import BuiltinTools from './pages/tools/BuiltinTools';
 import ApiTools from './pages/api-tools/ApiTools';
 import ApiToolDetail from './pages/api-tools/ApiToolDetail';
 import SkillList from './pages/skills/SkillList';
 import SkillEditor from './pages/skills/SkillEditor';
+import TriggersWebhook from './pages/triggers/TriggersWebhook';
 import { CapabilitiesContext, fetchCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
@@ -95,12 +95,15 @@ export default function App() {
                 {caps.systemPrompts && <Route path="/system-prompts" element={<SystemPromptList />} />}
                 {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<SystemPromptEditor />} />}
                 {caps.dashboard && <Route path="/dashboard" element={<Dashboard />} />}
-                <Route path="/scheduler" element={<Scheduler />} />
+                <Route path="/triggers/webhook" element={<TriggersWebhook />} />
+                <Route path="/triggers/schedule" element={<Scheduler />} />
+                <Route path="/triggers" element={<Navigate to="/triggers/webhook" replace />} />
+                {/* Backward compat: old /scheduler redirects to /triggers/schedule */}
+                <Route path="/scheduler" element={<Navigate to="/triggers/schedule" replace />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/mcp" element={<Mcp />} />
-                <Route path="/tools" element={<Tools />}>
-                  <Route path="builtin" element={<BuiltinTools />} />
-                </Route>
+                <Route path="/tools" element={<Navigate to="/tools/builtin" replace />} />
+                <Route path="/tools/builtin" element={<BuiltinTools />} />
                 <Route path="/api-tools" element={<ApiTools />} />
                 <Route path="/api-tools/:id" element={<ApiToolDetail />} />
                 <Route path="/skills" element={<SkillList />} />

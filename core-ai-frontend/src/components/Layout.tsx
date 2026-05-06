@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench, Settings } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench, Settings, Webhook, Zap } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -39,6 +39,9 @@ export default function Layout() {
       '/api-tools': 'API Tools',
       '/skills': 'Skills',
       '/settings': 'Settings',
+      '/triggers': 'Triggers',
+      '/triggers/webhook': 'Webhook Triggers',
+      '/triggers/schedule': 'Scheduler',
     };
     const path = location.pathname;
     const title = titles[path]
@@ -63,6 +66,7 @@ export default function Layout() {
     if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
     if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
+    if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule';
     return pathname === to;
   };
 
@@ -71,8 +75,11 @@ export default function Layout() {
     { to: '/', icon: Activity, label: 'Traces', show: caps.traces },
     { to: '/agents', icon: Bot, label: 'Agents', show: true },
     { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts },
-    { to: '/scheduler', icon: Calendar, label: 'Scheduler', show: true },
     { to: '/tasks', icon: ListChecks, label: 'Tasks', show: true },
+    { to: '/triggers', icon: Zap, label: 'Triggers', show: true, children: [
+      { to: '/triggers/webhook', icon: Webhook, label: 'Webhook', show: true },
+      { to: '/triggers/schedule', icon: Calendar, label: 'Schedule', show: true },
+    ]},
     { to: '/tools', icon: Wrench, label: 'Tools', show: true, children: [
       { to: '/tools/builtin', icon: Wrench, label: 'Builtin Tools', show: true },
       { to: '/mcp', icon: Network, label: 'MCP', show: true },

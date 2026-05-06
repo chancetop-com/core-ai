@@ -9,6 +9,7 @@ import ai.core.api.server.AgentSessionWebService;
 import ai.core.api.server.SkillWebService;
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.UserWebService;
+import ai.core.api.server.trigger.TriggerWebService;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
@@ -53,10 +54,12 @@ import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillUploadController;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.user.UserService;
+import ai.core.server.trigger.TriggerController;
+import ai.core.server.trigger.TriggerService;
+import ai.core.server.trigger.action.RunAgentAction;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
 import ai.core.server.web.ChatSessionController;
 import ai.core.server.web.SkillWebServiceImpl;
-import ai.core.server.web.webhook.WebhookController;
 import ai.core.server.web.AgentRunWebServiceImpl;
 import ai.core.server.web.AgentScheduleWebServiceImpl;
 import ai.core.server.web.sse.AgentSessionChannelListener;
@@ -68,6 +71,7 @@ import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.ToolRegistryWebServiceImpl;
 import ai.core.server.web.AuthWebServiceImpl;
 import ai.core.server.web.UserWebServiceImpl;
+import ai.core.server.web.TriggerWebServiceImpl;
 import ai.core.server.systemprompt.SystemPromptController;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.web.CapabilitiesController;
@@ -88,6 +92,7 @@ import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -116,6 +121,7 @@ public class ServerModule extends Module {
         bindSandboxService();
         bindService();
         bindAuthService();
+        registerWebhookTrigger();
 
         var builderTools = bind(LLMCallBuilderTools.class);
 
@@ -127,8 +133,6 @@ public class ServerModule extends Module {
         bind(PodLocalExecutor.class);
 
         bindWebService();
-        http().route(HTTPMethod.POST, "/api/webhooks/:agentId", bind(WebhookController.class));
-
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
 
         registerTrace();
@@ -232,8 +236,18 @@ public class ServerModule extends Module {
         }
     }
 
+    private String resolveNamespace() {
+        var configured = property("sys.sandbox.kubernetes.namespace").orElse(null);
+        if (configured != null && !configured.isBlank()) return configured;
+        try {
+            return Files.readString(Path.of("/var/run/secrets/kubernetes.io/serviceaccount/namespace")).trim();
+        } catch (Exception e) {
+            return "core-ai-sandbox";
+        }
+    }
+
     private SandboxProvider createKubernetesSandboxProvider() {
-        var namespace = property("sys.sandbox.kubernetes.namespace").orElse("core-ai-sandbox");
+        var namespace = resolveNamespace();
         var token = property("sys.sandbox.kubernetes.token").orElse(null);
         KubernetesClient kubernetesClient;
         if (token != null && !token.isBlank()) {
@@ -247,7 +261,7 @@ public class ServerModule extends Module {
     }
 
     private SandboxProvider createAgentSandboxProvider() {
-        var namespace = property("sys.sandbox.kubernetes.namespace").orElse("core-ai-sandbox");
+        var namespace = resolveNamespace();
         var token = property("sys.sandbox.kubernetes.token").orElse(null);
         var apiServer = property("sys.sandbox.kubernetes.apiServer").orElse("https://kubernetes.default.svc");
         TokenResolver tokenResolver = (token != null && !token.isBlank())
@@ -264,8 +278,8 @@ public class ServerModule extends Module {
             }
         }
         // Warm pool mode: if template name is configured, use SandboxClaim via extensions API
-        var templateName = property("sys.sandbox.agentSandbox.template").orElse(null);
-        var warmPoolName = property("sys.sandbox.agentSandbox.warmPool").orElse("default");
+        var templateName = property("sys.sandbox.agentSandbox.template").orElse("core-ai-sandbox");
+        var warmPoolName = property("sys.sandbox.agentSandbox.warmPool").orElse("core-ai-sandbox");
         AgentSandboxExtensionsClient extensionsClient = null;
         if (templateName != null && !templateName.isBlank()) {
             extensionsClient = new AgentSandboxExtensionsClient(apiServer, namespace, tokenResolver, 120);
@@ -295,6 +309,9 @@ public class ServerModule extends Module {
         bind(AgentRunService.class);
         bind(AgentScheduleService.class);
         bind(UserService.class);
+        var triggerService = bind(TriggerService.class);
+        triggerService.publicUrl = property("sys.public.url").orElse("http://localhost:8080");
+        bind(RunAgentAction.class);
     }
 
     private void bindWebService() {
@@ -309,6 +326,7 @@ public class ServerModule extends Module {
         api().service(AgentDefinitionWebService.class, bind(AgentDefinitionWebServiceImpl.class));
         api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
         api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
+        api().service(TriggerWebService.class, bind(TriggerWebServiceImpl.class));
     }
 
     private void registerStaticFiles() {
@@ -325,7 +343,8 @@ public class ServerModule extends Module {
         var spaRoutes = new String[]{
             "/", "/login", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
-            "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools"
+            "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools",
+            "/triggers"
         };
         for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);
@@ -368,6 +387,13 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions", controller::versions);
         http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions/:version", controller::getVersion);
         http().route(HTTPMethod.POST, "/api/system-prompts/:promptId/test", controller::test);
+    }
+
+    private void registerWebhookTrigger() {
+        var controller = bind(TriggerController.class);
+        http().route(HTTPMethod.POST, "/api/webhook-triggers/:id", controller);
+        // GET for Slack URL verification challenge
+        http().route(HTTPMethod.GET, "/api/webhook-triggers/:id", controller);
     }
 
     private void registerCapabilities() {

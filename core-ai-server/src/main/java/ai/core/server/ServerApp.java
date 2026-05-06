@@ -19,6 +19,7 @@ import ai.core.server.domain.migration.SchemaVersion;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trigger.domain.Trigger;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
 import core.framework.mongo.module.MongoConfig;
@@ -68,5 +69,8 @@ public class ServerApp extends App {
 
         // service api collection
         mongo.collection(ServiceApi.class);
+
+        // trigger collection
+        mongo.collection(Trigger.class);
     }
 }

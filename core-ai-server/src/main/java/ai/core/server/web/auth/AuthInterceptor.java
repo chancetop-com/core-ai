@@ -29,10 +29,10 @@ public class AuthInterceptor implements Interceptor {
         }
 
         if (path.equals("/api/auth/register") || path.equals("/api/auth/login")
-                || path.startsWith("/api/webhooks/")
                 || path.startsWith("/api/public/otel/")
                 || path.startsWith("/api/ingest/")
-                || path.startsWith("/api/capabilities")) {
+                || path.startsWith("/api/capabilities")
+                || path.startsWith("/api/webhook-triggers/")) {
             return invocation.proceed();
         }
 

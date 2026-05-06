@@ -214,7 +214,6 @@ export interface AgentDefinition {
   tools: ToolRef[];
   input_template: string;
   variables: Record<string, string>;
-  webhook_secret: string;
   system_default: boolean;
   type: string;
   response_schema: unknown;
@@ -684,4 +683,62 @@ export const api = {
     delete: (id: string) =>
       request<void>(`/api/schedules/${id}`, { method: 'DELETE' }),
   },
+  triggers: {
+    list: (type?: string) => {
+      const params = type ? `?type=${type}` : '';
+      return request<ListTriggersResponse>(`/api/triggers${params}`);
+    },
+    get: (id: string) =>
+      request<TriggerView>(`/api/triggers/${id}`),
+    create: (data: CreateTriggerRequest) =>
+      request<TriggerView>('/api/triggers', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: UpdateTriggerRequest) =>
+      request<TriggerView>(`/api/triggers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/api/triggers/${id}`, { method: 'DELETE' }),
+    enable: (id: string) =>
+      request<TriggerView>(`/api/triggers/${id}/enable`, { method: 'POST' }),
+    disable: (id: string) =>
+      request<TriggerView>(`/api/triggers/${id}/disable`, { method: 'POST' }),
+    rotateSecret: (id: string) =>
+      request<TriggerView>(`/api/triggers/${id}/rotate-secret`, { method: 'POST' }),
+  },
 };
+
+export interface TriggerView {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  enabled: boolean;
+  config: Record<string, string>;
+  webhook_url?: string;
+  action_type: string;
+  action_config: Record<string, string>;
+  last_triggered_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListTriggersResponse {
+  triggers: TriggerView[];
+  total: number;
+}
+
+export interface CreateTriggerRequest {
+  name: string;
+  description?: string;
+  type: string;
+  config?: Record<string, string>;
+  action_type: string;
+  action_config?: Record<string, string>;
+}
+
+export interface UpdateTriggerRequest {
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  config?: Record<string, string>;
+  action_type?: string;
+  action_config?: Record<string, string>;
+}

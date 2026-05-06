@@ -61,9 +61,6 @@ public class AgentDefinition {
     @Field(name = "system_prompt_id")
     public String systemPromptId;
 
-    @Field(name = "webhook_secret")
-    public String webhookSecret;
-
     @Field(name = "system_default")
     public Boolean systemDefault;
 
