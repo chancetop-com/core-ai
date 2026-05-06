@@ -10,7 +10,13 @@ import ai.core.api.server.SkillWebService;
 import ai.core.api.server.ToolRegistryWebService;
 import ai.core.api.server.UserWebService;
 import ai.core.api.server.trigger.TriggerWebService;
+import ai.core.api.a2a.StreamResponse;
 import ai.core.sandbox.SandboxProvider;
+import ai.core.server.a2a.A2AAgentCardController;
+import ai.core.server.a2a.A2AMessageController;
+import ai.core.server.a2a.A2AStreamChannelListener;
+import ai.core.server.a2a.A2ATaskController;
+import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.JavaToSchemaService;
@@ -141,6 +147,7 @@ public class ServerModule extends Module {
 
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
+        sseConfig.listen(HTTPMethod.POST, "/api/a2a/message:stream", StreamResponse.class, bind(A2AStreamChannelListener.class));
 
         registerStaticFiles();
     }
@@ -153,38 +160,22 @@ public class ServerModule extends Module {
         var jedisPool = redisConfig.createJedisPool();
         onShutdown(jedisPool::close);
 
-        // Ownership registry
         var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
-
-        // Publishers
         bind(new CommandPublisher(jedisPool, ownershipRegistry));
         bind(new EventPublisher(jedisPool));
-
-        // Wire EventPublisher into the already-bound AgentSessionManager
         bean(AgentSessionManager.class).setEventPublisher(bean(EventPublisher.class));
-        // Wire SessionOwnershipRegistry into AgentSessionManager
         bean(AgentSessionManager.class).setOwnershipRegistry(ownershipRegistry);
-
-        // RPC client (for forwarding sync requests to owner Pod)
         var rpcClient = bind(new RpcClient(jedisPool, ownershipRegistry));
-
-        // RPC response subscriber (Redis Pub/Sub → dispatches to pending RPC calls)
         var rpcResponseSubscriber = new RpcResponseSubscriber(jedisPool, rpcClient);
         onStartup(rpcResponseSubscriber::start);
         onShutdown(rpcResponseSubscriber::stop);
-
-        // Event subscriber (Redis Pub/Sub → local SSE channels)
         var eventSubscriber = new EventSubscriber(jedisPool, bean(SessionChannelService.class));
         onStartup(eventSubscriber::start);
         onShutdown(eventSubscriber::stop);
-
-        // Command handler (stateless dispatcher, receives commands from CommandConsumer)
         var chatMessageService = bean(ChatMessageService.class);
         var commandHandler = new InProcessCommandHandler(
                 bean(AgentSessionManager.class), chatMessageService, ownershipRegistry,
                 bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class), jedisPool);
-
-        // Command consumer (per-Pod stream + unowned stream)
         var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);
         onStartup(commandConsumer::start);
         onShutdown(() -> {
@@ -303,6 +294,7 @@ public class ServerModule extends Module {
         bind(SessionChannelService.class);
         bind(ChatMessageService.class);
         bind(AgentSessionManager.class);
+        bind(ServerA2AService.class);
         bind(AgentDefinitionService.class);
         bind(JavaToSchemaService.class);
         bind(AgentDraftGenerator.class);
@@ -327,6 +319,19 @@ public class ServerModule extends Module {
         api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
         api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
         api().service(TriggerWebService.class, bind(TriggerWebServiceImpl.class));
+        registerA2A();
+    }
+
+    private void registerA2A() {
+        var agentCardController = bind(A2AAgentCardController.class);
+        var messageController = bind(A2AMessageController.class);
+        var taskController = bind(A2ATaskController.class);
+
+        http().route(HTTPMethod.GET, "/api/a2a/agents/:agentId/.well-known/agent-card.json", agentCardController::get);
+        http().route(HTTPMethod.POST, "/api/a2a/agents/:agentId/message:send", messageController::send);
+        http().route(HTTPMethod.GET, "/api/a2a/tasks/:taskId", taskController::get);
+        http().route(HTTPMethod.POST, "/api/a2a/tasks/:taskId", taskController::cancel);
+        http().route(HTTPMethod.POST, "/api/a2a/tasks/:taskId/cancel", taskController::cancel);
     }
 
     private void registerStaticFiles() {

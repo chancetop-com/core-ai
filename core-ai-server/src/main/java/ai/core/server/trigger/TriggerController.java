@@ -142,7 +142,7 @@ public class TriggerController implements Controller {
         try {
             ts = Long.parseLong(timestamp);
         } catch (NumberFormatException e) {
-            throw new ForbiddenException("invalid slack timestamp");
+            throw new ForbiddenException("invalid slack timestamp", "INVALID_SLACK_TIMESTAMP", e);
         }
         if (Math.abs(now - ts) > 300) {
             throw new ForbiddenException("slack timestamp too old");

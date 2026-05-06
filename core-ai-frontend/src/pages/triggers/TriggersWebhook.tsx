@@ -378,15 +378,17 @@ export default function TriggersWebhook() {
                 </div>
               )}
 
-              {editor.editing && (
+              {editor.editing && ((editing) => {
+                const webhookUrl = editing.webhook_url;
+                return (
                 <div className="space-y-3 px-4 py-3 rounded-lg text-xs" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                   <div>
                     <div className="font-medium mb-1">Webhook URL</div>
                     <div className="font-mono break-all flex items-center gap-1">
-                      {editor.editing.webhook_url || '-'}
-                      {editor.editing.webhook_url && (
+                      {webhookUrl || '-'}
+                      {webhookUrl && (
                         <button onClick={() => {
-                          navigator.clipboard.writeText(editor.editing.webhook_url!);
+                          navigator.clipboard.writeText(webhookUrl);
                         }}
                           className="inline-flex items-center justify-center w-5 h-5 rounded shrink-0 cursor-pointer"
                           style={{ color: 'var(--color-text-secondary)' }}>
@@ -395,13 +397,14 @@ export default function TriggersWebhook() {
                       )}
                     </div>
                   </div>
-                  {editor.editing.config && (() => {
-                    const vt = editor.editing.config!.verifier_type;
+                  {editing.config && (() => {
+                    const config = editing.config;
+                    const vt = config.verifier_type;
                     if (!vt || vt === 'none') {
                       return <div className="font-medium">Auth: None</div>;
                     }
                     if (vt === 'slack') {
-                      const ss = editor.editing.config!.slack_signing_secret;
+                      const ss = config.slack_signing_secret;
                       return (
                         <div>
                           <div className="font-medium mb-1">Auth: Slack (HMAC-SHA256)</div>
@@ -421,16 +424,17 @@ export default function TriggersWebhook() {
                       );
                     }
                     // bearer
+                    const secret = config.secret;
                     return (
                       <div>
                         <div className="font-medium mb-1">Auth: Bearer Token</div>
-                        {editor.editing.config!.secret && (
+                        {secret && (
                           <>
                             <div className="font-mono break-all flex items-center gap-1"
                               style={{ color: 'var(--color-primary)' }}>
-                              {editor.editing.config!.secret}
+                              {secret}
                               <button onClick={() => {
-                                navigator.clipboard.writeText(editor.editing.config!.secret);
+                                navigator.clipboard.writeText(secret);
                               }}
                                 className="inline-flex items-center justify-center w-5 h-5 rounded shrink-0 cursor-pointer"
                                 style={{ color: 'var(--color-text-secondary)' }}>
@@ -443,7 +447,8 @@ export default function TriggersWebhook() {
                     );
                   })()}
                 </div>
-              )}
+                );
+              })(editor.editing)}
             </div>
 
             <div className="flex gap-2 mt-6">

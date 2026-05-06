@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -33,7 +35,7 @@ public class TriggerService {
         entity.userId = userId;
         entity.name = request.name;
         entity.description = request.description;
-        entity.type = request.type != null ? TriggerType.valueOf(request.type.toUpperCase()) : TriggerType.WEBHOOK;
+        entity.type = request.type != null ? TriggerType.valueOf(request.type.toUpperCase(Locale.ROOT)) : TriggerType.WEBHOOK;
         entity.enabled = true;
         entity.actionType = request.actionType;
         entity.actionConfig = request.actionConfig;
@@ -42,21 +44,7 @@ public class TriggerService {
 
         var config = request.config != null ? new HashMap<>(request.config) : new HashMap<String, String>();
         if (entity.type == TriggerType.WEBHOOK) {
-            config.putIfAbsent("verifier_type", "bearer");
-            String verifierType = config.get("verifier_type");
-            if ("bearer".equals(verifierType)) {
-                config.remove("slack_signing_secret");
-                config.putIfAbsent("secret", "whk_" + UUID.randomUUID().toString().replace("-", ""));
-                if (config.get("secret") == null || config.get("secret").isBlank()) {
-                    config.remove("secret");
-                }
-            } else if ("slack".equals(verifierType)) {
-                config.remove("secret");
-            } else {
-                // "none" or unknown — clear all auth keys
-                config.remove("secret");
-                config.remove("slack_signing_secret");
-            }
+            initializeWebhookVerifier(config);
         }
         entity.config = config;
 
@@ -67,7 +55,7 @@ public class TriggerService {
 
     public ListTriggersResponse list(String type) {
         var filter = type != null && !type.isBlank()
-                ? Filters.eq("type", type.toUpperCase())
+                ? Filters.eq("type", type.toUpperCase(Locale.ROOT))
                 : Filters.empty();
         var entities = triggerCollection.find(filter);
         var response = new ListTriggersResponse();
@@ -80,6 +68,28 @@ public class TriggerService {
         var entity = triggerCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("trigger not found, id=" + id));
         return toView(entity);
+    }
+
+    private void initializeWebhookVerifier(Map<String, String> config) {
+        config.putIfAbsent("verifier_type", "bearer");
+        String verifierType = config.get("verifier_type");
+        if ("bearer".equals(verifierType)) {
+            config.remove("slack_signing_secret");
+            config.putIfAbsent("secret", "whk_" + UUID.randomUUID().toString().replace("-", ""));
+            removeBlankSecret(config);
+        } else if ("slack".equals(verifierType)) {
+            config.remove("secret");
+        } else {
+            config.remove("secret");
+            config.remove("slack_signing_secret");
+        }
+    }
+
+    private void removeBlankSecret(Map<String, String> config) {
+        var secret = config.get("secret");
+        if (secret == null || secret.isBlank()) {
+            config.remove("secret");
+        }
     }
 
     public Trigger getEntity(String id) {

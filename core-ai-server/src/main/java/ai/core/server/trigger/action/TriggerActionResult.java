@@ -4,9 +4,6 @@ package ai.core.server.trigger.action;
  * @author stephen
  */
 public class TriggerActionResult {
-    public String runId;
-    public String status;
-
     public static TriggerActionResult running(String runId) {
         var result = new TriggerActionResult();
         result.runId = runId;
@@ -20,4 +17,7 @@ public class TriggerActionResult {
         result.status = "SKIPPED";
         return result;
     }
+
+    public String runId;
+    public String status;
 }
