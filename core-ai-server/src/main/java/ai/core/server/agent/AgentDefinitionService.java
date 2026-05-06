@@ -17,6 +17,7 @@ import ai.core.server.session.AgentSessionManager;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.util.Strings;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -51,7 +52,7 @@ public class AgentDefinitionService {
         entity.name = request.name;
         entity.description = request.description;
         entity.systemPrompt = request.systemPrompt;
-        entity.systemPromptId = request.systemPromptId;
+        entity.systemPromptId = Strings.isBlank(request.systemPromptId) ? null : request.systemPromptId;
         entity.model = request.model;
         entity.temperature = request.temperature;
         var isLLMCall = "LLM_CALL".equals(request.type);

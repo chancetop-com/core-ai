@@ -86,7 +86,7 @@ public class LLMCallExecutor {
 
     private String resolveSystemPrompt(AgentPublishedConfig config, AgentDefinition definition) {
         var promptId = config != null ? config.systemPromptId : definition.systemPromptId;
-        if (promptId != null) {
+        if (promptId != null && !promptId.isBlank()) {
             return systemPromptService.resolveContent(promptId);
         }
         return config != null ? config.systemPrompt : definition.systemPrompt;
