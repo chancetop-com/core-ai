@@ -52,10 +52,11 @@ public class InteractiveConfigSetup {
         String username = promptRequired(ui, "Username");
         String apiKey = promptRequired(ui, "API Key");
         String model = promptRequired(ui, "Model");
+        boolean coding = promptYesNo(ui, "Enable coding mode (y/n)", false);
         ui.printStreamingChunk("\n");
 
 
-        writeConfig(apiKey, model, username);
+        writeConfig(apiKey, model, username, coding);
 
         ui.printStreamingChunk("\n");
         ui.printStreamingChunk(AnsiTheme.SUCCESS + "  Configuration saved to " + CONFIG_FILE + AnsiTheme.RESET + "\n");
@@ -73,7 +74,20 @@ public class InteractiveConfigSetup {
         }
     }
 
-    private static void writeConfig(String apiKey, String model, String username) {
+    private static boolean promptYesNo(TerminalUI ui, String label, boolean defaultValue) {
+        String suffix = defaultValue ? " [Y/n]" : " [y/N]";
+        while (true) {
+            String line = ui.readRawLine("  " + label + suffix + ": ");
+            if (line == null || line.isBlank()) {
+                return defaultValue;
+            }
+            line = line.trim().toLowerCase();
+            if (line.equals("y") || line.equals("yes")) return true;
+            if (line.equals("n") || line.equals("no")) return false;
+        }
+    }
+
+    private static void writeConfig(String apiKey, String model, String username, boolean coding) {
         try {
             Files.createDirectories(CONFIG_DIR);
             String content = "core.appName=core-ai-cli\n"
@@ -84,7 +98,7 @@ public class InteractiveConfigSetup {
                     + "litellm.timeout.seconds=300\n"
                     + "litellm.models=" + model + "\n"
                     + "username=" + username + "\n"
-                    + "agent.coding.enabled=false\n";
+                    + "agent.coding.enabled=" + coding + "\n";
             Files.writeString(CONFIG_FILE, content);
         } catch (IOException e) {
             throw new RuntimeException("Failed to write config to " + CONFIG_FILE, e);
