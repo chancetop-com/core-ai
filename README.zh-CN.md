@@ -111,6 +111,7 @@ System.out.println(output.getOutput());
 
 **设计文档**
 - [A2A 框架与 CLI/Server 集成](./docs/cn/design-cli-server-a2a.md) - 框架级 A2A、server-only Tool/MCP、CLI/server 集成设计
+- [A2A Remote Agent as Tool](./docs/cn/design-a2a-remote-agent-tool.md) - 本地 Agent 通过 A2A 调用 server Agent 的协作设计
 
 ### 🏗️ 架构设计
 
