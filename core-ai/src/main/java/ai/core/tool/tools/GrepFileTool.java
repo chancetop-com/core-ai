@@ -111,7 +111,7 @@ public class GrepFileTool extends ToolCall {
         pb.redirectErrorStream(true);
         pb.directory(searchCtx.cwd);
         var process = pb.start();
-
+        process.getOutputStream().close();
         var processResult = RipGrepUtil.executeProcess(process, MAX_READ_LINES, getTimeoutMs());
         int exitCode = processResult.exitCode();
         var output = processResult.output();
