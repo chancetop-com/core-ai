@@ -140,7 +140,7 @@ public class McpClientManager implements AutoCloseable {
             try {
                 getClient(serverName);
             } catch (Exception e) {
-                LOGGER.error("Failed to warmup client: {}", serverName, e);
+                LOGGER.warn("Failed to warmup client: {}", serverName, e);
             }
         });
         LOGGER.debug("MCP clients warmup completed");
@@ -245,7 +245,7 @@ public class McpClientManager implements AutoCloseable {
                 LOGGER.debug("Closed MCP client: {}", serverName);
             } catch (Exception e) {
                 updateState(serverName, ConnectionState.FAILED);
-                LOGGER.error("Error closing MCP client: {}", serverName, e);
+                LOGGER.warn("Error closing MCP client: {}", serverName, e);
             }
         }
     }
@@ -335,7 +335,7 @@ public class McpClientManager implements AutoCloseable {
             try {
                 listener.onStateChanged(serverName, oldState, newState);
             } catch (Exception e) {
-                LOGGER.error("Error notifying listener for server: {}", serverName, e);
+                LOGGER.warn("Error notifying listener for server: {}", serverName, e);
             }
         }
     }

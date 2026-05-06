@@ -306,7 +306,7 @@ public class ToolRegistryService {
             try {
                 mcpManager.getClient(serverId);
             } catch (Exception e) {
-                LOGGER.error("failed to warmup mcp server, id={}", serverId, e);
+                LOGGER.warn("failed to warmup mcp server, id={}", serverId, e);
             }
         }
     }
