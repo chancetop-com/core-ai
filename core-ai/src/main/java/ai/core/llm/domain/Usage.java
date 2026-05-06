@@ -101,7 +101,7 @@ public class Usage {
         public int reasoningTokens;
     }
 
-    public static class PromptTokensDetails{
+    public static class PromptTokensDetails {
         @Property(name = "cached_tokens")
         public int cachedTokens;
     }
