@@ -12,6 +12,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
@@ -24,14 +25,20 @@ public class RemoteApiClient {
 
     private final String serverUrl;
     private final String apiKey;
+    private final Duration requestTimeout;
     private final HttpClient sseClient;
     private final HttpClient apiClient;
 
     public RemoteApiClient(String serverUrl, String apiKey) {
+        this(serverUrl, apiKey, null);
+    }
+
+    public RemoteApiClient(String serverUrl, String apiKey, Duration requestTimeout) {
         this.serverUrl = serverUrl;
         this.apiKey = apiKey;
-        this.sseClient = HttpClient.newBuilder().build();
-        this.apiClient = HttpClient.newBuilder().build();
+        this.requestTimeout = requestTimeout;
+        this.sseClient = createHttpClient(requestTimeout);
+        this.apiClient = createHttpClient(requestTimeout);
     }
 
     public HttpClient httpClient() {
@@ -47,20 +54,23 @@ public class RemoteApiClient {
     }
 
     public String get(String path) {
-        var request = HttpRequest.newBuilder()
-                .uri(URI.create(serverUrl + path))
-                .header("Authorization", "Bearer " + apiKey)
+        var request = request(path)
                 .GET()
                 .build();
         return send(request);
     }
 
+    public String getRequired(String path) {
+        var request = request(path)
+                .GET()
+                .build();
+        return sendRequired(request);
+    }
+
     public String post(String path, Object body) {
         var json = body != null ? JsonUtil.toJson(body) : "{}";
-        var request = HttpRequest.newBuilder()
-                .uri(URI.create(serverUrl + path))
+        var request = request(path)
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
         return send(request);
@@ -68,29 +78,23 @@ public class RemoteApiClient {
 
     public String put(String path, Object body) {
         var json = body != null ? JsonUtil.toJson(body) : "{}";
-        var request = HttpRequest.newBuilder()
-                .uri(URI.create(serverUrl + path))
+        var request = request(path)
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
                 .PUT(HttpRequest.BodyPublishers.ofString(json))
                 .build();
         return send(request);
     }
 
     public String postEmpty(String path) {
-        var request = HttpRequest.newBuilder()
-                .uri(URI.create(serverUrl + path))
+        var request = request(path)
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
         return send(request);
     }
 
     public void delete(String path) {
-        var request = HttpRequest.newBuilder()
-                .uri(URI.create(serverUrl + path))
-                .header("Authorization", "Bearer " + apiKey)
+        var request = request(path)
                 .DELETE()
                 .build();
         send(request);
@@ -121,10 +125,8 @@ public class RemoteApiClient {
                 offset += part.length;
             }
 
-            var request = HttpRequest.newBuilder()
-                .uri(URI.create(serverUrl + path))
+            var request = request(path)
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
             return send(request);
@@ -135,9 +137,21 @@ public class RemoteApiClient {
     }
 
     public HttpRequest.Builder putRequest(String path) {
-        return HttpRequest.newBuilder()
+        return request(path);
+    }
+
+    private HttpClient createHttpClient(Duration timeout) {
+        var builder = HttpClient.newBuilder();
+        if (timeout != null) builder.connectTimeout(timeout);
+        return builder.build();
+    }
+
+    private HttpRequest.Builder request(String path) {
+        var builder = HttpRequest.newBuilder()
                 .uri(URI.create(serverUrl + path))
                 .header("Authorization", "Bearer " + apiKey);
+        if (requestTimeout != null) builder.timeout(requestTimeout);
+        return builder;
     }
 
     private String send(HttpRequest request) {
@@ -154,6 +168,23 @@ public class RemoteApiClient {
         } catch (Exception e) {
             LOGGER.warn("API request failed: {}", e.getMessage());
             return null;
+        }
+    }
+
+    private String sendRequired(HttpRequest request) {
+        try {
+            var response = apiClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 400) {
+                LOGGER.warn("API error: {} {}", response.statusCode(), response.body());
+                var message = parseErrorMessage(response.statusCode(), response.body());
+                throw new RemoteApiException(response.statusCode(), message);
+            }
+            return response.body();
+        } catch (RemoteApiException e) {
+            throw e;
+        } catch (Exception e) {
+            LOGGER.warn("API request failed: {}", e.getMessage());
+            throw new IllegalStateException("API request failed: " + e.getMessage(), e);
         }
     }
 

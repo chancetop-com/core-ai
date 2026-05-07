@@ -252,6 +252,21 @@ class A2ARemoteAgentConfigLoaderTest {
     }
 
     @Test
+    void requiredRemoteServerCatalogDiscoveryFailureIsRejected() {
+        var server = new A2ARemoteServerConfig();
+        server.id = "dev";
+        server.url = "https://server";
+        server.discoveryRequired = true;
+
+        assertThrows(IllegalStateException.class, () -> new A2ARemoteAgentDiscovery() {
+            @Override
+            protected String fetchAgentsJson(A2ARemoteServerConfig server, String apiKey) {
+                throw new IllegalStateException("server unavailable");
+            }
+        }.discoverCatalog(List.of(), List.of(server)));
+    }
+
+    @Test
     void discoveryUsesShortCacheAndReturnsIndependentConfigs() {
         A2ARemoteAgentDiscovery.clearCacheForTesting();
         var server = new A2ARemoteServerConfig();
@@ -341,12 +356,56 @@ class A2ARemoteAgentConfigLoaderTest {
             }
         }).build();
 
-        var result = tool.execute(JsonUtil.toJson(Map.of("agent_id", "dev:jira", "task", "Summarize CORE-123")));
+        var result = tool.execute(JsonUtil.toJson(Map.of("agent_id", "dev:jira", "task", "Summarize CORE-123")),
+                ExecutionContext.builder().sessionId("local-session").build());
 
         assertTrue(result.isCompleted());
         assertEquals("delegated result", result.getResult());
         assertEquals("dev:jira", result.getStats().get("remote_catalog_agent_id"));
         assertEquals("Jira Agent", result.getStats().get("remote_agent_name"));
+    }
+
+    @Test
+    void delegateToRemoteAgentRequiresExecutionContext() {
+        var catalog = new RemoteAgentCatalog(List.of(entry("dev:jira", "dev", "jira",
+                "Jira Agent", "Handles Jira issue lookup and workflow updates.")));
+        var tool = DelegateToRemoteAgentToolCall.builder().catalog(catalog).delegateFactory(config -> new ToolCall() {
+            @Override
+            public ToolCallResult execute(String arguments, ExecutionContext context) {
+                return ToolCallResult.completed("unexpected");
+            }
+
+            @Override
+            public ToolCallResult execute(String arguments) {
+                return ToolCallResult.completed("unexpected");
+            }
+        }).build();
+
+        var result = tool.execute(JsonUtil.toJson(Map.of("agent_id", "dev:jira", "task", "Summarize CORE-123")));
+
+        assertTrue(result.isFailed());
+        assertTrue(result.getResult().contains("requires ExecutionContext"));
+    }
+
+    @Test
+    void delegateToRemoteAgentTimeoutCoversRemoteAgentTimeout() {
+        var entry = entry("dev:jira", "dev", "jira", "Jira Agent", "Handles Jira issue lookup.");
+        entry.config().timeout = Duration.ofMinutes(12);
+        var catalog = new RemoteAgentCatalog(List.of(entry));
+
+        var tool = DelegateToRemoteAgentToolCall.builder().catalog(catalog).delegateFactory(config -> new ToolCall() {
+            @Override
+            public ToolCallResult execute(String arguments, ExecutionContext context) {
+                return ToolCallResult.completed("delegated");
+            }
+
+            @Override
+            public ToolCallResult execute(String arguments) {
+                return ToolCallResult.completed("delegated");
+            }
+        }).build();
+
+        assertEquals(Duration.ofMinutes(13).toMillis(), tool.getTimeoutMs());
     }
 
     private A2ARemoteAgentConfig config(String id, String name) {

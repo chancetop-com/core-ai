@@ -1,5 +1,6 @@
 package ai.core.cli.remote;
 
+import ai.core.a2a.A2ARemoteAgentDescriptor;
 import ai.core.a2a.InMemoryRemoteAgentContextStore;
 import ai.core.a2a.RemoteAgentContextStore;
 import ai.core.agent.ExecutionContext;
@@ -22,6 +23,7 @@ import java.util.function.Function;
  */
 public class DelegateToRemoteAgentToolCall extends ToolCall {
     public static final String TOOL_NAME = "delegate_to_remote_agent";
+    static final java.time.Duration DELEGATE_TIMEOUT_OVERHEAD = java.time.Duration.ofSeconds(60);
 
     public static Builder builder() {
         return new Builder();
@@ -46,12 +48,27 @@ public class DelegateToRemoteAgentToolCall extends ToolCall {
         return connection.get();
     }
 
+    private static long delegateTimeoutMs(RemoteAgentCatalog catalog) {
+        var max = A2ARemoteAgentDescriptor.DEFAULT_TIMEOUT.toMillis();
+        for (var entry : catalog.entries()) {
+            var config = entry.config();
+            if (config != null && config.timeout != null) {
+                max = Math.max(max, config.timeout.toMillis());
+            }
+        }
+        return max + DELEGATE_TIMEOUT_OVERHEAD.toMillis();
+    }
+
     private RemoteAgentCatalog catalog;
     private Function<A2ARemoteAgentConfig, ToolCall> delegateFactory;
     private final Map<String, ToolCall> delegates = new ConcurrentHashMap<>();
 
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
+        if (context == null) {
+            return ToolCallResult.failed("delegate_to_remote_agent requires ExecutionContext to isolate remote session context.")
+                    .withToolName(getName());
+        }
         var args = parseArguments(arguments);
         var agentId = getStringValue(args, "agent_id");
         var task = getStringValue(args, "task");
@@ -113,6 +130,7 @@ public class DelegateToRemoteAgentToolCall extends ToolCall {
             if (catalog == null) throw new IllegalArgumentException("catalog is required");
             var store = contextStore != null ? contextStore : new InMemoryRemoteAgentContextStore();
             name(TOOL_NAME);
+            timeoutMs(delegateTimeoutMs(catalog));
             description("""
                     Delegate a task to a selected remote server-side agent. Use search_remote_agents first to choose
                     an agent_id. Remote agent internals, tools, MCP servers, sandbox, and credentials are not exposed.

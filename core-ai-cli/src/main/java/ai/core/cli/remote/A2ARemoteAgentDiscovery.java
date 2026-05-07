@@ -6,6 +6,7 @@ import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 public class A2ARemoteAgentDiscovery {
     private static final Logger LOGGER = LoggerFactory.getLogger(A2ARemoteAgentDiscovery.class);
     private static final int MAX_TOOL_NAME_LENGTH = 64;
+    private static final Duration DISCOVERY_TIMEOUT = Duration.ofSeconds(5);
     private static final long CACHE_TTL_NANOS = TimeUnit.MINUTES.toNanos(1);
     private static final ConcurrentMap<String, CacheEntry> CACHE = new ConcurrentHashMap<>();
 
@@ -40,8 +42,7 @@ public class A2ARemoteAgentDiscovery {
 
         var json = fetchAgentsJson(server, apiKey);
         if (json == null || json.isBlank()) {
-            LOGGER.warn("failed to discover A2A agents, server={}", server.id);
-            return List.of();
+            throw new IllegalStateException("empty A2A agent discovery response, server=" + server.id);
         }
         var configs = fromJson(server, json);
         CACHE.put(key, new CacheEntry(now, List.copyOf(copyConfigs(configs))));
@@ -69,7 +70,7 @@ public class A2ARemoteAgentDiscovery {
     }
 
     protected String fetchAgentsJson(A2ARemoteServerConfig server, String apiKey) {
-        return new RemoteApiClient(server.url, apiKey).get("/api/agents");
+        return new RemoteApiClient(server.url, apiKey, DISCOVERY_TIMEOUT).getRequired("/api/agents");
     }
 
     List<A2ARemoteAgentConfig> fromJson(A2ARemoteServerConfig server, String json) {
