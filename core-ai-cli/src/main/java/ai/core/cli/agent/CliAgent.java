@@ -9,6 +9,7 @@ import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteAgentTools;
+import ai.core.cli.remote.A2ARemoteServerConfig;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
@@ -46,7 +47,7 @@ public class CliAgent {
         var skillConfig = buildSkillConfig(config, pluginManager);
         var tools = buildTools(config, skillConfig);
         tools.addAll(0, mcpTools());
-        tools.addAll(A2ARemoteAgentTools.from(config.remoteAgents, reservedToolNames(tools)));
+        tools.addAll(A2ARemoteAgentTools.from(config.remoteAgents, config.remoteServers, reservedToolNames(tools)));
 
         var hookConfig = HookConfig.load(config.workspace, pluginManager);
         var hookLifecycle = hookConfig.isEmpty() ? null
@@ -156,7 +157,8 @@ public class CliAgent {
                          boolean memoryEnabled,
                          boolean coding,
                          String sessionId,
-                         List<A2ARemoteAgentConfig> remoteAgents) {
+                         List<A2ARemoteAgentConfig> remoteAgents,
+                         List<A2ARemoteServerConfig> remoteServers) {
     }
 
     // ---- PromptInject implementations ----

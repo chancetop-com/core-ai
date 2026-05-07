@@ -18,23 +18,63 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class A2ARemoteAgentTools {
     public static List<ToolCall> from(List<A2ARemoteAgentConfig> configs) {
-        return from(configs, Set.of());
+        return from(configs, List.of(), Set.of());
     }
 
     public static List<ToolCall> from(List<A2ARemoteAgentConfig> configs, Set<String> reservedToolNames) {
-        if (configs == null || configs.isEmpty()) return List.of();
+        return from(configs, List.of(), reservedToolNames);
+    }
+
+    public static List<ToolCall> from(List<A2ARemoteAgentConfig> configs, List<A2ARemoteServerConfig> serverConfigs,
+                                      Set<String> reservedToolNames) {
+        return from(configs, serverConfigs, reservedToolNames, new A2ARemoteAgentDiscovery());
+    }
+
+    static List<ToolCall> from(List<A2ARemoteAgentConfig> configs, List<A2ARemoteServerConfig> serverConfigs,
+                               Set<String> reservedToolNames, A2ARemoteAgentDiscovery discovery) {
+        if ((configs == null || configs.isEmpty()) && (serverConfigs == null || serverConfigs.isEmpty())) return List.of();
         var tools = new ArrayList<ToolCall>();
         var contextStore = new InMemoryRemoteAgentContextStore();
         var names = normalizedNames(reservedToolNames);
-        for (var config : configs) {
-            if (!config.enabled) continue;
-            var normalizedName = normalizeName(config.name);
-            if (!names.add(normalizedName)) {
-                throw new IllegalStateException("duplicate A2A remote agent tool name: " + config.name);
+        if (configs != null) {
+            for (var config : configs) {
+                if (!config.enabled) continue;
+                addTool(tools, names, contextStore, config);
             }
-            tools.add(tool(config, contextStore));
+        }
+        if (serverConfigs != null) {
+            for (var serverConfig : serverConfigs) {
+                var discoveredConfigs = discover(serverConfig, discovery);
+                if (discoveredConfigs == null) continue;
+                for (var discovered : discoveredConfigs) {
+                    addTool(tools, names, contextStore, discovered);
+                }
+            }
         }
         return tools;
+    }
+
+    private static void addTool(List<ToolCall> tools, Set<String> names, InMemoryRemoteAgentContextStore contextStore,
+                                A2ARemoteAgentConfig config) {
+        var normalizedName = normalizeName(config.name);
+        if (!names.add(normalizedName)) {
+            if (!config.autoDiscovered) {
+                throw new IllegalStateException("duplicate A2A remote agent tool name: " + config.name);
+            }
+            config.name = renamed(config.name, config.agentId, names);
+        }
+        tools.add(tool(config, contextStore));
+    }
+
+    private static List<A2ARemoteAgentConfig> discover(A2ARemoteServerConfig serverConfig,
+                                                       A2ARemoteAgentDiscovery discovery) {
+        if (serverConfig == null || !serverConfig.enabled || !serverConfig.discoveryEnabled) return List.of();
+        try {
+            return discovery.discover(serverConfig);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("failed to discover A2A remote agents from server '"
+                    + serverConfig.id + "': " + e.getMessage(), e);
+        }
     }
 
     private static Set<String> normalizedNames(Set<String> toolNames) {
@@ -50,12 +90,52 @@ public final class A2ARemoteAgentTools {
         return toolName == null ? "" : toolName.toLowerCase(Locale.ROOT);
     }
 
+    private static String renamed(String name, String agentId, Set<String> names) {
+        var suffix = "_" + shortId(agentId);
+        var base = trimToMaxLength(name, 64 - suffix.length());
+        var candidate = base + suffix;
+        var count = 2;
+        while (!names.add(normalizeName(candidate))) {
+            var numberedSuffix = suffix + "_" + count;
+            base = trimToMaxLength(name, 64 - numberedSuffix.length());
+            candidate = base + numberedSuffix;
+            count++;
+        }
+        return candidate;
+    }
+
+    private static String trimToMaxLength(String name, int maxLength) {
+        var value = name != null && !name.isBlank() ? name : "remote_agent";
+        if (value.length() <= maxLength) return trimUnderscore(value);
+        return trimUnderscore(value.substring(0, Math.max(1, maxLength)));
+    }
+
+    private static String shortId(String agentId) {
+        if (agentId == null || agentId.isBlank()) return "agent";
+        var normalized = agentId.replaceAll("[^A-Za-z0-9_-]", "_");
+        normalized = trimUnderscore(normalized);
+        if (normalized.isBlank()) return "agent";
+        return normalized.length() <= 8 ? normalized : normalized.substring(0, 8);
+    }
+
+    private static String trimUnderscore(String value) {
+        var result = value;
+        while (result.startsWith("_")) {
+            result = result.substring(1);
+        }
+        while (result.endsWith("_")) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result;
+    }
+
     private static ToolCall tool(A2ARemoteAgentConfig config, InMemoryRemoteAgentContextStore contextStore) {
         var connection = new AtomicReference<A2ARemoteConnector.Connection>();
         return A2ARemoteAgentToolCall.builder()
                 .descriptor(config.toDescriptor())
                 .clientFactory(() -> connect(config, connection).client())
                 .contextStore(contextStore)
+                .discoverable(config.discoverable)
                 .build();
     }
 

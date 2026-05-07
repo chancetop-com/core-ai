@@ -9,12 +9,13 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Reads a2a.remoteAgents.* entries from agent.properties.
+ * Reads A2A remote agent and remote server entries from agent.properties.
  *
  * @author xander
  */
 public final class A2ARemoteAgentConfigLoader {
     private static final String ROOT = "a2a.remoteAgents";
+    private static final String SERVERS_ROOT = "a2a.remoteServers";
 
     public static List<A2ARemoteAgentConfig> load(PropertiesFileSource props) {
         var ids = props.property(ROOT).orElse("");
@@ -38,6 +39,40 @@ public final class A2ARemoteAgentConfigLoader {
         config.apiKey = props.property(prefix + ".apiKey").orElse(null);
         config.name = normalizeToolName(props.property(prefix + ".name").orElse(defaultName(config)));
         config.description = props.property(prefix + ".description").orElse(defaultDescription(id));
+        config.discoverable = props.property(prefix + ".discoverable").map(Boolean::parseBoolean).orElse(config.discoverable);
+        config.timeout = props.property(prefix + ".timeout").map(A2ARemoteAgentConfigLoader::duration).orElse(config.timeout);
+        config.contextPolicy = props.property(prefix + ".contextPolicy").map(A2ARemoteAgentConfigLoader::contextPolicy).orElse(config.contextPolicy);
+        config.invocationMode = props.property(prefix + ".invocationMode").map(A2ARemoteAgentConfigLoader::invocationMode).orElse(config.invocationMode);
+        config.maxInputChars = props.property(prefix + ".maxInputChars").map(Integer::parseInt).orElse(config.maxInputChars);
+        config.maxOutputChars = props.property(prefix + ".maxOutputChars").map(Integer::parseInt).orElse(config.maxOutputChars);
+        validate(config, prefix);
+        return config;
+    }
+
+    public static List<A2ARemoteServerConfig> loadServers(PropertiesFileSource props) {
+        var ids = props.property(SERVERS_ROOT).orElse("");
+        if (ids.isBlank()) return List.of();
+        var configs = new ArrayList<A2ARemoteServerConfig>();
+        for (var id : ids.split(",")) {
+            var trimmed = id.trim();
+            if (!trimmed.isBlank()) configs.add(loadServer(props, trimmed));
+        }
+        return configs;
+    }
+
+    private static A2ARemoteServerConfig loadServer(PropertiesFileSource props, String id) {
+        var prefix = SERVERS_ROOT + "." + id;
+        var config = new A2ARemoteServerConfig();
+        config.id = id;
+        config.enabled = props.property(prefix + ".enabled").map(Boolean::parseBoolean).orElse(config.enabled);
+        config.url = props.property(prefix + ".url").orElse(null);
+        config.apiKeyEnv = props.property(prefix + ".apiKeyEnv").orElse(null);
+        config.apiKey = props.property(prefix + ".apiKey").orElse(null);
+        config.discoveryEnabled = props.property(prefix + ".discovery.enabled").map(Boolean::parseBoolean).orElse(config.discoveryEnabled);
+        config.toolPrefix = normalizeToolName(props.property(prefix + ".toolPrefix").orElse(id));
+        config.includeAgents = props.property(prefix + ".includeAgents").map(A2ARemoteAgentConfigLoader::csv).orElse(config.includeAgents);
+        config.excludeAgents = props.property(prefix + ".excludeAgents").map(A2ARemoteAgentConfigLoader::csv).orElse(config.excludeAgents);
+        config.discoverable = props.property(prefix + ".discoverable").map(Boolean::parseBoolean).orElse(config.discoverable);
         config.timeout = props.property(prefix + ".timeout").map(A2ARemoteAgentConfigLoader::duration).orElse(config.timeout);
         config.contextPolicy = props.property(prefix + ".contextPolicy").map(A2ARemoteAgentConfigLoader::contextPolicy).orElse(config.contextPolicy);
         config.invocationMode = props.property(prefix + ".invocationMode").map(A2ARemoteAgentConfigLoader::invocationMode).orElse(config.invocationMode);
@@ -57,6 +92,13 @@ public final class A2ARemoteAgentConfigLoader {
     }
 
     private static void validate(A2ARemoteAgentConfig config, String prefix) {
+        if (!config.enabled) return;
+        if (config.url == null || config.url.isBlank()) {
+            throw new IllegalStateException("required property not found: " + prefix + ".url");
+        }
+    }
+
+    private static void validate(A2ARemoteServerConfig config, String prefix) {
         if (!config.enabled) return;
         if (config.url == null || config.url.isBlank()) {
             throw new IllegalStateException("required property not found: " + prefix + ".url");
@@ -102,6 +144,16 @@ public final class A2ARemoteAgentConfigLoader {
         if (trimmed.endsWith("m")) return Duration.ofMinutes(Long.parseLong(trimmed.substring(0, trimmed.length() - 1)));
         if (trimmed.endsWith("h")) return Duration.ofHours(Long.parseLong(trimmed.substring(0, trimmed.length() - 1)));
         return Duration.ofSeconds(Long.parseLong(trimmed));
+    }
+
+    private static List<String> csv(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        var result = new ArrayList<String>();
+        for (var item : value.split(",")) {
+            var trimmed = item.trim();
+            if (!trimmed.isBlank()) result.add(trimmed);
+        }
+        return List.copyOf(result);
     }
 
     private A2ARemoteAgentConfigLoader() {

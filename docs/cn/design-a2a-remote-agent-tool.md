@@ -18,7 +18,7 @@
 | 并发 | 同一 local session + remote agent + remote context 默认串行。 |
 | 本地数据外发 | 默认不发送本地文件全文，只发送必要摘要或用户明确指定内容。 |
 | `INPUT_REQUIRED` | P0 不做完整续接链路，返回可读提示让本地 Agent 询问用户；P1 再接 `submitInput`。 |
-| CLI 配置 | 使用 `a2a.remoteAgents.*` 注入本地 tools，不复用 `~/.core-ai/remote.json` 的 remote session 语义。 |
+| CLI 配置 | 推荐使用 `a2a.remoteServers.*` 自动发现 server agents；`a2a.remoteAgents.*` 保留为手动 pin 单个 agent 的高级配置。 |
 
 P0 的验收标准只有一个：**本地 CLI Agent 能在同一会话中调用 server Agent 完成 server-only 子任务，并把结果纳入本地最终回答。**
 
@@ -153,12 +153,14 @@ MCP 的 Roots、Sampling、Elicitation 强调一件事：能力可以在 server 
 
 P0 只交付最小协作闭环：
 
-1. 从 CLI 配置读取 remote agent。
-2. 将 remote agent 注入本地 Agent tools。
-3. 本地 Agent 通过 tool 调用远端 A2A `message/stream`。
-4. tool 收集最终文本输出并返回 `ToolCallResult.completed`。
-5. 同一个本地进程内复用远端 `contextId`。
-6. 对失败、超时、鉴权错误返回清晰错误。
+1. 从 CLI 配置读取 remote server 或手动 remote agent。
+2. CLI 启动时通过 core-ai-server `/api/agents` 发现 server 上可用的 Agent。
+3. 将发现到的 server Agent 映射为 discoverable A2A tools。
+4. 本地 Agent 通过 `activate_tools` 搜索并选择合适的 server Agent。
+5. 本地 Agent 通过 tool 调用远端 A2A `message/stream`。
+6. tool 收集最终文本输出并返回 `ToolCallResult.completed`。
+7. 同一个本地进程内复用远端 `contextId`。
+8. 对失败、超时、鉴权错误返回清晰错误。
 
 P0 不承诺：
 
@@ -549,7 +551,51 @@ try {
 
 ### 9.1 CLI agent.properties
 
-建议新增配置：
+推荐配置 remote server，让 CLI 自动发现 server 上的 agents：
+
+```properties
+a2a.remoteServers=dev
+
+a2a.remoteServers.dev.enabled=true
+a2a.remoteServers.dev.url=https://core-ai-server.connexup-dev.net
+a2a.remoteServers.dev.apiKeyEnv=CORE_AI_SERVER_API_KEY
+a2a.remoteServers.dev.discovery.enabled=true
+a2a.remoteServers.dev.toolPrefix=server
+a2a.remoteServers.dev.discoverable=true
+a2a.remoteServers.dev.timeout=10m
+a2a.remoteServers.dev.contextPolicy=SESSION
+a2a.remoteServers.dev.invocationMode=STREAM_BLOCKING
+a2a.remoteServers.dev.maxInputChars=30000
+a2a.remoteServers.dev.maxOutputChars=20000
+```
+
+可选地限制暴露范围：
+
+```properties
+a2a.remoteServers.dev.includeAgents=default-assistant,coding-agent
+a2a.remoteServers.dev.excludeAgents=test-agent
+```
+
+字段：
+
+| 配置 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `enabled` | 否 | `true` | 是否启用该 remote server。 |
+| `url` | 是 | 无 | core-ai-server 根地址。 |
+| `apiKeyEnv` | 否 | 无 | 从环境变量取 bearer token。 |
+| `apiKey` | 否 | 无 | 本地测试可用；生产更推荐 `apiKeyEnv`。 |
+| `discovery.enabled` | 否 | `true` | 是否从 `/api/agents` 自动发现 server agents。 |
+| `toolPrefix` | 否 | server 配置 id | 发现到的 tool 名称前缀，例如 `server_default_assistant`。 |
+| `includeAgents` | 否 | 空 | 只暴露指定 agent id/name。为空表示不过滤。 |
+| `excludeAgents` | 否 | 空 | 排除指定 agent id/name。 |
+| `discoverable` | 否 | `true` | 发现到的 tools 默认进入 `activate_tools` 目录，而不是直接暴露给 LLM。 |
+| `timeout` | 否 | `10m` | 单次调用超时。 |
+| `contextPolicy` | 否 | `SESSION` | 是否复用 context。 |
+| `invocationMode` | 否 | `STREAM_BLOCKING` | 调用模式。 |
+| `maxInputChars` | 否 | `30000` | 输入截断/拒绝上限。 |
+| `maxOutputChars` | 否 | `20000` | 输出截断上限。 |
+
+兼容的手动 pin 配置仍然可用，适合只暴露单个指定 agent：
 
 ```properties
 a2a.remoteAgents=enterprise
@@ -575,9 +621,10 @@ a2a.remoteAgents.enterprise.maxOutputChars=20000
 | `url` | 是 | 无 | A2A endpoint 或 core-ai-server 根地址。 |
 | `agentId` | 否 | server 默认 | A2A tenant / agent id。 |
 | `apiKeyEnv` | 否 | 无 | 从环境变量取 bearer token。 |
-| `apiKey` | 否 | 无 | 不推荐，仅用于本地测试。 |
+| `apiKey` | 否 | 无 | 本地测试可用；生产更推荐 `apiKeyEnv`。 |
 | `name` | 否 | Agent Card name 规范化 | Tool 名称。 |
 | `description` | 否 | Agent Card description | Tool 描述。 |
+| `discoverable` | 否 | `false` | 手动配置的 remote agent 是否也隐藏到 `activate_tools` 目录。 |
 | `timeout` | 否 | `10m` | 单次调用超时。 |
 | `contextPolicy` | 否 | `SESSION` | 是否复用 context。 |
 | `invocationMode` | 否 | `STREAM_BLOCKING` | 调用模式。 |
@@ -598,7 +645,9 @@ MVP 使用 `SESSION`。
 
 现有 `~/.core-ai/remote.json` 用于 `/remote` 或 `core-ai-cli --server`，含义是“切换整个会话到远端”。
 
-`a2a.remoteAgents.*` 用于“本地 Agent 注入远端 Agent Tool”。
+`a2a.remoteServers.*` 和 `a2a.remoteAgents.*` 用于“本地 Agent 注入远端 Agent Tool”。
+
+推荐优先使用 `a2a.remoteServers.*`，因为它能让本地 CLI 自动看到 server 上新增或更新的 agents。`a2a.remoteAgents.*` 更适合稳定 pin 某个特定 Agent，或者连接非 core-ai-server 的通用 A2A endpoint。
 
 两者不要混用为同一配置文件，避免语义混乱。后续可以提供命令：
 
@@ -618,13 +667,16 @@ MVP 使用 `SESSION`。
 
 ```
 core-ai-cli/src/main/java/ai/core/cli/remote/A2ARemoteAgentConfig.java
+core-ai-cli/src/main/java/ai/core/cli/remote/A2ARemoteServerConfig.java
 core-ai-cli/src/main/java/ai/core/cli/remote/A2ARemoteAgentConfigLoader.java
+core-ai-cli/src/main/java/ai/core/cli/remote/A2ARemoteAgentDiscovery.java
 ```
 
 解析 `PropertiesFileSource`：
 
 ```java
 List<A2ARemoteAgentConfig> configs = A2ARemoteAgentConfigLoader.load(props);
+List<A2ARemoteServerConfig> servers = A2ARemoteAgentConfigLoader.loadServers(props);
 ```
 
 ### 10.2 注入 CliAgent
@@ -633,14 +685,20 @@ List<A2ARemoteAgentConfig> configs = A2ARemoteAgentConfigLoader.load(props);
 
 ```java
 String sessionId,
-List<A2ARemoteAgentConfig> remoteAgents
+List<A2ARemoteAgentConfig> remoteAgents,
+List<A2ARemoteServerConfig> remoteServers
 ```
 
 `CliAgent.buildTools()`：
 
 ```java
-tools.addAll(A2ARemoteAgentTools.from(config.remoteAgents, contextStore));
+tools.addAll(A2ARemoteAgentTools.from(
+    config.remoteAgents,
+    config.remoteServers,
+    reservedToolNames(tools)));
 ```
+
+发现到的 server agents 默认 `discoverable=true`，因此会被 `AgentBuilder.configureToolDiscovery()` 隐藏到 `activate_tools` 目录中。本地 Agent 先搜索/激活合适的远端 Agent，再真正调用对应的 A2A tool，避免 server agent 很多时污染工具列表。
 
 `ExecutionContext` 构建时补齐：
 
@@ -806,9 +864,12 @@ core-ai/src/test/java/ai/core/a2a/A2ARemoteAgentToolCallTest.java
 覆盖：
 
 - `a2a.remoteAgents` 多个 id 解析。
+- `a2a.remoteServers` 多个 id 解析。
 - `apiKeyEnv` 读取。
 - tool name 规范化。
-- description fallback 到 Agent Card。
+- discovery 从 `/api/agents` 过滤 `AGENT` 类型并映射成 discoverable tools。
+- 自动发现 tool 和内置 tool 同名时自动加 agent id 后缀。
+- description fallback 到 server agent description。
 - 未配置时不改变现有 CLI 行为。
 
 ### 16.3 集成测试
@@ -823,11 +884,12 @@ core-ai/src/test/java/ai/core/a2a/A2ARemoteAgentToolCallTest.java
 dev 环境手工验证：
 
 1. 本地 CLI 正常启动。
-2. 配置 `a2a.remoteAgents.enterprise`。
+2. 配置 `a2a.remoteServers.dev`。
 3. 提问一个需要 server-only MCP 的任务。
-4. 确认本地 Agent 调用 `server_default_assistant`。
-5. 确认 server pod 日志有 A2A task。
-6. 确认本地 Agent 最终综合远端结果，而不是直接切到远端会话。
+4. 确认本地 Agent 先通过 `activate_tools` 选择合适的 server agent。
+5. 确认本地 Agent 调用发现到的 server agent tool，例如 `server_default_assistant`。
+6. 确认 server pod 日志有 A2A task。
+7. 确认本地 Agent 最终综合远端结果，而不是直接切到远端会话。
 
 ## 17. 分阶段落地
 
@@ -836,7 +898,8 @@ dev 环境手工验证：
 - `CliAgent.Config` / `ExecutionContext` 补 `sessionId`。
 - 新增 `A2ARemoteAgentToolCall`。
 - 新增 remote agent descriptor/config loader。
-- CLI `agent.properties` 注入 remote tools。
+- 新增 `a2a.remoteServers.*` discovery，从 `/api/agents` 自动发现 server agents。
+- 将发现到的 server agents 注入为 discoverable remote tools。
 - 使用 `HttpA2AClient.stream()`，同步等待 terminal state。
 - 保存 `contextId` / `lastTaskId` 到进程内 context store。
 - 输出 text artifact/message。

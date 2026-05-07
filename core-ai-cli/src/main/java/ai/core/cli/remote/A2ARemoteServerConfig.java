@@ -3,23 +3,24 @@ package ai.core.cli.remote;
 import ai.core.a2a.A2ARemoteAgentDescriptor;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
- * CLI properties-backed remote agent tool configuration.
+ * CLI properties-backed remote server configuration for discovering A2A agents.
  *
  * @author xander
  */
-public class A2ARemoteAgentConfig {
+public class A2ARemoteServerConfig {
     public String id;
     public boolean enabled = true;
     public String url;
-    public String agentId;
     public String apiKeyEnv;
     public String apiKey;
-    public String name;
-    public String description;
-    public boolean discoverable;
-    public boolean autoDiscovered;
+    public boolean discoveryEnabled = true;
+    public String toolPrefix;
+    public List<String> includeAgents = List.of();
+    public List<String> excludeAgents = List.of();
+    public boolean discoverable = true;
     public Duration timeout = A2ARemoteAgentDescriptor.DEFAULT_TIMEOUT;
     public A2ARemoteAgentDescriptor.ContextPolicy contextPolicy = A2ARemoteAgentDescriptor.ContextPolicy.SESSION;
     public A2ARemoteAgentDescriptor.InvocationMode invocationMode = A2ARemoteAgentDescriptor.InvocationMode.STREAM_BLOCKING;
@@ -30,18 +31,5 @@ public class A2ARemoteAgentConfig {
         if (apiKey != null && !apiKey.isBlank()) return apiKey;
         if (apiKeyEnv == null || apiKeyEnv.isBlank()) return null;
         return System.getenv(apiKeyEnv);
-    }
-
-    public A2ARemoteAgentDescriptor toDescriptor() {
-        return A2ARemoteAgentDescriptor.builder()
-                .id(id)
-                .toolName(name)
-                .toolDescription(description)
-                .timeout(timeout)
-                .contextPolicy(contextPolicy)
-                .invocationMode(invocationMode)
-                .maxInputChars(maxInputChars)
-                .maxOutputChars(maxOutputChars)
-                .build();
     }
 }
