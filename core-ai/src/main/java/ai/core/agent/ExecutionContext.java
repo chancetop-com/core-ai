@@ -8,9 +8,11 @@ import ai.core.persistence.PersistenceProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
 import ai.core.tool.ToolCallAsyncTaskManager;
+import ai.core.prompt.PromptInject;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import core.framework.util.Maps;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -36,6 +38,7 @@ public final class ExecutionContext {
     private final AttachedContent attachedContent;
     private final PersistenceProvider persistenceProvider;
     private final SubagentOutputSinkFactory subagentOutputSinkFactory;
+    private final List<PromptInject> subagentPromptSections;
     private Sandbox sandbox;
     private BackgroundTaskManager backgroundTaskManager;
     private LLMProvider llmProvider;
@@ -55,6 +58,7 @@ public final class ExecutionContext {
         this.asyncTaskManager = builder.asyncTaskManager;
         this.persistenceProvider = builder.persistenceProvider;
         this.subagentOutputSinkFactory = builder.subagentOutputSinkFactory;
+        this.subagentPromptSections = new ArrayList<>(builder.subagentPromptSections);
         this.sandbox = builder.sandbox;
         this.backgroundTaskManager = builder.backgroundTaskManager;
     }
@@ -89,6 +93,10 @@ public final class ExecutionContext {
 
     public SubagentOutputSinkFactory getSubagentOutputSinkFactory() {
         return subagentOutputSinkFactory;
+    }
+
+    public List<PromptInject> getSubagentPromptSections() {
+        return subagentPromptSections;
     }
 
     public Sandbox getSandbox() {
@@ -177,6 +185,7 @@ public final class ExecutionContext {
         private AttachedContent attachedContent;
         private PersistenceProvider persistenceProvider;
         private SubagentOutputSinkFactory subagentOutputSinkFactory;
+        private final List<PromptInject> subagentPromptSections = new ArrayList<>();
         private Sandbox sandbox;
         private BackgroundTaskManager backgroundTaskManager;
         private final Map<String, Object> customVariables = Maps.newHashMap();
@@ -230,6 +239,12 @@ public final class ExecutionContext {
 
         public Builder subagentOutputSinkFactory(SubagentOutputSinkFactory subagentOutputSinkFactory) {
             this.subagentOutputSinkFactory = subagentOutputSinkFactory;
+            return this;
+        }
+
+        public Builder subagentPromptSections(List<PromptInject> sections) {
+            this.subagentPromptSections.clear();
+            this.subagentPromptSections.addAll(sections);
             return this;
         }
 

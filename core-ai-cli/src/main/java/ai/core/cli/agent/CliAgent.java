@@ -80,6 +80,7 @@ public class CliAgent {
                 .customVariables(Map.of("workspace", config.workspace.toAbsolutePath().toString()))
                 .persistenceProvider(config.persistenceProvider)
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
+                .subagentPromptSections(subagentPromptSections(config))
                 .build());
         return agent;
     }
@@ -130,6 +131,16 @@ public class CliAgent {
         if (!hookOutput.isEmpty()) {
             builder.systemPromptSection(new HookPrompt(hookOutput));
         }
+    }
+
+    private static List<PromptInject> subagentPromptSections(Config config) {
+        var sections = new ArrayList<PromptInject>();
+        sections.add(new EnvironmentPrompt(config.workspace));
+        sections.add(new InstructionsPrompt(config.workspace));
+        if (config.memoryEnabled) {
+            sections.add(new MemoryPrompt(config.workspace));
+        }
+        return sections;
     }
 
     private static List<ToolCall> mcpTools() {

@@ -157,6 +157,7 @@ public class TaskTool extends ToolCall {
                 .attachedContent(context.getAttachedContent())
                 .persistenceProvider(context.getPersistenceProvider())
                 .taskManager(context.getTaskManager() != null ? context.getTaskManager().createChild() : null)
+                .subagentPromptSections(context.getSubagentPromptSections())
                 .taskId(taskId)
                 .taskName(taskName)
                 .build();
@@ -169,10 +170,10 @@ public class TaskTool extends ToolCall {
 
     private Agent createAgent(String subagentType, ExecutionContext context) {
         if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultExploreAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle());
+            return DefaultExploreAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getSubagentPromptSections());
         }
         if (DefaultCodeSimplifierAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultCodeSimplifierAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle());
+            return DefaultCodeSimplifierAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getSubagentPromptSections());
         }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
     }

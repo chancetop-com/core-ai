@@ -4,6 +4,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
+import ai.core.prompt.PromptInject;
 import ai.core.tool.BuiltinTools;
 import core.framework.util.Strings;
 
@@ -23,6 +24,10 @@ public class DefaultCodeSimplifierAgent {
     }
 
     public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles) {
+        return of(llmProvider, model, streamingCallback, lifecycles, List.of());
+    }
+
+    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects) {
         var prompt = buildSystemPrompt();
         return Agent.builder()
                 .name(AGENT_NAME)
@@ -31,6 +36,7 @@ public class DefaultCodeSimplifierAgent {
                 .agentLifecycle(lifecycles)
                 .description(AGENT_DESCRIPTION)
                 .systemPrompt(prompt)
+                .systemPromptSections(promptInjects)
                 .toolCalls(BuiltinTools.ALL)
                 .llmProvider(llmProvider).build();
     }
