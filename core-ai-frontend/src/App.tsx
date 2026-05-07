@@ -83,8 +83,9 @@ export default function App() {
               <Route path="*" element={<Navigate to="/login" replace />} />
             ) : (
               <Route element={<Layout />}>
+                {caps.dashboard && <Route path="/" element={<Dashboard />} />}
                 {caps.chat && <Route path="/chat" element={<Chat />} />}
-                {caps.traces && <Route path="/" element={<TraceList />} />}
+                {caps.traces && <Route path="/traces" element={<TraceList />} />}
                 {caps.traces && <Route path="/traces/:id" element={<TraceDetail />} />}
                 {/* Sessions page removed — session list now in Chat sidebar */}
                 {caps.prompts && <Route path="/prompts" element={<PromptList />} />}

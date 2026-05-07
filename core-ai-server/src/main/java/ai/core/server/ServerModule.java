@@ -372,6 +372,11 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/skills/:id/edit", controller::serve);
         http().route(HTTPMethod.GET, "/prompts/:id", controller::serve);
         http().route(HTTPMethod.GET, "/api-tools/:id", controller::serve);
+        // nested SPA routes (multi-segment paths that need direct URL access / refresh support)
+        http().route(HTTPMethod.GET, "/triggers/webhook", controller::serve);
+        http().route(HTTPMethod.GET, "/triggers/schedule", controller::serve);
+        http().route(HTTPMethod.GET, "/tools/builtin", controller::serve);
+        http().route(HTTPMethod.GET, "/settings/users", controller::serve);
     }
 
     private void registerFile() {
