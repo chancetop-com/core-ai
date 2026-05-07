@@ -39,7 +39,7 @@ public class ShellCommandTool extends ToolCall {
             
             Be aware: OS: ${os}${shell_specific}
             
-            All commands run in the current working directory by default. Use the `workdir` parameter if you need to run a command in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workspace` instead.
+            All commands run in the current working directory by default. Use the `workspace` parameter if you need to run a command in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workspace` instead.
             
             IMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:
             
