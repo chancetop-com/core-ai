@@ -184,6 +184,7 @@ project(":core-ai-cli") {
         implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
         // GraalVM SDK for native-image Feature (compile-time only)
         compileOnly("org.graalvm.sdk:nativeimage:${Versions.GRAALVM_SDK_VERSION}")
+        testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<JavaExec> {
         standardInput = System.`in`

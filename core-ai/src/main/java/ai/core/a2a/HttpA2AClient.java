@@ -24,7 +24,8 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Flow;
-import java.util.concurrent.SubmissionPublisher;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * HTTP/JSON binding client for A2A-compatible agents.
@@ -103,13 +104,7 @@ public class HttpA2AClient implements A2AClient {
     @Override
     public Flow.Publisher<A2AStreamEvent> stream(SendMessageRequest request) {
         applyTenant(request);
-        return subscriber -> {
-            var publisher = new SubmissionPublisher<A2AStreamEvent>();
-            publisher.subscribe(subscriber);
-            var thread = new Thread(() -> consumeStream(request, publisher), "a2a-http-stream");
-            thread.setDaemon(true);
-            thread.start();
-        };
+        return subscriber -> new SseSubscription(request, subscriber).start();
     }
 
     @Override
@@ -129,21 +124,6 @@ public class HttpA2AClient implements A2AClient {
             throw new IllegalArgumentException("taskId required");
         }
         return id;
-    }
-
-    private void consumeStream(SendMessageRequest request, SubmissionPublisher<A2AStreamEvent> publisher) {
-        try (EventSource source = sse(A2AHttpPaths.MESSAGE_STREAM, request)) {
-            for (var event : source) {
-                if (event.data() == null || event.data().isBlank()) continue;
-                var response = JsonUtil.fromJson(StreamResponse.class, event.data());
-                var streamEvent = A2AStreamEvent.ofResponse(response);
-                publisher.submit(streamEvent);
-                if (isTerminal(streamEvent)) break;
-            }
-            publisher.close();
-        } catch (Exception e) {
-            publisher.closeExceptionally(e);
-        }
     }
 
     private <T> T get(String path, Class<T> responseType) {
@@ -239,6 +219,59 @@ public class HttpA2AClient implements A2AClient {
                     ? httpClient
                     : new PatchedHTTPClientBuilder().timeout(timeout).build();
             return new HttpA2AClient(baseUrl, tenant, client, headers);
+        }
+    }
+
+    private final class SseSubscription implements Flow.Subscription {
+        private final SendMessageRequest request;
+        private final Flow.Subscriber<? super A2AStreamEvent> subscriber;
+        private final AtomicBoolean canceled = new AtomicBoolean();
+        private final AtomicReference<EventSource> source = new AtomicReference<>();
+        private Thread thread;
+
+        private SseSubscription(SendMessageRequest request, Flow.Subscriber<? super A2AStreamEvent> subscriber) {
+            this.request = request;
+            this.subscriber = subscriber;
+        }
+
+        void start() {
+            subscriber.onSubscribe(this);
+            thread = new Thread(this::consume, "a2a-http-stream");
+            thread.setDaemon(true);
+            thread.start();
+        }
+
+        @Override
+        public void request(long n) {
+            // The underlying SSE stream is push-based, so demand is not used.
+        }
+
+        @Override
+        public void cancel() {
+            canceled.set(true);
+            var current = source.get();
+            if (current != null) current.close();
+            if (thread != null) thread.interrupt();
+        }
+
+        private void consume() {
+            try (EventSource current = sse(A2AHttpPaths.MESSAGE_STREAM, request)) {
+                source.set(current);
+                if (canceled.get()) return;
+                for (var event : current) {
+                    if (canceled.get()) return;
+                    if (event.data() == null || event.data().isBlank()) continue;
+                    var response = JsonUtil.fromJson(StreamResponse.class, event.data());
+                    var streamEvent = A2AStreamEvent.ofResponse(response);
+                    subscriber.onNext(streamEvent);
+                    if (isTerminal(streamEvent)) break;
+                }
+                if (!canceled.get()) subscriber.onComplete();
+            } catch (Exception e) {
+                if (!canceled.get()) subscriber.onError(e);
+            } finally {
+                source.set(null);
+            }
         }
     }
 }

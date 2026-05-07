@@ -14,6 +14,8 @@ import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.remote.A2ARemoteConnector;
+import ai.core.cli.remote.A2ARemoteAgentConfig;
+import ai.core.cli.remote.A2ARemoteAgentConfigLoader;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.remote.RemoteSessionRunner;
 import ai.core.cli.ui.AnsiTheme;
@@ -103,6 +105,7 @@ public class CliApp {
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
         boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false);
         boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
+        var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
         var sessionManager = new SessionManager(sessionPersistence);
         var modelName = modelOverride != null ? modelOverride : result.llmProviders.getDefaultProvider().config.getModel();
@@ -111,7 +114,8 @@ public class CliApp {
         var permissionStore = whiteToolsPermissionStore();
         var noteMemory = memoryEnabled ? new MdMemoryProvider(workspace) : null;
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
-        return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName, currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, coding);
+        return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName,
+                currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, coding, remoteAgents);
     }
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
@@ -149,7 +153,7 @@ public class CliApp {
             ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
             ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
             return ui.readRawLine();
-        }, ctx.memoryEnabled, ctx.coding);
+        }, ctx.memoryEnabled, ctx.coding, sessionId, ctx.remoteAgents);
         var agent = CliAgent.of(agentConfig);
         var config = new AgentSessionRunner.Config(ctx.modelName, autoApproveAll, sessionId, ctx.sessionManager, ctx.permissionStore, ctx.noteMemory, ctx.modelRegistry, ctx.sessionPersistence, ctx.memoryEnabled);
         return new AgentSessionRunner(ui, agent, ctx.result.llmProviders, config);
@@ -281,6 +285,7 @@ public class CliApp {
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
         boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true);
         boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
+        var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
         var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = whiteToolsPermissionStore();
@@ -298,7 +303,7 @@ public class CliApp {
         var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
-        }, memoryEnabled, coding);
+        }, memoryEnabled, coding, currentSessionId, remoteAgents);
 
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
         var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, sessionManager, sessionPersistence, workspace);
@@ -436,6 +441,7 @@ public class CliApp {
     private record SessionContext(BootstrapResult result, PropertiesFileSource props, int maxTurn,
             FileSessionPersistence sessionPersistence, SessionManager sessionManager, String modelName,
             String currentSessionId, ToolPermissionStore permissionStore, MdMemoryProvider noteMemory,
-            ModelRegistry modelRegistry, boolean memoryEnabled, boolean coding) { }
+            ModelRegistry modelRegistry, boolean memoryEnabled, boolean coding,
+            List<A2ARemoteAgentConfig> remoteAgents) { }
 
 }
