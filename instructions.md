@@ -48,3 +48,5 @@ references [README.md](docs/en/README.md)
 - Comments: **English only**, class-level javadoc only — no inline/method comments unless explicitly requested
 - Code self-description is preferred over comments
 - Always import classes, never use fully-qualified names inline
+- Newly added files（*.java） need to be subject to Git version control
+- The author of a newly created file must be the same person (git author or computer user).
