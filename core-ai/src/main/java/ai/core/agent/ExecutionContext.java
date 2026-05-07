@@ -38,7 +38,7 @@ public final class ExecutionContext {
     private final AttachedContent attachedContent;
     private final PersistenceProvider persistenceProvider;
     private final SubagentOutputSinkFactory subagentOutputSinkFactory;
-    private final List<PromptInject> subagentPromptSections;
+    private final List<PromptInject> promptSections;
     private Sandbox sandbox;
     private BackgroundTaskManager backgroundTaskManager;
     private LLMProvider llmProvider;
@@ -58,7 +58,7 @@ public final class ExecutionContext {
         this.asyncTaskManager = builder.asyncTaskManager;
         this.persistenceProvider = builder.persistenceProvider;
         this.subagentOutputSinkFactory = builder.subagentOutputSinkFactory;
-        this.subagentPromptSections = new ArrayList<>(builder.subagentPromptSections);
+        this.promptSections = new ArrayList<>(builder.promptSections);
         this.sandbox = builder.sandbox;
         this.backgroundTaskManager = builder.backgroundTaskManager;
     }
@@ -95,8 +95,8 @@ public final class ExecutionContext {
         return subagentOutputSinkFactory;
     }
 
-    public List<PromptInject> getSubagentPromptSections() {
-        return subagentPromptSections;
+    public List<PromptInject> getPromptSections() {
+        return promptSections;
     }
 
     public Sandbox getSandbox() {
@@ -185,7 +185,7 @@ public final class ExecutionContext {
         private AttachedContent attachedContent;
         private PersistenceProvider persistenceProvider;
         private SubagentOutputSinkFactory subagentOutputSinkFactory;
-        private final List<PromptInject> subagentPromptSections = new ArrayList<>();
+        private final List<PromptInject> promptSections = new ArrayList<>();
         private Sandbox sandbox;
         private BackgroundTaskManager backgroundTaskManager;
         private final Map<String, Object> customVariables = Maps.newHashMap();
@@ -242,9 +242,9 @@ public final class ExecutionContext {
             return this;
         }
 
-        public Builder subagentPromptSections(List<PromptInject> sections) {
-            this.subagentPromptSections.clear();
-            this.subagentPromptSections.addAll(sections);
+        public Builder promptSections(List<PromptInject> sections) {
+            this.promptSections.clear();
+            this.promptSections.addAll(sections);
             return this;
         }
 

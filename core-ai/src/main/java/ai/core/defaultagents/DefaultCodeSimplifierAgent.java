@@ -36,9 +36,16 @@ public class DefaultCodeSimplifierAgent {
                 .agentLifecycle(lifecycles)
                 .description(AGENT_DESCRIPTION)
                 .systemPrompt(prompt)
-                .systemPromptSections(promptInjects)
+                .systemPromptSections(resolvePromptInjects(promptInjects))
                 .toolCalls(BuiltinTools.ALL)
                 .llmProvider(llmProvider).build();
+    }
+
+    private static List<PromptInject> resolvePromptInjects(List<PromptInject> promptInjects) {
+        return promptInjects.stream().filter(promptInject -> List.of(
+                PromptInject.SectionType.ENVIRONMENT,
+                PromptInject.SectionType.INSTRUCTIONS,
+                PromptInject.SectionType.MEMORY).contains(promptInject.type())).toList();
     }
 
     private static String buildSystemPrompt() {

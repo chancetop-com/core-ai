@@ -8,4 +8,17 @@ package ai.core.prompt;
 @FunctionalInterface
 public interface PromptInject {
     String inject();
+
+    default SectionType type() {
+        return SectionType.CUSTOM;
+    }
+
+    enum SectionType {
+        IDENTITY,
+        ENVIRONMENT,
+        INSTRUCTIONS,
+        MEMORY,
+        HOOK,
+        CUSTOM
+    }
 }

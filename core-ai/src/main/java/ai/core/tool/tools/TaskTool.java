@@ -6,6 +6,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.Task;
 import ai.core.defaultagents.DefaultCodeSimplifierAgent;
 import ai.core.defaultagents.DefaultExploreAgent;
+import ai.core.defaultagents.DefaultGeneralAgent;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -157,7 +158,7 @@ public class TaskTool extends ToolCall {
                 .attachedContent(context.getAttachedContent())
                 .persistenceProvider(context.getPersistenceProvider())
                 .taskManager(context.getTaskManager() != null ? context.getTaskManager().createChild() : null)
-                .subagentPromptSections(context.getSubagentPromptSections())
+                .promptSections(context.getPromptSections())
                 .taskId(taskId)
                 .taskName(taskName)
                 .build();
@@ -170,10 +171,13 @@ public class TaskTool extends ToolCall {
 
     private Agent createAgent(String subagentType, ExecutionContext context) {
         if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultExploreAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getSubagentPromptSections());
+            return DefaultExploreAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
         }
         if (DefaultCodeSimplifierAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultCodeSimplifierAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getSubagentPromptSections());
+            return DefaultCodeSimplifierAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+        }
+        if (DefaultGeneralAgent.AGENT_NAME.equals(subagentType)) {
+            return DefaultGeneralAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
         }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
     }
@@ -188,7 +192,9 @@ public class TaskTool extends ToolCall {
             var subagentType = "- "
                     + String.join(":", DefaultExploreAgent.AGENT_NAME, DefaultExploreAgent.AGENT_DESCRIPTION)
                     + "\n- "
-                    + String.join(":", DefaultCodeSimplifierAgent.AGENT_NAME, DefaultCodeSimplifierAgent.AGENT_DESCRIPTION);
+                    + String.join(":", DefaultCodeSimplifierAgent.AGENT_NAME, DefaultCodeSimplifierAgent.AGENT_DESCRIPTION)
+                    + "\n- "
+                    + String.join(":", DefaultGeneralAgent.AGENT_NAME, DefaultGeneralAgent.AGENT_DESCRIPTION);
             this.name(TOOL_NAME);
             this.description(TOOL_DESC.replace("%s", subagentType));
             this.parameters(ToolCallParameters.of(

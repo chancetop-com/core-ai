@@ -80,7 +80,7 @@ public class CliAgent {
                 .customVariables(Map.of("workspace", config.workspace.toAbsolutePath().toString()))
                 .persistenceProvider(config.persistenceProvider)
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
-                .subagentPromptSections(subagentPromptSections(config))
+                .promptSections(constructPromptSection(config, hookOutput))
                 .build());
         return agent;
     }
@@ -122,24 +122,18 @@ public class CliAgent {
     }
 
     private static void configureSystemPrompt(AgentBuilder builder, Config config, String hookOutput) {
-        builder.systemPromptSection(config.coding ? new CodeBasePrompt() : new BasePrompt());
-        builder.systemPromptSection(new EnvironmentPrompt(config.workspace));
-        builder.systemPromptSection(new InstructionsPrompt(config.workspace));
-        if (config.memoryEnabled) {
-            builder.systemPromptSection(new MemoryPrompt(config.workspace));
-        }
-        if (!hookOutput.isEmpty()) {
-            builder.systemPromptSection(new HookPrompt(hookOutput));
-        }
+        builder.systemPromptSections(constructPromptSection(config, hookOutput));
     }
 
-    private static List<PromptInject> subagentPromptSections(Config config) {
-        var sections = new ArrayList<PromptInject>();
+    private static List<PromptInject> constructPromptSection(Config config, String hookOutput) {
+        List<PromptInject> sections = new ArrayList<>();
+        sections.add(config.coding ? new CodeBasePrompt() : new BasePrompt());
         sections.add(new EnvironmentPrompt(config.workspace));
         sections.add(new InstructionsPrompt(config.workspace));
         if (config.memoryEnabled) {
             sections.add(new MemoryPrompt(config.workspace));
         }
+        sections.add(new HookPrompt(hookOutput));
         return sections;
     }
 
@@ -170,6 +164,11 @@ public class CliAgent {
         @Override
         public String inject() {
             return "You are a helpful AI coding assistant and a personal assistant running inside core-ai.";
+        }
+
+        @Override
+        public SectionType type() {
+            return SectionType.IDENTITY;
         }
     }
 
@@ -286,9 +285,19 @@ public class CliAgent {
                     
                     """;
         }
+
+        @Override
+        public SectionType type() {
+            return SectionType.IDENTITY;
+        }
     }
 
     record EnvironmentPrompt(Path workspace) implements PromptInject {
+        @Override
+        public SectionType type() {
+            return SectionType.ENVIRONMENT;
+        }
+
         @Override
         public String inject() {
             var gitRepo = Files.isDirectory(workspace.resolve(".git")) ? "yes" : "no";
@@ -315,6 +324,11 @@ public class CliAgent {
 
     record InstructionsPrompt(Path workspace) implements PromptInject {
         private static final String[] PROJECT_FILES = {"instructions.md", "AGENTS.md", "CLAUDE.md"};
+
+        @Override
+        public SectionType type() {
+            return SectionType.INSTRUCTIONS;
+        }
 
         @Override
         public String inject() {
@@ -354,6 +368,11 @@ public class CliAgent {
 
     record MemoryPrompt(Path workspace) implements PromptInject {
         @Override
+        public SectionType type() {
+            return SectionType.MEMORY;
+        }
+
+        @Override
         public String inject() {
             var mdContent = new MdMemoryProvider(workspace).load();
             return """
@@ -379,6 +398,11 @@ public class CliAgent {
     }
 
     record HookPrompt(String output) implements PromptInject {
+        @Override
+        public SectionType type() {
+            return SectionType.HOOK;
+        }
+
         @Override
         public String inject() {
             return output;
