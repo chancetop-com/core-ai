@@ -23,8 +23,8 @@ export default function Layout() {
 
   useEffect(() => {
     const titles: Record<string, string> = {
+      '/': 'Dashboard',
       '/chat': 'Chat',
-      '/': 'Traces',
       '/traces': 'Traces',
       '/sessions': 'Sessions',
       '/agents': 'Agents',
@@ -58,7 +58,8 @@ export default function Layout() {
   const [expandedNav, setExpandedNav] = useState<string | null>(null);
 
   const isRouteActive = (to: string, pathname: string): boolean => {
-    if (to === '/') return pathname === '/' || pathname.startsWith('/traces');
+    if (to === '/') return pathname === '/' || pathname === '/dashboard';
+    if (to === '/traces') return pathname === '/traces' || pathname.startsWith('/traces/');
     if (to === '/agents') return pathname === '/agents' || pathname.startsWith('/agents/');
     if (to === '/system-prompts') return pathname === '/system-prompts' || pathname.startsWith('/system-prompts/');
     if (to === '/tools') return pathname === '/tools' || pathname.startsWith('/tools/');
@@ -71,8 +72,9 @@ export default function Layout() {
   };
 
   const navItems: NavItem[] = [
+    { to: '/', icon: Activity, label: 'Dashboard', show: caps.dashboard },
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
-    { to: '/', icon: Activity, label: 'Traces', show: caps.traces },
+    { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces },
     { to: '/agents', icon: Bot, label: 'Agents', show: true },
     { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts },
     { to: '/tasks', icon: ListChecks, label: 'Tasks', show: true },
