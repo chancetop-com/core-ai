@@ -14,7 +14,7 @@ import ai.core.tool.ToolCallResult;
 /**
  * author: lim chen
  * date: 2026/3/23
- * description: Todo： TOOL_DESC add `when use ` and General subagent
+ * description: task
  */
 public class TaskTool extends ToolCall {
     public static final String TOOL_NAME = "task";
