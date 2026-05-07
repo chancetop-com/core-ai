@@ -9,6 +9,7 @@ import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -21,6 +22,7 @@ import ai.core.api.server.session.sse.SseSandboxEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
 import ai.core.api.server.session.sse.SseTextChunkEvent;
 import ai.core.api.server.session.sse.SseToolApprovalRequestEvent;
+import ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent;
 import ai.core.api.server.session.sse.SseToolResultEvent;
 import ai.core.api.server.session.sse.SseToolStartEvent;
 import ai.core.api.server.session.sse.SseTurnCompleteEvent;
@@ -153,6 +155,15 @@ public class SseEventBridge implements AgentEventListener {
         sse.sandboxType = event.type;
         sse.message = event.message;
         sse.durationMs = event.durationMs;
+        eventPublisher.publish(sessionId, sse);
+    }
+
+    @Override
+    public void onEnvironmentOutput(EnvironmentOutputChunkEvent event) {
+        var sse = new SseEnvironmentOutputChunkEvent();
+        sse.source = event.source;
+        sse.callId = event.callId;
+        sse.chunk = event.chunk;
         eventPublisher.publish(sessionId, sse);
     }
 }

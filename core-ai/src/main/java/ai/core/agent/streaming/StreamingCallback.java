@@ -44,6 +44,9 @@ public interface StreamingCallback {
         return false;
     }
 
+    default void onOutput(String source, String callId, String chunk) {
+    }
+
     default void reset() {
     }
 }

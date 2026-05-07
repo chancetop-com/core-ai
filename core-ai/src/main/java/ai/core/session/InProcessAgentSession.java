@@ -18,6 +18,7 @@ import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -280,6 +281,7 @@ public class InProcessAgentSession implements AgentSession {
                     case PlanUpdateEvent e -> listener.onPlanUpdate(e);
                     case CompressionEvent e -> listener.onCompression(e);
                     case SandboxEvent e -> listener.onSandbox(e);
+                    case EnvironmentOutputChunkEvent e -> listener.onEnvironmentOutput(e);
                     default -> {
                     }
                 }

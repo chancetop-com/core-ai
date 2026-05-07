@@ -7,24 +7,28 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
-import ai.core.utils.InputStreamUtil;
 import ai.core.utils.Platform;
 import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
 import core.framework.util.Strings;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
 /**
  * @author stephen
@@ -173,18 +177,18 @@ public class ShellCommandTool extends ToolCall {
         String shellSpecific = getShellSpecific(platform, shell);
 
         return TOOL_DESC_TEMPLATE
-            .replace("${tool_read_file}", ReadFileTool.TOOL_NAME)
-            .replace("${tool_edit_file}", EditFileTool.TOOL_NAME)
-            .replace("${tool_glob}", GlobFileTool.TOOL_NAME)
-            .replace("${tool_grep}", GrepFileTool.TOOL_NAME)
-            .replace("${tool_write_file}", WriteFileTool.TOOL_NAME)
-            .replace("${tool_shell}", TOOL_NAME)
-            .replace("${default_timeout_ms}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS))
-            .replace("${default_timeout_minutes}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS / 60000))
-            .replace("${tool_todo}", WriteTodosTool.WT_TOOL_NAME)
-            .replace("${os}", System.getProperty("os.name"))
-            .replace("${shell_specific}", shellSpecific)
-            .replace("${tool_task}", TaskTool.TOOL_NAME);
+                .replace("${tool_read_file}", ReadFileTool.TOOL_NAME)
+                .replace("${tool_edit_file}", EditFileTool.TOOL_NAME)
+                .replace("${tool_glob}", GlobFileTool.TOOL_NAME)
+                .replace("${tool_grep}", GrepFileTool.TOOL_NAME)
+                .replace("${tool_write_file}", WriteFileTool.TOOL_NAME)
+                .replace("${tool_shell}", TOOL_NAME)
+                .replace("${default_timeout_ms}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS))
+                .replace("${default_timeout_minutes}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS / 60000))
+                .replace("${tool_todo}", WriteTodosTool.WT_TOOL_NAME)
+                .replace("${os}", System.getProperty("os.name"))
+                .replace("${shell_specific}", shellSpecific)
+                .replace("${tool_task}", TaskTool.TOOL_NAME);
     }
 
     @NotNull
@@ -208,52 +212,19 @@ public class ShellCommandTool extends ToolCall {
         return new Builder();
     }
 
-    public static String exec(List<String> commands, String workdir, long timeout) {
+    public static String exec(List<String> commands, String workdir, long timeout, Consumer<String> chunkCallback) {
         var dir = workdir;
         if (Strings.isBlank(dir)) dir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
 
         var workDir = new File(dir);
-        if (!workDir.exists()) {
-            String error = "Error: workspace directory does not exist: " + dir;
-            LOGGER.debug(error);
-            return error;
-        }
-        if (!workDir.isDirectory()) {
-            String error = "Error: workspace path is not a directory: " + dir;
-            LOGGER.debug(error);
-            return error;
-        }
+        if (!workDir.exists()) return "Error: workspace directory does not exist: " + dir;
+        if (!workDir.isDirectory()) return "Error: workspace path is not a directory: " + dir;
 
-        var pb = new ProcessBuilder(commands);
-        pb.directory(workDir);
-        pb.redirectErrorStream(true);
-
+        LOGGER.debug("Executing shell command in directory {}: {}", dir, String.join(" ", commands));
         try {
-            LOGGER.debug("Executing shell command in directory {}: {}", dir, String.join(" ", commands));
-            var process = pb.start();
-
-            var timedOut = waitFor(process, timeout);
-
-            if (timedOut) {
-                process.destroyForcibly();
-                waitFor(process);
-                return handleTimeout(process, timeout);
-            }
-
-            var outputLines = InputStreamUtil.readStream(process.getInputStream());
-            var exitCode = process.exitValue();
-
-            if (exitCode != 0) {
-                String error = "Command exited with code " + exitCode + ":\n" + String.join("\n", outputLines);
-                LOGGER.debug(error);
-                return error;
-            }
-
-            LOGGER.debug("Shell command executed successfully, output: {} lines", outputLines.size());
-            if (!outputLines.isEmpty()) {
-                LOGGER.debug("Command output:\n{}", String.join("\n", outputLines));
-            }
-            return outputLines.isEmpty() ? "" : String.join("\n", outputLines);
+            var process = startProcess(commands, workDir);
+            notifyStart(chunkCallback, timeout);
+            return drainOutput(process, timeout, chunkCallback);
         } catch (Exception e) {
             var error = "Command execution failed: " + e.getClass().getSimpleName() + " - " + e.getMessage();
             LOGGER.error(error, e);
@@ -261,43 +232,60 @@ public class ShellCommandTool extends ToolCall {
         }
     }
 
-    private static String handleTimeout(Process process, long timeout) {
-        String partial = "";
+    private static void notifyStart(Consumer<String> chunkCallback, long timeout) {
+        if (chunkCallback != null) {
+            chunkCallback.accept("\u23F3 bash is running, timeout: " + timeout + "s");
+        }
+    }
+
+    private static Process startProcess(List<String> commands, File workDir) throws IOException {
+        var pb = new ProcessBuilder(commands);
+        pb.directory(workDir);
+        pb.redirectErrorStream(true);
+        var process = pb.start();
+        process.getOutputStream().close();
+        return process;
+    }
+
+    private static String drainOutput(Process process, long timeout, Consumer<String> chunkCallback) {
+        var outputLines = new ArrayList<String>();
+        var future = CompletableFuture.supplyAsync(() -> {
+            try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    outputLines.add(line);
+                    if (chunkCallback != null) chunkCallback.accept(line);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
+        });
+
         try {
-            var errorLines = InputStreamUtil.readStream(process.getInputStream());
-            partial = String.join("\n", errorLines);
-        } catch (IOException ignored) {
-            // stream may already be closed after destroyForcibly
+            future.get(timeout, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            process.destroyForcibly();
+            waitFor(process);
+            return "Command timed out after " + timeout + " seconds\nPlease check your command and workspace dir\n" + String.join("\n", outputLines);
+        } catch (Exception e) {
+            process.destroyForcibly();
+            var cause = e.getCause();
+            return "Command IO error: " + (cause != null ? cause.getMessage() : e.getMessage()) + "\n" + String.join("\n", outputLines);
         }
-        var error = "Command timed out after " + timeout + " seconds\nPlease check your command and workspace dir\n" + partial;
-        LOGGER.debug(error);
-        return error;
+
+        waitFor(process);
+        int exitCode = process.exitValue();
+        if (exitCode != 0) {
+            String error = "Command exited with code " + exitCode + ":\n" + String.join("\n", outputLines);
+            LOGGER.debug(error);
+            return error;
+        }
+
+        LOGGER.debug("Shell command executed successfully, output: {} lines", outputLines.size());
+        return outputLines.isEmpty() ? "" : String.join("\n", outputLines);
     }
 
-    public static String execScript(Path scriptPath, String workdir, long timeout) {
-        if (!Files.exists(scriptPath)) {
-            return "Error: Script file does not exist: " + scriptPath;
-        }
-        if (!Files.isReadable(scriptPath)) {
-            return "Error: Script file is not readable: " + scriptPath;
-        }
-
-        var dir = workdir;
-        if (Strings.isBlank(dir)) {
-            dir = scriptPath.getParent() != null
-                    ? scriptPath.getParent().toAbsolutePath().toString()
-                    : core.framework.util.Files.tempDir().toAbsolutePath().toString();
-        }
-
-        LOGGER.debug("Executing shell script from path: {}", scriptPath.toAbsolutePath());
-
-        var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(SystemUtil.detectPlatform()).trim();
-        var prefixParts = shellPrefix.split(" ");
-        var commands = new ArrayList<>(Arrays.asList(prefixParts));
-        commands.add(scriptPath.toAbsolutePath().toString());
-
-        return exec(commands, dir, timeout);
-    }
 
     private static void waitFor(Process process) {
         try {
@@ -305,17 +293,6 @@ public class ShellCommandTool extends ToolCall {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    private static boolean waitFor(Process process, long timeout) {
-        boolean timedOut;
-        try {
-            timedOut = !process.waitFor(timeout, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            timedOut = true;
-        }
-        return timedOut;
     }
 
     @Override
@@ -329,6 +306,7 @@ public class ShellCommandTool extends ToolCall {
     }
 
     private ToolCallResult doExecute(String text, ExecutionContext context) {
+        Consumer<String> onChunk = getOnOutPutConsumer(context);
         long startTime = System.currentTimeMillis();
         try {
             var argsMap = parseArguments(text);
@@ -345,12 +323,12 @@ public class ShellCommandTool extends ToolCall {
             if (runInBackground && taskManager != null) {
                 var taskId = UUID.randomUUID().toString().replace("-", "");
                 var description = getStringValue(argsMap, "description");
-                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds));
+                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null));
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), context));
                 return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description))
                         .withDuration(System.currentTimeMillis() - startTime);
             } else {
-                return ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds))
+                return ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk))
                         .withDuration(System.currentTimeMillis() - startTime)
                         .withStats("command", command != null ? (command.length() > 50 ? command.substring(0, 50) + "..." : command) : null);
             }
@@ -359,6 +337,16 @@ public class ShellCommandTool extends ToolCall {
             return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    @Nullable
+    private static Consumer<String> getOnOutPutConsumer(ExecutionContext context) {
+        Consumer<String> onChunk = null;
+        var ec = context.getStreamingCallback();
+        if (ec != null) {
+            onChunk = chunk -> ec.onOutput("bash", null, chunk);
+        }
+        return onChunk;
     }
 
     private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description) {

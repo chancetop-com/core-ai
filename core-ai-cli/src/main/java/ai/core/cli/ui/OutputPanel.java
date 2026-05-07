@@ -109,6 +109,9 @@ public class OutputPanel {
 
     private volatile boolean textStarted;
     private volatile boolean reasoningShown;
+    private long toolStartTime;
+    private int toolOutputLineCount;
+    private boolean toolOutputStreaming;
 
     public OutputPanel(PrintWriter writer, boolean smartTerminal, IntSupplier terminalWidth) {
         this.writer = writer;
@@ -154,6 +157,9 @@ public class OutputPanel {
     public void toolStart(String toolName, String arguments, String diff, Boolean frontTask) {
         stopSpinnerIfActive();
         mdRenderer.flush();
+        toolStartTime = System.currentTimeMillis();
+        toolOutputStreaming = false;
+        toolOutputLineCount = 0;
         String summary = formatToolSummary(toolName, arguments);
         if (frontTask) {
             writer.println(INDENT + AnsiTheme.MUTED + "\u23BF" + AnsiTheme.RESET + " " + AnsiTheme.MUTED + summary + AnsiTheme.RESET);
@@ -182,26 +188,54 @@ public class OutputPanel {
     public void toolResult(String status, String result) {
         stopSpinnerIfActive();
         String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
-        writer.print(INDENT + icon + "\u23BF" + AnsiTheme.RESET + "  ");
-        if (result != null && !result.isBlank()) {
-            String[] lines = result.split("\n");
-            int limit = Math.min(lines.length, 3);
-            for (int i = 0; i < limit; i++) {
-                String line = lines[i].stripLeading();
-                if (line.length() > 120) line = line.substring(0, 120) + "...";
-                if (i > 0) writer.print(INDENT + "   ");
-                writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
-            }
-            if (lines.length > 3) {
-                writer.println(AnsiTheme.MUTED + INDENT + "   \u2026 +" + (lines.length - 3) + " lines" + AnsiTheme.RESET);
-            }
+
+        if (toolOutputStreaming && toolOutputLineCount > 5) {
+            clearStatusLine();
+        }
+
+        if (toolOutputStreaming && toolOutputLineCount > 0) {
+            writer.print(INDENT + icon + "\u23BF" + AnsiTheme.RESET + "  ");
+            long elapsed = System.currentTimeMillis() - toolStartTime;
+            writer.println(AnsiTheme.MUTED + "Done, " + toolOutputLineCount + " lines, " + ThinkingSpinner.formatElapsed(elapsed) + AnsiTheme.RESET);
         } else {
-            writer.println(AnsiTheme.MUTED + "Done" + AnsiTheme.RESET);
+            writer.print(INDENT + icon + "\u23BF" + AnsiTheme.RESET + "  ");
+            if (result != null && !result.isBlank()) {
+                String[] lines = result.split("\n");
+                int limit = Math.min(lines.length, 3);
+                for (int i = 0; i < limit; i++) {
+                    String line = lines[i].stripLeading();
+                    if (line.length() > 120) line = line.substring(0, 120) + "...";
+                    if (i > 0) writer.print(INDENT + "   ");
+                    writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
+                }
+                if (lines.length > 3) {
+                    writer.println(AnsiTheme.MUTED + INDENT + "   \u2026 +" + (lines.length - 3) + " lines" + AnsiTheme.RESET);
+                }
+            } else {
+                writer.println(AnsiTheme.MUTED + "Done" + AnsiTheme.RESET);
+            }
         }
         writer.flush();
+        toolOutputStreaming = false;
         resetShown();
         startSpinner();
+    }
 
+    public void toolOutputChunk(String line) {
+        stopSpinnerIfActive();
+        toolOutputStreaming = true;
+        toolOutputLineCount++;
+        if (toolOutputLineCount <= 5) {
+            writer.println(INDENT + AnsiTheme.MUTED + line + AnsiTheme.RESET);
+        } else {
+            String counter = "\u231B Running... Read " + toolOutputLineCount + " lines";
+            writer.print("\r" + INDENT + AnsiTheme.MUTED + counter + AnsiTheme.RESET);
+        }
+        writer.flush();
+    }
+
+    private void clearStatusLine() {
+        writer.print("\r" + " ".repeat(60) + "\r");
     }
 
     private void resetShown() {

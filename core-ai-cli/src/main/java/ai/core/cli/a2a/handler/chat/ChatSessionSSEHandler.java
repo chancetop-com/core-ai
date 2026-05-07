@@ -8,6 +8,7 @@ import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -255,6 +256,15 @@ public class ChatSessionSSEHandler implements HttpHandler {
                 "tool_name", event.toolName,
                 "status", event.status,
                 "result", nullToEmpty(event.result)
+            ));
+        }
+
+        @Override
+        public void onEnvironmentOutput(EnvironmentOutputChunkEvent event) {
+            enqueueSseEvent("environment_output_chunk", toMap(
+                "source", event.source,
+                "call_id", event.callId,
+                "chunk", event.chunk
             ));
         }
 

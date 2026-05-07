@@ -10,6 +10,7 @@ import ai.core.api.server.session.sse.SseSandboxEvent;
 import ai.core.api.server.session.sse.SseStatusChangeEvent;
 import ai.core.api.server.session.sse.SseTextChunkEvent;
 import ai.core.api.server.session.sse.SseToolApprovalRequestEvent;
+import ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent;
 import ai.core.api.server.session.sse.SseToolResultEvent;
 import ai.core.api.server.session.sse.SseToolStartEvent;
 import ai.core.api.server.session.sse.SseTurnCompleteEvent;
@@ -36,6 +37,7 @@ public class SseEventHelper {
         TYPE_MAP.put(SsePlanUpdateEvent.class, EventType.PLAN_UPDATE);
         TYPE_MAP.put(SseCompressionEvent.class, EventType.COMPRESSION);
         TYPE_MAP.put(SseSandboxEvent.class, EventType.SANDBOX);
+        TYPE_MAP.put(SseEnvironmentOutputChunkEvent.class, EventType.ENVIRONMENT_OUTPUT_CHUNK);
     }
 
     /**
@@ -53,7 +55,8 @@ public class SseEventHelper {
             Map.entry(EventType.STATUS_CHANGE, SseStatusChangeEvent.class),
             Map.entry(EventType.PLAN_UPDATE, SsePlanUpdateEvent.class),
             Map.entry(EventType.COMPRESSION, SseCompressionEvent.class),
-            Map.entry(EventType.SANDBOX, SseSandboxEvent.class)
+            Map.entry(EventType.SANDBOX, SseSandboxEvent.class),
+            Map.entry(EventType.ENVIRONMENT_OUTPUT_CHUNK, SseEnvironmentOutputChunkEvent.class)
     );
 
     public static void initEvent(SseBaseEvent event, String sessionId) {

@@ -29,5 +29,7 @@ public enum EventType {
     @Property(name = "compression")
     COMPRESSION,
     @Property(name = "sandbox")
-    SANDBOX
+    SANDBOX,
+    @Property(name = "environment_output_chunk")
+    ENVIRONMENT_OUTPUT_CHUNK
 }

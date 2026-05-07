@@ -40,5 +40,8 @@ public interface AgentEventListener {
 
     default void onSandbox(SandboxEvent event) {
     }
+
+    default void onEnvironmentOutput(EnvironmentOutputChunkEvent event) {
+    }
 }
 

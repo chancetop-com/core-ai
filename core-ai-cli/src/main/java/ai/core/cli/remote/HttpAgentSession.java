@@ -14,6 +14,7 @@ import ai.core.api.server.session.SandboxEvent;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
@@ -146,6 +147,7 @@ public final class HttpAgentSession implements AgentSession {
             case "plan_update" -> EventType.PLAN_UPDATE;
             case "compression" -> EventType.COMPRESSION;
             case "sandbox" -> EventType.SANDBOX;
+            case "environment_output_chunk" -> EventType.ENVIRONMENT_OUTPUT_CHUNK;
             default -> null;
         };
     }
@@ -164,6 +166,7 @@ public final class HttpAgentSession implements AgentSession {
             case PLAN_UPDATE -> JsonUtil.fromJson(PlanUpdateEvent.class, dataJson);
             case COMPRESSION -> JsonUtil.fromJson(CompressionEvent.class, dataJson);
             case SANDBOX -> JsonUtil.fromJson(SandboxEvent.class, dataJson);
+            case ENVIRONMENT_OUTPUT_CHUNK -> JsonUtil.fromJson(EnvironmentOutputChunkEvent.class, dataJson);
         };
     }
 
@@ -181,6 +184,7 @@ public final class HttpAgentSession implements AgentSession {
                 else if (event instanceof StatusChangeEvent e) listener.onStatusChange(e);
                 else if (event instanceof CompressionEvent e) listener.onCompression(e);
                 else if (event instanceof SandboxEvent e) listener.onSandbox(e);
+                else if (event instanceof EnvironmentOutputChunkEvent e) listener.onEnvironmentOutput(e);
             } catch (Exception e) {
                 DebugLog.log("listener error: " + e.getMessage());
             }

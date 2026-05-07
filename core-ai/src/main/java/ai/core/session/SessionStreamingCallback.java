@@ -2,6 +2,7 @@ package ai.core.session;
 
 import ai.core.agent.streaming.StreamingCallback;
 import ai.core.api.server.session.AgentEvent;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
@@ -54,6 +55,11 @@ public class SessionStreamingCallback implements StreamingCallback {
             if (call == null || Strings.isBlank(call.id)) continue;
             dispatcher.accept(OnToolEvent.of(sessionId, call.function.name, call.function.arguments));
         }
+    }
+
+    @Override
+    public void onOutput(String source, String callId, String chunk) {
+        dispatcher.accept(EnvironmentOutputChunkEvent.of(sessionId, source, callId, chunk));
     }
 
     @Override
