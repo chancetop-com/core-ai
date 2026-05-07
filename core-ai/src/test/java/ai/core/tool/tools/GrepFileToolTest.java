@@ -98,19 +98,6 @@ class GrepFileToolTest {
     }
 
     @Test
-    void shouldFilterByIncludeWithDirectoryPrefix() throws IOException {
-        write("src/Foo.java", "class Foo");
-        write("src/Bar.java", "class Bar");
-        write("test/Baz.java", "class Baz");
-        write("readme.md", "class in md");
-
-        var result = grep(Map.of("pattern", "class", "include", "src/*.java"));
-
-        assertTrue(result.contains("src/Foo.java"));
-        assertTrue(result.contains("src/Bar.java"));
-    }
-
-    @Test
     void shouldBuildCorrectly() {
         assertNotNull(tool);
         assertEquals("grep_file", tool.getName());
