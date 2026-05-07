@@ -53,6 +53,15 @@ public class RunAgentAction implements TriggerAction {
         }
 
         var inputTemplate = trigger.actionConfig != null ? trigger.actionConfig.get("input_template") : null;
+        if (inputTemplate == null || inputTemplate.isBlank()) {
+            // Fall back to agent's inputTemplate when trigger has no explicit input_template
+            // Priority: publishedConfig.inputTemplate > draft inputTemplate
+            if (definition.publishedConfig != null && definition.publishedConfig.inputTemplate != null && !definition.publishedConfig.inputTemplate.isBlank()) {
+                inputTemplate = definition.publishedConfig.inputTemplate;
+            } else {
+                inputTemplate = definition.inputTemplate;
+            }
+        }
         var input = resolveInput(inputTemplate, payload);
 
         Map<String, String> runtimeVariables = null;
