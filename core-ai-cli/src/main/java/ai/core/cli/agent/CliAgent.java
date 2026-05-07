@@ -307,7 +307,7 @@ public class CliAgent {
 
         @Override
         public String inject() {
-            var sb = new StringBuilder(256);
+            var sb = new StringBuilder();
             var projectPaths = findProjectInstructions(workspace);
             for (var path : projectPaths) {
                 try {
@@ -322,11 +322,18 @@ public class CliAgent {
             return sb.toString();
         }
 
-        private static List<Path> findProjectInstructions(Path startDir) {
+        private static List<Path> findProjectInstructions(Path workspace) {
             var found = new ArrayList<Path>();
+            var coreAiDir = workspace.resolve(".core-ai");
             for (var fileName : PROJECT_FILES) {
-                var file = startDir.resolve(fileName);
+                var file = coreAiDir.resolve(fileName);
                 if (Files.isRegularFile(file)) {
+                    found.add(file);
+                }
+            }
+            for (var fileName : PROJECT_FILES) {
+                var file = workspace.resolve(fileName);
+                if (Files.isRegularFile(file) && found.stream().noneMatch(p -> p.getFileName().toString().equals(fileName))) {
                     found.add(file);
                 }
             }
