@@ -55,6 +55,7 @@ class A2ARemoteAgentConfigLoaderTest {
         props.setProperty("a2a.remoteServers.dev.url", "https://server");
         props.setProperty("a2a.remoteServers.dev.apiKey", "test-key");
         props.setProperty("a2a.remoteServers.dev.discovery.enabled", "true");
+        props.setProperty("a2a.remoteServers.dev.discovery.required", "true");
         props.setProperty("a2a.remoteServers.dev.toolPrefix", "server agents");
         props.setProperty("a2a.remoteServers.dev.includeAgents", "default-assistant, coder");
         props.setProperty("a2a.remoteServers.dev.excludeAgents", "draft-agent");
@@ -71,6 +72,7 @@ class A2ARemoteAgentConfigLoaderTest {
         assertEquals("dev", config.id);
         assertEquals("https://server", config.url);
         assertEquals("test-key", config.resolvedApiKey());
+        assertTrue(config.discoveryRequired);
         assertEquals("server_agents", config.toolPrefix);
         assertEquals(List.of("default-assistant", "coder"), config.includeAgents);
         assertEquals(List.of("draft-agent"), config.excludeAgents);
@@ -165,6 +167,71 @@ class A2ARemoteAgentConfigLoaderTest {
         assertEquals(1, tools.size());
         assertEquals("read_file_agent-12", tools.getFirst().getName());
         assertTrue(tools.getFirst().isDiscoverable());
+    }
+
+    @Test
+    void optionalRemoteServerDiscoveryFailureDoesNotBlockStaticTools() {
+        var server = new A2ARemoteServerConfig();
+        server.id = "dev";
+        server.url = "https://server";
+        var staticTool = config("static", "static_remote");
+
+        var tools = A2ARemoteAgentTools.from(List.of(staticTool), List.of(server), Set.of(), new A2ARemoteAgentDiscovery() {
+            @Override
+            public List<A2ARemoteAgentConfig> discover(A2ARemoteServerConfig server) {
+                throw new IllegalStateException("server unavailable");
+            }
+        });
+
+        assertEquals(1, tools.size());
+        assertEquals("static_remote", tools.getFirst().getName());
+    }
+
+    @Test
+    void requiredRemoteServerDiscoveryFailureIsRejected() {
+        var server = new A2ARemoteServerConfig();
+        server.id = "dev";
+        server.url = "https://server";
+        server.discoveryRequired = true;
+
+        assertThrows(IllegalStateException.class, () -> A2ARemoteAgentTools.from(List.of(), List.of(server), Set.of(),
+                new A2ARemoteAgentDiscovery() {
+                    @Override
+                    public List<A2ARemoteAgentConfig> discover(A2ARemoteServerConfig server) {
+                        throw new IllegalStateException("server unavailable");
+                    }
+                }));
+    }
+
+    @Test
+    void discoveryUsesShortCacheAndReturnsIndependentConfigs() {
+        A2ARemoteAgentDiscovery.clearCacheForTesting();
+        var server = new A2ARemoteServerConfig();
+        server.id = "cache-test";
+        server.url = "https://server";
+        server.apiKey = "test-key";
+        server.toolPrefix = "server";
+
+        class CountingDiscovery extends A2ARemoteAgentDiscovery {
+            int calls;
+
+            @Override
+            protected String fetchAgentsJson(A2ARemoteServerConfig server, String apiKey) {
+                calls++;
+                var response = new ListAgentsResponse();
+                response.agents = List.of(agent("a1", "Alpha Agent", "alpha desc", "AGENT"));
+                return JsonUtil.toJson(response);
+            }
+        }
+
+        var discovery = new CountingDiscovery();
+        var first = discovery.discover(server);
+        first.getFirst().name = "mutated";
+        var second = discovery.discover(server);
+
+        assertEquals(1, discovery.calls);
+        assertEquals("server_Alpha_Agent", second.getFirst().name);
+        A2ARemoteAgentDiscovery.clearCacheForTesting();
     }
 
     private A2ARemoteAgentConfig config(String id, String name) {

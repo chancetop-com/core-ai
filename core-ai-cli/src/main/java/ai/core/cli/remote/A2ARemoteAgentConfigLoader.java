@@ -69,6 +69,7 @@ public final class A2ARemoteAgentConfigLoader {
         config.apiKeyEnv = props.property(prefix + ".apiKeyEnv").orElse(null);
         config.apiKey = props.property(prefix + ".apiKey").orElse(null);
         config.discoveryEnabled = props.property(prefix + ".discovery.enabled").map(Boolean::parseBoolean).orElse(config.discoveryEnabled);
+        config.discoveryRequired = props.property(prefix + ".discovery.required").map(Boolean::parseBoolean).orElse(config.discoveryRequired);
         config.toolPrefix = normalizeToolName(props.property(prefix + ".toolPrefix").orElse(id));
         config.includeAgents = props.property(prefix + ".includeAgents").map(A2ARemoteAgentConfigLoader::csv).orElse(config.includeAgents);
         config.excludeAgents = props.property(prefix + ".excludeAgents").map(A2ARemoteAgentConfigLoader::csv).orElse(config.excludeAgents);

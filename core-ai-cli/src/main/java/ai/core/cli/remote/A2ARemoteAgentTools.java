@@ -3,6 +3,8 @@ package ai.core.cli.remote;
 import ai.core.a2a.InMemoryRemoteAgentContextStore;
 import ai.core.tool.ToolCall;
 import ai.core.tool.tools.A2ARemoteAgentToolCall;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -17,6 +19,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author xander
  */
 public final class A2ARemoteAgentTools {
+    private static final Logger LOGGER = LoggerFactory.getLogger(A2ARemoteAgentTools.class);
+
     public static List<ToolCall> from(List<A2ARemoteAgentConfig> configs) {
         return from(configs, List.of(), Set.of());
     }
@@ -72,8 +76,14 @@ public final class A2ARemoteAgentTools {
         try {
             return discovery.discover(serverConfig);
         } catch (RuntimeException e) {
-            throw new IllegalStateException("failed to discover A2A remote agents from server '"
-                    + serverConfig.id + "': " + e.getMessage(), e);
+            var message = "failed to discover A2A remote agents from server '"
+                    + serverConfig.id + "': " + e.getMessage();
+            if (serverConfig.discoveryRequired) {
+                throw new IllegalStateException(message, e);
+            }
+            LOGGER.warn("{}; remote agents from this server will be unavailable until discovery succeeds", message);
+            LOGGER.debug("A2A remote agent discovery failure", e);
+            return List.of();
         }
     }
 

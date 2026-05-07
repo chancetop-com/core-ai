@@ -17,6 +17,7 @@ public class A2ARemoteServerConfig {
     public String apiKeyEnv;
     public String apiKey;
     public boolean discoveryEnabled = true;
+    public boolean discoveryRequired;
     public String toolPrefix;
     public List<String> includeAgents = List.of();
     public List<String> excludeAgents = List.of();

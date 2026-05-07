@@ -11,6 +11,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Discovers core-ai-server agents and maps them to local A2A remote-agent tool configs.
@@ -20,15 +23,33 @@ import java.util.Set;
 public class A2ARemoteAgentDiscovery {
     private static final Logger LOGGER = LoggerFactory.getLogger(A2ARemoteAgentDiscovery.class);
     private static final int MAX_TOOL_NAME_LENGTH = 64;
+    private static final long CACHE_TTL_NANOS = TimeUnit.MINUTES.toNanos(1);
+    private static final ConcurrentMap<String, CacheEntry> CACHE = new ConcurrentHashMap<>();
+
+    static void clearCacheForTesting() {
+        CACHE.clear();
+    }
 
     public List<A2ARemoteAgentConfig> discover(A2ARemoteServerConfig server) {
         if (server == null || !server.enabled || !server.discoveryEnabled) return List.of();
-        var json = new RemoteApiClient(server.url, server.resolvedApiKey()).get("/api/agents");
+        var apiKey = server.resolvedApiKey();
+        var key = cacheKey(server, apiKey);
+        var cached = CACHE.get(key);
+        var now = System.nanoTime();
+        if (cached != null && now - cached.createdAtNanos < CACHE_TTL_NANOS) return copyConfigs(cached.configs);
+
+        var json = fetchAgentsJson(server, apiKey);
         if (json == null || json.isBlank()) {
             LOGGER.warn("failed to discover A2A agents, server={}", server.id);
             return List.of();
         }
-        return fromJson(server, json);
+        var configs = fromJson(server, json);
+        CACHE.put(key, new CacheEntry(now, List.copyOf(copyConfigs(configs))));
+        return copyConfigs(configs);
+    }
+
+    protected String fetchAgentsJson(A2ARemoteServerConfig server, String apiKey) {
+        return new RemoteApiClient(server.url, apiKey).get("/api/agents");
     }
 
     List<A2ARemoteAgentConfig> fromJson(A2ARemoteServerConfig server, String json) {
@@ -141,5 +162,45 @@ public class A2ARemoteAgentDiscovery {
             result = result.substring(0, result.length() - 1);
         }
         return result;
+    }
+
+    private String cacheKey(A2ARemoteServerConfig server, String apiKey) {
+        return server.id + "|" + server.url + "|" + Integer.toHexString(apiKey == null ? 0 : apiKey.hashCode())
+                + "|" + server.toolPrefix + "|" + String.join(",", server.includeAgents)
+                + "|" + String.join(",", server.excludeAgents) + "|" + server.discoverable
+                + "|" + server.timeout + "|" + server.contextPolicy + "|" + server.invocationMode
+                + "|" + server.maxInputChars + "|" + server.maxOutputChars;
+    }
+
+    private List<A2ARemoteAgentConfig> copyConfigs(List<A2ARemoteAgentConfig> configs) {
+        if (configs == null || configs.isEmpty()) return List.of();
+        var result = new ArrayList<A2ARemoteAgentConfig>();
+        for (var config : configs) {
+            result.add(copy(config));
+        }
+        return result;
+    }
+
+    private A2ARemoteAgentConfig copy(A2ARemoteAgentConfig config) {
+        var copy = new A2ARemoteAgentConfig();
+        copy.id = config.id;
+        copy.enabled = config.enabled;
+        copy.url = config.url;
+        copy.agentId = config.agentId;
+        copy.apiKeyEnv = config.apiKeyEnv;
+        copy.apiKey = config.apiKey;
+        copy.name = config.name;
+        copy.description = config.description;
+        copy.discoverable = config.discoverable;
+        copy.autoDiscovered = config.autoDiscovered;
+        copy.timeout = config.timeout;
+        copy.contextPolicy = config.contextPolicy;
+        copy.invocationMode = config.invocationMode;
+        copy.maxInputChars = config.maxInputChars;
+        copy.maxOutputChars = config.maxOutputChars;
+        return copy;
+    }
+
+    private record CacheEntry(long createdAtNanos, List<A2ARemoteAgentConfig> configs) {
     }
 }
