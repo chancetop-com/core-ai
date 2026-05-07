@@ -94,8 +94,6 @@ project(":core-ai") {
         implementation("io.opentelemetry:opentelemetry-exporter-otlp:${Versions.OPENTELEMETRY_VERSION}")
         // MCP SDK
         implementation("io.modelcontextprotocol.sdk:mcp:${Versions.MCP_SDK_VERSION}")
-        // SQLite JDBC for long-term memory storage
-        implementation("org.xerial:sqlite-jdbc:${Versions.SQLITE_JDBC_VERSION}")
         // SnakeYAML for Skills YAML frontmatter parsing
         implementation("org.yaml:snakeyaml:${Versions.SNAKEYAML_VERSION}")
         // Jsoup for HTML parsing (DuckDuckGo search provider)

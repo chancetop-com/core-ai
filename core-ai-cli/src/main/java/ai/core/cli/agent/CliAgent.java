@@ -1,15 +1,19 @@
 package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
+import ai.core.agent.AgentBuilder;
+import ai.core.cli.plugin.PluginManager;
 import ai.core.agent.ExecutionContext;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
 import ai.core.cli.memory.MdMemoryProvider;
-import ai.core.cli.plugin.PluginManager;
+import java.util.stream.Collectors;
+
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteAgentTools;
 import ai.core.cli.remote.A2ARemoteServerConfig;
+import ai.core.prompt.PromptInject;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
@@ -35,7 +39,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -57,13 +60,12 @@ public class CliAgent {
         if (hookLifecycle != null) {
             hookOutput = hookLifecycle.runSessionStartHooks();
         }
-        var systemPrompt = buildSystemPrompt(config, hookOutput);
         var builder = Agent.builder()
                 .llmProvider(config.providers.getDefaultProvider())
-                .systemPrompt(systemPrompt)
                 .maxTurn(config.maxTurn)
                 .toolCalls(tools)
                 .temperature(0.8);
+        configureSystemPrompt(builder, config, hookOutput);
 
         if (hookLifecycle != null) {
             builder.addAgentLifecycle(hookLifecycle);
@@ -121,21 +123,16 @@ public class CliAgent {
         return Path.of(System.getProperty("user.home"), ".core-ai", "skills");
     }
 
-    private static String buildSystemPrompt(Config config, String hookOutput) {
-        var sections = new ArrayList<PromptInject>();
-        sections.add(config.coding ? new CodeBasePrompt() : new BasePrompt());
-        sections.add(new EnvironmentPrompt(config.workspace));
-        sections.add(new InstructionsPrompt(config.workspace));
+    private static void configureSystemPrompt(AgentBuilder builder, Config config, String hookOutput) {
+        builder.systemPromptSection(config.coding ? new CodeBasePrompt() : new BasePrompt());
+        builder.systemPromptSection(new EnvironmentPrompt(config.workspace));
+        builder.systemPromptSection(new InstructionsPrompt(config.workspace));
         if (config.memoryEnabled) {
-            sections.add(new MemoryPrompt(config.workspace));
+            builder.systemPromptSection(new MemoryPrompt(config.workspace));
         }
         if (!hookOutput.isEmpty()) {
-            sections.add(new HookPrompt(hookOutput));
+            builder.systemPromptSection(new HookPrompt(hookOutput));
         }
-        return sections.stream()
-                .map(PromptInject::inject)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.joining("\n\n"));
     }
 
     private static List<ToolCall> mcpTools() {
@@ -143,9 +140,7 @@ public class CliAgent {
         if (manager == null) return List.of();
         var serverNames = manager.getServerNames();
         if (serverNames != null && !serverNames.isEmpty()) {
-            var tools = new ArrayList<ToolCall>();
-            tools.addAll(McpToolCalls.from(manager, new ArrayList<>(serverNames), null));
-            return tools;
+            return new ArrayList<>(McpToolCalls.from(manager, new ArrayList<>(serverNames), null));
         }
         return List.of();
     }
@@ -163,16 +158,13 @@ public class CliAgent {
 
     // ---- PromptInject implementations ----
 
-    public interface PromptInject {
-        String inject();
-    }
-
     record BasePrompt() implements PromptInject {
         @Override
         public String inject() {
             return "You are a helpful AI coding assistant and a personal assistant running inside core-ai.";
         }
     }
+
     record CodeBasePrompt() implements PromptInject {
         @Override
         @SuppressWarnings("MethodLength")
@@ -314,7 +306,7 @@ public class CliAgent {
     }
 
     record InstructionsPrompt(Path workspace) implements PromptInject {
-        private static final String[] PROJECT_FILES = {"AGENTS.md", "CLAUDE.md", "instructions.md"};
+        private static final String[] PROJECT_FILES = {"instructions.md", "AGENTS.md", "CLAUDE.md",};
 
         @Override
         public String inject() {
@@ -351,19 +343,19 @@ public class CliAgent {
             var mdContent = new MdMemoryProvider(workspace).load();
             return """
                     ## Memory
-
+                    
                     Persistent structured memory at .core-ai/memory/.
                     Index: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
                     Each topic file has YAML frontmatter (name, description, type: user/feedback/project/reference).
-
+                    
                     Index structure: | File | Description | Created | Updated |
                     Description column: use the `description` field from the file's YAML frontmatter.
-
+                    
                     Reading: use md_memory_tool to search/get, or read_file for full content.
                     Writing: use write_file/edit_file to create/update topic files. \
                     Update MEMORY.md index when adding or removing files. \
                     Check existing memories first to avoid duplicates; merge into existing files when possible.
-
+                    
                     <memories>
                     %s
                     </memories>

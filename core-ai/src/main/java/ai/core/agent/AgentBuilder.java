@@ -16,6 +16,7 @@ import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.memory.Memory;
 import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryLifecycle;
+import ai.core.prompt.PromptInject;
 import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePrompt;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
@@ -45,6 +46,7 @@ import java.util.stream.Collectors;
  */
 public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private String systemPrompt;
+    private final List<PromptInject> systemPromptSections = new ArrayList<>();
     private String promptTemplate;
     private LLMProvider llmProvider;
     private final List<ToolCall> toolCalls = Lists.newArrayList();
@@ -133,6 +135,17 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder systemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
+        return this;
+    }
+
+    public AgentBuilder systemPromptSection(PromptInject section) {
+        this.systemPromptSections.add(section);
+        return this;
+    }
+
+    public AgentBuilder systemPromptSections(List<PromptInject> sections) {
+        this.systemPromptSections.clear();
+        this.systemPromptSections.addAll(sections);
         return this;
     }
 
@@ -306,6 +319,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         fetchLangfusePromptsIfConfigured();
         configureSkills();
         configureToolDiscovery();
+        configureSystemPrompt();
         copyValue(agent);
 
         var systemVariables = agent.getSystemVariables();
@@ -325,8 +339,20 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             toolCalls.addAll(this.subAgents);
         }
     }
+    private void configureSystemPrompt() {
+        var sb = new StringBuilder(this.systemPrompt != null ? this.systemPrompt : "");
+        for (var section : systemPromptSections) {
+            var text = section.inject();
+            if (!text.isEmpty()) {
+                if (!sb.isEmpty()) sb.append("\n\n");
+                sb.append(text);
+            }
+        }
+        this.systemPrompt = !sb.isEmpty() ? sb.toString() : "you are a helpful assistant";
+    }
+
     private void copyValue(Agent agent) {
-        agent.systemPrompt = this.systemPrompt == null ? "you are a helpful assistant" : this.systemPrompt;
+        agent.systemPrompt = this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
         agent.maxTurnNumber = this.maxTurnNumber == null ? 20 : this.maxTurnNumber;
         agent.temperature = this.temperature;
