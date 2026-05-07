@@ -36,13 +36,13 @@ public class ShellUtil {
     }
 
     private static String getWindowsPreferredShell() {
-        // Prefer Unix-like shells (Git Bash, MSYS2, Cygwin, WSL) on Windows
-        // when available, then fall back to Windows native shells.
-        for (var shell : UNIX_SHELLS) {
-            if (isCommandExists(Platform.WINDOWS_X64, shell)) {
-                return shell;
-            }
-        }
+//        // Prefer Unix-like shells (Git Bash, MSYS2, Cygwin, WSL) on Windows
+//        // when available, then fall back to Windows native shells.
+//        for (var shell : UNIX_SHELLS) {
+//            if (isCommandExists(Platform.WINDOWS_X64, shell)) {
+//                return shell;
+//            }
+//        }
         return getFirstExistsShell(Platform.WINDOWS_X64, WINDOWS_NATIVE_SHELLS);
     }
 
