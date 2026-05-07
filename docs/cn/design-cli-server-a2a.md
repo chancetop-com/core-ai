@@ -23,7 +23,7 @@ Core-AI 是通用 Agent 框架，`core-ai-cli` 和 `core-ai-server` 都是基于
 
 因此，A2A 在 Core-AI 中被定位为**框架级 Agent 互操作层**，而不是 `core-ai-cli` 和 `core-ai-server` 之间的私有协议。
 
-本文件描述 A2A 协议层和 CLI/server 集成。关于“本地 Agent 如何把 server Agent 当成 Tool 协作”的具体方案，见 [A2A Remote Agent as Tool 设计](design-a2a-remote-agent-tool.md)。
+本文件描述 A2A 协议层和 CLI/server 集成。关于“本地 Agent 如何发现并委托 server Agent 协作”的具体方案，见 [A2A Remote Agent Catalog 与 Delegation 设计](design-a2a-remote-agent-tool.md)。
 
 ## 2. A2A 在 Core-AI 中是什么
 

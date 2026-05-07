@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * @author stephen
@@ -41,5 +42,9 @@ public class PropertiesFileSource implements PropertySource {
     @Override
     public Optional<String> property(String key) {
         return Optional.ofNullable(properties.getProperty(key));
+    }
+
+    public Set<String> propertyNames() {
+        return Set.copyOf(properties.stringPropertyNames());
     }
 }

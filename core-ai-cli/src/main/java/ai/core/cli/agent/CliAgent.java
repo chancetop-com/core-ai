@@ -2,31 +2,29 @@ package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
 import ai.core.agent.AgentBuilder;
-import ai.core.cli.plugin.PluginManager;
 import ai.core.agent.ExecutionContext;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
 import ai.core.cli.memory.MdMemoryProvider;
-import java.util.stream.Collectors;
-
+import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
-import ai.core.cli.remote.A2ARemoteAgentTools;
+import ai.core.cli.remote.A2ARemoteAgentDiscovery;
 import ai.core.cli.remote.A2ARemoteServerConfig;
-import ai.core.prompt.PromptInject;
+import ai.core.cli.remote.DelegateToRemoteAgentToolCall;
+import ai.core.cli.remote.SearchRemoteAgentsToolCall;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.persistence.PersistenceProvider;
+import ai.core.prompt.PromptInject;
 import ai.core.skill.SkillConfig;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
-import ai.core.tool.tools.MemoryRecallTool;
 import ai.core.tool.tools.SkillTool;
-import ai.core.tool.tools.ToolActivationTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -37,7 +35,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -50,7 +47,7 @@ public class CliAgent {
         var skillConfig = buildSkillConfig(config, pluginManager);
         var tools = buildTools(config, skillConfig);
         tools.addAll(0, mcpTools());
-        tools.addAll(A2ARemoteAgentTools.from(config.remoteAgents, config.remoteServers, reservedToolNames(tools)));
+        tools.addAll(remoteAgentTools(config));
 
         var hookConfig = HookConfig.load(config.workspace, pluginManager);
         var hookLifecycle = hookConfig.isEmpty() ? null
@@ -112,11 +109,11 @@ public class CliAgent {
         return tools;
     }
 
-    private static Set<String> reservedToolNames(List<ToolCall> tools) {
-        var names = tools.stream().map(ToolCall::getName).collect(Collectors.toSet());
-        names.add(ToolActivationTool.TOOL_NAME);
-        names.add(MemoryRecallTool.TOOL_NAME);
-        return names;
+    private static List<ToolCall> remoteAgentTools(Config config) {
+        var catalog = new A2ARemoteAgentDiscovery().discoverCatalog(config.remoteAgents, config.remoteServers);
+        if (catalog.isEmpty()) return List.of();
+        return List.of(SearchRemoteAgentsToolCall.builder().catalog(catalog).build(),
+                DelegateToRemoteAgentToolCall.builder().catalog(catalog).build());
     }
 
     private static Path userSkillsDir() {
@@ -306,7 +303,7 @@ public class CliAgent {
     }
 
     record InstructionsPrompt(Path workspace) implements PromptInject {
-        private static final String[] PROJECT_FILES = {"instructions.md", "AGENTS.md", "CLAUDE.md",};
+        private static final String[] PROJECT_FILES = {"instructions.md", "AGENTS.md", "CLAUDE.md"};
 
         @Override
         public String inject() {

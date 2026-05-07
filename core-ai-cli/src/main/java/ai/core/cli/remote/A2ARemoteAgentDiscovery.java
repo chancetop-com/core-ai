@@ -48,6 +48,26 @@ public class A2ARemoteAgentDiscovery {
         return copyConfigs(configs);
     }
 
+    public RemoteAgentCatalog discoverCatalog(List<A2ARemoteAgentConfig> configs,
+                                              List<A2ARemoteServerConfig> serverConfigs) {
+        var entries = new ArrayList<RemoteAgentCatalogEntry>();
+        var connectionKeys = new HashSet<String>();
+        if (configs != null) {
+            for (var config : configs) {
+                if (config == null || !config.enabled) continue;
+                addEntry(entries, connectionKeys, config);
+            }
+        }
+        if (serverConfigs != null) {
+            for (var serverConfig : serverConfigs) {
+                for (var config : safeDiscover(serverConfig)) {
+                    addEntry(entries, connectionKeys, config);
+                }
+            }
+        }
+        return new RemoteAgentCatalog(entries);
+    }
+
     protected String fetchAgentsJson(A2ARemoteServerConfig server, String apiKey) {
         return new RemoteApiClient(server.url, apiKey).get("/api/agents");
     }
@@ -64,6 +84,54 @@ public class A2ARemoteAgentDiscovery {
             configs.add(config);
         }
         return configs;
+    }
+
+    private List<A2ARemoteAgentConfig> safeDiscover(A2ARemoteServerConfig serverConfig) {
+        if (serverConfig == null || !serverConfig.enabled || !serverConfig.discoveryEnabled) return List.of();
+        try {
+            return discover(serverConfig);
+        } catch (RuntimeException e) {
+            var message = "failed to discover A2A remote agents from server '"
+                    + serverConfig.id + "': " + e.getMessage();
+            if (serverConfig.discoveryRequired) throw new IllegalStateException(message, e);
+            LOGGER.warn("{}; remote agents from this server will be unavailable until discovery succeeds", message);
+            LOGGER.debug("A2A remote agent discovery failure", e);
+            return List.of();
+        }
+    }
+
+    private void addEntry(List<RemoteAgentCatalogEntry> entries, Set<String> connectionKeys,
+                          A2ARemoteAgentConfig config) {
+        var key = connectionKey(config);
+        if (!connectionKeys.add(key)) return;
+        entries.add(toEntry(config));
+    }
+
+    private RemoteAgentCatalogEntry toEntry(A2ARemoteAgentConfig config) {
+        var id = config.id != null && !config.id.isBlank() ? config.id : config.agentId;
+        var serverId = config.serverId != null && !config.serverId.isBlank() ? config.serverId : "manual";
+        var name = firstNonBlank(config.displayName, config.name, config.agentId, id);
+        return new RemoteAgentCatalogEntry(id, serverId, config.agentId, name, config.description, config.status, config);
+    }
+
+    private String connectionKey(A2ARemoteAgentConfig config) {
+        return normalizeKey(config.url) + "|" + normalizeKey(config.agentId);
+    }
+
+    private String normalizeKey(String value) {
+        if (value == null) return "";
+        var normalized = value.trim().toLowerCase(Locale.ROOT);
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private String firstNonBlank(String... values) {
+        for (var value : values) {
+            if (value != null && !value.isBlank()) return value;
+        }
+        return "remote agent";
     }
 
     private boolean shouldExpose(A2ARemoteServerConfig server, AgentDefinitionView agent) {
@@ -92,8 +160,11 @@ public class A2ARemoteAgentDiscovery {
         config.agentId = agent.id;
         config.apiKeyEnv = server.apiKeyEnv;
         config.apiKey = server.apiKey;
+        config.serverId = server.id;
         config.name = uniqueToolName(server.toolPrefix, agent, usedNames);
+        config.displayName = agent.name != null && !agent.name.isBlank() ? agent.name : agent.id;
         config.description = description(server, agent);
+        config.status = agent.status;
         config.discoverable = server.discoverable;
         config.autoDiscovered = true;
         config.timeout = server.timeout;
@@ -189,8 +260,11 @@ public class A2ARemoteAgentDiscovery {
         copy.agentId = config.agentId;
         copy.apiKeyEnv = config.apiKeyEnv;
         copy.apiKey = config.apiKey;
+        copy.serverId = config.serverId;
         copy.name = config.name;
+        copy.displayName = config.displayName;
         copy.description = config.description;
+        copy.status = config.status;
         copy.discoverable = config.discoverable;
         copy.autoDiscovered = config.autoDiscovered;
         copy.timeout = config.timeout;

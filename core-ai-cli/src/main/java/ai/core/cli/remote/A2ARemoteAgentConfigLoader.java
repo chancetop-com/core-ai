@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.TreeSet;
 
 /**
  * Reads A2A remote agent and remote server entries from agent.properties.
@@ -15,15 +16,15 @@ import java.util.Locale;
  */
 public final class A2ARemoteAgentConfigLoader {
     private static final String ROOT = "a2a.remoteAgents";
+    private static final String SINGLE_SERVER_ROOT = "a2a.remoteServer";
     private static final String SERVERS_ROOT = "a2a.remoteServers";
 
     public static List<A2ARemoteAgentConfig> load(PropertiesFileSource props) {
-        var ids = props.property(ROOT).orElse("");
-        if (ids.isBlank()) return List.of();
+        var ids = configuredIds(props, ROOT);
+        if (ids.isEmpty()) return List.of();
         var configs = new ArrayList<A2ARemoteAgentConfig>();
-        for (var id : ids.split(",")) {
-            var trimmed = id.trim();
-            if (!trimmed.isBlank()) configs.add(loadOne(props, trimmed));
+        for (var id : ids) {
+            if (!id.isBlank()) configs.add(loadOne(props, id));
         }
         return configs;
     }
@@ -38,6 +39,7 @@ public final class A2ARemoteAgentConfigLoader {
         config.apiKeyEnv = props.property(prefix + ".apiKeyEnv").orElse(null);
         config.apiKey = props.property(prefix + ".apiKey").orElse(null);
         config.name = normalizeToolName(props.property(prefix + ".name").orElse(defaultName(config)));
+        config.displayName = props.property(prefix + ".displayName").orElse(config.name);
         config.description = props.property(prefix + ".description").orElse(defaultDescription(id));
         config.discoverable = props.property(prefix + ".discoverable").map(Boolean::parseBoolean).orElse(config.discoverable);
         config.timeout = props.property(prefix + ".timeout").map(A2ARemoteAgentConfigLoader::duration).orElse(config.timeout);
@@ -50,18 +52,17 @@ public final class A2ARemoteAgentConfigLoader {
     }
 
     public static List<A2ARemoteServerConfig> loadServers(PropertiesFileSource props) {
-        var ids = props.property(SERVERS_ROOT).orElse("");
-        if (ids.isBlank()) return List.of();
         var configs = new ArrayList<A2ARemoteServerConfig>();
-        for (var id : ids.split(",")) {
-            var trimmed = id.trim();
-            if (!trimmed.isBlank()) configs.add(loadServer(props, trimmed));
+        if (props.property(SINGLE_SERVER_ROOT + ".url").isPresent()) {
+            configs.add(loadServer(props, "default", SINGLE_SERVER_ROOT));
         }
-        return configs;
+        for (var id : configuredIds(props, SERVERS_ROOT)) {
+            if (!id.isBlank()) configs.add(loadServer(props, id, SERVERS_ROOT + "." + id));
+        }
+        return List.copyOf(configs);
     }
 
-    private static A2ARemoteServerConfig loadServer(PropertiesFileSource props, String id) {
-        var prefix = SERVERS_ROOT + "." + id;
+    private static A2ARemoteServerConfig loadServer(PropertiesFileSource props, String id, String prefix) {
         var config = new A2ARemoteServerConfig();
         config.id = id;
         config.enabled = props.property(prefix + ".enabled").map(Boolean::parseBoolean).orElse(config.enabled);
@@ -81,6 +82,22 @@ public final class A2ARemoteAgentConfigLoader {
         config.maxOutputChars = props.property(prefix + ".maxOutputChars").map(Integer::parseInt).orElse(config.maxOutputChars);
         validate(config, prefix);
         return config;
+    }
+
+    private static List<String> configuredIds(PropertiesFileSource props, String root) {
+        var explicit = props.property(root).orElse("");
+        if (!explicit.isBlank()) return csv(explicit);
+        var ids = new TreeSet<String>();
+        var prefix = root + ".";
+        for (var propertyName : props.propertyNames()) {
+            if (!propertyName.startsWith(prefix)) continue;
+            var rest = propertyName.substring(prefix.length());
+            var dot = rest.indexOf('.');
+            if (dot <= 0) continue;
+            var id = rest.substring(0, dot).trim();
+            if (!id.isBlank()) ids.add(id);
+        }
+        return List.copyOf(ids);
     }
 
     private static String defaultName(A2ARemoteAgentConfig config) {

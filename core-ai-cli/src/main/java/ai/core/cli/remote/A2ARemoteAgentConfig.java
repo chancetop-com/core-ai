@@ -16,8 +16,11 @@ public class A2ARemoteAgentConfig {
     public String agentId;
     public String apiKeyEnv;
     public String apiKey;
+    public String serverId;
     public String name;
+    public String displayName;
     public String description;
+    public String status;
     public boolean discoverable;
     public boolean autoDiscovered;
     public Duration timeout = A2ARemoteAgentDescriptor.DEFAULT_TIMEOUT;

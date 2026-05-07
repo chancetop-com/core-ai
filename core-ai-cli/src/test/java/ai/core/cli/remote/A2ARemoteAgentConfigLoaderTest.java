@@ -1,14 +1,18 @@
 package ai.core.cli.remote;
 
 import ai.core.a2a.A2ARemoteAgentDescriptor;
+import ai.core.agent.ExecutionContext;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.bootstrap.PropertiesFileSource;
+import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
@@ -81,6 +85,50 @@ class A2ARemoteAgentConfigLoaderTest {
         assertEquals(A2ARemoteAgentDescriptor.InvocationMode.SEND_SYNC, config.invocationMode);
         assertEquals(100, config.maxInputChars);
         assertEquals(200, config.maxOutputChars);
+    }
+
+    @Test
+    void loadsSingleRemoteServerShortcut() {
+        var props = new Properties();
+        props.setProperty("a2a.remoteServer.url", "https://server");
+        props.setProperty("a2a.remoteServer.apiKey", "test-key");
+
+        var configs = A2ARemoteAgentConfigLoader.loadServers(new PropertiesFileSource(props));
+
+        assertEquals(1, configs.size());
+        var config = configs.getFirst();
+        assertEquals("default", config.id);
+        assertEquals("https://server", config.url);
+        assertEquals("test-key", config.resolvedApiKey());
+    }
+
+    @Test
+    void infersRemoteServersFromUrlBlocks() {
+        var props = new Properties();
+        props.setProperty("a2a.remoteServers.dev.url", "https://dev-server");
+        props.setProperty("a2a.remoteServers.prod.url", "https://prod-server");
+
+        var configs = A2ARemoteAgentConfigLoader.loadServers(new PropertiesFileSource(props));
+
+        assertEquals(2, configs.size());
+        assertEquals("dev", configs.getFirst().id);
+        assertEquals("https://dev-server", configs.getFirst().url);
+        assertEquals("prod", configs.get(1).id);
+        assertEquals("https://prod-server", configs.get(1).url);
+    }
+
+    @Test
+    void infersRemoteAgentsFromUrlBlocks() {
+        var props = new Properties();
+        props.setProperty("a2a.remoteAgents.enterprise.url", "https://server");
+        props.setProperty("a2a.remoteAgents.enterprise.agentId", "default-assistant");
+
+        var configs = A2ARemoteAgentConfigLoader.load(new PropertiesFileSource(props));
+
+        assertEquals(1, configs.size());
+        assertEquals("enterprise", configs.getFirst().id);
+        assertEquals("https://server", configs.getFirst().url);
+        assertEquals("default-assistant", configs.getFirst().agentId);
     }
 
     @Test
@@ -234,6 +282,73 @@ class A2ARemoteAgentConfigLoaderTest {
         A2ARemoteAgentDiscovery.clearCacheForTesting();
     }
 
+    @Test
+    void discoversCatalogEntriesAndDeduplicatesSameRemoteAgent() {
+        var staticConfig = config("manual", "manual_alpha");
+        staticConfig.agentId = "a1";
+        staticConfig.displayName = "Manual Alpha";
+        var server = new A2ARemoteServerConfig();
+        server.id = "dev";
+        server.url = "https://server";
+
+        var discovered = config("dev:a1", "dev_alpha");
+        discovered.agentId = "a1";
+        discovered.displayName = "Discovered Alpha";
+        discovered.serverId = "dev";
+        discovered.autoDiscovered = true;
+
+        var catalog = new A2ARemoteAgentDiscovery() {
+            @Override
+            public List<A2ARemoteAgentConfig> discover(A2ARemoteServerConfig server) {
+                return List.of(discovered);
+            }
+        }.discoverCatalog(List.of(staticConfig), List.of(server));
+
+        assertEquals(1, catalog.size());
+        assertEquals("manual", catalog.entries().getFirst().id());
+        assertEquals("Manual Alpha", catalog.entries().getFirst().name());
+    }
+
+    @Test
+    void searchRemoteAgentsReturnsCatalogSummary() {
+        var catalog = new RemoteAgentCatalog(List.of(entry("dev:jira", "dev", "jira",
+                "Jira Agent", "Handles Jira issue lookup and workflow updates.")));
+        var tool = SearchRemoteAgentsToolCall.builder().catalog(catalog).build();
+
+        var result = tool.execute(JsonUtil.toJson(Map.of("query", "jira workflow")));
+
+        assertTrue(result.isCompleted());
+        assertTrue(result.getResult().contains("Found 1 remote agents"));
+        assertTrue(result.getResult().contains("dev:jira"));
+        assertTrue(result.getResult().contains("Handles Jira issue lookup"));
+    }
+
+    @Test
+    void delegateToRemoteAgentUsesCatalogEntryAndTask() {
+        var catalog = new RemoteAgentCatalog(List.of(entry("dev:jira", "dev", "jira",
+                "Jira Agent", "Handles Jira issue lookup and workflow updates.")));
+        var tool = DelegateToRemoteAgentToolCall.builder().catalog(catalog).delegateFactory(config -> new ToolCall() {
+            @Override
+            public ToolCallResult execute(String arguments, ExecutionContext context) {
+                var args = JsonUtil.toMap(arguments);
+                assertEquals("Summarize CORE-123", args.get("query"));
+                return ToolCallResult.completed("delegated result");
+            }
+
+            @Override
+            public ToolCallResult execute(String arguments) {
+                return execute(arguments, null);
+            }
+        }).build();
+
+        var result = tool.execute(JsonUtil.toJson(Map.of("agent_id", "dev:jira", "task", "Summarize CORE-123")));
+
+        assertTrue(result.isCompleted());
+        assertEquals("delegated result", result.getResult());
+        assertEquals("dev:jira", result.getStats().get("remote_catalog_agent_id"));
+        assertEquals("Jira Agent", result.getStats().get("remote_agent_name"));
+    }
+
     private A2ARemoteAgentConfig config(String id, String name) {
         var config = new A2ARemoteAgentConfig();
         config.id = id;
@@ -241,6 +356,15 @@ class A2ARemoteAgentConfigLoaderTest {
         config.name = name;
         config.description = "remote agent";
         return config;
+    }
+
+    private RemoteAgentCatalogEntry entry(String id, String serverId, String agentId, String name, String description) {
+        var config = config(id, name);
+        config.serverId = serverId;
+        config.agentId = agentId;
+        config.displayName = name;
+        config.description = description;
+        return new RemoteAgentCatalogEntry(id, serverId, agentId, name, description, "PUBLISHED", config);
     }
 
     private AgentDefinitionView agent(String id, String name, String description, String type) {
