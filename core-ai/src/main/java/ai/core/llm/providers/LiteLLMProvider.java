@@ -219,6 +219,14 @@ public class LiteLLMProvider extends LLMProvider {
                 mergeChunkIntoFinalResponse(response, chunk, callback);
             }
             return response;
+        } finally {
+            // Sync builders to String fields so partial response is usable on error/cancel
+            if (response != null && response.choices != null && !response.choices.isEmpty()) {
+                var finalChoice = response.choices.getFirst();
+                if (finalChoice.message != null) {
+                    finalChoice.message.finalizeStreamingFields();
+                }
+            }
         }
     }
 
@@ -284,12 +292,12 @@ public class LiteLLMProvider extends LLMProvider {
             finalChoice.message.toolCalls = new ArrayList<>();
         }
 
-        // Merge content into message
+        // Merge content into message using StringBuilder to avoid O(n^2) string allocations
         if (chunkChoice.delta.content != null) {
-            finalChoice.message.content += chunkChoice.delta.content;
+            finalChoice.message.appendContent(chunkChoice.delta.content);
         }
         if (chunkChoice.delta.reasoningContent != null) {
-            finalChoice.message.reasoningContent += chunkChoice.delta.reasoningContent;
+            finalChoice.message.appendReasoningContent(chunkChoice.delta.reasoningContent);
         }
 
         // Merge tool calls into message by index
@@ -341,7 +349,7 @@ public class LiteLLMProvider extends LLMProvider {
                     existingToolCall.function.name = deltaToolCall.function.name;
                 }
                 if (deltaToolCall.function.arguments != null) {
-                    existingToolCall.function.arguments += deltaToolCall.function.arguments;
+                    existingToolCall.function.appendArguments(deltaToolCall.function.arguments);
                 }
             }
         }

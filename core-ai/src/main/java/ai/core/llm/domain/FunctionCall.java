@@ -33,5 +33,21 @@ public class FunctionCall {
         @NotNull
         @Property(name = "arguments")
         public String arguments;
+
+        private transient StringBuilder argumentsBuilder;
+
+        public void appendArguments(String chunk) {
+            if (argumentsBuilder == null) {
+                argumentsBuilder = new StringBuilder(arguments != null ? arguments : "");
+            }
+            argumentsBuilder.append(chunk);
+        }
+
+        public void finalizeStreamingFields() {
+            if (argumentsBuilder != null) {
+                arguments = argumentsBuilder.toString();
+                argumentsBuilder = null;
+            }
+        }
     }
 }
