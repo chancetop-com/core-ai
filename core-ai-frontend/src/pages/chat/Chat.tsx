@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic, Maximize2, Minimize2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, ChatSessionSummary } from '../../api/session';
@@ -76,7 +76,10 @@ export default function Chat() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const variablesPanelRef = useRef<HTMLDivElement>(null);
+  const [isInputExpanded, setIsInputExpanded] = useState(false);
+  const [needsExpand, setNeedsExpand] = useState(false);
   const sseControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
@@ -93,6 +96,25 @@ export default function Chat() {
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
   useEffect(() => { if (status === 'idle') inputRef.current?.focus(); }, [status]);
+
+  // Auto-resize textarea when expanded, detect overflow in normal mode
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+
+    if (isInputExpanded) {
+      textarea.style.height = 'auto';
+      const maxHeight = (messagesContainerRef.current?.clientHeight ?? 600) / 3;
+      const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+      textarea.style.height = `${newHeight}px`;
+      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    } else {
+      textarea.style.height = '';
+      textarea.style.overflowY = 'hidden';
+      const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 20;
+      setNeedsExpand(textarea.scrollHeight > lineHeight * 1.5);
+    }
+  }, [input, isInputExpanded]);
 
   // Persist chat state
   useEffect(() => {
@@ -562,6 +584,7 @@ export default function Chat() {
     if (!text || status !== 'idle' || !selectedAgentId) return;
 
     setInput('');
+    setIsInputExpanded(false);
     setMessages(prev => [...prev, { role: 'user', segments: [{ type: 'text', content: text }] }]);
     setStatus('running');
     streamingContentRef.current = '';
@@ -856,7 +879,7 @@ export default function Chat() {
         onOpen={hydrateSession}
         onNewChat={handleNewChat}
       />
-      <div className="flex flex-col h-full flex-1 min-w-0">
+      <div className="flex flex-col h-full flex-1 min-w-0 overflow-hidden">
       {/* Top bar: agent selector */}
       <div className="border-b px-6 py-3 flex items-center justify-between"
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
@@ -990,7 +1013,7 @@ export default function Chat() {
       </div>
 
       {/* Chat messages */}
-      <div className="flex-1 overflow-auto p-6 relative">
+      <div ref={messagesContainerRef} className="flex-1 overflow-auto p-6 relative">
         {agentVariableEntries.length > 0 && (
           <div className="absolute top-5 right-6 z-20">
             <div className="relative" ref={variablesPanelRef}>
@@ -1313,21 +1336,39 @@ export default function Chat() {
               <Users size={18} />
             </button>
 
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={selectedAgentId ? 'Send a message...' : 'Select an agent first'}
-              rows={1}
-              className="flex-1 rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none"
-              style={{
-                background: 'var(--color-bg-secondary)',
-                borderColor: 'var(--color-border)',
-                color: 'var(--color-text)',
-              }}
-              disabled={status !== 'idle' || !selectedAgentId}
-            />
+            <span className="relative flex-1 self-stretch flex items-end">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={selectedAgentId ? 'Send a message...' : 'Select an agent first'}
+                rows={isInputExpanded ? undefined : 1}
+                className={`rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none w-full ${isInputExpanded ? 'absolute bottom-0 left-0 right-0 z-10' : ''}`}
+                style={{
+                  background: 'var(--color-bg-secondary)',
+                  borderColor: 'var(--color-border)',
+                  color: 'var(--color-text)',
+                  ...(isInputExpanded ? { minHeight: '80px' } : {}),
+                }}
+                disabled={status !== 'idle' || !selectedAgentId}
+              />
+            </span>
+            {/* Expand/collapse button — show when text exceeds 1 line */}
+            {needsExpand && (
+              <button
+                onClick={() => setIsInputExpanded(v => !v)}
+                disabled={!selectedAgentId || status === 'running'}
+                className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
+                style={{
+                  background: 'var(--color-bg-tertiary)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text-secondary)',
+                }}
+                title={isInputExpanded ? 'Collapse input' : 'Expand input'}>
+                {isInputExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              </button>
+            )}
             {/* Mic button — between input and send */}
             <button
               onClick={() => {
