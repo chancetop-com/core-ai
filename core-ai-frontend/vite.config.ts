@@ -9,6 +9,9 @@ export default defineConfig({
   build: {
     outDir: 'build/dist',
   },
+  optimizeDeps: {
+    include: ['microsoft-cognitiveservices-speech-sdk'],
+  },
   server: {
     port: 3000,
     proxy: {

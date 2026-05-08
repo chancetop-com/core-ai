@@ -86,6 +86,7 @@ import ai.core.server.web.TriggerWebServiceImpl;
 import ai.core.server.systemprompt.SystemPromptController;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.web.CapabilitiesController;
+import ai.core.server.web.SpeechController;
 import ai.core.server.web.StaticFileController;
 import ai.core.server.trace.service.IngestService;
 import ai.core.server.trace.service.OTLPIngestService;
@@ -322,6 +323,13 @@ public class ServerModule extends Module {
         var chatSessionController = bind(ChatSessionController.class);
         http().route(HTTPMethod.GET, "/api/chat/sessions", chatSessionController::list);
         http().route(HTTPMethod.DELETE, "/api/chat/sessions/:sessionId", chatSessionController::delete);
+
+        // Speech token exchange for browser-side Azure Speech SDK
+        var speechController = bind(SpeechController.class);
+        speechController.speechKey = property("azure.speech.key").orElse(null);
+        speechController.speechRegion = property("azure.speech.region").orElse("eastus");
+        speechController.speechEndpoint = property("azure.speech.endpoint").orElse(null);
+        http().route(HTTPMethod.GET, "/api/speech/token", speechController::getToken);
 
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));

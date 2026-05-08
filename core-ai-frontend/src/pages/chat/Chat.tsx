@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic, MicOff } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, ChatSessionSummary } from '../../api/session';
@@ -10,6 +10,8 @@ import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from
 import ResourcePicker from './ResourcePicker';
 import ToolPickerModal from './ToolPickerModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
+import VoiceTranscriberSidebar from './components/VoiceTranscriberSidebar';
+import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment } from './types';
 import { historyToChatMessages, getMessageText } from './utils';
 import ToolsBlock from './components/ToolsBlock';
@@ -66,6 +68,9 @@ export default function Chat() {
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
+  const [showVoiceSidebar, setShowVoiceSidebar] = useState(false);
+  const [voiceLanguage, setVoiceLanguage] = useState('zh-CN');
+  const voice = useSpeechRecognition();
   const [variablesExpanded, setVariablesExpanded] = useState(false);
   const [chipsExpanded, setChipsExpanded] = useState(false);
 
@@ -824,6 +829,25 @@ export default function Chat() {
     }
   };
 
+  const handleVoiceLanguageChange = (lang: string) => {
+    setVoiceLanguage(lang);
+    if (voice.isListening) {
+      voice.stopListening();
+      voice.startListening(lang);
+    }
+  };
+
+  const handleSendToChat = (text: string) => {
+    setInput(text);
+    inputRef.current?.focus();
+  };
+
+  const handleSendAllToChat = () => {
+    const allText = voice.segments.map(s => s.text).join('\n');
+    setInput(allText);
+    inputRef.current?.focus();
+  };
+
   return (
     <div className="flex h-full">
       <ChatSessionsSidebar
@@ -1304,6 +1328,26 @@ export default function Chat() {
               }}
               disabled={status !== 'idle' || !selectedAgentId}
             />
+            {/* Mic button — between input and send */}
+            <button
+              onClick={() => {
+                if (showVoiceSidebar) {
+                  voice.stopListening();
+                  setShowVoiceSidebar(false);
+                } else {
+                  setShowVoiceSidebar(true);
+                }
+              }}
+              disabled={!selectedAgentId || status === 'running'}
+              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
+              style={{
+                background: showVoiceSidebar ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
+                border: '1px solid ' + (showVoiceSidebar ? 'var(--color-primary)' : 'var(--color-border)'),
+                color: showVoiceSidebar ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              }}
+              title={showVoiceSidebar ? 'Close voice sidebar' : 'Open voice input'}>
+              <Mic size={18} />
+            </button>
             {status === 'idle' ? (
               <button onClick={handleSend}
                 disabled={!input.trim() || !selectedAgentId}
@@ -1384,6 +1428,21 @@ export default function Chat() {
         />
       )}
       </div>
+      {showVoiceSidebar && (
+        <VoiceTranscriberSidebar
+          segments={voice.segments}
+          isListening={voice.isListening}
+          error={voice.error}
+          language={voiceLanguage}
+          onLanguageChange={handleVoiceLanguageChange}
+          onStop={voice.stopListening}
+          onClose={() => { voice.stopListening(); setShowVoiceSidebar(false); }}
+          onStartListening={() => voice.startListening(voiceLanguage)}
+          onClear={voice.clearSegments}
+          onSendToChat={handleSendToChat}
+          onSendAllToChat={handleSendAllToChat}
+        />
+      )}
     </div>
   );
 }
