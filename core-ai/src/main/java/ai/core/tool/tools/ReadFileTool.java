@@ -233,6 +233,7 @@ public class ReadFileTool extends ToolCall {
         public ReadFileTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
+            this.concurrencyGroup(ConcurrencyGroupType.FILE_SEARCH.getTypeName());
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "file_path", "Absolute path of the file to read").required(),
                     ToolCallParameters.ParamSpec.of(Integer.class, "offset", "The line number to start reading from. Only provide if the file is too large to read at once"),

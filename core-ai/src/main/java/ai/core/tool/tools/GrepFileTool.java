@@ -280,6 +280,7 @@ public class GrepFileTool extends ToolCall {
         public GrepFileTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
+            this.concurrencyGroup(ConcurrencyGroupType.FILE_SEARCH.getTypeName());
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "pattern", "The regex pattern to search for in file contents").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "path", "The directory to search in. Defaults to the current working directory."),

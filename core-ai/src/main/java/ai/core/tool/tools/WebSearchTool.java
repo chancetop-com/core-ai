@@ -147,6 +147,7 @@ public class WebSearchTool extends ToolCall {
         public WebSearchTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
+            this.concurrencyGroup(ConcurrencyGroupType.WEB_QUERY.getTypeName());
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "query", "The search query to use").required(),
                     ToolCallParameters.ParamSpec.of(Integer.class, "num_results", "Number of search results to return (default: 10)"),

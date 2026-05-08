@@ -253,6 +253,7 @@ public class WebFetchTool extends ToolCall {
         public WebFetchTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
+            this.concurrencyGroup(ConcurrencyGroupType.WEB_QUERY.getTypeName());
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "url", "The URL to fetch content from").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "method", "The HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)").required().enums(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")),

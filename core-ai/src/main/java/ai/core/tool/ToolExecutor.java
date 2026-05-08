@@ -42,14 +42,14 @@ public class ToolExecutor {
     }
 
     public ToolCallResult execute(FunctionCall functionCall, ExecutionContext context) {
-        // before
         lifecycles.forEach(lc -> lc.beforeTool(functionCall, context));
-
-        // execute tool
-        var result = doExecute(functionCall, context);
-        // after
+        var result = executeWithoutLifecycle(functionCall, context);
         lifecycles.forEach(lc -> lc.afterTool(functionCall, context, result));
         return result;
+    }
+
+    public ToolCallResult executeWithoutLifecycle(FunctionCall functionCall, ExecutionContext context) {
+        return doExecute(functionCall, context);
     }
 
     private ToolCallResult doExecute(FunctionCall functionCall, ExecutionContext context) {

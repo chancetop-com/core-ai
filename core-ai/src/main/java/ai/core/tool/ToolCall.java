@@ -42,6 +42,7 @@ public abstract class ToolCall {
     Boolean directReturn;
     Boolean llmVisible;
     Boolean discoverable;
+    String concurrencyGroup;
     protected Long timeoutMs;
 
     public ToolCallResult execute(String arguments, ExecutionContext context) {
@@ -117,6 +118,14 @@ public abstract class ToolCall {
 
     public boolean isDiscoverable() {
         return discoverable != null && discoverable;
+    }
+
+    /**
+     * Returns the concurrency group name. Tools with the same non-null group can run concurrently
+     * within the same batch. Null means exclusive execution (tool runs alone).
+     */
+    public String getConcurrencyGroup() {
+        return concurrencyGroup;
     }
 
     public void setDiscoverable(Boolean discoverable) {
@@ -206,6 +215,20 @@ public abstract class ToolCall {
                 || type == null && param.getClassType() == String.class;
     }
 
+    public enum ConcurrencyGroupType {
+        FILE_SEARCH("FileSearch"),
+        WEB_QUERY("WebQuery");
+        private final String typeName;
+
+        ConcurrencyGroupType(String name) {
+            this.typeName = name;
+        }
+
+        public String getTypeName() {
+            return typeName;
+        }
+    }
+
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {
         String namespace;
         String name;
@@ -216,6 +239,7 @@ public abstract class ToolCall {
         Boolean directReturn;
         Boolean llmVisible;
         Boolean discoverable;
+        String concurrencyGroup;
         Long timeoutMs;
 
         protected abstract B self();
@@ -265,6 +289,11 @@ public abstract class ToolCall {
             return self();
         }
 
+        public B concurrencyGroup(String concurrencyGroup) {
+            this.concurrencyGroup = concurrencyGroup;
+            return self();
+        }
+
         public B timeoutMs(Long timeoutMs) {
             this.timeoutMs = timeoutMs;
             return self();
@@ -298,6 +327,7 @@ public abstract class ToolCall {
             toolCall.directReturn = directReturn != null && directReturn;
             toolCall.llmVisible = llmVisible == null || llmVisible;
             toolCall.discoverable = discoverable != null && discoverable;
+            toolCall.concurrencyGroup = concurrencyGroup;
             toolCall.timeoutMs = timeoutMs;
         }
     }

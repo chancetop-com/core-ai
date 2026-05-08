@@ -43,5 +43,8 @@ public interface AgentEventListener {
 
     default void onEnvironmentOutput(EnvironmentOutputChunkEvent event) {
     }
+
+    default void onBatchToolStart(BatchToolStartEvent event) {
+    }
 }
 

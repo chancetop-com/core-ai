@@ -23,7 +23,7 @@ public class OutputPanel {
     private static final int DEFAULT_SUMMARY_ARG_COUNT = 3;
 
     @SuppressWarnings("unchecked")
-    static String formatToolSummary(String toolName, String arguments) {
+    public static String formatToolSummary(String toolName, String arguments) {
         if (arguments == null || arguments.isBlank() || "{}".equals(arguments.trim())) {
             return toolName;
         }
@@ -154,6 +154,22 @@ public class OutputPanel {
         writer.flush();
     }
 
+    public void batchStart(String group, String summary, boolean frontTask) {
+        stopSpinnerIfActive();
+        mdRenderer.flush();
+        toolStartTime = System.currentTimeMillis();
+        toolOutputStreaming = false;
+        toolOutputLineCount = 0;
+        if (frontTask) {
+            writer.println(INDENT + AnsiTheme.MUTED + "⎿" + AnsiTheme.RESET + " " + AnsiTheme.MUTED + group + "(" + summary + ")" + AnsiTheme.RESET);
+        } else {
+            writer.println("\n" + AnsiTheme.SEPARATOR + "●" + AnsiTheme.RESET + " " + group + "(" + summary + ")");
+        }
+        writer.flush();
+        resetShown();
+        startSpinner();
+    }
+
     public void toolStart(String toolName, String arguments, String diff, Boolean frontTask) {
         stopSpinnerIfActive();
         mdRenderer.flush();
@@ -217,6 +233,27 @@ public class OutputPanel {
         }
         writer.flush();
         toolOutputStreaming = false;
+        resetShown();
+        startSpinner();
+    }
+
+    public void batchResult(String status, String result) {
+        stopSpinnerIfActive();
+        String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
+        if (result != null && !result.isBlank()) {
+            String[] lines = result.split("\n");
+            int limit = Math.min(lines.length, 3);
+            for (int i = 0; i < limit; i++) {
+                String line = lines[i].stripLeading();
+                if (line.length() > 120) line = line.substring(0, 120) + "...";
+                writer.print(INDENT + icon + "   " + AnsiTheme.RESET);
+                writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
+            }
+            if (lines.length > 3) {
+                writer.println(AnsiTheme.MUTED + INDENT + "   … +" + (lines.length - 3) + " lines" + AnsiTheme.RESET);
+            }
+        }
+        writer.flush();
         resetShown();
         startSpinner();
     }

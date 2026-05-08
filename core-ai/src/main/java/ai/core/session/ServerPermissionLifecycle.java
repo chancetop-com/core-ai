@@ -4,6 +4,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.ApprovalDecision;
+import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
@@ -20,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,6 +49,24 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         this.permissionGate = permissionGate;
         this.autoApproveAll = autoApproveAll;
         this.permissionStore = permissionStore;
+    }
+
+    @Override
+    public void beforeBatch(String group, List<FunctionCall> tools, ExecutionContext context) {
+        var toolInfos = tools.stream()
+                .map(tc -> new BatchToolStartEvent.ToolInfo(tc.id, tc.function.name, tc.function.arguments))
+                .toList();
+        var taskId = resolveBatchTaskId(tools, context);
+        dispatcher.accept(new BatchToolStartEvent(sessionId, group, toolInfos, taskId));
+    }
+
+    private String resolveBatchTaskId(List<FunctionCall> tools, ExecutionContext context) {
+        if (!tools.isEmpty()) {
+            var firstArgs = parseArguments(tools.getFirst().function.arguments);
+            var taskId = (String) firstArgs.get("task_id");
+            if (taskId != null) return taskId;
+        }
+        return context.getTaskId();
     }
 
     @Override

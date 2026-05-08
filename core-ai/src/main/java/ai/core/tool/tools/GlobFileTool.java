@@ -195,6 +195,7 @@ public class GlobFileTool extends ToolCall {
         public GlobFileTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
+            this.concurrencyGroup(ConcurrencyGroupType.FILE_SEARCH.getTypeName());
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "pattern", "The glob pattern to match files against").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "path", "The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter \"undefined\" or \"null\" - simply omit it for the default behavior. Must be a valid directory path if provided.")

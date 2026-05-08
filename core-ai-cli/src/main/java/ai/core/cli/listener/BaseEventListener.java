@@ -2,6 +2,7 @@ package ai.core.cli.listener;
 
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.AgentSession;
+import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
@@ -19,12 +20,16 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
 import ai.core.tool.tools.TaskTool;
 
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -36,6 +41,8 @@ public class BaseEventListener implements AgentEventListener {
     protected volatile CompletableFuture<Void> turnFuture;
     protected final AtomicReference<TurnCompleteEvent> lastTurnComplete = new AtomicReference<>();
     private final Map<String, RuntimeTask> runTasks = new ConcurrentHashMap<>();
+    private final Set<String> batchCallIds = new HashSet<>();
+    private boolean batchResultSeen = false;
 
     protected BaseEventListener(TerminalUI ui, AgentSession session) {
         this.ui = ui;
@@ -67,7 +74,40 @@ public class BaseEventListener implements AgentEventListener {
     }
 
     @Override
+    public void onBatchToolStart(BatchToolStartEvent event) {
+        event.tools().forEach(ti -> batchCallIds.add(ti.callId()));
+        batchResultSeen = false;
+
+        var summary = event.tools().size() <= 2
+                ? event.tools().stream().map(ti -> OutputPanel.formatToolSummary(ti.toolName(), ti.arguments())).collect(Collectors.joining(", "))
+                : compactSummary(event);
+
+        if (event.taskId() != null) {
+            increaseToolCallCount(event.taskId(), event.tools().size());
+            if (isInBackgroundTask(event.taskId())) {
+                return;
+            }
+            panel.batchStart(event.group(), summary, true);
+        } else {
+            panel.batchStart(event.group(), summary, false);
+        }
+    }
+
+    private String compactSummary(BatchToolStartEvent event) {
+        var counts = new LinkedHashMap<String, Integer>();
+        for (var ti : event.tools()) {
+            counts.merge(ti.toolName(), 1, Integer::sum);
+        }
+        return counts.entrySet().stream()
+                .map(e -> e.getKey() + "×" + e.getValue())
+                .collect(Collectors.joining(", "));
+    }
+
+    @Override
     public void onToolStart(ToolStartEvent event) {
+        if (batchCallIds.contains(event.callId)) {
+            return;
+        }
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
             runTasks.put(event.taskId, new RuntimeTask(event.taskId, System.currentTimeMillis(), event.runInBackground, 0));
             panel.toolStart(event.toolName, event.arguments, event.diff, false);
@@ -116,9 +156,20 @@ public class BaseEventListener implements AgentEventListener {
                 removeTask(event.taskId);
             }
         } else if (Objects.isNull(event.taskId) || !isInTask(event.taskId)) {
-            panel.toolResult(event.status, event.result);
+            if (batchCallIds.contains(event.callId)) {
+                if (!batchResultSeen) {
+                    panel.toolResult(event.status, event.result);
+                    batchResultSeen = true;
+                } else {
+                    panel.batchResult(event.status, event.result);
+                }
+            } else {
+                panel.toolResult(event.status, event.result);
+            }
+        } else {
+            panel.startSpinner();
         }
-
+        batchCallIds.remove(event.callId);
     }
 
     @Override
@@ -127,10 +178,20 @@ public class BaseEventListener implements AgentEventListener {
     }
 
     private void increaseToolCallCount(String taskId) {
+        increaseToolCallCount(taskId, 1);
+    }
+
+    private void increaseToolCallCount(String taskId, int count) {
         if (Objects.isNull(taskId)) {
             return;
         }
-        runTasks.computeIfPresent(taskId, (_, v) -> v.withIncrementedToolCallCount());
+        runTasks.computeIfPresent(taskId, (_, v) -> {
+            var updated = v;
+            for (int i = 0; i < count; i++) {
+                updated = updated.withIncrementedToolCallCount();
+            }
+            return updated;
+        });
     }
 
     private int getToolCallCount(String taskId) {

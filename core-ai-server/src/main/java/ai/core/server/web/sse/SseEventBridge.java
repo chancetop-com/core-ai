@@ -1,6 +1,7 @@
 package ai.core.server.web.sse;
 
 import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
@@ -14,6 +15,7 @@ import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.api.server.session.SandboxEvent;
+import ai.core.api.server.session.sse.SseBatchToolStartEvent;
 import ai.core.api.server.session.sse.SseCompressionEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
 import ai.core.api.server.session.sse.SsePlanUpdateEvent;
@@ -155,6 +157,23 @@ public class SseEventBridge implements AgentEventListener {
         sse.sandboxType = event.type;
         sse.message = event.message;
         sse.durationMs = event.durationMs;
+        eventPublisher.publish(sessionId, sse);
+    }
+
+    @Override
+    public void onBatchToolStart(BatchToolStartEvent event) {
+        var sse = new SseBatchToolStartEvent();
+        sse.group = event.group();
+        sse.tools = event.tools().stream()
+                .map(ti -> {
+                    var t = new SseBatchToolStartEvent.ToolInfo();
+                    t.callId = ti.callId();
+                    t.toolName = ti.toolName();
+                    t.arguments = ti.arguments();
+                    return t;
+                })
+                .toList();
+        sse.taskId = event.taskId();
         eventPublisher.publish(sessionId, sse);
     }
 

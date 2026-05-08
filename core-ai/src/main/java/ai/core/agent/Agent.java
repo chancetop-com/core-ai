@@ -30,6 +30,7 @@ import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolExecutor;
+import ai.core.tool.ToolOrchestration;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
@@ -278,17 +279,8 @@ public class Agent extends Node<Agent> {
     }
 
     public List<Message> handleFunc(Message funcMsg) {
-        return funcMsg.toolCalls.stream().map(tool -> {
-            var msg = new ArrayList<Message>();
-            var result = getToolExecutor().execute(tool, getExecutionContext());
-            if (result.isDirectReturn()) {
-                msg.add(AgentHelper.buildToolMessage(tool, result, true));
-                msg.add(Message.of(RoleType.ASSISTANT, result.toResultForLLM()));
-            } else {
-                msg.add(AgentHelper.buildToolMessage(tool, result));
-            }
-            return msg;
-        }).flatMap(List::stream).toList();
+        var orchestration = new ToolOrchestration(toolCalls, agentLifecycles, getToolExecutor(), getExecutionContext());
+        return orchestration.execute(funcMsg.toolCalls);
     }
 
     private ToolExecutor getToolExecutor() {

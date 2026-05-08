@@ -53,6 +53,14 @@ public abstract class AbstractLifecycle {
 
     }
 
+    public void beforeBatch(String group, List<FunctionCall> tools, ExecutionContext context) {
+
+    }
+
+    public void afterBatch(String group, List<FunctionCall> tools, ExecutionContext context) {
+
+    }
+
     /**
      * Called after each LLM response. Return messages to inject and retry, or null/empty to accept the response.
      * Injected messages are appended to conversation history before retrying the LLM call.
