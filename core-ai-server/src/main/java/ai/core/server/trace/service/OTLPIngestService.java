@@ -276,23 +276,35 @@ public class OTLPIngestService {
         // Highest priority: explicit client.type span attribute (set by server-side wrapper span, e.g. LLM call entry)
         var clientType = attrs.get("client.type");
         if (clientType != null) return clientType;
-        // External service (e.g. litellm proxy)
-        var serviceName = resourceAttrs.get("service.name");
-        if (serviceName != null && !"core-ai".equals(serviceName)) return "external";
         // Agent trace with session_id — look up chat_sessions to find the session's source
         if (sessionId != null) {
             var session = chatSessionCollection.get(sessionId).orElse(null);
             if (session != null && session.source != null) return session.source;
         }
+        var serviceName = resourceAttrs.get("service.name");
+        if (isInternalService(serviceName) && isLLMCall(attrs)) return "llm_api";
+        // External service (e.g. litellm proxy)
+        if (serviceName != null && !isInternalService(serviceName)) return "external";
         return null;
     }
 
     private String resolveType(String source, Map<String, String> attrs) {
-        if (source == null) return "external";
-        if (source.startsWith("llm_")) return "llm_call";
+        if (source != null && source.startsWith("llm_")) return "llm_call";
         if ("external".equals(source)) return "external";
         if (attrs.get("gen_ai.agent.id") != null || attrs.get("gen_ai.agent.name") != null) return "agent";
+        if (isLLMCall(attrs)) return "llm_call";
+        if (source == null) return "external";
         return "agent";  // chat/test/api/a2a/scheduled all imply agent context
+    }
+
+    private boolean isLLMCall(Map<String, String> attrs) {
+        return attrs.get("gen_ai.request.model") != null
+            || "chat".equals(attrs.get("gen_ai.operation.name"))
+            || "generation".equals(attrs.get("langfuse.observation.type"));
+    }
+
+    private boolean isInternalService(String serviceName) {
+        return serviceName == null || serviceName.isBlank() || serviceName.equals("core-ai") || serviceName.startsWith("core-ai-");
     }
 
     private TraceStatus mapTraceStatus(Status.StatusCode code) {

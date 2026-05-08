@@ -136,7 +136,7 @@ public class LocalSpanProcessor implements SpanProcessor {
         var traceIdBytes = hexToBytes(traceIdHex);
         var spanIdBytes = hexToBytes(spanIdHex);
 
-        return Span.newBuilder()
+        var builder = Span.newBuilder()
             .setTraceId(com.google.protobuf.ByteString.copyFrom(traceIdBytes))
             .setSpanId(com.google.protobuf.ByteString.copyFrom(spanIdBytes))
             .setName(spanData.getName())
@@ -144,8 +144,14 @@ public class LocalSpanProcessor implements SpanProcessor {
             .setStartTimeUnixNano(spanData.getStartEpochNanos())
             .setEndTimeUnixNano(spanData.getEndEpochNanos())
             .addAllAttributes(keyValueList)
-            .setStatus(mapStatus(spanData))
-            .build();
+            .setStatus(mapStatus(spanData));
+
+        var parentSpanContext = spanData.getParentSpanContext();
+        if (parentSpanContext != null && parentSpanContext.isValid()) {
+            builder.setParentSpanId(com.google.protobuf.ByteString.copyFrom(hexToBytes(parentSpanContext.getSpanId())));
+        }
+
+        return builder.build();
     }
 
     private Resource buildResource() {
