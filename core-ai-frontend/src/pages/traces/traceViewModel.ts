@@ -213,6 +213,18 @@ export function formatTokenPair(input?: number | null, output?: number | null): 
   return `${inputTokens.toLocaleString()} / ${outputTokens.toLocaleString()}`;
 }
 
+export function formatTokenCount(tokens?: number | null): string {
+  return typeof tokens === 'number' ? tokens.toLocaleString() : '0';
+}
+
+export function formatCostUsd(cost?: number | null): string {
+  if (typeof cost !== 'number' || !Number.isFinite(cost)) return '-';
+  if (cost === 0) return '$0.0000';
+  if (cost < 0.0001) return `$${cost.toFixed(6)}`;
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
 export function prettyContent(content?: string): string {
   if (!content) return '';
   try {

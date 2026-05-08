@@ -60,6 +60,12 @@ public class Trace {
     @Field(name = "total_tokens")
     public Long totalTokens;
 
+    @Field(name = "cached_tokens")
+    public Long cachedTokens;
+
+    @Field(name = "cost_usd")
+    public Double costUsd;
+
     @Field(name = "duration_ms")
     public Long durationMs;
 

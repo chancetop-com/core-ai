@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, MessageCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Database, DollarSign, MessageCircle } from 'lucide-react';
 import { sessionApi } from '../../api/session';
 import type { ChatSessionSummary } from '../../api/session';
 import { api } from '../../api/client';
 import type { Trace } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import { typeColors, sourceColors } from './colors';
+import { formatCostUsd, formatTokenCount } from './traceViewModel';
 
 const ALL_SOURCES = ['chat', 'test', 'api', 'a2a', 'scheduled'];
 
@@ -188,6 +189,12 @@ export default function SessionListView({ onSelectTrace }: Props) {
                                       {tokens}
                                     </span>
                                   )}
+                                  <span className="text-xs shrink-0 inline-flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
+                                    <Database size={11} /> {formatTokenCount(t.cachedTokens)}
+                                  </span>
+                                  <span className="text-xs shrink-0 inline-flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
+                                    <DollarSign size={11} /> {formatCostUsd(t.costUsd)}
+                                  </span>
                                   <StatusBadge status={t.status} />
                                 </div>
                               );

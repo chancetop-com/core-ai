@@ -1,5 +1,6 @@
 package ai.core.telemetry;
 
+import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.utils.JsonUtil;
@@ -28,6 +29,8 @@ public class LLMTracer extends Tracer {
     private static final AttributeKey<Double> GEN_AI_REQUEST_TEMPERATURE = AttributeKey.doubleKey("gen_ai.request.temperature");
     private static final AttributeKey<Long> GEN_AI_USAGE_INPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.input_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
+    private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
+    private static final AttributeKey<Double> GEN_AI_USAGE_COST_USD = AttributeKey.doubleKey("gen_ai.usage.cost_usd");
     private static final AttributeKey<String> GEN_AI_RESPONSE_FINISH_REASON = AttributeKey.stringKey("gen_ai.response.finish_reasons");
 
     // Langfuse-specific attributes (maps directly to Langfuse data model)
@@ -68,7 +71,7 @@ public class LLMTracer extends Tracer {
 
         try (var scope = span.makeCurrent()) {
             var response = operation.get();
-            recordResponseAttributes(span, response);
+            recordResponseAttributes(span, request, response);
 
             // Add output as attribute for Langfuse
             if (!response.choices.isEmpty() && response.choices.getFirst().message != null) {
@@ -104,10 +107,21 @@ public class LLMTracer extends Tracer {
     /**
      * Record response attributes on the span
      */
-    private void recordResponseAttributes(Span span, CompletionResponse response) {
+    private void recordResponseAttributes(Span span, CompletionRequest request, CompletionResponse response) {
         if (response.usage != null) {
-            span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, (long) response.usage.getPromptTokens());
-            span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, (long) response.usage.getCompletionTokens());
+            var inputTokens = (long) response.usage.getPromptTokens();
+            var outputTokens = (long) response.usage.getCompletionTokens();
+            var cachedTokens = response.usage.getPromptTokensDetails() != null
+                ? (long) response.usage.getPromptTokensDetails().cachedTokens
+                : 0L;
+            span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, inputTokens);
+            span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens);
+            span.setAttribute(GEN_AI_USAGE_CACHED_TOKENS, cachedTokens);
+            var cost = LLMModelContextRegistry.getInstance().estimateCostUsd(
+                request.model, inputTokens, outputTokens, cachedTokens);
+            if (cost != null) {
+                span.setAttribute(GEN_AI_USAGE_COST_USD, cost);
+            }
         }
 
         if (!response.choices.isEmpty() && response.choices.getFirst().finishReason != null) {

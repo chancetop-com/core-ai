@@ -15,6 +15,7 @@ import io.opentelemetry.proto.trace.v1.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
@@ -72,6 +73,7 @@ public class OTLPIngestService {
         saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs);
         if (parentSpanId == null) {
             upsertTrace(protoSpan, traceId, attrs, resourceAttrs);
+            recalculateTraceTokens(traceId);
         }
     }
 
@@ -101,6 +103,13 @@ public class OTLPIngestService {
         span.createdAt = ZonedDateTime.now();
         span.inputTokens = parseLongAttr(attrs, "gen_ai.usage.input_tokens");
         span.outputTokens = parseLongAttr(attrs, "gen_ai.usage.output_tokens");
+        span.cachedTokens = parseLongAttr(attrs,
+            "gen_ai.usage.cached_tokens",
+            "gen_ai.usage.prompt_tokens_details.cached_tokens",
+            "gen_ai.usage.input_tokens_details.cached_tokens",
+            "usage.prompt_tokens_details.cached_tokens",
+            "prompt_tokens_details.cached_tokens");
+        span.costUsd = resolveCostUsd(span.model, span.inputTokens, span.outputTokens, span.cachedTokens, attrs);
         spanCollection.insert(span);
 
         // Back-fill model onto trace if not yet set
@@ -187,6 +196,8 @@ public class OTLPIngestService {
         trace.inputTokens = 0L;
         trace.outputTokens = 0L;
         trace.totalTokens = 0L;
+        trace.cachedTokens = 0L;
+        trace.costUsd = 0.0;
         traceCollection.insert(trace);
     }
 
@@ -210,13 +221,23 @@ public class OTLPIngestService {
 
         long totalInput = 0;
         long totalOutput = 0;
+        long totalCached = 0;
+        double totalCost = 0.0;
+        boolean hasCost = false;
         for (var span : spans) {
             if (span.inputTokens != null) totalInput += span.inputTokens;
             if (span.outputTokens != null) totalOutput += span.outputTokens;
+            if (span.cachedTokens != null) totalCached += span.cachedTokens;
+            if (span.costUsd != null) {
+                totalCost += span.costUsd;
+                hasCost = true;
+            }
         }
         trace.inputTokens = totalInput;
         trace.outputTokens = totalOutput;
         trace.totalTokens = totalInput + totalOutput;
+        trace.cachedTokens = totalCached;
+        trace.costUsd = hasCost ? totalCost : null;
         trace.updatedAt = ZonedDateTime.now();
         traceCollection.replace(trace);
     }
@@ -301,9 +322,44 @@ public class OTLPIngestService {
         return ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMs), ZoneId.systemDefault());
     }
 
-    private Long parseLongAttr(Map<String, String> attrs, String key) {
-        var value = attrs.get(key);
-        return value != null ? Long.parseLong(value) : null;
+    private Double resolveCostUsd(String model, Long inputTokens, Long outputTokens, Long cachedTokens, Map<String, String> attrs) {
+        var attrCost = parseDoubleAttr(attrs,
+            "gen_ai.usage.cost_usd",
+            "gen_ai.usage.cost",
+            "langfuse.observation.total_cost");
+        if (attrCost != null) return attrCost;
+        return LLMModelContextRegistry.getInstance().estimateCostUsd(model,
+            safeLong(inputTokens), safeLong(outputTokens), safeLong(cachedTokens));
+    }
+
+    private Long parseLongAttr(Map<String, String> attrs, String... keys) {
+        for (var key : keys) {
+            var value = attrs.get(key);
+            if (value == null || value.isBlank()) continue;
+            try {
+                return Long.parseLong(value);
+            } catch (NumberFormatException ignored) {
+                LOGGER.debug("invalid long trace attribute {}={}", key, value);
+            }
+        }
+        return null;
+    }
+
+    private Double parseDoubleAttr(Map<String, String> attrs, String... keys) {
+        for (var key : keys) {
+            var value = attrs.get(key);
+            if (value == null || value.isBlank()) continue;
+            try {
+                return Double.parseDouble(value);
+            } catch (NumberFormatException ignored) {
+                LOGGER.debug("invalid double trace attribute {}={}", key, value);
+            }
+        }
+        return null;
+    }
+
+    private long safeLong(Long value) {
+        return value != null ? value : 0L;
     }
 
     private String bytesToHex(byte[] bytes) {

@@ -7,6 +7,8 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  Database,
+  DollarSign,
   ExternalLink,
   FileJson,
   GitBranch,
@@ -29,7 +31,9 @@ import {
   findDefaultSpan,
   flattenSpanTree,
   formatDuration,
+  formatCostUsd,
   formatRelativeTime,
+  formatTokenCount,
   formatTokenPair,
   getSpanTiming,
   getTimelineBounds,
@@ -170,6 +174,12 @@ function TraceHeader({ trace, spans, mode, onClose }: {
             </span>
             <span className="inline-flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
               <Zap size={12} /> {trace.totalTokens || 0} tok ({formatTokenPair(trace.inputTokens, trace.outputTokens)})
+            </span>
+            <span className="inline-flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
+              <Database size={12} /> {formatTokenCount(trace.cachedTokens)} cached
+            </span>
+            <span className="inline-flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
+              <DollarSign size={12} /> {formatCostUsd(trace.costUsd)}
             </span>
             <span style={{ color: 'var(--color-text-secondary)' }}>{spans.length} spans</span>
             <span style={{ color: 'var(--color-text-secondary)' }}>{formatRelativeTime(trace.startedAt || trace.createdAt)}</span>
@@ -397,6 +407,8 @@ function SpanInspector({ span }: { span: Span }) {
           {(span.inputTokens || span.outputTokens) ? (
             <NeutralChip><Zap size={11} /> {formatTokenPair(span.inputTokens, span.outputTokens)}</NeutralChip>
           ) : null}
+          <NeutralChip><Database size={11} /> {formatTokenCount(span.cachedTokens)} cached</NeutralChip>
+          <NeutralChip><DollarSign size={11} /> {formatCostUsd(span.costUsd)}</NeutralChip>
         </div>
       </div>
 
@@ -423,6 +435,9 @@ function SpanSummary({ span }: { span: Span }) {
       <InfoRow label="Span ID" value={span.spanId} mono />
       <InfoRow label="Trace ID" value={span.traceId} mono />
       {span.parentSpanId && <InfoRow label="Parent" value={span.parentSpanId} mono />}
+      <InfoRow label="Tokens" value={formatTokenPair(span.inputTokens, span.outputTokens)} />
+      <InfoRow label="Cached tokens" value={formatTokenCount(span.cachedTokens)} />
+      <InfoRow label="Cost" value={formatCostUsd(span.costUsd)} />
       {span.startedAt && <InfoRow label="Started" value={new Date(span.startedAt).toLocaleString()} />}
       {span.completedAt && <InfoRow label="Completed" value={new Date(span.completedAt).toLocaleString()} />}
       {span.type !== 'LLM' && span.input && <CollapsibleCode label="Input" content={span.input} />}

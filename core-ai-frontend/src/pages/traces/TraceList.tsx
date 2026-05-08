@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Clock, Filter, MessageCircle, Search, X, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, MessageCircle, Search, X, Zap } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Trace, TraceFilter } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -8,8 +8,10 @@ import TraceDetailPanel from './TraceDetailPanel';
 import { sourceColors, typeColors } from './colors';
 import {
   extractTracePreview,
+  formatCostUsd,
   formatDuration,
   formatRelativeTime,
+  formatTokenCount,
   formatTokenPair,
   resolveTraceSource,
   resolveTraceType,
@@ -360,14 +362,16 @@ function TraceRow({ trace, selected, onSelect, onOpenSession }: {
           )}
         </div>
 
-        <div className="shrink-0 min-w-[260px] flex flex-col items-end gap-1">
+        <div className="shrink-0 min-w-[310px] flex flex-col items-end gap-1">
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {model && <NeutralChip mono>{model}</NeutralChip>}
             <StatusBadge status={trace.status} />
           </div>
-          <div className="flex items-center gap-3 text-xs whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             <span className="inline-flex items-center gap-1"><Clock size={12} /> {formatDuration(trace.durationMs)}</span>
             <span className="inline-flex items-center gap-1"><Zap size={12} /> {formatTokenPair(trace.inputTokens, trace.outputTokens)}</span>
+            <span className="inline-flex items-center gap-1"><Database size={12} /> {formatTokenCount(trace.cachedTokens)} cached</span>
+            <span className="inline-flex items-center gap-1"><DollarSign size={12} /> {formatCostUsd(trace.costUsd)}</span>
             <span>{formatRelativeTime(trace.startedAt || trace.createdAt)}</span>
           </div>
         </div>

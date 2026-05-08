@@ -8,6 +8,7 @@ import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
@@ -91,6 +92,8 @@ public class IngestService {
         trace.inputTokens = 0L;
         trace.outputTokens = 0L;
         trace.totalTokens = 0L;
+        trace.cachedTokens = 0L;
+        trace.costUsd = 0.0;
 
         traceCollection.insert(trace);
     }
@@ -122,6 +125,9 @@ public class IngestService {
         span.output = spanReq.output;
         span.inputTokens = spanReq.inputTokens;
         span.outputTokens = spanReq.outputTokens;
+        span.cachedTokens = resolveCachedTokens(spanReq);
+        span.costUsd = resolveCostUsd(spanReq.model, span.inputTokens, span.outputTokens, span.cachedTokens,
+            spanReq.costUsd, spanReq.attributes);
         span.durationMs = spanReq.durationMs;
         span.status = "ERROR".equals(spanReq.status) ? SpanStatus.ERROR : SpanStatus.OK;
         span.attributes = spanReq.attributes;
@@ -159,15 +165,79 @@ public class IngestService {
 
         long totalInput = 0;
         long totalOutput = 0;
+        long totalCached = 0;
+        double totalCost = 0.0;
+        boolean hasCost = false;
         for (var span : spans) {
             if (span.inputTokens != null) totalInput += span.inputTokens;
             if (span.outputTokens != null) totalOutput += span.outputTokens;
+            if (span.cachedTokens != null) totalCached += span.cachedTokens;
+            if (span.costUsd != null) {
+                totalCost += span.costUsd;
+                hasCost = true;
+            }
         }
         trace.inputTokens = totalInput;
         trace.outputTokens = totalOutput;
         trace.totalTokens = totalInput + totalOutput;
+        trace.cachedTokens = totalCached;
+        trace.costUsd = hasCost ? totalCost : null;
         trace.updatedAt = ZonedDateTime.now();
         traceCollection.replace(trace);
+    }
+
+    private Long resolveCachedTokens(IngestSpanRequest spanReq) {
+        if (spanReq.cachedTokens != null) return spanReq.cachedTokens;
+        return parseLongAttr(spanReq.attributes,
+            "gen_ai.usage.cached_tokens",
+            "gen_ai.usage.prompt_tokens_details.cached_tokens",
+            "gen_ai.usage.input_tokens_details.cached_tokens",
+            "usage.prompt_tokens_details.cached_tokens",
+            "prompt_tokens_details.cached_tokens");
+    }
+
+    private Double resolveCostUsd(String model, Long inputTokens, Long outputTokens, Long cachedTokens,
+                                  Double requestCostUsd, Map<String, String> attributes) {
+        if (requestCostUsd != null) return requestCostUsd;
+        var attrCost = parseDoubleAttr(attributes,
+            "gen_ai.usage.cost_usd",
+            "gen_ai.usage.cost",
+            "langfuse.observation.total_cost");
+        if (attrCost != null) return attrCost;
+        return LLMModelContextRegistry.getInstance().estimateCostUsd(model,
+            safeLong(inputTokens), safeLong(outputTokens), safeLong(cachedTokens));
+    }
+
+    private Long parseLongAttr(Map<String, String> attributes, String... keys) {
+        if (attributes == null) return null;
+        for (var key : keys) {
+            var value = attributes.get(key);
+            if (value == null || value.isBlank()) continue;
+            try {
+                return Long.parseLong(value);
+            } catch (NumberFormatException ignored) {
+                LOGGER.debug("invalid long trace attribute {}={}", key, value);
+            }
+        }
+        return null;
+    }
+
+    private Double parseDoubleAttr(Map<String, String> attributes, String... keys) {
+        if (attributes == null) return null;
+        for (var key : keys) {
+            var value = attributes.get(key);
+            if (value == null || value.isBlank()) continue;
+            try {
+                return Double.parseDouble(value);
+            } catch (NumberFormatException ignored) {
+                LOGGER.debug("invalid double trace attribute {}={}", key, value);
+            }
+        }
+        return null;
+    }
+
+    private long safeLong(Long value) {
+        return value != null ? value : 0L;
     }
 
     private TraceStatus mapTraceStatus(String status) {

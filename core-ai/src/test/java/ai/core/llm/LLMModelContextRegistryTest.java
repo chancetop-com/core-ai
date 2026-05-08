@@ -78,5 +78,16 @@ class LLMModelContextRegistryTest {
         assertEquals(16384, info.maxOutputTokens());
         assertEquals("openai", info.provider());
         assertEquals("chat", info.mode());
+        assertEquals(2.5e-06, info.inputCostPerToken());
+        assertEquals(1e-05, info.outputCostPerToken());
+        assertEquals(1.25e-06, info.cacheReadInputTokenCost());
+    }
+
+    @Test
+    void testEstimateCostUsdWithCachedTokens() {
+        var cost = registry.estimateCostUsd("gpt-4o", 1_000, 200, 400);
+
+        assertNotNull(cost);
+        assertEquals(0.004, cost, 0.0000001);
     }
 }

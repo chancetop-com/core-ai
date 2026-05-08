@@ -100,6 +100,8 @@ export interface Trace {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  cachedTokens?: number;
+  costUsd?: number;
   durationMs: number;
   startedAt: string;
   completedAt: string;
@@ -118,6 +120,8 @@ export interface Span {
   output: string;
   inputTokens: number;
   outputTokens: number;
+  cachedTokens?: number;
+  costUsd?: number;
   durationMs: number;
   status: 'OK' | 'ERROR';
   attributes: Record<string, string>;
@@ -142,6 +146,8 @@ export interface SessionSummary {
   session_id: string;
   trace_count: number;
   total_tokens: number;
+  total_cached_tokens?: number;
+  total_cost_usd?: number;
   total_duration_ms: number;
   error_count: number;
   user_id: string;

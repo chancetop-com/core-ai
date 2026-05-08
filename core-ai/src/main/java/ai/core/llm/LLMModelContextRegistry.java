@@ -61,8 +61,13 @@ public final class LLMModelContextRegistry {
                 var maxOutputTokens = getIntOrDefault(modelNode, "max_output_tokens", getIntOrDefault(modelNode, "max_tokens", DEFAULT_MAX_OUTPUT_TOKENS));
                 var provider = getTextOrNull(modelNode, "litellm_provider");
                 var mode = getTextOrNull(modelNode, "mode");
+                var inputCostPerToken = getDoubleOrDefault(modelNode, "input_cost_per_token", 0.0);
+                var outputCostPerToken = getDoubleOrDefault(modelNode, "output_cost_per_token", 0.0);
+                var cacheReadInputTokenCost = getDoubleOrDefault(modelNode, "cache_read_input_token_cost",
+                    getDoubleOrDefault(modelNode, "input_cost_per_token_cache_hit", inputCostPerToken));
 
-                modelInfoMap.put(modelName, new ModelInfo(maxInputTokens, maxOutputTokens, provider, mode));
+                modelInfoMap.put(modelName, new ModelInfo(maxInputTokens, maxOutputTokens, provider, mode,
+                    inputCostPerToken, outputCostPerToken, cacheReadInputTokenCost));
             }
 
             LOGGER.debug("Loaded {} model entries from context registry", modelInfoMap.size());
@@ -75,6 +80,14 @@ public final class LLMModelContextRegistry {
         var fieldNode = node.get(field);
         if (fieldNode != null && fieldNode.isNumber()) {
             return fieldNode.asInt();
+        }
+        return defaultValue;
+    }
+
+    private double getDoubleOrDefault(JsonNode node, String field, double defaultValue) {
+        var fieldNode = node.get(field);
+        if (fieldNode != null && fieldNode.isNumber()) {
+            return fieldNode.asDouble();
         }
         return defaultValue;
     }
@@ -150,6 +163,20 @@ public final class LLMModelContextRegistry {
         return findModelInfo(modelName) != null;
     }
 
+    public Double estimateCostUsd(String modelName, long inputTokens, long outputTokens, long cachedInputTokens) {
+        var info = findModelInfo(modelName);
+        if (info == null) return null;
+
+        var safeInputTokens = Math.max(inputTokens, 0);
+        var safeOutputTokens = Math.max(outputTokens, 0);
+        var safeCachedTokens = Math.min(Math.max(cachedInputTokens, 0), safeInputTokens);
+        var uncachedInputTokens = safeInputTokens - safeCachedTokens;
+
+        return uncachedInputTokens * info.inputCostPerToken()
+            + safeCachedTokens * info.cacheReadInputTokenCost()
+            + safeOutputTokens * info.outputCostPerToken();
+    }
+
     public int size() {
         return modelInfoMap.size();
     }
@@ -158,7 +185,10 @@ public final class LLMModelContextRegistry {
             int maxInputTokens,
             int maxOutputTokens,
             String provider,
-            String mode) {
+            String mode,
+            double inputCostPerToken,
+            double outputCostPerToken,
+            double cacheReadInputTokenCost) {
         public int contextWindow() {
             return maxInputTokens;
         }

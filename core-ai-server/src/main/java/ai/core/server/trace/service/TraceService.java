@@ -7,6 +7,7 @@ import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
+import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
@@ -69,7 +70,9 @@ public class TraceService {
         if (!bsonFilters.isEmpty()) {
             query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
         }
-        return traceCollection.find(query);
+        var traces = traceCollection.find(query);
+        traces.forEach(this::enrichMetricsFromSpans);
+        return traces;
     }
 
     public Trace get(String traceId) {
@@ -82,23 +85,67 @@ public class TraceService {
             trace = results.isEmpty() ? null : results.getFirst();
         }
         if (trace != null) {
-            enrichTokensFromSpans(trace);
+            enrichMetricsFromSpans(trace);
         }
         return trace;
     }
 
-    private void enrichTokensFromSpans(Trace trace) {
-        if (trace.totalTokens != null && trace.totalTokens > 0) return;
+    private void enrichMetricsFromSpans(Trace trace) {
+        var needsTokens = trace.totalTokens == null || trace.totalTokens == 0;
+        var needsCachedTokens = trace.cachedTokens == null || needsTokens;
+        var needsCost = trace.costUsd == null || needsTokens;
+        if (!needsTokens && !needsCachedTokens && !needsCost) return;
+
         var spans = spans(trace.traceId);
         long inputTokens = 0;
         long outputTokens = 0;
+        long cachedTokens = 0;
+        double costUsd = 0.0;
+        boolean hasCost = false;
         for (var span : spans) {
             if (span.inputTokens != null) inputTokens += span.inputTokens;
             if (span.outputTokens != null) outputTokens += span.outputTokens;
+            var spanCachedTokens = span.cachedTokens != null ? span.cachedTokens : parseCachedTokens(span.attributes);
+            if (spanCachedTokens != null) cachedTokens += spanCachedTokens;
+            var spanCostUsd = span.costUsd != null
+                ? span.costUsd
+                : LLMModelContextRegistry.getInstance().estimateCostUsd(span.model,
+                    safeLong(span.inputTokens), safeLong(span.outputTokens), safeLong(spanCachedTokens));
+            if (spanCostUsd != null) {
+                costUsd += spanCostUsd;
+                hasCost = true;
+            }
         }
-        trace.inputTokens = inputTokens;
-        trace.outputTokens = outputTokens;
-        trace.totalTokens = inputTokens + outputTokens;
+        if (needsTokens) {
+            trace.inputTokens = inputTokens;
+            trace.outputTokens = outputTokens;
+            trace.totalTokens = inputTokens + outputTokens;
+        }
+        if (needsCachedTokens) trace.cachedTokens = cachedTokens;
+        if (needsCost && hasCost) trace.costUsd = costUsd;
+    }
+
+    private Long parseCachedTokens(Map<String, String> attributes) {
+        if (attributes == null) return null;
+        for (var key : List.of(
+            "gen_ai.usage.cached_tokens",
+            "gen_ai.usage.prompt_tokens_details.cached_tokens",
+            "gen_ai.usage.input_tokens_details.cached_tokens",
+            "usage.prompt_tokens_details.cached_tokens",
+            "prompt_tokens_details.cached_tokens")) {
+            var value = attributes.get(key);
+            if (value == null || value.isBlank()) continue;
+            try {
+                return Long.parseLong(value);
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+        }
+        return null;
+    }
+
+    private long safeLong(Long value) {
+        return value != null ? value : 0L;
     }
 
     public List<Span> spans(String traceId) {
@@ -128,14 +175,21 @@ public class TraceService {
         query.filter = Filters.and(Filters.exists("session_id"), Filters.ne("session_id", null));
         query.sort = Sorts.descending("created_at");
         var allTraces = traceCollection.find(query);
-
-        return allTraces.stream()
+        var groupedSessions = new ArrayList<>(allTraces.stream()
             .collect(Collectors.groupingBy(t -> t.sessionId))
-            .entrySet().stream()
+            .entrySet());
+        groupedSessions.forEach(entry -> entry.getValue().sort((a, b) -> b.createdAt.compareTo(a.createdAt)));
+
+        return groupedSessions.stream()
+            .sorted((a, b) -> b.getValue().getFirst().createdAt.compareTo(a.getValue().getFirst().createdAt))
+            .skip(offset)
+            .limit(limit)
             .map(entry -> {
                 var traces = entry.getValue();
-                traces.sort((a, b) -> b.createdAt.compareTo(a.createdAt));
+                traces.forEach(this::enrichMetricsFromSpans);
                 long totalTokens = traces.stream().mapToLong(t -> t.totalTokens != null ? t.totalTokens : 0).sum();
+                long totalCachedTokens = traces.stream().mapToLong(t -> t.cachedTokens != null ? t.cachedTokens : 0).sum();
+                double totalCostUsd = traces.stream().mapToDouble(t -> t.costUsd != null ? t.costUsd : 0.0).sum();
                 long totalDuration = traces.stream().mapToLong(t -> t.durationMs != null ? t.durationMs : 0).sum();
                 long errorCount = traces.stream().filter(t -> t.status == TraceStatus.ERROR).count();
                 var latestTrace = traces.getFirst();
@@ -144,6 +198,8 @@ public class TraceService {
                 session.put("session_id", entry.getKey());
                 session.put("trace_count", traces.size());
                 session.put("total_tokens", totalTokens);
+                session.put("total_cached_tokens", totalCachedTokens);
+                session.put("total_cost_usd", totalCostUsd);
                 session.put("total_duration_ms", totalDuration);
                 session.put("error_count", errorCount);
                 session.put("user_id", latestTrace.userId);
@@ -152,9 +208,6 @@ public class TraceService {
                 session.put("first_request", firstTrace.input);
                 return session;
             })
-            .sorted((a, b) -> ((ZonedDateTime) b.get("last_trace_at")).compareTo((ZonedDateTime) a.get("last_trace_at")))
-            .skip(offset)
-            .limit(limit)
             .collect(Collectors.toList());
     }
 
