@@ -45,6 +45,7 @@ import ai.core.server.sandbox.agentsandbox.AgentSandboxProviderConfig;
 import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
+import ai.core.server.web.CorsInterceptor;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.file.FileDownloadController;
@@ -122,6 +123,10 @@ public class ServerModule extends Module {
 
         bind(RequestAuthenticator.class);
         http().intercept(bind(AuthInterceptor.class));
+
+        var corsInterceptor = bind(CorsInterceptor.class);
+        http().intercept(corsInterceptor);
+        http().errorHandler(corsInterceptor);
 
         var toolRegistry = bind(ToolRegistryService.class);
 
