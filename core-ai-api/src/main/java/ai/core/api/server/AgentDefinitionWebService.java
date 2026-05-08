@@ -5,6 +5,8 @@ import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
+import ai.core.api.server.agent.GenerateSystemPromptRequest;
+import ai.core.api.server.agent.GenerateSystemPromptResponse;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
@@ -58,4 +60,8 @@ public interface AgentDefinitionWebService {
     @POST
     @Path("/api/utils/java-to-schema")
     ConvertJavaToSchemaResponse convertJavaToSchema(ConvertJavaToSchemaRequest request);
+
+    @POST
+    @Path("/api/agents/generate-system-prompt")
+    GenerateSystemPromptResponse generateSystemPrompt(GenerateSystemPromptRequest request);
 }

@@ -22,6 +22,7 @@ import ai.core.server.a2a.A2ATaskRegistry;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.agent.GenerateSystemPromptService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.llmcall.LLMCallBuilderTools;
@@ -316,6 +317,7 @@ public class ServerModule extends Module {
         bind(ServerA2AService.class);
         bind(JavaToSchemaService.class);
         bind(AgentDraftGenerator.class);
+        bind(GenerateSystemPromptService.class);
         bind(AgentRunService.class);
         bind(AgentScheduleService.class);
         bind(UserService.class);

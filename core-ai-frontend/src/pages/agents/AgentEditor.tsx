@@ -30,6 +30,7 @@ export default function AgentEditor() {
   const [saveError, setSaveError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
 
   // system prompts for dropdown
   const [systemPrompts, setSystemPrompts] = useState<SystemPrompt[]>([]);
@@ -121,6 +122,21 @@ export default function AgentEditor() {
 
   const update = (field: string, value: unknown) => {
     setAgent({ ...agent, [field]: value } as AgentDefinition);
+  };
+
+  const handleGeneratePrompt = async () => {
+    if (!agent.name && !agent.description) return;
+    setGeneratingPrompt(true);
+    try {
+      const res = await api.agents.generateSystemPrompt({ name: agent.name, description: agent.description });
+      if (res.system_prompt) {
+        update('system_prompt', res.system_prompt);
+      }
+    } catch (e) {
+      console.error('Failed to generate system prompt:', e);
+    } finally {
+      setGeneratingPrompt(false);
+    }
   };
 
   const loadApiApps = async () => {
@@ -663,6 +679,17 @@ export default function AgentEditor() {
                       style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
                       {promptExpanded ? <><Minimize2 size={12} /> Collapse</> : <><Maximize2 size={12} /> Expand</>}
                     </button>
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <button onClick={handleGeneratePrompt}
+                      disabled={generatingPrompt || (!agent.name && !agent.description)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+                      style={{ background: 'var(--color-primary)' }}>
+                      {generatingPrompt ? <><Loader2 size={12} className="animate-spin" /> Generating...</> : <><Sparkles size={12} /> AI Generate</>}
+                    </button>
+                    {(!agent.name && !agent.description) && (
+                      <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Enter name or description to generate</span>
+                    )}
                   </div>
                   <textarea value={agent.system_prompt || ''}
                     onChange={e => update('system_prompt', e.target.value)}

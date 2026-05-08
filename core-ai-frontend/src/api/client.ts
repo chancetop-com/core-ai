@@ -580,6 +580,8 @@ export const api = {
       request<LLMCallResponse>(`/api/llm/${id}/call`, { method: 'POST', body: JSON.stringify({ input, attachments }) }),
     javaToSchema: (javaCode: string) =>
       request<ConvertJavaToSchemaResponse>('/api/utils/java-to-schema', { method: 'POST', body: JSON.stringify({ java_code: javaCode }) }),
+    generateSystemPrompt: (data: { name: string; description: string }) =>
+      request<{ system_prompt: string }>('/api/agents/generate-system-prompt', { method: 'POST', body: JSON.stringify(data) }),
   },
   systemPrompts: {
     list: (offset = 0, limit = 20) =>
