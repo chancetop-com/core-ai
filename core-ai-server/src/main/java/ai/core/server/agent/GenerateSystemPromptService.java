@@ -57,11 +57,9 @@ public class GenerateSystemPromptService {
     }
 
     private String buildUserPrompt(String name, String description) {
-        var sb = new StringBuilder();
-        sb.append("Generate a system prompt for an AI agent with the following details:\n\n");
-        sb.append("Name: ").append(name != null ? name : "N/A").append("\n");
-        sb.append("Description: ").append(description != null ? description : "N/A").append("\n\n");
-        sb.append("The system prompt should define how this agent behaves, its capabilities, and its constraints.");
-        return sb.toString();
+        return "Generate a system prompt for an AI agent with the following details:\n\n"
+                + "Name: " + (name != null ? name : "N/A") + "\n"
+                + "Description: " + (description != null ? description : "N/A") + "\n\n"
+                + "The system prompt should define how this agent behaves, its capabilities, and its constraints.";
     }
 }

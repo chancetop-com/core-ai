@@ -121,47 +121,34 @@ public class ServerModule extends Module {
     protected void initialize() {
         var migrationManager = bind(SchemaMigrationManager.class);
         onStartup(migrationManager::migrate);
-
         bind(RequestAuthenticator.class);
         http().intercept(bind(AuthInterceptor.class));
-
         var corsInterceptor = bind(CorsInterceptor.class);
         http().intercept(corsInterceptor);
         http().errorHandler(corsInterceptor);
-
         var toolRegistry = bind(ToolRegistryService.class);
-
         registerFile();
         registerSkill();
-
         site().session().timeout(Duration.ofHours(24));
         site().session().cookie("CoreAIServerSessionId", null);
-
         bindSandboxService();
         bindService();
         bindAuthService();
         registerWebhookTrigger();
-
         var builderTools = bind(LLMCallBuilderTools.class);
-
         var mcpConfig = property("mcp.servers.json").orElse(null);
         onStartup(() -> toolRegistry.initialize(mcpConfig));
         onStartup(builderTools::initialize);
-
         registerMessaging();
         bind(PodLocalExecutor.class);
-
         bindWebService();
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
-
         registerTrace();
         registerSystemPrompt();
         registerCapabilities();
-
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
         sseConfig.listen(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class));
-
         registerStaticFiles();
     }
 
@@ -393,23 +380,19 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/tools/builtin", controller::serve);
         http().route(HTTPMethod.GET, "/settings/users", controller::serve);
     }
-
     private void registerFile() {
         bind(FileService.class);
         api().service(FileWebService.class, bind(FileWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
         http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));
     }
-
     private void registerSkill() {
         bind(SkillService.class);
         bind(MongoSkillProvider.class);
         bind(new SkillArchiveBuilder());
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));
-//        schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class), Duration.ofHours(1));
     }
-
     private void registerSystemPrompt() {
         var controller = bind(SystemPromptController.class);
 
@@ -422,20 +405,17 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api/system-prompts/:promptId/versions/:version", controller::getVersion);
         http().route(HTTPMethod.POST, "/api/system-prompts/:promptId/test", controller::test);
     }
-
     private void registerWebhookTrigger() {
         var controller = bind(TriggerController.class);
         http().route(HTTPMethod.POST, "/api/webhook-triggers/:id", controller);
         // GET for Slack URL verification challenge
         http().route(HTTPMethod.GET, "/api/webhook-triggers/:id", controller);
     }
-
     private void registerCapabilities() {
         var controller = bind(CapabilitiesController.class);
         controller.authDisabled = property("sys.auth.disabled").orElse("false").equals("true");
         http().route(HTTPMethod.GET, "/api/capabilities", controller::get);
     }
-
     private void registerTrace() {
         bind(TraceService.class);
         bind(PromptService.class);

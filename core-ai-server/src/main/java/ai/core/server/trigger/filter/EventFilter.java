@@ -14,6 +14,32 @@ import java.util.Set;
 public class EventFilter {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventFilter.class);
 
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parsePayload(String payload) {
+        if (payload == null || payload.isBlank()) return null;
+        try {
+            return (Map<String, Object>) JSON.fromJSON(Map.class, payload);
+        } catch (Exception e) {
+            LOGGER.warn("failed to parse payload JSON", e);
+            return null;
+        }
+    }
+
+    private static String stringField(Map<String, Object> map, String key) {
+        var value = map.get(key);
+        return value instanceof String s ? s : null;
+    }
+
+    private static Set<String> parseSet(Map<String, String> config, String key) {
+        if (config == null) return Set.of();
+        var value = config.get(key);
+        if (value == null || value.isBlank()) return Set.of();
+        return List.of(value.split(",")).stream()
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     private final Set<String> allowedEventTypes;
     private final Set<String> ignoredSubtypes;
     private final Set<String> allowedChannels;
@@ -79,31 +105,5 @@ public class EventFilter {
 
     private boolean hasAnyFilter() {
         return !allowedEventTypes.isEmpty() || !ignoredSubtypes.isEmpty() || !allowedChannels.isEmpty();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> parsePayload(String payload) {
-        if (payload == null || payload.isBlank()) return null;
-        try {
-            return (Map<String, Object>) JSON.fromJSON(Map.class, payload);
-        } catch (Exception e) {
-            LOGGER.warn("failed to parse payload JSON", e);
-            return null;
-        }
-    }
-
-    private static String stringField(Map<String, Object> map, String key) {
-        var value = map.get(key);
-        return value instanceof String s ? s : null;
-    }
-
-    private static Set<String> parseSet(Map<String, String> config, String key) {
-        if (config == null) return Set.of();
-        var value = config.get(key);
-        if (value == null || value.isBlank()) return Set.of();
-        return List.of(value.split(",")).stream()
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 }

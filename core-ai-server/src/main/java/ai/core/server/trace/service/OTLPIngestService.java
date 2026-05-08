@@ -304,7 +304,7 @@ public class OTLPIngestService {
     }
 
     private boolean isInternalService(String serviceName) {
-        return serviceName == null || serviceName.isBlank() || serviceName.equals("core-ai") || serviceName.startsWith("core-ai-");
+        return serviceName == null || serviceName.isBlank() || "core-ai".equals(serviceName) || serviceName.startsWith("core-ai-");
     }
 
     private TraceStatus mapTraceStatus(Status.StatusCode code) {
