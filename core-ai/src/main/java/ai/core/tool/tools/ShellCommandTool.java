@@ -251,8 +251,7 @@ public class ShellCommandTool extends ToolCall {
         var outputLines = new ArrayList<String>();
         var future = CompletableFuture.supplyAsync(() -> {
             try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
+                for (String line = reader.readLine(); line != null; line = reader.readLine()) {
                     outputLines.add(line);
                     if (chunkCallback != null) chunkCallback.accept(line);
                 }
@@ -293,6 +292,16 @@ public class ShellCommandTool extends ToolCall {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    @Nullable
+    private static Consumer<String> getOnOutPutConsumer(ExecutionContext context) {
+        Consumer<String> onChunk = null;
+        var ec = context.getStreamingCallback();
+        if (ec != null) {
+            onChunk = chunk -> ec.onOutput("bash", null, chunk);
+        }
+        return onChunk;
     }
 
     @Override
@@ -337,16 +346,6 @@ public class ShellCommandTool extends ToolCall {
             return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
-    }
-
-    @Nullable
-    private static Consumer<String> getOnOutPutConsumer(ExecutionContext context) {
-        Consumer<String> onChunk = null;
-        var ec = context.getStreamingCallback();
-        if (ec != null) {
-            onChunk = chunk -> ec.onOutput("bash", null, chunk);
-        }
-        return onChunk;
     }
 
     private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description) {
