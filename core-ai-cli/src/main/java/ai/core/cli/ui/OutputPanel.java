@@ -218,9 +218,10 @@ public class OutputPanel {
             if (result != null && !result.isBlank()) {
                 String[] lines = result.split("\n");
                 int limit = Math.min(lines.length, 3);
+                int maxWidth = Math.max(40, terminalWidth.getAsInt() - 6);
                 for (int i = 0; i < limit; i++) {
                     String line = lines[i].stripLeading();
-                    if (line.length() > 120) line = line.substring(0, 120) + "...";
+                    if (line.length() > maxWidth) line = line.substring(0, maxWidth - 3) + "...";
                     if (i > 0) writer.print(INDENT + "   ");
                     writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
                 }
@@ -243,9 +244,10 @@ public class OutputPanel {
         if (result != null && !result.isBlank()) {
             String[] lines = result.split("\n");
             int limit = Math.min(lines.length, 3);
+            int maxWidth = Math.max(40, terminalWidth.getAsInt() - 6);
             for (int i = 0; i < limit; i++) {
                 String line = lines[i].stripLeading();
-                if (line.length() > 120) line = line.substring(0, 120) + "...";
+                if (line.length() > maxWidth) line = line.substring(0, maxWidth - 3) + "...";
                 writer.print(INDENT + icon + "   " + AnsiTheme.RESET);
                 writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
             }
@@ -263,6 +265,10 @@ public class OutputPanel {
         toolOutputStreaming = true;
         toolOutputLineCount++;
         if (toolOutputLineCount <= 5) {
+            int maxWidth = Math.max(40, terminalWidth.getAsInt() - INDENT.length());
+            if (line.length() > maxWidth) {
+                line = line.substring(0, maxWidth - 3) + "...";
+            }
             writer.println(INDENT + AnsiTheme.MUTED + line + AnsiTheme.RESET);
         } else {
             String counter = "\u231B Running... Read " + toolOutputLineCount + " lines";
