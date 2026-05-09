@@ -12,13 +12,10 @@ import ai.core.api.server.UserWebService;
 import ai.core.api.server.trigger.TriggerWebService;
 import ai.core.api.a2a.StreamResponse;
 import ai.core.a2a.A2AHttpPaths;
-import ai.core.sandbox.SandboxProvider;
 import ai.core.server.a2a.A2AAgentCardController;
-import ai.core.server.a2a.A2AEventRelay;
 import ai.core.server.a2a.A2AMessageController;
 import ai.core.server.a2a.A2AStreamChannelListener;
 import ai.core.server.a2a.A2ATaskController;
-import ai.core.server.a2a.A2ATaskRegistry;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
@@ -26,32 +23,13 @@ import ai.core.server.agent.GenerateSystemPromptService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.llmcall.LLMCallBuilderTools;
-import ai.core.server.messaging.CommandConsumer;
-import ai.core.server.messaging.CommandPublisher;
-import ai.core.server.messaging.EventPublisher;
-import ai.core.server.messaging.EventSubscriber;
-import ai.core.server.messaging.InProcessCommandHandler;
-import ai.core.server.messaging.InProcessCommandHandlerDependencies;
-import ai.core.server.messaging.JedisConfig;
-import ai.core.server.messaging.RpcClient;
-import ai.core.server.messaging.RpcResponseSubscriber;
-import ai.core.server.messaging.SessionCommand;
-import ai.core.server.messaging.SessionOwnershipRegistry;
-import ai.core.server.sandbox.SandboxService;
-import ai.core.server.sandbox.TokenResolver;
-import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
-import ai.core.server.sandbox.agentsandbox.AgentSandboxExtensionsClient;
-import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
-import ai.core.server.sandbox.agentsandbox.AgentSandboxProviderConfig;
-import ai.core.server.sandbox.docker.DockerSandboxProvider;
-import ai.core.server.sandbox.kubernetes.KubernetesClient;
-import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.web.CorsInterceptor;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
+import ai.core.server.github.GitHubInstallationTokenService;
 import ai.core.server.domain.migration.SchemaMigrationManager;
 import ai.core.server.run.AgentRunService;
 import ai.core.server.run.LLMCallExecutor;
@@ -106,10 +84,8 @@ import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 
 /**
  * @author stephen
@@ -131,15 +107,16 @@ public class ServerModule extends Module {
         registerSkill();
         site().session().timeout(Duration.ofHours(24));
         site().session().cookie("CoreAIServerSessionId", null);
-        bindSandboxService();
+        load(new SandboxModule());
         bindService();
         bindAuthService();
+        bindGitHubService();
         registerWebhookTrigger();
         var builderTools = bind(LLMCallBuilderTools.class);
         var mcpConfig = property("mcp.servers.json").orElse(null);
         onStartup(() -> toolRegistry.initialize(mcpConfig));
         onStartup(builderTools::initialize);
-        registerMessaging();
+        load(new MessagingModule());
         bind(PodLocalExecutor.class);
         bindWebService();
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
@@ -152,55 +129,6 @@ public class ServerModule extends Module {
         registerStaticFiles();
     }
 
-    private void registerMessaging() {
-        var redisHost = property("sys.jedis.host").orElse("localhost");
-        var redisPort = Integer.parseInt(property("sys.jedis.port").orElse("6379"));
-
-        var redisConfig = new JedisConfig(redisHost, redisPort);
-        var jedisPool = redisConfig.createJedisPool();
-        onShutdown(jedisPool::close);
-
-        var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
-        bind(new CommandPublisher(jedisPool, ownershipRegistry));
-        bind(new EventPublisher(jedisPool));
-        var a2aTaskRegistry = bind(new A2ATaskRegistry(jedisPool, ownershipRegistry));
-        var a2aEventRelay = bind(new A2AEventRelay(jedisPool));
-        bean(AgentSessionManager.class).setEventPublisher(bean(EventPublisher.class));
-        bean(AgentSessionManager.class).setOwnershipRegistry(ownershipRegistry);
-        var rpcClient = bind(new RpcClient(jedisPool, ownershipRegistry));
-        bean(ServerA2AService.class).setTaskRouting(a2aTaskRegistry, ownershipRegistry, rpcClient, a2aEventRelay);
-        var rpcResponseSubscriber = new RpcResponseSubscriber(jedisPool, rpcClient);
-        onStartup(rpcResponseSubscriber::start);
-        onShutdown(rpcResponseSubscriber::stop);
-        var eventSubscriber = new EventSubscriber(jedisPool, bean(SessionChannelService.class));
-        onStartup(eventSubscriber::start);
-        onShutdown(eventSubscriber::stop);
-        var handlerDependencies = new InProcessCommandHandlerDependencies();
-        handlerDependencies.sessionManager = bean(AgentSessionManager.class);
-        handlerDependencies.chatMessageService = bean(ChatMessageService.class);
-        handlerDependencies.ownershipRegistry = ownershipRegistry;
-        handlerDependencies.agentDraftGenerator = bean(AgentDraftGenerator.class);
-        handlerDependencies.agentDefinitionService = bean(AgentDefinitionService.class);
-        handlerDependencies.serverA2AService = bean(ServerA2AService.class);
-        handlerDependencies.jedisPool = jedisPool;
-        var commandHandler = new InProcessCommandHandler(handlerDependencies);
-        var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);
-        onStartup(commandConsumer::start);
-        onShutdown(() -> {
-            commandConsumer.stop();
-            var pending = new ArrayList<SessionCommand>();
-            commandConsumer.drainPodStream(pending);
-            if (!pending.isEmpty()) {
-                LOGGER.info("republishing {} pending commands to unowned stream", pending.size());
-                try (var jedis = jedisPool.getResource()) {
-                    for (var cmd : pending) {
-                        jedis.xadd(SessionCommand.UNOWNED_STREAM, redis.clients.jedis.StreamEntryID.NEW_ENTRY, cmd.toStreamMap());
-                    }
-                }
-            }
-        });
-    }
-
     private void bindAuthService() {
         var authService = bind(AuthService.class);
         authService.adminEmail = property("sys.admin.email").orElse("admin@example.com");
@@ -210,85 +138,21 @@ public class ServerModule extends Module {
         onStartup(authService::initialize);
     }
 
-    private void bindSandboxService() {
-        property("sys.sandbox.provider").ifPresent(p -> {
-            SandboxProvider provider;
-            if (p.equalsIgnoreCase("kubernetes")) {
-                provider = createKubernetesSandboxProvider();
-            } else if (p.equalsIgnoreCase("agent-sandbox")) {
-                provider = createAgentSandboxProvider();
-            } else if (p.equalsIgnoreCase("docker")) {
-                var socketPath = property("sys.sandbox.docker.socket").orElse("unix:///var/run/docker.sock");
-                var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
-                provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
-            } else {
-                bind(new SandboxService());
-                return;
-            }
-            var sandboxService = bind(new SandboxService(provider));
-            onShutdown(sandboxService::shutdown);
-        });
-        if (property("sys.sandbox.provider").isEmpty()) {
-            bind(new SandboxService());
-        }
-    }
-
-    private String resolveNamespace() {
-        var configured = property("sys.sandbox.kubernetes.namespace").orElse(null);
-        if (configured != null && !configured.isBlank()) return configured;
-        try {
-            return Files.readString(Path.of("/var/run/secrets/kubernetes.io/serviceaccount/namespace")).trim();
-        } catch (Exception e) {
-            return "core-ai-sandbox";
-        }
-    }
-
-    private SandboxProvider createKubernetesSandboxProvider() {
-        var namespace = resolveNamespace();
-        var token = property("sys.sandbox.kubernetes.token").orElse(null);
-        KubernetesClient kubernetesClient;
-        if (token != null && !token.isBlank()) {
-            var apiServer = property("sys.sandbox.kubernetes.apiServer").orElse("https://kubernetes.default.svc");
-            kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
+    private void bindGitHubService() {
+        var appId = property("github.app.id").orElse(null);
+        var privateKey = property("github.app.private_key").orElse(null);
+        if (appId != null && !appId.isBlank() && privateKey != null && !privateKey.isBlank()) {
+            var installationId = property("github.app.installation_id")
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .map(Long::parseLong)
+                    .orElse(null);
+            var githubService = new GitHubInstallationTokenService(appId, privateKey, installationId);
+            githubService.register();
+            LOGGER.info("GitHub installation token service configured");
         } else {
-            kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
+            LOGGER.info("GitHub App not configured (github.app.id or github.app.private_key missing), GitHub token tool will be unavailable");
         }
-        var useHostPort = property("sys.sandbox.kubernetes.hostPort").orElse("false").equalsIgnoreCase("true");
-        return new KubernetesSandboxProvider(kubernetesClient, null, useHostPort);
-    }
-
-    private SandboxProvider createAgentSandboxProvider() {
-        var namespace = resolveNamespace();
-        var token = property("sys.sandbox.kubernetes.token").orElse(null);
-        var apiServer = property("sys.sandbox.kubernetes.apiServer").orElse("https://kubernetes.default.svc");
-        TokenResolver tokenResolver = (token != null && !token.isBlank())
-                ? TokenResolver.fixed(token)
-                : TokenResolver.inCluster();
-        var client = new AgentSandboxClient(apiServer, namespace, tokenResolver, 120);
-        var useHostPort = property("sys.sandbox.kubernetes.hostPort").orElse("false").equalsIgnoreCase("true");
-        KubernetesClient kubernetesClient = null;
-        if (useHostPort) {
-            if (token != null && !token.isBlank()) {
-                kubernetesClient = new KubernetesClient(apiServer, token, namespace, 60);
-            } else {
-                kubernetesClient = KubernetesClient.createInCluster(namespace, 60);
-            }
-        }
-        // Warm pool mode: if template name is configured, use SandboxClaim via extensions API
-        var templateName = property("sys.sandbox.agentSandbox.template").orElse("core-ai-sandbox");
-        var warmPoolName = property("sys.sandbox.agentSandbox.warmPool").orElse("core-ai-sandbox");
-        AgentSandboxExtensionsClient extensionsClient = null;
-        if (templateName != null && !templateName.isBlank()) {
-            extensionsClient = new AgentSandboxExtensionsClient(apiServer, namespace, tokenResolver, 120);
-        }
-        var config = new AgentSandboxProviderConfig();
-        config.client = client;
-        config.extensionsClient = extensionsClient;
-        config.kubernetesClient = kubernetesClient;
-        config.useHostPort = useHostPort;
-        config.templateName = templateName;
-        config.warmPoolName = warmPoolName;
-        return new AgentSandboxProvider(config);
     }
 
     private void bindService() {

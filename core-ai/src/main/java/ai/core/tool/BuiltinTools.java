@@ -6,6 +6,7 @@ import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
 import ai.core.tool.tools.PythonScriptTool;
 import ai.core.tool.tools.ReadFileTool;
+import ai.core.tool.tools.RequireGithubInstallationTokenTool;
 import ai.core.tool.tools.ShellCommandTool;
 import ai.core.tool.tools.SummarizePdfTool;
 import ai.core.tool.tools.TaskTool;
@@ -40,7 +41,9 @@ public final class BuiltinTools {
             WebSearchTool.builder().build(),
             // Code execution
             ShellCommandTool.builder().build(),
-            PythonScriptTool.builder().build()
+            PythonScriptTool.builder().build(),
+            // GitHub
+            RequireGithubInstallationTokenTool.builder().build()
     );
 
     public static final List<ToolCall> PLANNING = List.of(
@@ -75,6 +78,10 @@ public final class BuiltinTools {
     public static final List<ToolCall> CODE_EXECUTION = List.of(
             ShellCommandTool.builder().build(),
             PythonScriptTool.builder().build()
+    );
+
+    public static final List<ToolCall> GITHUB = List.of(
+            RequireGithubInstallationTokenTool.builder().build()
     );
 
     @SafeVarargs

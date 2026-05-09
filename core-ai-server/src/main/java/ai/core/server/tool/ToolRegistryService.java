@@ -40,7 +40,8 @@ public class ToolRegistryService {
         "builtin-file-read-only", BuiltinTools.FILE_READ_ONLY,
         "builtin-multimodal", BuiltinTools.MULTIMODAL,
         "builtin-web", BuiltinTools.WEB,
-        "builtin-code-execution", BuiltinTools.CODE_EXECUTION
+        "builtin-code-execution", BuiltinTools.CODE_EXECUTION,
+        "builtin-github", BuiltinTools.GITHUB
     );
 
     private final Map<String, ToolRegistry> tools = new ConcurrentHashMap<>();
