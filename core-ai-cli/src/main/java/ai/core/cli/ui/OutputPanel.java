@@ -375,8 +375,8 @@ public class OutputPanel {
         // Rows
         for (var todo : todos) {
             String statusIcon = switch (todo.status) {
-                case "COMPLETED" -> AnsiTheme.SUCCESS + "\u2713";
-                case "IN_PROGRESS" -> AnsiTheme.WARNING + "\u25B6";
+                case "completed" -> AnsiTheme.SUCCESS + "\u2713";
+                case "in_progress" -> AnsiTheme.WARNING + "\u25B6";
                 default -> AnsiTheme.MUTED + "\u25CB";
             };
             String statusCore = statusIcon + " " + formatStatus(todo.status);
@@ -445,8 +445,8 @@ public class OutputPanel {
 
     private String formatStatus(String status) {
         return switch (status) {
-            case "COMPLETED" -> "Done";
-            case "IN_PROGRESS" -> "In Progress";
+            case "completed" -> "Done";
+            case "in_progress" -> "In Progress";
             default -> "Pending";
         };
     }
