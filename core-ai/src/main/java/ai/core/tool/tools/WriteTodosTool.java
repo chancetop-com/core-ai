@@ -80,7 +80,7 @@ public class WriteTodosTool {
     }
 
     @CoreAiMethod(name = WT_TOOL_NAME, description = WT_TOOL_DESC)
-    public String writeTodos(@CoreAiParameter(name = "todos", description = "") List<Todo> todos, ExecutionContext context) {
+    public String writeTodos(@CoreAiParameter(name = "todos", description = "The updated todo list") List<Todo> todos, ExecutionContext context) {
         var todosJson = JsonUtil.toJson(todos);
         return """
                   Todos have been modified successfully.

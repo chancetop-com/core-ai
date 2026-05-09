@@ -8,6 +8,7 @@ import ai.core.utils.JsonUtil;
 
 import java.io.PrintWriter;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntSupplier;
@@ -365,6 +366,7 @@ public class OutputPanel {
         mdRenderer.flush();
 
         writer.println("\n" + AnsiTheme.CMD_NAME + "\u25CF Planning:" + AnsiTheme.RESET);
+        todos = todos.stream().map(todoItem -> new PlanUpdateEvent.TodoItem(todoItem.content,todoItem.status.toLowerCase(Locale.ROOT))).toList();
 
         // Calculate column widths
         int statusWidth = 13; // "IN PROGRESS"
