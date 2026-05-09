@@ -219,7 +219,8 @@ public class Agent extends Node<Agent> {
             turnMsgList.forEach(this::addMessage);
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
             currentIteCount++;
-        } while (AgentHelper.lastIsToolMsg(getMessages())
+        } while (!cancelled
+                && AgentHelper.lastIsToolMsg(getMessages())
                 && currentIteCount < maxTurnNumber);
 
         setOutput(agentOut.toString());
@@ -279,6 +280,7 @@ public class Agent extends Node<Agent> {
     }
 
     public List<Message> handleFunc(Message funcMsg) {
+        if (cancelled) return List.of();
         var orchestration = new ToolOrchestration(toolCalls, agentLifecycles, getToolExecutor(), getExecutionContext());
         return orchestration.execute(funcMsg.toolCalls);
     }

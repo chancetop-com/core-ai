@@ -627,9 +627,11 @@ export default function Chat() {
     }
   };
 
-  const handleCancel = async () => {
-    if (!sessionId) return;
-    try { await sessionApi.cancel(sessionId); } catch { /* ignore */ }
+  const handleCancel = () => {
+    sseControllerRef.current?.abort();
+    sseControllerRef.current = null;
+    setStatus('idle');
+    if (sessionId) sessionApi.cancel(sessionId).catch(() => {});
   };
 
   const handleNewChat = () => {
