@@ -12,7 +12,7 @@ import java.util.List;
 /**
  * author: lim chen
  * date: 2026/5/7
- * description:
+ * description: todo: modify base prompt ,because no report was made. can align cc
  */
 public class DefaultGeneralAgent {
     public static final String AGENT_NAME = "general-purpose-agent";
