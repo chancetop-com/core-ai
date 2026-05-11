@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * File-based implementation of {@link TodoStore}.
@@ -25,6 +26,7 @@ public class FileTodoStore implements TodoStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileTodoStore.class);
 
     private final Path taskListDir;
+    private final AtomicInteger idSeq;
 
     private static String sanitize(String sessionId) {
         return sessionId.replaceAll("[^a-zA-Z0-9._\\-]", "_");
@@ -32,14 +34,29 @@ public class FileTodoStore implements TodoStore {
 
     public FileTodoStore(Path baseDir, String sessionId) {
         this.taskListDir = baseDir.resolve(sanitize(sessionId));
+        this.idSeq = new AtomicInteger(scanMaxId() + 1);
+    }
+
+    private int scanMaxId() {
+        if (!java.nio.file.Files.exists(taskListDir)) return 0;
+        File[] files = taskListDir.toFile().listFiles((_, name) -> name.endsWith(".json"));
+        if (files == null || files.length == 0) return 0;
+        int max = 0;
+        for (File file : files) {
+            try {
+                int id = Integer.parseInt(file.getName().replace(".json", ""));
+                if (id > max) max = id;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return max;
     }
 
     @Override
     public WriteTodoTaskTool.TaskEntity create(WriteTodoTaskTool.TaskEntity task) {
         ensureDir();
-        int id = nextId();
-        task.id = String.valueOf(id);
-        writeFile(id, task);
+        task.id = String.valueOf(idSeq.getAndIncrement());
+        writeFile(Integer.parseInt(task.id), task);
         return task;
     }
 
@@ -97,28 +114,6 @@ public class FileTodoStore implements TodoStore {
         }
         tasks.sort(Comparator.comparingInt(t -> Integer.parseInt(t.id)));
         return tasks;
-    }
-
-    @Override
-    public int nextId() {
-        ensureDir();
-        File[] files = taskListDir.toFile().listFiles((dir, name) -> name.endsWith(".json"));
-        if (files == null || files.length == 0) {
-            return 1;
-        }
-        int max = 0;
-        for (File file : files) {
-            String name = file.getName();
-            try {
-                int id = Integer.parseInt(name.replace(".json", ""));
-                if (id > max) {
-                    max = id;
-                }
-            } catch (NumberFormatException e) {
-                LOGGER.debug("skip non-task file: {}", name, e);
-            }
-        }
-        return max + 1;
     }
 
     @Override

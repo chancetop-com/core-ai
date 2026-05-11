@@ -21,7 +21,5 @@ public interface TodoStore {
 
     List<WriteTodoTaskTool.TaskEntity> listAll();
 
-    int nextId();
-
     void cleanup();
 }
