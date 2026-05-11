@@ -4,6 +4,7 @@ import ai.core.agent.doomloop.DoomLoopLifecycle;
 import ai.core.agent.lifecycle.ResponseValidationLifecycle;
 import ai.core.agent.doomloop.DoomLoopStrategy;
 import ai.core.agent.doomloop.RepetitiveCallStrategy;
+import ai.core.agent.doomloop.TaskReminderStrategy;
 import ai.core.agent.doomloop.TodoReminderStrategy;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.context.Compression;
@@ -32,6 +33,7 @@ import ai.core.skill.SkillRegistry;
 import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.tool.tools.ToolActivationTool;
+import ai.core.tool.tools.WriteTodoTaskTool;
 import ai.core.tool.tools.WriteTodosTool;
 import core.framework.util.Lists;
 
@@ -374,6 +376,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         var strategies = new ArrayList<DoomLoopStrategy>();
         if (doomLoopEnabled) {
             strategies.add(new RepetitiveCallStrategy(doomLoopWindowSize, doomLoopThreshold));
+        }
+        boolean hasTaskV2 = toolCalls.stream()
+                .anyMatch(t -> WriteTodoTaskTool.TOOL_NAME_CREATE.equals(t.getName()));
+        if (hasTaskV2) {
+            strategies.add(new TaskReminderStrategy());
         }
         boolean hasWriteTodos = toolCalls.stream()
                 .anyMatch(t -> WriteTodosTool.WT_TOOL_NAME.equals(t.getName()));

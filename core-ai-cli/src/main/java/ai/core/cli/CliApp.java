@@ -40,6 +40,7 @@ import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WebFetchTool;
 import ai.core.tool.tools.WebSearchTool;
+import ai.core.tool.tools.WriteTodoTaskTool;
 import ai.core.tool.tools.WriteTodosTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,6 +107,7 @@ public class CliApp {
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
         boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false);
         boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
+        boolean todoV2Enabled = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);
         var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
@@ -117,7 +119,7 @@ public class CliApp {
         var noteMemory = memoryEnabled ? new MdMemoryProvider(workspace) : null;
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
         return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName,
-                currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, coding, remoteAgents, remoteServers);
+                currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, coding, todoV2Enabled, remoteAgents, remoteServers);
     }
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
@@ -155,7 +157,7 @@ public class CliApp {
             ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
             ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
             return ui.readRawLine();
-        }, ctx.memoryEnabled, ctx.coding, sessionId, ctx.remoteAgents, ctx.remoteServers);
+        }, ctx.memoryEnabled, ctx.coding, ctx.todoV2Enabled, sessionId, ctx.remoteAgents, ctx.remoteServers);
         var agent = CliAgent.of(agentConfig);
         var config = new AgentSessionRunner.Config(ctx.modelName, autoApproveAll, sessionId, ctx.sessionManager, ctx.permissionStore, ctx.noteMemory, ctx.modelRegistry, ctx.sessionPersistence, ctx.memoryEnabled);
         return new AgentSessionRunner(ui, agent, ctx.result.llmProviders, config);
@@ -169,6 +171,10 @@ public class CliApp {
     private ToolPermissionStore whiteToolsPermissionStore() {
         var permissionStore = new FileRuleBasedPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.json"));
         permissionStore.allow(WriteTodosTool.WT_TOOL_NAME);
+        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_CREATE);
+        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_UPDATE);
+        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_LIST);
+        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_GET);
         permissionStore.allow(TaskTool.TOOL_NAME);
         permissionStore.allow(WebFetchTool.TOOL_NAME);
         permissionStore.allow(WebSearchTool.TOOL_NAME);
@@ -287,6 +293,7 @@ public class CliApp {
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
         boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true);
         boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
+        boolean todoV2Enabled = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);
         var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
@@ -306,7 +313,7 @@ public class CliApp {
         var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
-        }, memoryEnabled, coding, currentSessionId, remoteAgents, remoteServers);
+        }, memoryEnabled, coding, todoV2Enabled, currentSessionId, remoteAgents, remoteServers);
 
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
         var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, sessionManager, sessionPersistence, workspace);
@@ -444,7 +451,7 @@ public class CliApp {
     private record SessionContext(BootstrapResult result, PropertiesFileSource props, int maxTurn,
             FileSessionPersistence sessionPersistence, SessionManager sessionManager, String modelName,
             String currentSessionId, ToolPermissionStore permissionStore, MdMemoryProvider noteMemory,
-            ModelRegistry modelRegistry, boolean memoryEnabled, boolean coding,
+            ModelRegistry modelRegistry, boolean memoryEnabled, boolean coding, boolean todoV2Enabled,
             List<A2ARemoteAgentConfig> remoteAgents, List<A2ARemoteServerConfig> remoteServers) { }
 
 }

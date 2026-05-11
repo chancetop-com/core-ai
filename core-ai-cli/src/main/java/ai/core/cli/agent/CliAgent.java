@@ -14,6 +14,7 @@ import ai.core.cli.remote.A2ARemoteServerConfig;
 import ai.core.cli.remote.DelegateToRemoteAgentToolCall;
 import ai.core.cli.remote.SearchRemoteAgentsToolCall;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
+import ai.core.cli.task.FileTodoStoreFactory;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.persistence.PersistenceProvider;
@@ -80,6 +81,7 @@ public class CliAgent {
                 .customVariables(Map.of("workspace", config.workspace.toAbsolutePath().toString()))
                 .persistenceProvider(config.persistenceProvider)
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
+                .todoStoreFactory(new FileTodoStoreFactory(config.workspace.resolve(".core-ai/todos")))
                 .promptSections(constructPromptSection(config, hookOutput))
                 .build());
         return agent;
@@ -99,7 +101,17 @@ public class CliAgent {
     }
 
     private static List<ToolCall> buildTools(Config config, SkillConfig skillConfig) {
-        List<ToolCall> tools = new ArrayList<>(BuiltinTools.ALL);
+        List<ToolCall> tools = new ArrayList<>();
+        if (config.todoV2Enabled) {
+            tools.addAll(BuiltinTools.PLANNING_V2);
+        } else {
+            tools.addAll(BuiltinTools.PLANNING);
+        }
+        // Add remaining builtin tools (skip PLANNING which is already added)
+        tools.addAll(BuiltinTools.FILE_OPERATIONS);
+        tools.addAll(BuiltinTools.MULTIMODAL);
+        tools.addAll(BuiltinTools.WEB);
+        tools.addAll(BuiltinTools.CODE_EXECUTION);
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
         tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
         tools.add(SkillTool.builder()
@@ -153,6 +165,7 @@ public class CliAgent {
                          Function<String, String> askUserHandler,
                          boolean memoryEnabled,
                          boolean coding,
+                         boolean todoV2Enabled,
                          String sessionId,
                          List<A2ARemoteAgentConfig> remoteAgents,
                          List<A2ARemoteServerConfig> remoteServers) {

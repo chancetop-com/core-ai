@@ -10,6 +10,7 @@ import ai.core.session.BackgroundTaskManager;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.prompt.PromptInject;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
+import ai.core.tool.tools.TodoStoreFactory;
 import core.framework.util.Maps;
 
 import java.util.ArrayList;
@@ -38,6 +39,7 @@ public final class ExecutionContext {
     private final AttachedContent attachedContent;
     private final PersistenceProvider persistenceProvider;
     private final SubagentOutputSinkFactory subagentOutputSinkFactory;
+    private final TodoStoreFactory todoStoreFactory;
     private final List<PromptInject> promptSections;
     private Sandbox sandbox;
     private BackgroundTaskManager backgroundTaskManager;
@@ -58,6 +60,7 @@ public final class ExecutionContext {
         this.asyncTaskManager = builder.asyncTaskManager;
         this.persistenceProvider = builder.persistenceProvider;
         this.subagentOutputSinkFactory = builder.subagentOutputSinkFactory;
+        this.todoStoreFactory = builder.todoStoreFactory;
         this.promptSections = new ArrayList<>(builder.promptSections);
         this.sandbox = builder.sandbox;
         this.backgroundTaskManager = builder.backgroundTaskManager;
@@ -93,6 +96,10 @@ public final class ExecutionContext {
 
     public SubagentOutputSinkFactory getSubagentOutputSinkFactory() {
         return subagentOutputSinkFactory;
+    }
+
+    public TodoStoreFactory getTodoStoreFactory() {
+        return todoStoreFactory;
     }
 
     public List<PromptInject> getPromptSections() {
@@ -185,6 +192,7 @@ public final class ExecutionContext {
         private AttachedContent attachedContent;
         private PersistenceProvider persistenceProvider;
         private SubagentOutputSinkFactory subagentOutputSinkFactory;
+        private TodoStoreFactory todoStoreFactory;
         private final List<PromptInject> promptSections = new ArrayList<>();
         private Sandbox sandbox;
         private BackgroundTaskManager backgroundTaskManager;
@@ -239,6 +247,11 @@ public final class ExecutionContext {
 
         public Builder subagentOutputSinkFactory(SubagentOutputSinkFactory subagentOutputSinkFactory) {
             this.subagentOutputSinkFactory = subagentOutputSinkFactory;
+            return this;
+        }
+
+        public Builder todoStoreFactory(TodoStoreFactory todoStoreFactory) {
+            this.todoStoreFactory = todoStoreFactory;
             return this;
         }
 

@@ -13,6 +13,7 @@ import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WebFetchTool;
 import ai.core.tool.tools.WebSearchTool;
 import ai.core.tool.tools.WriteFileTool;
+import ai.core.tool.tools.WriteTodoTaskTool;
 import ai.core.tool.tools.WriteTodosTool;
 
 import java.util.Arrays;
@@ -50,6 +51,7 @@ public final class BuiltinTools {
             WriteTodosTool.self(),
             TaskTool.builder().build()
     );
+    public static final List<ToolCall> PLANNING_V2 = combine(WriteTodoTaskTool.self(), List.of(TaskTool.builder().build()));
 
     public static final List<ToolCall> FILE_OPERATIONS = List.of(
             ReadFileTool.builder().build(),
@@ -83,12 +85,13 @@ public final class BuiltinTools {
     public static final List<ToolCall> GITHUB = List.of(
             RequireGithubInstallationTokenTool.builder().build()
     );
+    
 
     @SafeVarargs
     @SuppressWarnings("varargs")
     public static List<ToolCall> combine(List<ToolCall>... toolLists) {
         return Arrays.stream(toolLists)
-            .flatMap(List::stream)
-            .toList();
+                .flatMap(List::stream)
+                .toList();
     }
 }

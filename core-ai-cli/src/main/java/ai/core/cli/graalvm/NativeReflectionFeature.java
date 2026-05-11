@@ -45,6 +45,10 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.session.FileRuleBasedPermissionStore$PermissionsDomain",
         "ai.core.tool.tools.WriteTodosTool.Todo",
         "ai.core.tool.tools.WriteTodosTool.Status",
+        "ai.core.tool.tools.WriteTodoTaskTool.CreateTaskParams",
+        "ai.core.tool.tools.WriteTodoTaskTool.UpdateTaskParams",
+        "ai.core.tool.tools.WriteTodoTaskTool.GetTaskParams",
+        "ai.core.tool.tools.WriteTodoTaskTool.TaskEntity",
         // Vendor management classes for GraalVM reflection
         "ai.core.vender.Vendor",
         "ai.core.vender.VendorConfig",
