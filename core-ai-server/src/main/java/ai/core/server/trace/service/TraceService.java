@@ -32,6 +32,8 @@ public class TraceService {
     private static final Pattern UUID_PATTERN = Pattern.compile("^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$");
     // Matches long hex strings (e.g. 32-char OpenTelemetry trace IDs without dashes)
     private static final Pattern LONG_HEX_PATTERN = Pattern.compile("^[0-9a-fA-F]{16,}$");
+    // Partial hex prefix: enough chars to be specific (UI shows 8-char session prefix) but shorter than full IDs
+    private static final Pattern HEX_PREFIX_PATTERN = Pattern.compile("^[0-9a-fA-F]{6,}$");
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -55,20 +57,27 @@ public class TraceService {
 
     private List<Bson> buildFilters(TraceListFilter filter) {
         List<Bson> bsonFilters = new ArrayList<>();
-        // q is the user-friendly search: UUID-like → exact match across id fields; otherwise literal substring on name + agent_name
+        // q is the user-friendly search. Strategy:
+        //   - Full UUID / 32-char trace ID → exact match on id fields
+        //   - 6+ hex chars (e.g. an 8-char session prefix shown in the UI) → anchored prefix match on id fields
+        //   - Plain text → literal substring on name + agent_name
+        // Hex matches are OR-ed with name/agent_name so a name that happens to look like hex still resolves.
         if (filter.q != null && !filter.q.isEmpty()) {
             var q = filter.q.trim();
+            var literal = Pattern.quote(q);
+            List<Bson> orClauses = new ArrayList<>();
+            orClauses.add(Filters.regex("name", literal, "i"));
+            orClauses.add(Filters.regex("agent_name", literal, "i"));
             if (UUID_PATTERN.matcher(q).matches() || LONG_HEX_PATTERN.matcher(q).matches()) {
-                bsonFilters.add(Filters.or(
-                    Filters.eq("session_id", q),
-                    Filters.eq("user_id", q),
-                    Filters.eq("trace_id", q)));
-            } else {
-                var literal = Pattern.quote(q);
-                bsonFilters.add(Filters.or(
-                    Filters.regex("name", literal, "i"),
-                    Filters.regex("agent_name", literal, "i")));
+                orClauses.add(Filters.eq("session_id", q));
+                orClauses.add(Filters.eq("user_id", q));
+                orClauses.add(Filters.eq("trace_id", q));
+            } else if (HEX_PREFIX_PATTERN.matcher(q).matches()) {
+                var prefix = "^" + literal;
+                orClauses.add(Filters.regex("session_id", prefix, "i"));
+                orClauses.add(Filters.regex("trace_id", prefix, "i"));
             }
+            bsonFilters.add(Filters.or(orClauses));
         }
         // name is the advanced raw regex, kept for power users
         if (filter.name != null && !filter.name.isEmpty()) {

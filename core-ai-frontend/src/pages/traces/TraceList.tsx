@@ -71,9 +71,13 @@ const EMPTY_FILTERS: TraceFilter = {
 // Matches RFC-4122 UUID with or without dashes, plus long hex (32-char trace IDs)
 const UUID_RE = /^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$/;
 const LONG_HEX_RE = /^[0-9a-fA-F]{16,}$/;
+// Short hex prefix — the UI shows 8-char session prefixes, so users naturally search by them
+const HEX_PREFIX_RE = /^[0-9a-fA-F]{6,}$/;
 
-function isIdLike(value: string): boolean {
-  return UUID_RE.test(value) || LONG_HEX_RE.test(value);
+function idMatchKind(value: string): 'full' | 'prefix' | 'none' {
+  if (UUID_RE.test(value) || LONG_HEX_RE.test(value)) return 'full';
+  if (HEX_PREFIX_RE.test(value)) return 'prefix';
+  return 'none';
 }
 
 interface TraceListState {
@@ -148,7 +152,12 @@ export default function TraceList() {
   };
 
   const selectedKey = selectedTraceId || '';
-  const searchHint = filters.q ? (isIdLike(filters.q.trim()) ? 'Detected ID → searching session/user/trace' : 'name / agent') : '';
+  const searchKind = filters.q ? idMatchKind(filters.q.trim()) : 'none';
+  const searchHint = filters.q
+    ? (searchKind === 'full' ? 'Detected ID → session/user/trace'
+      : searchKind === 'prefix' ? 'Detected ID prefix → session/trace'
+      : 'name / agent')
+    : '';
 
   const chips = activeChips(filters);
   const isCustomRange = filters.range === 'custom';
@@ -218,8 +227,8 @@ export default function TraceList() {
             {searchHint && (
               <span className="absolute right-2 top-2 text-[11px] px-2 py-0.5 rounded border pointer-events-none"
                 style={{
-                  borderColor: isIdLike((filters.q || '').trim()) ? 'var(--color-primary)' : 'var(--color-border)',
-                  color: isIdLike((filters.q || '').trim()) ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  borderColor: searchKind !== 'none' ? 'var(--color-primary)' : 'var(--color-border)',
+                  color: searchKind !== 'none' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                   background: 'var(--color-bg-secondary)',
                 }}>
                 {searchHint}
