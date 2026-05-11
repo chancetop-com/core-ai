@@ -58,3 +58,7 @@ dist/
 
 # Qwen Code context file
 QWEN.md
+
+# Demo files
+core-ai-frontend/demo/
+dashboard-action-demo.html
