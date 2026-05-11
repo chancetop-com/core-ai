@@ -1,0 +1,1342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Core AI Dashboard Demo</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --surface: #ffffff;
+      --surface-2: #f1f5f9;
+      --text: #111827;
+      --muted: #64748b;
+      --line: #dfe5ee;
+      --primary: #4f46e5;
+      --primary-soft: rgba(79, 70, 229, 0.1);
+      --success: #16a34a;
+      --success-soft: #dcfce7;
+      --danger: #dc2626;
+      --danger-soft: #fee2e2;
+      --warning: #d97706;
+      --warning-soft: #fef3c7;
+      --teal: #0891b2;
+      --teal-soft: #cffafe;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+      overflow-x: hidden;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+    }
+
+    .app {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 224px;
+      flex: 0 0 224px;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      border-right: 1px solid var(--line);
+    }
+
+    .brand {
+      height: 58px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      font-weight: 700;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: var(--primary);
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .nav {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px;
+      overflow: auto;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 14px;
+      text-decoration: none;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+      background: var(--primary-soft);
+      border-left-color: var(--primary);
+      font-weight: 600;
+    }
+
+    .nav-icon {
+      width: 18px;
+      height: 18px;
+      display: inline-grid;
+      place-items: center;
+      color: currentColor;
+    }
+
+    .main {
+      min-width: 0;
+      flex: 1;
+      padding: 24px;
+      overflow: auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.2;
+      font-weight: 720;
+    }
+
+    .subtle {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 5px;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .segmented {
+      display: inline-flex;
+      padding: 3px;
+      gap: 2px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .segmented button {
+      height: 30px;
+      padding: 0 10px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .segmented button.active {
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .btn {
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 550;
+      box-shadow: var(--shadow);
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      color: #ffffff;
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .icon {
+      width: 16px;
+      height: 16px;
+      display: inline-block;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      flex: 0 0 auto;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .metric {
+      min-width: 0;
+      text-align: left;
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      cursor: pointer;
+    }
+
+    .metric-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .metric-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .metric-value {
+      font-size: 25px;
+      line-height: 1;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+
+    .metric-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 18px;
+    }
+
+    .trend {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 18px;
+    }
+
+    .trend span {
+      width: 4px;
+      min-height: 4px;
+      border-radius: 2px;
+      background: currentColor;
+      opacity: 0.75;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 13%, transparent);
+    }
+
+    .danger {
+      color: var(--danger);
+    }
+
+    .warning {
+      color: var(--warning);
+    }
+
+    .success {
+      color: var(--success);
+    }
+
+    .primary {
+      color: var(--primary);
+    }
+
+    .teal {
+      color: var(--teal);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.8fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .panel.pad {
+      padding: 16px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.2;
+      font-weight: 720;
+    }
+
+    .panel-note {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--primary);
+      background: transparent;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 650;
+      padding: 0;
+      white-space: nowrap;
+    }
+
+    .attention-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .mini-activity {
+      border-top: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    .mini-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 16px 8px;
+    }
+
+    .mini-head strong {
+      font-size: 14px;
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 0;
+      padding-bottom: 8px;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr) 92px 70px;
+      gap: 10px;
+      align-items: center;
+      min-height: 42px;
+      padding: 8px 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mini-row strong {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .source-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 10px 16px 16px;
+    }
+
+    .source-card {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 8px;
+    }
+
+    .source-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      margin-bottom: 5px;
+    }
+
+    .source-card strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .source-card small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .attention-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .attention-row:last-child {
+      border-bottom: 0;
+    }
+
+    .severity {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .severity.danger {
+      background: var(--danger-soft);
+    }
+
+    .severity.warning {
+      background: var(--warning-soft);
+    }
+
+    .row-main {
+      min-width: 0;
+    }
+
+    .row-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      margin-bottom: 4px;
+    }
+
+    .row-title strong {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+
+    .row-meta {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 190px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 620;
+      white-space: nowrap;
+    }
+
+    .pill.danger {
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .pill.warning {
+      background: var(--warning-soft);
+      color: var(--warning);
+    }
+
+    .pill.success {
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .side-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .running-list {
+      display: grid;
+      gap: 10px;
+      padding: 14px 16px 16px;
+    }
+
+    .run-card {
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      border: 1px solid transparent;
+    }
+
+    .run-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .run-name {
+      min-width: 0;
+      font-size: 13px;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress {
+      height: 7px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #e2e8f0;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--primary);
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+      padding: 14px 16px 16px;
+    }
+
+    .quick {
+      min-height: 72px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 11px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .quick strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+
+    .quick span:last-child {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .lower-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+      gap: 14px;
+      margin-top: 14px;
+      align-items: start;
+    }
+
+    .chart-wrap {
+      padding: 16px;
+    }
+
+    .chart {
+      width: 100%;
+      height: 210px;
+      display: block;
+    }
+
+    .chart-axis {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      background: currentColor;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th, td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      font-size: 13px;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      background: var(--surface-2);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      font-weight: 720;
+    }
+
+    td {
+      color: var(--text);
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .truncate {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+
+    .agent-stack {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .agent-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      overflow: hidden;
+      margin-top: 7px;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .footnote {
+      padding: 11px 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      background: #fbfdff;
+    }
+
+    @media (max-width: 1180px) {
+      .summary-grid {
+        grid-template-columns: repeat(3, minmax(170px, 1fr));
+      }
+
+      .grid,
+      .lower-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 780px) {
+      .app {
+        display: block;
+      }
+
+      .sidebar {
+        width: 100%;
+        flex: none;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand {
+        height: 52px;
+      }
+
+      .nav {
+        flex-direction: row;
+        overflow-x: auto;
+      }
+
+      .nav-item {
+        flex: 0 0 auto;
+      }
+
+      .main {
+        padding: 16px;
+        overflow-x: hidden;
+      }
+
+      .topbar {
+        display: block;
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: calc(100vw - 32px);
+        justify-content: stretch;
+        margin-top: 12px;
+      }
+
+      .actions .btn {
+        width: 100%;
+        min-width: 0;
+        justify-content: center;
+      }
+
+      .segmented {
+        width: 100%;
+        grid-column: 1 / -1;
+      }
+
+      .segmented button {
+        flex: 1;
+      }
+
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .attention-row {
+        grid-template-columns: 34px minmax(0, 1fr);
+      }
+
+      .row-actions {
+        grid-column: 2;
+        justify-content: flex-start;
+      }
+
+      .source-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .mini-row {
+        grid-template-columns: 60px minmax(0, 1fr);
+      }
+
+      .mini-row span:nth-child(3),
+      .mini-row span:nth-child(4) {
+        grid-column: 2;
+      }
+
+      .quick-grid {
+        grid-template-columns: 1fr;
+      }
+
+      th:nth-child(4),
+      td:nth-child(4) {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Main navigation">
+      <div class="brand">
+        <span class="brand-mark">AI</span>
+        <span>Core AI</span>
+      </div>
+      <nav class="nav">
+        <a class="nav-item active" href="#">
+          <svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M4 13h6V4H4z"></path><path d="M14 20h6V4h-6z"></path><path d="M4 20h6v-3H4z"></path></svg>
+          Dashboard
+        </a>
+        <a class="nav-item" href="#">
+          <svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path></svg>
+          Chat
+        </a>
+        <a class="nav-item" href="#">
+          <svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
+          Traces
+        </a>
+        <a class="nav-item" href="#">
+          <svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M12 8V4H8"></path><rect x="5" y="8" width="14" height="10" rx="2"></rect><path d="M2 14h3"></path><path d="M19 14h3"></path><path d="M9 13h.01"></path><path d="M15 13h.01"></path></svg>
+          Agents
+        </a>
+        <a class="nav-item" href="#">
+          <svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h6"></path></svg>
+          System Prompts
+        </a>
+        <a class="nav-item" href="#">
+          <svg class="icon nav-icon" viewBox="0 0 24 24"><path d="m9 11 3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+          Tasks
+        </a>
+        <a class="nav-item" href="#">
+          <svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg>
+          Triggers
+        </a>
+        <a class="nav-item" href="#">
+          <svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.1-3.1a6 6 0 0 1-7.8 7.8l-5.7 5.7a2.1 2.1 0 0 1-3-3l5.7-5.7a6 6 0 0 1 7.8-7.8z"></path></svg>
+          Tools
+        </a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1>Dashboard</h1>
+          <div class="subtle">Last 24h · refreshed 18s ago · workspace: production</div>
+        </div>
+        <div class="actions">
+          <div class="segmented" aria-label="Time range">
+            <button>1h</button>
+            <button class="active">24h</button>
+            <button>7d</button>
+            <button>Custom</button>
+          </div>
+          <button class="btn">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M3 12h18"></path><path d="M12 3v18"></path></svg>
+            New Chat
+          </button>
+          <button class="btn primary">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+            View Traces
+          </button>
+        </div>
+      </header>
+
+      <section class="summary-grid" aria-label="System overview">
+        <button class="metric">
+          <div class="metric-head">
+            <span class="metric-label">System health</span>
+            <span class="status-dot danger"></span>
+          </div>
+          <div class="metric-value danger">Attention</div>
+          <div class="metric-foot">
+            <span>3 failures need review</span>
+            <span class="trend danger"><span style="height:7px"></span><span style="height:12px"></span><span style="height:10px"></span><span style="height:16px"></span></span>
+          </div>
+        </button>
+
+        <button class="metric">
+          <div class="metric-head">
+            <span class="metric-label">Running now</span>
+            <svg class="icon primary" viewBox="0 0 24 24"><path d="M12 2v4"></path><path d="M12 18v4"></path><path d="m4.93 4.93 2.83 2.83"></path><path d="m16.24 16.24 2.83 2.83"></path><path d="M2 12h4"></path><path d="M18 12h4"></path></svg>
+          </div>
+          <div class="metric-value">11</div>
+          <div class="metric-foot">
+            <span>2 over 10 minutes</span>
+            <span class="pill warning">check</span>
+          </div>
+        </button>
+
+        <button class="metric">
+          <div class="metric-head">
+            <span class="metric-label">Error rate</span>
+            <svg class="icon danger" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+          </div>
+          <div class="metric-value">4.8%</div>
+          <div class="metric-foot">
+            <span>18 / 374 traces</span>
+            <span class="trend danger"><span style="height:8px"></span><span style="height:6px"></span><span style="height:12px"></span><span style="height:13px"></span></span>
+          </div>
+        </button>
+
+        <button class="metric">
+          <div class="metric-head">
+            <span class="metric-label">Tokens</span>
+            <svg class="icon warning" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg>
+          </div>
+          <div class="metric-value">2.41M</div>
+          <div class="metric-foot">
+            <span>1.76M in / 650K out</span>
+            <span class="pill">+12%</span>
+          </div>
+        </button>
+
+        <button class="metric">
+          <div class="metric-head">
+            <span class="metric-label">Estimated cost</span>
+            <svg class="icon teal" viewBox="0 0 24 24"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          </div>
+          <div class="metric-value">$18.42</div>
+          <div class="metric-foot">
+            <span>$7.80 cache saved</span>
+            <span class="pill success">stable</span>
+          </div>
+        </button>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Needs attention</h2>
+              <div class="panel-note">Failures, stuck runs, and unusually expensive calls</div>
+            </div>
+            <button class="link-btn">
+              Review all
+              <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+            </button>
+          </div>
+
+          <div class="attention-list">
+            <div class="attention-row">
+              <div class="severity danger">!</div>
+              <div class="row-main">
+                <div class="row-title">
+                  <span class="pill danger">ERROR</span>
+                  <strong>Daily News Summary failed during web_fetch</strong>
+                </div>
+                <div class="row-meta">
+                  <span>Scheduled</span>
+                  <span>News Bot</span>
+                  <span class="mono">trace_9f32ab11</span>
+                  <span>3m ago</span>
+                </div>
+              </div>
+              <div class="row-actions">
+                <button class="icon-btn" title="Open trace" aria-label="Open trace">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+                </button>
+                <button class="icon-btn" title="Open schedule" aria-label="Open schedule">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="attention-row">
+              <div class="severity warning">12m</div>
+              <div class="row-main">
+                <div class="row-title">
+                  <span class="pill warning">SLOW</span>
+                  <strong>Support Triage Agent still running after tool approval</strong>
+                </div>
+                <div class="row-meta">
+                  <span>Chat</span>
+                  <span>Xander test 2</span>
+                  <span class="mono">sess_5abb6410</span>
+                  <span>started 12m ago</span>
+                </div>
+              </div>
+              <div class="row-actions">
+                <button class="icon-btn" title="Open chat" aria-label="Open chat">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path></svg>
+                </button>
+                <button class="icon-btn" title="Open trace" aria-label="Open trace">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="attention-row">
+              <div class="severity warning">$</div>
+              <div class="row-main">
+                <div class="row-title">
+                  <span class="pill warning">COST</span>
+                  <strong>Research Agent used 182K tokens in a single run</strong>
+                </div>
+                <div class="row-meta">
+                  <span>API</span>
+                  <span>Deep Research</span>
+                  <span>gpt-5.2</span>
+                  <span>$2.14 estimate</span>
+                </div>
+              </div>
+              <div class="row-actions">
+                <button class="icon-btn" title="Open agent" aria-label="Open agent">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M12 8V4H8"></path><rect x="5" y="8" width="14" height="10" rx="2"></rect><path d="M9 13h.01"></path><path d="M15 13h.01"></path></svg>
+                </button>
+                <button class="icon-btn" title="Open trace" aria-label="Open trace">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="mini-activity">
+            <div class="mini-head">
+              <strong>Recent activity</strong>
+              <button class="link-btn">Trace list</button>
+            </div>
+            <div class="mini-list">
+              <div class="mini-row">
+                <span><span class="pill">Chat</span></span>
+                <strong class="truncate">Support Triage Agent · refund question</strong>
+                <span class="pill warning">RUNNING</span>
+                <span>now</span>
+              </div>
+              <div class="mini-row">
+                <span><span class="pill">API</span></span>
+                <strong class="truncate">Research Agent · market landscape report</strong>
+                <span class="pill success">COMPLETED</span>
+                <span>8m</span>
+              </div>
+              <div class="mini-row">
+                <span><span class="pill">A2A</span></span>
+                <strong class="truncate">Invoice Extractor · batch upload</strong>
+                <span class="pill success">COMPLETED</span>
+                <span>14m</span>
+              </div>
+            </div>
+            <div class="source-strip">
+              <div class="source-card">
+                <span>Chat</span>
+                <strong>184</strong>
+                <small>5 errors · 6 running</small>
+              </div>
+              <div class="source-card">
+                <span>API</span>
+                <strong>96</strong>
+                <small>2 high-token calls</small>
+              </div>
+              <div class="source-card">
+                <span>Scheduled</span>
+                <strong>42</strong>
+                <small>1 failed run</small>
+              </div>
+              <div class="source-card">
+                <span>A2A</span>
+                <strong>52</strong>
+                <small>healthy</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-stack">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Running now</h2>
+                <div class="panel-note">Live sessions and scheduled runs</div>
+              </div>
+              <button class="link-btn">All running</button>
+            </div>
+            <div class="running-list">
+              <div class="run-card">
+                <div class="run-line">
+                  <span class="run-name">Support Triage Agent</span>
+                  <span class="pill warning">12m</span>
+                </div>
+                <div class="progress"><span style="width: 78%"></span></div>
+                <div class="subtle">waiting on tool approval · Chat</div>
+              </div>
+              <div class="run-card">
+                <div class="run-line">
+                  <span class="run-name">Invoice Extractor</span>
+                  <span class="pill">4m</span>
+                </div>
+                <div class="progress"><span style="width: 52%; background: var(--teal)"></span></div>
+                <div class="subtle">processing 12 files · API</div>
+              </div>
+              <div class="run-card">
+                <div class="run-line">
+                  <span class="run-name">Weekly Ops Summary</span>
+                  <span class="pill success">1m</span>
+                </div>
+                <div class="progress"><span style="width: 22%; background: var(--success)"></span></div>
+                <div class="subtle">scheduled run · on track</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Quick actions</h2>
+                <div class="panel-note">Common paths from the homepage</div>
+              </div>
+            </div>
+            <div class="quick-grid">
+              <button class="quick">
+                <svg class="icon primary" viewBox="0 0 24 24"><path d="M3 12h18"></path><path d="M12 3v18"></path></svg>
+                <span><strong>New chat</strong><span>Talk to an agent</span></span>
+              </button>
+              <button class="quick">
+                <svg class="icon primary" viewBox="0 0 24 24"><path d="M12 8V4H8"></path><rect x="5" y="8" width="14" height="10" rx="2"></rect></svg>
+                <span><strong>New agent</strong><span>Build or import</span></span>
+              </button>
+              <button class="quick">
+                <svg class="icon teal" viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
+                <span><strong>Trace errors</strong><span>Filtered debug view</span></span>
+              </button>
+              <button class="quick">
+                <svg class="icon warning" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg>
+                <span><strong>Add trigger</strong><span>Webhook or schedule</span></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="lower-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Usage trend</h2>
+              <div class="panel-note">Tokens and calls by hour</div>
+            </div>
+            <div class="legend">
+              <span class="primary"><i class="swatch"></i>Tokens</span>
+              <span class="teal"><i class="swatch"></i>Calls</span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg class="chart" viewBox="0 0 720 220" role="img" aria-label="Usage trend chart">
+              <defs>
+                <linearGradient id="tokenFill" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#4f46e5" stop-opacity="0.22"></stop>
+                  <stop offset="100%" stop-color="#4f46e5" stop-opacity="0"></stop>
+                </linearGradient>
+              </defs>
+              <line x1="40" y1="180" x2="690" y2="180" stroke="#dfe5ee"></line>
+              <line x1="40" y1="130" x2="690" y2="130" stroke="#eef2f7"></line>
+              <line x1="40" y1="80" x2="690" y2="80" stroke="#eef2f7"></line>
+              <line x1="40" y1="30" x2="690" y2="30" stroke="#eef2f7"></line>
+              <path d="M40 160 C90 142 105 118 145 125 S220 172 260 138 S330 70 380 82 S455 155 505 122 S570 42 620 62 S660 110 690 86 L690 180 L40 180 Z" fill="url(#tokenFill)"></path>
+              <path d="M40 160 C90 142 105 118 145 125 S220 172 260 138 S330 70 380 82 S455 155 505 122 S570 42 620 62 S660 110 690 86" fill="none" stroke="#4f46e5" stroke-width="3"></path>
+              <path d="M40 170 C110 168 125 152 160 150 S215 128 265 150 S340 172 390 140 S455 118 505 130 S565 150 610 126 S660 96 690 112" fill="none" stroke="#0891b2" stroke-width="3" stroke-dasharray="6 5"></path>
+              <g class="chart-axis" fill="currentColor">
+                <text x="34" y="184" text-anchor="end">0</text>
+                <text x="34" y="134" text-anchor="end">80K</text>
+                <text x="34" y="84" text-anchor="end">160K</text>
+                <text x="34" y="34" text-anchor="end">240K</text>
+                <text x="40" y="206">00:00</text>
+                <text x="245" y="206">08:00</text>
+                <text x="470" y="206">16:00</text>
+                <text x="650" y="206">now</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Top agents</h2>
+              <div class="panel-note">Volume, errors, and estimated spend</div>
+            </div>
+            <button class="link-btn">Open Agents</button>
+          </div>
+          <div class="agent-stack">
+            <div class="agent-row">
+              <div>
+                <div class="row-title"><strong>Support Triage Agent</strong><span class="pill danger">8 errors</span></div>
+                <div class="bar"><span style="width: 92%; background: var(--danger)"></span></div>
+              </div>
+              <span class="mono">$6.22</span>
+            </div>
+            <div class="agent-row">
+              <div>
+                <div class="row-title"><strong>Research Agent</strong><span class="pill warning">182K max</span></div>
+                <div class="bar"><span style="width: 78%; background: var(--warning)"></span></div>
+              </div>
+              <span class="mono">$5.91</span>
+            </div>
+            <div class="agent-row">
+              <div>
+                <div class="row-title"><strong>Invoice Extractor</strong><span class="pill success">healthy</span></div>
+                <div class="bar"><span style="width: 54%; background: var(--success)"></span></div>
+              </div>
+              <span class="mono">$3.84</span>
+            </div>
+            <div class="agent-row">
+              <div>
+                <div class="row-title"><strong>News Bot</strong><span class="pill danger">failed</span></div>
+                <div class="bar"><span style="width: 36%; background: var(--teal)"></span></div>
+              </div>
+              <span class="mono">$1.10</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" style="margin-top: 14px">
+        <div class="panel-head">
+          <div>
+            <h2>Recent activity</h2>
+            <div class="panel-note">Latest invocations with direct drill-in paths</div>
+          </div>
+          <button class="link-btn">View trace list</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 150px">Source</th>
+              <th>Invocation</th>
+              <th style="width: 130px">Status</th>
+              <th style="width: 130px">Tokens</th>
+              <th style="width: 110px">Latency</th>
+              <th style="width: 90px">Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pill">Chat</span></td>
+              <td class="truncate">Support Triage Agent · customer refund question</td>
+              <td><span class="pill warning">RUNNING</span></td>
+              <td class="mono">18.4K</td>
+              <td>12m</td>
+              <td>now</td>
+            </tr>
+            <tr>
+              <td><span class="pill">Scheduled</span></td>
+              <td class="truncate">Daily News Summary · web_fetch timeout</td>
+              <td><span class="pill danger">ERROR</span></td>
+              <td class="mono">2.1K</td>
+              <td>9.8s</td>
+              <td>3m</td>
+            </tr>
+            <tr>
+              <td><span class="pill">API</span></td>
+              <td class="truncate">Research Agent · market landscape report</td>
+              <td><span class="pill success">COMPLETED</span></td>
+              <td class="mono">182K</td>
+              <td>48s</td>
+              <td>8m</td>
+            </tr>
+            <tr>
+              <td><span class="pill">A2A</span></td>
+              <td class="truncate">Invoice Extractor · batch upload from accounting agent</td>
+              <td><span class="pill success">COMPLETED</span></td>
+              <td class="mono">24.8K</td>
+              <td>18s</td>
+              <td>14m</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="footnote">Each row should become a link to trace detail, with contextual pivots to Chat, Agent, or Scheduler where available.</div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
