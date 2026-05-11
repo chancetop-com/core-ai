@@ -28,8 +28,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 
 /**
  * @author stephen
@@ -57,8 +57,7 @@ public class InProcessAgentSession implements AgentSession {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
-        var toolTypeMap = buildToolTypeMap(agent.getToolCalls());
-        permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeMap);
+        permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
@@ -79,8 +78,7 @@ public class InProcessAgentSession implements AgentSession {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
-        var toolTypeMap = buildToolTypeMap(agent.getToolCalls());
-        permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeMap);
+        permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
@@ -256,7 +254,6 @@ public class InProcessAgentSession implements AgentSession {
 
     public void loadTools(List<ai.core.tool.ToolCall> tools) {
         agent.addTools(tools);
-        permissionLifecycle.addToolTypes(buildToolTypeMap(tools));
         logger.info("loaded {} tools to session, sessionId={}", tools.size(), sessionId);
     }
 
@@ -306,11 +303,16 @@ public class InProcessAgentSession implements AgentSession {
         }
     }
 
-    private static Map<String, String> buildToolTypeMap(List<ai.core.tool.ToolCall> tools) {
-        Map<String, String> map = new HashMap<>();
-        for (var tool : tools) {
-            map.put(tool.getName(), tool.getSourceType());
-        }
-        return map;
+    private Function<String, String> toolTypeResolver() {
+        return toolName -> {
+            var tools = agent.getToolCalls();
+            for (var tool : tools) {
+                if (tool.getName().equalsIgnoreCase(toolName)) return tool.getSourceType();
+            }
+            for (var tool : tools) {
+                if (tool.getName().endsWith(toolName)) return tool.getSourceType();
+            }
+            return "builtin";
+        };
     }
 }

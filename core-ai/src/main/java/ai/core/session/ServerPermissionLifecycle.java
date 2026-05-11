@@ -24,9 +24,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Lifecycle management for server-side tool call permissions.
@@ -43,19 +43,15 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     private final boolean autoApproveAll;
     private final ToolPermissionStore permissionStore;
     private final Set<String> sessionAllowedTools = ConcurrentHashMap.newKeySet();
-    private final Map<String, String> toolTypeMap;
+    private final Function<String, String> toolTypeResolver;
 
-    public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, boolean autoApproveAll, ToolPermissionStore permissionStore, Map<String, String> toolTypeMap) {
+    public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, boolean autoApproveAll, ToolPermissionStore permissionStore, Function<String, String> toolTypeResolver) {
         this.sessionId = sessionId;
         this.dispatcher = dispatcher;
         this.permissionGate = permissionGate;
         this.autoApproveAll = autoApproveAll;
         this.permissionStore = permissionStore;
-        this.toolTypeMap = toolTypeMap != null ? toolTypeMap : new HashMap<>();
-    }
-
-    public void addToolTypes(Map<String, String> newToolTypes) {
-        toolTypeMap.putAll(newToolTypes);
+        this.toolTypeResolver = toolTypeResolver;
     }
 
     @Override
@@ -153,7 +149,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);
         var event = ToolResultEvent.of(sessionId, callId, toolName, status, result);
         event.taskId = (String) argMap.getOrDefault("task_id", executionContext.getTaskId());
-        event.toolType = toolTypeMap.get(toolName);
+        event.toolType = toolTypeResolver.apply(toolName);
         dispatcher.accept(event);
     }
 
