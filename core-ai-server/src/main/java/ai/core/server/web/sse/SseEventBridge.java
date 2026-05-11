@@ -93,6 +93,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.toolName = event.toolName;
         sse.status = event.status;
         sse.result = event.result;
+        sse.toolType = event.toolType;
         eventPublisher.publish(sessionId, sse);
     }
 

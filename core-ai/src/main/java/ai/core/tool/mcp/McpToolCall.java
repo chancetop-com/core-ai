@@ -50,6 +50,7 @@ public class McpToolCall extends ToolCall {
             if (serverName == null || serverName.isBlank()) {
                 throw new RuntimeException("serverName is required");
             }
+            sourceType("mcp");
             build(toolCall);
             toolCall.mcpClientManager = mcpClientManager;
             toolCall.serverName = serverName;

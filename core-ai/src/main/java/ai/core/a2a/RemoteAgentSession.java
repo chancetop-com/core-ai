@@ -245,8 +245,10 @@ public class RemoteAgentSession implements AgentSession {
         } else if ("tool_start".equals(event)) {
             dispatch(ToolStartEvent.of(sessionId, callId(metadata), stringValue(metadata, "tool"), stringValue(metadata, "arguments")));
         } else if ("tool_result".equals(event)) {
-            dispatch(ToolResultEvent.of(sessionId, callId(metadata), stringValue(metadata, "tool"),
-                    stringValue(metadata, "result_status"), stringValue(metadata, "result")));
+            var toolResultEvent = ToolResultEvent.of(sessionId, callId(metadata), stringValue(metadata, "tool"),
+                    stringValue(metadata, "result_status"), stringValue(metadata, "result"));
+            toolResultEvent.toolType = stringValue(metadata, "tool_type");
+            dispatch(toolResultEvent);
         }
     }
 

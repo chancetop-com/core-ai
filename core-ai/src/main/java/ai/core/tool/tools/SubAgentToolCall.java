@@ -150,6 +150,7 @@ public class SubAgentToolCall extends ToolCall {
             if (subAgent == null && agentFactory == null) {
                 throw new RuntimeException("Either subAgent or agentFactory is required for SubAgentToolCall");
             }
+            sourceType("agent");
             var toolCall = new SubAgentToolCall();
             super.build(toolCall);
             toolCall.subAgent = this.subAgent;

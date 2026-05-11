@@ -43,6 +43,7 @@ public abstract class ToolCall {
     Boolean llmVisible;
     Boolean discoverable;
     String concurrencyGroup;
+    String sourceType;
     protected Long timeoutMs;
 
     public ToolCallResult execute(String arguments, ExecutionContext context) {
@@ -126,6 +127,10 @@ public abstract class ToolCall {
      */
     public String getConcurrencyGroup() {
         return concurrencyGroup;
+    }
+
+    public String getSourceType() {
+        return sourceType != null ? sourceType : "builtin";
     }
 
     public void setDiscoverable(Boolean discoverable) {
@@ -240,6 +245,7 @@ public abstract class ToolCall {
         Boolean llmVisible;
         Boolean discoverable;
         String concurrencyGroup;
+        String sourceType;
         Long timeoutMs;
 
         protected abstract B self();
@@ -294,6 +300,11 @@ public abstract class ToolCall {
             return self();
         }
 
+        public B sourceType(String sourceType) {
+            this.sourceType = sourceType;
+            return self();
+        }
+
         public B timeoutMs(Long timeoutMs) {
             this.timeoutMs = timeoutMs;
             return self();
@@ -328,6 +339,7 @@ public abstract class ToolCall {
             toolCall.llmVisible = llmVisible == null || llmVisible;
             toolCall.discoverable = discoverable != null && discoverable;
             toolCall.concurrencyGroup = concurrencyGroup;
+            toolCall.sourceType = sourceType;
             toolCall.timeoutMs = timeoutMs;
         }
     }

@@ -387,7 +387,7 @@ export default function Chat() {
                 // Try to find at top level
                 const idx = tools.findIndex(t => t.callId === resultEvent.call_id);
                 if (idx >= 0) {
-                  tools[idx] = { ...tools[idx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED' };
+                  tools[idx] = { ...tools[idx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED', toolType: resultEvent.tool_type };
                   segments[si] = { ...seg, tools };
                   updated[updated.length - 1] = { ...last, segments };
                   return updated;
@@ -399,7 +399,7 @@ export default function Chat() {
                     const childIdx = parent.children.findIndex(t => t.callId === resultEvent.call_id);
                     if (childIdx >= 0) {
                       const children = [...parent.children];
-                      children[childIdx] = { ...children[childIdx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED' };
+                      children[childIdx] = { ...children[childIdx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED', toolType: resultEvent.tool_type };
                       tools[i] = { ...parent, children };
                       segments[si] = { ...seg, tools };
                       updated[updated.length - 1] = { ...last, segments };

@@ -255,7 +255,8 @@ public class ChatSessionSSEHandler implements HttpHandler {
                 "call_id", event.callId,
                 "tool_name", event.toolName,
                 "status", event.status,
-                "result", nullToEmpty(event.result)
+                "result", nullToEmpty(event.result),
+                "tool_type", event.toolType
             ));
         }
 

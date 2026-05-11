@@ -44,6 +44,7 @@ export interface SseToolResultEvent extends SseBaseEvent {
   tool_name: string;
   status: string;
   result?: string;
+  tool_type?: string;
 }
 
 export interface SseToolApprovalRequestEvent extends SseBaseEvent {

@@ -21,4 +21,7 @@ public class SseToolResultEvent extends SseBaseEvent {
 
     @Property(name = "result")
     public String result;
+
+    @Property(name = "tool_type")
+    public String toolType;
 }

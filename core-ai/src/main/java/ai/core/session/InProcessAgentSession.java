@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -43,6 +44,7 @@ public class InProcessAgentSession implements AgentSession {
     private final TurnDriver turnDriver;
     private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
     private volatile Thread executingThread;
+    private final ServerPermissionLifecycle permissionLifecycle;
 
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
@@ -55,7 +57,9 @@ public class InProcessAgentSession implements AgentSession {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
-        agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
+        var toolTypeMap = buildToolTypeMap(agent.getToolCalls());
+        permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeMap);
+        agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
         setupCompressionListener();
@@ -75,7 +79,9 @@ public class InProcessAgentSession implements AgentSession {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory()));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch));
-        agent.addLifecycle(new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore));
+        var toolTypeMap = buildToolTypeMap(agent.getToolCalls());
+        permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeMap);
+        agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
         agent.setAuthenticated(true);
         setupCompressionListener();
@@ -250,6 +256,7 @@ public class InProcessAgentSession implements AgentSession {
 
     public void loadTools(List<ai.core.tool.ToolCall> tools) {
         agent.addTools(tools);
+        permissionLifecycle.addToolTypes(buildToolTypeMap(tools));
         logger.info("loaded {} tools to session, sessionId={}", tools.size(), sessionId);
     }
 
@@ -297,5 +304,13 @@ public class InProcessAgentSession implements AgentSession {
         if ("true".equals(System.getProperty("core.ai.debug"))) {
             logger.debug("[DEBUG] {}, sessionId={}", message, sessionId);
         }
+    }
+
+    private static Map<String, String> buildToolTypeMap(List<ai.core.tool.ToolCall> tools) {
+        Map<String, String> map = new HashMap<>();
+        for (var tool : tools) {
+            map.put(tool.getName(), tool.getSourceType());
+        }
+        return map;
     }
 }

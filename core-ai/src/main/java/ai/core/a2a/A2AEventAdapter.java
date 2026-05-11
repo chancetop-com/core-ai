@@ -66,7 +66,7 @@ public class A2AEventAdapter implements AgentEventListener {
 
     @Override
     public void onToolResult(ToolResultEvent event) {
-        sendSseEvent(statusEvent(TaskState.WORKING, null, Map.of("event", "tool_result", "call_id", event.callId, "tool", event.toolName, "result_status", event.status, "result", event.result != null ? event.result : "")));
+        sendSseEvent(statusEvent(TaskState.WORKING, null, Map.of("event", "tool_result", "call_id", event.callId, "tool", event.toolName, "result_status", event.status, "result", event.result != null ? event.result : "", "tool_type", event.toolType != null ? event.toolType : "")));
     }
 
     @Override

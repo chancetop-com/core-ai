@@ -141,12 +141,12 @@ public class ServerModule extends Module {
     private void bindGitHubService() {
         var appId = property("github.app.id").orElse(null);
         var privateKey = property("github.app.private_key").orElse(null);
-        if (appId != null && !appId.isBlank() && privateKey != null && !privateKey.isBlank()) {
-            var installationId = property("github.app.installation_id")
-                    .map(String::trim)
-                    .filter(s -> !s.isBlank())
-                    .map(Long::parseLong)
-                    .orElse(null);
+        var installationId = property("github.app.installation_id")
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .map(Long::parseLong)
+                .orElse(null);
+        if (appId != null && !appId.isBlank() && installationId != null && privateKey != null && !privateKey.isBlank() && privateKey.contains("BEGIN")) {
             var githubService = new GitHubInstallationTokenService(appId, privateKey, installationId);
             githubService.register();
             LOGGER.info("GitHub installation token service configured");

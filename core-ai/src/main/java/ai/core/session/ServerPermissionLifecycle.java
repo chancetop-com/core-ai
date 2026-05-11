@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -42,13 +43,19 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     private final boolean autoApproveAll;
     private final ToolPermissionStore permissionStore;
     private final Set<String> sessionAllowedTools = ConcurrentHashMap.newKeySet();
+    private final Map<String, String> toolTypeMap;
 
-    public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, boolean autoApproveAll, ToolPermissionStore permissionStore) {
+    public ServerPermissionLifecycle(String sessionId, Consumer<AgentEvent> dispatcher, PermissionGate permissionGate, boolean autoApproveAll, ToolPermissionStore permissionStore, Map<String, String> toolTypeMap) {
         this.sessionId = sessionId;
         this.dispatcher = dispatcher;
         this.permissionGate = permissionGate;
         this.autoApproveAll = autoApproveAll;
         this.permissionStore = permissionStore;
+        this.toolTypeMap = toolTypeMap != null ? toolTypeMap : new HashMap<>();
+    }
+
+    public void addToolTypes(Map<String, String> newToolTypes) {
+        toolTypeMap.putAll(newToolTypes);
     }
 
     @Override
@@ -146,6 +153,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         logger.debug("afterTool: tool={}, callId={}, status={}", toolName, callId, status);
         var event = ToolResultEvent.of(sessionId, callId, toolName, status, result);
         event.taskId = (String) argMap.getOrDefault("task_id", executionContext.getTaskId());
+        event.toolType = toolTypeMap.get(toolName);
         dispatcher.accept(event);
     }
 

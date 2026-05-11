@@ -239,6 +239,7 @@ public class InternalApiToolLoader {
 
         return Function.builder()
                 .namespace(api.app)
+                .sourceType("api")
                 .name(functionCallName(api.app, service.name, operation.name))
                 .description(operation.description != null ? operation.description : operation.name)
                 .object(caller)

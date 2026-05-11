@@ -13,6 +13,7 @@ export interface ToolEvent {
   resultStatus?: string;
   taskId?: string;
   runInBackground?: boolean;
+  toolType?: string;
   children?: ToolEvent[];
 }
 
