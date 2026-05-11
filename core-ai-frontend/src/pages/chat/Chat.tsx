@@ -504,7 +504,9 @@ export default function Chat() {
       handleSSEEvent,
       (err) => {
         console.error('SSE error:', err);
-        sseControllerRef.current = null;
+        if (sseControllerRef.current === controller) {
+          sseControllerRef.current = null;
+        }
         const msg = err instanceof Error ? err.message : String(err);
         showToast(`Connection lost: ${msg}. Please retry.`);
         setStatus('idle');
@@ -518,7 +520,11 @@ export default function Chat() {
         });
       },
       () => {
-        sseControllerRef.current = null;
+        // Only clear if this controller is still the active one,
+        // preventing a stale onClose from wiping a newer connection.
+        if (sseControllerRef.current === controller) {
+          sseControllerRef.current = null;
+        }
       },
     );
     sseControllerRef.current = controller;
@@ -536,11 +542,12 @@ export default function Chat() {
 
   const ensureSession = async (): Promise<string> => {
     if (sessionId) {
-      // Reconnect SSE if connection was dropped (e.g. server closed after idle)
-      if (!sseControllerRef.current) {
-        doConnectSSE(sessionId);
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
+      // Always reconnect SSE before sending a new message to ensure a fresh stream.
+      // The old SSE connection may appear alive (sseControllerRef still set) even
+      // after TURN_COMPLETE if the server keeps the connection open. Aborting and
+      // reconnecting guarantees each message gets a dedicated SSE stream.
+      doConnectSSE(sessionId);
+      await new Promise(resolve => setTimeout(resolve, 300));
       return sessionId;
     }
 

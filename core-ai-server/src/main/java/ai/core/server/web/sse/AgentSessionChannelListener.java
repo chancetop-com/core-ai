@@ -39,7 +39,7 @@ public class AgentSessionChannelListener implements ChannelListener<SseBaseEvent
         var sessionId = (String) channel.context().get(SESSION_ID_KEY);
         logger.info("SSE client disconnected, sessionId={}", sessionId);
         if (sessionId != null) {
-            sessionChannelService.close(sessionId);
+            sessionChannelService.closeIfCurrent(sessionId, channel);
         }
     }
 }

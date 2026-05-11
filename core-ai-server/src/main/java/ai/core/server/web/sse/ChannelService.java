@@ -13,7 +13,10 @@ public class ChannelService {
     private final Map<String, Channel<SseBaseEvent>> channelMap = new ConcurrentHashMap<>();
 
     public void connect(Channel<SseBaseEvent> channel, String sessionId) {
-        channelMap.put(sessionId, channel);
+        var old = channelMap.put(sessionId, channel);
+        if (old != null) {
+            old.close();
+        }
     }
 
     public void send(String sessionId, SseBaseEvent event) {
@@ -28,5 +31,13 @@ public class ChannelService {
         if (channel != null) {
             channel.close();
         }
+    }
+
+    public boolean closeIfCurrent(String sessionId, Channel<SseBaseEvent> channel) {
+        if (channelMap.remove(sessionId, channel)) {
+            channel.close();
+            return true;
+        }
+        return false;
     }
 }

@@ -73,6 +73,12 @@ public class SessionChannelService {
         channelService.close(sessionId);
     }
 
+    public void closeIfCurrent(String sessionId, Channel<SseBaseEvent> channel) {
+        if (channelService.closeIfCurrent(sessionId, channel)) {
+            stateMap.remove(sessionId);
+        }
+    }
+
     private static class SessionChannelState {
         final String sessionId;
         final List<SseBaseEvent> eventBuffer = new ArrayList<>();
