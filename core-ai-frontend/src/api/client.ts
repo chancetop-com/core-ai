@@ -130,16 +130,23 @@ export interface Span {
 }
 
 export interface TraceFilter {
-  name?: string;
+  q?: string;           // smart search: UUID-like → id fields; otherwise substring on name + agent_name
+  name?: string;        // advanced raw regex on name
   type?: string;        // agent | llm_call | external
-  source?: string;      // chat | test | api | a2a | scheduled | llm_test | llm_api | external
+  source?: string;      // chat | a2a | api | scheduled
   agentName?: string;
   model?: string;
   status?: string;
   sessionId?: string;
   userId?: string;
+  range?: string;       // 15m | 1h | 24h | 7d | 30d (overrides startFrom/startTo when present)
   startFrom?: string;
   startTo?: string;
+}
+
+export interface TraceFacet {
+  value: string;
+  count: number;
 }
 
 export interface SessionSummary {
@@ -543,6 +550,13 @@ export const api = {
     },
     sessions: (offset = 0, limit = 20) =>
       request<SessionSummary[]>(`/api/traces/sessions?offset=${offset}&limit=${limit}`),
+    facets: (field: 'model' | 'agentName' | 'source', filters?: TraceFilter) => {
+      const params = new URLSearchParams({ field });
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+      }
+      return request<TraceFacet[]>(`/api/traces/facets?${params}`);
+    },
   },
   prompts: {
     list: (offset = 0, limit = 20) =>

@@ -164,7 +164,7 @@ public class OTLPIngestService {
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.source = resolveSource(attrs, Map.of(), trace.sessionId);
-        trace.type = resolveType(trace.source, attrs);
+        trace.type = resolveType(trace.source, attrs, Map.of());
         if (trace.input == null || trace.input.isEmpty()) trace.input = resolveInput(attrs);
     }
 
@@ -180,7 +180,7 @@ public class OTLPIngestService {
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.model = attrs.get("gen_ai.request.model");
         trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
-        trace.type = resolveType(trace.source, attrs);
+        trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
         trace.input = resolveInput(attrs);
         trace.output = resolveOutput(attrs);
@@ -281,20 +281,18 @@ public class OTLPIngestService {
             var session = chatSessionCollection.get(sessionId).orElse(null);
             if (session != null && session.source != null) return session.source;
         }
-        var serviceName = resourceAttrs.get("service.name");
-        if (isInternalService(serviceName) && isLLMCall(attrs)) return "llm_api";
-        // External service (e.g. litellm proxy)
-        if (serviceName != null && !isInternalService(serviceName)) return "external";
+        // No semantic source available; leave null. The type field (resolveType) carries "llm_call" / "external" so the
+        // UI tabs can still classify the trace without overloading the source dimension.
         return null;
     }
 
-    private String resolveType(String source, Map<String, String> attrs) {
-        if (source != null && source.startsWith("llm_")) return "llm_call";
-        if ("external".equals(source)) return "external";
+    private String resolveType(String source, Map<String, String> attrs, Map<String, String> resourceAttrs) {
         if (attrs.get("gen_ai.agent.id") != null || attrs.get("gen_ai.agent.name") != null) return "agent";
         if (isLLMCall(attrs)) return "llm_call";
-        if (source == null) return "external";
-        return "agent";  // chat/test/api/a2a/scheduled all imply agent context
+        var serviceName = resourceAttrs.get("service.name");
+        if (serviceName != null && !isInternalService(serviceName)) return "external";
+        if (source != null) return "agent";  // chat/a2a/api/scheduled all imply agent context
+        return "external";
     }
 
     private boolean isLLMCall(Map<String, String> attrs) {

@@ -17,14 +17,22 @@ import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
  * @author Xander
  */
 public class TraceService {
+    // Matches RFC-4122 UUID with or without dashes
+    private static final Pattern UUID_PATTERN = Pattern.compile("^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$");
+    // Matches long hex strings (e.g. 32-char OpenTelemetry trace IDs without dashes)
+    private static final Pattern LONG_HEX_PATTERN = Pattern.compile("^[0-9a-fA-F]{16,}$");
+
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
@@ -36,7 +44,33 @@ public class TraceService {
         query.limit = filter.limit;
         query.sort = Sorts.descending("created_at");
 
+        var bsonFilters = buildFilters(filter);
+        if (!bsonFilters.isEmpty()) {
+            query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
+        }
+        var traces = traceCollection.find(query);
+        traces.forEach(this::enrichMetricsFromSpans);
+        return traces;
+    }
+
+    private List<Bson> buildFilters(TraceListFilter filter) {
         List<Bson> bsonFilters = new ArrayList<>();
+        // q is the user-friendly search: UUID-like → exact match across id fields; otherwise literal substring on name + agent_name
+        if (filter.q != null && !filter.q.isEmpty()) {
+            var q = filter.q.trim();
+            if (UUID_PATTERN.matcher(q).matches() || LONG_HEX_PATTERN.matcher(q).matches()) {
+                bsonFilters.add(Filters.or(
+                    Filters.eq("session_id", q),
+                    Filters.eq("user_id", q),
+                    Filters.eq("trace_id", q)));
+            } else {
+                var literal = Pattern.quote(q);
+                bsonFilters.add(Filters.or(
+                    Filters.regex("name", literal, "i"),
+                    Filters.regex("agent_name", literal, "i")));
+            }
+        }
+        // name is the advanced raw regex, kept for power users
         if (filter.name != null && !filter.name.isEmpty()) {
             bsonFilters.add(Filters.regex("name", filter.name, "i"));
         }
@@ -44,7 +78,16 @@ public class TraceService {
             bsonFilters.add(Filters.eq("type", filter.type));
         }
         if (filter.source != null && !filter.source.isEmpty()) {
-            bsonFilters.add(Filters.eq("source", filter.source));
+            // Legacy traces predate the source field; treat missing source as "chat"
+            if ("chat".equals(filter.source)) {
+                bsonFilters.add(Filters.or(
+                    Filters.eq("source", "chat"),
+                    Filters.exists("source", false),
+                    Filters.eq("source", null),
+                    Filters.eq("source", "")));
+            } else {
+                bsonFilters.add(Filters.eq("source", filter.source));
+            }
         }
         if (filter.agentName != null && !filter.agentName.isEmpty()) {
             bsonFilters.add(Filters.eq("agent_name", filter.agentName));
@@ -67,12 +110,55 @@ public class TraceService {
         if (filter.startTo != null) {
             bsonFilters.add(Filters.lte("started_at", filter.startTo));
         }
+        return bsonFilters;
+    }
+
+    public List<Map<String, Object>> facets(String field, TraceListFilter filter) {
+        var mongoField = mongoFieldName(field);
+        if (mongoField == null) return List.of();
+        var query = new Query();
+        query.sort = Sorts.descending("created_at");
+        // Cap the scan to avoid full-collection sweeps for distinct values
+        query.limit = 5000;
+        var bsonFilters = buildFilters(filter);
         if (!bsonFilters.isEmpty()) {
             query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
         }
         var traces = traceCollection.find(query);
-        traces.forEach(this::enrichMetricsFromSpans);
-        return traces;
+        Map<String, Long> counts = new HashMap<>();
+        for (var trace : traces) {
+            var value = extractField(field, trace);
+            if (value == null || value.isEmpty()) continue;
+            counts.merge(value, 1L, Long::sum);
+        }
+        return counts.entrySet().stream()
+            .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+            .map(entry -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("value", entry.getKey());
+                row.put("count", entry.getValue());
+                return row;
+            })
+            .collect(Collectors.toList());
+    }
+
+    private String mongoFieldName(String field) {
+        if (field == null) return null;
+        return switch (field) {
+            case "model" -> "model";
+            case "agentName", "agent_name" -> "agent_name";
+            case "source" -> "source";
+            default -> null;
+        };
+    }
+
+    private String extractField(String field, Trace trace) {
+        return switch (field) {
+            case "model" -> trace.model;
+            case "agentName", "agent_name" -> trace.agentName;
+            case "source" -> trace.source;
+            default -> null;
+        };
     }
 
     public Trace get(String traceId) {
@@ -222,9 +308,10 @@ public class TraceService {
     public static class TraceListFilter {
         public int offset;
         public int limit = 20;
-        public String name;
+        public String q;           // user-friendly search: UUID exact match across id fields, otherwise substring on name + agent_name
+        public String name;        // advanced raw regex on name
         public String type;        // agent | llm_call | external
-        public String source;      // chat | test | api | a2a | scheduled | llm_test | llm_api | external
+        public String source;      // chat | a2a | api | scheduled
         public String agentName;
         public String model;
         public String status;

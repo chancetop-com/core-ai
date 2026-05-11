@@ -22,9 +22,28 @@ public class TraceController {
 
     public Response list(Request request) {
         var params = request.queryParams();
-        var filter = new TraceService.TraceListFilter();
+        var filter = parseFilter(params);
         filter.offset = Integer.parseInt(params.getOrDefault("offset", "0"));
         filter.limit = Integer.parseInt(params.getOrDefault("limit", "20"));
+        var traces = traceService.list(filter);
+        return jsonResponse(traces);
+    }
+
+    public Response facets(Request request) {
+        var params = request.queryParams();
+        String field = params.get("field");
+        if (field == null || field.isEmpty()) {
+            return Response.text("missing field parameter").status(core.framework.api.http.HTTPStatus.BAD_REQUEST);
+        }
+        // Reuse list filter so the facet counts reflect the current query context
+        var filter = parseFilter(params);
+        var rows = traceService.facets(field, filter);
+        return jsonResponse(rows);
+    }
+
+    private TraceService.TraceListFilter parseFilter(java.util.Map<String, String> params) {
+        var filter = new TraceService.TraceListFilter();
+        filter.q = params.get("q");
         filter.name = params.get("name");
         filter.type = params.get("type");
         filter.source = params.get("source");
@@ -33,10 +52,28 @@ public class TraceController {
         filter.status = params.get("status");
         filter.sessionId = params.get("sessionId");
         filter.userId = params.get("userId");
-        filter.startFrom = parseDateTime(params.get("startFrom"));
-        filter.startTo = parseDateTime(params.get("startTo"));
-        var traces = traceService.list(filter);
-        return jsonResponse(traces);
+        // range takes precedence over startFrom/startTo when present
+        var range = params.get("range");
+        if (range != null && !range.isEmpty()) {
+            var from = relativeRangeStart(range);
+            if (from != null) filter.startFrom = from;
+        } else {
+            filter.startFrom = parseDateTime(params.get("startFrom"));
+            filter.startTo = parseDateTime(params.get("startTo"));
+        }
+        return filter;
+    }
+
+    private ZonedDateTime relativeRangeStart(String range) {
+        var now = ZonedDateTime.now();
+        return switch (range) {
+            case "15m" -> now.minusMinutes(15);
+            case "1h" -> now.minusHours(1);
+            case "24h" -> now.minusHours(24);
+            case "7d" -> now.minusDays(7);
+            case "30d" -> now.minusDays(30);
+            default -> null;
+        };
     }
 
     public Response get(Request request) {
