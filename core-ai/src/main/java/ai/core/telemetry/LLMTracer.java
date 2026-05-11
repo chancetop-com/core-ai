@@ -109,8 +109,8 @@ public class LLMTracer extends Tracer {
      */
     private void recordResponseAttributes(Span span, CompletionRequest request, CompletionResponse response) {
         if (response.usage != null) {
-            var inputTokens = (long) response.usage.getPromptTokens();
-            var outputTokens = (long) response.usage.getCompletionTokens();
+            var inputTokens = response.usage.getPromptTokens();
+            var outputTokens = response.usage.getCompletionTokens();
             var cachedTokens = response.usage.getPromptTokensDetails() != null
                 ? (long) response.usage.getPromptTokensDetails().cachedTokens
                 : 0L;

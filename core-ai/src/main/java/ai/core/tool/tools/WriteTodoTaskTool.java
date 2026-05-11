@@ -8,6 +8,7 @@ import ai.core.tool.function.Functions;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -215,7 +216,7 @@ public class WriteTodoTaskTool {
         }
 
         boolean changed = applyFieldUpdates(params, task);
-        applyDependencyUpdates(params, store, task);
+        applyDependencyUpdates(params, store);
         if (changed) {
             store.write(params.taskId, task);
         }
@@ -305,7 +306,7 @@ public class WriteTodoTaskTool {
         }
     }
 
-    private void applyDependencyUpdates(UpdateTaskParams params, TodoStore store, TaskEntity task) {
+    private void applyDependencyUpdates(UpdateTaskParams params, TodoStore store) {
         if (params.addBlocks != null) {
             for (String blockedId : params.addBlocks) {
                 if (!blockedId.equals(params.taskId)) {
@@ -344,25 +345,25 @@ public class WriteTodoTaskTool {
         List<TaskEntity> all = store.listAll();
         long incomplete = all.stream().filter(t -> !"completed".equals(t.status)).count();
         if (incomplete == 0 && all.size() >= 3
-                && all.stream().noneMatch(t -> t.subject != null && t.subject.toLowerCase().contains("verif"))) {
+                && all.stream().noneMatch(t -> t.subject != null && t.subject.toLowerCase(Locale.ENGLISH).contains("verif"))) {
             reminder.append("All tasks completed. Consider a verification step (e.g., test the changes end-to-end).\n");
         }
     }
 
     private String summaryJson(TaskEntity task, List<String> activeBlockers) {
-        var sb = new StringBuilder();
-        sb.append("{\"id\":\"").append(escapeJson(task.id)).append("\"");
-        sb.append(",\"subject\":\"").append(escapeJson(task.subject)).append("\"");
-        sb.append(",\"status\":\"").append(escapeJson(task.status)).append("\"");
+        var sb = new StringBuilder(128);
+        sb.append("{\"id\":\"").append(escapeJson(task.id)).append("\",\"subject\":\"")
+          .append(escapeJson(task.subject)).append("\",\"status\":\"")
+          .append(escapeJson(task.status)).append('"');
         if (task.owner != null && !task.owner.isEmpty()) {
-            sb.append(",\"owner\":\"").append(escapeJson(task.owner)).append("\"");
+            sb.append(",\"owner\":\"").append(escapeJson(task.owner)).append('"');
         }
         if (!activeBlockers.isEmpty()) {
-            sb.append(",\"blockedBy\":[");
-            sb.append(activeBlockers.stream().map(id -> "\"" + id + "\"").collect(Collectors.joining(",")));
-            sb.append("]");
+            sb.append(",\"blockedBy\":[")
+                .append(activeBlockers.stream().map(id -> '"' + id + '"').collect(Collectors.joining(",")))
+                .append(']');
         }
-        sb.append("}");
+        sb.append('}');
         return sb.toString();
     }
 

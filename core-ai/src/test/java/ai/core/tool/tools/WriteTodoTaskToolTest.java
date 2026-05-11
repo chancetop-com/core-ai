@@ -7,11 +7,11 @@ import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.tool.function.Functions;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -46,13 +45,15 @@ class WriteTodoTaskToolTest {
                 .todoStoreFactory(_ -> store)
                 .build();
     }
+
     @Test
-    void testWrap(){
+    void testWrap() {
         var wtl = spy(new WriteTodoTaskTool());
-        var tools = Functions.from(wtl );
+        var tools = Functions.from(wtl);
         assertFalse(tools.isEmpty());
 
     }
+
     @Test
     void testMockCreateFc() {
         var llmProvider = Mockito.mock(LiteLLMProvider.class);
@@ -60,7 +61,7 @@ class WriteTodoTaskToolTest {
         var agent = Agent.builder()
                 .systemPrompt("You are a helpful assistant")
                 .llmProvider(llmProvider)
-                .toolCalls( Functions.from(wtl ))
+                .toolCalls(Functions.from(wtl))
                 .maxTurn(2)
                 .build();
         agent.setExecutionContext(ExecutionContext.builder()
@@ -393,19 +394,19 @@ class WriteTodoTaskToolTest {
     /**
      * In-memory TodoStore for testing — avoids filesystem dependency.
      */
-    private static class InMemoryTodoStore implements TodoStore {
+    private static final class InMemoryTodoStore implements TodoStore {
         private final Map<String, WriteTodoTaskTool.TaskEntity> tasks = new ConcurrentHashMap<>();
-        private int nextId = 1;
+        private final java.util.concurrent.atomic.AtomicInteger nextId = new java.util.concurrent.atomic.AtomicInteger(1);
 
         void setup(WriteTodoTaskTool.TaskEntity task) {
             tasks.put(task.id, task);
             int idNum = Integer.parseInt(task.id);
-            if (idNum >= nextId) nextId = idNum + 1;
+            nextId.updateAndGet(v -> Math.max(v, idNum + 1));
         }
 
         @Override
         public WriteTodoTaskTool.TaskEntity create(WriteTodoTaskTool.TaskEntity task) {
-            task.id = String.valueOf(nextId++);
+            task.id = String.valueOf(nextId.getAndIncrement());
             tasks.put(task.id, task);
             return task;
         }
@@ -432,19 +433,15 @@ class WriteTodoTaskToolTest {
         @Override
         public List<WriteTodoTaskTool.TaskEntity> listAll() {
             var result = new ArrayList<>(tasks.values());
-            result.sort((a, b) -> Integer.compare(Integer.parseInt(a.id), Integer.parseInt(b.id)));
+            result.sort(Comparator.comparingInt(a -> Integer.parseInt(a.id)));
             return result;
         }
 
-        @Override
-        public int nextId() {
-            return nextId;
-        }
 
         @Override
         public void cleanup() {
             tasks.clear();
-            nextId = 1;
+            nextId.set(1);
         }
     }
 }

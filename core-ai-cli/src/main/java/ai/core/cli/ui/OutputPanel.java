@@ -96,15 +96,14 @@ public class OutputPanel {
         return sb.toString();
     }
 
-    private static String padToDisplayWidth(String text, int targetWidth) {
-        int current = AnsiTheme.displayWidth(text);
-        if (current >= targetWidth) return text;
-        return text + " ".repeat(targetWidth - current);
+    private static String truncateToWidth(String text, int maxWidth) {
+        return text.length() > maxWidth ? text.substring(0, maxWidth - 3) + "..." : text;
     }
 
     private final PrintWriter writer;
     private final StreamingMarkdownRenderer mdRenderer;
     private final ThinkingSpinner spinner;
+    private final PlanTableRenderer planRenderer;
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
     private final IntSupplier terminalWidth;
 
@@ -118,6 +117,7 @@ public class OutputPanel {
         this.writer = writer;
         this.mdRenderer = new StreamingMarkdownRenderer(writer, smartTerminal, terminalWidth);
         this.spinner = new ThinkingSpinner(writer, terminalWidth);
+        this.planRenderer = new PlanTableRenderer(writer, terminalWidth);
         this.terminalWidth = terminalWidth;
     }
 
@@ -216,22 +216,7 @@ public class OutputPanel {
             writer.println(AnsiTheme.MUTED + "Done, " + toolOutputLineCount + " lines, " + ThinkingSpinner.formatElapsed(elapsed) + AnsiTheme.RESET);
         } else {
             writer.print(INDENT + icon + "\u23BF" + AnsiTheme.RESET + "  ");
-            if (result != null && !result.isBlank()) {
-                String[] lines = result.split("\n");
-                int limit = Math.min(lines.length, 3);
-                int maxWidth = Math.max(40, terminalWidth.getAsInt() - 6);
-                for (int i = 0; i < limit; i++) {
-                    String line = lines[i].stripLeading();
-                    if (line.length() > maxWidth) line = line.substring(0, maxWidth - 3) + "...";
-                    if (i > 0) writer.print(INDENT + "   ");
-                    writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
-                }
-                if (lines.length > 3) {
-                    writer.println(AnsiTheme.MUTED + INDENT + "   \u2026 +" + (lines.length - 3) + " lines" + AnsiTheme.RESET);
-                }
-            } else {
-                writer.println(AnsiTheme.MUTED + "Done" + AnsiTheme.RESET);
-            }
+            printResultSummary(result);
         }
         writer.flush();
         toolOutputStreaming = false;
@@ -241,16 +226,15 @@ public class OutputPanel {
 
     public void batchResult(String status, String result) {
         stopSpinnerIfActive();
-        String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
         if (result != null && !result.isBlank()) {
+            String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
             String[] lines = result.split("\n");
             int limit = Math.min(lines.length, 3);
             int maxWidth = Math.max(40, terminalWidth.getAsInt() - 6);
             for (int i = 0; i < limit; i++) {
-                String line = lines[i].stripLeading();
-                if (line.length() > maxWidth) line = line.substring(0, maxWidth - 3) + "...";
+                String displayLine = truncateToWidth(lines[i].stripLeading(), maxWidth);
                 writer.print(INDENT + icon + "   " + AnsiTheme.RESET);
-                writer.println(AnsiTheme.MUTED + line + AnsiTheme.RESET);
+                writer.println(AnsiTheme.MUTED + displayLine + AnsiTheme.RESET);
             }
             if (lines.length > 3) {
                 writer.println(AnsiTheme.MUTED + INDENT + "   … +" + (lines.length - 3) + " lines" + AnsiTheme.RESET);
@@ -267,15 +251,31 @@ public class OutputPanel {
         toolOutputLineCount++;
         if (toolOutputLineCount <= 5) {
             int maxWidth = Math.max(40, terminalWidth.getAsInt() - INDENT.length());
-            if (line.length() > maxWidth) {
-                line = line.substring(0, maxWidth - 3) + "...";
-            }
-            writer.println(INDENT + AnsiTheme.MUTED + line + AnsiTheme.RESET);
+            String displayLine = truncateToWidth(line, maxWidth);
+            writer.println(INDENT + AnsiTheme.MUTED + displayLine + AnsiTheme.RESET);
         } else {
             String counter = "\u231B Running... Read " + toolOutputLineCount + " lines";
             writer.print("\r" + INDENT + AnsiTheme.MUTED + counter + AnsiTheme.RESET);
         }
         writer.flush();
+    }
+
+    private void printResultSummary(String result) {
+        if (result == null || result.isBlank()) {
+            writer.println(AnsiTheme.MUTED + "Done" + AnsiTheme.RESET);
+            return;
+        }
+        String[] lines = result.split("\n");
+        int limit = Math.min(lines.length, 3);
+        int maxWidth = Math.max(40, terminalWidth.getAsInt() - 6);
+        for (int i = 0; i < limit; i++) {
+            String displayLine = truncateToWidth(lines[i].stripLeading(), maxWidth);
+            if (i > 0) writer.print(INDENT + "   ");
+            writer.println(AnsiTheme.MUTED + displayLine + AnsiTheme.RESET);
+        }
+        if (lines.length > 3) {
+            writer.println(AnsiTheme.MUTED + INDENT + "   \u2026 +" + (lines.length - 3) + " lines" + AnsiTheme.RESET);
+        }
     }
 
     private void clearStatusLine() {
@@ -366,116 +366,10 @@ public class OutputPanel {
         mdRenderer.flush();
 
         writer.println("\n" + AnsiTheme.CMD_NAME + "\u25CF Planning:" + AnsiTheme.RESET);
-        todos = todos.stream().map(todoItem -> new PlanUpdateEvent.TodoItem(todoItem.content,todoItem.status.toLowerCase(Locale.ROOT))).toList();
-
-        // Calculate column widths
-        int statusWidth = 13; // "IN PROGRESS"
-        int contentWidth = Math.max(20, (terminalWidth.getAsInt() / 2) - statusWidth - 6);
-
-        printHeader(statusWidth, contentWidth);
-
-        // Rows
-        for (var todo : todos) {
-            String statusIcon = switch (todo.status) {
-                case "completed" -> AnsiTheme.SUCCESS + "\u2713";
-                case "in_progress" -> AnsiTheme.WARNING + "\u25B6";
-                default -> AnsiTheme.MUTED + "\u25CB";
-            };
-            String statusCore = statusIcon + " " + formatStatus(todo.status);
-            String statusText = padToDisplayWidth(statusCore, statusWidth) + AnsiTheme.RESET;
-            String content = wrapContent(todo.content, contentWidth);
-
-            String[] contentLines = content.split("\n");
-            for (int i = 0; i < contentLines.length; i++) {
-                writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u2502");
-                if (i == 0) {
-                    writer.print(" ");
-                    writer.print(statusText);
-                    writer.print(" ");
-                } else {
-                    writer.print(" ".repeat(statusWidth + 2));
-                }
-                writer.print("\u2502");
-                writer.print(" ");
-                writer.print(padToDisplayWidth(contentLines[i], contentWidth));
-                writer.print(" ");
-                writer.println("\u2502" + AnsiTheme.RESET);
-            }
-        }
-
-        printFooter(statusWidth, contentWidth);
-
-        writer.flush();
+        var normalized = todos.stream().map(todoItem -> new PlanUpdateEvent.TodoItem(todoItem.content, todoItem.status.toLowerCase(Locale.ROOT))).toList();
+        planRenderer.render(normalized);
         resetShown();
         startSpinner();
-    }
-
-    private void printFooter(int statusWidth, int contentWidth) {
-        // Footer
-        writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u2570");
-        writer.print("\u2500".repeat(statusWidth + 2));
-        writer.print("\u2534");
-        writer.print("\u2500".repeat(contentWidth + 2));
-        writer.println("\u256F" + AnsiTheme.RESET);
-    }
-
-    private void printHeader(int statusWidth, int contentWidth) {
-
-        // Header
-        writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u256D");
-        writer.print("\u2500".repeat(statusWidth + 2));
-        writer.print("\u252C");
-        writer.print("\u2500".repeat(contentWidth + 2));
-        writer.println("\u256E" + AnsiTheme.RESET);
-
-        writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u2502");
-        writer.print(" ");
-        writer.print(padToDisplayWidth("STATUS", statusWidth));
-        writer.print(" ");
-        writer.print("\u2502");
-        writer.print(" ");
-        writer.print(padToDisplayWidth("TASK", contentWidth));
-        writer.print(" ");
-        writer.println("\u2502" + AnsiTheme.RESET);
-
-        writer.print(INDENT + AnsiTheme.MD_TABLE_BORDER + "\u251C");
-        writer.print("\u2500".repeat(statusWidth + 2));
-        writer.print("\u253C");
-        writer.print("\u2500".repeat(contentWidth + 2));
-        writer.println("\u2524" + AnsiTheme.RESET);
-    }
-
-    private String formatStatus(String status) {
-        return switch (status) {
-            case "completed" -> "Done";
-            case "in_progress" -> "In Progress";
-            default -> "Pending";
-        };
-    }
-
-    private String wrapContent(String content, int maxDisplayWidth) {
-        if (content == null) return "";
-        if (AnsiTheme.displayWidth(content) <= maxDisplayWidth) return content;
-        var sb = new StringBuilder();
-        int cur = 0;
-        int target = maxDisplayWidth - 3;
-        int index = 0;
-        while (index < content.length()) {
-            char c = content.charAt(index);
-            boolean surrogate = Character.isHighSurrogate(c) && index + 1 < content.length()
-                    && Character.isLowSurrogate(content.charAt(index + 1));
-            int w = surrogate || AnsiTheme.isWideChar(c) ? 2 : 1;
-            if (cur + w > target) break;
-            sb.append(c);
-            if (surrogate) {
-                sb.append(content.charAt(index + 1));
-                index += 2;
-            } else {
-                index++;
-            }
-            cur += w;
-        }
-        return sb + "...";
     }
 
     public void endTurn() {

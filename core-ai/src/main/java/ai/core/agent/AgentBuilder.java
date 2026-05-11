@@ -113,7 +113,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.toolCallPruningEnabled = enabled;
         return this;
     }
-
     public AgentBuilder toolCallPruning(int keepRecentSegments, Set<String> excludeToolNames) {
         this.toolCallPruningConfig = new ToolCallPruning.Config(keepRecentSegments, excludeToolNames);
         this.toolCallPruningEnabled = true;
@@ -222,12 +221,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.useGroupContext = useGroupContext;
         return this;
     }
-
     public AgentBuilder enableReflection(Boolean enableReflection) {
         this.enableReflection = enableReflection;
         return this;
     }
-
     public AgentBuilder reflectionEvaluationCriteria(String evaluationCriteria) {
         this.reflectionConfig = ReflectionConfig.withEvaluationCriteria(evaluationCriteria);
         return this;
@@ -263,12 +260,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.subAgents = new ArrayList<>(subAgents);
         return this;
     }
-
     public AgentBuilder reasoningEffort(ReasoningEffort reasoningEffort) {
         this.reasoningEffort = reasoningEffort;
         return this;
     }
-
     public AgentBuilder doomLoopDetection(boolean enabled) {
         this.doomLoopEnabled = enabled;
         return this;

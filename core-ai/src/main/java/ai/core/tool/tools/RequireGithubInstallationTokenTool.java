@@ -62,8 +62,6 @@ public class RequireGithubInstallationTokenTool extends ToolCall {
     }
 
     private String formatResult(String token, String repo) {
-        var parts = repo.split("/", 2);
-        var owner = parts.length > 0 ? parts[0] : repo;
         return """
                 GitHub installation token obtained (valid for 1 hour).
 
