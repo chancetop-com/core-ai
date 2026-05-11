@@ -159,6 +159,7 @@ public class TaskTool extends ToolCall {
                 .persistenceProvider(context.getPersistenceProvider())
                 .taskManager(context.getTaskManager() != null ? context.getTaskManager().createChild() : null)
                 .promptSections(context.getPromptSections())
+                .sandbox(context.getSandbox())
                 .taskId(taskId)
                 .taskName(taskName)
                 .build();
