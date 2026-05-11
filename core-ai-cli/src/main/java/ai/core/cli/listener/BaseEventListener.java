@@ -156,13 +156,11 @@ public class BaseEventListener implements AgentEventListener {
                 removeTask(event.taskId);
             }
         } else if (Objects.isNull(event.taskId) || !isInTask(event.taskId)) {
-            if (batchCallIds.contains(event.callId)) {
-                if (!batchResultSeen) {
-                    panel.toolResult(event.status, event.result);
-                    batchResultSeen = true;
-                } else {
-                    panel.batchResult(event.status, event.result);
-                }
+            if (batchCallIds.contains(event.callId) && !batchResultSeen) {
+                panel.toolResult(event.status, event.result);
+                batchResultSeen = true;
+            } else if (batchCallIds.contains(event.callId)) {
+                panel.batchResult(event.status, event.result);
             } else {
                 panel.toolResult(event.status, event.result);
             }

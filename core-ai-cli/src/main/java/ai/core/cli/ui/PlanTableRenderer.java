@@ -13,18 +13,18 @@ class PlanTableRenderer {
     private static final String INDENT = "  ";
     private static final int STATUS_WIDTH = 13;
 
+    private static String padToDisplayWidth(String text, int targetWidth) {
+        int current = AnsiTheme.displayWidth(text);
+        if (current >= targetWidth) return text;
+        return text + " ".repeat(targetWidth - current);
+    }
+
     private final PrintWriter writer;
     private final IntSupplier terminalWidth;
 
     PlanTableRenderer(PrintWriter writer, IntSupplier terminalWidth) {
         this.writer = writer;
         this.terminalWidth = terminalWidth;
-    }
-
-    private static String padToDisplayWidth(String text, int targetWidth) {
-        int current = AnsiTheme.displayWidth(text);
-        if (current >= targetWidth) return text;
-        return text + " ".repeat(targetWidth - current);
     }
 
     void render(List<PlanUpdateEvent.TodoItem> todos) {

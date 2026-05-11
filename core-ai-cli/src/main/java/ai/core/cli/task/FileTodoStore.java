@@ -25,12 +25,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class FileTodoStore implements TodoStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileTodoStore.class);
 
-    private final Path taskListDir;
-    private final AtomicInteger idSeq;
-
     private static String sanitize(String sessionId) {
         return sessionId.replaceAll("[^a-zA-Z0-9._\\-]", "_");
     }
+
+    private final Path taskListDir;
+    private final AtomicInteger idSeq;
 
     public FileTodoStore(Path baseDir, String sessionId) {
         this.taskListDir = baseDir.resolve(sanitize(sessionId));
@@ -46,7 +46,8 @@ public class FileTodoStore implements TodoStore {
             try {
                 int id = Integer.parseInt(file.getName().replace(".json", ""));
                 if (id > max) max = id;
-            } catch (NumberFormatException ignored) {
+            } catch (NumberFormatException e) {
+                LOGGER.debug("skipping non-numeric task file: {}", file.getName(), e);
             }
         }
         return max;

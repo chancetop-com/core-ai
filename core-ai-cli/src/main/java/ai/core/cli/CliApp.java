@@ -14,9 +14,7 @@ import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.remote.A2ARemoteConnector;
-import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteAgentConfigLoader;
-import ai.core.cli.remote.A2ARemoteServerConfig;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.remote.RemoteSessionRunner;
 import ai.core.cli.ui.AnsiTheme;
@@ -124,7 +122,7 @@ public class CliApp {
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
         try {
-            String currentSessionId = ctx.currentSessionId;
+            String currentSessionId = ctx.currentSessionId();
             while (true) {
                 var runner = createLocalRunner(ui, ctx, currentSessionId);
                 String nextSessionId = runner.run();
@@ -145,7 +143,7 @@ public class CliApp {
 
     private void runSinglePrompt(TerminalUI ui, SessionContext ctx, String promptText) {
         try {
-            var runner = createLocalRunner(ui, ctx, ctx.currentSessionId);
+            var runner = createLocalRunner(ui, ctx, ctx.currentSessionId());
             runner.runPrompt(promptText);
         } finally {
             CliLogger.close();
@@ -153,19 +151,19 @@ public class CliApp {
     }
 
     private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
-        var agentConfig = new CliAgent.Config(ctx.result.llmProviders, modelOverride, ctx.maxTurn, ctx.sessionPersistence, workspace, question -> {
+        var agentConfig = new CliAgent.Config(ctx.result().llmProviders, modelOverride, ctx.maxTurn(), ctx.sessionPersistence(), workspace, question -> {
             ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
             ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
             return ui.readRawLine();
-        }, ctx.memoryEnabled, ctx.coding, ctx.todoV2Enabled, sessionId, ctx.remoteAgents, ctx.remoteServers);
+        }, ctx.memoryEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers());
         var agent = CliAgent.of(agentConfig);
-        var config = new AgentSessionRunner.Config(ctx.modelName, autoApproveAll, sessionId, ctx.sessionManager, ctx.permissionStore, ctx.noteMemory, ctx.modelRegistry, ctx.sessionPersistence, ctx.memoryEnabled);
-        return new AgentSessionRunner(ui, agent, ctx.result.llmProviders, config);
+        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled());
+        return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
     }
 
     private void cleanup(TerminalUI ui, SessionContext ctx) {
         closeQuietly(ui);
-        closeShutdownResources(ctx.result);
+        closeShutdownResources(ctx.result());
     }
 
     private ToolPermissionStore whiteToolsPermissionStore() {
@@ -447,11 +445,4 @@ public class CliApp {
             }
         }
     }
-
-    private record SessionContext(BootstrapResult result, PropertiesFileSource props, int maxTurn,
-            FileSessionPersistence sessionPersistence, SessionManager sessionManager, String modelName,
-            String currentSessionId, ToolPermissionStore permissionStore, MdMemoryProvider noteMemory,
-            ModelRegistry modelRegistry, boolean memoryEnabled, boolean coding, boolean todoV2Enabled,
-            List<A2ARemoteAgentConfig> remoteAgents, List<A2ARemoteServerConfig> remoteServers) { }
-
 }
