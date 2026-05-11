@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, ChevronDown, ChevronRight, Loader2, Check } from 'lucide-react';
 import { api } from '../../api/client';
-import type { ToolRegistryView, ApiAppView, ApiServiceView } from '../../api/client';
+import type { ToolRegistryView, ApiAppView, ApiServiceView, McpToolInfo } from '../../api/client';
 
 interface ToolPickerModalProps {
   availableTools: ToolRegistryView[];
@@ -36,11 +36,17 @@ export default function ToolPickerModal({
   const [showMcp, setShowMcp] = useState(false);
   const [showApi, setShowApi] = useState(false);
 
+  const [mcpServerTools, setMcpServerTools] = useState<Record<string, McpToolInfo[]>>({});
+  const [expandedMcpServer, setExpandedMcpServer] = useState<string | null>(null);
+
   const builtinTools = availableTools.filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api');
   const mcpTools = availableTools.filter(t => t.type === 'MCP');
 
   const builtinSelected = builtinTools.filter(t => selectedIds.has(t.id) || loadedIds.has(t.id) || pendingIds.has(t.id)).length;
-  const mcpSelected = mcpTools.filter(t => selectedIds.has(t.id) || loadedIds.has(t.id) || pendingIds.has(t.id)).length;
+  const mcpSelected = mcpTools.filter(t => selectedIds.has(t.id) || loadedIds.has(t.id) || pendingIds.has(t.id)).length
+    + Array.from(selectedIds).filter(id => id.startsWith('mcp-tool:')).length
+    + Array.from(loadedIds).filter(id => id.startsWith('mcp-tool:')).length
+    + Array.from(pendingIds).filter(id => id.startsWith('mcp-tool:')).length;
   const apiSelected = Array.from(selectedIds).filter(id => id.startsWith('api-app:') || id.startsWith('api-service:') || id.startsWith('api-operation:')).length
     + Array.from(pendingIds).filter(id => id.startsWith('api-app:') || id.startsWith('api-service:') || id.startsWith('api-operation:')).length
     + Array.from(loadedIds).filter(id => id.startsWith('api-app:') || id.startsWith('api-service:') || id.startsWith('api-operation:')).length;
@@ -96,6 +102,42 @@ export default function ToolPickerModal({
     return id;
   };
 
+  const getMcpDisplayName = (id: string): string => {
+    if (id.startsWith('mcp-tool:')) {
+      const parts = id.substring('mcp-tool:'.length).split(':');
+      if (parts.length >= 2) {
+        const serverId = parts[0];
+        const toolName = parts[1];
+        const server = mcpTools.find(t => t.id === serverId);
+        return server ? `${server.name} > ${toolName}` : `${serverId} > ${toolName}`;
+      }
+    }
+    return id;
+  };
+
+  const loadMcpServerTools = async (serverId: string) => {
+    if (mcpServerTools[serverId]) return;
+    try {
+      const res = await api.tools.listMcpServerTools(serverId);
+      setMcpServerTools(prev => ({ ...prev, [serverId]: res.tools || [] }));
+    } catch (e) {
+      console.error('Failed to load MCP server tools:', serverId, e);
+    }
+  };
+
+  const toggleMcpServer = (serverId: string) => {
+    if (expandedMcpServer === serverId) {
+      setExpandedMcpServer(null);
+    } else {
+      setExpandedMcpServer(serverId);
+      loadMcpServerTools(serverId);
+    }
+  };
+
+  const isMcpServerFullySelected = (serverId: string): boolean => {
+    return selectedIds.has(serverId) || loadedIds.has(serverId) || pendingIds.has(serverId);
+  };
+
   const getItemState = (id: string): 'loaded' | 'pending' | 'selected' | 'none' => {
     if (loadedIds.has(id)) return 'loaded';
     if (pendingIds.has(id)) return 'pending';
@@ -130,9 +172,10 @@ export default function ToolPickerModal({
           <div className="px-5 py-3 border-b flex flex-wrap gap-1.5 max-h-[120px] overflow-auto" style={{ borderColor: 'var(--color-border)' }}>
             {Array.from(selectedIds).map(id => {
               const isApi = id.startsWith('api-app:') || id.startsWith('api-service:') || id.startsWith('api-operation:');
-              const tool = isApi ? null : availableTools.find(t => t.id === id);
-              const name = isApi ? getApiDisplayName(id) : (tool?.name || id);
-              const color = isApi ? '#10b981' : tool?.type === 'MCP' ? '#8b5cf6' : '#f59e0b';
+              const isMcpTool = id.startsWith('mcp-tool:');
+              const tool = (isApi || isMcpTool) ? null : availableTools.find(t => t.id === id);
+              const name = isApi ? getApiDisplayName(id) : isMcpTool ? getMcpDisplayName(id) : (tool?.name || id);
+              const color = isApi ? '#10b981' : isMcpTool ? '#8b5cf6' : tool?.type === 'MCP' ? '#8b5cf6' : '#f59e0b';
               const isLoaded = loadedIds.has(id);
               return (
                 <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]"
@@ -176,11 +219,67 @@ export default function ToolPickerModal({
                 open={showMcp} onToggleOpen={() => setShowMcp(!showMcp)}>
                 {mcpTools.length === 0 ? (
                   <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No MCP tools available</div>
-                ) : mcpTools.map(t => (
-                  <ToolCheckItem key={t.id} name={t.name} description={t.description}
-                    state={getItemState(t.id)} color="#8b5cf6"
-                    onToggle={() => !loadedIds.has(t.id) && onToggle(t.id)} />
-                ))}
+                ) : mcpTools.map(server => {
+                  const serverFullySelected = isMcpServerFullySelected(server.id);
+                  const serverLoaded = loadedIds.has(server.id) || pendingIds.has(server.id);
+                  return (
+                    <div key={server.id} className="border-t first:border-t-0" style={{ borderColor: 'var(--color-border)' }}>
+                      <div className="flex items-center px-3 py-1.5">
+                        <button
+                          className="flex-1 flex items-center gap-2 text-xs cursor-pointer text-left"
+                          onClick={() => toggleMcpServer(server.id)}>
+                          {expandedMcpServer === server.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          <span className="font-medium truncate">{server.name}</span>
+                        </button>
+                        <button
+                          className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer flex-shrink-0"
+                          style={{
+                            background: (serverFullySelected || serverLoaded) ? 'var(--color-bg-tertiary)' : '#8b5cf620',
+                            color: (serverFullySelected || serverLoaded) ? 'var(--color-text-secondary)' : '#8b5cf6',
+                          }}
+                          disabled={!!(serverFullySelected || serverLoaded)}
+                          onClick={() => onToggle(server.id)}>
+                          {serverLoaded ? (pendingIds.has(server.id) ? 'Loading' : 'Loaded')
+                            : serverFullySelected ? 'Selected' : 'Add All'}
+                        </button>
+                      </div>
+                      {expandedMcpServer === server.id && (
+                        <div className="pl-6 pb-1">
+                          {!mcpServerTools[server.id] ? (
+                            <div className="px-3 py-1 text-xs flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+                              <Loader2 size={10} className="animate-spin" /> Loading...
+                            </div>
+                          ) : mcpServerTools[server.id].length === 0 ? (
+                            <div className="px-3 py-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No tools available</div>
+                          ) : (
+                            mcpServerTools[server.id].map(tool => {
+                              const toolId = `mcp-tool:${server.id}:${tool.name}`;
+                              const toolLoaded = loadedIds.has(toolId) || pendingIds.has(toolId);
+                              const toolSelected = selectedIds.has(toolId);
+                              return (
+                                <div key={tool.name}
+                                  className="flex items-center justify-between px-3 py-0.5 text-xs hover:bg-[var(--color-bg-tertiary)] rounded">
+                                  <span className="truncate flex-1">{tool.name}</span>
+                                  <button
+                                    className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer flex-shrink-0"
+                                    style={{
+                                      background: (toolSelected || toolLoaded || serverFullySelected || serverLoaded) ? 'var(--color-bg-tertiary)' : '#8b5cf620',
+                                      color: (toolSelected || toolLoaded || serverFullySelected || serverLoaded) ? 'var(--color-text-secondary)' : '#8b5cf6',
+                                    }}
+                                    disabled={!!(toolSelected || toolLoaded || serverFullySelected || serverLoaded)}
+                                    onClick={() => onToggle(toolId)}>
+                                    {toolLoaded ? (pendingIds.has(toolId) ? 'Loading' : 'Loaded')
+                                      : serverLoaded ? '✓' : toolSelected ? 'Selected' : 'Add'}
+                                  </button>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </ToolGroupSection>
 
               {/* Service API */}

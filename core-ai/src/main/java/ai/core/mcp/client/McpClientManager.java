@@ -181,6 +181,10 @@ public class McpClientManager implements AutoCloseable {
         return Map.copyOf(clients);
     }
 
+    public List<String> safeListToolNames(String serverName) {
+        return safeListTools(serverName).stream().map(McpSchema.Tool::name).toList();
+    }
+
     public List<McpSchema.Tool> safeListTools(String serverName) {
         return safeListTools(serverName, null);
     }

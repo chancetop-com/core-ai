@@ -25,6 +25,7 @@ public class ToolRefResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRefResolver.class);
     private static final String CONFIG_PREFIX = "config:";
     private static final String API_TOOL_ID = "builtin-service-api";
+    private static final String MCP_TOOL_PREFIX = "mcp-tool:";
 
     private final Map<String, ToolRegistry> toolRegistry;
     private final InternalApiToolLoader apiToolLoader;
@@ -69,6 +70,40 @@ public class ToolRefResolver {
     private void resolveMcpRef(ToolRef toolRef, List<ToolCall> result) {
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager == null) return;
+
+        // Handle individual MCP tool: id=mcp-tool:{toolName} (source=serverId) or id=mcp-tool:{serverId}:{toolName}
+        if (toolRef.id.startsWith(MCP_TOOL_PREFIX)) {
+            var remaining = toolRef.id.substring(MCP_TOOL_PREFIX.length());
+            String serverId;
+            String toolName;
+            var colonIdx = remaining.indexOf(':');
+            if (colonIdx > 0) {
+                // composite format: mcp-tool:{serverId}:{toolName}
+                serverId = remaining.substring(0, colonIdx);
+                toolName = remaining.substring(colonIdx + 1);
+            } else {
+                // simple format: mcp-tool:{toolName} with source as serverId
+                serverId = toolRef.source;
+                toolName = remaining;
+            }
+            if (serverId != null && mcpManager.hasServer(serverId)) {
+                result.addAll(loadMcpToolSafe(mcpManager, serverId, toolName));
+                return;
+            }
+            // fallback: try looking up the server by id in toolRegistry
+            if (serverId != null) {
+                var entry = toolRegistry.get(serverId);
+                if (entry != null) {
+                    var resolvedServerName = resolveMcpServerName(entry);
+                    if (resolvedServerName != null && mcpManager.hasServer(resolvedServerName)) {
+                        result.addAll(loadMcpToolSafe(mcpManager, resolvedServerName, toolName));
+                        return;
+                    }
+                }
+            }
+            LOGGER.warn("unable to resolve individual mcp tool, id={}, source={}", toolRef.id, toolRef.source);
+            return;
+        }
 
         var serverName = toolRef.source != null ? toolRef.source : toolRef.id;
         var entry = toolRegistry.get(toolRef.id);
@@ -135,6 +170,27 @@ public class ToolRefResolver {
             LOGGER.warn("skip MCP server {} due to load failure: {}", serverName, e.getMessage());
             return List.of();
         }
+    }
+
+    private List<ToolCall> loadMcpToolSafe(McpClientManager mcpManager, String serverName, String toolName) {
+        try {
+            return new ArrayList<>(McpToolCalls.from(mcpManager, List.of(serverName), List.of(toolName)));
+        } catch (Exception e) {
+            LOGGER.warn("skip MCP tool {}/{} due to load failure: {}", serverName, toolName, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** Resolve the server name used by McpClientManager from a ToolRegistry entry. */
+    private String resolveMcpServerName(ToolRegistry entry) {
+        if (entry.id.startsWith(CONFIG_PREFIX)) {
+            return entry.id.substring(CONFIG_PREFIX.length());
+        }
+        var mcpManager = McpClientManagerRegistry.getManager();
+        if (mcpManager != null && mcpManager.hasServer(entry.id)) {
+            return entry.id;
+        }
+        return null;
     }
 
     private List<ToolCall> resolveApiTools(ToolRegistry entry) {

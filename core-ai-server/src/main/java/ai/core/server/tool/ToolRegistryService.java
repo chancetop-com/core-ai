@@ -343,6 +343,23 @@ public class ToolRegistryService {
         return internalApiToolLoader == null ? List.of() : internalApiToolLoader.listApiAppServices(appName);
     }
 
+    public List<String> listMcpServerTools(String serverId) {
+        var entity = tools.get(serverId);
+        if (entity == null || entity.type != ToolType.MCP) {
+            throw new RuntimeException("mcp server not found or not MCP type, id=" + serverId);
+        }
+        var mcpManager = McpClientManagerRegistry.getManager();
+        if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
+            return List.of();
+        }
+        try {
+            return mcpManager.safeListToolNames(entity.id);
+        } catch (Exception e) {
+            LOGGER.warn("failed to list tools from mcp server, id={}", serverId, e);
+            return List.of();
+        }
+    }
+
     public void reloadApiTools() {
         if (toolRefResolver != null) toolRefResolver.reloadApiTools();
     }

@@ -6,6 +6,7 @@ import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
+import ai.core.api.server.tool.McpServerToolsResponse;
 import ai.core.api.server.tool.ToolRegistryView;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import core.framework.api.web.service.DELETE;
@@ -50,6 +51,10 @@ public interface ToolRegistryWebService {
     @PUT
     @Path("/api/tools/mcp-servers/:id/disable")
     ToolRegistryView disableMcpServer(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/tools/mcp-servers/:id/tools")
+    McpServerToolsResponse listMcpServerTools(@PathParam("id") String id);
 
     @GET
     @Path("/api/tools/service-api/apps")

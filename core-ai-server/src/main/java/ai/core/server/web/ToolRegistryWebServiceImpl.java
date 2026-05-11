@@ -7,6 +7,7 @@ import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
+import ai.core.api.server.tool.McpServerToolsResponse;
 import ai.core.api.server.tool.ToolRegistryView;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.server.domain.ToolRegistry;
@@ -65,6 +66,21 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     @Override
     public ToolRegistryView disableMcpServer(String id) {
         return toView(toolRegistryService.disableMcpServer(id));
+    }
+
+    @Override
+    public McpServerToolsResponse listMcpServerTools(String id) {
+        var entity = toolRegistryService.getTool(id);
+        var toolNames = toolRegistryService.listMcpServerTools(id);
+        var response = new McpServerToolsResponse();
+        response.serverId = id;
+        response.serverName = entity.name;
+        response.tools = toolNames.stream().map(name -> {
+            var info = new McpServerToolsResponse.McpToolInfo();
+            info.name = name;
+            return info;
+        }).toList();
+        return response;
     }
 
     @Override

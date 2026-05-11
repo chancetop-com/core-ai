@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView } from '../../api/client';
+import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
@@ -53,6 +53,11 @@ export default function AgentEditor() {
   const [apiAppServices, setApiAppServices] = useState<Record<string, ApiServiceView[]>>({});
   const [showApiPicker, setShowApiPicker] = useState(false);
   const [expandedApiService, setExpandedApiService] = useState<string | null>(null);
+
+  // mcp server tool picker - expand individual MCP servers to select specific tools
+  const [mcpServerTools, setMcpServerTools] = useState<Record<string, McpToolInfo[]>>({});
+  const [expandedMcpServer, setExpandedMcpServer] = useState<string | null>(null);
+  const [showMcp, setShowMcp] = useState(false);
 
   // test panel
   const [testInput, setTestInput] = useState('');
@@ -192,6 +197,68 @@ export default function AgentEditor() {
     if (agent.tools?.some((t: ToolRef) => t.id === toolId)) return;
     update('tools', [...(agent.tools || []), { id: toolId, type: 'API', source: appName }]);
   };
+
+  const loadMcpServerTools = async (serverId: string) => {
+    if (mcpServerTools[serverId]) return;
+    try {
+      const res = await api.tools.listMcpServerTools(serverId);
+      setMcpServerTools(prev => ({ ...prev, [serverId]: res.tools || [] }));
+    } catch (e) {
+      console.error('Failed to load MCP server tools:', serverId, e);
+    }
+  };
+
+  const toggleMcpServer = (serverId: string) => {
+    if (expandedMcpServer === serverId) {
+      setExpandedMcpServer(null);
+    } else {
+      setExpandedMcpServer(serverId);
+      loadMcpServerTools(serverId);
+    }
+  };
+
+  const isMcpServerFullySelected = (serverId: string): boolean => {
+    return agent.tools?.some((t: ToolRef) => t.id === serverId) || false;
+  };
+
+  const addMcpServerAll = (serverId: string) => {
+    if (isMcpServerFullySelected(serverId)) return;
+    // Remove individual tool refs for this server (composite format: mcp-tool:{serverId}:{toolName})
+    const toolPrefix = `mcp-tool:${serverId}:`;
+    const filtered = (agent.tools || []).filter((t: ToolRef) =>
+      !t.id.startsWith(toolPrefix));
+    update('tools', [...filtered, { id: serverId, type: 'MCP' }]);
+  };
+
+  const addMcpTool = (serverId: string, toolName: string) => {
+    const toolId = `mcp-tool:${serverId}:${toolName}`;
+    if (agent.tools?.some((t: ToolRef) => t.id === toolId)) return;
+    update('tools', [...(agent.tools || []), { id: toolId, type: 'MCP', source: serverId }]);
+  };
+
+  const isMcpToolSelected = (serverId: string, toolName: string): boolean => {
+    const toolId = `mcp-tool:${serverId}:${toolName}`;
+    return agent.tools?.some((t: ToolRef) => t.id === toolId) || false;
+  };
+
+  const removeMcpTool = (toolRef: ToolRef) => {
+    update('tools', (agent.tools || []).filter((t: ToolRef) => t.id !== toolRef.id));
+  };
+
+  const getMcpToolDisplayName = (toolRef: ToolRef): string => {
+    if (toolRef.id.startsWith('mcp-tool:')) {
+      const parts = toolRef.id.substring('mcp-tool:'.length).split(':');
+      if (parts.length >= 2) {
+        const serverId = parts[0];
+        const toolName = parts.slice(1).join(':');
+        const server = allTools.find(t => t.id === serverId);
+        return server ? `${server.name} > ${toolName}` : toolName;
+      }
+    }
+    return toolRef.id;
+  };
+
+  const mcpServers = allTools.filter(t => t.type === 'MCP');
 
   const getApiToolDisplayName = (toolRef: ToolRef): string => {
     if (toolRef.id.startsWith('api-app:')) return toolRef.id.substring('api-app:'.length);
@@ -777,15 +844,24 @@ export default function AgentEditor() {
               <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
                 {agent.tools.map((toolRef: ToolRef) => {
                   const isApiTool = toolRef.id.startsWith('api-app:') || toolRef.id.startsWith('api-service:') || toolRef.id.startsWith('api-operation:');
-                  const tool = isApiTool ? null : allTools.find(t => t.id === toolRef.id);
-                  const displayName = isApiTool ? getApiToolDisplayName(toolRef) : (tool?.name || toolRef.id);
-                  const color = isApiTool ? '#10b981' : (tool?.type || toolRef.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
+                  const isMcpTool = toolRef.id.startsWith('mcp-tool:');
+                  const tool = (isApiTool || isMcpTool) ? null : allTools.find(t => t.id === toolRef.id);
+                  const displayName = isApiTool ? getApiToolDisplayName(toolRef)
+                    : isMcpTool ? getMcpToolDisplayName(toolRef)
+                    : (tool?.name || toolRef.id);
+                  const color = isApiTool ? '#10b981' : (toolRef.type || tool?.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
                   return (
-                    <span key={toolRef.id}
+                    <span key={`${toolRef.id}:${toolRef.source || ''}`}
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]"
                       style={{ background: `${color}10`, border: `1px solid ${color}30` }}>
                       <span style={{ color }}>{displayName}</span>
-                      <button onClick={() => update('tools', agent.tools.filter((t: ToolRef) => t.id !== toolRef.id))}
+                      <button onClick={() => {
+                        if (isMcpTool) {
+                          removeMcpTool(toolRef);
+                        } else {
+                          update('tools', agent.tools.filter((t: ToolRef) => t.id !== toolRef.id));
+                        }
+                      }}
                         className="cursor-pointer rounded hover:opacity-70" style={{ color }}>
                         <X size={10} />
                       </button>
@@ -812,20 +888,100 @@ export default function AgentEditor() {
             />
 
             {/* MCP Tools */}
-            <ToolSection
-              title="MCP"
-              color="#8b5cf6"
-              items={allTools.filter(t => t.type === 'MCP')}
-              selectedIds={agent.tools?.map((t: ToolRef) => t.id) || []}
-              onToggle={(id, selected) => {
-                if (selected) {
-                  update('tools', agent.tools.filter((t: ToolRef) => t.id !== id));
-                } else {
-                  const tool = allTools.find(t => t.id === id);
-                  update('tools', [...(agent.tools || []), { id, type: 'MCP', source: tool?.category }]);
-                }
-              }}
-            />
+            <div className="mt-2 rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium cursor-pointer hover:bg-[var(--color-bg-tertiary)] rounded-lg"
+                onClick={() => setShowMcp(!showMcp)}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ background: '#8b5cf6' }} />
+                  <span>MCP</span>
+                  {mcpServers.length > 0 && agent.tools?.some((t: ToolRef) => t.type === 'MCP') && (
+                    <span className="text-[10px] px-1 rounded-full" style={{ background: '#8b5cf620', color: '#8b5cf6' }}>
+                      {agent.tools.filter((t: ToolRef) => t.type === 'MCP').length}
+                    </span>
+                  )}
+                </div>
+                {showMcp ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              {showMcp && (
+                <>{mcpServers.length === 0 ? (
+                <div className="px-3 py-2 text-xs border-t" style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}>No MCP servers available</div>
+              ) : (
+                <div className="border-t max-h-[400px] overflow-auto" style={{ borderColor: 'var(--color-border)' }}>
+                {mcpServers.map(server => {
+                  const serverFullySelected = isMcpServerFullySelected(server.id);
+                  const individualToolCount = (agent.tools || []).filter((t: ToolRef) => t.id.startsWith(`mcp-tool:${server.id}:`)).length;
+                  return (
+                  <div key={server.id} className="border-t first:border-t-0" style={{ borderColor: 'var(--color-border)' }}>
+                    <div className="flex items-center px-3 py-1.5">
+                      <button
+                        className="flex-1 flex items-center gap-2 text-xs cursor-pointer text-left"
+                        onClick={() => toggleMcpServer(server.id)}>
+                        {expandedMcpServer === server.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <span className="font-medium">{server.name}</span>
+                        {individualToolCount > 0 && (
+                          <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>
+                            {individualToolCount} tool{individualToolCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer flex-shrink-0"
+                        style={{
+                          background: (serverFullySelected || (server.enabled === false)) ? 'var(--color-bg-tertiary)' : '#8b5cf620',
+                          color: (serverFullySelected || (server.enabled === false)) ? 'var(--color-text-secondary)' : '#8b5cf6',
+                        }}
+                        disabled={!!(serverFullySelected || server.enabled === false)}
+                        onClick={() => addMcpServerAll(server.id)}>
+                        {serverFullySelected ? 'Added' : 'Add All'}
+                      </button>
+                    </div>
+                    {expandedMcpServer === server.id && (
+                      <div className="pl-6 pb-1">
+                        {!mcpServerTools[server.id] ? (
+                          <div className="px-3 py-1 text-xs flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+                            <Loader2 size={10} className="animate-spin" /> Loading...
+                          </div>
+                        ) : mcpServerTools[server.id].length === 0 ? (
+                          <div className="px-3 py-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No tools available</div>
+                        ) : (
+                          mcpServerTools[server.id].map(tool => {
+                            const toolSelected = isMcpToolSelected(server.id, tool.name);
+                            return (
+                              <div key={tool.name}
+                                className="flex items-center justify-between px-3 py-0.5 text-xs hover:bg-[var(--color-bg-tertiary)] rounded">
+                                <span className="truncate flex-1">{tool.name}</span>
+                                <button
+                                  className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer flex-shrink-0"
+                                  style={{
+                                    background: (toolSelected || serverFullySelected) ? 'var(--color-bg-tertiary)' : '#8b5cf620',
+                                    color: (toolSelected || serverFullySelected) ? 'var(--color-text-secondary)' : '#8b5cf6',
+                                  }}
+                                    disabled={!!(toolSelected || serverFullySelected)}
+                                    onClick={() => {
+                                      const toolRefId = `mcp-tool:${server.id}:${tool.name}`;
+                                      if (toolSelected) {
+                                        removeMcpTool({ id: toolRefId, type: 'MCP' });
+                                      } else {
+                                        addMcpTool(server.id, tool.name);
+                                      }
+                                    }}>
+                                  {serverFullySelected ? '✓' : toolSelected ? 'Added' : 'Add'}
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  );
+                })}
+                </div>
+              )}
+            </>
+          )}
+            </div>
 
             {/* Service API Tools */}
             <div className="mt-2 rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>

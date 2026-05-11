@@ -344,6 +344,17 @@ export interface ListToolCategoriesResponse {
   categories: string[];
 }
 
+export interface McpToolInfo {
+  name: string;
+  description: string;
+}
+
+export interface McpServerToolsResponse {
+  server_id: string;
+  server_name: string;
+  tools: McpToolInfo[];
+}
+
 export interface ApiAppView {
   name: string;
   base_url: string;
@@ -672,6 +683,8 @@ export const api = {
       request<ListApiAppsResponse>('/api/tools/service-api/apps'),
     listApiAppServices: (appName: string) =>
       request<ListApiAppServicesResponse>(`/api/tools/service-api/apps/${appName}/services`),
+    listMcpServerTools: (serverId: string) =>
+      request<McpServerToolsResponse>(`/api/tools/mcp-servers/${serverId}/tools`),
   },
   serviceApis: {
     list: () =>
