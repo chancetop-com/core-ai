@@ -50,7 +50,12 @@ public class Function extends ToolCall {
                 args[i] = context;
             } else {
                 var toolParam = this.getParameters().get(jsonParamIndex);
-                var value = argsMap.get(toolParam.getName());
+                Object value;
+                if (toolParam.isFlatten()) {
+                    value = argsMap;
+                } else {
+                    value = argsMap.get(toolParam.getName());
+                }
                 if (value == null && toolParam.isRequired()) {
                     throw new IllegalAccessException(Strings.format("require arg: {} is null", getName(), toolParam.getName()));
                 } else if (value == null) {
@@ -67,7 +72,7 @@ public class Function extends ToolCall {
 
     @Override
     public ToolCallResult execute(String text, ExecutionContext context) {
-        logger.debug("func text is {}", text);
+        logger.info("func text is {}", text);
         long startTime = System.currentTimeMillis();
         try {
             var result = executeSupport(text, context);

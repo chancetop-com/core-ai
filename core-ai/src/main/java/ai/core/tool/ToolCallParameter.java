@@ -20,6 +20,7 @@ public class ToolCallParameter {
     Class<?> itemType;
     List<ToolCallParameter> items;
     List<String> itemEnums;
+    boolean flatten;
 
     public String getName() {
         return name;
@@ -55,6 +56,14 @@ public class ToolCallParameter {
 
     public List<String> getItemEnums() {
         return itemEnums;
+    }
+
+    public boolean isFlatten() {
+        return flatten;
+    }
+
+    public void setFlatten(boolean flatten) {
+        this.flatten = flatten;
     }
 
     public List<ToolCallParameter> getItems() {

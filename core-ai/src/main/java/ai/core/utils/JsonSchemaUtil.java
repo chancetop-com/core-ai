@@ -149,14 +149,27 @@ public class JsonSchemaUtil {
         if (parent != null) {
             schema.enums = parent.getItemEnums();
         }
-        schema.required = parameters.stream()
+        var expandedParams = expandFlattenParameters(parameters);
+        schema.required = expandedParams.stream()
                 .filter(v -> v.isRequired() != null && v.isRequired() && v.getName() != null)
                 .map(ToolCallParameter::getName)
                 .toList();
-        schema.properties = parameters.stream()
+        schema.properties = expandedParams.stream()
                 .filter(v -> v.getName() != null)
                 .collect(Collectors.toMap(ToolCallParameter::getName, JsonSchemaUtil::toSchemaProperty, (v1, v2) -> v1));
         return schema;
+    }
+
+    private static List<ToolCallParameter> expandFlattenParameters(List<ToolCallParameter> parameters) {
+        var result = new ArrayList<ToolCallParameter>();
+        for (var param : parameters) {
+            if (param.isFlatten() && param.getItems() != null) {
+                result.addAll(param.getItems());
+            } else {
+                result.add(param);
+            }
+        }
+        return result;
     }
 
     private static JsonSchema toSchemaProperty(ToolCallParameter p) {

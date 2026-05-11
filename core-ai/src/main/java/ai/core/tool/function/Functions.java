@@ -69,6 +69,10 @@ public class Functions extends ArrayList<Function> {
             builder.timeoutMs(functionDef.timeoutMs());
         }
 
+        if (!functionDef.concurrencyGroup().isEmpty()) {
+            builder.concurrencyGroup(functionDef.concurrencyGroup());
+        }
+
         var function = builder.build();
 
         if (!Modifier.isStatic(method.getModifiers())) {
@@ -82,29 +86,70 @@ public class Functions extends ArrayList<Function> {
         var parameterList = new ArrayList<ToolCallParameter>();
         var methodParameters = method.getParameters();
         for (var methodParameter : methodParameters) {
-            // skip ExecutionContext type, not included in tool parameter definition
             if (methodParameter.getType() == ExecutionContext.class) {
                 continue;
             }
-            var parameter = buildParameter(methodParameter);
-            parameterList.add(parameter);
+            var functionParam = methodParameter.getAnnotation(CoreAiParameter.class);
+            if (functionParam != null) {
+                parameterList.add(buildParameter(methodParameter, functionParam));
+            } else if (ToolCallParameterUtil.isCustomObjectType(methodParameter.getType())) {
+                parameterList.add(buildFlattenParameter(methodParameter));
+            } else {
+                throw new IllegalArgumentException("Method parameter [" + methodParameter.getName() + "] in [" + method.getName() + "] must have @CoreAiParameter annotation or be a custom object type with @CoreAiParameter on its fields");
+            }
         }
         return parameterList;
     }
 
-    private static ToolCallParameter buildParameter(Parameter methodParameter) {
-        var functionParam = methodParameter.getAnnotation(CoreAiParameter.class);
+    private static ToolCallParameter buildParameter(Parameter methodParameter, CoreAiParameter functionParam) {
         var parameter = new ToolCallParameter();
         parameter.setName(functionParam.name());
         parameter.setDescription(functionParam.description());
         parameter.setClassType(methodParameter.getType());
 
-        // Extract generic type for collections/arrays (e.g., List<TodoEntity> -> TodoEntity.class)
         ToolCallParameterUtil.extractGenericItemType(methodParameter.getParameterizedType(), parameter);
 
         parameter.setRequired(functionParam.required());
         parameter.setEnums(List.of(functionParam.enums()));
         return parameter;
+    }
+
+    private static ToolCallParameter buildFlattenParameter(Parameter methodParameter) {
+        var parameter = new ToolCallParameter();
+        parameter.setName(methodParameter.getName());
+        parameter.setClassType(methodParameter.getType());
+        parameter.setFlatten(true);
+        parameter.setItems(buildFlattenItems(methodParameter.getType()));
+        return parameter;
+    }
+
+    private static List<ToolCallParameter> buildFlattenItems(Class<?> clazz) {
+        var items = new ArrayList<ToolCallParameter>();
+        for (var field : clazz.getDeclaredFields()) {
+            if (ToolCallParameterUtil.shouldSkipField(field)) continue;
+            var annotation = field.getAnnotation(CoreAiParameter.class);
+            if (annotation == null) continue;
+
+            var item = new ToolCallParameter();
+            item.setName(annotation.name().isEmpty() ? field.getName() : annotation.name());
+            item.setDescription(annotation.description());
+            item.setRequired(annotation.required());
+            if (annotation.enums().length > 0) {
+                item.setEnums(List.of(annotation.enums()));
+            }
+            if (field.getType().isEnum()) {
+                item.setClassType(String.class);
+                var constants = field.getType().getEnumConstants();
+                var values = new ArrayList<String>();
+                for (var c : constants) values.add(c.toString());
+                item.setEnums(values);
+            } else {
+                item.setClassType(field.getType());
+                ToolCallParameterUtil.extractGenericItemType(field.getGenericType(), item);
+            }
+            items.add(item);
+        }
+        return items;
     }
 
     public static List<Method> getAllMethods(Class<?> clazz, Predicate<Method> predicate) {
