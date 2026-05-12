@@ -41,10 +41,12 @@ export default function AgentEditor() {
   // subagents
   const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
   const [subAgentSearch, setSubAgentSearch] = useState('');
+  const [subAgentFocused, setSubAgentFocused] = useState(false);
 
   // skills
   const [allSkills, setAllSkills] = useState<SkillDefinition[]>([]);
   const [skillSearch, setSkillSearch] = useState('');
+  const [skillFocused, setSkillFocused] = useState(false);
 
   // service-api picker
   const [apiApps, setApiApps] = useState<ApiAppView[]>([]);
@@ -1163,15 +1165,19 @@ export default function AgentEditor() {
                 style={inputStyle}>
                 <Search size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
                 <input value={subAgentSearch} onChange={e => setSubAgentSearch(e.target.value)}
+                  onFocus={() => setSubAgentFocused(true)}
+                  onBlur={() => setSubAgentFocused(false)}
                   className="flex-1 bg-transparent outline-none text-sm"
-                  placeholder="Search agents to add as subagent..." />
+                  placeholder="Click to browse or type to filter agents..." />
               </div>
-              {subAgentSearch && (
+              {(subAgentFocused || subAgentSearch) && (
+                // preventDefault on mousedown keeps the input focused so clicking a candidate doesn't trigger blur first
                 <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
+                  onMouseDown={e => e.preventDefault()}
                   style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
                   {allAgents
                     .filter(a => !((agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined)?.includes(a.id))
-                    .filter(a => a.name.toLowerCase().includes(subAgentSearch.toLowerCase()) || a.type?.toLowerCase().includes(subAgentSearch.toLowerCase()))
+                    .filter(a => !subAgentSearch || a.name.toLowerCase().includes(subAgentSearch.toLowerCase()) || a.type?.toLowerCase().includes(subAgentSearch.toLowerCase()))
                     .map(a => (
                       <button key={a.id}
                         onClick={() => {
@@ -1192,9 +1198,12 @@ export default function AgentEditor() {
                         )}
                       </button>
                     ))}
-                  {allAgents.filter(a => !((agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined)?.includes(a.id))
-                    .filter(a => a.name.toLowerCase().includes(subAgentSearch.toLowerCase())).length === 0 && (
-                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching agents</div>
+                  {allAgents
+                    .filter(a => !((agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined)?.includes(a.id))
+                    .filter(a => !subAgentSearch || a.name.toLowerCase().includes(subAgentSearch.toLowerCase())).length === 0 && (
+                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                      {subAgentSearch ? 'No matching agents' : 'No more agents available'}
+                    </div>
                   )}
                 </div>
               )}
@@ -1245,15 +1254,18 @@ export default function AgentEditor() {
                 style={inputStyle}>
                 <Search size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
                 <input value={skillSearch} onChange={e => setSkillSearch(e.target.value)}
+                  onFocus={() => setSkillFocused(true)}
+                  onBlur={() => setSkillFocused(false)}
                   className="flex-1 bg-transparent outline-none text-sm"
-                  placeholder="Search skills to add..." />
+                  placeholder="Click to browse or type to filter skills..." />
               </div>
-              {skillSearch && (
+              {(skillFocused || skillSearch) && (
                 <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
+                  onMouseDown={e => e.preventDefault()}
                   style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
                   {allSkills
                     .filter(s => !((agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined)?.includes(s.id))
-                    .filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase()) || s.namespace?.toLowerCase().includes(skillSearch.toLowerCase()))
+                    .filter(s => !skillSearch || s.name.toLowerCase().includes(skillSearch.toLowerCase()) || s.namespace?.toLowerCase().includes(skillSearch.toLowerCase()))
                     .map(s => (
                       <button key={s.id}
                         onClick={() => {
@@ -1274,9 +1286,12 @@ export default function AgentEditor() {
                         )}
                       </button>
                     ))}
-                  {allSkills.filter(s => !((agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined)?.includes(s.id))
-                    .filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase())).length === 0 && (
-                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>No matching skills</div>
+                  {allSkills
+                    .filter(s => !((agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined)?.includes(s.id))
+                    .filter(s => !skillSearch || s.name.toLowerCase().includes(skillSearch.toLowerCase())).length === 0 && (
+                    <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                      {skillSearch ? 'No matching skills' : 'No more skills available'}
+                    </div>
                   )}
                 </div>
               )}
