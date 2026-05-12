@@ -48,6 +48,7 @@ public final class ExecutionContext {
     private StreamingCallback streamingCallback;
     private List<AbstractLifecycle> lifecycles;
     private Consumer<Usage> tokenCostCallback;
+    private Map<String, SubAgentConfig> subAgentConfigs;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
@@ -181,6 +182,14 @@ public final class ExecutionContext {
 
     public void setTokenCostCallback(Consumer<Usage> tokenCostCallback) {
         this.tokenCostCallback = tokenCostCallback;
+    }
+
+    public Map<String, SubAgentConfig> getSubAgentConfigs() {
+        return subAgentConfigs;
+    }
+
+    public void setSubAgentConfigs(Map<String, SubAgentConfig> subAgentConfigs) {
+        this.subAgentConfigs = subAgentConfigs;
     }
 
     public static class Builder {

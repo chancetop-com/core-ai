@@ -4,6 +4,7 @@ import ai.core.AgentRuntimeException;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.Task;
+import ai.core.llm.LLMProvider;
 import ai.core.defaultagents.DefaultCodeSimplifierAgent;
 import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.defaultagents.DefaultGeneralAgent;
@@ -167,20 +168,45 @@ public class TaskTool extends ToolCall {
         subContext.setModel(context.getModel());
         subContext.setLifecycles(context.getLifecycle());
         subContext.setTokenCostCallback(context.getTokenCostCallback());
+        subContext.setSubAgentConfigs(context.getSubAgentConfigs());
         return subContext;
     }
 
     private Agent createAgent(String subagentType, ExecutionContext context) {
+        var llmProvider = resolveLlmProvider(subagentType, context);
+        var model = resolveModel(subagentType, context);
         if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultExploreAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+            return DefaultExploreAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
         }
         if (DefaultCodeSimplifierAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultCodeSimplifierAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+            return DefaultCodeSimplifierAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
         }
         if (DefaultGeneralAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultGeneralAgent.of(context.getLlmProvider(), context.getModel(), context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+            return DefaultGeneralAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
         }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
+    }
+
+    private String resolveModel(String subagentType, ExecutionContext context) {
+        var configs = context.getSubAgentConfigs();
+        if (configs != null) {
+            var config = configs.get(subagentType);
+            if (config != null && config.model() != null && !config.model().isBlank()) {
+                return config.model();
+            }
+        }
+        return context.getModel();
+    }
+
+    private LLMProvider resolveLlmProvider(String subagentType, ExecutionContext context) {
+        var configs = context.getSubAgentConfigs();
+        if (configs != null) {
+            var config = configs.get(subagentType);
+            if (config != null && config.llmProvider() != null) {
+                return config.llmProvider();
+            }
+        }
+        return context.getLlmProvider();
     }
 
     public static class Builder extends ToolCall.Builder<Builder, TaskTool> {

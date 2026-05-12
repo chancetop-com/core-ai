@@ -3,6 +3,7 @@ package ai.core.cli.agent;
 import ai.core.agent.Agent;
 import ai.core.agent.AgentBuilder;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.SubAgentConfig;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
@@ -76,14 +77,16 @@ public class CliAgent {
             builder.model(config.modelOverride);
         }
         var agent = builder.build();
-        agent.setExecutionContext(ExecutionContext.builder()
+        var execCtx = ExecutionContext.builder()
                 .sessionId(config.sessionId)
                 .customVariables(Map.of("workspace", config.workspace.toAbsolutePath().toString()))
                 .persistenceProvider(config.persistenceProvider)
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
                 .todoStoreFactory(new FileTodoStoreFactory(config.workspace.resolve(".core-ai/todos")))
                 .promptSections(constructPromptSection(config, hookOutput))
-                .build());
+                .build();
+        execCtx.setSubAgentConfigs(config.subAgentConfigs);
+        agent.setExecutionContext(execCtx);
         return agent;
     }
 
@@ -168,7 +171,8 @@ public class CliAgent {
                          boolean todoV2Enabled,
                          String sessionId,
                          List<A2ARemoteAgentConfig> remoteAgents,
-                         List<A2ARemoteServerConfig> remoteServers) {
+                         List<A2ARemoteServerConfig> remoteServers,
+                         Map<String, SubAgentConfig> subAgentConfigs) {
     }
 
     // ---- PromptInject implementations ----

@@ -1,5 +1,6 @@
 package ai.core.cli;
 
+import ai.core.agent.SubAgentConfig;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.config.ModelRegistry;
@@ -11,10 +12,15 @@ import ai.core.session.SessionManager;
 import ai.core.session.ToolPermissionStore;
 
 import java.util.List;
+import java.util.Map;
 
+/**
+ * @author lim chen
+ */
 record SessionContext(BootstrapResult result, PropertiesFileSource props, int maxTurn,
-                      FileSessionPersistence sessionPersistence, SessionManager sessionManager, String modelName,
-                      String currentSessionId, ToolPermissionStore permissionStore, MdMemoryProvider noteMemory,
-                      ModelRegistry modelRegistry, boolean memoryEnabled, boolean coding, boolean todoV2Enabled,
-                      List<A2ARemoteAgentConfig> remoteAgents, List<A2ARemoteServerConfig> remoteServers) {
+        FileSessionPersistence sessionPersistence, SessionManager sessionManager, String modelName,
+        String currentSessionId, ToolPermissionStore permissionStore, MdMemoryProvider noteMemory,
+        ModelRegistry modelRegistry, boolean memoryEnabled, boolean coding, boolean todoV2Enabled,
+        List<A2ARemoteAgentConfig> remoteAgents, List<A2ARemoteServerConfig> remoteServers,
+        Map<String, SubAgentConfig> subAgentConfigs) {
 }

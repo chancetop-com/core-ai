@@ -2,6 +2,7 @@ package ai.core.cli;
 
 import ai.core.a2a.A2ARunManager;
 import ai.core.a2a.RemoteAgentSession;
+import ai.core.agent.SubAgentConfig;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
@@ -13,13 +14,15 @@ import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.plugin.PluginManager;
-import ai.core.cli.remote.A2ARemoteConnector;
 import ai.core.cli.remote.A2ARemoteAgentConfigLoader;
+import ai.core.cli.remote.A2ARemoteConnector;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.remote.RemoteSessionRunner;
+import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.utils.PathUtils;
+import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManager;
@@ -29,7 +32,6 @@ import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence.SessionInfo;
 import ai.core.session.ToolPermissionStore;
-import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
@@ -49,7 +51,9 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class CliApp {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliApp.class);
@@ -116,8 +120,9 @@ public class CliApp {
         var permissionStore = whiteToolsPermissionStore();
         var noteMemory = memoryEnabled ? new MdMemoryProvider(workspace) : null;
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
+        var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
         return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName,
-                currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, coding, todoV2Enabled, remoteAgents, remoteServers);
+                currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, coding, todoV2Enabled, remoteAgents, remoteServers, subAgentConfigs);
     }
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
@@ -155,7 +160,7 @@ public class CliApp {
             ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n");
             ui.printStreamingChunk(AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
             return ui.readRawLine();
-        }, ctx.memoryEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers());
+        }, ctx.memoryEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs());
         var agent = CliAgent.of(agentConfig);
         var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled());
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
@@ -308,10 +313,11 @@ public class CliApp {
 
         CliLogger.initialize(currentSessionId);
 
+        var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
         var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
-        }, memoryEnabled, coding, todoV2Enabled, currentSessionId, remoteAgents, remoteServers);
+        }, memoryEnabled, coding, todoV2Enabled, currentSessionId, remoteAgents, remoteServers, subAgentConfigs);
 
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
         var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, sessionManager, sessionPersistence, workspace);
@@ -407,6 +413,38 @@ public class CliApp {
             }
         } catch (Exception e) {
             ui.showError(e.getMessage());
+        }
+    }
+
+    private static Map<String, SubAgentConfig> parseSubAgentConfig(PropertiesFileSource props, LLMProviders llmProviders) {
+        Map<String, SubAgentConfig> configs = new HashMap<>();
+        String prefix = "agent.sub.";
+        for (String key : props.propertyNames()) {
+            if (!key.startsWith(prefix)) continue;
+            String suffix = key.substring(prefix.length());
+            String agentName;
+            if (suffix.endsWith(".model")) {
+                agentName = suffix.substring(0, suffix.length() - ".model".length());
+                props.property(key).ifPresent(model -> configs.computeIfAbsent(agentName, k -> new SubAgentConfig()).model(model));
+            } else if (suffix.endsWith(".provider")) {
+                agentName = suffix.substring(0, suffix.length() - ".provider".length());
+                props.property(key).ifPresent(providerName -> {
+                    var provider = resolveProvider(providerName, llmProviders);
+                    if (provider != null) {
+                        configs.computeIfAbsent(agentName, k -> new SubAgentConfig()).llmProvider(provider);
+                    }
+                });
+            }
+        }
+        return configs;
+    }
+
+    private static LLMProvider resolveProvider(String name, LLMProviders llmProviders) {
+        try {
+            var type = LLMProviderType.fromName(name);
+            return llmProviders.getProvider(type);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 
