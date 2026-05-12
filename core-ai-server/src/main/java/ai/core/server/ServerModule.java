@@ -163,6 +163,7 @@ public class ServerModule extends Module {
         bind(ChannelService.class);
         bind(SessionChannelService.class);
         bind(ChatMessageService.class);
+        bind(ai.core.server.artifact.ChatArtifactSetup.class);
         bind(AgentSessionManager.class);
         bind(AgentDefinitionService.class);
         bind(ServerA2AService.class);

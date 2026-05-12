@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.llm.LLMProviders;
 import ai.core.sandbox.Sandbox;
+import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.tool.ToolCall;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -57,18 +58,6 @@ public class AgentRunner {
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
     private static final int SANDBOX_RELEASE_DELAY_SECONDS = 60;
     private static final int MAX_TRANSCRIPT_RESULT_LENGTH = 10240;
-    private static final String ARTIFACT_SYSTEM_INSTRUCTIONS = """
-
-        # Platform artifact delivery
-
-        When you create or update files in the sandbox that are intended for the caller to download or reuse
-        (for example PDFs, reports, charts, CSVs, spreadsheets, images, or archives), you must call the
-        `submit_artifacts` tool before your final response. Submit the sandbox file paths, usually under
-        `/tmp` or `/workspace`, with concise names and content types when known.
-
-        This is a platform delivery requirement. It does not change the user's requested final response format:
-        after submitting artifacts, still answer exactly as the task instructions require.
-        """;
 
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_CONCURRENT_RUNS);
     private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
@@ -278,7 +267,7 @@ public class AgentRunner {
             tools = List.of();
         }
         tools = new ArrayList<>(tools);
-        if (sandbox != null) tools.add(SubmitArtifactsTool.create(runEntity.id, definition.userId, fileService, agentRunCollection));
+        if (sandbox != null) tools.add(SubmitArtifactsTool.create(definition.userId, fileService, new AgentRunArtifactSink(runEntity.id, agentRunCollection)));
         var context = ExecutionContext.builder()
             .sessionId("run:" + definition.id)
             .userId(definition.userId)
@@ -375,8 +364,8 @@ public class AgentRunner {
 
     private String appendArtifactInstructions(String systemPrompt, boolean sandboxEnabled) {
         if (!sandboxEnabled) return systemPrompt;
-        if (systemPrompt == null || systemPrompt.isBlank()) return ARTIFACT_SYSTEM_INSTRUCTIONS.strip();
-        return systemPrompt + ARTIFACT_SYSTEM_INSTRUCTIONS;
+        if (systemPrompt == null || systemPrompt.isBlank()) return SubmitArtifactsTool.SYSTEM_INSTRUCTIONS.strip();
+        return systemPrompt + SubmitArtifactsTool.SYSTEM_INSTRUCTIONS;
     }
 
     private Throwable unwrapCause(Throwable e) {

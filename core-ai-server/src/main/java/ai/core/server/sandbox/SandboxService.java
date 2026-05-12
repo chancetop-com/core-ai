@@ -101,6 +101,12 @@ public class SandboxService {
         return sessionSandboxes.containsKey(sessionId);
     }
 
+    public boolean isSandboxEnabled(SandboxConfig config) {
+        if (!enabled) return false;
+        var effectiveConfig = config != null ? config : defaultConfig;
+        return !Boolean.FALSE.equals(effectiveConfig.enabled);
+    }
+
     public SandboxConfig getEffectiveConfig(AgentDefinition definition) {
         if (!enabled) return defaultConfig;
         if (definition == null || definition.sandboxConfig == null) {

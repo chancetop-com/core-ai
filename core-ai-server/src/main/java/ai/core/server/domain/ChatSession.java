@@ -5,6 +5,7 @@ import core.framework.mongo.Field;
 import core.framework.mongo.Id;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * @author Xander
@@ -45,6 +46,9 @@ public class ChatSession {
 
     @Field(name = "last_message_at")
     public ZonedDateTime lastMessageAt;
+
+    @Field(name = "artifacts")
+    public List<AgentRunArtifact> artifacts;
 
     @Field(name = "deleted_at")
     public ZonedDateTime deletedAt;

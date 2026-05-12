@@ -1,7 +1,7 @@
 package ai.core.server.run;
 
 import ai.core.agent.ExecutionContext;
-import ai.core.server.domain.AgentRun;
+import ai.core.server.artifact.ArtifactSink;
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.file.FileService;
 import ai.core.tool.ToolCall;
@@ -10,7 +10,6 @@ import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
-import core.framework.mongo.MongoCollection;
 import core.framework.util.Strings;
 
 import java.time.ZonedDateTime;
@@ -23,6 +22,19 @@ import java.util.Map;
  */
 public final class SubmitArtifactsTool extends ToolCall {
     public static final String TOOL_NAME = "submit_artifacts";
+    public static final String SYSTEM_INSTRUCTIONS = """
+
+        # Platform artifact delivery
+
+        When you create or update files in the sandbox that are intended for the caller to download or reuse
+        (for example PDFs, reports, charts, CSVs, spreadsheets, images, or archives), you must call the
+        `submit_artifacts` tool before your final response. Submit the sandbox file paths, usually under
+        `/tmp` or `/workspace`, with concise names and content types when known.
+
+        This is a platform delivery requirement. It does not change the user's requested final response format:
+        after submitting artifacts, still answer exactly as the task instructions require.
+        """;
+
     private static final String TOOL_DESC = """
             Submit files created in the sandbox as downloadable run artifacts.
 
@@ -32,8 +44,13 @@ public final class SubmitArtifactsTool extends ToolCall {
             only the sandbox path and optional metadata.
             """;
 
-    public static SubmitArtifactsTool create(String runId, String userId, FileService fileService, MongoCollection<AgentRun> agentRunCollection) {
-        var tool = new SubmitArtifactsTool(runId, userId, fileService, agentRunCollection);
+    public static String appendInstructions(String systemPrompt) {
+        if (systemPrompt == null || systemPrompt.isBlank()) return SYSTEM_INSTRUCTIONS.strip();
+        return systemPrompt + SYSTEM_INSTRUCTIONS;
+    }
+
+    public static SubmitArtifactsTool create(String userId, FileService fileService, ArtifactSink sink) {
+        var tool = new SubmitArtifactsTool(userId, fileService, sink);
         tool.setName(TOOL_NAME);
         tool.setDescription(TOOL_DESC);
         tool.setParameters(parameters());
@@ -54,16 +71,14 @@ public final class SubmitArtifactsTool extends ToolCall {
         );
     }
 
-    private final String runId;
     private final String userId;
     private final FileService fileService;
-    private final MongoCollection<AgentRun> agentRunCollection;
+    private final ArtifactSink sink;
 
-    private SubmitArtifactsTool(String runId, String userId, FileService fileService, MongoCollection<AgentRun> agentRunCollection) {
-        this.runId = runId;
+    private SubmitArtifactsTool(String userId, FileService fileService, ArtifactSink sink) {
         this.userId = userId;
         this.fileService = fileService;
-        this.agentRunCollection = agentRunCollection;
+        this.sink = sink;
     }
 
     @Override
@@ -123,7 +138,7 @@ public final class SubmitArtifactsTool extends ToolCall {
             artifact.title = item.title;
             artifact.description = item.description;
             artifact.createdAt = ZonedDateTime.now();
-            appendArtifact(artifact);
+            sink.append(artifact);
 
             submitted.add(Map.of(
                 "path", item.path,
@@ -138,15 +153,6 @@ public final class SubmitArtifactsTool extends ToolCall {
 
     private String errorMessage(Exception e) {
         return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-    }
-
-    private void appendArtifact(AgentRunArtifact artifact) {
-        var run = agentRunCollection.get(runId)
-            .orElseThrow(() -> new RuntimeException("run not found, id=" + runId));
-        var artifacts = run.artifacts != null ? new ArrayList<>(run.artifacts) : new ArrayList<AgentRunArtifact>();
-        artifacts.add(artifact);
-        run.artifacts = artifacts;
-        agentRunCollection.replace(run);
     }
 
     public static class Request {

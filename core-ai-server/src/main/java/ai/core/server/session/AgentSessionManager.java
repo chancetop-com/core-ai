@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
+import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.sandbox.SandboxService;
@@ -67,6 +68,8 @@ public class AgentSessionManager {
     SystemPromptService systemPromptService;
     @Inject
     SkillArchiveBuilder skillArchiveBuilder;
+    @Inject
+    ChatArtifactSetup artifactSetup;
 
     EventPublisher eventPublisher;
     SessionOwnershipRegistry ownershipRegistry;
@@ -91,7 +94,8 @@ public class AgentSessionManager {
     public String createSession(SessionConfig config, String userId, String source) {
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
-        var agent = buildAgent(config, null, context, null);
+        var sandboxOn = sandboxService.isSandboxEnabled(null);
+        var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, sandboxOn), context, null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, source));
@@ -117,11 +121,12 @@ public class AgentSessionManager {
         var tools = resolveTools(definition);
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
-        var agent = buildAgent(config, tools.isEmpty() ? null : tools, context, definition.name);
+        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
+        var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
+        var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), artifactSetup.withSubmitArtifactsTool(tools.isEmpty() ? null : tools, sessionId, userId, sandboxOn), context, definition.name);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, definition.id, source));
-        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
         var sandbox2 = sandboxService.createSandbox(sandboxConfig, sessionId, userId, session::dispatchEvent);
         if (sandbox2 != null) context.sandbox(sandbox2);
         sessions.put(sessionId, session);
@@ -229,7 +234,8 @@ public class AgentSessionManager {
 
     private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ToolCall> tools, String userId, String agentName) {
         var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build() : null;
-        var agent = buildAgent(config, tools, context, agentName);
+        var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
+        var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools, context, agentName);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         attachSessionListeners(session, sessionId);
         registerSessionFromDb(sessionId, userId);
