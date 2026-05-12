@@ -35,9 +35,10 @@ function iconFor(spec: ArtifactSpec) {
 
 function supportsPreview(spec: ArtifactSpec): boolean {
   if (spec.kind === 'html' || spec.kind === 'svg' || spec.kind === 'markdown') return true;
-  if (spec.kind === 'file' && spec.contentType) {
-    return spec.contentType.startsWith('image/') || spec.contentType === 'text/html' || spec.contentType.includes('markdown');
-  }
+  // For file: always allow preview attempt — renderPreview will pick iframe/img/fallback
+  // based on contentType or filename extension. Without this, streaming-added artifacts
+  // (which carry no contentType yet) fall back to source view and show "No source".
+  if (spec.kind === 'file') return true;
   return false;
 }
 
@@ -246,13 +247,16 @@ function renderPreview(spec: ArtifactSpec, state: FileState) {
     if (!state.fileBlobUrl) {
       return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>No preview available.</div>;
     }
-    if (spec.contentType?.startsWith('image/')) {
+    const lowerName = spec.fileName?.toLowerCase() ?? '';
+    const isImage = spec.contentType?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(lowerName);
+    const isHtml = spec.contentType === 'text/html' || /\.html?$/.test(lowerName);
+    if (isImage) {
       return <div className="p-6 flex items-center justify-center"><img src={state.fileBlobUrl} alt={spec.title} className="max-w-full max-h-full" /></div>;
     }
-    if (spec.contentType === 'text/html' || spec.fileName?.toLowerCase().endsWith('.html')) {
+    if (isHtml) {
       return <iframe sandbox="allow-scripts" src={state.fileBlobUrl} title={spec.title} className="w-full h-full border-0" />;
     }
-    return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>Preview not available. Use the download button.</div>;
+    return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>Preview not available for this file type. Use the download button.</div>;
   }
   return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>No preview available.</div>;
 }

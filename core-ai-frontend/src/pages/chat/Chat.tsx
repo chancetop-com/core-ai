@@ -1168,26 +1168,7 @@ export default function Chat() {
                               border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
                             }}>
                             <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={msg.role === 'agent' ? {
-                                  code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
-                                    const match = /language-(\w+)/.exec(className || '');
-                                    if (!inline && match) {
-                                      const lang = match[1].toLowerCase();
-                                      if (lang === 'html' || lang === 'svg') {
-                                        const codeText = String(children ?? '').replace(/\n$/, '');
-                                        return (
-                                          <ArtifactCard
-                                            artifact={{ kind: lang, language: lang, title: lang === 'html' ? 'HTML page' : 'SVG image', content: codeText }}
-                                            onOpen={openArtifact}
-                                          />
-                                        );
-                                      }
-                                    }
-                                    return <code className={className} {...props}>{children}</code>;
-                                  },
-                                } : undefined}>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                 {textSeg.content}
                               </ReactMarkdown>
                             </div>
@@ -1255,25 +1236,20 @@ export default function Chat() {
             </div>
           ))}
           {sessionArtifacts.length > 0 && (
-            <div className="max-w-3xl mx-auto mt-4 mb-2 px-1">
-              <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-muted)' }}>
-                Artifacts ({sessionArtifacts.length})
-              </div>
-              <div className="flex flex-col gap-1">
-                {sessionArtifacts.map(a => (
-                  <ArtifactCard key={a.file_id}
-                    artifact={{
-                      kind: 'file',
-                      title: a.title || a.file_name,
-                      fileId: a.file_id,
-                      fileName: a.file_name,
-                      contentType: a.content_type,
-                      size: a.size,
-                    }}
-                    onOpen={openArtifact}
-                  />
-                ))}
-              </div>
+            <div className="mt-3 pl-11 flex flex-col items-start gap-1">
+              {sessionArtifacts.map(a => (
+                <ArtifactCard key={a.file_id}
+                  artifact={{
+                    kind: 'file',
+                    title: a.title || a.file_name,
+                    fileId: a.file_id,
+                    fileName: a.file_name,
+                    contentType: a.content_type,
+                    size: a.size,
+                  }}
+                  onOpen={openArtifact}
+                />
+              ))}
             </div>
           )}
           <div ref={bottomRef} />
