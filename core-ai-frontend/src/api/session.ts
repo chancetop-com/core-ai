@@ -122,6 +122,15 @@ export interface ChatSessionSummary {
   last_message_at?: string;
 }
 
+export interface SessionArtifact {
+  file_id: string;
+  file_name: string;
+  content_type?: string;
+  size?: number;
+  title?: string;
+  description?: string;
+}
+
 export interface HistoryMessage {
   role: string;
   content: string;
@@ -204,7 +213,7 @@ export const sessionApi = {
     request<void>(`/api/sessions/${sessionId}`, { method: 'DELETE' }),
 
   history: (sessionId: string) =>
-    request<{ messages: HistoryMessage[] }>(`/api/sessions/${sessionId}/history`),
+    request<{ messages: HistoryMessage[]; artifacts?: SessionArtifact[] }>(`/api/sessions/${sessionId}/history`),
 
   listChatSessions: (offset = 0, limit = 50, sources?: string[]) => {
     const qs = [`offset=${offset}`, `limit=${limit}`];

@@ -10,4 +10,7 @@ import java.util.List;
 public class SessionHistoryResponse {
     @Property(name = "messages")
     public List<Message> messages;
+
+    @Property(name = "artifacts")
+    public List<SessionArtifact> artifacts;
 }

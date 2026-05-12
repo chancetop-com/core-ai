@@ -4,13 +4,17 @@ import remarkGfm from 'remark-gfm';
 import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic, Maximize2, Minimize2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
-import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, ChatSessionSummary } from '../../api/session';
+import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import ResourcePicker from './ResourcePicker';
 import ToolPickerModal from './ToolPickerModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
 import VoiceTranscriberSidebar from './components/VoiceTranscriberSidebar';
+import ArtifactDrawer from './components/ArtifactDrawer';
+import ArtifactCard from './components/ArtifactCard';
+import type { ArtifactSpec } from './components/artifactTypes';
+import { isLongMarkdown } from './components/artifactTypes';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment } from './types';
 import { historyToChatMessages, getMessageText } from './utils';
@@ -69,6 +73,16 @@ export default function Chat() {
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const [showVoiceSidebar, setShowVoiceSidebar] = useState(false);
+  const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
+  const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>([]);
+  const openArtifact = useCallback((spec: ArtifactSpec) => {
+    setShowVoiceSidebar(false);
+    setActiveArtifact(spec);
+  }, []);
+  const openVoiceSidebar = useCallback(() => {
+    setActiveArtifact(null);
+    setShowVoiceSidebar(true);
+  }, []);
   const [voiceLanguage, setVoiceLanguage] = useState('zh-CN');
   const voice = useSpeechRecognition();
   const [variablesExpanded, setVariablesExpanded] = useState(false);
@@ -198,6 +212,7 @@ export default function Chat() {
       sseControllerRef.current = null;
       setSessionId(session.id);
       setMessages(historyToChatMessages(res.messages || []));
+      setSessionArtifacts(res.artifacts || []);
       setStatus('idle');
       setAwaitInfo(null);
       setPlanTodos(null);
@@ -1123,9 +1138,36 @@ export default function Chat() {
                               color: msg.role === 'user' ? 'white' : 'var(--color-text)',
                               border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
                             }}>
-                            <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{textSeg.content}</ReactMarkdown>
-                            </div>
+                            {msg.role === 'agent' && isLongMarkdown(textSeg.content) ? (
+                              <ArtifactCard
+                                artifact={{ kind: 'markdown', title: 'Document', content: textSeg.content }}
+                                onOpen={openArtifact}
+                              />
+                            ) : (
+                              <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  components={{
+                                    code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
+                                      const match = /language-(\w+)/.exec(className || '');
+                                      const codeText = String(children ?? '').replace(/\n$/, '');
+                                      if (!inline && match) {
+                                        const lang = match[1].toLowerCase();
+                                        const kind: ArtifactSpec['kind'] = lang === 'html' ? 'html' : lang === 'svg' ? 'svg' : 'code';
+                                        return (
+                                          <ArtifactCard
+                                            artifact={{ kind, language: lang, title: kind === 'html' ? 'HTML page' : kind === 'svg' ? 'SVG image' : `${lang} snippet`, content: codeText }}
+                                            onOpen={openArtifact}
+                                          />
+                                        );
+                                      }
+                                      return <code className={className} {...props}>{children}</code>;
+                                    },
+                                  }}>
+                                  {textSeg.content}
+                                </ReactMarkdown>
+                              </div>
+                            )}
                             {/* Cursor: show after text content when streaming */}
                             {status === 'running' && i === messages.length - 1 && textSeg.content && (
                               <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
@@ -1189,6 +1231,28 @@ export default function Chat() {
               )}
             </div>
           ))}
+          {sessionArtifacts.length > 0 && (
+            <div className="max-w-3xl mx-auto mt-4 mb-2 px-1">
+              <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                Artifacts ({sessionArtifacts.length})
+              </div>
+              <div className="flex flex-col gap-1">
+                {sessionArtifacts.map(a => (
+                  <ArtifactCard key={a.file_id}
+                    artifact={{
+                      kind: 'file',
+                      title: a.title || a.file_name,
+                      fileId: a.file_id,
+                      fileName: a.file_name,
+                      contentType: a.content_type,
+                      size: a.size,
+                    }}
+                    onOpen={openArtifact}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
       </div>
@@ -1385,7 +1449,7 @@ export default function Chat() {
                   voice.stopListening();
                   setShowVoiceSidebar(false);
                 } else {
-                  setShowVoiceSidebar(true);
+                  openVoiceSidebar();
                 }
               }}
               disabled={!selectedAgentId || status === 'running'}
@@ -1492,6 +1556,9 @@ export default function Chat() {
           onSendToChat={handleSendToChat}
           onSendAllToChat={handleSendAllToChat}
         />
+      )}
+      {activeArtifact && (
+        <ArtifactDrawer artifact={activeArtifact} onClose={() => setActiveArtifact(null)} />
       )}
     </div>
   );

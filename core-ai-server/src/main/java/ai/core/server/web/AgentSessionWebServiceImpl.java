@@ -218,6 +218,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     @Override
     public SessionHistoryResponse history(String sessionId) {
         var records = chatMessageService.history(sessionId);
+        var sessionArtifacts = chatMessageService.artifacts(sessionId);
         var messages = new ArrayList<Message>(records.size());
         for (var record : records) {
             var msg = new Message();
@@ -242,6 +243,18 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         }
         var response = new SessionHistoryResponse();
         response.messages = messages;
+        if (sessionArtifacts != null && !sessionArtifacts.isEmpty()) {
+            response.artifacts = sessionArtifacts.stream().map(a -> {
+                var v = new ai.core.api.server.session.SessionArtifact();
+                v.fileId = a.fileId;
+                v.fileName = a.fileName;
+                v.contentType = a.contentType;
+                v.size = a.size;
+                v.title = a.title;
+                v.description = a.description;
+                return v;
+            }).toList();
+        }
         return response;
     }
 

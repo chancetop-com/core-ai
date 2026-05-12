@@ -80,6 +80,10 @@ public class ChatMessageService {
         return chatSessionCollection.get(sessionId).orElse(null);
     }
 
+    public List<ai.core.server.domain.AgentRunArtifact> artifacts(String sessionId) {
+        return chatSessionCollection.get(sessionId).map(s -> s.artifacts).orElse(null);
+    }
+
     public List<ChatSession> listSessions(String userId, List<String> sources, int offset, int limit) {
         var query = new Query();
         var filters = new java.util.ArrayList<org.bson.conversions.Bson>();
