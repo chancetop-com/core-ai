@@ -205,17 +205,24 @@ export default function Chat() {
 
   const hydrateSession = useCallback(async (session: ChatSessionSummary) => {
     if (!session.id) return;
+    // Reset all session-scoped state synchronously before fetching new history.
+    // This guarantees any pending SSE callbacks from the previous session can't
+    // bleed into the next one, and any open drawer is closed.
+    sseControllerRef.current?.abort();
+    sseControllerRef.current = null;
+    setSessionId(session.id);
+    setMessages([]);
+    setSessionArtifacts([]);
+    setActiveArtifact(null);
+    setAwaitInfo(null);
+    setPlanTodos(null);
+    setCompressionInfo(null);
+    setIsThinking(false);
+    setStatus('idle');
     try {
       const res = await sessionApi.history(session.id);
-      sseControllerRef.current?.abort();
-      sseControllerRef.current = null;
-      setSessionId(session.id);
       setMessages(historyToChatMessages(res.messages || []));
       setSessionArtifacts(res.artifacts || []);
-      setStatus('idle');
-      setAwaitInfo(null);
-      setPlanTodos(null);
-      // Auto-select agent for this session
       if (session.agent_id && agents.some(a => a.id === session.agent_id)) {
         setSelectedAgentId(session.agent_id);
       }
@@ -388,6 +395,29 @@ export default function Chat() {
       case 'TOOL_RESULT':
       case 'tool_result': {
         const resultEvent = event as SseToolResultEvent;
+        if (resultEvent.tool_name === 'submit_artifacts' && resultEvent.result) {
+          try {
+            const parsed = JSON.parse(resultEvent.result);
+            const submitted = Array.isArray(parsed?.submitted) ? parsed.submitted : [];
+            if (submitted.length > 0) {
+              setSessionArtifacts(prev => {
+                const seen = new Set(prev.map(a => a.file_id));
+                const additions: SessionArtifact[] = [];
+                for (const s of submitted) {
+                  if (s?.file_id && !seen.has(s.file_id)) {
+                    additions.push({
+                      file_id: s.file_id,
+                      file_name: s.file_name || s.path || s.file_id,
+                    });
+                  }
+                }
+                return additions.length > 0 ? [...prev, ...additions] : prev;
+              });
+            }
+          } catch {
+            // tool result is not parseable JSON — ignore
+          }
+        }
         setMessages(prev => {
           const updated = [...prev];
           const last = updated[updated.length - 1];

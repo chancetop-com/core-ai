@@ -9,6 +9,7 @@ import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import core.framework.api.json.Property;
 import core.framework.util.Strings;
 
@@ -64,9 +65,10 @@ public final class SubmitArtifactsTool extends ToolCall {
     private static List<ToolCallParameter> parameters() {
         return ToolCallParameters.of(
             ToolCallParameters.ParamSpec.of(List.class, "artifacts", """
-                Array of artifact objects. Each item must include path, the sandbox file path to submit.
-                Optional item fields: name, title, description, content_type.
-                Example: [{"path":"/tmp/report.pdf","name":"report.pdf","title":"Analysis report","content_type":"application/pdf"}]
+                Array of artifact objects. Each item MUST be a JSON object (not a bare string) with a required
+                `path` field — the sandbox file path to submit. Optional object fields: name, title, description, content_type.
+                Correct example: [{"path":"/tmp/report.pdf","name":"report.pdf","title":"Analysis","content_type":"application/pdf"}]
+                Do NOT pass an array of strings like ["/tmp/report.pdf"].
                 """).required()
         );
     }
@@ -95,7 +97,7 @@ public final class SubmitArtifactsTool extends ToolCall {
 
         Request request;
         try {
-            request = JsonUtil.fromJson(Request.class, arguments);
+            request = JsonUtil.fromJson(Request.class, normalizeArguments(arguments));
         } catch (Exception e) {
             return ToolCallResult.failed("failed to parse submit_artifacts arguments: " + e.getMessage(), e);
         }
@@ -153,6 +155,27 @@ public final class SubmitArtifactsTool extends ToolCall {
 
     private String errorMessage(Exception e) {
         return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
+    static String normalizeArguments(String arguments) {
+        if (Strings.isBlank(arguments)) return arguments;
+        try {
+            var root = JsonUtil.OBJECT_MAPPER.readTree(arguments);
+            var artifactsNode = root.get("artifacts");
+            if (artifactsNode == null || !artifactsNode.isArray()) return arguments;
+            var rewritten = JsonUtil.OBJECT_MAPPER.createArrayNode();
+            for (var item : artifactsNode) {
+                if (item.isTextual()) {
+                    rewritten.add(JsonUtil.OBJECT_MAPPER.createObjectNode().put("path", item.asText()));
+                } else {
+                    rewritten.add(item);
+                }
+            }
+            ((ObjectNode) root).set("artifacts", rewritten);
+            return JsonUtil.OBJECT_MAPPER.writeValueAsString(root);
+        } catch (Exception e) {
+            return arguments;
+        }
     }
 
     public static class Request {
