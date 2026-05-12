@@ -73,7 +73,9 @@ export default function Chat() {
   const [toast, setToast] = useState<string | null>(null);
   const [showVoiceSidebar, setShowVoiceSidebar] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
-  const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>([]);
+  const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>(() => {
+    try { const s = sessionStorage.getItem('chat_artifacts'); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
   const openArtifact = useCallback((spec: ArtifactSpec) => {
     setShowVoiceSidebar(false);
     setActiveArtifact(spec);
@@ -134,6 +136,10 @@ export default function Chat() {
     if (messages.length > 0) sessionStorage.setItem('chat_messages', JSON.stringify(messages));
     else sessionStorage.removeItem('chat_messages');
   }, [messages]);
+  useEffect(() => {
+    if (sessionArtifacts.length > 0) sessionStorage.setItem('chat_artifacts', JSON.stringify(sessionArtifacts));
+    else sessionStorage.removeItem('chat_artifacts');
+  }, [sessionArtifacts]);
   useEffect(() => {
     if (sessionId) sessionStorage.setItem('chat_sessionId', sessionId);
     else sessionStorage.removeItem('chat_sessionId');
@@ -691,6 +697,8 @@ export default function Chat() {
     if (sessionId) sessionApi.close(sessionId).catch(() => {});
     setSessionId(null);
     setMessages([]);
+    setSessionArtifacts([]);
+    setActiveArtifact(null);
     setStatus('idle');
     setAwaitInfo(null);
     setPlanTodos(null);
@@ -702,6 +710,7 @@ export default function Chat() {
     streamingThinkingRef.current = '';
     sessionStorage.removeItem('chat_messages');
     sessionStorage.removeItem('chat_sessionId');
+    sessionStorage.removeItem('chat_artifacts');
   };
 
   // Fetch available tools for picker
