@@ -7,6 +7,7 @@ import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
@@ -63,7 +64,7 @@ public class ChatMessageService {
         msg.content = content;
         msg.traceId = ActionLogContext.id();
         msg.createdAt = ZonedDateTime.now();
-        chatMessageCollection.insert(msg);
+        insertWithRetry(msg, sessionId);
 
         upsertSessionOnUserMessage(sessionId, content);
     }
@@ -188,6 +189,21 @@ public class ChatMessageService {
         return new AtomicLong(seed);
     }
 
+    private void insertWithRetry(ChatMessage msg, String sessionId) {
+        try {
+            chatMessageCollection.insert(msg);
+        } catch (MongoWriteException e) {
+            if (e.getCode() == 11000) {
+                LOGGER.warn("duplicate seq detected, re-seeding counter and retrying, sessionId={}, seq={}", sessionId, msg.seq);
+                seqBySession.remove(sessionId);
+                msg.seq = nextSeq(sessionId);
+                chatMessageCollection.insert(msg);
+            } else {
+                throw e;
+            }
+        }
+    }
+
     private TurnBuffer buffer(String sessionId) {
         return bufferBySession.computeIfAbsent(sessionId, k -> new TurnBuffer());
     }
@@ -235,7 +251,7 @@ public class ChatMessageService {
                 msg.tools = buf != null && !buf.tools.isEmpty() ? List.copyOf(buf.tools.values()) : null;
                 msg.traceId = ActionLogContext.id();
                 msg.createdAt = ZonedDateTime.now();
-                chatMessageCollection.insert(msg);
+                insertWithRetry(msg, sessionId);
                 bumpSessionOnAgentTurn(sessionId);
             } catch (Exception e) {
                 LOGGER.warn("failed to persist agent message, sessionId={}", sessionId, e);
