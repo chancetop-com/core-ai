@@ -30,6 +30,27 @@ function hasAnySegments(segments?: MessageSegment[]): boolean {
   return segments != null && segments.length > 0;
 }
 
+function getMessageArtifacts(msg: ChatMessage, all: { file_id: string; file_name: string; content_type?: string; size?: number; title?: string }[]): typeof all {
+  const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
+  if (!toolsSeg) return [];
+  const fileIds = new Set<string>();
+  for (const t of toolsSeg.tools) {
+    if (t.tool === 'submit_artifacts' && t.type === 'result' && t.result) {
+      try {
+        const parsed = JSON.parse(t.result);
+        const submitted = Array.isArray(parsed?.submitted) ? parsed.submitted : [];
+        for (const s of submitted) {
+          if (s?.file_id) fileIds.add(s.file_id);
+        }
+      } catch {
+        // ignore non-JSON tool result
+      }
+    }
+  }
+  if (fileIds.size === 0) return [];
+  return all.filter(a => fileIds.has(a.file_id));
+}
+
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -1177,7 +1198,26 @@ export default function Chat() {
                               border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
                             }}>
                             <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={msg.role === 'agent' ? {
+                                  code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
+                                    const match = /language-(\w+)/.exec(className || '');
+                                    if (!inline && match) {
+                                      const lang = match[1].toLowerCase();
+                                      if (lang === 'html' || lang === 'svg') {
+                                        const codeText = String(children ?? '').replace(/\n$/, '');
+                                        return (
+                                          <ArtifactCard
+                                            artifact={{ kind: lang, language: lang, title: lang === 'html' ? 'HTML page' : 'SVG image', content: codeText }}
+                                            onOpen={openArtifact}
+                                          />
+                                        );
+                                      }
+                                    }
+                                    return <code className={className} {...props}>{children}</code>;
+                                  },
+                                } : undefined}>
                                 {textSeg.content}
                               </ReactMarkdown>
                             </div>
@@ -1200,6 +1240,28 @@ export default function Chat() {
                 )}
                 {/* Plan update block */}
                 {planTodos && planTodos.length > 0 && msg.role === 'agent' && i === messages.length - 1 && <PlanUpdateBlock todos={planTodos} />}
+                {/* Per-message artifact cards: submitted by this message's submit_artifacts tool calls */}
+                {msg.role === 'agent' && (() => {
+                  const msgArtifacts = getMessageArtifacts(msg, sessionArtifacts);
+                  if (msgArtifacts.length === 0) return null;
+                  return (
+                    <div className="mt-2 flex flex-col items-start gap-1">
+                      {msgArtifacts.map(a => (
+                        <ArtifactCard key={a.file_id}
+                          artifact={{
+                            kind: 'file',
+                            title: a.title || a.file_name,
+                            fileId: a.file_id,
+                            fileName: a.file_name,
+                            contentType: a.content_type,
+                            size: a.size,
+                          }}
+                          onOpen={openArtifact}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
                 {/* Copy button: shown if any text segments exist */}
                 {hasTextSegments(msg.segments) && (
                   <div className={`flex mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user' ? 'justify-end' : ''}`}>
@@ -1244,23 +1306,6 @@ export default function Chat() {
               )}
             </div>
           ))}
-          {sessionArtifacts.length > 0 && (
-            <div className="mt-3 pl-11 flex flex-col items-start gap-1">
-              {sessionArtifacts.map(a => (
-                <ArtifactCard key={a.file_id}
-                  artifact={{
-                    kind: 'file',
-                    title: a.title || a.file_name,
-                    fileId: a.file_id,
-                    fileName: a.file_name,
-                    contentType: a.content_type,
-                    size: a.size,
-                  }}
-                  onOpen={openArtifact}
-                />
-              ))}
-            </div>
-          )}
           <div ref={bottomRef} />
         </div>
       </div>

@@ -42,8 +42,20 @@ function supportsPreview(spec: ArtifactSpec): boolean {
   return false;
 }
 
+const TEXT_EXT_RE = /\.(html?|css|js|jsx|ts|tsx|mjs|json|md|markdown|txt|xml|svg|py|java|kt|go|rb|rs|sh|bash|yaml|yml|toml|csv|tsv|sql|conf|ini|log)$/i;
+
+function isTextFile(spec: ArtifactSpec): boolean {
+  const ct = spec.contentType?.toLowerCase();
+  if (ct) {
+    if (ct.startsWith('text/')) return true;
+    if (ct.includes('json') || ct.includes('xml') || ct.includes('javascript') || ct.includes('yaml')) return true;
+  }
+  if (spec.fileName && TEXT_EXT_RE.test(spec.fileName)) return true;
+  return false;
+}
+
 function supportsSource(spec: ArtifactSpec): boolean {
-  if (spec.kind === 'file') return false;
+  if (spec.kind === 'file') return isTextFile(spec);
   return true;
 }
 
@@ -70,6 +82,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   const [mode, setMode] = useState<ViewMode>(canPreview ? 'preview' : 'source');
   const [copied, setCopied] = useState(false);
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
+  const [fileText, setFileText] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
 
@@ -80,6 +93,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   useEffect(() => {
     if (artifact.kind !== 'file' || !artifact.fileId) {
       setFileBlobUrl(null);
+      setFileText(null);
       setFileError(null);
       return;
     }
@@ -88,10 +102,21 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
     setFileLoading(true);
     setFileError(null);
     setFileBlobUrl(null);
-    fetchFileBlob(artifact.fileId).then(blob => {
+    setFileText(null);
+    const wantText = isTextFile(artifact);
+    fetchFileBlob(artifact.fileId).then(async blob => {
       if (cancelled) return;
       createdUrl = URL.createObjectURL(blob);
       setFileBlobUrl(createdUrl);
+      if (wantText) {
+        try {
+          const text = await blob.text();
+          if (cancelled) return;
+          setFileText(text);
+        } catch {
+          // ignore text decoding failure; preview iframe still works
+        }
+      }
       setFileLoading(false);
     }).catch(err => {
       if (cancelled) return;
@@ -102,7 +127,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
       cancelled = true;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [artifact.kind, artifact.fileId]);
+  }, [artifact.kind, artifact.fileId, artifact.contentType, artifact.fileName]);
 
   const downloadUrl = useMemo(() => fileDownloadUrl(artifact), [artifact]);
 
@@ -204,7 +229,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
 
       <div className="flex-1 min-h-0 overflow-auto" style={{ background: 'var(--color-bg)' }}>
         {mode === 'preview' && renderPreview(artifact, { fileBlobUrl, fileError, fileLoading })}
-        {mode === 'source' && renderSource(artifact)}
+        {mode === 'source' && renderSource(artifact, { fileText, fileError, fileLoading })}
       </div>
     </div>
   );
@@ -212,6 +237,12 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
 
 interface FileState {
   fileBlobUrl: string | null;
+  fileError: string | null;
+  fileLoading: boolean;
+}
+
+interface FileSourceState {
+  fileText: string | null;
   fileError: string | null;
   fileLoading: boolean;
 }
@@ -261,7 +292,27 @@ function renderPreview(spec: ArtifactSpec, state: FileState) {
   return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>No preview available.</div>;
 }
 
-function renderSource(spec: ArtifactSpec) {
+function renderSource(spec: ArtifactSpec, state: FileSourceState) {
+  if (spec.kind === 'file') {
+    if (state.fileLoading) {
+      return (
+        <div className="p-6 flex items-center justify-center gap-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          <Loader2 size={16} className="animate-spin" /> Loading source...
+        </div>
+      );
+    }
+    if (state.fileError) {
+      return <div className="p-6 text-sm" style={{ color: 'var(--color-error)' }}>Failed to load source: {state.fileError}</div>;
+    }
+    if (state.fileText == null) {
+      return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>Source not available for this file type.</div>;
+    }
+    return (
+      <div className="h-full">
+        <CodeMirrorEditor value={state.fileText} filename={spec.fileName || 'snippet.txt'} onChange={() => undefined} readOnly />
+      </div>
+    );
+  }
   if (spec.content == null) {
     return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>No source available.</div>;
   }
