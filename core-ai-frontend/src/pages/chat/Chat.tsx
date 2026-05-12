@@ -14,7 +14,6 @@ import VoiceTranscriberSidebar from './components/VoiceTranscriberSidebar';
 import ArtifactDrawer from './components/ArtifactDrawer';
 import ArtifactCard from './components/ArtifactCard';
 import type { ArtifactSpec } from './components/artifactTypes';
-import { isLongMarkdown } from './components/artifactTypes';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment } from './types';
 import { historyToChatMessages, getMessageText } from './utils';
@@ -1138,36 +1137,30 @@ export default function Chat() {
                               color: msg.role === 'user' ? 'white' : 'var(--color-text)',
                               border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
                             }}>
-                            {msg.role === 'agent' && isLongMarkdown(textSeg.content) ? (
-                              <ArtifactCard
-                                artifact={{ kind: 'markdown', title: 'Document', content: textSeg.content }}
-                                onOpen={openArtifact}
-                              />
-                            ) : (
-                              <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm]}
-                                  components={{
-                                    code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
-                                      const match = /language-(\w+)/.exec(className || '');
-                                      const codeText = String(children ?? '').replace(/\n$/, '');
-                                      if (!inline && match) {
-                                        const lang = match[1].toLowerCase();
-                                        const kind: ArtifactSpec['kind'] = lang === 'html' ? 'html' : lang === 'svg' ? 'svg' : 'code';
+                            <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={msg.role === 'agent' ? {
+                                  code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
+                                    const match = /language-(\w+)/.exec(className || '');
+                                    if (!inline && match) {
+                                      const lang = match[1].toLowerCase();
+                                      if (lang === 'html' || lang === 'svg') {
+                                        const codeText = String(children ?? '').replace(/\n$/, '');
                                         return (
                                           <ArtifactCard
-                                            artifact={{ kind, language: lang, title: kind === 'html' ? 'HTML page' : kind === 'svg' ? 'SVG image' : `${lang} snippet`, content: codeText }}
+                                            artifact={{ kind: lang, language: lang, title: lang === 'html' ? 'HTML page' : 'SVG image', content: codeText }}
                                             onOpen={openArtifact}
                                           />
                                         );
                                       }
-                                      return <code className={className} {...props}>{children}</code>;
-                                    },
-                                  }}>
-                                  {textSeg.content}
-                                </ReactMarkdown>
-                              </div>
-                            )}
+                                    }
+                                    return <code className={className} {...props}>{children}</code>;
+                                  },
+                                } : undefined}>
+                                {textSeg.content}
+                              </ReactMarkdown>
+                            </div>
                             {/* Cursor: show after text content when streaming */}
                             {status === 'running' && i === messages.length - 1 && textSeg.content && (
                               <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
