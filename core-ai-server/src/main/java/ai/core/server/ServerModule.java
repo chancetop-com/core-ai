@@ -156,6 +156,8 @@ public class ServerModule extends Module {
     }
 
     private void bindService() {
+        var publicUrl = property("sys.public.url").orElse("http://localhost:8080");
+        ai.core.server.run.SubmitArtifactsTool.publicUrl = publicUrl;
         bind(SystemPromptService.class);
         bind(LLMCallExecutor.class);
         bind(AgentRunner.class);
@@ -174,7 +176,7 @@ public class ServerModule extends Module {
         bind(AgentScheduleService.class);
         bind(UserService.class);
         var triggerService = bind(TriggerService.class);
-        triggerService.publicUrl = property("sys.public.url").orElse("http://localhost:8080");
+        triggerService.publicUrl = publicUrl;
         bind(RunAgentAction.class);
     }
 

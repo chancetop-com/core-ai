@@ -18,6 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Layer 2: python deps (changes occasionally)
 RUN pip install --no-cache-dir weasyprint
 
+# Layer 2b: scientific & plotting stack (preinstalled so agents don't pip install each time)
+RUN pip install --no-cache-dir \
+    numpy pandas scipy sympy \
+    matplotlib seaborn plotly kaleido \
+    scikit-learn statsmodels \
+    pillow openpyxl
+
 # Layer 3: gh CLI (version bumps only)
 RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_linux_amd64.tar.gz -o /tmp/gh.tar.gz && \
     tar xzf /tmp/gh.tar.gz -C /tmp && \

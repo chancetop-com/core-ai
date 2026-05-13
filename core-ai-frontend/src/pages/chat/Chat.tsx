@@ -1205,8 +1205,8 @@ export default function Chat() {
                                     const match = /language-(\w+)/.exec(className || '');
                                     if (!inline && match) {
                                       const lang = match[1].toLowerCase();
+                                      const codeText = String(children ?? '').replace(/\n$/, '');
                                       if (lang === 'html' || lang === 'svg') {
-                                        const codeText = String(children ?? '').replace(/\n$/, '');
                                         return (
                                           <ArtifactCard
                                             artifact={{ kind: lang, language: lang, title: lang === 'html' ? 'HTML page' : 'SVG image', content: codeText }}
@@ -1214,8 +1214,28 @@ export default function Chat() {
                                           />
                                         );
                                       }
+                                      return (
+                                        <ArtifactCard
+                                          artifact={{ kind: 'code', language: lang, title: `${lang} snippet`, content: codeText }}
+                                          onOpen={openArtifact}
+                                        />
+                                      );
                                     }
                                     return <code className={className} {...props}>{children}</code>;
+                                  },
+                                  img({ src, alt }: { src?: string; alt?: string }) {
+                                    const isAbsolute = !!src && (/^(https?:|data:|blob:|\/api\/)/.test(src) || src.startsWith('/'));
+                                    if (isAbsolute) {
+                                      return <img src={src} alt={alt} className="max-w-full rounded" />;
+                                    }
+                                    return (
+                                      <span className="my-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
+                                        style={{ borderColor: 'var(--color-warning)', background: 'var(--color-warning)' + '12', color: 'var(--color-text-secondary)' }}
+                                        title={src}>
+                                        <span style={{ color: 'var(--color-warning)' }}>⚠</span>
+                                        <span>Image <code style={{ color: 'var(--color-text)' }}>{src || alt || '?'}</code> not available — agent must call <code>submit_artifacts</code> first.</span>
+                                      </span>
+                                    );
                                   },
                                 } : undefined}>
                                 {textSeg.content}

@@ -32,6 +32,14 @@ public final class SubmitArtifactsTool extends ToolCall {
         `submit_artifacts` tool before your final response. Submit the sandbox file paths, usually under
         `/tmp` or `/workspace`, with concise names and content types when known.
 
+        The tool returns each submitted artifact's `file_id` and a `download_url` (a fully-qualified
+        absolute URL, e.g. `https://core-ai.example.com/api/files/<file_id>/content`). If you reference
+        any submitted file in your final markdown reply (especially images), you MUST copy that exact
+        `download_url` from the tool result — never a sandbox relative path such as `chart.png` or
+        `/workspace/chart.png`, because the browser cannot resolve those and the image will appear broken.
+        Correct:   `![chart](<download_url from tool result>)`
+        Incorrect: `![chart](chart.png)` or `![chart](/workspace/chart.png)`
+
         This is a platform delivery requirement. It does not change the user's requested final response format:
         after submitting artifacts, still answer exactly as the task instructions require.
         """;
@@ -49,6 +57,9 @@ public final class SubmitArtifactsTool extends ToolCall {
         if (systemPrompt == null || systemPrompt.isBlank()) return SYSTEM_INSTRUCTIONS.strip();
         return systemPrompt + SYSTEM_INSTRUCTIONS;
     }
+
+    /** Set once at module bootstrap via ServerModule. Used to build absolute download URLs in tool results. */
+    public static String publicUrl = "";
 
     public static SubmitArtifactsTool create(String userId, FileService fileService, ArtifactSink sink) {
         var tool = new SubmitArtifactsTool(userId, fileService, sink);
@@ -81,6 +92,12 @@ public final class SubmitArtifactsTool extends ToolCall {
         this.userId = userId;
         this.fileService = fileService;
         this.sink = sink;
+    }
+
+    private static String baseUrl() {
+        var url = publicUrl;
+        if (url == null || url.isEmpty()) return "";
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     @Override
@@ -146,7 +163,7 @@ public final class SubmitArtifactsTool extends ToolCall {
                 "path", item.path,
                 "file_id", record.id,
                 "file_name", record.fileName,
-                "download_url", "/api/files/" + record.id + "/content"
+                "download_url", baseUrl() + "/api/files/" + record.id + "/content"
             ));
         } catch (Exception e) {
             failed.add(Map.of("path", item.path, "error", errorMessage(e)));
