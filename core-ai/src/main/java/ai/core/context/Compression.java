@@ -17,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -206,32 +205,7 @@ public class Compression {
             result.add(preservedUserMsg);
         }
         result.addAll(toKeep);
-        return dropOrphanToolMessages(result);
-    }
-
-    // Tool messages must follow a preceding assistant message that declared their tool_call_id.
-    // After compression cuts away history, the toKeep slice may start with a tool message whose
-    // assistant tool_calls was dropped. Strip those orphans so the request stays well-formed.
-    List<Message> dropOrphanToolMessages(List<Message> messages) {
-        var pendingToolCallIds = new HashSet<String>();
-        var sanitized = new ArrayList<Message>(messages.size());
-        int dropped = 0;
-        for (var msg : messages) {
-            if (msg.role == RoleType.ASSISTANT && msg.toolCalls != null) {
-                for (var call : msg.toolCalls) {
-                    if (call.id != null) pendingToolCallIds.add(call.id);
-                }
-            }
-            if (msg.role == RoleType.TOOL && msg.toolCallId != null && !pendingToolCallIds.remove(msg.toolCallId)) {
-                dropped++;
-                continue;
-            }
-            sanitized.add(msg);
-        }
-        if (dropped > 0) {
-            LOGGER.warn("Dropped {} orphan tool messages during compression sanitization", dropped);
-        }
-        return sanitized;
+        return ToolCallPruning.dropOrphanToolMessages(result);
     }
 
     public double getTriggerThreshold() {

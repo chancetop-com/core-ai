@@ -17,6 +17,31 @@ import java.util.TreeSet;
 public class ToolCallPruning {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolCallPruning.class);
 
+    // Tool messages must follow a preceding assistant message that declared their tool_call_id.
+    // After compression cuts away history, the kept slice may start with a tool message whose
+    // assistant tool_calls was dropped. Strip those orphans so the request stays well-formed.
+    public static List<Message> dropOrphanToolMessages(List<Message> messages) {
+        var pendingToolCallIds = new LinkedHashSet<String>();
+        var sanitized = new ArrayList<Message>(messages.size());
+        int dropped = 0;
+        for (var msg : messages) {
+            if (RoleType.ASSISTANT == msg.role && msg.toolCalls != null) {
+                for (var call : msg.toolCalls) {
+                    if (call.id != null) pendingToolCallIds.add(call.id);
+                }
+            }
+            if (RoleType.TOOL == msg.role && msg.toolCallId != null && !pendingToolCallIds.remove(msg.toolCallId)) {
+                dropped++;
+                continue;
+            }
+            sanitized.add(msg);
+        }
+        if (dropped > 0) {
+            LOGGER.warn("Dropped {} orphan tool messages during sanitization", dropped);
+        }
+        return sanitized;
+    }
+
     private final int keepRecentSegments;
     private final Set<String> excludeToolNames;
 

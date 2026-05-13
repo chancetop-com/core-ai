@@ -233,7 +233,7 @@ class CompressionTest {
             Message.of(RoleType.TOOL, "echo result", "echo", pairedCallId, null)
         );
 
-        List<Message> sanitized = compression.dropOrphanToolMessages(messages);
+        List<Message> sanitized = ToolCallPruning.dropOrphanToolMessages(messages);
 
         // orphan should be dropped, paired tool/assistant retained
         assertEquals(4, sanitized.size());
