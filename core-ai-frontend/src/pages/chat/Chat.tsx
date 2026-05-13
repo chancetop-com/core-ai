@@ -13,6 +13,7 @@ import ChatSessionsSidebar from './ChatSessionsSidebar';
 import VoiceTranscriberSidebar from './components/VoiceTranscriberSidebar';
 import ArtifactDrawer from './components/ArtifactDrawer';
 import ArtifactCard from './components/ArtifactCard';
+import AuthedImage from './components/AuthedImage';
 import type { ArtifactSpec } from './components/artifactTypes';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment } from './types';
@@ -1226,7 +1227,7 @@ export default function Chat() {
                                   img({ src, alt }: { src?: string; alt?: string }) {
                                     const isAbsolute = !!src && (/^(https?:|data:|blob:|\/api\/)/.test(src) || src.startsWith('/'));
                                     if (isAbsolute) {
-                                      return <img src={src} alt={alt} className="max-w-full rounded" />;
+                                      return <AuthedImage src={src} alt={alt} />;
                                     }
                                     return (
                                       <span className="my-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
