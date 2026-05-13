@@ -33,7 +33,12 @@ public class NativeReflectionFeature implements Feature {
         "ai/core/api/a2a",
         "io/modelcontextprotocol/spec",
         "io/modelcontextprotocol/json/jackson",
-        "io/modelcontextprotocol/json/schema/jackson"
+        "io/modelcontextprotocol/json/schema/jackson",
+        // ACP SDK
+        "com/agentclientprotocol/sdk/spec",
+        "com/agentclientprotocol/sdk/json",
+        "com/agentclientprotocol/sdk/agent",
+        "com/agentclientprotocol/sdk/agent/transport"
     };
 
     private static final String[] EXTRA_CLASSES = {
@@ -75,7 +80,10 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$SessionInfo",
         "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$HistoryMessage",
         "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$HistoryResponse",
-        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$SimpleMessage"
+        "ai.core.cli.a2a.handler.chat.ChatSessionActionHandler$SimpleMessage",
+        // ACP SDK ServiceLoader SPI implementation (discovered via META-INF/services/)
+        "com.agentclientprotocol.sdk.json.JacksonAcpJsonMapperSupplier",
+        "com.agentclientprotocol.sdk.json.JacksonAcpJsonMapper"
     };
 
     // base packages to scan recursively for @CoreAiMethod tool classes
