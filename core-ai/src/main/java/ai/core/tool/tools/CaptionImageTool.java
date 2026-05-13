@@ -22,6 +22,11 @@ public class CaptionImageTool extends ToolCall {
 
     private static final String TOOL_DESC = """
             tool to generate a caption for an image based on the image content and a query.
+            when to use:
+                when you want to understand the content of an image, you can use this tool to generate a caption for the image based on the image content and a query.
+                the query can be used to specify what kind of information you want to extract from the image.
+                for example, if you want to know what is in the image, you can use "what is in the image?" as the query.
+                if you want to know the relationship between objects in the image, you can use "what is the relationship between object A and object B?" as the query.
             """;
 
     public static Builder builder() {
