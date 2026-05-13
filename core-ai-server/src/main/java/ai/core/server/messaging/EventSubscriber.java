@@ -28,7 +28,9 @@ public class EventSubscriber {
             Map.entry("SseStatusChangeEvent", ai.core.api.server.session.sse.SseStatusChangeEvent.class),
             Map.entry("SsePlanUpdateEvent", ai.core.api.server.session.sse.SsePlanUpdateEvent.class),
             Map.entry("SseCompressionEvent", ai.core.api.server.session.sse.SseCompressionEvent.class),
-            Map.entry("SseSandboxEvent", ai.core.api.server.session.sse.SseSandboxEvent.class)
+            Map.entry("SseSandboxEvent", ai.core.api.server.session.sse.SseSandboxEvent.class),
+            Map.entry("SseBatchToolStartEvent", ai.core.api.server.session.sse.SseBatchToolStartEvent.class),
+            Map.entry("SseEnvironmentOutputChunkEvent", ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent.class)
     );
 
     private final JedisPool jedisPool;
