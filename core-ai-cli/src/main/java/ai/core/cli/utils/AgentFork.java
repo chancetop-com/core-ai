@@ -38,15 +38,7 @@ public final class AgentFork {
     private AgentFork() {
     }
 
-    /**
-     * @param name                label for sub-agent identification in debug logs
-     * @param maxTurns            maximum conversation turns for the forked agent
-     * @param temperature         LLM sampling temperature
-     * @param compression         enable context compression for the forked agent
-     * @param persistenceProvider pass {@code null} to explicitly signal no session persistence;
-     *                            non-null only if the forked agent manages its own independent session
-     * @param toolCalls           explicit tools (if non-null, overrides source agent's tools)
-     */
+
     public record ForkConfig(String name, int maxTurns, double temperature,
                               boolean compression, PersistenceProvider persistenceProvider,
                               List<ToolCall> toolCalls) {

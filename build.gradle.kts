@@ -179,8 +179,8 @@ project(":core-ai-cli") {
         implementation("info.picocli:picocli:${Versions.PICOCLI_VERSION}")
         annotationProcessor("info.picocli:picocli-codegen:${Versions.PICOCLI_VERSION}")
         // ACP (Agent Client Protocol) SDK — stdio transport for --acp-agent mode
-        implementation("com.agentclientprotocol:acp-core:0.11.0-SNAPSHOT")
-        implementation("com.agentclientprotocol:acp-agent-support:0.11.0-SNAPSHOT")
+        implementation("com.agentclientprotocol:acp-core:0.11.0")
+        implementation("com.agentclientprotocol:acp-agent-support:0.11.0")
         // Project Reactor (required by ACP SDK)
         implementation(platform("io.projectreactor:reactor-bom:2024.0.1"))
         implementation("io.projectreactor:reactor-core")
