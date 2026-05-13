@@ -437,7 +437,7 @@ public class AgentSessionManager {
             if (config.model != null) builder.model(config.model);
             if (config.multiModalModel != null) {
                 builder.multiModalModel(config.multiModalModel);
-            } else {
+            } else if (config.model == null) {
                 var mmModel = llmProvider.config.getMultiModalModel();
                 if (mmModel != null) builder.multiModalModel(mmModel);
             }

@@ -297,7 +297,12 @@ public class AgentRunner {
             .executionContext(context);
         if (systemPrompt != null) builder.systemPrompt(systemPrompt);
         if (model != null) builder.model(model);
-        if (multiModalModel != null) builder.multiModalModel(multiModalModel);
+        if (multiModalModel != null) {
+            builder.multiModalModel(multiModalModel);
+        } else if (model == null) {
+            var mmModel = llmProviders.getProvider().config.getMultiModalModel();
+            if (mmModel != null) builder.multiModalModel(mmModel);
+        }
         if (temperature != null) builder.temperature(temperature);
         if (maxTurns != null) builder.maxTurn(maxTurns);
         if (skillRegistry != null) builder.skillRegistry(skillRegistry);
