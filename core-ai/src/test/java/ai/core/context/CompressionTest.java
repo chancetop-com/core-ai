@@ -218,6 +218,35 @@ class CompressionTest {
         LOGGER.info("Tool calls and tool response pair preserved test passed: {} -> {} messages", messages.size(), result.size());
     }
 
+    @Test
+    void testDropOrphanToolMessages() {
+        // simulate the failure case: compression keeps a tool message whose assistant.tool_calls was dropped
+        String pairedCallId = "call_paired";
+        FunctionCall pairedCall = FunctionCall.of(pairedCallId, "function", "echo", "{}");
+
+        List<Message> messages = List.of(
+            Message.of(RoleType.SYSTEM, "system"),
+            // orphan tool: no preceding assistant declared call_orphan
+            Message.of(RoleType.TOOL, "orphan binary blob", "read_file", "call_orphan", null),
+            Message.of(RoleType.USER, "follow-up user message"),
+            Message.of(RoleType.ASSISTANT, null, null, null, List.of(pairedCall)),
+            Message.of(RoleType.TOOL, "echo result", "echo", pairedCallId, null)
+        );
+
+        List<Message> sanitized = compression.dropOrphanToolMessages(messages);
+
+        // orphan should be dropped, paired tool/assistant retained
+        assertEquals(4, sanitized.size());
+        assertEquals(RoleType.SYSTEM, sanitized.get(0).role);
+        assertEquals(RoleType.USER, sanitized.get(1).role);
+        assertEquals(RoleType.ASSISTANT, sanitized.get(2).role);
+        assertEquals(RoleType.TOOL, sanitized.get(3).role);
+        assertEquals(pairedCallId, sanitized.get(3).toolCallId);
+
+        verifyToolPairsIntact(sanitized);
+        LOGGER.info("Drop orphan tool messages test passed: {} -> {} messages", messages.size(), sanitized.size());
+    }
+
     private void verifyToolPairsIntact(List<Message> messages) {
         for (int i = 0; i < messages.size(); i++) {
             Message msg = messages.get(i);
