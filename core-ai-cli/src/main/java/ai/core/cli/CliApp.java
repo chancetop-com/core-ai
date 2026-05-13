@@ -7,6 +7,7 @@ import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.a2a.A2AServer;
+import ai.core.cli.acp.AcpAgentRunner;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.config.InteractiveConfigSetup;
@@ -60,6 +61,38 @@ public class CliApp {
 
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
+    private static Map<String, SubAgentConfig> parseSubAgentConfig(PropertiesFileSource props, LLMProviders llmProviders) {
+        Map<String, SubAgentConfig> configs = new HashMap<>();
+        String prefix = "agent.sub.";
+        for (String key : props.propertyNames()) {
+            if (!key.startsWith(prefix)) continue;
+            String suffix = key.substring(prefix.length());
+            String agentName;
+            if (suffix.endsWith(".model")) {
+                agentName = suffix.substring(0, suffix.length() - ".model".length());
+                props.property(key).ifPresent(model -> configs.computeIfAbsent(agentName, k -> new SubAgentConfig()).model(model));
+            } else if (suffix.endsWith(".provider")) {
+                agentName = suffix.substring(0, suffix.length() - ".provider".length());
+                props.property(key).ifPresent(providerName -> {
+                    var provider = resolveProvider(providerName, llmProviders);
+                    if (provider != null) {
+                        configs.computeIfAbsent(agentName, k -> new SubAgentConfig()).llmProvider(provider);
+                    }
+                });
+            }
+        }
+        return configs;
+    }
+
+    private static LLMProvider resolveProvider(String name, LLMProviders llmProviders) {
+        try {
+            var type = LLMProviderType.fromName(name);
+            return llmProviders.getProvider(type);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     private final Path configFile;
     private final String modelOverride;
     private final String prompt;
@@ -76,6 +109,12 @@ public class CliApp {
         this.continueSession = options.continueSession();
         this.resume = options.resume();
         this.workspace = options.workspace() != null ? options.workspace().toAbsolutePath() : Paths.get("").toAbsolutePath();
+    }
+
+    public void startAcpAgent() {
+        System.setProperty("core.appName", "core-ai-cli");
+        var runner = new AcpAgentRunner(configFile, modelOverride, autoApproveAll, workspace);
+        runner.run();
     }
 
     public void start() {
@@ -116,7 +155,7 @@ public class CliApp {
         var sessionManager = new SessionManager(sessionPersistence);
         var modelName = modelOverride != null ? modelOverride : result.llmProviders.getDefaultProvider().config.getModel();
         String currentSessionId = resolveOrCreateSessionId(sessionManager, ui);
-        CliLogger.initialize(currentSessionId);
+        CliLogger.initialize(workspace, currentSessionId);
         var permissionStore = whiteToolsPermissionStore();
         var noteMemory = memoryEnabled ? new MdMemoryProvider(workspace) : null;
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
@@ -311,7 +350,7 @@ public class CliApp {
             LOGGER.info("Starting new session: {}", currentSessionId);
         }
 
-        CliLogger.initialize(currentSessionId);
+        CliLogger.initialize(workspace, currentSessionId);
 
         var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
         var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
@@ -413,38 +452,6 @@ public class CliApp {
             }
         } catch (Exception e) {
             ui.showError(e.getMessage());
-        }
-    }
-
-    private static Map<String, SubAgentConfig> parseSubAgentConfig(PropertiesFileSource props, LLMProviders llmProviders) {
-        Map<String, SubAgentConfig> configs = new HashMap<>();
-        String prefix = "agent.sub.";
-        for (String key : props.propertyNames()) {
-            if (!key.startsWith(prefix)) continue;
-            String suffix = key.substring(prefix.length());
-            String agentName;
-            if (suffix.endsWith(".model")) {
-                agentName = suffix.substring(0, suffix.length() - ".model".length());
-                props.property(key).ifPresent(model -> configs.computeIfAbsent(agentName, k -> new SubAgentConfig()).model(model));
-            } else if (suffix.endsWith(".provider")) {
-                agentName = suffix.substring(0, suffix.length() - ".provider".length());
-                props.property(key).ifPresent(providerName -> {
-                    var provider = resolveProvider(providerName, llmProviders);
-                    if (provider != null) {
-                        configs.computeIfAbsent(agentName, k -> new SubAgentConfig()).llmProvider(provider);
-                    }
-                });
-            }
-        }
-        return configs;
-    }
-
-    private static LLMProvider resolveProvider(String name, LLMProviders llmProviders) {
-        try {
-            var type = LLMProviderType.fromName(name);
-            return llmProviders.getProvider(type);
-        } catch (IllegalArgumentException e) {
-            return null;
         }
     }
 

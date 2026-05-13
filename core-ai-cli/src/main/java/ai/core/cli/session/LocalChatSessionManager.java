@@ -66,9 +66,11 @@ public class LocalChatSessionManager {
         // which is: ~/.core-ai/sessions/<workspace>/
         var home = System.getProperty("user.home");
         if (workspace != null) {
-            return home + "/.core-ai/sessions/" + workspace.getFileName().toString();
+            var fileName = workspace.getFileName();
+            var dirName = (fileName != null && !fileName.toString().isEmpty()) ? fileName.toString() : "root";
+            return home + "/.core-ai/sessions/" + dirName;
         }
-        return home + "/.core-ai/sessions";
+        return home + "/.core-ai/sessions/root";
     }
 
     public String createSession(String sessionId) {

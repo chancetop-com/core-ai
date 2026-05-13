@@ -1,11 +1,10 @@
 import ai.core.cli.CliApp;
 import ai.core.cli.CliAppOptions;
 import ai.core.cli.DebugLog;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-
-import org.slf4j.LoggerFactory;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -81,6 +80,9 @@ public class Main implements Callable<Integer> {
     @Option(names = "--web-dir", description = "Serve frontend from local directory (for dev)")
     Path webDir;
 
+    @Option(names = "--acp-agent", description = "Start in ACP (Agent Client Protocol) stdio mode for editor integration")
+    boolean acpAgent;
+
     @Override
     public Integer call() {
         if (debug) {
@@ -88,7 +90,9 @@ public class Main implements Callable<Integer> {
             System.setProperty("core.ai.debug", "true");
         }
         var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace);
-        if (serve) {
+        if (acpAgent) {
+            new CliApp(options).startAcpAgent();
+        } else if (serve) {
             new CliApp(options).startServe(port, !headless, webDir);
         } else if (serverUrl != null) {
             new CliApp(options).startRemote(serverUrl, apiKey, agentId);

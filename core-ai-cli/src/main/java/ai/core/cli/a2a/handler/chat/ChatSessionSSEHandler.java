@@ -1,6 +1,7 @@
 package ai.core.cli.a2a.handler.chat;
 
 import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
@@ -8,18 +9,17 @@ import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
-import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.cli.session.LocalChatSessionManager;
 import ai.core.cli.session.LocalChatSessionManager.ChatSession;
 import ai.core.utils.JsonUtil;
+import io.undertow.io.IoCallback;
+import io.undertow.io.Sender;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
-import io.undertow.io.IoCallback;
-import io.undertow.io.Sender;
 import io.undertow.util.StatusCodes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

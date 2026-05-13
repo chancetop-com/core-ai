@@ -41,7 +41,7 @@ public class Compression {
     private final int maxContextTokens;
     private final LLMProvider llmProvider;
     private final String summaryModel;
-    private CompressionListener listener;
+    private final List<CompressionListener> listeners = new ArrayList<>();
 
     public Compression(LLMProvider llmProvider, String agentModel) {
         this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, DEFAULT_KEEP_TOKENS, llmProvider, agentModel, agentModel);
@@ -60,8 +60,13 @@ public class Compression {
         this.maxContextTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(agentModel);
     }
 
+    public void addListener(CompressionListener listener) {
+        this.listeners.add(listener);
+    }
+
     public void setListener(CompressionListener listener) {
-        this.listener = listener;
+        this.listeners.clear();
+        this.listeners.add(listener);
     }
 
     public boolean shouldCompress(int currentTokens) {
@@ -132,7 +137,7 @@ public class Compression {
             return messages;
         }
 
-        if (!force) notifyListener(messages.size(), toCompress.size(), false);
+        notifyListener(messages.size(), toCompress.size(), false);
         var summary = summarize(toCompress);
         if (summary.isBlank()) {
             LOGGER.warn("Summarization returned empty result, keeping original messages");
@@ -144,7 +149,7 @@ public class Compression {
             LOGGER.debug("Compression did not reduce message count, keeping original");
             return messages;
         }
-        if (!force) notifyListener(messages.size(), result.size(), true);
+        notifyListener(messages.size(), result.size(), true);
         LOGGER.debug("Compression complete: {} -> {} messages", messages.size(), result.size());
         return result;
     }
@@ -442,8 +447,8 @@ public class Compression {
     }
 
     private void notifyListener(int beforeCount, int afterCount, boolean completed) {
-        if (listener != null) {
-            listener.onCompression(beforeCount, afterCount, completed);
+        for (CompressionListener l : listeners) {
+            l.onCompression(beforeCount, afterCount, completed);
         }
     }
 }

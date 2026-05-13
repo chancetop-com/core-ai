@@ -3,22 +3,24 @@ package ai.core.cli.agent;
 import ai.core.agent.Agent;
 import ai.core.cli.command.MemoryCommandHandler;
 import ai.core.cli.command.ReplCommandHandler;
-import ai.core.cli.remote.RemoteConfig;
+import ai.core.cli.config.ModelRegistry;
+import ai.core.cli.config.ProviderConfigurator;
 import ai.core.cli.listener.CliEventListener;
+import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.memory.MemorySectionManager;
+import ai.core.cli.memory.MemoryTriggerService;
+import ai.core.cli.memory.SessionCloseExtractor;
+import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.ui.AnsiTheme;
-import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.FileReferenceExpander;
+import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.TextUtil;
-import ai.core.cli.config.ModelRegistry;
-import ai.core.cli.config.ProviderConfigurator;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
-import ai.core.cli.memory.MdMemoryProvider;
-import ai.core.cli.memory.SessionMemoryExtractor;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence;
@@ -55,7 +57,7 @@ public class AgentSessionRunner {
     private final ModelRegistry modelRegistry;
     private final MemoryCommandHandler memoryCommand;
     private final boolean memoryEnabled;
-    private final SessionPersistence sessionPersistence;
+    private final Path workspace;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
     private ReplCommandHandler commands;
@@ -70,15 +72,20 @@ public class AgentSessionRunner {
         this.sessionManager = config.sessionManager;
         this.permissionStore = config.permissionStore;
         this.modelRegistry = config.modelRegistry;
-        this.memoryCommand = config.memoryEnabled ? new MemoryCommandHandler(ui, config.memory) : null;
+        this.workspace = Path.of((String) agent.getExecutionContext().getCustomVariables().get("workspace"));
+        this.memoryCommand = config.memoryEnabled
+                ? new MemoryCommandHandler(ui, config.memory, MemoryTriggerService.getInstance())
+                : null;
         this.memoryEnabled = config.memoryEnabled;
-        this.sessionPersistence = config.sessionPersistence;
     }
 
     public String run() {
         // Load session history if resuming an existing session
         if (agent.hasPersistenceProvider()) {
             agent.load(sessionId);
+            if (!agent.getMessages().isEmpty() && memoryEnabled) {
+                MemoryTriggerService.getInstance().resetCursorToEnd();
+            }
         }
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
         var listener = new CliEventListener(ui, session, agent);
@@ -90,11 +97,11 @@ public class AgentSessionRunner {
         Semaphore readyForInput = new Semaphore(1);
 
         printBanner();
-        extractPreviousSession();
         printSessionHistory();
         startSenderThread(messageQueue, listener, session, readyForInput);
         readInputLoop(messageQueue, readyForInput);
-
+        ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Organizing memories..." + AnsiTheme.RESET + "\n");
+        SessionCloseExtractor.onSessionClose(agent, workspace, memoryEnabled, switchSessionId);
         session.close();
         return switchSessionId.get();
     }
@@ -110,30 +117,23 @@ public class AgentSessionRunner {
         setupCompressionListener(listener);
 
         printBanner();
-        extractPreviousSession();
         printSessionHistory();
         if (prompt != null && !prompt.isBlank()) {
             ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + prompt.strip() + "\n");
         }
         sendPrompt(listener, session, prompt);
-
         session.close();
     }
 
-    private void extractPreviousSession() {
-        if (!memoryEnabled || memoryCommand == null) return;
-        var extractor = new SessionMemoryExtractor(memoryCommand.getMemoryProvider(), agent.getLLMProvider(), agent.getModel(), sessionPersistence);
-        if (!extractor.hasPendingSessions(sessionId)) return;
-        ui.printStreamingChunk(AnsiTheme.MUTED + "  Extracting memories from last session..." + AnsiTheme.RESET + "\n");
-        extractor.extractPreviousSessionAsync(sessionId, () -> extractor.reloadAgentMemorySection(agent));
-    }
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
     }
+
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), modelName);
         LOGGER.debug("terminal: type={}, jline={}, ansi={}", ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
     }
+
     private void printSessionHistory() {
         var messages = agent.getMessages();
         boolean hasHistory = false;
@@ -156,6 +156,7 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  ↑ restored " + sessionId + AnsiTheme.RESET + "\n");
         }
     }
+
     private void startSenderThread(BlockingQueue<String> queue, CliEventListener listener, InProcessAgentSession session, Semaphore readyForInput) {
         Thread senderThread = new Thread(() -> {
             try {
@@ -294,6 +295,7 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model switched: "
                 + currentModel + " → " + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
     }
+
     String getCurrentModelName() {
         return agent.getModel() != null ? agent.getModel() : agent.getLLMProvider().config.getModel();
     }
@@ -333,6 +335,7 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
+
     void handleCopy() {
         var messages = agent.getMessages();
         String lastAssistant = null;
@@ -386,9 +389,13 @@ public class AgentSessionRunner {
         messages.clear();
         messages.addAll(compressed);
         if (agent.hasPersistenceProvider()) agent.save(sessionId);
+        if (memoryCommand != null) {
+            MemorySectionManager.reloadAgentMemorySection(agent, memoryCommand.getMemoryProvider());
+        }
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Compacted: "
                 + beforeCount + " → " + messages.size() + " messages\n\n");
     }
+
     void handleUndo() {
         var messages = agent.getMessages();
         int idx = messages.size() - 1;

@@ -15,7 +15,7 @@ Session -> daily-logs ->episodes ->knowledge
 
 ### 触发方式
 
-T1（independent agent）: 根据用户对话情况，每10轮会话（或3分钟没有新的操作）尝试提取记忆。
+T1（independent agent）: 根据用户对话情况，每10轮会话（或3分钟没有新的操作）尝试提取记忆，触发压缩前处理。
 
 T2:(main agent) 在主对话框，用户直接要求记录相关历史，整理成记忆
 

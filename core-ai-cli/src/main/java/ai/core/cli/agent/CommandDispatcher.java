@@ -102,7 +102,10 @@ public class CommandDispatcher {
             return true;
         }
         if (lower.startsWith("/memory")) {
-            if (!memoryEnabled || memoryCommand == null) {
+            boolean isConfigCmd = "/memory enable".equals(lower) || "/memory disable".equals(lower);
+            if (memoryCommand == null) {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory not available.\n" + AnsiTheme.RESET);
+            } else if (!memoryEnabled && !isConfigCmd) {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory is disabled. Set agent.memory.enabled=true in agent.properties to enable.\n" + AnsiTheme.RESET);
             } else {
                 memoryCommand.handle(trimmed);

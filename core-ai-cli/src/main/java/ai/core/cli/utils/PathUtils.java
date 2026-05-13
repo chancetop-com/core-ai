@@ -23,9 +23,12 @@ public final class PathUtils {
 
     /**
      * Get sessions directory for a given workspace.
+     * If the workspace path has no meaningful file name (e.g. root "/"), "root" is used as fallback.
      */
     public static String sessionsDir(Path workspace) {
-        return SESSIONS_BASE_DIR.resolve(workspace.getFileName().toString()).toString();
+        var name = workspace.getFileName();
+        var dirName = (name != null && !name.toString().isEmpty()) ? name.toString() : "root";
+        return SESSIONS_BASE_DIR.resolve(dirName).toString();
     }
 
     /**

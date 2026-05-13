@@ -11,6 +11,7 @@ import java.io.Serial;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
@@ -39,7 +40,12 @@ public final class CliLogger extends AbstractLogger {
         return logsDir;
     }
 
-    public static void initialize(String sessionId) {
+    /**
+     * Initialize file-based logging for the session.
+     * Log file name follows the pattern: {workspaceName}_{date}.log
+     * If workspace is null or has no meaningful name, "root" is used as the workspace name.
+     */
+    public static void initialize(Path workspace, String sessionId) {
         currentSessionId = sessionId;
         Path logs = logsDir();
         try {
@@ -48,7 +54,9 @@ public final class CliLogger extends AbstractLogger {
             STDERR.println("Failed to create logs directory: " + e.getMessage());
         }
         closeFileWriter();
-        Path logFile = logs.resolve(sessionId + ".log");
+        var workspaceName = workspaceName(workspace);
+        var dateStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        Path logFile = logs.resolve(workspaceName + "_" + dateStr + ".log");
         try {
             var bw = Files.newBufferedWriter(logFile, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             fileWriter = new PrintWriter(bw, true);
@@ -56,6 +64,14 @@ public final class CliLogger extends AbstractLogger {
             STDERR.println("Failed to open log file: " + e.getMessage());
             fileWriter = null;
         }
+    }
+
+    private static String workspaceName(Path workspace) {
+        if (workspace == null) return "root";
+        var fileName = workspace.getFileName();
+        if (fileName == null) return "root";
+        var name = fileName.toString();
+        return name.isEmpty() ? "root" : name;
     }
 
     public static void close() {

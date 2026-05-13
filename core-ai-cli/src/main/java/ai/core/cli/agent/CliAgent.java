@@ -7,7 +7,10 @@ import ai.core.agent.SubAgentConfig;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
+import ai.core.cli.memory.CliMemoryLifecycle;
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.memory.MemorySystemPrompt;
+import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteAgentDiscovery;
@@ -68,6 +71,10 @@ public class CliAgent {
 
         if (hookLifecycle != null) {
             builder.addAgentLifecycle(hookLifecycle);
+        }
+
+        if (config.memoryEnabled) {
+            builder.addAgentLifecycle(new CliMemoryLifecycle(MemoryTriggerService.getInstance()));
         }
 
         if (config.persistenceProvider != null) {
@@ -146,7 +153,8 @@ public class CliAgent {
         sections.add(new EnvironmentPrompt(config.workspace));
         sections.add(new InstructionsPrompt(config.workspace));
         if (config.memoryEnabled) {
-            sections.add(new MemoryPrompt(config.workspace));
+            var content = new MdMemoryProvider(config.workspace).load();
+            sections.add(new MemorySystemPrompt(content));
         }
         sections.add(new HookPrompt(hookOutput));
         return sections;
@@ -380,37 +388,6 @@ public class CliAgent {
                 }
             }
             return found;
-        }
-    }
-
-    record MemoryPrompt(Path workspace) implements PromptInject {
-        @Override
-        public SectionType type() {
-            return SectionType.MEMORY;
-        }
-
-        @Override
-        public String inject() {
-            var mdContent = new MdMemoryProvider(workspace).load();
-            return """
-                    ## Memory
-                    
-                    Persistent structured memory at .core-ai/memory/.
-                    Index: .core-ai/MEMORY.md | Topic files: .core-ai/memory/*.md
-                    Each topic file has YAML frontmatter (name, description, type: user/feedback/project/reference).
-                    
-                    Index structure: | File | Description | Created | Updated |
-                    Description column: use the `description` field from the file's YAML frontmatter.
-                    
-                    Reading: use md_memory_tool to search/get, or read_file for full content.
-                    Writing: use write_file/edit_file to create/update topic files. \
-                    Update MEMORY.md index when adding or removing files. \
-                    Check existing memories first to avoid duplicates; merge into existing files when possible.
-                    
-                    <memories>
-                    %s
-                    </memories>
-                    """.formatted(mdContent.isBlank() ? "(empty - initialize when user shares preferences or asks to remember)" : mdContent);
         }
     }
 

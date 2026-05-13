@@ -8,10 +8,12 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 public class MdMemoryProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(MdMemoryProvider.class);
@@ -20,38 +22,35 @@ public class MdMemoryProvider {
             "^---\\s*\\n(.*?)\\n---\\s*\\n", Pattern.DOTALL);
     private static final Pattern FIELD_PATTERN = Pattern.compile(
             "^(\\w+):\\s*(.+)$", Pattern.MULTILINE);
-    private static final int MAX_LOAD_BYTES = 20 * 1024;
+    private static final int MAX_LOAD_BYTES = 2 * 1024;
+    private static final Pattern EPISODE_FILE_PATTERN = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}\\.md$");
+    private static final int MAX_RECENT_EPISODES = 2;
 
     private final Path memoryDir;
     private final Path indexPath;
+    private final Path episodesDir;
 
     public MdMemoryProvider(Path workspace) {
-        this.memoryDir = workspace.resolve(".core-ai/memory");
-        this.indexPath = workspace.resolve(".core-ai/MEMORY.md");
+        this.memoryDir = workspace.resolve(".core-ai/knowledge");
+        this.indexPath = workspace.resolve(".core-ai/knowledge/MEMORY.md");
+        this.episodesDir = workspace.resolve(".core-ai/episodes");
     }
 
+    /**
+     * Load initial memory context for injection into the system prompt.
+     * Includes: MEMORY.md index, user-type knowledge pages, and latest 2 episodes.
+     */
     public String load() {
         var sb = new StringBuilder(1024);
+
         String index = readFileQuietly(indexPath);
         if (!index.isBlank()) {
             sb.append("--- Memory Index ---\n").append(index.strip()).append('\n');
         }
-        if (Files.isDirectory(memoryDir)) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(memoryDir, "*.md")) {
-                for (Path file : stream) {
-                    String content = readFileQuietly(file);
-                    if (content.isBlank()) continue;
-                    if (sb.length() + content.length() > MAX_LOAD_BYTES) {
-                        sb.append("\n(Memory truncated, use md_memory_tool to read remaining files)\n");
-                        break;
-                    }
-                    sb.append("\n--- ").append(file.getFileName()).append(" ---\n")
-                      .append(content.strip()).append('\n');
-                }
-            } catch (IOException e) {
-                LOGGER.warn("Failed to load memory files: {}", e.getMessage());
-            }
-        }
+
+        loadTypeDir(sb, memoryDir.resolve("user"), "user");
+        loadRecentEpisodes(sb);
+
         return sb.toString();
     }
 
@@ -61,26 +60,20 @@ public class MdMemoryProvider {
 
     public List<MemoryEntry> listMemories() {
         List<MemoryEntry> entries = new ArrayList<>();
-        // Always include MEMORY.md index file first
+        // MEMORY.md is the index, at knowledge/ root — not in a type subdirectory
         if (Files.isRegularFile(indexPath)) {
-            var indexEntry = new MemoryEntry("MEMORY.md", "Memory Index", "Main memory index file", "index", "",
-                    indexPath.toAbsolutePath().toString());
-            entries.add(indexEntry);
+            entries.add(new MemoryEntry("MEMORY.md", "Memory Index", "Main memory index file",
+                    "index", "", indexPath.toAbsolutePath().toString()));
         }
-        if (!Files.isDirectory(memoryDir)) {
-            return entries;
-        }
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(memoryDir, "*.md")) {
-            for (Path file : stream) {
-                String filename = file.getFileName().toString();
-                if ("MEMORY.md".equals(filename)) continue;
-                MemoryEntry entry = parseMemoryFile(file);
-                if (entry != null) {
-                    entries.add(entry);
+        for (var type : List.of("project", "user", "feedback", "reference")) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(memoryDir.resolve(type), "*.md")) {
+                for (Path file : stream) {
+                    MemoryEntry entry = parseMemoryFile(file);
+                    if (entry != null) entries.add(entry);
                 }
+            } catch (IOException e) {
+                // type directory doesn't exist — skip
             }
-        } catch (IOException e) {
-            LOGGER.warn("Failed to list memory files: {}", e.getMessage());
         }
         return entries;
     }
@@ -94,25 +87,6 @@ public class MdMemoryProvider {
             }
         }
         return results;
-    }
-
-    public String readMemoryFile(String relativePath, int from, int lines) {
-        String resolved = relativePath.endsWith(".md") ? relativePath : relativePath + ".md";
-        Path filePath = memoryDir.resolve(resolved);
-        if (!Files.exists(filePath)) {
-            return null;
-        }
-        String content = readFileQuietly(filePath);
-        if (from <= 0 && lines <= 0) {
-            return content;
-        }
-        List<String> allLines = content.lines().toList();
-        int start = Math.max(0, from - 1);
-        int end = lines > 0 ? Math.min(allLines.size(), start + lines) : allLines.size();
-        if (start >= allLines.size()) {
-            return "";
-        }
-        return String.join("\n", allLines.subList(start, end));
     }
 
     private MemoryEntry parseMemoryFile(Path file) {
@@ -140,6 +114,52 @@ public class MdMemoryProvider {
         }
         return new MemoryEntry(file.getFileName().toString(), name, description, type, body,
                 file.toAbsolutePath().toString());
+    }
+
+    private void loadTypeDir(StringBuilder sb, Path typeDir, String type) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(typeDir, "*.md")) {
+            for (Path file : stream) {
+                String content = readFileQuietly(file);
+                if (content.isBlank()) continue;
+                if (sb.length() + content.length() > MAX_LOAD_BYTES) {
+                    sb.append("\n(Memory truncated, use read_file to read remaining files)\n");
+                    return;
+                }
+                sb.append("\n--- ").append(type).append('/').append(file.getFileName()).append(" ---\n")
+                  .append(content.strip()).append('\n');
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Failed to load {} directory: {}", type, e.getMessage());
+        }
+    }
+
+    private void loadRecentEpisodes(StringBuilder sb) {
+        List<Path> episodeFiles;
+        try (Stream<Path> stream = Files.list(episodesDir)) {
+            episodeFiles = stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> EPISODE_FILE_PATTERN.matcher(p.getFileName().toString()).matches())
+                    .sorted(Comparator.reverseOrder())
+                    .limit(MAX_RECENT_EPISODES)
+                    .toList();
+        } catch (IOException e) {
+            LOGGER.warn("Failed to list episodes: {}", e.getMessage());
+            return;
+        }
+
+        if (episodeFiles.isEmpty()) return;
+
+        sb.append("\n--- Recent Episodes ---\n");
+        for (Path file : episodeFiles) {
+            String content = readFileQuietly(file);
+            if (content.isBlank()) continue;
+            if (sb.length() + content.length() > MAX_LOAD_BYTES) {
+                sb.append("(More episodes available, use read_file)\n");
+                return;
+            }
+            sb.append("--- episodes/").append(file.getFileName()).append(" ---\n")
+              .append(content.strip()).append('\n');
+        }
     }
 
     private String readFileQuietly(Path path) {

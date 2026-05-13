@@ -2,7 +2,6 @@ package ai.core.cli.listener;
 
 import ai.core.agent.Agent;
 import ai.core.api.server.session.AgentSession;
-import ai.core.llm.domain.Usage;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolApprovalRequestEvent;
@@ -10,6 +9,7 @@ import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.llm.domain.Usage;
 import org.jline.terminal.Attributes;
 import org.jline.utils.NonBlockingReader;
 import org.slf4j.Logger;

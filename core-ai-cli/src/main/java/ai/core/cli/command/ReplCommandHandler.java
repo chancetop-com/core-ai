@@ -1,6 +1,7 @@
 package ai.core.cli.command;
 
 import ai.core.cli.DebugLog;
+import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 
@@ -85,6 +86,7 @@ public class ReplCommandHandler {
         try {
             Files.createDirectories(dir);
             Files.writeString(file, template);
+            MemoryTriggerService.getInstance().ensureDirectories();
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                     + " Created .core-ai/instructions.md — edit it to customize agent behavior.\n\n");
         } catch (IOException e) {

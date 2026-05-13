@@ -68,9 +68,6 @@ public class NativeReflectionFeature implements Feature {
         "org.jline.terminal.impl.ffm.FfmTerminal",
         // SLF4J provider for Class.forName() via slf4j.provider system property
         "ai.core.cli.log.CliLoggerServiceProvider",
-        // SessionMemoryExtractor inner classes for Jackson deserialization in native image
-        "ai.core.cli.memory.SessionMemoryExtractor$ExtractionResponse",
-        "ai.core.cli.memory.SessionMemoryExtractor$ExtractedMemory",
         // SessionsHandler class for JSON serialization in native image
         "ai.core.cli.a2a.handler.SessionsHandler$SessionItem",
         "ai.core.cli.a2a.handler.SessionMessagesHandler$MessageDto",

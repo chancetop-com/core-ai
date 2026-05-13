@@ -14,6 +14,7 @@ subprojects {
     group = "com.chancetop"
 
     repositories {
+        mavenLocal()
         maven {
             url = uri("https://neowu.github.io/maven-repo/")
             content {
@@ -177,7 +178,13 @@ project(":core-ai-cli") {
         // picocli for CLI arg parsing (GraalVM native-image friendly)
         implementation("info.picocli:picocli:${Versions.PICOCLI_VERSION}")
         annotationProcessor("info.picocli:picocli-codegen:${Versions.PICOCLI_VERSION}")
-        // Undertow for embedded ACP web server (--serve mode)
+        // ACP (Agent Client Protocol) SDK — stdio transport for --acp-agent mode
+        implementation("com.agentclientprotocol:acp-core:0.11.0-SNAPSHOT")
+        implementation("com.agentclientprotocol:acp-agent-support:0.11.0-SNAPSHOT")
+        // Project Reactor (required by ACP SDK)
+        implementation(platform("io.projectreactor:reactor-bom:2024.0.1"))
+        implementation("io.projectreactor:reactor-core")
+        // Undertow for embedded A2A web server (--serve mode)
         implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
         // GraalVM SDK for native-image Feature (compile-time only)
         compileOnly("org.graalvm.sdk:nativeimage:${Versions.GRAALVM_SDK_VERSION}")
