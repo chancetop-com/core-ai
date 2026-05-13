@@ -221,6 +221,7 @@ export interface AgentDefinition {
   system_prompt: string;
   system_prompt_id: string;
   model: string;
+  multi_modal_model?: string;
   temperature: number;
   max_turns: number;
   timeout_seconds: number;

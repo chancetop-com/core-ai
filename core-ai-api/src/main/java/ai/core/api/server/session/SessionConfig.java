@@ -11,6 +11,9 @@ public class SessionConfig {
     @Property(name = "model")
     public String model;
 
+    @Property(name = "multiModalModel")
+    public String multiModalModel;
+
     @Property(name = "temperature")
     public Double temperature;
 

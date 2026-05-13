@@ -36,6 +36,7 @@ public class LLMCallExecutor {
         var config = definition.publishedConfig;
         var systemPrompt = resolveSystemPrompt(config, definition);
         var model = resolveModel(config, definition.model);
+        var multiModalModel = resolveMultiModalModel(config, definition.multiModalModel);
         var temperature = resolveTemperature(config, definition.temperature);
         var timeoutSeconds = resolveTimeout(config, definition);
         var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
@@ -51,8 +52,9 @@ public class LLMCallExecutor {
         }
         messages.add(buildUserMessage(input, attachments));
 
+        var effectiveModel = hasAttachments(attachments) && multiModalModel != null ? multiModalModel : model;
         var request = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(
-            messages, null, temperature, model, null, false, responseFormat, null
+            messages, null, temperature, effectiveModel, null, false, responseFormat, null
         ));
         request.setTimeoutSeconds(timeoutSeconds);
 
@@ -94,6 +96,14 @@ public class LLMCallExecutor {
 
     private String resolveModel(AgentPublishedConfig config, String fallback) {
         return config != null ? config.model : fallback;
+    }
+
+    private String resolveMultiModalModel(AgentPublishedConfig config, String fallback) {
+        return config != null ? config.multiModalModel : fallback;
+    }
+
+    private boolean hasAttachments(List<LLMCallRequest.Attachment> attachments) {
+        return attachments != null && !attachments.isEmpty();
     }
 
     private Double resolveTemperature(AgentPublishedConfig config, Double fallback) {

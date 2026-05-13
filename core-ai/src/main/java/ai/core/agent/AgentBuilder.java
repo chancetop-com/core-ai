@@ -55,6 +55,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private RagConfig ragConfig;
     private Double temperature;
     private String model;
+    private String multiModalModel;
     private ReflectionConfig reflectionConfig;
     private ReflectionListener reflectionListener;
     private Boolean useGroupContext = false;
@@ -150,6 +151,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder model(String model) {
         this.model = model;
+        return this;
+    }
+
+    public AgentBuilder multiModalModel(String multiModalModel) {
+        this.multiModalModel = multiModalModel;
         return this;
     }
 
@@ -335,6 +341,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         agent.maxTurnNumber = this.maxTurnNumber == null ? 20 : this.maxTurnNumber;
         agent.temperature = this.temperature;
         agent.model = this.model;
+        agent.multiModalModel = this.multiModalModel;
         agent.llmProvider = this.llmProvider;
         if (agent.llmProvider == null) {
             throw new Error("llmProvider is required for agent, please set it with llmProvider() method");

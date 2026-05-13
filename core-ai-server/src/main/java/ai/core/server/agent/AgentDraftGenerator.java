@@ -55,6 +55,7 @@ public class AgentDraftGenerator {
         );
 
         draft.model = agent.getModel();
+        draft.multiModalModel = agent.getMultiModalModel();
         draft.temperature = agent.getTemperature();
         draft.maxTurns = 20;
         draft.tools = agent.getToolCalls().stream().map(tc -> {

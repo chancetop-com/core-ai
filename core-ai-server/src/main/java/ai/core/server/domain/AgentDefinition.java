@@ -34,6 +34,9 @@ public class AgentDefinition {
     @Field(name = "model")
     public String model;
 
+    @Field(name = "multi_modal_model")
+    public String multiModalModel;
+
     @Field(name = "temperature")
     public Double temperature;
 

@@ -276,6 +276,7 @@ public class AgentRunner {
         if (sandbox != null) context.sandbox(sandbox);
         var systemPrompt = appendArtifactInstructions(resolveSystemPrompt(config, definition), sandbox != null);
         var model = config != null ? config.model : definition.model;
+        var multiModalModel = config != null ? config.multiModalModel : definition.multiModalModel;
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
         var skillIds = config != null ? config.skillIds : definition.skillIds;
@@ -296,6 +297,7 @@ public class AgentRunner {
             .executionContext(context);
         if (systemPrompt != null) builder.systemPrompt(systemPrompt);
         if (model != null) builder.model(model);
+        if (multiModalModel != null) builder.multiModalModel(multiModalModel);
         if (temperature != null) builder.temperature(temperature);
         if (maxTurns != null) builder.maxTurn(maxTurns);
         if (skillRegistry != null) builder.skillRegistry(skillRegistry);

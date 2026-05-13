@@ -114,6 +114,7 @@ public class AgentSessionManager {
         var config = toSessionConfig(definition);
         if (overrides != null) {
             if (overrides.model != null) config.model = overrides.model;
+            if (overrides.multiModalModel != null) config.multiModalModel = overrides.multiModalModel;
             if (overrides.temperature != null) config.temperature = overrides.temperature;
             if (overrides.systemPrompt != null) config.systemPrompt = overrides.systemPrompt;
             if (overrides.maxTurns != null) config.maxTurns = overrides.maxTurns;
@@ -197,6 +198,7 @@ public class AgentSessionManager {
         snapshot.systemPrompt = pub != null && pub.systemPrompt != null ? pub.systemPrompt : def.systemPrompt;
         snapshot.systemPromptId = pub != null && pub.systemPromptId != null ? pub.systemPromptId : def.systemPromptId;
         snapshot.model = pub != null && pub.model != null ? pub.model : def.model;
+        snapshot.multiModalModel = pub != null && pub.multiModalModel != null ? pub.multiModalModel : def.multiModalModel;
         snapshot.temperature = pub != null && pub.temperature != null ? pub.temperature : def.temperature;
         snapshot.maxTurns = pub != null && pub.maxTurns != null ? pub.maxTurns : def.maxTurns;
         snapshot.inputTemplate = pub != null && pub.inputTemplate != null ? pub.inputTemplate : def.inputTemplate;
@@ -222,6 +224,7 @@ public class AgentSessionManager {
         var config = new SessionConfig();
         config.systemPrompt = snapshot.systemPromptId != null ? systemPromptService.resolveContent(snapshot.systemPromptId) : snapshot.systemPrompt;
         config.model = snapshot.model;
+        config.multiModalModel = snapshot.multiModalModel;
         config.temperature = snapshot.temperature;
         config.maxTurns = snapshot.maxTurns;
         List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty()) ? toolRegistryService.resolveToolRefs(snapshot.tools) : List.of();
@@ -412,15 +415,17 @@ public class AgentSessionManager {
         var inlineSystemPrompt = hasSource && source.systemPrompt != null ? source.systemPrompt : definition.systemPrompt;
         config.systemPrompt = systemPromptId != null ? systemPromptService.resolveContent(systemPromptId) : inlineSystemPrompt;
         config.model = hasSource && source.model != null ? source.model : definition.model;
+        config.multiModalModel = hasSource && source.multiModalModel != null ? source.multiModalModel : definition.multiModalModel;
         config.temperature = hasSource && source.temperature != null ? source.temperature : definition.temperature;
         config.maxTurns = hasSource && source.maxTurns != null ? source.maxTurns : definition.maxTurns;
         return config;
     }
 
     private Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName) {
+        var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
                 .name(agentName != null ? agentName.replaceAll("\\s+", "-") : "assistant")
-                .llmProvider(llmProviders.getProvider())
+                .llmProvider(llmProvider)
                 .toolCalls(tools != null && !tools.isEmpty() ? tools : BuiltinTools.ALL)
                 .temperature(config != null && config.temperature != null ? config.temperature : 0.8);
         if (config != null) {
@@ -430,9 +435,17 @@ public class AgentSessionManager {
                 builder.systemPrompt("You are a helpful AI assistant.");
             }
             if (config.model != null) builder.model(config.model);
+            if (config.multiModalModel != null) {
+                builder.multiModalModel(config.multiModalModel);
+            } else {
+                var mmModel = llmProvider.config.getMultiModalModel();
+                if (mmModel != null) builder.multiModalModel(mmModel);
+            }
             if (config.maxTurns != null) builder.maxTurn(config.maxTurns);
         } else {
             builder.systemPrompt("You are a helpful AI assistant.");
+            var mmModel = llmProvider.config.getMultiModalModel();
+            if (mmModel != null) builder.multiModalModel(mmModel);
         }
         if (context != null) builder.executionContext(context);
         var provider = persistenceProviders.getDefaultPersistenceProvider();

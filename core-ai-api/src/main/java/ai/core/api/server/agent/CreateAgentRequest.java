@@ -27,6 +27,9 @@ public class CreateAgentRequest {
     @Property(name = "model")
     public String model;
 
+    @Property(name = "multi_modal_model")
+    public String multiModalModel;
+
     @Property(name = "temperature")
     public Double temperature;
 

@@ -8,6 +8,7 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.Content;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
@@ -65,6 +66,7 @@ public class Agent extends Node<Agent> {
     RagConfig ragConfig;
     Double temperature;
     String model;
+    String multiModalModel;
     ReflectionConfig reflectionConfig;
     ReflectionListener reflectionListener;
     Boolean useGroupContext;
@@ -252,8 +254,22 @@ public class Agent extends Node<Agent> {
         return resultMsg;
     }
     private Choice handLLM(List<Message> messages, List<Tool> tools) {
-        var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), model, this.getName(), null, null, reasoningEffort));
+        var effectiveModel = resolveEffectiveModel(messages);
+        var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), effectiveModel, this.getName(), null, null, reasoningEffort));
         return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback())), req);
+    }
+
+    private String resolveEffectiveModel(List<Message> messages) {
+        if (multiModalModel == null) return model;
+        for (var message : messages) {
+            if (message.content == null) continue;
+            for (var content : message.content) {
+                if (content.type == Content.ContentType.IMAGE_URL || content.type == Content.ContentType.FILE) {
+                    return multiModalModel;
+                }
+            }
+        }
+        return model;
     }
 
     private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
@@ -370,6 +386,12 @@ public class Agent extends Node<Agent> {
     public String getModel() {
         return model;
     }
+    public String getMultiModalModel() {
+        return multiModalModel;
+    }
+    public void setMultiModalModel(String multiModalModel) {
+        this.multiModalModel = multiModalModel;
+    }
     public LLMProvider getLLMProvider() {
         return llmProvider;
     }
@@ -437,6 +459,7 @@ public class Agent extends Node<Agent> {
         var context = super.getExecutionContext();
         context.setLlmProvider(llmProvider);
         context.setModel(model);
+        context.setMultiModalModel(multiModalModel);
         context.setStreamingCallback(getStreamingCallback());
         context.setLifecycles(agentLifecycles);
         return context;

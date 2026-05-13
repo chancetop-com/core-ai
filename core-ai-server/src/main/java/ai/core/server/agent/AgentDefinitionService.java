@@ -54,6 +54,7 @@ public class AgentDefinitionService {
         entity.systemPrompt = request.systemPrompt;
         entity.systemPromptId = Strings.isBlank(request.systemPromptId) ? null : request.systemPromptId;
         entity.model = request.model;
+        entity.multiModalModel = Strings.isBlank(request.multiModalModel) ? null : request.multiModalModel;
         entity.temperature = request.temperature;
         var isLLMCall = "LLM_CALL".equals(request.type);
         if (!isLLMCall) {
@@ -128,6 +129,7 @@ public class AgentDefinitionService {
         if (request.systemPrompt != null) entity.systemPrompt = request.systemPrompt;
         if (request.systemPromptId != null) entity.systemPromptId = request.systemPromptId;
         if (request.model != null) entity.model = request.model;
+        if (request.multiModalModel != null) entity.multiModalModel = Strings.isBlank(request.multiModalModel) ? null : request.multiModalModel;
         if (request.temperature != null) entity.temperature = request.temperature;
         if (request.maxTurns != null) entity.maxTurns = request.maxTurns;
         if (request.timeoutSeconds != null) entity.timeoutSeconds = request.timeoutSeconds;
@@ -152,6 +154,7 @@ public class AgentDefinitionService {
         config.systemPrompt = entity.systemPrompt;
         config.systemPromptId = entity.systemPromptId;
         config.model = entity.model;
+        config.multiModalModel = entity.multiModalModel;
         config.temperature = entity.temperature;
         config.maxTurns = entity.maxTurns;
         config.timeoutSeconds = entity.timeoutSeconds;
@@ -182,6 +185,7 @@ public class AgentDefinitionService {
         entity.description = request.description;
         entity.systemPrompt = agent.getSystemPrompt();
         entity.model = agent.getModel();
+        entity.multiModalModel = agent.getMultiModalModel();
         entity.temperature = agent.getTemperature();
         entity.maxTurns = 20;
         entity.timeoutSeconds = 600;
@@ -210,6 +214,7 @@ public class AgentDefinitionService {
         view.systemPrompt = entity.systemPrompt;
         view.systemPromptId = entity.systemPromptId;
         view.model = entity.model;
+        view.multiModalModel = entity.multiModalModel;
         view.temperature = entity.temperature;
         view.maxTurns = entity.maxTurns;
         view.timeoutSeconds = entity.timeoutSeconds;

@@ -288,6 +288,7 @@ public class AgentBootstrap {
 
     private void applyConfigProperties(LLMProviderConfig config, String prefix) {
         props.property(prefix + ".model").ifPresent(config::setModel);
+        props.property(prefix + ".model.multimodal").ifPresent(config::setMultiModalModel);
         props.property(prefix + ".temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
         props.property(prefix + ".embeddings.model").ifPresent(config::setEmbeddingModel);
         props.property(prefix + ".request.extra_body").ifPresent(config::setRequestExtraBody);

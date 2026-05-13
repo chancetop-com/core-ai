@@ -9,6 +9,7 @@ import java.time.Duration;
  */
 public class LLMProviderConfig {
     private String model;
+    private String multiModalModel;
     private Double temperature;
     private String embeddingModel;
     private Object requestExtraBody;
@@ -24,6 +25,7 @@ public class LLMProviderConfig {
 
     public LLMProviderConfig(LLMProviderConfig other) {
         this.model = other.model;
+        this.multiModalModel = other.multiModalModel;
         this.temperature = other.temperature;
         this.embeddingModel = other.embeddingModel;
         this.requestExtraBody = other.requestExtraBody;
@@ -50,6 +52,14 @@ public class LLMProviderConfig {
 
     public String getModel() {
         return model;
+    }
+
+    public String getMultiModalModel() {
+        return multiModalModel;
+    }
+
+    public void setMultiModalModel(String multiModalModel) {
+        this.multiModalModel = multiModalModel;
     }
 
     public Duration getTimeout() {

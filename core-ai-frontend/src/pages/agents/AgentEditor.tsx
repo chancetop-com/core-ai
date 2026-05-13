@@ -10,7 +10,7 @@ import StatusBadge from '../../components/StatusBadge';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
   id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
-  model: '', temperature: 0.7, max_turns: 20, timeout_seconds: 600,
+  model: '', multi_modal_model: '', temperature: 0.7, max_turns: 20, timeout_seconds: 600,
   tools: [], input_template: '', variables: {},
   system_default: false, type: 'AGENT', response_schema: null,
   created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
@@ -55,6 +55,14 @@ export default function AgentEditor() {
   const [apiAppServices, setApiAppServices] = useState<Record<string, ApiServiceView[]>>({});
   const [showApiPicker, setShowApiPicker] = useState(false);
   const [expandedApiService, setExpandedApiService] = useState<string | null>(null);
+
+  // multi-modal model toggle
+  const [showMultiModalModel, setShowMultiModalModel] = useState(false);
+
+  // When agent loads (edit mode), sync the toggle if multi_modal_model is set
+  useEffect(() => {
+    if (agent?.multi_modal_model) setShowMultiModalModel(true);
+  }, [agent?.id]);
 
   // mcp server tool picker - expand individual MCP servers to select specific tools
   const [mcpServerTools, setMcpServerTools] = useState<Record<string, McpToolInfo[]>>({});
@@ -290,6 +298,7 @@ export default function AgentEditor() {
           system_prompt: agent.system_prompt,
           system_prompt_id: agent.system_prompt_id,
           model: agent.model,
+          multi_modal_model: agent.multi_modal_model,
           temperature: agent.temperature,
           max_turns: agent.max_turns,
           timeout_seconds: agent.timeout_seconds,
@@ -311,6 +320,7 @@ export default function AgentEditor() {
         system_prompt: agent.system_prompt,
         system_prompt_id: agent.system_prompt_id,
         model: agent.model,
+        multi_modal_model: agent.multi_modal_model,
         temperature: agent.temperature,
         max_turns: agent.max_turns,
         timeout_seconds: agent.timeout_seconds,
@@ -518,7 +528,7 @@ export default function AgentEditor() {
     }
   };
 
-  const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
+  const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'multi_modal_model', 'temperature',
     'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids', 'skill_ids'] as const;
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -560,7 +570,7 @@ export default function AgentEditor() {
   const handleExport = (a: AgentDefinition) => {
     const exportData = {
       name: a.name, description: a.description, type: a.type,
-      system_prompt: a.system_prompt, model: a.model, temperature: a.temperature,
+      system_prompt: a.system_prompt, model: a.model, multi_modal_model: a.multi_modal_model, temperature: a.temperature,
       max_turns: a.max_turns, timeout_seconds: a.timeout_seconds,         tools: a.tools,
       input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
       subagent_ids: (a as unknown as Record<string, unknown>).subagent_ids,
@@ -796,6 +806,32 @@ export default function AgentEditor() {
                 style={inputStyle}
                 placeholder="20" />
             </div>
+          </div>
+
+          {/* Multi-Modal Model (optional) */}
+          <div className="mt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox"
+                checked={showMultiModalModel}
+                onChange={e => {
+                  setShowMultiModalModel(e.target.checked);
+                  if (!e.target.checked) update('multi_modal_model', '');
+                }}
+                className="w-4 h-4 rounded accent-[var(--color-accent)]" />
+              <span className="text-sm font-medium">Enable multi-modal model</span>
+            </label>
+            <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-tertiary)' }}>
+              Only needed when your main model lacks vision / multi-modal capabilities and you need to handle images or files.
+              When a request contains images or file attachments, it will be routed to this model instead.
+            </p>
+            {showMultiModalModel && (
+              <div className="mt-2 ml-6 w-80">
+                <input value={agent.multi_modal_model || ''} onChange={e => update('multi_modal_model', e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                  style={inputStyle}
+                  placeholder="e.g. gpt-4o" />
+              </div>
+            )}
           </div>
 
           <div>

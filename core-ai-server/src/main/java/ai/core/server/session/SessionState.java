@@ -40,6 +40,7 @@ public class SessionState {
         public String systemPrompt;
         public String systemPromptId;
         public String model;
+        public String multiModalModel;
         public Double temperature;
         public Integer maxTurns;
         public String inputTemplate;

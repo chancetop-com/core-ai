@@ -45,6 +45,7 @@ public final class ExecutionContext {
     private BackgroundTaskManager backgroundTaskManager;
     private LLMProvider llmProvider;
     private String model;
+    private String multiModalModel;
     private StreamingCallback streamingCallback;
     private List<AbstractLifecycle> lifecycles;
     private Consumer<Usage> tokenCostCallback;
@@ -154,6 +155,14 @@ public final class ExecutionContext {
 
     public void setModel(String model) {
         this.model = model;
+    }
+
+    public String getMultiModalModel() {
+        return multiModalModel;
+    }
+
+    public void setMultiModalModel(String multiModalModel) {
+        this.multiModalModel = multiModalModel;
     }
 
     public StreamingCallback getStreamingCallback() {

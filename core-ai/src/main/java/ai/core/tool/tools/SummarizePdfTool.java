@@ -41,7 +41,7 @@ public class SummarizePdfTool extends ToolCall {
                 RoleType.USER,
                 List.of(Content.of(params.query), Content.ofFileUrl(params.url)),
                 null, null, null, null)));
-        var targetModel = model != null ? model : context.getModel();
+        var targetModel = resolveModel(context);
         var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, targetModel, null));
         return ToolCallResult.completed(rsp.choices.getFirst().message.content);
     }
@@ -49,6 +49,13 @@ public class SummarizePdfTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments) {
         throw new AgentRuntimeException("SUMMARIZE_PDF_TOOL_FAILED", "SummarizePdfTool requires ExecutionContext");
+    }
+
+    private String resolveModel(ExecutionContext context) {
+        if (model != null) return model;
+        if (context.getMultiModalModel() != null) return context.getMultiModalModel();
+        if (context.getModel() != null) return context.getModel();
+        return context.getLlmProvider().config.getModel();
     }
 
     public static class Builder extends ToolCall.Builder<Builder, SummarizePdfTool> {
