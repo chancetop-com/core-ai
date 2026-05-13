@@ -106,6 +106,49 @@ export default function Chat() {
     setActiveArtifact(null);
     setShowVoiceSidebar(true);
   }, []);
+
+  // Stable ReactMarkdown component overrides — inline arrow functions would change identity on every
+  // Chat render and force React to unmount/remount AuthedImage (which would abort its in-flight fetch
+  // and re-trigger loading). useMemo keyed on openArtifact (itself stable via useCallback) keeps the
+  // object reference stable so message-level markdown subtrees are not recreated.
+  const agentMarkdownComponents = useMemo(() => ({
+    code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
+      const match = /language-(\w+)/.exec(className || '');
+      if (!inline && match) {
+        const lang = match[1].toLowerCase();
+        const codeText = String(children ?? '').replace(/\n$/, '');
+        if (lang === 'html' || lang === 'svg') {
+          return (
+            <ArtifactCard
+              artifact={{ kind: lang, language: lang, title: lang === 'html' ? 'HTML page' : 'SVG image', content: codeText }}
+              onOpen={openArtifact}
+            />
+          );
+        }
+        return (
+          <ArtifactCard
+            artifact={{ kind: 'code', language: lang, title: `${lang} snippet`, content: codeText }}
+            onOpen={openArtifact}
+          />
+        );
+      }
+      return <code className={className} {...props}>{children}</code>;
+    },
+    img({ src, alt }: { src?: string; alt?: string }) {
+      const isAbsolute = !!src && (/^(https?:|data:|blob:|\/api\/)/.test(src) || src.startsWith('/'));
+      if (isAbsolute) {
+        return <AuthedImage src={src} alt={alt} />;
+      }
+      return (
+        <span className="my-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
+          style={{ borderColor: 'var(--color-warning)', background: 'var(--color-warning)' + '12', color: 'var(--color-text-secondary)' }}
+          title={src}>
+          <span style={{ color: 'var(--color-warning)' }}>⚠</span>
+          <span>Image <code style={{ color: 'var(--color-text)' }}>{src || alt || '?'}</code> not available — agent must call <code>submit_artifacts</code> first.</span>
+        </span>
+      );
+    },
+  }), [openArtifact]);
   const [voiceLanguage, setVoiceLanguage] = useState('zh-CN');
   const voice = useSpeechRecognition();
   const [variablesExpanded, setVariablesExpanded] = useState(false);
@@ -1201,44 +1244,7 @@ export default function Chat() {
                             <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
-                                components={msg.role === 'agent' ? {
-                                  code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
-                                    const match = /language-(\w+)/.exec(className || '');
-                                    if (!inline && match) {
-                                      const lang = match[1].toLowerCase();
-                                      const codeText = String(children ?? '').replace(/\n$/, '');
-                                      if (lang === 'html' || lang === 'svg') {
-                                        return (
-                                          <ArtifactCard
-                                            artifact={{ kind: lang, language: lang, title: lang === 'html' ? 'HTML page' : 'SVG image', content: codeText }}
-                                            onOpen={openArtifact}
-                                          />
-                                        );
-                                      }
-                                      return (
-                                        <ArtifactCard
-                                          artifact={{ kind: 'code', language: lang, title: `${lang} snippet`, content: codeText }}
-                                          onOpen={openArtifact}
-                                        />
-                                      );
-                                    }
-                                    return <code className={className} {...props}>{children}</code>;
-                                  },
-                                  img({ src, alt }: { src?: string; alt?: string }) {
-                                    const isAbsolute = !!src && (/^(https?:|data:|blob:|\/api\/)/.test(src) || src.startsWith('/'));
-                                    if (isAbsolute) {
-                                      return <AuthedImage src={src} alt={alt} />;
-                                    }
-                                    return (
-                                      <span className="my-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
-                                        style={{ borderColor: 'var(--color-warning)', background: 'var(--color-warning)' + '12', color: 'var(--color-text-secondary)' }}
-                                        title={src}>
-                                        <span style={{ color: 'var(--color-warning)' }}>⚠</span>
-                                        <span>Image <code style={{ color: 'var(--color-text)' }}>{src || alt || '?'}</code> not available — agent must call <code>submit_artifacts</code> first.</span>
-                                      </span>
-                                    );
-                                  },
-                                } : undefined}>
+                                components={msg.role === 'agent' ? agentMarkdownComponents : undefined}>
                                 {textSeg.content}
                               </ReactMarkdown>
                             </div>
