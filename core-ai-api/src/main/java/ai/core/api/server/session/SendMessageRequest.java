@@ -3,6 +3,7 @@ package ai.core.api.server.session;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -15,4 +16,17 @@ public class SendMessageRequest {
 
     @Property(name = "variables")
     public Map<String, String> variables;
+
+    @Property(name = "attachments")
+    public List<SendMessageAttachment> attachments;
+
+    public static class SendMessageAttachment {
+        @NotNull
+        @Property(name = "url")
+        public String url;
+
+        @NotNull
+        @Property(name = "type")
+        public String type;
+    }
 }

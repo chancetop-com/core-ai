@@ -39,8 +39,14 @@ export interface ToolsSegment {
 
 export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment;
 
+export interface ChatAttachment {
+  url: string;
+  type: 'IMAGE' | 'PDF';
+}
+
 export interface ChatMessage {
   role: 'user' | 'agent';
   segments: MessageSegment[];
+  attachments?: ChatAttachment[];
   approval?: AwaitInfo;
 }

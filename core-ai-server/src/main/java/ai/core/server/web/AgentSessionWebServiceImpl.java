@@ -201,9 +201,24 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
-        var command = SessionCommand.sendMessage(sessionId, userId, request.message,
+        var message = buildMessageWithAttachments(request);
+        var command = SessionCommand.sendMessage(sessionId, userId, message,
                 request.variables != null ? new HashMap<>(request.variables) : null);
         commandPublisher.publish(command);
+    }
+
+    private String buildMessageWithAttachments(SendMessageRequest request) {
+        if (request.attachments == null || request.attachments.isEmpty()) {
+            return request.message;
+        }
+        var urls = request.attachments.stream()
+                .map(a -> a.url)
+                .toList();
+        var attachmentText = String.join("\n", urls);
+        if (request.message == null || request.message.isBlank()) {
+            return attachmentText;
+        }
+        return request.message + "\n\n" + attachmentText;
     }
 
     @Override

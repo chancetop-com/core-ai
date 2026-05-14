@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic, Maximize2, Minimize2 } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic, Maximize2, Minimize2, Paperclip, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
@@ -163,6 +163,74 @@ export default function Chat() {
   const sseControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // File upload state
+  interface PendingAttachment {
+    id: string;
+    name: string;
+    url: string;
+    contentType: string;
+    uploading: boolean;
+  }
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+
+  const handleFileSelect = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (const file of Array.from(files)) {
+      const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'application/pdf'];
+      if (!validTypes.includes(file.type)) {
+        showToast(`Unsupported file type: ${file.type}. Only images and PDFs are allowed.`);
+        continue;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        showToast(`File too large: ${file.name}. Maximum size is 50MB.`);
+        continue;
+      }
+
+      const id = crypto.randomUUID();
+      setPendingAttachments(prev => [...prev, {
+        id, name: file.name, url: '', contentType: file.type, uploading: true,
+      }]);
+
+      try {
+        const credRes = await fetch(`/api/blob/upload-credential?content_type=${encodeURIComponent(file.type)}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('apiKey')}` },
+        });
+        if (!credRes.ok) throw new Error(`Credential request failed: ${credRes.status}`);
+        const cred = await credRes.json();
+
+        const uploadRes = await fetch(cred.upload_url, {
+          method: 'PUT',
+          headers: {
+            'x-ms-blob-type': 'BlockBlob',
+            'x-ms-blob-content-type': file.type,
+          },
+          body: file,
+        });
+        if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
+
+        setPendingAttachments(prev => prev.map(a =>
+          a.id === id ? { ...a, url: cred.blob_url, contentType: file.type, uploading: false } : a
+        ));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        showToast(`Upload failed for ${file.name}: ${msg}`);
+        setPendingAttachments(prev => prev.filter(a => a.id !== id));
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setPendingAttachments(prev => prev.filter(a => a.id !== id));
+  }, []);
 
   // All published agents for chat (my + others, filtered by status)
   const agents = useMemo(() =>
@@ -703,11 +771,24 @@ export default function Chat() {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || status !== 'idle' || !selectedAgentId) return;
+    const readyAttachments = pendingAttachments.filter(a => !a.uploading);
+    const hasAttachments = readyAttachments.length > 0;
+    if ((!text && !hasAttachments) || status !== 'idle' || !selectedAgentId) return;
 
     setInput('');
     setIsInputExpanded(false);
-    setMessages(prev => [...prev, { role: 'user', segments: [{ type: 'text', content: text }] }]);
+
+    const attachments = readyAttachments.map(a => ({
+      url: a.url,
+      type: a.contentType === 'application/pdf' ? 'PDF' as const : 'IMAGE' as const,
+    }));
+    setPendingAttachments([]);
+
+    setMessages(prev => [...prev, {
+      role: 'user',
+      segments: [{ type: 'text', content: text }],
+      attachments: attachments.length > 0 ? attachments : undefined,
+    }]);
     setStatus('running');
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
@@ -716,7 +797,8 @@ export default function Chat() {
 
     try {
       const sid = await ensureSession();
-      await sessionApi.sendMessage(sid, text, variableValues);
+      await sessionApi.sendMessage(sid, text, variableValues,
+        attachments.length > 0 ? attachments.map(a => ({ url: a.url, type: a.type })) : undefined);
       setSidebarRefreshKey(k => k + 1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -771,6 +853,7 @@ export default function Chat() {
     setLoadedSkillIds(new Set());
     setPreToolIds(new Set());
     setPreSkillIds(new Set());
+    setPendingAttachments([]);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     sessionStorage.removeItem('chat_messages');
@@ -1235,6 +1318,33 @@ export default function Chat() {
                       )}
                       {textSeg && (
                         <div className="mb-3">
+                          {/* Attachments as thumbnails (IMAGES) or links (PDFs) */}
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="flex gap-2 flex-wrap mb-2" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                              {msg.attachments.map((att, idx) => (
+                                att.type === 'IMAGE' ? (
+                                  <a key={idx} href={att.url} target="_blank" rel="noopener noreferrer"
+                                    className="block rounded-lg overflow-hidden border"
+                                    style={{ borderColor: 'var(--color-border)', maxWidth: '160px' }}>
+                                    <img src={att.url} alt={`attachment-${idx}`}
+                                      className="w-full h-24 object-cover"
+                                      loading="lazy" />
+                                  </a>
+                                ) : (
+                                  <a key={idx} href={att.url} target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+                                    style={{
+                                      background: 'var(--color-bg-tertiary)',
+                                      border: '1px solid var(--color-border)',
+                                      color: 'var(--color-text-secondary)',
+                                    }}>
+                                    <Paperclip size={12} />
+                                    <span className="max-w-[120px] truncate">PDF</span>
+                                  </a>
+                                )
+                              ))}
+                            </div>
+                          )}
                           <div className="rounded-xl px-4 py-3 text-sm overflow-x-auto"
                             style={{
                               background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
@@ -1446,6 +1556,37 @@ export default function Chat() {
             );
           })()}
 
+          {/* Attachment previews */}
+          {pendingAttachments.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-2">
+              {pendingAttachments.map((att) => (
+                <span key={att.id}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+                  style={{
+                    background: att.uploading ? 'var(--color-bg-tertiary)' : 'var(--color-primary)' + '12',
+                    border: att.uploading ? '1px dashed var(--color-border)' : '1px solid var(--color-primary)' + '20',
+                    color: att.uploading ? 'var(--color-text-muted)' : 'var(--color-primary)',
+                  }}>
+                  {att.uploading ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : att.contentType === 'application/pdf' ? (
+                    <Paperclip size={12} />
+                  ) : (
+                    <Paperclip size={12} />
+                  )}
+                  <span className="max-w-[120px] truncate">{att.name}</span>
+                  {!att.uploading && (
+                    <button onClick={() => removeAttachment(att.id)}
+                      className="ml-0.5 hover:opacity-70"
+                      style={{ color: 'var(--color-text-muted)' }}>
+                      <X size={12} />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-2 items-end">
             {/* Tool picker button — enabled when agent is selected */}
             <button
@@ -1487,6 +1628,20 @@ export default function Chat() {
               }}
               title="Load agents as subagents">
               <Users size={18} />
+            </button>
+
+            {/* File upload button */}
+            <button
+              onClick={handleFileSelect}
+              disabled={!selectedAgentId || status === 'running'}
+              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
+              style={{
+                background: pendingAttachments.length > 0 ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
+                border: '1px solid var(--color-border)',
+                color: pendingAttachments.length > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              }}
+              title="Upload image or PDF">
+              <Paperclip size={18} />
             </button>
 
             <span className="relative flex-1 self-stretch flex items-end">
@@ -1567,6 +1722,16 @@ export default function Chat() {
           {toast}
         </div>
       )}
+
+      {/* Hidden file input for image/pdf upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,application/pdf"
+        multiple
+        onChange={handleFileChange}
+        className="hidden"
+      />
 
       {/* Tool Picker Modal */}
       {showToolPicker && (

@@ -197,10 +197,10 @@ export const sessionApi = {
     });
   },
 
-  sendMessage: (sessionId: string, message: string, variables?: Record<string, string>) =>
+  sendMessage: (sessionId: string, message: string, variables?: Record<string, string>, attachments?: { url: string; type: string }[]) =>
     request<void>(`/api/sessions/${sessionId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ message, variables }),
+      body: JSON.stringify({ message, variables, attachments }),
     }),
 
   approve: (sessionId: string, callId: string, decision: 'APPROVE' | 'DENY') =>

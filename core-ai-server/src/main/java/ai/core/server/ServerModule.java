@@ -22,6 +22,9 @@ import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.GenerateSystemPromptService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
+import ai.core.server.blob.AzureBlobSasService;
+import ai.core.server.blob.BlobUploadCredentialController;
+import ai.core.api.server.blob.BlobUploadCredentialView;
 import ai.core.server.llmcall.LLMCallBuilderTools;
 import ai.core.server.web.CorsInterceptor;
 import ai.core.server.web.auth.AuthInterceptor;
@@ -191,6 +194,22 @@ public class ServerModule extends Module {
         speechController.speechRegion = property("azure.speech.region").orElse("eastus");
         speechController.speechEndpoint = property("azure.speech.endpoint").orElse(null);
         http().route(HTTPMethod.GET, "/api/speech/token", speechController::getToken);
+
+        // Blob upload credential for direct browser-to-Azure uploads
+        var blobController = bind(BlobUploadCredentialController.class);
+        var accountName = property("azure.blob.account.name").orElse(null);
+        var accountKey = property("azure.blob.account.key").orElse(null);
+        blobController.container = property("azure.blob.container").orElse("uploads");
+        blobController.prefix = property("azure.blob.prefix").orElse(null);
+        blobController.publicBaseUrl = property("azure.blob.public.base.url").orElse(null);
+        if (accountName != null && !accountName.isBlank() && accountKey != null && !accountKey.isBlank()) {
+            blobController.sasService = new AzureBlobSasService(accountName, accountKey);
+            LOGGER.info("Azure Blob upload credential endpoint configured (container={})", blobController.container);
+        } else {
+            LOGGER.info("Azure Blob Storage not configured (azure.blob.account.name/key missing), upload endpoint will return 500");
+        }
+        http().bean(BlobUploadCredentialView.class);
+        http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
 
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));
         api().service(UserWebService.class, bind(UserWebServiceImpl.class));
