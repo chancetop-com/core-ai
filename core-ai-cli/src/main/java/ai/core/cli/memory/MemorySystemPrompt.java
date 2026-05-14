@@ -42,8 +42,6 @@ public final class MemorySystemPrompt implements PromptInject {
             ```yaml
             ---
             task: <one-line task description>
-            date: <YYYY-MM-DD>
-            result: <key deliverables, metrics, or outcome>
             ---
             ```
             Body sections:
@@ -66,7 +64,7 @@ public final class MemorySystemPrompt implements PromptInject {
             ```
 
             ### knowledge/MEMORY.md
-            Per-type index: `| File | Description | Created | Updated |`.
+            Per-type index: `| File | Descripton | Created | Updated |`.
             Description: use the `description` field from the file's YAML frontmatter.
 
             ### knowledge/{type}/{name}.md (Wiki pages)
@@ -106,7 +104,7 @@ public final class MemorySystemPrompt implements PromptInject {
             - No, it requires inference, git history, or conversation to discover → store
             - Yes, the code/file itself is the source of truth → skip
 
-            Example: "Why Redis over DB for sessions? Read-heavy, data loss acceptable."
+            Example: "Why this technology over another? Performance trade-off under specific constraints."
 
             **⚠️ Staleness caveat**: project knowledge is a snapshot — files move, architecture evolves.
             Use it for **quick orientation** (locating key files, understanding design intent),
@@ -119,7 +117,7 @@ public final class MemorySystemPrompt implements PromptInject {
             - Yes → store
             - No, session-local choice → skip
 
-            Example: "Always use ./gradlew, never system gradle."
+            Example: "Always use the project's local tool wrapper, never the system-wide one."
 
             #### feedback
             User corrections and validated approaches. Format: rule + Why + How-to-apply.
@@ -128,7 +126,7 @@ public final class MemorySystemPrompt implements PromptInject {
             - Yes → store it as a concise, executable rule
             - No, chit-chat or one-off instruction → skip
 
-            Example: "No, use pnpm not npm" → rule: always pnpm install | Why: lockfile mismatch | How: replace npm with pnpm.
+            Example: "No, use tool X not tool Y" → rule: always use X | Why: compatibility reason | How: replace Y with X.
 
             #### reference
             External knowledge: third-party services, external API docs, upstream libraries, imported specifications.
@@ -137,7 +135,7 @@ public final class MemorySystemPrompt implements PromptInject {
             - Yes → store
             - No, project-internal file, config, or document → use project type
 
-            Example: "Payment service API docs: https://pay.example.com/api/v2/docs"
+            Example: "External API docs at https://... for a third-party service."
 
             ### Wiki Pages: Aggregate by Topic
 
@@ -155,28 +153,28 @@ public final class MemorySystemPrompt implements PromptInject {
 
             Example — three discrete facts extracted from conversation:
 
-            1. "Payment goes through OrderService → PaymentGateway → external Stripe API"
-            2. "PaymentService.java is the main entry point"
-            3. "Must use idempotency keys to prevent duplicate charges"
+            1. "Service A calls Service B, which then talks to an external API"
+            2. "ServiceBService.java contains the core logic"
+            3. "Must include authentication token in every request"
 
-            → All three go to `knowledge/project/payment.md`:
+            → All three go to `knowledge/project/service-b.md`:
 
             ```markdown
             ---
-            name: payment
-            description: Payment flow architecture, key files, and constraints
+            name: service-b
+            description: Service B flow, key files, and constraints
             type: project
             ---
 
             ## Flow
-            Orders → PaymentGateway → Stripe API
+            Service A → ServiceBService → external API
 
             ## Key files
-            - PaymentService.java — main entry point
-            - PaymentGateway.java — external API adapter
+            - ServiceBService.java — main entry point
+            - ExternalApiClient.java — external API adapter
 
             ## Constraints
-            - Always include idempotency key to prevent duplicate charges
+            - Always include authentication token to prevent auth errors
             ```
 
             When a new fact arrives: if the topic already has a wiki page, edit_file to append.
