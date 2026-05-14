@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
+import type { PluggableList } from 'unified';
+import { chatSanitizeSchema } from './markdownSanitizeSchema';
 import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic, Maximize2, Minimize2, Paperclip, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
@@ -51,6 +55,12 @@ function getMessageArtifacts(msg: ChatMessage, all: { file_id: string; file_name
   if (fileIds.size === 0) return [];
   return all.filter(a => fileIds.has(a.file_id));
 }
+
+// Module-level stable references so React-Markdown doesn't tear down subtrees on re-render.
+// rehype-raw lets inline HTML/SVG from the LLM through; rehype-sanitize gates it with a strict
+// whitelist. Only enabled on finished agent messages (see isStreamingLast below) — running a full
+// parse5 reparse per streaming token would tank performance on multi-KB SVG payloads.
+const AGENT_REHYPE_PLUGINS: PluggableList = [rehypeRaw, [rehypeSanitize, chatSanitizeSchema]];
 
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1351,9 +1361,10 @@ export default function Chat() {
                               color: msg.role === 'user' ? 'white' : 'var(--color-text)',
                               border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
                             }}>
-                            <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1">
+                            <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1 [&_svg]:block [&_svg]:max-w-full [&_svg]:h-auto">
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
+                                rehypePlugins={msg.role === 'agent' && !(status === 'running' && i === messages.length - 1) ? AGENT_REHYPE_PLUGINS : undefined}
                                 components={msg.role === 'agent' ? agentMarkdownComponents : undefined}>
                                 {textSeg.content}
                               </ReactMarkdown>

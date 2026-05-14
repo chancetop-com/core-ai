@@ -2,8 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { X, FileText, Code as CodeIcon, FileCode, Globe, Image as ImageIcon, Download, Copy, Check, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
+import type { PluggableList } from 'unified';
 import CodeMirrorEditor from '../../../components/CodeMirrorEditor';
 import type { ArtifactSpec } from './artifactTypes';
+import { chatSanitizeSchema } from '../markdownSanitizeSchema';
+
+const REHYPE_PLUGINS: PluggableList = [rehypeRaw, [rehypeSanitize, chatSanitizeSchema]];
 
 function authedFileUrl(fileId: string): string {
   return `/api/files/${fileId}/content`;
@@ -258,9 +264,9 @@ function renderPreview(spec: ArtifactSpec, state: FileState) {
   }
   if (spec.kind === 'markdown' && spec.content) {
     return (
-      <div className="px-6 py-4 text-sm [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1"
+      <div className="px-6 py-4 text-sm [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1 [&_svg]:block [&_svg]:max-w-full [&_svg]:h-auto"
         style={{ color: 'var(--color-text)' }}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{spec.content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={REHYPE_PLUGINS}>{spec.content}</ReactMarkdown>
       </div>
     );
   }
