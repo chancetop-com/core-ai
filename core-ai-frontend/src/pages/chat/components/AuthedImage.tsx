@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X as CloseIcon } from 'lucide-react';
 
 interface Props {
   src?: string;
@@ -24,6 +24,7 @@ async function fetchBlob(url: string): Promise<Blob> {
 export default function AuthedImage({ src, alt }: Props) {
   const [resolved, setResolved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (!src) {
@@ -52,6 +53,21 @@ export default function AuthedImage({ src, alt }: Props) {
     };
   }, [src]);
 
+  // ESC closes lightbox; lock body scroll while open so the page behind doesn't scroll
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxOpen(false);
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [lightboxOpen]);
+
   if (error) {
     return (
       <span className="inline-flex items-center gap-2 px-3 py-2 my-2 rounded-lg border text-xs"
@@ -69,5 +85,39 @@ export default function AuthedImage({ src, alt }: Props) {
       </span>
     );
   }
-  return <img src={resolved} alt={alt} className="max-w-full rounded my-2" />;
+  return (
+    <>
+      <img
+        src={resolved}
+        alt={alt}
+        className="max-w-full rounded my-2 cursor-zoom-in"
+        onClick={() => setLightboxOpen(true)}
+      />
+      {lightboxOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[1000] flex items-center justify-center cursor-zoom-out"
+          style={{ background: 'rgba(0,0,0,0.85)' }}
+          onClick={() => setLightboxOpen(false)}
+        >
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute top-4 right-4 p-2 rounded-full hover:opacity-80"
+            style={{ background: 'rgba(255,255,255,0.12)', color: 'white' }}
+            onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); }}
+          >
+            <CloseIcon size={20} />
+          </button>
+          <img
+            src={resolved}
+            alt={alt}
+            className="max-w-[95vw] max-h-[95vh] object-contain cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
+  );
 }
