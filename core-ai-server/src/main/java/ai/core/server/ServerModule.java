@@ -40,6 +40,7 @@ import ai.core.server.run.AgentRunner;
 import ai.core.server.schedule.AgentScheduleService;
 import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
+import ai.core.server.schedule.ToolRegistrySyncJob;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -123,6 +124,7 @@ public class ServerModule extends Module {
         bind(PodLocalExecutor.class);
         bindWebService();
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
+        schedule().fixedRate("tool-registry-sync", bind(ToolRegistrySyncJob.class), Duration.ofSeconds(30));
         registerTrace();
         registerSystemPrompt();
         registerCapabilities();

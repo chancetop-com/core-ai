@@ -155,6 +155,41 @@ public class ToolRegistryService {
         }
     }
 
+    public void syncDatabaseTools() {
+        var dbEntries = toolRegistryCollection.find(Filters.eq("enabled", true));
+        var dbEntryIds = new java.util.HashSet<String>();
+
+        for (var dbEntry : dbEntries) {
+            if (dbEntry.type != ToolType.MCP) continue;
+            dbEntryIds.add(dbEntry.id);
+
+            var memEntry = tools.get(dbEntry.id);
+            if (memEntry == null) {
+                tools.put(dbEntry.id, dbEntry);
+                registerMcpServer(dbEntry);
+                warmupMcpServer(dbEntry.id);
+                LOGGER.info("synced new mcp server from db, id={}, name={}", dbEntry.id, dbEntry.name);
+            } else if (!dbEntry.enabled.equals(memEntry.enabled) || !dbEntry.config.equals(memEntry.config)) {
+                tools.put(dbEntry.id, dbEntry);
+                applyMcpServerState(dbEntry, !dbEntry.config.equals(memEntry.config));
+                LOGGER.info("synced updated mcp server from db, id={}, name={}", dbEntry.id, dbEntry.name);
+            }
+        }
+
+        var toRemove = new java.util.ArrayList<String>();
+        for (var id : tools.keySet()) {
+            var entry = tools.get(id);
+            if (entry.type != ToolType.MCP) continue;
+            if (id.startsWith(CONFIG_PREFIX) || id.startsWith(BUILTIN_PREFIX)) continue;
+            if (!dbEntryIds.contains(id)) toRemove.add(id);
+        }
+        for (var id : toRemove) {
+            unregisterMcpServer(id);
+            tools.remove(id);
+            LOGGER.info("synced removal of mcp server from db, id={}", id);
+        }
+    }
+
     public List<ToolRegistry> listTools(String category) {
         if (category != null && !category.isBlank()) {
             return tools.values().stream().filter(t -> category.equals(t.category)).toList();
