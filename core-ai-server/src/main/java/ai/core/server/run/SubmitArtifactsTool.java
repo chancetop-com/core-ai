@@ -179,7 +179,16 @@ public final class SubmitArtifactsTool extends ToolCall {
         try {
             var root = JsonUtil.OBJECT_MAPPER.readTree(arguments);
             var artifactsNode = root.get("artifacts");
-            if (artifactsNode == null || !artifactsNode.isArray()) return arguments;
+            if (artifactsNode == null) return arguments;
+            // Some LLMs double-encode the artifacts array as a JSON string,
+            // e.g. {"artifacts":"[{\"path\":\"/tmp/x\"}]"} instead of {"artifacts":[{"path":"/tmp/x"}]}.
+            // Unwrap the inner JSON before normal array handling.
+            if (artifactsNode.isTextual()) {
+                var parsed = JsonUtil.OBJECT_MAPPER.readTree(artifactsNode.asText());
+                if (!parsed.isArray()) return arguments;
+                artifactsNode = parsed;
+            }
+            if (!artifactsNode.isArray()) return arguments;
             var rewritten = JsonUtil.OBJECT_MAPPER.createArrayNode();
             for (var item : artifactsNode) {
                 if (item.isTextual()) {
