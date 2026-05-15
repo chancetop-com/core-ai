@@ -12,22 +12,22 @@ import java.util.concurrent.TimeUnit;
 public class SchemaMigrationVFileRecordsTTL implements SchemaMigration {
     @Override
     public String version() {
-        return "20260430001";
+        return "20260515001";
     }
 
     @Override
     public String description() {
-        return "add TTL index on file_records.created_at for 24h auto-expiry";
+        return "add TTL index on file_records.created_at for 30d auto-expiry";
     }
 
     @Override
     public void migrate(Mongo mongo) {
         // Drop existing non-TTL index on created_at if it exists, then create TTL index
         mongo.dropIndex("file_records", Indexes.ascending("created_at"));
-        // TTL index: documents auto-delete 24 hours after created_at
+        // TTL index: documents auto-delete 30 days after created_at
         // MongoDB's TTL thread runs every 60s, so deletion may be slightly delayed
         mongo.createIndex("file_records",
             Indexes.ascending("created_at"),
-            new IndexOptions().expireAfter(86400L, TimeUnit.SECONDS));
+            new IndexOptions().expireAfter(2592000L, TimeUnit.SECONDS));
     }
 }
