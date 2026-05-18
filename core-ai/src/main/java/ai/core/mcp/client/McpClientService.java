@@ -9,7 +9,8 @@ import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
-import io.modelcontextprotocol.json.McpJsonMapper;
+
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
@@ -259,7 +260,7 @@ public class McpClientService implements AutoCloseable {
             paramsBuilder.env(config.getEnv());
         }
 
-        return new StdioClientTransport(paramsBuilder.build(), McpJsonMapper.createDefault());
+        return new StdioClientTransport(paramsBuilder.build(), McpJsonDefaults.getMapper());
     }
 
     private boolean isWindowsScriptCommand(String command) {

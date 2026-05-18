@@ -8,6 +8,7 @@ import core.framework.log.ActionLogContext;
 import core.framework.web.Controller;
 import core.framework.web.Request;
 import core.framework.web.Response;
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.jetbrains.annotations.NotNull;
@@ -23,7 +24,7 @@ import java.nio.charset.StandardCharsets;
 public class McpStreamableHttpController implements Controller {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpStreamableHttpController.class);
     private static final ContentType APPLICATION_JSON = ContentType.APPLICATION_JSON;
-    private static final McpJsonMapper MCP_JSON_MAPPER = McpJsonMapper.createDefault();
+    private static final McpJsonMapper MCP_JSON_MAPPER = McpJsonDefaults.getMapper();
 
     @Inject
     McpServerService serverHolder;
