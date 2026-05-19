@@ -243,6 +243,7 @@ public class ServerModule extends Module {
         if (!webDir.toFile().exists()) return;
         var controller = new StaticFileController(webDir);
         http().route(HTTPMethod.GET, "/favicon.svg", controller::serve);
+        http().route(HTTPMethod.GET, "/favicon.ico", controller::serve);
         http().route(HTTPMethod.GET, "/icons.svg", controller::serve);
         http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
         var spaRoutes = new String[]{
