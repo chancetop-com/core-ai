@@ -1,5 +1,6 @@
 package ai.core.server.web;
 
+import ai.core.server.domain.ChatSession;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.utils.JsonUtil;
@@ -11,6 +12,9 @@ import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.WebContext;
 
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,23 +36,22 @@ public class ChatSessionController {
         int limit = Integer.parseInt(params.getOrDefault("limit", "50"));
         var sourcesParam = params.get("sources");
         var sources = sourcesParam != null && !sourcesParam.isEmpty()
-            ? java.util.Arrays.asList(sourcesParam.split(","))
-            : java.util.List.of("chat", "a2a");
-        var sessions = chatMessageService.listSessions(userId, sources, offset, limit).stream().map(s -> {
-            var m = new java.util.LinkedHashMap<String, Object>();
-            m.put("id", s.id);
-            m.put("user_id", s.userId);
-            m.put("agent_id", s.agentId);
-            m.put("source", s.source);
-            m.put("schedule_id", s.scheduleId);
-            m.put("api_key_id", s.apiKeyId);
-            m.put("title", s.title);
-            m.put("message_count", s.messageCount);
-            m.put("created_at", s.createdAt != null ? s.createdAt.toInstant().toString() : null);
-            m.put("last_message_at", s.lastMessageAt != null ? s.lastMessageAt.toInstant().toString() : null);
-            return m;
-        }).toList();
+            ? Arrays.asList(sourcesParam.split(","))
+            : List.of("chat", "a2a");
+        var sessions = chatMessageService.listSessions(userId, sources, offset, limit).stream()
+            .map(this::toSummary)
+            .toList();
         return jsonResponse(Map.of("sessions", sessions));
+    }
+
+    public Response get(Request request) {
+        var userId = AuthContext.userId(webContext);
+        if (userId == null) return Response.text("unauthorized").status(HTTPStatus.UNAUTHORIZED);
+        var sessionId = request.pathParam("sessionId");
+        var session = chatMessageService.getSessionMeta(sessionId);
+        if (session == null || session.deletedAt != null) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        if (session.userId != null && !userId.equals(session.userId)) return Response.text("forbidden").status(HTTPStatus.FORBIDDEN);
+        return jsonResponse(toSummary(session));
     }
 
     public Response delete(Request request) {
@@ -58,6 +61,21 @@ public class ChatSessionController {
         var ok = chatMessageService.softDeleteSession(userId, sessionId);
         if (!ok) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
         return jsonResponse(Map.of("deleted", true));
+    }
+
+    private Map<String, Object> toSummary(ChatSession s) {
+        var m = new LinkedHashMap<String, Object>();
+        m.put("id", s.id);
+        m.put("user_id", s.userId);
+        m.put("agent_id", s.agentId);
+        m.put("source", s.source);
+        m.put("schedule_id", s.scheduleId);
+        m.put("api_key_id", s.apiKeyId);
+        m.put("title", s.title);
+        m.put("message_count", s.messageCount);
+        m.put("created_at", s.createdAt != null ? s.createdAt.toInstant().toString() : null);
+        m.put("last_message_at", s.lastMessageAt != null ? s.lastMessageAt.toInstant().toString() : null);
+        return m;
     }
 
     private Response jsonResponse(Object data) {

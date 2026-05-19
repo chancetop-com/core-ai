@@ -188,6 +188,7 @@ public class ServerModule extends Module {
     private void bindWebService() {
         var chatSessionController = bind(ChatSessionController.class);
         http().route(HTTPMethod.GET, "/api/chat/sessions", chatSessionController::list);
+        http().route(HTTPMethod.GET, "/api/chat/sessions/:sessionId", chatSessionController::get);
         http().route(HTTPMethod.DELETE, "/api/chat/sessions/:sessionId", chatSessionController::delete);
 
         // Speech token exchange for browser-side Azure Speech SDK
@@ -246,6 +247,9 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/favicon.ico", controller::serve);
         http().route(HTTPMethod.GET, "/icons.svg", controller::serve);
         http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
+        // iOS Safari / legacy crawlers probe these paths; reuse favicon.svg to silence 404 noise.
+        http().route(HTTPMethod.GET, "/apple-touch-icon.png", controller::serveAppleTouchIcon);
+        http().route(HTTPMethod.GET, "/apple-touch-icon-precomposed.png", controller::serveAppleTouchIcon);
         var spaRoutes = new String[]{
             "/", "/login", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",

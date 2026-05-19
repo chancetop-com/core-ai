@@ -1,5 +1,6 @@
 package ai.core.server.web;
 
+import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.web.Request;
 import core.framework.web.Response;
@@ -31,7 +32,7 @@ public class StaticFileController {
             file = webDir.resolve("index.html");
         }
         if (!Files.exists(file)) {
-            return Response.text("not found").status(core.framework.api.http.HTTPStatus.NOT_FOUND);
+            return Response.text("not found").status(HTTPStatus.NOT_FOUND);
         }
 
         try {
@@ -39,7 +40,22 @@ public class StaticFileController {
             var contentType = resolveContentType(file.toString());
             return Response.bytes(bytes).contentType(contentType);
         } catch (Exception e) {
-            return Response.text("error").status(core.framework.api.http.HTTPStatus.INTERNAL_SERVER_ERROR);
+            return Response.text("error").status(HTTPStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Serve favicon.svg for legacy apple-touch-icon probes (iOS Safari, crawlers).
+    // Skips SPA fallback to avoid returning HTML for image requests.
+    public Response serveAppleTouchIcon(Request request) {
+        var file = webDir.resolve("favicon.svg");
+        if (!Files.exists(file)) {
+            return Response.empty().status(HTTPStatus.NO_CONTENT);
+        }
+        try {
+            var bytes = Files.readAllBytes(file);
+            return Response.bytes(bytes).contentType(IMAGE_SVG);
+        } catch (Exception e) {
+            return Response.empty().status(HTTPStatus.NO_CONTENT);
         }
     }
 
