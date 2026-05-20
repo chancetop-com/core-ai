@@ -10,7 +10,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash coreutils findutils grep git curl jq \
     nodejs npm \
-    gyp gcc g++ make python3-dev \
+    gcc g++ make python3-dev \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
     libgobject-2.0-0 libgdk-pixbuf-2.0-0 libffi-dev \
     shared-mime-info fonts-noto-cjk fontconfig \
@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir \
     scikit-learn statsmodels \
     pillow openpyxl nodriver weasyprint
 
+# npm's own node-gyp bundles gyp — avoids Debian node-gyp / system gyp mismatch
+RUN npm install -g node-gyp
+
 # Layer 3: gh CLI (version bumps only)
 RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_linux_amd64.tar.gz -o /tmp/gh.tar.gz && \
     tar xzf /tmp/gh.tar.gz -C /tmp && \
@@ -32,6 +35,9 @@ RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_li
     rm -rf /tmp/gh*
 
 COPY --from=builder /core-ai-sandbox-runtime /usr/local/bin/core-ai-sandbox-runtime
+
+# python:3.12-slim has pyvenv.cfg which makes pip refuse --user installs
+RUN rm -f /usr/local/pyvenv.cfg
 
 # xvfb display for non-headless browser automation
 ENV DISPLAY=:99
