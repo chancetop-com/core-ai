@@ -49,7 +49,7 @@ server: builder
 sandbox: builder
 	@test -n "$(DOCKER_USER)" || (echo "ERROR: set DOCKER_USERNAME env var" && exit 1)
 	docker buildx build \
-		--platform linux/amd64,linux/arm64 \
+		--platform linux/amd64 \
 		-t $(SANDBOX_FULL_IMAGE) \
 		--push \
 		$(SANDBOX_DIR)
