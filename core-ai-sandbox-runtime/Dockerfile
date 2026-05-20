@@ -43,6 +43,14 @@ COPY --from=builder /core-ai-sandbox-runtime /usr/local/bin/core-ai-sandbox-runt
 ENV DISPLAY=:99
 # chromium needs writable user-data-dir; rootfs is read-only, point HOME to writable /tmp
 ENV HOME=/tmp
+# npm global prefix must be writable (rootfs is read-only, user is non-root)
+ENV NPM_CONFIG_PREFIX=/tmp/npm-global
+ENV PATH="/tmp/npm-global/bin:$PATH"
+# pip target must be writable (rootfs is read-only, --user broken by HOME=/tmp)
+# PIP_NO_CACHE_DIR disables download cache — sandbox is ephemeral, caching wastes /tmp space
+ENV PIP_TARGET=/tmp/pip-packages
+ENV PYTHONPATH="/tmp/pip-packages:$PYTHONPATH"
+ENV PIP_NO_CACHE_DIR=1
 
 USER 1001
 WORKDIR /workspace

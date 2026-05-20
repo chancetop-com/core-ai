@@ -38,7 +38,7 @@ public final class SandboxConstants {
 
     public static final int MAX_TIMEOUT_SECONDS = 7200;
 
-    public static final String DEFAULT_TMP_SIZE_LIMIT = "100Mi";
+    public static final String DEFAULT_TMP_SIZE_LIMIT = "512Mi";
 
     public static final long DEFAULT_TOOL_TIMEOUT_MS = 30_000;
 
