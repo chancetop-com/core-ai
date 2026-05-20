@@ -177,7 +177,6 @@ public class DockerSandboxProvider implements SandboxProvider {
         hostConfig.put("Tmpfs", tmpfs);
 
         // Security options
-        hostConfig.put("ReadonlyRootfs", true);
         hostConfig.put("CapDrop", List.of("ALL"));
         hostConfig.put("SecurityOpt", List.of("no-new-privileges"));
 
