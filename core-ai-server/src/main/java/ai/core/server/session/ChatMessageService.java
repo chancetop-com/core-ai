@@ -7,6 +7,7 @@ import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.ToolRef;
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
@@ -130,6 +131,91 @@ public class ChatMessageService {
         metaBySession.remove(sessionId);
     }
 
+    public void addLoadedTools(String sessionId, List<ToolRef> toolRefs) {
+        if (toolRefs == null || toolRefs.isEmpty()) return;
+        try {
+            var existing = chatSessionCollection.get(sessionId).orElse(null);
+            if (existing == null) {
+                var stub = newStub(sessionId);
+                stub.loadedTools = new java.util.ArrayList<>(toolRefs);
+                try {
+                    chatSessionCollection.insert(stub);
+                    return;
+                } catch (Exception insertErr) {
+                    LOGGER.warn("stub insert conflict for loaded tools, falling back to update, sessionId={}", sessionId);
+                }
+            }
+            chatSessionCollection.update(Filters.eq("_id", sessionId),
+                Updates.addEachToSet("loaded_tools", toolRefs));
+        } catch (Exception e) {
+            LOGGER.warn("failed to persist loaded tools, sessionId={}", sessionId, e);
+        }
+    }
+
+    public void addLoadedSkillIds(String sessionId, List<String> skillIds) {
+        if (skillIds == null || skillIds.isEmpty()) return;
+        try {
+            var existing = chatSessionCollection.get(sessionId).orElse(null);
+            if (existing == null) {
+                var stub = newStub(sessionId);
+                stub.loadedSkillIds = new java.util.ArrayList<>(skillIds);
+                try {
+                    chatSessionCollection.insert(stub);
+                    return;
+                } catch (Exception insertErr) {
+                    LOGGER.warn("stub insert conflict for loaded skills, falling back to update, sessionId={}", sessionId);
+                }
+            }
+            chatSessionCollection.update(Filters.eq("_id", sessionId),
+                Updates.addEachToSet("loaded_skill_ids", skillIds));
+        } catch (Exception e) {
+            LOGGER.warn("failed to persist loaded skills, sessionId={}", sessionId, e);
+        }
+    }
+
+    public void addLoadedSubAgentIds(String sessionId, List<String> agentIds) {
+        if (agentIds == null || agentIds.isEmpty()) return;
+        try {
+            var existing = chatSessionCollection.get(sessionId).orElse(null);
+            if (existing == null) {
+                var stub = newStub(sessionId);
+                stub.loadedSubAgentIds = new java.util.ArrayList<>(agentIds);
+                try {
+                    chatSessionCollection.insert(stub);
+                    return;
+                } catch (Exception insertErr) {
+                    LOGGER.warn("stub insert conflict for loaded sub-agents, falling back to update, sessionId={}", sessionId);
+                }
+            }
+            chatSessionCollection.update(Filters.eq("_id", sessionId),
+                Updates.addEachToSet("loaded_sub_agent_ids", agentIds));
+        } catch (Exception e) {
+            LOGGER.warn("failed to persist loaded sub-agents, sessionId={}", sessionId, e);
+        }
+    }
+
+    private ChatSession newStub(String sessionId) {
+        var meta = metaBySession.get(sessionId);
+        var stub = new ChatSession();
+        stub.id = sessionId;
+        stub.userId = meta != null ? meta.userId : null;
+        stub.agentId = meta != null ? meta.agentId : null;
+        stub.source = meta != null && meta.source != null ? meta.source : "chat";
+        stub.messageCount = 0L;
+        stub.createdAt = ZonedDateTime.now();
+        return stub;
+    }
+
+    public void removeLoadedSkillIds(String sessionId, List<String> skillIds) {
+        if (skillIds == null || skillIds.isEmpty()) return;
+        try {
+            chatSessionCollection.update(Filters.eq("_id", sessionId),
+                Updates.pullAll("loaded_skill_ids", skillIds));
+        } catch (Exception e) {
+            LOGGER.warn("failed to remove loaded skills, sessionId={}", sessionId, e);
+        }
+    }
+
     private void upsertSessionOnUserMessage(String sessionId, String content) {
         var now = ZonedDateTime.now();
         var existing = chatSessionCollection.get(sessionId).orElse(null);
@@ -153,7 +239,15 @@ public class ChatMessageService {
                 bumpSession(sessionId, now);
             }
         } else {
-            bumpSession(sessionId, now);
+            if (existing.title == null) {
+                chatSessionCollection.update(Filters.eq("_id", sessionId),
+                    Updates.combine(
+                        Updates.set("title", truncateTitle(content)),
+                        Updates.set("last_message_at", now),
+                        Updates.inc("message_count", 1L)));
+            } else {
+                bumpSession(sessionId, now);
+            }
         }
     }
 

@@ -151,6 +151,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                     ref.id = v.id;
                     ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
                     ref.source = v.source;
+                    if (ref.type == null) ref.inferTypeFromId();
                     return ref;
                 }).toList();
 
@@ -165,6 +166,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
         var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         session.loadTools(loadedTools);
+        chatMessageService.addLoadedTools(sessionId, toolRefs);
         return loadedTools.stream().map(ToolCall::getName).toList();
     }
 
@@ -320,6 +322,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                             ref.id = v.id;
                             ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
                             ref.source = v.source;
+                            if (ref.type == null) ref.inferTypeFromId();
                             return ref;
                         }).toList();
                 loadedTools = sessionManager.loadToolRefs(sessionId, toolRefs);
@@ -336,6 +339,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                         ref.id = v.id;
                         ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
                         ref.source = v.source;
+                        if (ref.type == null) ref.inferTypeFromId();
                         return ref;
                     }).toList() : null;
             var payload = JsonUtil.toJson(Map.of("tools", toolRefs != null ? toolRefs : List.of()));

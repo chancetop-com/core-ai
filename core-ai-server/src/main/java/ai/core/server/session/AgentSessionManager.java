@@ -178,17 +178,33 @@ public class AgentSessionManager {
         state.userId = meta.userId;
         if (meta.agentId == null) {
             state.fromAgent = false;
+            populateDynamicLoads(state, meta);
             return state;
         }
         var definition = agentDefinitionCollection.get(meta.agentId).orElse(null);
         if (definition == null) {
             logger.warn("agent definition not found for DB rebuild, sessionId={}, agentId={}", sessionId, meta.agentId);
             state.fromAgent = false;
+            populateDynamicLoads(state, meta);
             return state;
         }
         state.fromAgent = true;
         state.agentConfig = buildSnapshotFromDefinition(definition);
+        populateDynamicLoads(state, meta);
         return state;
+    }
+
+    private void populateDynamicLoads(SessionState state, ai.core.server.domain.ChatSession meta) {
+        if (meta.loadedTools != null && !meta.loadedTools.isEmpty()) {
+            state.tools = meta.loadedTools;
+            logger.info("loaded {} tool ref(s) from DB for session {}, refs={}", meta.loadedTools.size(), meta.id, meta.loadedTools);
+        }
+        if (meta.loadedSkillIds != null && !meta.loadedSkillIds.isEmpty()) {
+            state.skillIds = meta.loadedSkillIds;
+        }
+        if (meta.loadedSubAgentIds != null && !meta.loadedSubAgentIds.isEmpty()) {
+            state.subAgentIds = meta.loadedSubAgentIds;
+        }
     }
 
     private SessionState.AgentConfigSnapshot buildSnapshotFromDefinition(AgentDefinition def) {
@@ -210,9 +226,9 @@ public class AgentSessionManager {
     private InProcessAgentSession rebuildSession(String sessionId, SessionState state) {
         try {
             if (state.fromAgent && state.agentConfig != null) {
-                return rebuildFromSnapshot(sessionId, state.agentConfig, state.userId);
+                return rebuildFromSnapshot(sessionId, state.agentConfig, state.userId, state);
             } else {
-                return rebuildFromConfig(sessionId, state.config, state.userId);
+                return rebuildFromConfig(sessionId, state.config, state.userId, state);
             }
         } catch (Exception e) {
             logger.warn("failed to rebuild session, sessionId={}, error={}", sessionId, e.getMessage());
@@ -220,7 +236,7 @@ public class AgentSessionManager {
         }
     }
 
-    private InProcessAgentSession rebuildFromSnapshot(String sessionId, SessionState.AgentConfigSnapshot snapshot, String userId) {
+    private InProcessAgentSession rebuildFromSnapshot(String sessionId, SessionState.AgentConfigSnapshot snapshot, String userId, SessionState state) {
         var config = new SessionConfig();
         config.systemPrompt = snapshot.systemPromptId != null ? systemPromptService.resolveContent(snapshot.systemPromptId) : snapshot.systemPrompt;
         config.model = snapshot.model;
@@ -228,14 +244,14 @@ public class AgentSessionManager {
         config.temperature = snapshot.temperature;
         config.maxTurns = snapshot.maxTurns;
         List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty()) ? toolRegistryService.resolveToolRefs(snapshot.tools) : List.of();
-        return doRebuild(sessionId, config, tools, userId, snapshot.agentName);
+        return doRebuild(sessionId, config, tools, userId, snapshot.agentName, state);
     }
 
-    private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId) {
-        return doRebuild(sessionId, config, null, userId, null);
+    private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId, SessionState state) {
+        return doRebuild(sessionId, config, null, userId, null, state);
     }
 
-    private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ToolCall> tools, String userId, String agentName) {
+    private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ToolCall> tools, String userId, String agentName, SessionState state) {
         var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build() : null;
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools, context, agentName);
@@ -247,7 +263,48 @@ public class AgentSessionManager {
             if (sandbox != null) context.sandbox(sandbox);
         }
         restoreAgentHistory(agent, sessionId);
+        restoreDynamicallyLoaded(state, sessionId, session);
         return session;
+    }
+
+    private void restoreDynamicallyLoaded(SessionState state, String sessionId, InProcessAgentSession session) {
+        if (state == null) return;
+        if (state.tools != null && !state.tools.isEmpty()) {
+            try {
+                logger.info("restore tools: {} ref(s) to resolve for session {}, refs={}", state.tools.size(), sessionId, state.tools);
+                var resolved = toolRegistryService.resolveToolRefs(state.tools);
+                if (!resolved.isEmpty()) {
+                    session.loadTools(resolved);
+                    logger.info("restored {} dynamically loaded tools for session {}", resolved.size(), sessionId);
+                } else {
+                    logger.warn("restore tools: resolution returned empty for {} ref(s), sessionId={}, refs={}", state.tools.size(), sessionId, state.tools);
+                }
+            } catch (Exception e) {
+                logger.warn("failed to restore dynamically loaded tools, sessionId={}", sessionId, e);
+            }
+        }
+        if (state.skillIds != null && !state.skillIds.isEmpty()) {
+            try {
+                loadSkills(sessionId, state.skillIds);
+                logger.info("restored {} dynamically loaded skills for session {}", state.skillIds.size(), sessionId);
+            } catch (Exception e) {
+                logger.warn("failed to restore dynamically loaded skills, sessionId={}", sessionId, e);
+            }
+        }
+        if (state.subAgentIds != null && !state.subAgentIds.isEmpty()) {
+            try {
+                var definitions = state.subAgentIds.stream()
+                    .map(id -> agentDefinitionCollection.get(id).orElse(null))
+                    .filter(def -> def != null)
+                    .toList();
+                if (!definitions.isEmpty()) {
+                    loadSubAgents(sessionId, definitions);
+                    logger.info("restored {} dynamically loaded sub-agents for session {}", definitions.size(), sessionId);
+                }
+            } catch (Exception e) {
+                logger.warn("failed to restore dynamically loaded sub-agents, sessionId={}", sessionId, e);
+            }
+        }
     }
 
     private void registerSessionFromDb(String sessionId, String userId) {
@@ -307,6 +364,7 @@ public class AgentSessionManager {
             throw new NotFoundException("no tools found for refs: " + toolRefs);
         }
         session.loadTools(tools);
+        chatMessageService.addLoadedTools(sessionId, toolRefs);
         return tools.stream().map(ToolCall::getName).toList();
     }
 
@@ -317,6 +375,7 @@ public class AgentSessionManager {
         }
         state.allowedIds.removeAll(skillIds);
         state.registry.invalidateCache();
+        chatMessageService.removeLoadedSkillIds(sessionId, skillIds);
         return List.copyOf(state.allowedIds);
     }
 
@@ -342,6 +401,7 @@ public class AgentSessionManager {
         var state = sessionSkillStates.computeIfAbsent(sessionId, k -> initSkillState(session));
         state.allowedIds.addAll(skillIds);
         state.registry.invalidateCache();
+        chatMessageService.addLoadedSkillIds(sessionId, skillIds);
         return skills.stream().map(SkillMetadata::getQualifiedName).toList();
     }
 
@@ -361,12 +421,15 @@ public class AgentSessionManager {
     public List<String> loadSubAgents(String sessionId, List<AgentDefinition> definitions) {
         var session = getSession(sessionId);
         var names = new java.util.ArrayList<String>();
+        var ids = new java.util.ArrayList<String>();
         for (var definition : definitions) {
             var subAgent = buildSubAgent(definition);
             var subAgentToolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
             session.loadTools(List.of(subAgentToolCall));
             names.add(definition.name);
+            ids.add(definition.id);
         }
+        chatMessageService.addLoadedSubAgentIds(sessionId, ids);
         return names;
     }
 

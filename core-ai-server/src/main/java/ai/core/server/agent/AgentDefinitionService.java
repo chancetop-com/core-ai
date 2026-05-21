@@ -248,6 +248,7 @@ public class AgentDefinitionService {
             ref.id = v.id;
             ref.type = v.type != null ? ToolSourceType.valueOf(v.type) : null;
             ref.source = v.source;
+            if (ref.type == null) ref.inferTypeFromId();
             return ref;
         }).toList();
     }

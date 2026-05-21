@@ -50,6 +50,15 @@ public class ChatSession {
     @Field(name = "artifacts")
     public List<AgentRunArtifact> artifacts;
 
+    @Field(name = "loaded_tools")
+    public List<ToolRef> loadedTools;
+
+    @Field(name = "loaded_skill_ids")
+    public List<String> loadedSkillIds;
+
+    @Field(name = "loaded_sub_agent_ids")
+    public List<String> loadedSubAgentIds;
+
     @Field(name = "deleted_at")
     public ZonedDateTime deletedAt;
 }

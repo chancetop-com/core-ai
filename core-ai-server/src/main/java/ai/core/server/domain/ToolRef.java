@@ -2,6 +2,8 @@ package ai.core.server.domain;
 
 import core.framework.mongo.Field;
 
+import java.util.Objects;
+
 /**
  * @author stephen
  */
@@ -11,17 +13,22 @@ public class ToolRef {
 
         var ref = new ToolRef();
         ref.id = toolId;
-
-        if (toolId.startsWith("builtin-")) {
-            ref.type = ToolSourceType.BUILTIN;
-        } else if (toolId.startsWith("config:")) {
-            ref.type = ToolSourceType.MCP;
-            ref.source = toolId.substring("config:".length());
-        } else if (toolId.startsWith("api-app:") || "builtin-service-api".equals(toolId)) {
-            ref.type = ToolSourceType.API;
-        }
-
+        ref.inferTypeFromId();
         return ref;
+    }
+
+    public void inferTypeFromId() {
+        if (id == null) return;
+        if (id.startsWith("builtin-")) {
+            type = ToolSourceType.BUILTIN;
+        } else if (id.startsWith("mcp-tool:")) {
+            type = ToolSourceType.MCP;
+        } else if (id.startsWith("config:")) {
+            type = ToolSourceType.MCP;
+            source = id.substring("config:".length());
+        } else if (id.startsWith("api-app:") || "builtin-service-api".equals(id)) {
+            type = ToolSourceType.API;
+        }
     }
 
     public static ToolRef of(String id, ToolSourceType type) {
@@ -50,5 +57,22 @@ public class ToolRef {
 
     public String toLegacyToolId() {
         return id;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ToolRef that)) return false;
+        return Objects.equals(id, that.id) && type == that.type && Objects.equals(source, that.source);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, type, source);
+    }
+
+    @Override
+    public String toString() {
+        return "ToolRef{id=" + id + ", type=" + type + ", source=" + source + "}";
     }
 }
