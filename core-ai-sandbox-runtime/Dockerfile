@@ -10,7 +10,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash coreutils findutils grep git curl jq \
     nodejs npm \
-    gcc g++ make python3-dev \
+    gcc g++ make python3-dev gyp \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
     libgobject-2.0-0 libgdk-pixbuf-2.0-0 libffi-dev \
     shared-mime-info fonts-noto-cjk fontconfig \
@@ -24,8 +24,10 @@ RUN pip install --no-cache-dir \
     scikit-learn statsmodels \
     pillow openpyxl nodriver weasyprint
 
-# npm's own node-gyp bundles gyp — avoids Debian node-gyp / system gyp mismatch
-RUN npm install -g node-gyp
+# npm-installed node-gyp bundles its own gyp; replace Debian's hardcoded path
+RUN npm install -g node-gyp && \
+    rm -rf /usr/share/nodejs/node-gyp && \
+    ln -s /usr/local/lib/node_modules/node-gyp /usr/share/nodejs/node-gyp
 
 # Layer 3: gh CLI (version bumps only)
 RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_linux_amd64.tar.gz -o /tmp/gh.tar.gz && \
