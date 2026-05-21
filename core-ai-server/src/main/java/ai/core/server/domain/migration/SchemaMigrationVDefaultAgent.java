@@ -13,6 +13,7 @@ import java.util.List;
 public class SchemaMigrationVDefaultAgent implements SchemaMigration {
     public static final String DEFAULT_AGENT_ID = "default-assistant";
     public static final String LLM_CALL_BUILDER_ID = "llm-call-builder";
+    public static final String AGENT_BUILDER_ID = "agent-builder";
 
     private static final String BUILDER_SYSTEM_PROMPT = """
             You are an LLM Call API builder assistant. Your job is to help developers define, test, and publish LLM Call APIs.
@@ -72,14 +73,64 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             - When provided, response_schema_json must be a JSON **string** (escaped), not a raw JSON object
             """;
 
+    private static final String AGENT_BUILDER_SYSTEM_PROMPT = """
+            You are an Agent Builder assistant. Your job is to help users create new AI agents through conversation.
+
+            An Agent is a configurable AI assistant with a system prompt, tools, model settings, and other parameters. Users can create agents for various purposes like code review, data analysis, customer support, content generation, etc.
+
+            ## Workflow
+
+            1. **Understand the requirement**: Ask the user what kind of agent they want to create. What should it do? What tools does it need? What tone/style should it use?
+
+            2. **Design the agent**: Based on the requirements, determine:
+               - A clear, descriptive name for the agent
+               - A short description of what it does
+               - A detailed system prompt that instructs the agent on its role, workflow, tone, and constraints
+               - Which builtin tools the agent needs (e.g., "builtin-all" for general purpose, or specific tool sets). Common tool set options include:
+                 - `builtin-all` - all available tools (recommended for most agents)
+                 - `builtin-read` - read-only tools (file reading, searching)
+                 - `builtin-write` - write tools (file writing, editing)
+                 - `builtin-system` - system management tools
+               - Model preference (optional, defaults to the configured default model)
+               - Temperature (optional, controls creativity)
+               - Max turns (optional, limits conversation length)
+
+            3. **Create draft**: Use the `create_agent_draft` tool to create the agent in DRAFT status. Show the user the draft details.
+
+            4. **Iterate**: If the user wants changes, create a new draft with the updated configuration.
+
+            5. **Publish**: When the user confirms they're satisfied, use the `publish_agent_draft` tool with the draft's agent_id to publish it. After publishing, tell the user:
+               - The published agent is available at: /agents/{agent_id}
+               - They can test it by selecting it in the Chat page dropdown
+
+            ## Agent Naming Guidelines
+            - Use clear, descriptive names that reflect the agent's purpose
+            - Keep names concise (ideally under 30 characters)
+            - Use the same language as the user
+
+            ## System Prompt Guidelines
+            - Be specific about the agent's role and responsibilities
+            - Include clear instructions on tone, style, and behavior
+            - Define the workflow steps if the agent follows a process
+            - Specify output format expectations
+            - Include any domain knowledge or constraints
+
+            ## Important
+            - Always create a draft first, let the user review, then publish
+            - Never publish without user confirmation
+            - Use the same language as the user for name and description
+            - Default to `builtin-all` tools unless the user specifies otherwise
+            - Explain what each configuration option means if the user seems unfamiliar
+            """;
+
     @Override
     public String version() {
-        return "20260306003";
+        return "20260521001";
     }
 
     @Override
     public String description() {
-        return "create default agents";
+        return "create default agents including agent-builder";
     }
 
     @Override
@@ -87,6 +138,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         var now = Date.from(Instant.now());
         createDefaultAssistant(mongo, now);
         createLLMCallBuilder(mongo, now);
+        createAgentBuilder(mongo, now);
     }
 
     private void createDefaultAssistant(Mongo mongo, Date now) {
@@ -141,6 +193,33 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("updated_at", now);
 
         upsert(mongo, LLM_CALL_BUILDER_ID, agent);
+    }
+
+    private void createAgentBuilder(Mongo mongo, Date now) {
+        var publishedConfig = new Document()
+            .append("system_prompt", AGENT_BUILDER_SYSTEM_PROMPT)
+            .append("tools", List.of(new Document("id", "builtin-agent-builder").append("type", "BUILTIN")))
+            .append("max_turns", 50)
+            .append("timeout_seconds", 600);
+
+        var agent = new Document()
+            .append("_id", AGENT_BUILDER_ID)
+            .append("user_id", "system")
+            .append("name", "Agent Builder")
+            .append("description", "Interactive builder for creating and publishing AI agents through conversation")
+            .append("system_prompt", AGENT_BUILDER_SYSTEM_PROMPT)
+            .append("tools", List.of(new Document("id", "builtin-agent-builder").append("type", "BUILTIN")))
+            .append("max_turns", 50)
+            .append("timeout_seconds", 600)
+            .append("system_default", true)
+            .append("type", "AGENT")
+            .append("status", "PUBLISHED")
+            .append("published_config", publishedConfig)
+            .append("published_at", now)
+            .append("created_at", now)
+            .append("updated_at", now);
+
+        upsert(mongo, AGENT_BUILDER_ID, agent);
     }
 
     private void upsert(Mongo mongo, String id, Document doc) {

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star } from 'lucide-react';
+import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star, Sparkles, Pencil } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -32,6 +32,7 @@ export default function AgentList() {
   const [sortBy, setSortBy] = useState<'updated_at' | 'created_at'>('updated_at');
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   const loadMyAgents = () => {
     setLoading(true);
@@ -62,7 +63,7 @@ export default function AgentList() {
   const pagedAgents = filteredAgents.slice(currentOffset, currentOffset + limit);
 
   const handleCreate = () => {
-    navigate('/agents/new');
+    setShowCreateDialog(true);
   };
 
   const toggleSelect = (id: string, e: React.MouseEvent) => {
@@ -157,6 +158,7 @@ export default function AgentList() {
   };
 
   return (
+    <>
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -348,5 +350,58 @@ export default function AgentList() {
         </div>
       )}
     </div>
+    {showCreateDialog && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center"
+        style={{ background: 'rgba(0,0,0,0.5)' }}
+        onClick={() => setShowCreateDialog(false)}>
+        <div className="rounded-2xl shadow-2xl w-[480px] p-6"
+          style={{ background: 'var(--color-bg)' }}
+          onClick={e => e.stopPropagation()}>
+          <h2 className="text-xl font-semibold mb-2">Create New Agent</h2>
+          <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
+            Choose how you want to create your agent
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => { setShowCreateDialog(false); navigate('/agents/new'); }}
+              className="flex flex-col items-center gap-3 p-5 rounded-xl border cursor-pointer transition-all hover:border-[var(--color-primary)] hover:shadow-md"
+              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center"
+                style={{ background: 'var(--color-bg-tertiary)' }}>
+                <Pencil size={22} style={{ color: 'var(--color-primary)' }} />
+              </div>
+              <div className="text-center">
+                <div className="font-medium text-sm">Manual</div>
+                <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Configure all settings yourself in the editor
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={() => { setShowCreateDialog(false); navigate('/chat?agent=agent-builder&auto=help'); }}
+              className="flex flex-col items-center gap-3 p-5 rounded-xl border cursor-pointer transition-all hover:border-[var(--color-primary)] hover:shadow-md"
+              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center"
+                style={{ background: 'var(--color-primary)' + '18' }}>
+                <Sparkles size={22} style={{ color: 'var(--color-primary)' }} />
+              </div>
+              <div className="text-center">
+                <div className="font-medium text-sm">Auto (AI-assisted)</div>
+                <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Chat with Agent Builder to create your agent
+                </div>
+              </div>
+            </button>
+          </div>
+          <button
+            onClick={() => setShowCreateDialog(false)}
+            className="w-full mt-4 py-2 rounded-lg text-sm border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    )}
+  </>
   );
 }

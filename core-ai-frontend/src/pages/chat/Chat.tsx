@@ -412,6 +412,91 @@ export default function Chat() {
     }).catch(console.error);
   }, []);
 
+  // Handle ?agent=...&auto=help query params for auto-creating agents
+  const autoSendRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const agentParam = searchParams.get('agent');
+    const autoParam = searchParams.get('auto');
+    if (!agentParam || !autoParam) return;
+
+    const allAgents = [...myAgents, ...otherAgents]
+      .filter(a => a.status === 'PUBLISHED' || a.type === 'local');
+    const targetAgent = allAgents.find(a => a.id === agentParam);
+
+    if (targetAgent && autoParam === 'help') {
+      // Clear existing session and select the agent
+      handleNewChat();
+      setSelectedAgentId(agentParam);
+      // Clear URL params
+      setSearchParams({}, { replace: true });
+      // Signal that we should auto-send "help" once the agent is selected
+      autoSendRef.current = 'help';
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myAgents, otherAgents]);
+
+  // Auto-send "help" when agent is selected from query params
+  useEffect(() => {
+    if (autoSendRef.current !== 'help' || !selectedAgentId || selectedAgentId !== 'agent-builder') return;
+    autoSendRef.current = null;
+
+    // Wait a tick for state to settle, then send
+    const timer = setTimeout(() => {
+      const text = 'help';
+      setInput('');
+
+      setMessages(prev => [...prev, {
+        role: 'user',
+        segments: [{ type: 'text', content: text }],
+      }]);
+      setStatus('running');
+      streamingContentRef.current = '';
+      streamingThinkingRef.current = '';
+      setPlanTodos(null);
+      setMessages(prev => [...prev, { role: 'agent', segments: [] }]);
+
+      (async () => {
+        try {
+          // Always create a new session since handleNewChat cleared it
+          const res = await sessionApi.create(selectedAgentId, {});
+          const sid = res.sessionId;
+          setSessionId(sid);
+          doConnectSSE(sid);
+          if (res.loaded_tools && res.loaded_tools.length > 0) {
+            setLoadedToolIds(new Set(res.loaded_tools));
+          }
+          if (res.loaded_skills && res.loaded_skills.length > 0) {
+            setLoadedSkillIds(new Set(res.loaded_skills));
+          }
+          if (res.loaded_sub_agents && res.loaded_sub_agents.length > 0) {
+            setLoadedSubAgentIds(new Set(res.loaded_sub_agents));
+          }
+          setPreToolIds(new Set());
+          setPreSkillIds(new Set());
+          setPreSubAgentIds(new Set());
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await sessionApi.sendMessage(sid, text, {});
+          setSidebarRefreshKey(k => k + 1);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setMessages(prev => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === 'agent') {
+              updated[updated.length - 1] = { ...last, segments: [{ type: 'text', content: `Error: ${msg}` }] };
+            }
+            return updated;
+          });
+          setStatus('idle');
+        }
+      })();
+    }, 300);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAgentId]);
+
   const handleSSEEvent = useCallback((event: SseEvent) => {
     switch (event.type) {
       case 'TEXT_CHUNK':
