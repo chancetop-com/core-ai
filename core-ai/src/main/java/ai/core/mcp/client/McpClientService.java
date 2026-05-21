@@ -270,14 +270,33 @@ public class McpClientService implements AutoCloseable {
                 || cmd.endsWith(".cmd") || cmd.endsWith(".bat");
     }
 
-    private McpClientTransport createStreamableHttpTransport(McpServerConfig config) {
-        var builder = HttpClientStreamableHttpTransport.builder(config.getUrl())
-            .connectTimeout(config.getConnectTimeout());
+    private static final String SDK_DEFAULT_STREAMABLE_ENDPOINT = "/mcp";
 
-        if (config.getEndpoint() != null && !config.getEndpoint().isBlank()) {
-            builder.endpoint(config.getEndpoint());
+    private McpClientTransport createStreamableHttpTransport(McpServerConfig config) {
+        String url = config.getUrl();
+        String endpoint = config.getEndpoint();
+
+        if ((endpoint == null || endpoint.isBlank()) && url.endsWith(SDK_DEFAULT_STREAMABLE_ENDPOINT)) {
+            String baseUrl = url.substring(0, url.length() - SDK_DEFAULT_STREAMABLE_ENDPOINT.length()) + "/";
+            endpoint = SDK_DEFAULT_STREAMABLE_ENDPOINT.substring(1); // "mcp" (relative)
+
+            var builder = HttpClientStreamableHttpTransport.builder(baseUrl)
+                .connectTimeout(config.getConnectTimeout())
+                .endpoint(endpoint);
+            return applyHeadersAndBuild(builder, config);
         }
 
+        var builder = HttpClientStreamableHttpTransport.builder(url)
+            .connectTimeout(config.getConnectTimeout());
+
+        if (endpoint != null && !endpoint.isBlank()) {
+            builder.endpoint(endpoint);
+        }
+
+        return applyHeadersAndBuild(builder, config);
+    }
+
+    private McpClientTransport applyHeadersAndBuild(HttpClientStreamableHttpTransport.Builder builder, McpServerConfig config) {
         if (config.getHeaders() != null && !config.getHeaders().isEmpty()) {
             builder.customizeRequest(requestBuilder -> {
                 for (var entry : config.getHeaders().entrySet()) {
@@ -285,18 +304,40 @@ public class McpClientService implements AutoCloseable {
                 }
             });
         }
-
         return builder.build();
     }
 
-    private McpClientTransport createSseTransport(McpServerConfig config) {
-        var builder = HttpClientSseClientTransport.builder(config.getUrl())
-            .connectTimeout(config.getConnectTimeout());
+    /**
+     * Default SSE endpoint appended by the MCP SDK.
+     * @see HttpClientSseClientTransport#DEFAULT_SSE_ENDPOINT
+     */
+    private static final String SDK_DEFAULT_SSE_ENDPOINT = "/sse";
 
-        if (config.getEndpoint() != null && !config.getEndpoint().isBlank()) {
-            builder.sseEndpoint(config.getEndpoint());
+    private McpClientTransport createSseTransport(McpServerConfig config) {
+        String url = config.getUrl();
+        String endpoint = config.getEndpoint();
+
+        if ((endpoint == null || endpoint.isBlank()) && url.endsWith(SDK_DEFAULT_SSE_ENDPOINT)) {
+            String baseUrl = url.substring(0, url.length() - SDK_DEFAULT_SSE_ENDPOINT.length()) + "/";
+            endpoint = SDK_DEFAULT_SSE_ENDPOINT.substring(1); // "sse" (relative)
+
+            var builder = HttpClientSseClientTransport.builder(baseUrl)
+                .connectTimeout(config.getConnectTimeout())
+                .sseEndpoint(endpoint);
+            return applySseHeadersAndBuild(builder, config);
         }
 
+        var builder = HttpClientSseClientTransport.builder(url)
+            .connectTimeout(config.getConnectTimeout());
+
+        if (endpoint != null && !endpoint.isBlank()) {
+            builder.sseEndpoint(endpoint);
+        }
+
+        return applySseHeadersAndBuild(builder, config);
+    }
+
+    private McpClientTransport applySseHeadersAndBuild(HttpClientSseClientTransport.Builder builder, McpServerConfig config) {
         if (config.getHeaders() != null && !config.getHeaders().isEmpty()) {
             builder.customizeRequest(requestBuilder -> {
                 for (var entry : config.getHeaders().entrySet()) {
@@ -304,7 +345,6 @@ public class McpClientService implements AutoCloseable {
                 }
             });
         }
-
         return builder.build();
     }
 
