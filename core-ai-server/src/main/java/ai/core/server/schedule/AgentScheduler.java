@@ -39,12 +39,19 @@ public class AgentScheduler {
             )
         );
 
+        int dueCount = 0;
         for (var schedule : dueSchedules) {
+            dueCount++;
             try {
                 processSchedule(schedule, now);
             } catch (Exception e) {
                 LOGGER.error("failed to process schedule, id={}", schedule.id, e);
             }
+        }
+        if (dueCount > 0) {
+            LOGGER.info("scheduler tick, dueCount={}", dueCount);
+        } else {
+            LOGGER.debug("scheduler tick, dueCount=0");
         }
     }
 

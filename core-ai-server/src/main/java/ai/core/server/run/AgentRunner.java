@@ -58,6 +58,9 @@ public class AgentRunner {
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
     private static final int SANDBOX_RELEASE_DELAY_SECONDS = 60;
     private static final int MAX_TRANSCRIPT_RESULT_LENGTH = 10240;
+    // RUNNING records older than this are treated as ghost rows (left over from crashes / restarts)
+    // and ignored by isRunning(), so SKIP-policy schedules don't get jammed forever.
+    private static final int STALE_RUN_THRESHOLD_SECONDS = 1800;
 
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_CONCURRENT_RUNS);
     private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
@@ -149,10 +152,12 @@ public class AgentRunner {
     }
 
     public boolean isRunning(String agentId) {
+        var threshold = ZonedDateTime.now().minusSeconds(STALE_RUN_THRESHOLD_SECONDS);
         return agentRunCollection.findOne(
             Filters.and(
                 Filters.eq("agent_id", agentId),
-                Filters.eq("status", RunStatus.RUNNING)
+                Filters.eq("status", RunStatus.RUNNING),
+                Filters.gte("started_at", threshold)
             )
         ).isPresent();
     }

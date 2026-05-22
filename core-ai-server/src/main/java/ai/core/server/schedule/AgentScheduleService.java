@@ -63,17 +63,28 @@ public class AgentScheduleService {
         var entity = agentScheduleCollection.get(id)
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));
 
-        if (request.cronExpression != null) entity.cronExpression = request.cronExpression;
-        if (request.timezone != null) entity.timezone = request.timezone;
+        boolean scheduleChanged = false;
+        if (request.cronExpression != null && !request.cronExpression.equals(entity.cronExpression)) {
+            entity.cronExpression = request.cronExpression;
+            scheduleChanged = true;
+        }
+        if (request.timezone != null && !request.timezone.equals(entity.timezone)) {
+            entity.timezone = request.timezone;
+            scheduleChanged = true;
+        }
         if (request.enabled != null) entity.enabled = request.enabled;
         if (request.input != null) entity.input = request.input;
         if (request.variables != null) entity.variables = request.variables;
         if (request.concurrencyPolicy != null) entity.concurrencyPolicy = ConcurrencyPolicy.valueOf(request.concurrencyPolicy);
         entity.updatedAt = ZonedDateTime.now();
 
-        var zone = ZoneId.of(entity.timezone);
-        var cron = new CronExpression(entity.cronExpression);
-        entity.nextRunAt = cron.nextAfter(ZonedDateTime.now(), zone);
+        // Only recompute next_run_at when cron/timezone actually changed, otherwise toggling enabled
+        // or editing input/variables would silently push the next trigger to a future tick.
+        if (scheduleChanged || entity.nextRunAt == null) {
+            var zone = ZoneId.of(entity.timezone);
+            var cron = new CronExpression(entity.cronExpression);
+            entity.nextRunAt = cron.nextAfter(ZonedDateTime.now(), zone);
+        }
 
         agentScheduleCollection.replace(entity);
         return toView(entity);
