@@ -307,7 +307,7 @@ class CompressionTest {
     @Test
     void testCompressToolResultLongContent() throws Exception {
         Compression compressionWithProvider = new Compression(createMockProvider(), "test-model");
-        // Create content that exceeds MAX_TOOL_RESULT_TOKENS (30000 tokens)
+        // Create content that exceeds the per-model tool result token limit
         // Each "word " is about 1 token, so we need >30000 words
         String longResult = "word ".repeat(100000);
 

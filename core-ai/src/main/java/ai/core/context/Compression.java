@@ -27,7 +27,8 @@ public class Compression {
     private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
-    private static final int MAX_TOOL_RESULT_TOKENS = 64000;
+    private static final double DEFAULT_TOOL_RESULT_RATIO = 0.5;
+    private static final int FALLBACK_MAX_TOOL_RESULT_TOKENS = 64000;
     private static final int HEAD_TOKENS = 500;
     private static final int TAIL_TOKENS = 500;
     private static final String TEMP_DIR_NAME = "core-ai";
@@ -39,25 +40,40 @@ public class Compression {
     private final int keepRecentTurns;
     private final int keepTokens;
     private final int maxContextTokens;
+    private final double toolResultRatio;
+    private final int maxToolResultTokens;
     private final LLMProvider llmProvider;
     private final String summaryModel;
     private final List<CompressionListener> listeners = new ArrayList<>();
 
     public Compression(LLMProvider llmProvider, String agentModel) {
-        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, DEFAULT_KEEP_TOKENS, llmProvider, agentModel, agentModel);
+        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, DEFAULT_KEEP_TOKENS, DEFAULT_TOOL_RESULT_RATIO, llmProvider, agentModel, agentModel);
     }
 
     public Compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String agentModel, String summaryModel) {
-        this(triggerThreshold, keepRecentTurns, DEFAULT_KEEP_TOKENS, llmProvider, agentModel, summaryModel);
+        this(triggerThreshold, keepRecentTurns, DEFAULT_KEEP_TOKENS, DEFAULT_TOOL_RESULT_RATIO, llmProvider, agentModel, summaryModel);
     }
 
     public Compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, LLMProvider llmProvider, String agentModel, String summaryModel) {
+        this(triggerThreshold, keepRecentTurns, keepMinTokens, DEFAULT_TOOL_RESULT_RATIO, llmProvider, agentModel, summaryModel);
+    }
+
+    public Compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, double toolResultRatio, LLMProvider llmProvider, String agentModel, String summaryModel) {
         this.triggerThreshold = triggerThreshold;
         this.keepRecentTurns = keepRecentTurns;
         this.keepTokens = keepMinTokens;
+        this.toolResultRatio = toolResultRatio;
         this.llmProvider = llmProvider;
         this.summaryModel = summaryModel;
         this.maxContextTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(agentModel);
+        this.maxToolResultTokens = calculateMaxToolResultTokens();
+    }
+
+    private int calculateMaxToolResultTokens() {
+        if (maxContextTokens <= 0) {
+            return FALLBACK_MAX_TOOL_RESULT_TOKENS;
+        }
+        return (int) (maxContextTokens * toolResultRatio);
     }
 
     public void addListener(CompressionListener listener) {
@@ -353,7 +369,7 @@ public class Compression {
 
         int tokenCount = Tokenizer.tokenCount(result);
 
-        if (tokenCount <= MAX_TOOL_RESULT_TOKENS) {
+        if (tokenCount <= maxToolResultTokens) {
             return result;
         }
 
@@ -362,7 +378,7 @@ public class Compression {
             String summary = buildToolResultSummary(toolName, result, tokenCount, filePath);
 
             LOGGER.debug("Long tool result from {} saved to file: {} ({} tokens, max: {})",
-                toolName, filePath, tokenCount, MAX_TOOL_RESULT_TOKENS);
+                toolName, filePath, tokenCount, maxToolResultTokens);
 
             return summary;
         } catch (IOException e) {
@@ -376,7 +392,7 @@ public class Compression {
             return false;
         }
         int tokenCount = Tokenizer.tokenCount(result);
-        return tokenCount > MAX_TOOL_RESULT_TOKENS;
+        return tokenCount > maxToolResultTokens;
     }
 
     private Path writeToolResultToFile(String toolName, String content, String sessionId) throws IOException {
@@ -415,7 +431,7 @@ public class Compression {
             [WARNING: This is a large file. Do NOT read the full file directly as it will be truncated again.Use file related tools to read specific parts of the file as needed.],
             File path: %s
             """,
-            toolName, filePath, tokenCount, MAX_TOOL_RESULT_TOKENS,
+            toolName, filePath, tokenCount, maxToolResultTokens,
             HEAD_TOKENS, headContent,
             TAIL_TOKENS, tailContent,
             filePath);
@@ -444,6 +460,10 @@ public class Compression {
 
     public int getMaxContextTokens() {
         return maxContextTokens;
+    }
+
+    public int getMaxToolResultTokens() {
+        return maxToolResultTokens;
     }
 
     private void notifyListener(int beforeCount, int afterCount, boolean completed) {
