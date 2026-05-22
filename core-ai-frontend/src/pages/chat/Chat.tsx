@@ -413,8 +413,6 @@ export default function Chat() {
   }, []);
 
   // Handle ?agent=...&auto=help query params for auto-creating agents
-  const autoSendRef = useRef<string | null>(null);
-
   useEffect(() => {
     const agentParam = searchParams.get('agent');
     const autoParam = searchParams.get('auto');
@@ -425,41 +423,24 @@ export default function Chat() {
     const targetAgent = allAgents.find(a => a.id === agentParam);
 
     if (targetAgent && autoParam === 'help') {
-      // Clear existing session and select the agent
       handleNewChat();
       setSelectedAgentId(agentParam);
-      // Clear URL params
-      setSearchParams({}, { replace: true });
-      // Signal that we should auto-send "help" once the agent is selected
-      autoSendRef.current = 'help';
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myAgents, otherAgents]);
 
-  // Auto-send "help" when agent is selected from query params
-  useEffect(() => {
-    if (autoSendRef.current !== 'help' || !selectedAgentId || selectedAgentId !== 'agent-builder') return;
-    autoSendRef.current = null;
+      // Auto-send "help" after state settles
+      // Clear URL params via history API to avoid triggering effect re-run
+      window.history.replaceState({}, '', window.location.pathname);
+      const targetId = agentParam;
+      const timer = setTimeout(async () => {
+        setInput('');
+        setMessages([{ role: 'user' as const, segments: [{ type: 'text' as const, content: 'help' }] }]);
+        setStatus('running');
+        streamingContentRef.current = '';
+        streamingThinkingRef.current = '';
+        setPlanTodos(null);
+        setMessages(prev => [...prev, { role: 'agent' as const, segments: [] }]);
 
-    // Wait a tick for state to settle, then send
-    const timer = setTimeout(() => {
-      const text = 'help';
-      setInput('');
-
-      setMessages(prev => [...prev, {
-        role: 'user',
-        segments: [{ type: 'text', content: text }],
-      }]);
-      setStatus('running');
-      streamingContentRef.current = '';
-      streamingThinkingRef.current = '';
-      setPlanTodos(null);
-      setMessages(prev => [...prev, { role: 'agent', segments: [] }]);
-
-      (async () => {
         try {
-          // Always create a new session since handleNewChat cleared it
-          const res = await sessionApi.create(selectedAgentId, {});
+          const res = await sessionApi.create(targetId, {});
           const sid = res.sessionId;
           setSessionId(sid);
           doConnectSSE(sid);
@@ -476,7 +457,7 @@ export default function Chat() {
           setPreSkillIds(new Set());
           setPreSubAgentIds(new Set());
           await new Promise(resolve => setTimeout(resolve, 500));
-          await sessionApi.sendMessage(sid, text, {});
+          await sessionApi.sendMessage(sid, 'help', {});
           setSidebarRefreshKey(k => k + 1);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -484,18 +465,18 @@ export default function Chat() {
             const updated = [...prev];
             const last = updated[updated.length - 1];
             if (last?.role === 'agent') {
-              updated[updated.length - 1] = { ...last, segments: [{ type: 'text', content: `Error: ${msg}` }] };
+              updated[updated.length - 1] = { ...last, segments: [{ type: 'text' as const, content: `Error: ${msg}` }] };
             }
             return updated;
           });
           setStatus('idle');
         }
-      })();
-    }, 300);
+      }, 300);
 
-    return () => clearTimeout(timer);
+      return () => clearTimeout(timer);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAgentId]);
+  }, [myAgents, otherAgents, searchParams]);
 
   const handleSSEEvent = useCallback((event: SseEvent) => {
     switch (event.type) {

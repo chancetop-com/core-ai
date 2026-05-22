@@ -61,7 +61,7 @@ public class ToolRegistryService {
         loadServiceApiTools();
         loadConfigMcpServers(mcpServersJson);
         loadDatabaseTools();
-        toolRefResolver = new ToolRefResolver(tools, internalApiToolLoader);
+        toolRefResolver = new ToolRefResolver(tools, internalApiToolLoader, dynamicToolSets);
     }
 
     private void loadServiceApiTools() {

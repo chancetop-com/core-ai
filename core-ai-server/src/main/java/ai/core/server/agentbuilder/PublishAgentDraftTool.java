@@ -13,6 +13,7 @@ import java.util.Map;
  */
 public final class PublishAgentDraftTool extends ToolCall {
     public static final String TOOL_NAME = "publish_agent_draft";
+    public static String publicUrl;
 
     public static PublishAgentDraftTool create(AgentDefinitionService agentDefinitionService) {
         var tool = new PublishAgentDraftTool(agentDefinitionService);
@@ -46,7 +47,7 @@ public final class PublishAgentDraftTool extends ToolCall {
                 .append("ID: ").append(view.id).append("\n")
                 .append("Name: ").append(view.name).append("\n")
                 .append("Status: PUBLISHED\n\n")
-                .append("The agent is now available at: /agents/").append(view.id).append("\n")
+                .append("The agent is now available at: ").append(publicUrl).append("/agents/").append(view.id).append("\n")
                 .append("You can test it by selecting this agent in the Chat page.");
 
             return ToolCallResult.completed(result.toString())

@@ -29,11 +29,14 @@ public class ToolRefResolver {
 
     private final Map<String, ToolRegistry> toolRegistry;
     private final InternalApiToolLoader apiToolLoader;
+    private final Map<String, List<ToolCall>> dynamicToolSets;
     private final Map<String, List<ToolCall>> apiToolCache = new ConcurrentHashMap<>();
 
-    public ToolRefResolver(Map<String, ToolRegistry> toolRegistry, InternalApiToolLoader apiToolLoader) {
+    public ToolRefResolver(Map<String, ToolRegistry> toolRegistry, InternalApiToolLoader apiToolLoader,
+                           Map<String, List<ToolCall>> dynamicToolSets) {
         this.toolRegistry = toolRegistry;
         this.apiToolLoader = apiToolLoader;
+        this.dynamicToolSets = dynamicToolSets;
     }
 
     public List<ToolCall> resolve(List<ToolRef> toolRefs) {
@@ -64,7 +67,11 @@ public class ToolRefResolver {
             var setName = entry.config != null ? entry.config.get("set") : null;
             var builtinSet = ToolRegistryService.BUILTIN_TOOL_SETS.get(setName);
             if (builtinSet != null) result.addAll(builtinSet);
+            return;
         }
+        // fallback for dynamically registered builtin tool sets
+        var dynamicSet = dynamicToolSets.get(toolRef.id);
+        if (dynamicSet != null) result.addAll(dynamicSet);
     }
 
     private void resolveMcpRef(ToolRef toolRef, List<ToolCall> result) {

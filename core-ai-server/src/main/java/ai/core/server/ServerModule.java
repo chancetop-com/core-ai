@@ -166,6 +166,8 @@ public class ServerModule extends Module {
     private void bindService() {
         var publicUrl = property("sys.public.url").orElse("http://localhost:8080");
         ai.core.server.run.SubmitArtifactsTool.publicUrl = publicUrl;
+        ai.core.server.agentbuilder.CreateAgentDraftTool.publicUrl = publicUrl;
+        ai.core.server.agentbuilder.PublishAgentDraftTool.publicUrl = publicUrl;
         bind(SystemPromptService.class);
         bind(LLMCallExecutor.class);
         bind(AgentRunner.class);

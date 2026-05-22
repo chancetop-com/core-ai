@@ -86,27 +86,33 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
                - A clear, descriptive name for the agent
                - A short description of what it does
                - A detailed system prompt that instructs the agent on its role, workflow, tone, and constraints
-               - Which builtin tools the agent needs (e.g., "builtin-all" for general purpose, or specific tool sets). Common tool set options include:
+               - Which builtin tools the agent needs. Common options:
                  - `builtin-all` - all available tools (recommended for most agents)
-                 - `builtin-read` - read-only tools (file reading, searching)
-                 - `builtin-write` - write tools (file writing, editing)
-                 - `builtin-system` - system management tools
+                 - `builtin-file-operations` - file reading and writing
+                 - `builtin-web` - web search and browsing
+                 - `builtin-code-execution` - run code in a sandbox
                - Model preference (optional, defaults to the configured default model)
                - Temperature (optional, controls creativity)
-               - Max turns (optional, limits conversation length)
+               - Max turns. Choose based on task complexity:
+                 - 5-10 turns: simple Q&A, quick lookups, small fixes
+                 - 10-20 turns: content writing, translation, formatting
+                 - 20-30 turns: code generation, debugging, review
+                 - 30-50 turns: research, analysis, report writing
+                 - 50-100 turns: complex multi-step workflows, heavy tool usage
+               - Multimodal model. Set a multimodal model (e.g. "gpt-4o") when the agent needs to understand images:
+                 - YES: UI design review, screenshot analysis, diagram interpretation, OCR, any task where users may upload images
+                 - NO: code generation, text analysis, data processing, Q&A, translation (unless image input is expected)
 
             3. **Create draft**: Use the `create_agent_draft` tool to create the agent in DRAFT status. Show the user the draft details.
 
-            4. **Iterate**: If the user wants changes, create a new draft with the updated configuration.
+            4. **Iterate**: If the user wants changes, use the `update_agent_draft` tool to modify the existing draft by its agent_id. NEVER create a new draft to change an existing one — always use update_agent_draft.
 
-            5. **Publish**: When the user confirms they're satisfied, use the `publish_agent_draft` tool with the draft's agent_id to publish it. After publishing, tell the user:
-               - The published agent is available at: /agents/{agent_id}
-               - They can test it by selecting it in the Chat page dropdown
+            5. **Publish**: When the user confirms they're satisfied, use the `publish_agent_draft` tool with the draft's agent_id to publish it. Tell the user the agent is available and can be tested in the Chat page.
 
             ## Agent Naming Guidelines
             - Use clear, descriptive names that reflect the agent's purpose
             - Keep names concise (ideally under 30 characters)
-            - Use the same language as the user
+            - If a name is already taken, suggest adding a qualifier (e.g. "Pro", "Plus", "V2")
 
             ## System Prompt Guidelines
             - Be specific about the agent's role and responsibilities
@@ -120,7 +126,9 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             - Never publish without user confirmation
             - Use the same language as the user for name and description
             - Default to `builtin-all` tools unless the user specifies otherwise
-            - Explain what each configuration option means if the user seems unfamiliar
+            - Always recommend an appropriate max_turns value based on the agent's task type
+            - Always recommend whether the agent needs a multimodal model based on whether it will process images
+            - If the user mentions needing sub-agents, MCP tools, service APIs, skills, or custom tool sets, tell them: "These advanced features are available in the agent configuration page. You can configure sub-agents, MCP servers, service APIs, skills, and more there. This wizard focuses on the core setup — for advanced configuration, visit the agent edit page after publishing."
             """;
 
     @Override
@@ -202,24 +210,30 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("max_turns", 50)
             .append("timeout_seconds", 600);
 
-        var agent = new Document()
-            .append("_id", AGENT_BUILDER_ID)
-            .append("user_id", "system")
+        var toolRefs = List.of(new Document("id", "builtin-agent-builder").append("type", "BUILTIN"));
+
+        var filter = new Document("_id", AGENT_BUILDER_ID);
+        var update = new Document("$set", new Document()
             .append("name", "Agent Builder")
             .append("description", "Interactive builder for creating and publishing AI agents through conversation")
             .append("system_prompt", AGENT_BUILDER_SYSTEM_PROMPT)
-            .append("tools", List.of(new Document("id", "builtin-agent-builder").append("type", "BUILTIN")))
+            .append("tools", toolRefs)
             .append("max_turns", 50)
             .append("timeout_seconds", 600)
-            .append("system_default", true)
             .append("type", "AGENT")
             .append("status", "PUBLISHED")
             .append("published_config", publishedConfig)
             .append("published_at", now)
+            .append("updated_at", now)
+        ).append("$setOnInsert", new Document()
+            .append("_id", AGENT_BUILDER_ID)
+            .append("user_id", "system")
+            .append("system_default", true)
             .append("created_at", now)
-            .append("updated_at", now);
+        );
 
-        upsert(mongo, AGENT_BUILDER_ID, agent);
+        mongo.runCommand(new Document("update", "agents")
+            .append("updates", List.of(new Document("q", filter).append("u", update).append("upsert", true))));
     }
 
     private void upsert(Mongo mongo, String id, Document doc) {

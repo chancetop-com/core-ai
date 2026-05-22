@@ -1,5 +1,6 @@
 package ai.core.server.agentbuilder;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.tool.ToolCall;
@@ -16,6 +17,7 @@ import java.util.Map;
  */
 public final class CreateAgentDraftTool extends ToolCall {
     public static final String TOOL_NAME = "create_agent_draft";
+    public static String publicUrl;
 
     public static CreateAgentDraftTool create(AgentDefinitionService agentDefinitionService) {
         var tool = new CreateAgentDraftTool(agentDefinitionService);
@@ -32,6 +34,18 @@ public final class CreateAgentDraftTool extends ToolCall {
     @Override
     @SuppressWarnings("unchecked")
     public ToolCallResult execute(String text) {
+        return execute(text, null);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public ToolCallResult execute(String text, ExecutionContext context) {
+        var userId = context != null ? context.getUserId() : null;
+        return doExecute(text, userId != null ? userId : "system");
+    }
+
+    @SuppressWarnings("unchecked")
+    private ToolCallResult doExecute(String text, String creator) {
         long startTime = System.currentTimeMillis();
         try {
             var args = JSON.fromJSON(Map.class, text);
@@ -70,8 +84,9 @@ public final class CreateAgentDraftTool extends ToolCall {
             }
 
             request.inputTemplate = (String) args.get("input_template");
+            request.multiModalModel = (String) args.get("multi_modal_model");
 
-            var view = agentDefinitionService.create(request, "system");
+            var view = agentDefinitionService.create(request, creator);
 
             var result = new StringBuilder(256);
             result.append("Agent draft created successfully!\n\n")
@@ -79,6 +94,7 @@ public final class CreateAgentDraftTool extends ToolCall {
                 .append("Name: ").append(view.name).append("\n")
                 .append("Status: DRAFT\n")
                 .append("Type: AGENT\n\n")
+                .append("Edit the agent: ").append(publicUrl).append("/agents/").append(view.id).append("/edit\n")
                 .append("You can now review the draft with the user and publish it when ready.");
 
             return ToolCallResult.completed(result.toString())
@@ -113,6 +129,7 @@ public final class CreateAgentDraftTool extends ToolCall {
                 ToolCallParameters.ParamSpec.of(Integer.class, "max_turns", "Maximum conversation turns (optional, default 20)"),
                 ToolCallParameters.ParamSpec.of(Integer.class, "timeout_seconds", "Timeout in seconds (optional, default 600)"),
                 ToolCallParameters.ParamSpec.of(String.class, "input_template", "Input template with {{variable}} placeholders (optional)"),
+                ToolCallParameters.ParamSpec.of(String.class, "multi_modal_model", "Multimodal model for image understanding (optional, e.g. 'gpt-4o')"),
                 ToolCallParameters.ParamSpec.of(List.class, "tool_ids", "List of builtin tool IDs to assign to the agent (optional), e.g. [\"builtin-all\"]")
             ));
             build(tool);
