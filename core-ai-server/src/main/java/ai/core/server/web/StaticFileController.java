@@ -5,6 +5,7 @@ import core.framework.http.ContentType;
 import core.framework.web.Request;
 import core.framework.web.Response;
 
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -35,11 +36,10 @@ public class StaticFileController {
             return Response.text("not found").status(HTTPStatus.NOT_FOUND);
         }
 
+        var contentType = resolveContentType(file.toString());
         try {
-            var bytes = Files.readAllBytes(file);
-            var contentType = resolveContentType(file.toString());
-            return Response.bytes(bytes).contentType(contentType);
-        } catch (Exception e) {
+            return Response.file(file).contentType(contentType);
+        } catch (UncheckedIOException e) {
             return Response.text("error").status(HTTPStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -52,9 +52,8 @@ public class StaticFileController {
             return Response.empty().status(HTTPStatus.NO_CONTENT);
         }
         try {
-            var bytes = Files.readAllBytes(file);
-            return Response.bytes(bytes).contentType(IMAGE_SVG);
-        } catch (Exception e) {
+            return Response.file(file).contentType(IMAGE_SVG);
+        } catch (UncheckedIOException e) {
             return Response.empty().status(HTTPStatus.NO_CONTENT);
         }
     }
