@@ -102,12 +102,12 @@ public class InProcessAgentSession implements AgentSession {
 
     @Override
     public void sendMessage(String message, Map<String, Object> variables) {
-        agent.resetCancellation();
         commandQueue.enqueueUserInput(message, variables);
     }
 
     private void executeCommands(SessionCommandQueue.CommandBatch batch) {
         executingThread = Thread.currentThread();
+        agent.resetCancellation();
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
 
         var usageBefore = agent.getCurrentTokenUsage();
