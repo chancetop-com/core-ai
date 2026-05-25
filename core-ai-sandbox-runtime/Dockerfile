@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
     libgobject-2.0-0 libgdk-pixbuf-2.0-0 libffi-dev \
     shared-mime-info fonts-noto-cjk fontconfig \
-    chromium xvfb xauth libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2 fonts-noto-cjk && \
+    chromium xvfb xauth libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2 && \
     rm -rf /var/lib/apt/lists/*
 
 # Layer 2: python deps (changes occasionally)
