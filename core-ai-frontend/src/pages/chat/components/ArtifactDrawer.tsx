@@ -234,7 +234,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
       )}
 
       <div className="flex-1 min-h-0 overflow-auto" style={{ background: 'var(--color-bg)' }}>
-        {mode === 'preview' && renderPreview(artifact, { fileBlobUrl, fileError, fileLoading })}
+        {mode === 'preview' && renderPreview(artifact, { fileBlobUrl, fileText, fileError, fileLoading })}
         {mode === 'source' && renderSource(artifact, { fileText, fileError, fileLoading })}
       </div>
     </div>
@@ -253,7 +253,7 @@ interface FileSourceState {
   fileLoading: boolean;
 }
 
-function renderPreview(spec: ArtifactSpec, state: FileState) {
+function renderPreview(spec: ArtifactSpec, state: FileState & FileSourceState) {
   if (spec.kind === 'html' && spec.content) {
     return <iframe sandbox="allow-scripts" srcDoc={spec.content} title={spec.title} className="w-full h-full border-0" />;
   }
@@ -287,11 +287,20 @@ function renderPreview(spec: ArtifactSpec, state: FileState) {
     const lowerName = spec.fileName?.toLowerCase() ?? '';
     const isImage = spec.contentType?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(lowerName);
     const isHtml = spec.contentType === 'text/html' || /\.html?$/.test(lowerName);
+    const isMarkdown = spec.contentType === 'text/markdown' || /\.(md|markdown)$/.test(lowerName);
     if (isImage) {
       return <div className="p-6 flex items-center justify-center"><img src={state.fileBlobUrl} alt={spec.title} className="max-w-full max-h-full" /></div>;
     }
     if (isHtml) {
       return <iframe sandbox="allow-scripts" src={state.fileBlobUrl} title={spec.title} className="w-full h-full border-0" />;
+    }
+    if (isMarkdown && state.fileText != null) {
+      return (
+        <div className="px-6 py-4 text-sm [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1 [&_svg]:block [&_svg]:max-w-full [&_svg]:h-auto"
+          style={{ color: 'var(--color-text)' }}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={REHYPE_PLUGINS}>{state.fileText}</ReactMarkdown>
+        </div>
+      );
     }
     return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>Preview not available for this file type. Use the download button.</div>;
   }

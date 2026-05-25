@@ -1,7 +1,46 @@
 import { useState } from 'react';
-import { Loader2, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronRight, Wrench, Copy, Check } from 'lucide-react';
 import type { ToolEvent } from '../types';
 import { normalizeArgs, getArgsPreview } from '../utils';
+
+function CopyIconButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.warn('copy failed', err);
+    }
+  };
+  return (
+    <button onClick={handleCopy}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded cursor-pointer transition-opacity opacity-70 hover:opacity-100"
+      style={{
+        color: copied ? 'var(--color-success)' : 'var(--color-text-secondary)',
+        background: 'var(--color-bg-tertiary)',
+        border: '1px solid var(--color-border)',
+        fontSize: '10px',
+      }}
+      title={copied ? 'Copied' : 'Copy detail'}>
+      {copied ? <Check size={10} /> : <Copy size={10} />}
+      <span>{copied ? 'Copied' : 'Copy'}</span>
+    </button>
+  );
+}
 
 export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
   const [expanded, setExpanded] = useState(true);
@@ -93,10 +132,15 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
           </div>
           {t.type === 'result' && t.result && expandedResults.has(key) && (
             <div className="px-3 pb-1.5" style={{ marginLeft: level > 0 ? `${level * 12}px` : undefined }}>
-              <pre className="whitespace-pre-wrap font-mono overflow-auto rounded-b px-3 py-2"
-                style={{ color: 'var(--color-text-secondary)', fontSize: '11px', maxHeight: '200px', background: 'var(--color-bg-secondary)' }}>
-                {formatJson(t.result)}
-              </pre>
+              <div className="relative">
+                <div className="absolute top-1 right-1 z-10">
+                  <CopyIconButton text={formatJson(t.result)} />
+                </div>
+                <pre className="whitespace-pre-wrap font-mono overflow-auto rounded-b px-3 py-2"
+                  style={{ color: 'var(--color-text-secondary)', fontSize: '11px', maxHeight: '200px', background: 'var(--color-bg-secondary)' }}>
+                  {formatJson(t.result)}
+                </pre>
+              </div>
             </div>
           )}
         </div>
@@ -128,7 +172,10 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
         </button>
         {/* Parent result detail */}
         {t.type === 'result' && t.result && expandedResults.has(key) && (
-          <div className="px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <div className="px-3 py-2 relative" style={{ borderBottom: '1px solid var(--color-border)' }}>
+            <div className="absolute top-1 right-1 z-10">
+              <CopyIconButton text={formatJson(t.result)} />
+            </div>
             <pre className="whitespace-pre-wrap font-mono overflow-auto"
               style={{ color: 'var(--color-text-secondary)', fontSize: '11px', maxHeight: '200px' }}>
               {formatJson(t.result)}
