@@ -21,7 +21,7 @@ import AuthedImage from './components/AuthedImage';
 import type { ArtifactSpec } from './components/artifactTypes';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment } from './types';
-import { historyToChatMessages, getMessageText } from './utils';
+import { historyToChatMessages, getMessageText, formatMessageTime, formatMessageTimeFull } from './utils';
 import ToolsBlock from './components/ToolsBlock';
 import CopyButton from './components/CopyButton';
 import ThinkingBlock from './components/ThinkingBlock';
@@ -432,12 +432,12 @@ export default function Chat() {
       const targetId = agentParam;
       const timer = setTimeout(async () => {
         setInput('');
-        setMessages([{ role: 'user' as const, segments: [{ type: 'text' as const, content: 'help' }] }]);
+        setMessages([{ role: 'user' as const, segments: [{ type: 'text' as const, content: 'help' }], timestamp: new Date().toISOString() }]);
         setStatus('running');
         streamingContentRef.current = '';
         streamingThinkingRef.current = '';
         setPlanTodos(null);
-        setMessages(prev => [...prev, { role: 'agent' as const, segments: [] }]);
+        setMessages(prev => [...prev, { role: 'agent' as const, segments: [], timestamp: new Date().toISOString() }]);
 
         try {
           const res = await sessionApi.create(targetId, {});
@@ -696,6 +696,14 @@ export default function Chat() {
         setStatus('idle');
         setAwaitInfo(null);
         setSidebarRefreshKey(k => k + 1);
+        setMessages(prev => {
+          if (prev.length === 0) return prev;
+          const last = prev[prev.length - 1];
+          if (last.role !== 'agent') return prev;
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...last, timestamp: new Date().toISOString() };
+          return updated;
+        });
         break;
       }
       case 'ERROR':
@@ -864,12 +872,13 @@ export default function Chat() {
       role: 'user',
       segments: [{ type: 'text', content: text }],
       attachments: attachments.length > 0 ? attachments : undefined,
+      timestamp: new Date().toISOString(),
     }]);
     setStatus('running');
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     setPlanTodos(null);
-    setMessages(prev => [...prev, { role: 'agent', segments: [] }]);
+    setMessages(prev => [...prev, { role: 'agent', segments: [], timestamp: new Date().toISOString() }]);
 
     try {
       const sid = await ensureSession();
@@ -1476,10 +1485,21 @@ export default function Chat() {
                     </div>
                   );
                 })()}
-                {/* Copy button: shown if any text segments exist */}
-                {hasTextSegments(msg.segments) && (
-                  <div className={`flex mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user' ? 'justify-end' : ''}`}>
-                    <CopyButton text={getMessageText(msg)} />
+                {/* Timestamp + copy row */}
+                {(msg.timestamp || hasTextSegments(msg.segments)) && (
+                  <div className={`flex items-center gap-2 mt-1 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                    {msg.timestamp && (
+                      <span className="text-[11px] leading-none select-none"
+                        title={formatMessageTimeFull(msg.timestamp)}
+                        style={{ color: 'var(--color-text-muted)' }}>
+                        {formatMessageTime(msg.timestamp)}
+                      </span>
+                    )}
+                    {hasTextSegments(msg.segments) && (
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <CopyButton text={getMessageText(msg)} />
+                      </span>
+                    )}
                   </div>
                 )}
                 {/* Approval block */}

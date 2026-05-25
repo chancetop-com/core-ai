@@ -49,4 +49,5 @@ export interface ChatMessage {
   segments: MessageSegment[];
   attachments?: ChatAttachment[];
   approval?: AwaitInfo;
+  timestamp?: string;
 }

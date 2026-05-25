@@ -61,6 +61,7 @@ export function historyToChatMessages(messages: HistoryMessage[]): ChatMessage[]
   return messages.map(m => ({
     role: m.role === 'user' ? 'user' : 'agent',
     segments: buildSegments(m),
+    timestamp: m.timestamp,
   }));
 }
 
@@ -70,4 +71,32 @@ export function getMessageText(msg: ChatMessage): string {
     .filter((s): s is TextSegment => s.type === 'text')
     .map(s => s.content)
     .join('\n\n');
+}
+
+/** Format an ISO timestamp for display next to a chat message. */
+export function formatMessageTime(timestamp?: string): string {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const hh = pad(date.getHours());
+  const mm = pad(date.getMinutes());
+  const sameDay = date.toDateString() === now.toDateString();
+  if (sameDay) return `${hh}:${mm}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${hh}:${mm}`;
+  const M = pad(date.getMonth() + 1);
+  const D = pad(date.getDate());
+  if (date.getFullYear() === now.getFullYear()) return `${M}-${D} ${hh}:${mm}`;
+  return `${date.getFullYear()}-${M}-${D} ${hh}:${mm}`;
+}
+
+/** Full localized timestamp for tooltips. */
+export function formatMessageTimeFull(timestamp?: string): string {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString();
 }
