@@ -114,10 +114,27 @@ public class SandboxManager {
         );
     }
 
-    public record SandboxEntry(Sandbox sandbox,
-                               String sessionId,
-                               String userId,
-                               SandboxConfig config,
-                               Instant createdAt) {
+    public void renew(String sandboxId) {
+        var entry = activeSandboxes.get(sandboxId);
+        if (entry != null) {
+            entry.createdAt = Instant.now();
+            LOGGER.debug("sandbox renewed: id={}, sessionId={}", sandboxId, entry.sessionId);
+        }
+    }
+
+    public static final class SandboxEntry {
+        public final Sandbox sandbox;
+        public final String sessionId;
+        public final String userId;
+        public final SandboxConfig config;
+        volatile Instant createdAt;
+
+        SandboxEntry(Sandbox sandbox, String sessionId, String userId, SandboxConfig config, Instant createdAt) {
+            this.sandbox = sandbox;
+            this.sessionId = sessionId;
+            this.userId = userId;
+            this.config = config;
+            this.createdAt = createdAt;
+        }
     }
 }

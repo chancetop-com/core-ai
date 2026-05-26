@@ -94,6 +94,7 @@ public class AgentSessionManager {
 
     public void touchActivity(String sessionId) {
         sessionLastActivity.put(sessionId, System.currentTimeMillis());
+        sandboxService.renewSandbox(sessionId);
     }
 
     public String createSession(SessionConfig config, String userId) {

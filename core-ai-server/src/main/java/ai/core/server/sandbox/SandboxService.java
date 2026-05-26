@@ -88,6 +88,15 @@ public class SandboxService {
         return sessionSandboxes.get(sessionId);
     }
 
+    public void renewSandbox(String sessionId) {
+        if (!enabled) return;
+        var sandbox = sessionSandboxes.get(sessionId);
+        if (sandbox == null) return;
+        var id = sandbox.getId();
+        if ("pending".equals(id)) return; // not yet acquired, nothing to renew
+        sandboxManager.renew(id);
+    }
+
     public void releaseSandbox(String sessionId) {
         if (!enabled) return;
         var sandbox = sessionSandboxes.remove(sessionId);
