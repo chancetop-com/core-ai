@@ -88,14 +88,21 @@ public class CommandConsumer {
                     for (var entry : stream.getValue()) {
                         if (!running) break;
                         var command = SessionCommand.fromMap(entry.getFields());
-                        commandHandler.handle(command);
-                        // Delete after processing (per-Pod stream is exclusive, no ACK needed)
-                        jedis.xdel(streamKey, entry.getID());
+                        try {
+                            commandHandler.handle(command);
+                        } catch (Throwable t) {
+                            // never let an error trap us on this entry forever
+                            LOGGER.error("pod stream handle threw, sessionId={}, type={}", command.sessionId(), command.type(), t);
+                        } finally {
+                            // always delete: per-Pod stream is exclusive, no ACK needed,
+                            // and a poison entry must not block subsequent commands
+                            safeXdel(jedis, streamKey, entry.getID());
+                        }
                     }
                 }
-            } catch (Exception e) {
+            } catch (Throwable t) {
                 if (running) {
-                    LOGGER.warn("pod stream consumer error, reconnecting in 3s...", e);
+                    LOGGER.warn("pod stream consumer error, reconnecting in 3s...", t);
                     sleepBeforeReconnect();
                 }
             }
@@ -115,25 +122,44 @@ public class CommandConsumer {
                         if (!running) break;
                         var command = SessionCommand.fromMap(entry.getFields());
                         var sessionId = command.sessionId();
-
-                        // Try to claim the session
-                        if (ownershipRegistry.claim(sessionId)) {
-                            LOGGER.info("claimed session from unowned stream, sessionId={}", sessionId);
-                            commandHandler.handle(command);
-                        } else {
-                            // Another Pod already claimed this session — that Pod will
-                            // also have received the command via its per-Pod stream
-                            LOGGER.debug("session already claimed by another pod, skipping, sessionId={}", sessionId);
+                        try {
+                            if (ownershipRegistry.claim(sessionId)) {
+                                LOGGER.info("claimed session from unowned stream, sessionId={}", sessionId);
+                                commandHandler.handle(command);
+                            } else {
+                                // Another Pod already claimed this session — that Pod will
+                                // also have received the command via its per-Pod stream
+                                LOGGER.debug("session already claimed by another pod, skipping, sessionId={}", sessionId);
+                            }
+                        } catch (Throwable t) {
+                            LOGGER.error("unowned stream handle threw, sessionId={}, type={}", sessionId, command.type(), t);
+                        } finally {
+                            safeXack(jedis, SessionCommand.UNOWNED_STREAM, SessionCommand.UNOWNED_CONSUMER_GROUP, entry.getID());
                         }
-                        jedis.xack(SessionCommand.UNOWNED_STREAM, SessionCommand.UNOWNED_CONSUMER_GROUP, entry.getID());
                     }
                 }
-            } catch (Exception e) {
+            } catch (Throwable t) {
                 if (running) {
-                    LOGGER.warn("unowned stream consumer error, reconnecting in 3s...", e);
+                    LOGGER.warn("unowned stream consumer error, reconnecting in 3s...", t);
                     sleepBeforeReconnect();
                 }
             }
+        }
+    }
+
+    private void safeXdel(redis.clients.jedis.Jedis jedis, String streamKey, StreamEntryID id) {
+        try {
+            jedis.xdel(streamKey, id);
+        } catch (Throwable t) {
+            LOGGER.warn("xdel failed, streamKey={}, id={}", streamKey, id, t);
+        }
+    }
+
+    private void safeXack(redis.clients.jedis.Jedis jedis, String streamKey, String group, StreamEntryID id) {
+        try {
+            jedis.xack(streamKey, group, id);
+        } catch (Throwable t) {
+            LOGGER.warn("xack failed, streamKey={}, id={}", streamKey, id, t);
         }
     }
 

@@ -61,9 +61,15 @@ public class InProcessCommandHandler {
                 case A2A_RESUME_TASK -> handleA2AResumeTask(command);
                 default -> LOGGER.warn("unknown command type: {}", command.type());
             }
-        } catch (Exception e) {
-            LOGGER.warn("failed to process command, sessionId={}, type={}", command.sessionId(), command.type(), e);
-            respondError(command, e.getMessage());
+        } catch (Throwable t) {
+            // catch Throwable (not just Exception) so OOM/StackOverflow do not
+            // escape the consumer loop and leave the stream entry undeleted.
+            LOGGER.error("failed to process command, sessionId={}, type={}", command.sessionId(), command.type(), t);
+            try {
+                respondError(command, t.getMessage());
+            } catch (Throwable ignored) {
+                // best-effort: under OOM responding may also fail; do not rethrow
+            }
         }
     }
 
