@@ -46,9 +46,16 @@ public class AgentSandboxProvider implements SandboxProvider {
         return templateName != null && !templateName.isBlank() && extensionsClient != null;
     }
 
+    private boolean hasCustomConfig(SandboxConfig config) {
+        if (config == null) return false;
+        if (config.image != null && !config.image.equals(SandboxConstants.DEFAULT_IMAGE)) return true;
+        if (config.env != null && !config.env.isEmpty()) return true;
+        return false;
+    }
+
     @Override
     public Sandbox acquire(SandboxConfig config, String sessionId, String userId) {
-        if (useWarmPool()) {
+        if (useWarmPool() && !hasCustomConfig(config)) {
             return acquireFromWarmPool(config, sessionId, userId);
         }
         return acquireDirect(config, sessionId, userId);
