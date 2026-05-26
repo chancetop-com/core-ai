@@ -240,10 +240,14 @@ function TimelineTab({ trace, spans, selectedSpan, onSelectSpan, mode }: {
     ? 'grid gap-4 p-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]'
     : 'p-3 space-y-3';
 
+  const parentSpan = selectedSpan?.parentSpanId
+    ? spans.find(item => item.spanId === selectedSpan.parentSpanId)
+    : undefined;
+
   return (
     <div className={layoutClass}>
       <SpanTimeline trace={trace} spans={spans} selectedSpanId={selectedSpan?.spanId} onSelectSpan={onSelectSpan} />
-      {selectedSpan && <SpanInspector span={selectedSpan} />}
+      {selectedSpan && <SpanInspector span={selectedSpan} parentSpan={parentSpan} />}
     </div>
   );
 }
@@ -371,7 +375,7 @@ function SpanTimelineRow({ span, bounds, selected, collapsed, onSelect, onToggle
   );
 }
 
-function SpanInspector({ span }: { span: Span }) {
+function SpanInspector({ span, parentSpan }: { span: Span; parentSpan?: Span }) {
   const [tabState, setTabState] = useState<{ spanId: string; tab: SpanTab }>({ spanId: span.spanId, tab: 'summary' });
   const tab = tabState.spanId === span.spanId ? tabState.tab : 'summary';
   const messages = useMemo(() => extractMessages(span.input), [span.input]);
@@ -420,7 +424,7 @@ function SpanInspector({ span }: { span: Span }) {
       </div>
 
       <div className="p-3 max-h-[520px] overflow-auto">
-        {tab === 'summary' && <SpanSummary span={span} />}
+        {tab === 'summary' && <SpanSummary span={span} parentSpan={parentSpan} />}
         {tab === 'messages' && <MessagesView messages={messages} output={output} inputRaw={span.input} outputRaw={span.output} />}
         {tab === 'attributes' && <AttributesView attributes={span.attributes} />}
         {tab === 'raw' && <CodeBlock content={JSON.stringify(span, null, 2)} />}
@@ -429,19 +433,39 @@ function SpanInspector({ span }: { span: Span }) {
   );
 }
 
-function SpanSummary({ span }: { span: Span }) {
+// Map span type to user-facing input/output labels. Tool spans hold function arguments
+// and results; agent/flow spans hold the user prompt and final assistant response.
+function getPayloadLabels(spanType: string): { inputLabel: string; outputLabel: string } {
+  switch (spanType) {
+    case 'TOOL': return { inputLabel: 'Arguments', outputLabel: 'Result' };
+    case 'FLOW': return { inputLabel: 'User prompt', outputLabel: 'Final response' };
+    case 'AGENT': return { inputLabel: 'Agent input', outputLabel: 'Agent output' };
+    case 'GROUP': return { inputLabel: 'Group input', outputLabel: 'Group output' };
+    default: return { inputLabel: 'Input', outputLabel: 'Output' };
+  }
+}
+
+function SpanSummary({ span, parentSpan }: { span: Span; parentSpan?: Span }) {
+  const { inputLabel, outputLabel } = getPayloadLabels(span.type);
+  // LLM spans render input/output in the dedicated Messages tab; skip raw payload here.
+  const showPayload = span.type !== 'LLM';
+  // When tool span sits under an LLM span, surface the causal chain explicitly.
+  const parentLabel = parentSpan
+    ? `${parentSpan.name} (${parentSpan.type})`
+    : span.parentSpanId;
+
   return (
     <div className="space-y-2">
       <InfoRow label="Span ID" value={span.spanId} mono />
       <InfoRow label="Trace ID" value={span.traceId} mono />
-      {span.parentSpanId && <InfoRow label="Parent" value={span.parentSpanId} mono />}
+      {span.parentSpanId && <InfoRow label="Parent" value={parentLabel || span.parentSpanId} mono={!parentSpan} />}
       <InfoRow label="Tokens" value={formatTokenPair(span.inputTokens, span.outputTokens)} />
       <InfoRow label="Cached tokens" value={formatTokenCount(span.cachedTokens)} />
       <InfoRow label="Cost" value={formatCostUsd(span.costUsd)} />
       {span.startedAt && <InfoRow label="Started" value={new Date(span.startedAt).toLocaleString()} />}
       {span.completedAt && <InfoRow label="Completed" value={new Date(span.completedAt).toLocaleString()} />}
-      {span.type !== 'LLM' && span.input && <CollapsibleCode label="Input" content={span.input} />}
-      {span.type !== 'LLM' && span.output && <CollapsibleCode label="Output" content={span.output} />}
+      {showPayload && span.input && <CollapsibleCode label={inputLabel} content={span.input} />}
+      {showPayload && span.output && <CollapsibleCode label={outputLabel} content={span.output} />}
     </div>
   );
 }
