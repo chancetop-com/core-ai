@@ -370,14 +370,30 @@ export default function Chat() {
     setStatus('idle');
     try {
       const res = await sessionApi.history(session.id);
-      setMessages(historyToChatMessages(res.messages || []));
+      const hydrated = historyToChatMessages(res.messages || []);
+      // an in-progress turn shows up as a trailing user message without an agent reply
+      // (agent reply is still streaming and not yet persisted). Push an empty agent
+      // placeholder and flip to running so the backend's SSE replay buffer can fill it.
+      const lastMsg = hydrated[hydrated.length - 1];
+      const turnInProgress = lastMsg?.role === 'user';
+      if (turnInProgress) {
+        hydrated.push({ role: 'agent', segments: [], timestamp: new Date().toISOString() });
+      }
+      setMessages(hydrated);
       setSessionArtifacts(res.artifacts || []);
       if (session.agent_id && agents.some(a => a.id === session.agent_id)) {
         setSelectedAgentId(session.agent_id);
       }
+      if (turnInProgress) {
+        setStatus('running');
+      }
+      // Reconnect SSE so the backend replays any buffered in-progress events
+      // (text chunks, tool calls, etc.) and resumes live streaming.
+      doConnectSSE(session.id);
     } catch (e) {
       console.warn('failed to hydrate session history', e);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agents]);
 
   // Hydrate from URL ?sessionId=... — user returning from Sessions page
@@ -487,25 +503,27 @@ export default function Chat() {
         if (chunk) {
           setMessages(prev => {
             const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last?.role === 'agent') {
-              const segments = [...(last.segments || [])];
-              const lastSeg = segments[segments.length - 1];
-              if (lastSeg?.type === 'text') {
-                // Consecutive text: just append
-                segments[segments.length - 1] = { ...lastSeg, content: lastSeg.content + chunk };
-              } else {
-                // Non-consecutive: merge with any existing text segment
-                const existingIdx = segments.findIndex(s => s.type === 'text');
-                if (existingIdx >= 0) {
-                  const existing = segments[existingIdx] as MessageSegment & { type: 'text' };
-                  segments[existingIdx] = { ...existing, content: existing.content + chunk };
-                } else {
-                  segments.push({ type: 'text', content: chunk });
-                }
-              }
-              updated[updated.length - 1] = { ...last, segments };
+            let last = updated[updated.length - 1];
+            // chunks may arrive after SSE-replay before any agent slot exists
+            // (e.g., user returns to a session whose turn was in progress).
+            if (!last || last.role !== 'agent') {
+              last = { role: 'agent', segments: [], timestamp: new Date().toISOString() };
+              updated.push(last);
             }
+            const segments = [...(last.segments || [])];
+            const lastSeg = segments[segments.length - 1];
+            if (lastSeg?.type === 'text') {
+              segments[segments.length - 1] = { ...lastSeg, content: lastSeg.content + chunk };
+            } else {
+              const existingIdx = segments.findIndex(s => s.type === 'text');
+              if (existingIdx >= 0) {
+                const existing = segments[existingIdx] as MessageSegment & { type: 'text' };
+                segments[existingIdx] = { ...existing, content: existing.content + chunk };
+              } else {
+                segments.push({ type: 'text', content: chunk });
+              }
+            }
+            updated[updated.length - 1] = { ...last, segments };
             return updated;
           });
         }
@@ -521,25 +539,25 @@ export default function Chat() {
           setIsThinking(true);
           setMessages(prev => {
             const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last?.role === 'agent') {
-              const segments = [...(last.segments || [])];
-              const lastSeg = segments[segments.length - 1];
-              if (lastSeg?.type === 'thinking') {
-                // Consecutive thinking: just append
-                segments[segments.length - 1] = { ...lastSeg, content: lastSeg.content + chunk };
-              } else {
-                // Non-consecutive: merge with any existing thinking segment
-                const existingIdx = segments.findIndex(s => s.type === 'thinking');
-                if (existingIdx >= 0) {
-                  const existing = segments[existingIdx] as MessageSegment & { type: 'thinking' };
-                  segments[existingIdx] = { ...existing, content: existing.content + chunk };
-                } else {
-                  segments.push({ type: 'thinking', content: chunk });
-                }
-              }
-              updated[updated.length - 1] = { ...last, segments };
+            let last = updated[updated.length - 1];
+            if (!last || last.role !== 'agent') {
+              last = { role: 'agent', segments: [], timestamp: new Date().toISOString() };
+              updated.push(last);
             }
+            const segments = [...(last.segments || [])];
+            const lastSeg = segments[segments.length - 1];
+            if (lastSeg?.type === 'thinking') {
+              segments[segments.length - 1] = { ...lastSeg, content: lastSeg.content + chunk };
+            } else {
+              const existingIdx = segments.findIndex(s => s.type === 'thinking');
+              if (existingIdx >= 0) {
+                const existing = segments[existingIdx] as MessageSegment & { type: 'thinking' };
+                segments[existingIdx] = { ...existing, content: existing.content + chunk };
+              } else {
+                segments.push({ type: 'thinking', content: chunk });
+              }
+            }
+            updated[updated.length - 1] = { ...last, segments };
             return updated;
           });
         }
@@ -551,58 +569,60 @@ export default function Chat() {
         const toolEvent = event as SseToolStartEvent;
         setMessages(prev => {
           const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last?.role === 'agent') {
-            const segments = [...(last.segments || [])];
-            // Find or reuse any existing tools segment
-            let toolsSeg: ToolsSegment;
-            let toolsSegIdx: number;
-            const existingToolsIdx = segments.findIndex(s => s.type === 'tools');
-            if (existingToolsIdx >= 0) {
-              toolsSeg = segments[existingToolsIdx] as ToolsSegment;
-              toolsSegIdx = existingToolsIdx;
-            } else {
-              toolsSeg = { type: 'tools', tools: [] };
-              toolsSegIdx = segments.length;
-              segments.push(toolsSeg);
-            }
-
-            const tools = [...toolsSeg.tools];
-            const newTool: ToolEvent = {
-              type: 'start', tool: toolEvent.tool_name, callId: toolEvent.call_id,
-              arguments: toolEvent.tool_args ? JSON.stringify(toolEvent.tool_args) : undefined,
-              taskId: toolEvent.task_id, runInBackground: toolEvent.run_in_background,
-            };
-            if (toolEvent.task_id) {
-              // Try to find a parent with the same taskId (not callId)
-              const parentIdx = tools.findIndex(t => t.taskId === toolEvent.task_id);
-              if (parentIdx >= 0) {
-                // Nest under existing parent
-                const parent = { ...tools[parentIdx] };
-                parent.children = [...(parent.children || []), newTool];
-                tools[parentIdx] = parent;
-                segments[toolsSegIdx] = { ...toolsSeg, tools };
-                updated[updated.length - 1] = { ...last, segments };
-                return updated;
-              }
-              // No parent yet — check if any existing top-level tools have the same taskId
-              const orphanIdx = tools.findIndex(t => t.taskId === toolEvent.task_id && t.callId !== toolEvent.call_id);
-              if (orphanIdx >= 0) {
-                // Move the orphans under this new parent
-                const orphans = tools.filter(t => t.taskId === toolEvent.task_id && t.callId !== toolEvent.call_id);
-                const remaining = tools.filter(t => t.taskId !== toolEvent.task_id || t.callId === toolEvent.call_id);
-                newTool.children = orphans;
-                remaining.push(newTool);
-                segments[toolsSegIdx] = { ...toolsSeg, tools: remaining };
-                updated[updated.length - 1] = { ...last, segments };
-                return updated;
-              }
-            }
-            // Otherwise add at top level
-            tools.push(newTool);
-            segments[toolsSegIdx] = { ...toolsSeg, tools };
-            updated[updated.length - 1] = { ...last, segments };
+          let last = updated[updated.length - 1];
+          if (!last || last.role !== 'agent') {
+            last = { role: 'agent', segments: [], timestamp: new Date().toISOString() };
+            updated.push(last);
           }
+          const segments = [...(last.segments || [])];
+          // Find or reuse any existing tools segment
+          let toolsSeg: ToolsSegment;
+          let toolsSegIdx: number;
+          const existingToolsIdx = segments.findIndex(s => s.type === 'tools');
+          if (existingToolsIdx >= 0) {
+            toolsSeg = segments[existingToolsIdx] as ToolsSegment;
+            toolsSegIdx = existingToolsIdx;
+          } else {
+            toolsSeg = { type: 'tools', tools: [] };
+            toolsSegIdx = segments.length;
+            segments.push(toolsSeg);
+          }
+
+          const tools = [...toolsSeg.tools];
+          const newTool: ToolEvent = {
+            type: 'start', tool: toolEvent.tool_name, callId: toolEvent.call_id,
+            arguments: toolEvent.tool_args ? JSON.stringify(toolEvent.tool_args) : undefined,
+            taskId: toolEvent.task_id, runInBackground: toolEvent.run_in_background,
+          };
+          if (toolEvent.task_id) {
+            // Try to find a parent with the same taskId (not callId)
+            const parentIdx = tools.findIndex(t => t.taskId === toolEvent.task_id);
+            if (parentIdx >= 0) {
+              // Nest under existing parent
+              const parent = { ...tools[parentIdx] };
+              parent.children = [...(parent.children || []), newTool];
+              tools[parentIdx] = parent;
+              segments[toolsSegIdx] = { ...toolsSeg, tools };
+              updated[updated.length - 1] = { ...last, segments };
+              return updated;
+            }
+            // No parent yet — check if any existing top-level tools have the same taskId
+            const orphanIdx = tools.findIndex(t => t.taskId === toolEvent.task_id && t.callId !== toolEvent.call_id);
+            if (orphanIdx >= 0) {
+              // Move the orphans under this new parent
+              const orphans = tools.filter(t => t.taskId === toolEvent.task_id && t.callId !== toolEvent.call_id);
+              const remaining = tools.filter(t => t.taskId !== toolEvent.task_id || t.callId === toolEvent.call_id);
+              newTool.children = orphans;
+              remaining.push(newTool);
+              segments[toolsSegIdx] = { ...toolsSeg, tools: remaining };
+              updated[updated.length - 1] = { ...last, segments };
+              return updated;
+            }
+          }
+          // Otherwise add at top level
+          tools.push(newTool);
+          segments[toolsSegIdx] = { ...toolsSeg, tools };
+          updated[updated.length - 1] = { ...last, segments };
           return updated;
         });
         break;
@@ -713,12 +733,14 @@ export default function Chat() {
         const errMsg = errorEvent.message || 'Unknown error';
         setMessages(prev => {
           const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last?.role === 'agent') {
-            const segments = [...(last.segments || [])];
-            segments.push({ type: 'text', content: `Error: ${errMsg}` });
-            updated[updated.length - 1] = { ...last, segments };
+          let last = updated[updated.length - 1];
+          if (!last || last.role !== 'agent') {
+            last = { role: 'agent', segments: [], timestamp: new Date().toISOString() };
+            updated.push(last);
           }
+          const segments = [...(last.segments || [])];
+          segments.push({ type: 'text', content: `Error: ${errMsg}` });
+          updated[updated.length - 1] = { ...last, segments };
           return updated;
         });
         setStatus('idle');
@@ -926,7 +948,11 @@ export default function Chat() {
   const handleNewChat = () => {
     sseControllerRef.current?.abort();
     sseControllerRef.current = null;
-    if (sessionId) sessionApi.close(sessionId).catch(() => {});
+    // Intentionally NOT calling sessionApi.close(sessionId): the previous session
+    // may still be streaming an agent reply. Closing it forcibly cancels the turn
+    // and loses the partial reply. The session stays alive on the backend, runs to
+    // TURN_COMPLETE, persists, and is reclaimable from the sidebar. Idle cleanup
+    // is the backend's responsibility (see task: idle session TTL sweeper).
     setSessionId(null);
     setMessages([]);
     setSessionArtifacts([]);

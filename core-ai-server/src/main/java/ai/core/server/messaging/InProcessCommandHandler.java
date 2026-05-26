@@ -45,6 +45,11 @@ public class InProcessCommandHandler {
      */
     public void handle(SessionCommand command) {
         LOGGER.info("processing command: type={}, sessionId={}", command.type(), command.sessionId());
+        // any command for a session counts as activity — keeps idle-session sweeper from
+        // closing a session while turns are still being driven through it.
+        if (command.sessionId() != null && command.type() != CommandType.CLOSE_SESSION) {
+            sessionManager.touchActivity(command.sessionId());
+        }
         try {
             switch (command.type()) {
                 case SEND_MESSAGE -> handleSendMessage(command);

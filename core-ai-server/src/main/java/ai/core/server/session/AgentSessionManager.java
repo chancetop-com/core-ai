@@ -32,6 +32,7 @@ import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -45,6 +46,10 @@ public class AgentSessionManager {
     private final Logger logger = LoggerFactory.getLogger(AgentSessionManager.class);
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, SessionSkillState> sessionSkillStates = new ConcurrentHashMap<>();
+    // last activity epoch-ms per session; drives idle eviction. updated on session create,
+    // rebuild, every dispatched event (so long in-flight turns keep their session alive),
+    // and explicit touchActivity() from command handlers.
+    private final ConcurrentMap<String, Long> sessionLastActivity = new ConcurrentHashMap<>();
 
     @Inject
     LLMProviders llmProviders;
@@ -87,6 +92,10 @@ public class AgentSessionManager {
         session.onEvent(new ai.core.server.web.sse.SseEventBridge(sessionId, eventPublisher));
     }
 
+    public void touchActivity(String sessionId) {
+        sessionLastActivity.put(sessionId, System.currentTimeMillis());
+    }
+
     public String createSession(SessionConfig config, String userId) {
         return createSession(config, userId, "chat");
     }
@@ -102,6 +111,7 @@ public class AgentSessionManager {
         var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
         if (sandbox != null) context.sandbox(sandbox);
         sessions.put(sessionId, session);
+        touchActivity(sessionId);
         claimOwnership(sessionId);
         return sessionId;
     }
@@ -131,6 +141,7 @@ public class AgentSessionManager {
         var sandbox2 = sandboxService.createSandbox(sandboxConfig, sessionId, userId, session::dispatchEvent);
         if (sandbox2 != null) context.sandbox(sandbox2);
         sessions.put(sessionId, session);
+        touchActivity(sessionId);
         claimOwnership(sessionId);
         var loadedSkills = loadSkillsFromDefinition(sessionId, definition);
         var loadedSubAgents = loadSubAgentsFromDefinition(session, definition);
@@ -149,7 +160,10 @@ public class AgentSessionManager {
 
     public InProcessAgentSession getSession(String sessionId, SessionState state) {
         var session = sessions.get(sessionId);
-        if (session != null) return session;
+        if (session != null) {
+            touchActivity(sessionId);
+            return session;
+        }
         if (ownershipRegistry != null) {
             var owner = ownershipRegistry.getOwner(sessionId);
             if (owner != null && !ownershipRegistry.isOwner(sessionId)) {
@@ -175,6 +189,7 @@ public class AgentSessionManager {
         if (built == null) {
             throw new NotFoundException("session not found, sessionId=" + sessionId);
         }
+        touchActivity(sessionId);
         return built;
     }
 
@@ -369,11 +384,39 @@ public class AgentSessionManager {
         var session = sessions.remove(sessionId);
         if (session != null) session.close();
         sessionSkillStates.remove(sessionId);
+        sessionLastActivity.remove(sessionId);
         sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
+        sessionChannelService.close(sessionId);
         if (ownershipRegistry != null) {
             ownershipRegistry.release(sessionId);
         }
+    }
+
+    // Periodic sweeper entry point: closes any locally-owned session whose last
+    // activity is older than maxIdle. Safe because every getSession/createSession
+    // path can rebuild on demand, so an idle close that races a fresh command
+    // just triggers a rebuild instead of corrupting state.
+    public int cleanupIdleSessions(Duration maxIdle) {
+        var threshold = System.currentTimeMillis() - maxIdle.toMillis();
+        var closed = 0;
+        for (var entry : sessionLastActivity.entrySet()) {
+            var sessionId = entry.getKey();
+            if (entry.getValue() >= threshold) continue;
+            // skip if ownership has already migrated to another pod
+            if (ownershipRegistry != null && !ownershipRegistry.isOwner(sessionId)) {
+                sessionLastActivity.remove(sessionId);
+                continue;
+            }
+            try {
+                logger.info("closing idle session, sessionId={}, idleMs={}", sessionId, System.currentTimeMillis() - entry.getValue());
+                closeSession(sessionId);
+                closed++;
+            } catch (Exception e) {
+                logger.warn("failed to close idle session, sessionId={}", sessionId, e);
+            }
+        }
+        return closed;
     }
 
     public List<String> loadToolRefs(String sessionId, List<ToolRef> toolRefs) {
