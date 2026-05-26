@@ -53,7 +53,13 @@ public final class ExecutionContext {
     private Map<String, SubAgentConfig> subAgentConfigs;
     // Span context of the LLM call whose response triggered the current tool execution.
     // Allows tool spans to be nested under their triggering LLM span (Langfuse-style causal chain).
-    private SpanContext lastLLMSpanContext;
+    //
+    // Concurrency contract:
+    //   - Single writer: Agent.handLLM resets to null then sets via LLMTracer callback on the agent main thread.
+    //   - Single reader: ToolExecutor.executeWithTimeout reads when submitting tool tasks, on the same agent thread.
+    // volatile guards visibility for future paths that may invoke read/write from different threads
+    // (e.g. parallel sub-agents sharing one ExecutionContext).
+    private volatile SpanContext lastLLMSpanContext;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;

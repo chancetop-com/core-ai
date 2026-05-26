@@ -1,5 +1,6 @@
 package ai.core.server.trace.service;
 
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 
@@ -71,7 +72,7 @@ public class IngestService {
     private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request) {
         var existing = traceCollection.find(Filters.eq("trace_id", traceId));
         if (!existing.isEmpty()) {
-            updateTrace(existing.getFirst(), rootSpan);
+            updateTrace(traceId, rootSpan);
             return;
         }
 
@@ -97,27 +98,38 @@ public class IngestService {
         trace.outputTokens = 0L;
         trace.totalTokens = 0L;
         trace.cachedTokens = 0L;
-        trace.costUsd = 0.0;
+        // costUsd starts null so traces with no priced LLM call render as "—" instead of "$0.00".
+        // Mongo $inc on a null field treats it as 0, so accumulation still works correctly.
+        trace.costUsd = null;
 
-        traceCollection.insert(trace);
+        // Race-safe: rely on the unique index on traces.trace_id. If another ingest created
+        // the trace concurrently, fall through to the $set update path.
+        try {
+            traceCollection.insert(trace);
+        } catch (MongoWriteException e) {
+            if (e.getCode() == 11000) {
+                updateTrace(traceId, rootSpan);
+                return;
+            }
+            throw e;
+        }
     }
 
-    private void updateTrace(Trace trace, IngestSpanRequest rootSpan) {
-        trace.status = mapTraceStatus(rootSpan.status);
-        trace.output = rootSpan.output;
-        trace.durationMs = rootSpan.durationMs;
-        trace.completedAt = toZonedDateTime(rootSpan.completedAtEpochMs);
-        trace.updatedAt = ZonedDateTime.now();
-        if (rootSpan.input != null) trace.input = rootSpan.input;
-        traceCollection.replace(trace);
+    private void updateTrace(String traceId, IngestSpanRequest rootSpan) {
+        // Use targeted $set updates instead of full document replace so concurrent $inc
+        // operations on token/cost counters aren't overwritten with a stale snapshot.
+        List<Bson> updates = new ArrayList<>();
+        updates.add(Updates.set("status", mapTraceStatus(rootSpan.status)));
+        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
+        if (rootSpan.output != null) updates.add(Updates.set("output", rootSpan.output));
+        if (rootSpan.input != null) updates.add(Updates.set("input", rootSpan.input));
+        if (rootSpan.durationMs > 0) updates.add(Updates.set("duration_ms", rootSpan.durationMs));
+        var completedAt = toZonedDateTime(rootSpan.completedAtEpochMs);
+        if (completedAt != null) updates.add(Updates.set("completed_at", completedAt));
+        traceCollection.update(Filters.eq("trace_id", traceId), Updates.combine(updates));
     }
 
     private void saveSpan(IngestSpanRequest spanReq) {
-        // Dedup: skip if span already persisted (retried OTLP delivery).
-        // Idempotency is critical here because we $inc trace totals only on first insert.
-        var existing = spanCollection.find(Filters.eq("span_id", spanReq.spanId));
-        if (!existing.isEmpty()) return;
-
         var span = new Span();
         span.id = UUID.randomUUID().toString();
         span.traceId = spanReq.traceId;
@@ -139,9 +151,20 @@ public class IngestService {
         span.startedAt = toZonedDateTime(spanReq.startedAtEpochMs);
         span.completedAt = toZonedDateTime(spanReq.completedAtEpochMs);
         span.createdAt = ZonedDateTime.now();
-        spanCollection.insert(span);
 
-        // Back-fill model onto trace if not yet set
+        // Race-free dedup: rely on the unique index on spans.span_id (see SchemaMigrationVTraceIndexes).
+        // Only the first concurrent inserter succeeds; the rest catch duplicate-key and skip the $inc,
+        // so trace counters cannot be double-counted under OTLP retries or multi-instance ingest.
+        try {
+            spanCollection.insert(span);
+        } catch (MongoWriteException e) {
+            if (e.getCode() == 11000) {
+                LOGGER.debug("span {} already ingested, skipping", spanReq.spanId);
+                return;
+            }
+            throw e;
+        }
+
         if (spanReq.model != null && !spanReq.model.isEmpty()) {
             backfillTraceModel(spanReq.traceId, spanReq.model);
         }
@@ -152,14 +175,16 @@ public class IngestService {
     }
 
     private void backfillTraceModel(String traceId, String model) {
-        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
-        if (existing.isEmpty()) return;
-        var trace = existing.getFirst();
-        if (trace.model == null || trace.model.isEmpty()) {
-            trace.model = model;
-            trace.updatedAt = ZonedDateTime.now();
-            traceCollection.replace(trace);
-        }
+        // Only update when model is still unset; use conditional filter so concurrent counter
+        // updates don't get overwritten and we don't churn the doc once a model is recorded.
+        var filter = Filters.and(
+            Filters.eq("trace_id", traceId),
+            Filters.or(Filters.exists("model", false), Filters.eq("model", null), Filters.eq("model", ""))
+        );
+        traceCollection.update(filter, Updates.combine(
+            Updates.set("model", model),
+            Updates.set("updated_at", ZonedDateTime.now())
+        ));
     }
 
     private void incrementTraceTotals(String traceId, Span span) {

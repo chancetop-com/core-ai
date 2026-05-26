@@ -67,13 +67,20 @@ function assignTurnIndex(roots: SpanNode[]) {
   const walk = (items: SpanNode[], inherited: number | undefined) => {
     items.forEach(item => {
       let turn = inherited;
-      // A top-level LLM (not nested inside another LLM) opens a new turn block.
-      if (item.type === 'LLM' && inherited === undefined) {
+      let childInherit = inherited;
+      // Crossing an agent boundary resets the turn scope so a sub-agent's iterations
+      // get their own turn numbering instead of being absorbed into the parent's turn.
+      if (item.type === 'AGENT' || item.type === 'FLOW') {
+        childInherit = undefined;
+      }
+      // A top-level LLM (no LLM ancestor within the current agent scope) opens a new turn.
+      if (item.type === 'LLM' && childInherit === undefined) {
         counter += 1;
         turn = counter;
+        childInherit = counter;
       }
       item.turnIndex = turn;
-      walk(item.children, turn);
+      walk(item.children, childInherit);
     });
   };
 
