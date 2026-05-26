@@ -12,6 +12,7 @@ import ai.core.prompt.PromptInject;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import ai.core.tool.tools.TodoStoreFactory;
 import core.framework.util.Maps;
+import io.opentelemetry.api.trace.SpanContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,6 +51,9 @@ public final class ExecutionContext {
     private List<AbstractLifecycle> lifecycles;
     private Consumer<Usage> tokenCostCallback;
     private Map<String, SubAgentConfig> subAgentConfigs;
+    // Span context of the LLM call whose response triggered the current tool execution.
+    // Allows tool spans to be nested under their triggering LLM span (Langfuse-style causal chain).
+    private SpanContext lastLLMSpanContext;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
@@ -199,6 +203,14 @@ public final class ExecutionContext {
 
     public void setSubAgentConfigs(Map<String, SubAgentConfig> subAgentConfigs) {
         this.subAgentConfigs = subAgentConfigs;
+    }
+
+    public SpanContext getLastLLMSpanContext() {
+        return lastLLMSpanContext;
+    }
+
+    public void setLastLLMSpanContext(SpanContext lastLLMSpanContext) {
+        this.lastLLMSpanContext = lastLLMSpanContext;
     }
 
     public static class Builder {

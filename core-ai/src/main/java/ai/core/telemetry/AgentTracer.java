@@ -4,8 +4,10 @@ import ai.core.telemetry.context.AgentTraceContext;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.context.Context;
 
 import java.util.function.Supplier;
 
@@ -105,18 +107,33 @@ public class AgentTracer extends Tracer {
     /**
      * Trace tool/function call with ToolCallResult
      */
-    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     public <T> T traceToolCall(String toolName, String arguments, Supplier<T> operation) {
+        return traceToolCall(toolName, arguments, null, operation);
+    }
+
+    /**
+     * Trace tool/function call with an explicit parent span context.
+     * When parentSpanContext is provided and valid, the tool span will be nested under it
+     * instead of the current OpenTelemetry context. This is used to nest tool spans under
+     * the LLM span that triggered them (Langfuse-style causal chain).
+     */
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    public <T> T traceToolCall(String toolName, String arguments, SpanContext parentSpanContext, Supplier<T> operation) {
         if (!enabled) {
             return operation.get();
         }
 
-        var span = tracer.spanBuilder(toolName)
+        var spanBuilder = tracer.spanBuilder(toolName)
             .setSpanKind(SpanKind.INTERNAL)
             .setAttribute(LANGFUSE_OBSERVATION_TYPE, "tool")
             .setAttribute(GEN_AI_OPERATION_NAME, "tool")
-            .setAttribute(TOOL_NAME, toolName)
-            .startSpan();
+            .setAttribute(TOOL_NAME, toolName);
+
+        if (parentSpanContext != null && parentSpanContext.isValid()) {
+            spanBuilder.setParent(Context.current().with(Span.wrap(parentSpanContext)));
+        }
+
+        var span = spanBuilder.startSpan();
 
         // Add input as attribute for Langfuse (tool arguments)
         if (arguments != null && !arguments.isEmpty()) {

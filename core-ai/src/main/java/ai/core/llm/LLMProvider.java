@@ -22,10 +22,12 @@ import ai.core.llm.domain.StreamOptions;
 import ai.core.telemetry.LLMTracer;
 import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
+import io.opentelemetry.api.trace.SpanContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * @author stephen
@@ -102,6 +104,10 @@ public abstract class LLMProvider {
     }
 
     public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback) {
+        return completionStream(request, callback, null);
+    }
+
+    public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink) {
         request.model = getModel(request);
         preprocess(request);
         request.stream = true;
@@ -112,7 +118,7 @@ public abstract class LLMProvider {
         var wrappedCallback = wrapCallback(callback);
         CompletionResponse response;
         if (tracer != null) {
-            response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback));
+            response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback), llmSpanContextSink);
         } else {
             response = doCompletionStream(request, wrappedCallback);
         }

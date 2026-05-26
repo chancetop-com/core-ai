@@ -8,10 +8,12 @@ import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 
 import java.util.LinkedHashMap;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -49,8 +51,18 @@ public class LLMTracer extends Tracer {
      * Convenience method to trace LLM completion with request/response directly
      * Creates context internally and updates it from the response
      */
-    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     public CompletionResponse traceLLMCompletion(String providerName, CompletionRequest request, Supplier<CompletionResponse> operation) {
+        return traceLLMCompletion(providerName, request, operation, null);
+    }
+
+    /**
+     * Trace LLM completion with an optional sink that receives the started span's context.
+     * Used by callers (e.g. Agent) to remember which LLM call triggered subsequent tool calls.
+     */
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    public CompletionResponse traceLLMCompletion(String providerName, CompletionRequest request,
+                                                 Supplier<CompletionResponse> operation,
+                                                 Consumer<SpanContext> spanContextSink) {
         if (!enabled) {
             return operation.get();
         }
@@ -61,6 +73,10 @@ public class LLMTracer extends Tracer {
             .setAllAttributes(requestAttributes)
             .setAttribute(LANGFUSE_OBSERVATION_TYPE, "generation")
             .startSpan();
+
+        if (spanContextSink != null) {
+            spanContextSink.accept(span.getSpanContext());
+        }
 
         // Add input as attribute for Langfuse
         // Use langfuse.observation.input for full request including tools (enables Playground integration)

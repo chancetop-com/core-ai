@@ -256,7 +256,10 @@ public class Agent extends Node<Agent> {
     private Choice handLLM(List<Message> messages, List<Tool> tools) {
         var effectiveModel = resolveEffectiveModel(messages);
         var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), effectiveModel, this.getName(), null, null, reasoningEffort));
-        return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback())), req);
+        var ctx = getExecutionContext();
+        // Reset before each LLM call; any tool spans triggered by this call will nest under it.
+        ctx.setLastLLMSpanContext(null);
+        return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback()), ctx::setLastLLMSpanContext), req);
     }
 
     private String resolveEffectiveModel(List<Message> messages) {

@@ -127,6 +127,9 @@ public class ToolExecutor {
         // Capture OpenTelemetry context on the caller thread so the tool span is nested
         // under the current agent.turn span instead of becoming a detached root span.
         var otelContext = Context.current();
+        // If the current ExecutionContext remembers the LLM span that produced this tool call,
+        // use it as the explicit parent so the trace tree shows LLM -> tool causal chain.
+        var llmSpanContext = context.getLastLLMSpanContext();
 
         var future = CompletableFuture.supplyAsync(() -> {
             try (var scope = otelContext.makeCurrent()) {
@@ -134,6 +137,7 @@ public class ToolExecutor {
                     return tracer.traceToolCall(
                             functionCall.function.name,
                             functionCall.function.arguments,
+                            llmSpanContext,
                             () -> tool.execute(functionCall.function.arguments, context)
                     );
                 } else {
