@@ -42,6 +42,7 @@ public class NativeReflectionFeature implements Feature {
     };
 
     private static final String[] EXTRA_CLASSES = {
+        "VersionProvider",
         "core.framework.api.json.Property",
         "ai.core.api.tool.function.CoreAiParameter",
         "ai.core.api.tool.function.CoreAiMethod",

@@ -14,7 +14,7 @@ import java.util.concurrent.Callable;
 /**
  * @author stephen
  */
-@Command(name = "core-ai-cli", version = "1.0.0", description = "Core-AI CLI agent")
+@Command(name = "core-ai-cli", versionProvider = VersionProvider.class, description = "Core-AI CLI agent")
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         initSlf4j();
