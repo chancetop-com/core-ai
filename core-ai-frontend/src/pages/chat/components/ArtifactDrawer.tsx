@@ -82,6 +82,21 @@ function fileDownloadUrl(spec: ArtifactSpec): string | null {
   return `/api/files/${spec.fileId}/content`;
 }
 
+const WIDTH_STORAGE_KEY = 'artifact_drawer_width';
+const MIN_DRAWER_WIDTH = 320;
+const DEFAULT_DRAWER_WIDTH = 520;
+const RESERVED_CHAT_WIDTH = 400;
+
+function loadStoredWidth(): number {
+  try {
+    const raw = localStorage.getItem(WIDTH_STORAGE_KEY);
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= MIN_DRAWER_WIDTH ? n : DEFAULT_DRAWER_WIDTH;
+  } catch {
+    return DEFAULT_DRAWER_WIDTH;
+  }
+}
+
 export default function ArtifactDrawer({ artifact, onClose }: Props) {
   const canPreview = supportsPreview(artifact);
   const canSource = supportsSource(artifact);
@@ -91,6 +106,36 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   const [fileText, setFileText] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
+  const [width, setWidth] = useState<number>(() => loadStoredWidth());
+  const [isDragging, setIsDragging] = useState(false);
+
+  // While dragging the left edge: track cursor with window listeners so iframe
+  // content inside the drawer can't swallow the mousemove. Clamp to viewport.
+  useEffect(() => {
+    if (!isDragging) return;
+    const onMove = (e: MouseEvent) => {
+      const desired = window.innerWidth - e.clientX;
+      const max = Math.max(MIN_DRAWER_WIDTH, window.innerWidth - RESERVED_CHAT_WIDTH);
+      setWidth(Math.min(Math.max(desired, MIN_DRAWER_WIDTH), max));
+    };
+    const onUp = () => setIsDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [isDragging]);
+
+  // Persist on drag end (skip while dragging to avoid thrashing localStorage).
+  useEffect(() => {
+    if (isDragging) return;
+    try {
+      localStorage.setItem(WIDTH_STORAGE_KEY, String(width));
+    } catch {
+      // localStorage quota or disabled — ignore
+    }
+  }, [isDragging, width]);
 
   useEffect(() => {
     setMode(canPreview ? 'preview' : 'source');
@@ -161,8 +206,19 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   };
 
   return (
-    <div className="flex flex-col h-full w-[520px] shrink-0 border-l"
-      style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
+    <div className="flex flex-col h-full shrink-0 border-l relative"
+      style={{ width, borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
+      {/* drag handle on left edge — 6px hit area but only 1px visible accent */}
+      <div
+        onMouseDown={e => { e.preventDefault(); setIsDragging(true); }}
+        className="absolute top-0 left-0 h-full z-20"
+        style={{ width: 6, marginLeft: -3, cursor: 'col-resize' }}
+        title="Drag to resize"
+      />
+      {/* drag-time overlay: blocks iframe pointer events + forces col-resize cursor everywhere */}
+      {isDragging && (
+        <div className="fixed inset-0 z-50" style={{ cursor: 'col-resize' }} />
+      )}
       <div className="flex items-center justify-between px-6 py-3 border-b min-h-[61px]"
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
         <div className="flex items-center gap-3 min-w-0">

@@ -177,6 +177,11 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  // true while the user is parked near the bottom of the messages list.
+  // Streaming chunks only auto-scroll when this is true — otherwise the user
+  // is reading history and must not be yanked back down.
+  const stickToBottomRef = useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const variablesPanelRef = useRef<HTMLDivElement>(null);
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [needsExpand, setNeedsExpand] = useState(false);
@@ -258,11 +263,28 @@ export default function Chat() {
     [myAgents, otherAgents]
   );
 
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    bottomRef.current?.scrollIntoView({ behavior });
+    stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
   }, []);
 
-  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
+  // Track whether the user is parked at the bottom. Recompute on every scroll;
+  // the threshold of 80px tolerates streaming-induced flicker and slow scrollbars.
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stickToBottomRef.current = atBottom;
+    setShowJumpToBottom(!atBottom);
+  }, []);
+
+  // Auto-scroll on new messages only when the user is still at the bottom.
+  useEffect(() => {
+    if (stickToBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [messages]);
   useEffect(() => { if (status === 'idle') inputRef.current?.focus(); }, [status]);
 
   // Auto-resize textarea when expanded, detect overflow in normal mode
@@ -1378,7 +1400,7 @@ export default function Chat() {
       </div>
 
       {/* Chat messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-auto p-6 relative">
+      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-auto p-6 relative">
         {agentVariableEntries.length > 0 && (
           <div className="absolute top-5 right-6 z-20">
             <div className="relative" ref={variablesPanelRef}>
@@ -1618,6 +1640,21 @@ export default function Chat() {
           ))}
           <div ref={bottomRef} />
         </div>
+        {showJumpToBottom && (
+          <button
+            onClick={() => scrollToBottom('smooth')}
+            className="absolute bottom-4 right-4 z-10 flex items-center justify-center rounded-full shadow-md cursor-pointer transition-opacity"
+            style={{
+              width: 36,
+              height: 36,
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text)',
+            }}
+            title="Jump to latest">
+            <ChevronDown size={18} />
+          </button>
+        )}
       </div>
 
       {/* Input area */}
