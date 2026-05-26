@@ -1,10 +1,12 @@
 package ai.core.server.trace.service;
 
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
 
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 
+import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,8 +22,12 @@ import ai.core.server.trace.web.ingest.IngestSpanRequest;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -38,30 +44,28 @@ public class IngestService {
     public void ingest(IngestRequest request) {
         if (request.spans == null || request.spans.isEmpty()) return;
 
-        // Group spans by traceId, upsert traces
-        Map<String, IngestSpanRequest> rootSpans = new LinkedHashMap<>();
+        // Prefer root spans for trace metadata initialization (parentSpanId == null).
+        Map<String, IngestSpanRequest> rootByTrace = new LinkedHashMap<>();
         for (var spanReq : request.spans) {
             if (spanReq.parentSpanId == null) {
-                rootSpans.put(spanReq.traceId, spanReq);
+                rootByTrace.put(spanReq.traceId, spanReq);
             }
         }
 
-        // Ensure trace records exist for each traceId
-        for (var entry : rootSpans.entrySet()) {
-            ensureTrace(entry.getKey(), entry.getValue(), request);
+        // Ensure trace doc exists BEFORE saving any spans so $inc has a target.
+        Set<String> ensuredTraces = new HashSet<>();
+        for (var spanReq : request.spans) {
+            if (ensuredTraces.add(spanReq.traceId)) {
+                var representative = rootByTrace.getOrDefault(spanReq.traceId, spanReq);
+                ensureTrace(spanReq.traceId, representative, request);
+            }
         }
 
-        // Save all spans
         for (var spanReq : request.spans) {
             saveSpan(spanReq);
-            // If this span's trace doesn't have a root, still ensure trace exists
-            if (!rootSpans.containsKey(spanReq.traceId)) {
-                ensureTrace(spanReq.traceId, spanReq, request);
-                rootSpans.put(spanReq.traceId, spanReq);
-            }
         }
 
-        LOGGER.debug("ingested {} spans for {} traces", request.spans.size(), rootSpans.size());
+        LOGGER.debug("ingested {} spans for {} traces", request.spans.size(), ensuredTraces.size());
     }
 
     private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request) {
@@ -109,7 +113,8 @@ public class IngestService {
     }
 
     private void saveSpan(IngestSpanRequest spanReq) {
-        // Check if span already exists
+        // Dedup: skip if span already persisted (retried OTLP delivery).
+        // Idempotency is critical here because we $inc trace totals only on first insert.
         var existing = spanCollection.find(Filters.eq("span_id", spanReq.spanId));
         if (!existing.isEmpty()) return;
 
@@ -141,8 +146,9 @@ public class IngestService {
             backfillTraceModel(spanReq.traceId, spanReq.model);
         }
 
-        // Recalculate trace token totals from all spans
-        recalculateTraceTokens(spanReq.traceId);
+        // Incrementally roll up this span's tokens/cost onto the parent trace doc.
+        // Replaces the previous full re-aggregation pass for O(1) per span instead of O(N).
+        incrementTraceTotals(spanReq.traceId, span);
     }
 
     private void backfillTraceModel(String traceId, String model) {
@@ -156,34 +162,23 @@ public class IngestService {
         }
     }
 
-    private void recalculateTraceTokens(String traceId) {
-        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
-        if (existing.isEmpty()) return;
+    private void incrementTraceTotals(String traceId, Span span) {
+        long inputDelta = safeLong(span.inputTokens);
+        long outputDelta = safeLong(span.outputTokens);
+        long cachedDelta = safeLong(span.cachedTokens);
+        double costDelta = span.costUsd != null ? span.costUsd : 0.0;
+        long totalDelta = inputDelta + outputDelta;
 
-        var trace = existing.getFirst();
-        var spans = spanCollection.find(Filters.eq("trace_id", traceId));
+        List<Bson> updates = new ArrayList<>();
+        if (inputDelta != 0) updates.add(Updates.inc("input_tokens", inputDelta));
+        if (outputDelta != 0) updates.add(Updates.inc("output_tokens", outputDelta));
+        if (totalDelta != 0) updates.add(Updates.inc("total_tokens", totalDelta));
+        if (cachedDelta != 0) updates.add(Updates.inc("cached_tokens", cachedDelta));
+        if (costDelta != 0.0) updates.add(Updates.inc("cost_usd", costDelta));
+        // Always refresh updatedAt so list views show progress between aggregation deltas.
+        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
 
-        long totalInput = 0;
-        long totalOutput = 0;
-        long totalCached = 0;
-        double totalCost = 0.0;
-        boolean hasCost = false;
-        for (var span : spans) {
-            if (span.inputTokens != null) totalInput += span.inputTokens;
-            if (span.outputTokens != null) totalOutput += span.outputTokens;
-            if (span.cachedTokens != null) totalCached += span.cachedTokens;
-            if (span.costUsd != null) {
-                totalCost += span.costUsd;
-                hasCost = true;
-            }
-        }
-        trace.inputTokens = totalInput;
-        trace.outputTokens = totalOutput;
-        trace.totalTokens = totalInput + totalOutput;
-        trace.cachedTokens = totalCached;
-        trace.costUsd = hasCost ? totalCost : null;
-        trace.updatedAt = ZonedDateTime.now();
-        traceCollection.replace(trace);
+        traceCollection.update(Filters.eq("trace_id", traceId), Updates.combine(updates));
     }
 
     private Long resolveCachedTokens(IngestSpanRequest spanReq) {

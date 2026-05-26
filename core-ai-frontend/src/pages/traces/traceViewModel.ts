@@ -3,6 +3,10 @@ import type { Span, Trace } from '../../api/client';
 export interface SpanNode extends Span {
   children: SpanNode[];
   depth: number;
+  // Index of the agent turn this span belongs to. A new turn starts each time an LLM span
+  // appears outside any other LLM ancestor; descendants (tools, sub-agents) inherit the index.
+  // undefined for spans above the first LLM call (e.g. the wrapping agent.turn root).
+  turnIndex?: number;
 }
 
 export interface ExtractedMessage {
@@ -53,7 +57,27 @@ export function buildSpanTree(spans: Span[]): SpanNode[] {
 
   sortByStart(roots);
   assignDepth(roots, 0);
+  assignTurnIndex(roots);
   return roots;
+}
+
+function assignTurnIndex(roots: SpanNode[]) {
+  let counter = -1;
+
+  const walk = (items: SpanNode[], inherited: number | undefined) => {
+    items.forEach(item => {
+      let turn = inherited;
+      // A top-level LLM (not nested inside another LLM) opens a new turn block.
+      if (item.type === 'LLM' && inherited === undefined) {
+        counter += 1;
+        turn = counter;
+      }
+      item.turnIndex = turn;
+      walk(item.children, turn);
+    });
+  };
+
+  walk(roots, undefined);
 }
 
 export function flattenSpanTree(nodes: SpanNode[], collapsed: Set<string>): SpanNode[] {

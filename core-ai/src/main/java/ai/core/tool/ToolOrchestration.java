@@ -7,6 +7,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import io.opentelemetry.context.Context;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -130,8 +131,12 @@ public class ToolOrchestration {
         return results;
     }
 
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private CompletableFuture<ToolCallResult> submitTool(Semaphore semaphore, AtomicBoolean errored, String group, FunctionCall tc) {
         var executor = AsyncToolTaskExecutor.getInstance().getExecutor();
+        // Capture OTel context on the calling thread so tool spans created in the virtual thread
+        // still nest under the agent/LLM span that triggered this batch.
+        var otelContext = Context.current();
         return CompletableFuture.supplyAsync(() -> {
             try {
                 semaphore.acquire();
@@ -139,7 +144,7 @@ public class ToolOrchestration {
                 Thread.currentThread().interrupt();
                 return ToolCallResult.failed("interrupted");
             }
-            try {
+            try (var scope = otelContext.makeCurrent()) {
                 if (errored.get()) {
                     return ToolCallResult.failed("Skipped: previous tool in group '" + group + "' failed");
                 }

@@ -326,17 +326,22 @@ function SpanTimelineRow({ span, bounds, selected, collapsed, onSelect, onToggle
   const Icon = SPAN_ICONS[span.type] || Bot;
   const hasChildren = span.children.length > 0;
   const { left, width } = getSpanTiming(span, bounds);
+  // Subtle zebra striping by turn so users can see iteration boundaries at a glance.
+  const turnTint = span.turnIndex !== undefined && span.turnIndex % 2 === 1
+    ? 'rgba(148, 163, 184, 0.08)'
+    : 'transparent';
+  const defaultBg = selected ? `${color}10` : turnTint;
 
   return (
     <div onClick={() => onSelect(span)}
       className="grid grid-cols-[minmax(150px,1fr)_minmax(90px,38%)_54px] items-center gap-2 px-3 py-2 border-t cursor-pointer transition-colors"
       style={{
         borderColor: 'var(--color-border)',
-        background: selected ? `${color}10` : 'transparent',
+        background: defaultBg,
         borderLeft: selected ? `3px solid ${color}` : '3px solid transparent',
       }}
       onMouseEnter={event => { if (!selected) event.currentTarget.style.background = 'var(--color-bg-tertiary)'; }}
-      onMouseLeave={event => { if (!selected) event.currentTarget.style.background = 'transparent'; }}>
+      onMouseLeave={event => { if (!selected) event.currentTarget.style.background = defaultBg; }}>
       <div className="flex items-center min-w-0" style={{ paddingLeft: span.depth * 14 }}>
         <button
           onClick={event => {
