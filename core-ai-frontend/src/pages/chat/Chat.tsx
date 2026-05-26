@@ -20,12 +20,13 @@ import ArtifactCard from './components/ArtifactCard';
 import AuthedImage from './components/AuthedImage';
 import type { ArtifactSpec } from './components/artifactTypes';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
-import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment } from './types';
+import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages, getMessageText, formatMessageTime, formatMessageTimeFull } from './utils';
 import ToolsBlock from './components/ToolsBlock';
 import CopyButton from './components/CopyButton';
 import ThinkingBlock from './components/ThinkingBlock';
 import SandboxBlock from './components/SandboxBlock';
+import SandboxTerminalPanel from './components/SandboxTerminalPanel';
 import PlanUpdateBlock from './components/PlanUpdateBlock';
 
 function hasTextSegments(segments?: MessageSegment[]): boolean {
@@ -106,16 +107,24 @@ export default function Chat() {
   const [toast, setToast] = useState<string | null>(null);
   const [showVoiceSidebar, setShowVoiceSidebar] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
+  const [activeSandboxTerminal, setActiveSandboxTerminal] = useState<SandboxTerminalSpec | null>(null);
   const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>(() => {
     try { const s = sessionStorage.getItem('chat_artifacts'); return s ? JSON.parse(s) : []; } catch { return []; }
   });
   const openArtifact = useCallback((spec: ArtifactSpec) => {
     setShowVoiceSidebar(false);
+    setActiveSandboxTerminal(null);
     setActiveArtifact(spec);
   }, []);
   const openVoiceSidebar = useCallback(() => {
     setActiveArtifact(null);
+    setActiveSandboxTerminal(null);
     setShowVoiceSidebar(true);
+  }, []);
+  const openSandboxTerminal = useCallback((spec: SandboxTerminalSpec) => {
+    setShowVoiceSidebar(false);
+    setActiveArtifact(null);
+    setActiveSandboxTerminal(spec);
   }, []);
 
   // Stable ReactMarkdown component overrides — inline arrow functions would change identity on every
@@ -364,6 +373,7 @@ export default function Chat() {
     setMessages([]);
     setSessionArtifacts([]);
     setActiveArtifact(null);
+    setActiveSandboxTerminal(null);
     setAwaitInfo(null);
     setPlanTodos(null);
     setCompressionInfo(null);
@@ -989,6 +999,7 @@ export default function Chat() {
     setMessages([]);
     setSessionArtifacts([]);
     setActiveArtifact(null);
+    setActiveSandboxTerminal(null);
     setStatus('idle');
     setAwaitInfo(null);
     setPlanTodos(null);
@@ -1453,7 +1464,7 @@ export default function Chat() {
                     <>
                       {sandboxSeg && (
                         <div className="mb-3">
-                          <SandboxBlock seg={sandboxSeg} />
+                          <SandboxBlock seg={sandboxSeg} onOpenTerminal={openSandboxTerminal} />
                         </div>
                       )}
                       {thinkingSeg && (
@@ -1966,6 +1977,9 @@ export default function Chat() {
       )}
       {activeArtifact && (
         <ArtifactDrawer artifact={activeArtifact} onClose={() => setActiveArtifact(null)} />
+      )}
+      {activeSandboxTerminal && (
+        <SandboxTerminalPanel sandbox={activeSandboxTerminal} onClose={() => setActiveSandboxTerminal(null)} />
       )}
     </div>
   );

@@ -48,6 +48,13 @@ export interface SandboxSegment {
   durationMs?: number;
 }
 
+export interface SandboxTerminalSpec {
+  sandboxId: string;
+  hostname?: string;
+  ip?: string;
+  image?: string;
+}
+
 export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment;
 
 export interface ChatAttachment {
