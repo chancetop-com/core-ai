@@ -187,9 +187,14 @@ public class DockerSandboxProvider implements SandboxProvider {
 
         // Environment variables
         var maxAsync = config.maxAsyncTasks != null ? config.maxAsyncTasks : SandboxConstants.DEFAULT_MAX_ASYNC_TASKS;
-        request.put("Env", List.of(
-            "MAX_ASYNC_TASKS=" + maxAsync
-        ));
+        var envList = new java.util.ArrayList<String>();
+        envList.add("MAX_ASYNC_TASKS=" + maxAsync);
+        if (config.env != null) {
+            for (var entry : config.env.entrySet()) {
+                envList.add(entry.getKey() + "=" + entry.getValue());
+            }
+        }
+        request.put("Env", envList);
 
         // Entrypoint - run the sandbox runtime
         request.put("Entrypoint", List.of("/usr/local/bin/core-ai-sandbox-runtime"));

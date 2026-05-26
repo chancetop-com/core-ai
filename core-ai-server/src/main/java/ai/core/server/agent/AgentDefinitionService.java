@@ -4,10 +4,12 @@ import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
+import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.api.server.tool.ToolRefView;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
+import ai.core.server.domain.AgentSandboxConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
@@ -68,6 +70,7 @@ public class AgentDefinitionService {
         entity.variables = request.variables;
         entity.type = request.type != null ? DefinitionType.valueOf(request.type) : DefinitionType.AGENT;
         entity.responseSchema = request.responseSchema;
+        entity.sandboxConfig = request.sandboxConfig != null ? fromSandboxConfigView(request.sandboxConfig) : null;
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -140,6 +143,7 @@ public class AgentDefinitionService {
         if (request.type != null) entity.type = DefinitionType.valueOf(request.type);
         if (request.subAgentIds != null) entity.subAgentIds = request.subAgentIds;
         if (request.skillIds != null) entity.skillIds = request.skillIds;
+        if (request.sandboxConfig != null) entity.sandboxConfig = fromSandboxConfigView(request.sandboxConfig);
         entity.updatedAt = ZonedDateTime.now();
 
         agentDefinitionCollection.replace(entity);
@@ -164,6 +168,7 @@ public class AgentDefinitionService {
         config.responseSchema = entity.responseSchema;
         config.subAgentIds = entity.subAgentIds;
         config.skillIds = entity.skillIds;
+        config.sandboxConfig = entity.sandboxConfig;
 
         entity.publishedConfig = config;
         entity.status = AgentStatus.PUBLISHED;
@@ -231,6 +236,7 @@ public class AgentDefinitionService {
         view.publishedAt = entity.publishedAt;
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;
+        view.sandboxConfig = toSandboxConfigView(entity.sandboxConfig);
         return view;
     }
 
@@ -262,6 +268,40 @@ public class AgentDefinitionService {
             view.source = ref.source;
             return view;
         }).toList();
+    }
+
+    private SandboxConfigView toSandboxConfigView(AgentSandboxConfig config) {
+        if (config == null) return null;
+        var view = new SandboxConfigView();
+        view.enabled = config.enabled;
+        view.image = config.image;
+        view.memoryLimitMb = config.memoryLimitMb;
+        view.cpuLimitMillicores = config.cpuLimitMillicores;
+        view.timeoutSeconds = config.timeoutSeconds;
+        view.networkEnabled = config.networkEnabled;
+        view.gitRepoUrl = config.gitRepoUrl;
+        view.gitBranch = config.gitBranch;
+        view.tmpSizeLimit = config.tmpSizeLimit;
+        view.maxAsyncTasks = config.maxAsyncTasks;
+        view.envVars = config.environmentVariables;
+        return view;
+    }
+
+    private AgentSandboxConfig fromSandboxConfigView(SandboxConfigView view) {
+        if (view == null) return null;
+        var config = new AgentSandboxConfig();
+        config.enabled = view.enabled;
+        config.image = view.image;
+        config.memoryLimitMb = view.memoryLimitMb;
+        config.cpuLimitMillicores = view.cpuLimitMillicores;
+        config.timeoutSeconds = view.timeoutSeconds;
+        config.networkEnabled = view.networkEnabled;
+        config.gitRepoUrl = view.gitRepoUrl;
+        config.gitBranch = view.gitBranch;
+        config.tmpSizeLimit = view.tmpSizeLimit;
+        config.maxAsyncTasks = view.maxAsyncTasks;
+        config.environmentVariables = view.envVars;
+        return config;
     }
 
 }

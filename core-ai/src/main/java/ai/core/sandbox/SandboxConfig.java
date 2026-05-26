@@ -1,9 +1,17 @@
 package ai.core.sandbox;
 
+import java.util.Map;
+import java.util.Set;
+
 /**
  * @author stephen
  */
 public class SandboxConfig {
+    private static final Set<String> BLOCKED_ENV_NAMES = Set.of(
+            "PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "HOME", "SHELL", "HOSTNAME",
+            "MAX_ASYNC_TASKS"
+    );
+
     public static SandboxConfig enabled() {
         var config = new SandboxConfig();
         config.enabled = true;
@@ -30,6 +38,8 @@ public class SandboxConfig {
 
     public Integer maxAsyncTasks = SandboxConstants.DEFAULT_MAX_ASYNC_TASKS;
 
+    public Map<String, String> env;
+
     public void validate() {
         if (memoryLimitMb != null) {
             if (memoryLimitMb < 64) memoryLimitMb = 64;
@@ -42,6 +52,13 @@ public class SandboxConfig {
         if (timeoutSeconds != null) {
             if (timeoutSeconds < 300) timeoutSeconds = 300;
             if (timeoutSeconds > SandboxConstants.MAX_TIMEOUT_SECONDS) timeoutSeconds = SandboxConstants.MAX_TIMEOUT_SECONDS;
+        }
+        if (env != null) {
+            for (var key : env.keySet()) {
+                if (BLOCKED_ENV_NAMES.contains(key.toUpperCase())) {
+                    throw new IllegalArgumentException("env var '" + key + "' is not allowed");
+                }
+            }
         }
     }
 }

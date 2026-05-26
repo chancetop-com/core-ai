@@ -59,4 +59,7 @@ public class CreateAgentRequest {
 
     @Property(name = "skill_ids")
     public List<String> skillIds;
+
+    @Property(name = "sandbox_config")
+    public SandboxConfigView sandboxConfig;
 }

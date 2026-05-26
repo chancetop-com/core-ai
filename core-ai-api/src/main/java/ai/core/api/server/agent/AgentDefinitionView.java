@@ -82,4 +82,7 @@ public class AgentDefinitionView {
 
     @Property(name = "updated_at")
     public ZonedDateTime updatedAt;
+
+    @Property(name = "sandbox_config")
+    public SandboxConfigView sandboxConfig;
 }

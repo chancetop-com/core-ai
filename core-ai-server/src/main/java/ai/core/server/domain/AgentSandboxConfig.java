@@ -3,6 +3,8 @@ package ai.core.server.domain;
 import ai.core.sandbox.SandboxConfig;
 import core.framework.mongo.Field;
 
+import java.util.Map;
+
 /**
  * @author stephen
  */
@@ -21,6 +23,7 @@ public class AgentSandboxConfig {
         doc.gitBranch = config.gitBranch;
         doc.tmpSizeLimit = config.tmpSizeLimit;
         doc.maxAsyncTasks = config.maxAsyncTasks;
+        doc.environmentVariables = config.env;
         return doc;
     }
 
@@ -54,6 +57,9 @@ public class AgentSandboxConfig {
     @Field(name = "max_async_tasks")
     public Integer maxAsyncTasks;
 
+    @Field(name = "environment_variables")
+    public Map<String, String> environmentVariables;
+
     public SandboxConfig toConfig() {
         var config = new SandboxConfig();
         config.enabled = enabled;
@@ -66,6 +72,7 @@ public class AgentSandboxConfig {
         config.gitBranch = gitBranch;
         config.tmpSizeLimit = tmpSizeLimit;
         config.maxAsyncTasks = maxAsyncTasks;
+        config.env = environmentVariables;
         return config;
     }
 }

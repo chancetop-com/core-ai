@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo } from '../../api/client';
+import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
@@ -1333,6 +1333,23 @@ export default function AgentEditor() {
               )}
             </div>
           </div>
+
+          {/* Sandbox Configuration */}
+          {agent.type === 'AGENT' && (
+            <SandboxConfigSection
+              key={agent.id || 'new'}
+              config={agent.sandbox_config}
+              onChange={(key, value) => setAgent(prev => prev ? {
+                ...prev,
+                sandbox_config: { ...(prev.sandbox_config || {}), [key]: value }
+              } as AgentDefinition : prev)}
+              onEnvChange={(envVars) => setAgent(prev => prev ? {
+                ...prev,
+                sandbox_config: { ...(prev.sandbox_config || {}), env_vars: envVars }
+              } as AgentDefinition : prev)}
+              inputStyle={inputStyle}
+            />
+          )}
         </div>
 
         {/* Right: info + test + runs */}
@@ -1825,6 +1842,7 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
   onChange: (v: unknown) => void;
   inputStyle: React.CSSProperties;
 }) {
+  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<'json' | 'java'>('json');
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState('');
@@ -1873,57 +1891,75 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
     }
   };
 
-  return (
-    <div className="rounded-xl border p-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-medium text-sm">Response Schema</h3>
-        <div className="flex gap-1">
-          {(['json', 'java'] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)}
-              className="text-xs px-2 py-1 rounded cursor-pointer"
-              style={{
-                background: mode === m ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-                color: mode === m ? 'white' : 'var(--color-text-secondary)',
-              }}>
-              {m === 'json' ? 'JSON Schema' : 'Java Class'}
-            </button>
-          ))}
-        </div>
-      </div>
+  const hasValue = open ? false : (typeof value === 'string' && value.trim().length > 0);
 
-      {mode === 'json' ? (
-        <>
-          <textarea value={jsonText} onChange={e => handleJsonChange(e.target.value)}
-            rows={10}
-            className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
-            style={{ ...inputStyle, borderColor: jsonError ? 'var(--color-error)' : inputStyle.borderColor }}
-            placeholder={JSON_SCHEMA_PLACEHOLDER} />
-          {jsonError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{jsonError}</p>}
-          {!jsonText.trim() && (
-            <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-              Optional. Use standard JSON Schema to define structured output format.
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          <textarea value={javaCode} onChange={e => setJavaCode(e.target.value)}
-            rows={10}
-            className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
-            style={inputStyle}
-            placeholder={JAVA_CLASS_PLACEHOLDER} />
-          <div className="flex items-center gap-2 mt-2">
-            <button onClick={handleConvert} disabled={!javaCode.trim() || converting}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
-              style={{ background: 'var(--color-primary)' }}>
-              {converting ? <><Loader2 size={12} className="animate-spin" /> Converting...</> : 'Convert to JSON Schema'}
-            </button>
-            <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>
-              Uses LLM to convert Java class to JSON Schema
+  return (
+    <div className="rounded-xl border"
+      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+      <button
+        className="w-full flex items-center justify-between p-4 text-sm font-medium cursor-pointer hover:bg-[var(--color-bg-tertiary)] rounded-xl"
+        onClick={() => setOpen(!open)}>
+        <div className="flex items-center gap-2">
+          <Code size={14} style={{ color: 'var(--color-text-secondary)' }} />
+          <span>Response Schema</span>
+          {!open && hasValue && (
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              schema set
             </span>
+          )}
+        </div>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="flex items-center gap-1 pt-3 mb-3">
+            {(['json', 'java'] as const).map(m => (
+              <button key={m} onClick={() => setMode(m)}
+                className="text-xs px-2 py-1 rounded cursor-pointer"
+                style={{
+                  background: mode === m ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+                  color: mode === m ? 'white' : 'var(--color-text-secondary)',
+                }}>
+                {m === 'json' ? 'JSON Schema' : 'Java Class'}
+              </button>
+            ))}
           </div>
-          {convertError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{convertError}</p>}
-        </>
+
+          {mode === 'json' ? (
+            <>
+              <textarea value={jsonText} onChange={e => handleJsonChange(e.target.value)}
+                rows={10}
+                className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
+                style={{ ...inputStyle, borderColor: jsonError ? 'var(--color-error)' : inputStyle.borderColor }}
+                placeholder={JSON_SCHEMA_PLACEHOLDER} />
+              {jsonError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{jsonError}</p>}
+              {!jsonText.trim() && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                  Optional. Use standard JSON Schema to define structured output format.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <textarea value={javaCode} onChange={e => setJavaCode(e.target.value)}
+                rows={10}
+                className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
+                style={inputStyle}
+                placeholder={JAVA_CLASS_PLACEHOLDER} />
+              <div className="flex items-center gap-2 mt-2">
+                <button onClick={handleConvert} disabled={!javaCode.trim() || converting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+                  style={{ background: 'var(--color-primary)' }}>
+                  {converting ? <><Loader2 size={12} className="animate-spin" /> Converting...</> : 'Convert to JSON Schema'}
+                </button>
+                <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>
+                  Uses LLM to convert Java class to JSON Schema
+                </span>
+              </div>
+              {convertError && <p className="text-xs mt-1" style={{ color: 'var(--color-error)' }}>{convertError}</p>}
+            </>
+          )}
+        </div>
       )}
     </div>
   );
@@ -2031,6 +2067,241 @@ curl -X POST "${baseUrl}/api/sessions/$SESSION_ID/messages" \\
         style={{ maxHeight: '200px', color: 'var(--color-text-secondary)' }}>
         {currentCode}
       </pre>
+    </div>
+  );
+}
+
+function SandboxConfigSection({ config, onChange, onEnvChange, inputStyle }: {
+  config?: SandboxConfig;
+  onChange: (key: string, value: unknown) => void;
+  onEnvChange: (envVars: Record<string, string> | undefined) => void;
+  inputStyle: React.CSSProperties;
+}) {
+  const [open, setOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const envRowIdRef = useRef(0);
+  const [envRows, setEnvRows] = useState<{ id: number; key: string; value: string }[]>(() => {
+    const entries = Object.entries(config?.env_vars || {});
+    return entries.map(([k, v]) => ({ id: ++envRowIdRef.current, key: k, value: v ?? '' }));
+  });
+
+  const rowsToMap = (rows: typeof envRows) => {
+    const map: Record<string, string> = {};
+    for (const r of rows) {
+      const k = r.key.trim();
+      if (!k) continue;
+      map[k] = r.value;
+    }
+    return Object.keys(map).length > 0 ? map : undefined;
+  };
+
+  const emitEnv = (rows: typeof envRows) => {
+    onEnvChange(rowsToMap(rows));
+  };
+
+  const addEnvRow = () => {
+    setEnvRows(prev => {
+      const next = [...prev, { id: ++envRowIdRef.current, key: '', value: '' }];
+      emitEnv(next);
+      return next;
+    });
+  };
+
+  const updateEnvRow = (id: number, patch: Partial<{ key: string; value: string }>) => {
+    setEnvRows(prev => {
+      const next = prev.map(r => r.id === id ? { ...r, ...patch } : r);
+      emitEnv(next);
+      return next;
+    });
+  };
+
+  const removeEnvRow = (id: number) => {
+    setEnvRows(prev => {
+      const next = prev.filter(r => r.id !== id);
+      emitEnv(next);
+      return next;
+    });
+  };
+
+  const hasEnv = envRows.some(r => r.key.trim() !== '');
+
+  return (
+    <div className="rounded-xl border"
+      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+      <button
+        className="w-full flex items-center justify-between p-4 text-sm font-medium cursor-pointer hover:bg-[var(--color-bg-tertiary)] rounded-xl"
+        onClick={() => setOpen(!open)}>
+        <div className="flex items-center gap-2">
+          <Wrench size={14} style={{ color: 'var(--color-text-secondary)' }} />
+          <span>Sandbox Configuration</span>
+          {!open && (config?.image || hasEnv) && (
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              {config?.image ? 'image set' : ''}{config?.image && hasEnv ? ', ' : ''}{hasEnv ? `${envRows.filter(r => r.key.trim()).length} env vars` : ''}
+            </span>
+          )}
+        </div>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+          {/* Image */}
+          <div className="pt-3">
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Image</label>
+            <input
+              value={config?.image || ''}
+              onChange={e => onChange('image', e.target.value || undefined)}
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+              style={inputStyle}
+              placeholder="chancetop/core-ai-sandbox-runtime:latest"
+            />
+          </div>
+
+          {/* Environment Variables */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Environment Variables</label>
+              <button
+                onClick={addEnvRow}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer"
+                style={{ color: 'var(--color-primary)', background: 'var(--color-bg-tertiary)' }}>
+                <Plus size={12} /> Add
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {envRows.map(row => (
+                <div key={row.id} className="flex gap-2 items-center">
+                  <input
+                    value={row.key}
+                    onChange={e => updateEnvRow(row.id, { key: e.target.value })}
+                    className="flex-1 px-3 py-1.5 rounded-lg border text-sm outline-none"
+                    style={{ ...inputStyle, flexBasis: '40%' }}
+                    placeholder="KEY"
+                  />
+                  <input
+                    value={row.value}
+                    onChange={e => updateEnvRow(row.id, { value: e.target.value })}
+                    className="flex-1 px-3 py-1.5 rounded-lg border text-sm outline-none"
+                    style={{ ...inputStyle, flexBasis: '60%' }}
+                    placeholder="VALUE"
+                  />
+                  <button
+                    onClick={() => removeEnvRow(row.id)}
+                    className="p-1.5 rounded-lg cursor-pointer flex-shrink-0"
+                    style={{ color: 'var(--color-error)' }}
+                    title="Remove">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              {envRows.length === 0 && (
+                <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>No custom environment variables</p>
+              )}
+            </div>
+          </div>
+
+          {/* Advanced */}
+          <div>
+            <button
+              className="flex items-center gap-1 text-xs cursor-pointer"
+              style={{ color: 'var(--color-text-secondary)' }}
+              onClick={() => setAdvancedOpen(!advancedOpen)}>
+              {advancedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              Advanced
+            </button>
+            {advancedOpen && (
+              <div className="mt-2 space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Memory (MB)</label>
+                    <input
+                      type="number" min={64} max={2048}
+                      value={config?.memory_limit_mb ?? ''}
+                      onChange={e => onChange('memory_limit_mb', e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>CPU (m)</label>
+                    <input
+                      type="number" min={100} max={2000} step={100}
+                      value={config?.cpu_limit_millicores ?? ''}
+                      onChange={e => onChange('cpu_limit_millicores', e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Timeout (s)</label>
+                    <input
+                      type="number" min={300} max={7200}
+                      value={config?.timeout_seconds ?? ''}
+                      onChange={e => onChange('timeout_seconds', e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={config?.network_enabled || false}
+                      onChange={e => onChange('network_enabled', e.target.checked || undefined)}
+                      className="accent-current"
+                      style={{ accentColor: 'var(--color-primary)' }}
+                    />
+                    Network enabled
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Git Repo URL</label>
+                    <input
+                      value={config?.git_repo_url || ''}
+                      onChange={e => onChange('git_repo_url', e.target.value || undefined)}
+                      className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Git Branch</label>
+                    <input
+                      value={config?.git_branch || ''}
+                      onChange={e => onChange('git_branch', e.target.value || undefined)}
+                      className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                      placeholder="main"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Tmp Size Limit</label>
+                    <input
+                      value={config?.tmp_size_limit || ''}
+                      onChange={e => onChange('tmp_size_limit', e.target.value || undefined)}
+                      className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                      placeholder="512Mi"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Max Async Tasks</label>
+                    <input
+                      type="number" min={1} max={20}
+                      value={config?.max_async_tasks ?? ''}
+                      onChange={e => onChange('max_async_tasks', e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

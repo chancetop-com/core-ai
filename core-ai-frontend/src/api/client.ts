@@ -214,6 +214,20 @@ export interface ToolRef {
   source?: string;
 }
 
+export interface SandboxConfig {
+  enabled?: boolean;
+  image?: string;
+  memory_limit_mb?: number;
+  cpu_limit_millicores?: number;
+  timeout_seconds?: number;
+  network_enabled?: boolean;
+  git_repo_url?: string;
+  git_branch?: string;
+  tmp_size_limit?: string;
+  max_async_tasks?: number;
+  env_vars?: Record<string, string>;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;
@@ -238,6 +252,7 @@ export interface AgentDefinition {
   updated_at: string;
   subagent_ids?: string[];
   skill_ids?: string[];
+  sandbox_config?: SandboxConfig;
 }
 
 export interface ListAgentsResponse {
