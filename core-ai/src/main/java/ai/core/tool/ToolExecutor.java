@@ -8,6 +8,7 @@ import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
+import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -119,18 +120,25 @@ public class ToolExecutor {
         return null; // validation passed
     }
 
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult executeWithTimeout(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
         var timeoutMs = tool.getTimeoutMs();
 
+        // Capture OpenTelemetry context on the caller thread so the tool span is nested
+        // under the current agent.turn span instead of becoming a detached root span.
+        var otelContext = Context.current();
+
         var future = CompletableFuture.supplyAsync(() -> {
-            if (tracer != null) {
-                return tracer.traceToolCall(
-                        functionCall.function.name,
-                        functionCall.function.arguments,
-                        () -> tool.execute(functionCall.function.arguments, context)
-                );
-            } else {
-                return tool.execute(functionCall.function.arguments, context);
+            try (var scope = otelContext.makeCurrent()) {
+                if (tracer != null) {
+                    return tracer.traceToolCall(
+                            functionCall.function.name,
+                            functionCall.function.arguments,
+                            () -> tool.execute(functionCall.function.arguments, context)
+                    );
+                } else {
+                    return tool.execute(functionCall.function.arguments, context);
+                }
             }
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
 
