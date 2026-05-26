@@ -23,18 +23,24 @@ public class AgentSandbox implements Sandbox {
     private final String crName;
     private final String serviceName;
     private final String image;
+    private final String podName;
     private final SandboxClient runtimeClient;
     private volatile SandboxStatus status = SandboxStatus.READY;
     private final Instant createdAt;
 
     public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds) {
-        this(crName, serviceName, host, port, timeoutSeconds, null);
+        this(crName, serviceName, host, port, timeoutSeconds, null, null);
     }
 
     public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds, String image) {
+        this(crName, serviceName, host, port, timeoutSeconds, image, null);
+    }
+
+    public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds, String image, String podName) {
         this.crName = crName;
         this.serviceName = serviceName;
         this.image = image;
+        this.podName = podName;
         this.runtimeClient = new SandboxClient(host, port, timeoutSeconds);
         this.createdAt = Instant.now();
     }
@@ -84,6 +90,11 @@ public class AgentSandbox implements Sandbox {
     @Override
     public String getId() {
         return crName;
+    }
+
+    @Override
+    public String hostname() {
+        return podName != null ? podName : crName;
     }
 
     @Override

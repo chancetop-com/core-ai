@@ -135,7 +135,7 @@ public class LazySandbox implements Sandbox {
 
         try {
             var sandboxId = delegate != null ? delegate.getId() : "pending";
-            var hostname = delegate != null ? delegate.getId() : null;
+            var hostname = delegate != null ? delegate.hostname() : null;
             var ip = delegate != null ? delegate.ip() : null;
             var image = delegate != null ? delegate.image() : null;
             var event = switch (type) {

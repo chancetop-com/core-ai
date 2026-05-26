@@ -39,6 +39,9 @@ export default function SandboxBlock({ seg, onOpenTerminal }: Props) {
               : <AlertTriangle size={14} />
           }
           <span className="font-medium truncate">{message}</span>
+          {hostname && (
+            <span style={{ color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>{hostname}</span>
+          )}
           {durationMs != null && (
             <span style={{ color: 'var(--color-text-muted)' }}>{durationMs}ms</span>
           )}

@@ -100,7 +100,7 @@ public class AgentSandboxProvider implements SandboxProvider {
             return acquireClaimWithNodePort(claim, claimName, timeoutSeconds, effectiveConfig.image);
         }
 
-        var sandbox = new AgentSandbox(claimName, null, host, port, timeoutSeconds, effectiveConfig.image);
+        var sandbox = new AgentSandbox(claimName, null, host, port, timeoutSeconds, effectiveConfig.image, claim.status.sandbox.name);
         sandbox.waitForReady();
         return sandbox;
     }
@@ -122,7 +122,7 @@ public class AgentSandboxProvider implements SandboxProvider {
             var serviceInfo = kubernetesClient.createNodePortServiceBySelector(serviceName, selector, SandboxConstants.RUNTIME_PORT);
             var nodePort = serviceInfo.spec.ports[0].nodePort;
             LOGGER.info("created NodePort service for sandbox claim: {} -> localhost:{}", serviceName, nodePort);
-            var sandbox = new AgentSandbox(claimName, serviceName, "localhost", nodePort, timeoutSeconds, image);
+            var sandbox = new AgentSandbox(claimName, serviceName, "localhost", nodePort, timeoutSeconds, image, sandboxName);
             sandbox.waitForReady();
             return sandbox;
         } catch (Exception e) {
