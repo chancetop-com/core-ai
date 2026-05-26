@@ -24,6 +24,14 @@ public interface Sandbox extends AutoCloseable {
         throw new UnsupportedOperationException("downloadFile not supported by this sandbox");
     }
 
+    default String ip() {
+        return null;
+    }
+
+    default String image() {
+        return null;
+    }
+
     @Override
     void close();
 }

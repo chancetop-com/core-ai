@@ -37,7 +37,18 @@ export interface ToolsSegment {
   tools: ToolEvent[];
 }
 
-export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment;
+export interface SandboxSegment {
+  type: 'sandbox';
+  sandboxType: string;  // creating | ready | error | replacing | terminated
+  sandboxId: string;
+  message: string;
+  hostname?: string;
+  ip?: string;
+  image?: string;
+  durationMs?: number;
+}
+
+export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment;
 
 export interface ChatAttachment {
   url: string;

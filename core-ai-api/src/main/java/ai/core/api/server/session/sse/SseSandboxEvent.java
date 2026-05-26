@@ -18,4 +18,13 @@ public class SseSandboxEvent extends SseBaseEvent {
 
     @Property(name = "duration_ms")
     public Long durationMs;
+
+    @Property(name = "hostname")
+    public String hostname;
+
+    @Property(name = "ip")
+    public String ip;
+
+    @Property(name = "image")
+    public String image;
 }

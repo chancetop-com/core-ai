@@ -158,6 +158,9 @@ public class SseEventBridge implements AgentEventListener {
         sse.sandboxType = event.type;
         sse.message = event.message;
         sse.durationMs = event.durationMs;
+        sse.hostname = event.hostname;
+        sse.ip = event.ip;
+        sse.image = event.image;
         eventPublisher.publish(sessionId, sse);
     }
 

@@ -8,7 +8,7 @@ import { chatSanitizeSchema } from './markdownSanitizeSchema';
 import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic, Maximize2, Minimize2, Paperclip, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
-import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
+import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
 import { api } from '../../api/client';
 import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
 import ResourcePicker from './ResourcePicker';
@@ -20,11 +20,12 @@ import ArtifactCard from './components/ArtifactCard';
 import AuthedImage from './components/AuthedImage';
 import type { ArtifactSpec } from './components/artifactTypes';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
-import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment } from './types';
+import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment } from './types';
 import { historyToChatMessages, getMessageText, formatMessageTime, formatMessageTimeFull } from './utils';
 import ToolsBlock from './components/ToolsBlock';
 import CopyButton from './components/CopyButton';
 import ThinkingBlock from './components/ThinkingBlock';
+import SandboxBlock from './components/SandboxBlock';
 import PlanUpdateBlock from './components/PlanUpdateBlock';
 
 function hasTextSegments(segments?: MessageSegment[]): boolean {
@@ -773,6 +774,37 @@ export default function Chat() {
         }
         break;
       }
+      case 'SANDBOX':
+      case 'sandbox': {
+        const sandboxEvent = event as SseSandboxEvent;
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last?.role === 'agent') {
+            const segments = [...(last.segments || [])];
+            const sandboxSeg: SandboxSegment = {
+              type: 'sandbox',
+              sandboxType: sandboxEvent.sandbox_type || '',
+              sandboxId: sandboxEvent.sandbox_id || '',
+              message: sandboxEvent.message || '',
+              hostname: sandboxEvent.hostname,
+              ip: sandboxEvent.ip,
+              image: sandboxEvent.image,
+              durationMs: sandboxEvent.duration_ms,
+            };
+            // Replace existing sandbox segment or append
+            const existingIdx = segments.findIndex(s => s.type === 'sandbox');
+            if (existingIdx >= 0) {
+              segments[existingIdx] = sandboxSeg;
+            } else {
+              segments.push(sandboxSeg);
+            }
+            updated[updated.length - 1] = { ...last, segments };
+          }
+          return updated;
+        });
+        break;
+      }
     }
   }, []);
 
@@ -960,6 +992,7 @@ export default function Chat() {
     setStatus('idle');
     setAwaitInfo(null);
     setPlanTodos(null);
+    setCompressionInfo(null);
     setLoadedToolIds(new Set());
     setLoadedSkillIds(new Set());
     setPreToolIds(new Set());
@@ -1410,13 +1443,19 @@ export default function Chat() {
                 </div>
               )}
               <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
-                {/* Render segments in fixed order: thinking → tools → text */}
+                {/* Render segments in fixed order: sandbox → thinking → tools → text */}
                 {(() => {
+                  const sandboxSeg = msg.segments?.find(s => s.type === 'sandbox') as SandboxSegment | undefined;
                   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
                   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
                   const textSeg = msg.segments?.find(s => s.type === 'text');
                   return (
                     <>
+                      {sandboxSeg && (
+                        <div className="mb-3">
+                          <SandboxBlock seg={sandboxSeg} />
+                        </div>
+                      )}
                       {thinkingSeg && (
                         <div className="mb-3">
                           <ThinkingBlock thinking={thinkingSeg.content} isStreaming={isThinking} />

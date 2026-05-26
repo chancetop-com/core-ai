@@ -19,12 +19,18 @@ public class DockerSandbox implements Sandbox {
     private static final Logger LOGGER = LoggerFactory.getLogger(DockerSandbox.class);
 
     private final String containerId;
+    private final String image;
     private final SandboxClient runtimeClient;
     private volatile SandboxStatus status = SandboxStatus.READY;
     private final Instant createdAt;
 
     public DockerSandbox(String containerId, String hostAndPort, int timeoutSeconds) {
+        this(containerId, hostAndPort, timeoutSeconds, null);
+    }
+
+    public DockerSandbox(String containerId, String hostAndPort, int timeoutSeconds, String image) {
         this.containerId = containerId;
+        this.image = image;
         var parts = hostAndPort.split(":");
         this.runtimeClient = new SandboxClient(parts[0], Integer.parseInt(parts[1]), timeoutSeconds);
         this.createdAt = Instant.now();
@@ -67,6 +73,16 @@ public class DockerSandbox implements Sandbox {
     @Override
     public String getId() {
         return containerId;
+    }
+
+    @Override
+    public String ip() {
+        return runtimeClient.getIp();
+    }
+
+    @Override
+    public String image() {
+        return image;
     }
 
     @Override

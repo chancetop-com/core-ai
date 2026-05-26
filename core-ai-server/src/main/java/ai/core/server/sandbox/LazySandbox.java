@@ -135,9 +135,12 @@ public class LazySandbox implements Sandbox {
 
         try {
             var sandboxId = delegate != null ? delegate.getId() : "pending";
+            var hostname = delegate != null ? delegate.getId() : null;
+            var ip = delegate != null ? delegate.ip() : null;
+            var image = delegate != null ? delegate.image() : null;
             var event = switch (type) {
                 case CREATING -> SandboxEvent.creating(sessionId, sandboxId);
-                case READY -> SandboxEvent.ready(sessionId, sandboxId, durationMs != null ? durationMs : 0L);
+                case READY -> SandboxEvent.ready(sessionId, sandboxId, durationMs != null ? durationMs : 0L, hostname, ip, image);
                 case ERROR -> SandboxEvent.error(sessionId, sandboxId, "Sandbox error");
                 case REPLACING -> SandboxEvent.replacing(sessionId, sandboxId);
                 case TERMINATED -> SandboxEvent.terminated(sessionId, sandboxId);

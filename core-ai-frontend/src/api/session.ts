@@ -86,6 +86,9 @@ export interface SseSandboxEvent extends SseBaseEvent {
   sandbox_type?: string;
   message?: string;
   duration_ms?: number;
+  hostname?: string;
+  ip?: string;
+  image?: string;
 }
 
 export type SseEvent =

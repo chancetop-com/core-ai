@@ -13,13 +13,16 @@ public class SandboxEvent implements AgentEvent {
         return event;
     }
 
-    public static SandboxEvent ready(String sessionId, String sandboxId, long durationMs) {
+    public static SandboxEvent ready(String sessionId, String sandboxId, long durationMs, String hostname, String ip, String image) {
         var event = new SandboxEvent();
         event.sessionId = sessionId;
         event.sandboxId = sandboxId;
         event.type = SandboxEventType.READY;
         event.message = "Sandbox is ready";
         event.durationMs = durationMs;
+        event.hostname = hostname;
+        event.ip = ip;
+        event.image = image;
         return event;
     }
 
@@ -55,6 +58,9 @@ public class SandboxEvent implements AgentEvent {
     public SandboxEventType type;
     public String message;
     public Long durationMs;
+    public String hostname;
+    public String ip;
+    public String image;
 
     @Override
     public String sessionId() {

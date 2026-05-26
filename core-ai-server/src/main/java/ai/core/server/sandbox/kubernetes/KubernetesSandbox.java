@@ -20,17 +20,27 @@ public class KubernetesSandbox implements Sandbox {
 
     private final String podName;
     private final String serviceName; // NodePort service name, null if not used
+    private final String image;
     private final SandboxClient runtimeClient;
     private volatile SandboxStatus status = SandboxStatus.READY;
     private final Instant createdAt;
 
     public KubernetesSandbox(String podName, String podIp, int timeoutSeconds) {
-        this(podName, null, podIp, SandboxConstants.RUNTIME_PORT, timeoutSeconds);
+        this(podName, null, podIp, SandboxConstants.RUNTIME_PORT, timeoutSeconds, null);
     }
 
     public KubernetesSandbox(String podName, String serviceName, String host, int port, int timeoutSeconds) {
+        this(podName, serviceName, host, port, timeoutSeconds, null);
+    }
+
+    public KubernetesSandbox(String podName, String podIp, int timeoutSeconds, String image) {
+        this(podName, null, podIp, SandboxConstants.RUNTIME_PORT, timeoutSeconds, image);
+    }
+
+    public KubernetesSandbox(String podName, String serviceName, String host, int port, int timeoutSeconds, String image) {
         this.podName = podName;
         this.serviceName = serviceName;
+        this.image = image;
         this.runtimeClient = new SandboxClient(host, port, timeoutSeconds);
         this.createdAt = Instant.now();
     }
@@ -86,6 +96,16 @@ public class KubernetesSandbox implements Sandbox {
     @Override
     public String getId() {
         return podName;
+    }
+
+    @Override
+    public String ip() {
+        return runtimeClient.getIp();
+    }
+
+    @Override
+    public String image() {
+        return image;
     }
 
     @Override

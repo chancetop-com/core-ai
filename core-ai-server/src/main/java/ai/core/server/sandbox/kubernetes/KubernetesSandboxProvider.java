@@ -112,7 +112,7 @@ public class KubernetesSandboxProvider implements SandboxProvider {
                 var serviceInfo = kubernetesClient.createNodePortService(serviceName, podName, SandboxConstants.RUNTIME_PORT);
                 var nodePort = serviceInfo.spec.ports[0].nodePort;
                 LOGGER.info("created NodePort service: {} -> localhost:{} for pod {}", serviceName, nodePort, podName);
-                var sandbox = new KubernetesSandbox(podName, serviceName, "localhost", nodePort, timeoutSeconds);
+                var sandbox = new KubernetesSandbox(podName, serviceName, "localhost", nodePort, timeoutSeconds, effectiveConfig.image);
                 sandbox.waitForReady();
                 return sandbox;
             } catch (Exception e) {
@@ -121,7 +121,7 @@ public class KubernetesSandboxProvider implements SandboxProvider {
                 throw new RuntimeException("Failed to create sandbox service", e);
             }
         }
-        var sandbox = new KubernetesSandbox(podName, podIp, timeoutSeconds);
+        var sandbox = new KubernetesSandbox(podName, podIp, timeoutSeconds, effectiveConfig.image);
         sandbox.waitForReady();
         return sandbox;
     }
