@@ -99,14 +99,14 @@ public class LazySandbox implements Sandbox {
 
     private void ensureReady() {
         var current = delegate;
-        if (current != null && current.getStatus() != SandboxStatus.ERROR) {
-            return; // Fast path - sandbox is ready
+        if (current != null && current.getStatus() == SandboxStatus.READY) {
+            return; // Fast path - sandbox is healthy
         }
 
         synchronized (this) {
             // Double-check after acquiring lock
             current = delegate;
-            if (current != null && current.getStatus() != SandboxStatus.ERROR) {
+            if (current != null && current.getStatus() == SandboxStatus.READY) {
                 return;
             }
 

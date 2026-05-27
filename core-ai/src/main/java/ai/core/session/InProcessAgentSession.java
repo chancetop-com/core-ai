@@ -252,6 +252,10 @@ public class InProcessAgentSession implements AgentSession {
         turnDriver.shutdown();
     }
 
+    public void setOnIdle(Runnable onIdle) {
+        turnDriver.setOnIdle(onIdle);
+    }
+
     public void loadTools(List<ai.core.tool.ToolCall> tools) {
         agent.addTools(tools);
         logger.info("loaded {} tools to session, sessionId={}", tools.size(), sessionId);

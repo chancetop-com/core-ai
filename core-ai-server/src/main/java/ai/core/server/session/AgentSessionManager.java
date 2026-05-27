@@ -107,6 +107,7 @@ public class AgentSessionManager {
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, sandboxOn), context, null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, null, source));
         var sandbox = sandboxService.createSandbox(null, sessionId, userId, session::dispatchEvent);
@@ -137,6 +138,7 @@ public class AgentSessionManager {
         var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
         var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), artifactSetup.withSubmitArtifactsTool(tools.isEmpty() ? null : tools, sessionId, userId, sandboxOn), context, definition.name);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
         chatMessageService.registerSession(sessionId, ChatMessageService.SessionMeta.of(userId, definition.id, source));
         var sandbox2 = sandboxService.createSandbox(sandboxConfig, sessionId, userId, session::dispatchEvent);
@@ -152,6 +154,12 @@ public class AgentSessionManager {
     private void claimOwnership(String sessionId) {
         if (ownershipRegistry != null) {
             ownershipRegistry.claim(sessionId);
+        }
+    }
+
+    private void renewSessionOwnership(String sessionId) {
+        if (ownershipRegistry != null) {
+            ownershipRegistry.claimOrRenew(sessionId);
         }
     }
 
@@ -287,6 +295,7 @@ public class AgentSessionManager {
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools, context, agentName);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
+        session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
         registerSessionFromDb(sessionId, userId);
         if (context != null) {
