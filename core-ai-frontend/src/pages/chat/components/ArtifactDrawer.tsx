@@ -6,6 +6,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
 import CodeMirrorEditor from '../../../components/CodeMirrorEditor';
+import JsonTreeView from '../../../components/JsonTreeView';
 import type { ArtifactSpec } from './artifactTypes';
 import { chatSanitizeSchema } from '../markdownSanitizeSchema';
 
@@ -39,8 +40,20 @@ function iconFor(spec: ArtifactSpec) {
   return <FileCode size={16} style={{ color: 'var(--color-primary)' }} />;
 }
 
+function isJsonCodeArtifact(spec: ArtifactSpec): boolean {
+  return spec.kind === 'code' && spec.language?.toLowerCase() === 'json';
+}
+
+function isJsonFileArtifact(spec: ArtifactSpec): boolean {
+  if (spec.kind !== 'file') return false;
+  const ct = spec.contentType?.toLowerCase() ?? '';
+  if (ct.includes('json')) return true;
+  return !!spec.fileName && /\.json$/i.test(spec.fileName);
+}
+
 function supportsPreview(spec: ArtifactSpec): boolean {
   if (spec.kind === 'html' || spec.kind === 'svg' || spec.kind === 'markdown') return true;
+  if (isJsonCodeArtifact(spec)) return true;
   // For file: always allow preview attempt — renderPreview will pick iframe/img/fallback
   // based on contentType or filename extension. Without this, streaming-added artifacts
   // (which carry no contentType yet) fall back to source view and show "No source".
@@ -310,6 +323,9 @@ interface FileSourceState {
 }
 
 function renderPreview(spec: ArtifactSpec, state: FileState & FileSourceState) {
+  if (isJsonCodeArtifact(spec) && spec.content) {
+    return <JsonTreeView value={spec.content} />;
+  }
   if (spec.kind === 'html' && spec.content) {
     return <iframe sandbox="allow-scripts" srcDoc={spec.content} title={spec.title} className="w-full h-full border-0" />;
   }
@@ -344,6 +360,10 @@ function renderPreview(spec: ArtifactSpec, state: FileState & FileSourceState) {
     const isImage = spec.contentType?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(lowerName);
     const isHtml = spec.contentType === 'text/html' || /\.html?$/.test(lowerName);
     const isMarkdown = spec.contentType === 'text/markdown' || /\.(md|markdown)$/.test(lowerName);
+    const isJson = isJsonFileArtifact(spec);
+    if (isJson && state.fileText != null) {
+      return <JsonTreeView value={state.fileText} />;
+    }
     if (isImage) {
       return <div className="p-6 flex items-center justify-center"><img src={state.fileBlobUrl} alt={spec.title} className="max-w-full max-h-full" /></div>;
     }

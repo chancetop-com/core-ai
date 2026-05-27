@@ -2,6 +2,15 @@ import { useState } from 'react';
 import { Loader2, ChevronDown, ChevronRight, Wrench, Copy, Check } from 'lucide-react';
 import type { ToolEvent } from '../types';
 import { normalizeArgs, getArgsPreview } from '../utils';
+import JsonTreeView from '../../../components/JsonTreeView';
+
+function tryParseJson(s: string): unknown | null {
+  const trimmed = s.trim();
+  if (!trimmed) return null;
+  const first = trimmed[0];
+  if (first !== '{' && first !== '[' && first !== '"') return null;
+  try { return JSON.parse(trimmed); } catch { return null; }
+}
 
 function CopyIconButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -132,14 +141,19 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
           </div>
           {t.type === 'result' && t.result && expandedResults.has(key) && (
             <div className="px-3 pb-1.5" style={{ marginLeft: level > 0 ? `${level * 12}px` : undefined }}>
-              <div className="relative">
+              <div className="relative rounded-b overflow-auto"
+                style={{ maxHeight: '240px', background: 'var(--color-bg-secondary)' }}>
                 <div className="absolute top-1 right-1 z-10">
                   <CopyIconButton text={formatJson(t.result)} />
                 </div>
-                <pre className="whitespace-pre-wrap font-mono overflow-auto rounded-b px-3 py-2"
-                  style={{ color: 'var(--color-text-secondary)', fontSize: '11px', maxHeight: '200px', background: 'var(--color-bg-secondary)' }}>
-                  {formatJson(t.result)}
-                </pre>
+                {tryParseJson(t.result) !== null ? (
+                  <JsonTreeView value={t.result} defaultExpandDepth={1} showHeader={false} />
+                ) : (
+                  <pre className="whitespace-pre-wrap font-mono px-3 py-2"
+                    style={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}>
+                    {t.result}
+                  </pre>
+                )}
               </div>
             </div>
           )}
@@ -172,14 +186,18 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
         </button>
         {/* Parent result detail */}
         {t.type === 'result' && t.result && expandedResults.has(key) && (
-          <div className="px-3 py-2 relative" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <div className="relative" style={{ borderBottom: '1px solid var(--color-border)', maxHeight: '240px', overflow: 'auto' }}>
             <div className="absolute top-1 right-1 z-10">
               <CopyIconButton text={formatJson(t.result)} />
             </div>
-            <pre className="whitespace-pre-wrap font-mono overflow-auto"
-              style={{ color: 'var(--color-text-secondary)', fontSize: '11px', maxHeight: '200px' }}>
-              {formatJson(t.result)}
-            </pre>
+            {tryParseJson(t.result) !== null ? (
+              <JsonTreeView value={t.result} defaultExpandDepth={1} showHeader={false} />
+            ) : (
+              <pre className="whitespace-pre-wrap font-mono px-3 py-2"
+                style={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}>
+                {t.result}
+              </pre>
+            )}
           </div>
         )}
         {/* Children inside the box */}
