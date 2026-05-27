@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,6 +36,7 @@ import java.util.function.Function;
  */
 public class ServerPermissionLifecycle extends AbstractLifecycle {
     private static final Set<String> DIFF_TOOLS = Set.of(EditFileTool.TOOL_NAME, WriteFileTool.TOOL_NAME);
+    private static final int LARGE_ARGUMENTS_SIZE = 200_000; // skip full JSON parse + diff for arguments >200KB
 
     private final Logger logger = LoggerFactory.getLogger(ServerPermissionLifecycle.class);
     private final String sessionId;
@@ -80,8 +82,14 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
 
         logger.debug("beforeTool: tool={}, callId={}", toolName, callId);
 
-        Map<String, Object> argMap = parseArguments(arguments);
-        dispatchStartEvent(callId, toolName, arguments, argMap, executionContext);
+        boolean largeArgs = arguments != null && arguments.length() > LARGE_ARGUMENTS_SIZE;
+        Map<String, Object> argMap;
+        if (largeArgs && DIFF_TOOLS.contains(toolName)) {
+            argMap = extractLightweightArgs(arguments);
+        } else {
+            argMap = parseArguments(arguments);
+        }
+        dispatchStartEvent(callId, toolName, arguments, argMap, executionContext, largeArgs);
 
         String pattern = PermissionRule.buildPattern(toolName, argMap);
         if (shouldSkipApproval(toolName, argMap, executionContext)) return;
@@ -96,9 +104,11 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         applyDecision(decision, toolName, pattern);
     }
 
-    private void dispatchStartEvent(String callId, String toolName, String arguments, Map<String, Object> argMap, ExecutionContext context) {
+    private void dispatchStartEvent(String callId, String toolName, String arguments, Map<String, Object> argMap, ExecutionContext context, boolean skipDiff) {
         var startEvent = ToolStartEvent.of(sessionId, callId, toolName, arguments);
-        startEvent.diff = generatePreviewDiff(toolName, argMap);
+        if (!skipDiff) {
+            startEvent.diff = generatePreviewDiff(toolName, argMap);
+        }
         startEvent.taskId = (String) argMap.getOrDefault("task_id", context.getTaskId());
         startEvent.runInBackground = isBackground(argMap);
         dispatcher.accept(startEvent);
@@ -192,5 +202,37 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
             logger.debug("failed to parse arguments for rule matching: {}", e.getMessage());
             return Map.of();
         }
+    }
+
+    /**
+     * Lightweight extraction of file-related fields without full JSON parsing.
+     * Used when arguments are too large (e.g. huge file content) to avoid
+     * loading the entire content string into memory during permission checks.
+     */
+    private static Map<String, Object> extractLightweightArgs(String arguments) {
+        var map = new HashMap<String, Object>();
+        extractStringField(arguments, "\"file_path\"", map);
+        extractStringField(arguments, "\"task_id\"", map);
+        return map;
+    }
+
+    private static void extractStringField(String json, String fieldName, Map<String, Object> target) {
+        int idx = json.indexOf(fieldName);
+        if (idx < 0) return;
+        int colonIdx = json.indexOf(':', idx + fieldName.length());
+        if (colonIdx < 0) return;
+        // skip whitespace after colon
+        int startQuote = -1;
+        for (int i = colonIdx + 1; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '"') { startQuote = i; break; }
+            if (c != ' ' && c != '\t' && c != '\n' && c != '\r') break;
+        }
+        if (startQuote < 0) return;
+        int endQuote = json.indexOf('"', startQuote + 1);
+        if (endQuote < 0) return;
+        // Use the JSON key without wrapping quotes as the map key
+        String key = fieldName.startsWith("\"") ? fieldName.substring(1, fieldName.length() - 1) : fieldName;
+        target.put(key, json.substring(startQuote + 1, endQuote));
     }
 }

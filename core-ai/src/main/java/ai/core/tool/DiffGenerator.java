@@ -8,7 +8,7 @@ import java.util.List;
  */
 public final class DiffGenerator {
     private static final int CONTEXT_LINES = 3;
-    private static final int MAX_LINES = 2000;
+    private static final int MAX_LINES = 500;
     private static final int MAX_DISPLAY_LINES = 80;
 
     public static DiffResult forEdit(String filePath, String content, String oldString, String newString) {
@@ -50,32 +50,57 @@ public final class DiffGenerator {
             return forNewFile(newContent);
         }
 
+        int oldLineCount = countLines(oldContent);
+        int newLineCount = countLines(newContent);
+
+        if (oldLineCount > MAX_LINES || newLineCount > MAX_LINES) {
+            return largeFileSummary(filePath, oldLineCount, newLineCount);
+        }
+
         String[] oldLines = oldContent.split("\n", -1);
         String[] newLines = newContent.split("\n", -1);
 
-        if (oldLines.length > MAX_LINES || newLines.length > MAX_LINES) {
-            return null;
-        }
-
         List<DiffEntry> diff = computeDiff(oldLines, newLines);
         return toDiffResult(diff);
+    }
+
+    private static int countLines(String content) {
+        if (content == null || content.isEmpty()) return 0;
+        int count = 1;
+        for (int i = 0; i < content.length(); i++) {
+            if (content.charAt(i) == '\n') count++;
+        }
+        return count;
+    }
+
+    private static DiffResult largeFileSummary(String filePath, int oldLines, int newLines) {
+        var lines = new ArrayList<DisplayLine>();
+        lines.add(new DisplayLine(0, Tag.EQUAL, "Old file: " + oldLines + " lines → New file: " + newLines + " lines (diff skipped for large file)"));
+        return new DiffResult(0, 0, lines);
     }
 
     private static DiffResult forNewFile(String content) {
         if (content == null || content.isEmpty()) {
             return new DiffResult(0, 0, List.of());
         }
-        String[] lines = content.split("\n", -1);
+        int totalLines = countLines(content);
         var displayLines = new ArrayList<DisplayLine>();
-        boolean truncated = lines.length > MAX_DISPLAY_LINES;
-        int limit = truncated ? MAX_DISPLAY_LINES : lines.length;
-        for (int i = 0; i < limit; i++) {
-            displayLines.add(new DisplayLine(i + 1, Tag.INSERT, lines[i]));
+        int lineNum = 1;
+        int start = 0;
+        while (lineNum <= MAX_DISPLAY_LINES && start < content.length()) {
+            int end = content.indexOf('\n', start);
+            if (end < 0) {
+                displayLines.add(new DisplayLine(lineNum, Tag.INSERT, content.substring(start)));
+                break;
+            }
+            displayLines.add(new DisplayLine(lineNum, Tag.INSERT, content.substring(start, end)));
+            start = end + 1;
+            lineNum++;
         }
-        if (truncated) {
-            displayLines.add(new DisplayLine(0, Tag.EQUAL, "... (" + (lines.length - MAX_DISPLAY_LINES) + " more lines)"));
+        if (totalLines > MAX_DISPLAY_LINES) {
+            displayLines.add(new DisplayLine(0, Tag.EQUAL, "... (" + (totalLines - MAX_DISPLAY_LINES) + " more lines)"));
         }
-        return new DiffResult(lines.length, 0, displayLines);
+        return new DiffResult(totalLines, 0, displayLines);
     }
 
     static List<DiffEntry> computeDiff(String[] oldLines, String[] newLines) {

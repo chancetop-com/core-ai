@@ -459,7 +459,12 @@ func executeWriteFile(args string) (string, string) {
 	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 		return fmt.Sprintf("failed to create directory: %v", err), "failed"
 	}
-	if err := os.WriteFile(safePath, []byte(parsed.Content), 0644); err != nil {
+	f, err := os.OpenFile(safePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Sprintf("failed to open file for writing: %v", err), "failed"
+	}
+	defer f.Close()
+	if _, err := io.WriteString(f, parsed.Content); err != nil {
 		return fmt.Sprintf("failed to write file: %v", err), "failed"
 	}
 	return "file written: " + parsed.FilePath, "completed"
