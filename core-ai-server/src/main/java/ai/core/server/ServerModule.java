@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.api.server.AgentDefinitionWebService;
 import ai.core.api.server.auth.AuthWebService;
+import ai.core.api.server.DatasetWebService;
 import ai.core.api.server.FileWebService;
 import ai.core.api.server.AgentRunWebService;
 import ai.core.api.server.AgentScheduleWebService;
@@ -34,6 +35,8 @@ import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
 import ai.core.server.github.GitHubInstallationTokenService;
+import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.migration.SchemaMigrationManager;
 import ai.core.server.run.AgentRunService;
 import ai.core.server.run.LLMCallExecutor;
@@ -56,6 +59,7 @@ import ai.core.server.trigger.TriggerService;
 import ai.core.server.trigger.action.RunAgentAction;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
 import ai.core.server.web.ChatSessionController;
+import ai.core.server.web.DatasetWebServiceImpl;
 import ai.core.server.web.SkillWebServiceImpl;
 import ai.core.server.web.AgentRunWebServiceImpl;
 import ai.core.server.web.AgentScheduleWebServiceImpl;
@@ -172,6 +176,8 @@ public class ServerModule extends Module {
         ai.core.server.agentbuilder.PublishAgentDraftTool.publicUrl = publicUrl;
         bind(SystemPromptService.class);
         bind(LLMCallExecutor.class);
+        bind(DatasetService.class);
+        bind(DatasetRecordService.class);
         bind(AgentRunner.class);
         bind(AgentScheduler.class);
         bind(ChannelService.class);
@@ -229,6 +235,7 @@ public class ServerModule extends Module {
         api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
         api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
         api().service(TriggerWebService.class, bind(TriggerWebServiceImpl.class));
+        api().service(DatasetWebService.class, bind(DatasetWebServiceImpl.class));
         registerA2A();
     }
 
@@ -261,7 +268,7 @@ public class ServerModule extends Module {
             "/", "/login", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
             "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools",
-            "/triggers"
+            "/triggers", "/datasets"
         };
         for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);
@@ -274,6 +281,8 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/skills/:id/edit", controller::serve);
         http().route(HTTPMethod.GET, "/prompts/:id", controller::serve);
         http().route(HTTPMethod.GET, "/api-tools/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/datasets/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/datasets/:id/records", controller::serve);
         // nested SPA routes (multi-segment paths that need direct URL access / refresh support)
         http().route(HTTPMethod.GET, "/triggers/webhook", controller::serve);
         http().route(HTTPMethod.GET, "/triggers/schedule", controller::serve);

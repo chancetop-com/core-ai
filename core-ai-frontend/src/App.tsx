@@ -67,7 +67,7 @@ export default function App() {
   if (loading || caps === null) return null;
 
   const authRequired = caps.authRequired;
-  const defaultPath = caps.dashboard ? '/dashboard' : caps.chat ? '/chat' : '/agents';
+  const defaultPath = caps.chat ? '/chat' : '/agents';
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
@@ -84,7 +84,6 @@ export default function App() {
               <Route path="*" element={<Navigate to="/login" replace />} />
             ) : (
               <Route element={<Layout />}>
-                {caps.dashboard && <Route path="/" element={<Dashboard />} />}
                 {caps.chat && <Route path="/chat" element={<Chat />} />}
                 {caps.traces && <Route path="/traces" element={<TraceList />} />}
                 {caps.traces && <Route path="/traces/:id" element={<TraceDetail />} />}
@@ -96,7 +95,6 @@ export default function App() {
                 <Route path="/runs/:id" element={<RunDetail />} />
                 {caps.systemPrompts && <Route path="/system-prompts" element={<SystemPromptList />} />}
                 {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<SystemPromptEditor />} />}
-                {caps.dashboard && <Route path="/dashboard" element={<Dashboard />} />}
                 <Route path="/triggers/webhook" element={<TriggersWebhook />} />
                 <Route path="/triggers/schedule" element={<Scheduler />} />
                 <Route path="/triggers" element={<Navigate to="/triggers/webhook" replace />} />
@@ -112,6 +110,7 @@ export default function App() {
                 <Route path="/skills" element={<SkillList />} />
                 <Route path="/skills/:id/edit" element={<SkillEditor />} />
                 <Route path="/settings" element={<SettingsPage />}>
+                  {user?.role === 'admin' && <Route index element={<Dashboard />} />}
                   {user?.role === 'admin' && <Route path="users" element={<UserManagement />} />}
                 </Route>
                 <Route path="*" element={<Navigate to={defaultPath} replace />} />

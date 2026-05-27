@@ -11,10 +11,13 @@ import ai.core.tool.ToolCall;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.OutputDatasetBinding;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
+import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -95,6 +98,12 @@ public class AgentRunner {
 
     @Inject
     FileService fileService;
+
+    @Inject
+    DatasetService datasetService;
+
+    @Inject
+    DatasetRecordService datasetRecordService;
 
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
         return run(definition, input, trigger, null);
@@ -179,7 +188,7 @@ public class AgentRunner {
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
             var timeout = scheduleTimeout(runEntity, agent, timeoutSeconds, completed);
-            runWithTimeout(runEntity, agent, timeout, completed);
+            runWithTimeout(runEntity, agent, timeout, completed, definition);
         } catch (Exception e) {
             if (unwrapCause(e) instanceof MaxTurnsExceededException maxTurnsEx) {
                 LOGGER.warn("agent run exceeded max turns, runId={}, maxTurns={}", runId, maxTurnsEx.maxTurns);
@@ -195,11 +204,12 @@ public class AgentRunner {
         }
     }
 
-    private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed) {
+    private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed, AgentDefinition definition) {
         try {
             if (completed.compareAndSet(false, true)) {
                 var output = agent.run(runEntity.input);
                 updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
+                extractDatasetRecords(output, definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
             }
         } finally {
             timeout.cancel(false);
@@ -223,6 +233,7 @@ public class AgentRunner {
             runEntity.tokenUsage = tokenUsage;
             runEntity.transcript = buildLLMCallTranscript(systemPrompt, runEntity.input, result.output());
             agentRunCollection.replace(runEntity);
+            extractDatasetRecords(result.output(), definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
         } catch (Exception e) {
             LOGGER.error("llm call run failed, runId={}", runEntity.id, e);
             updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), null);
@@ -383,5 +394,26 @@ public class AgentRunner {
     private Throwable unwrapCause(Throwable e) {
         Throwable cause = e.getCause();
         return cause != null ? cause : e;
+    }
+
+    private void extractDatasetRecords(String output, AgentDefinition definition, String runId, String agentId, ZonedDateTime runStartedAt) {
+        var config = definition.publishedConfig;
+        List<OutputDatasetBinding> bindings = config != null ? config.outputDatasets : definition.outputDatasets;
+        if (bindings == null || bindings.isEmpty() || output == null || output.isBlank()) return;
+
+        for (var binding : bindings) {
+            try {
+                var dataset = datasetService.get(binding.datasetId, definition.userId);
+                if (dataset == null) {
+                    LOGGER.warn("output dataset not found, datasetId={}, runId={}", binding.datasetId, runId);
+                    continue;
+                }
+                var data = llmCallExecutor.extractStructured(output, dataset, definition);
+                if (data == null || data.isEmpty()) continue;
+                datasetRecordService.insert(dataset.id, agentId, runId, runStartedAt, data);
+            } catch (Exception e) {
+                LOGGER.warn("failed to extract dataset record, datasetId={}, runId={}", binding.datasetId, runId, e);
+            }
+        }
     }
 }

@@ -23,13 +23,11 @@ export default function Layout() {
 
   useEffect(() => {
     const titles: Record<string, string> = {
-      '/': 'Dashboard',
       '/chat': 'Chat',
       '/traces': 'Traces',
       '/sessions': 'Sessions',
       '/agents': 'Agents',
       '/system-prompts': 'System Prompts',
-      '/dashboard': 'Dashboard',
       '/login': 'Login',
       '/scheduler': 'Scheduler',
       '/tasks': 'Tasks',
@@ -58,7 +56,6 @@ export default function Layout() {
   const [expandedNav, setExpandedNav] = useState<string | null>(null);
 
   const isRouteActive = (to: string, pathname: string): boolean => {
-    if (to === '/') return pathname === '/' || pathname === '/dashboard';
     if (to === '/traces') return pathname === '/traces' || pathname.startsWith('/traces/');
     if (to === '/agents') return pathname === '/agents' || pathname.startsWith('/agents/');
     if (to === '/system-prompts') return pathname === '/system-prompts' || pathname.startsWith('/system-prompts/');
@@ -72,7 +69,6 @@ export default function Layout() {
   };
 
   const navItems: NavItem[] = [
-    { to: '/', icon: Activity, label: 'Dashboard', show: caps.dashboard },
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
     { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces },
     { to: '/agents', icon: Bot, label: 'Agents', show: true },
@@ -108,7 +104,7 @@ export default function Layout() {
             <PanelLeft size={18} />
           </button>
           {!collapsed && (
-            <NavLink to="/dashboard" className="font-semibold text-lg cursor-pointer"
+            <NavLink to="/" className="font-semibold text-lg cursor-pointer"
               style={{ color: 'var(--color-text)' }}>
               Core AI
             </NavLink>
@@ -191,7 +187,7 @@ export default function Layout() {
             </div>
           )}
           {user?.role === 'admin' && (
-            <button onClick={() => navigate('/settings/users')}
+            <button onClick={() => navigate('/settings')}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
               style={{ color: 'var(--color-text-secondary)' }}>
               <Settings size={16} />

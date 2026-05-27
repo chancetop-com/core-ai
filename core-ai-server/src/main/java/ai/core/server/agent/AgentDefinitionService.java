@@ -169,6 +169,7 @@ public class AgentDefinitionService {
         config.subAgentIds = entity.subAgentIds;
         config.skillIds = entity.skillIds;
         config.sandboxConfig = entity.sandboxConfig;
+        config.outputDatasets = entity.outputDatasets;
 
         entity.publishedConfig = config;
         entity.status = AgentStatus.PUBLISHED;

@@ -10,6 +10,8 @@ import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.Dataset;
+import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SystemPrompt;
@@ -72,5 +74,9 @@ public class ServerApp extends App {
 
         // trigger collection
         mongo.collection(Trigger.class);
+
+        // dataset collections
+        mongo.collection(Dataset.class);
+        mongo.collection(DatasetRecord.class);
     }
 }

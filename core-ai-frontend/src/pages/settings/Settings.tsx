@@ -1,11 +1,9 @@
-import { User } from 'lucide-react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Activity, User } from 'lucide-react';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 
 export default function Settings() {
   const { user } = useAuth();
-  const location = useLocation();
-  const hasSubRoute = location.pathname !== '/settings';
 
   return (
     <div className="flex h-full">
@@ -16,29 +14,39 @@ export default function Settings() {
         </div>
         <nav className="flex-1 p-2 flex flex-col gap-1">
           {user?.role === 'admin' && (
-            <NavLink to="/settings/users"
-              className={() =>
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
-              }
-              style={() => ({
-                background: 'transparent',
-                color: 'var(--color-text-secondary)',
-              })}>
-              <User size={16} />
-              User Management
-            </NavLink>
+            <>
+              <NavLink to="/settings"
+                end
+                className={() =>
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
+                }
+                style={({ isActive }) => ({
+                  background: isActive ? 'var(--color-primary-bg)' : 'transparent',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  fontWeight: isActive ? 500 : 400,
+                })}>
+                <Activity size={16} />
+                Dashboard
+              </NavLink>
+              <NavLink to="/settings/users"
+                className={() =>
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
+                }
+                style={({ isActive }) => ({
+                  background: isActive ? 'var(--color-primary-bg)' : 'transparent',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  fontWeight: isActive ? 500 : 400,
+                })}>
+                <User size={16} />
+                User Management
+              </NavLink>
+            </>
           )}
         </nav>
       </div>
       {/* Settings Content */}
       <div className="flex-1 overflow-auto">
-        {hasSubRoute ? <Outlet /> : (
-          <div className="p-6">
-            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              Select a settings category from the sidebar.
-            </p>
-          </div>
-        )}
+        <Outlet />
       </div>
     </div>
   );
