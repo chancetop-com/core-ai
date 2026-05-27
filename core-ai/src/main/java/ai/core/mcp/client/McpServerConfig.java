@@ -1,5 +1,9 @@
 package ai.core.mcp.client;
 
+import ai.core.utils.JsonUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -10,6 +14,8 @@ import java.util.Map;
  * @author stephen
  */
 public class McpServerConfig {
+    private static final Logger LOGGER = LoggerFactory.getLogger(McpServerConfig.class);
+
     public static StdioBuilder stdio(String command) {
         return new StdioBuilder(command);
     }
@@ -69,7 +75,10 @@ public class McpServerConfig {
             }
         }
 
-        if (config.get("headers") instanceof Map<?, ?> headersMap) {
+        Object headersObj = config.get("headers");
+        if (headersObj instanceof String headersStr && !headersStr.isBlank()) {
+            builder.headers(parseHeadersJson(serverName, headersStr));
+        } else if (headersObj instanceof Map<?, ?> headersMap) {
             builder.headers((Map<String, String>) headersMap);
         }
 
@@ -103,6 +112,21 @@ public class McpServerConfig {
     private static void parseDuration(Map<String, Object> config, String key, java.util.function.Consumer<Duration> setter) {
         if (config.get(key) instanceof Number num) {
             setter.accept(Duration.ofSeconds(num.longValue()));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> parseHeadersJson(String serverName, String headersStr) {
+        try {
+            Map<String, Object> parsed = JsonUtil.fromJson(Map.class, headersStr);
+            var result = new HashMap<String, String>();
+            for (var entry : parsed.entrySet()) {
+                result.put(entry.getKey(), String.valueOf(entry.getValue()));
+            }
+            return result;
+        } catch (Exception e) {
+            LOGGER.warn("failed to parse headers json for server '{}', raw: {}", serverName, headersStr, e);
+            return Map.of();
         }
     }
 
