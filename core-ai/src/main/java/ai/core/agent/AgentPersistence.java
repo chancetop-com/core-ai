@@ -13,6 +13,7 @@ import java.util.List;
  */
 public class AgentPersistence implements Persistence<Agent> {
     public static String firstUserMessage(String data) {
+        if (data == null || data.isBlank()) return null;
         var domain = JSON.fromJSON(AgentPersistenceDomain.class, data);
         if (domain.messages == null) return null;
         for (var message : domain.messages) {
@@ -28,6 +29,7 @@ public class AgentPersistence implements Persistence<Agent> {
 
     @Override
     public void deserialization(Agent agent, String context) {
+        if (context == null || context.isBlank()) return;
         var domain = JSON.fromJSON(AgentPersistenceDomain.class, context);
         agent.addMessages(domain.messages);
         agent.setNodeStatus(domain.status);
