@@ -3,6 +3,7 @@ package ai.core.session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -18,6 +19,11 @@ public class TurnDriver {
     private final Consumer<SessionCommandQueue.CommandBatch> commandHandler;
     private volatile boolean running = true;
     private final Thread driverThread;
+    private volatile Runnable onIdle;
+
+    // Renew ownership every 25s — well within the 30s Redis TTL.
+    // This keeps the session pinned to this pod as long as the TurnDriver is alive.
+    private static final long IDLE_RENEW_INTERVAL_SECONDS = 25;
 
     public TurnDriver(SessionCommandQueue commandQueue, Consumer<SessionCommandQueue.CommandBatch> commandHandler) {
         this.commandQueue = commandQueue;
@@ -29,9 +35,15 @@ public class TurnDriver {
         logger.info("TurnDriver started, thread={}", Thread.currentThread().getName());
         while (running) {
             try {
-                commandQueue.awaitNonEmpty();
+                var hasCommand = commandQueue.awaitNonEmpty(IDLE_RENEW_INTERVAL_SECONDS, TimeUnit.SECONDS);
+                if (!hasCommand) {
+                    // Idle timeout — renew ownership before re-entering wait
+                    renewOwnership();
+                    continue;
+                }
                 var batch = commandQueue.drainSameMode();
                 if (batch.isEmpty()) continue;
+                renewOwnership();
                 commandHandler.accept(batch);
                 // Clear interrupt flag left by cancelTurn() so the next iteration works
                 //noinspection ResultOfMethodCallIgnored
@@ -45,6 +57,21 @@ public class TurnDriver {
             }
         }
         logger.info("TurnDriver exited driveLoop, thread={}", Thread.currentThread().getName());
+    }
+
+    private void renewOwnership() {
+        var callback = onIdle;
+        if (callback != null) {
+            try {
+                callback.run();
+            } catch (Exception e) {
+                logger.warn("onIdle callback threw", e);
+            }
+        }
+    }
+
+    public void setOnIdle(Runnable onIdle) {
+        this.onIdle = onIdle;
     }
 
     public void shutdown() {

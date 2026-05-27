@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -68,6 +69,27 @@ public class SessionCommandQueue {
             while (queue.isEmpty()) {
                 notEmpty.await();
             }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Blocks until the queue is non-empty or the timeout expires.
+     * Returns true if the queue is non-empty, false if timeout expired.
+     */
+    public boolean awaitNonEmpty(long timeout, TimeUnit unit) throws InterruptedException {
+        var deadline = System.nanoTime() + unit.toNanos(timeout);
+        lock.lock();
+        try {
+            while (queue.isEmpty()) {
+                var remaining = deadline - System.nanoTime();
+                if (remaining <= 0) {
+                    return false;
+                }
+                notEmpty.await(remaining, java.util.concurrent.TimeUnit.NANOSECONDS);
+            }
+            return true;
         } finally {
             lock.unlock();
         }

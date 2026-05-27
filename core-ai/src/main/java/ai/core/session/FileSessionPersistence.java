@@ -45,7 +45,9 @@ public class FileSessionPersistence implements SessionPersistence {
     public Optional<String> load(String id) {
         var path = Paths.get(path(id));
         if (!java.nio.file.Files.exists(path)) return Optional.empty();
-        return Optional.of(Files.text(path));
+        var content = Files.text(path);
+        if (content.isBlank()) return Optional.empty();
+        return Optional.of(content);
     }
 
     @Override
