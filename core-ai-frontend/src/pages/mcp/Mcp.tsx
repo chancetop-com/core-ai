@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Server, Power, PowerOff, Trash2, Edit2, X, Save, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Server, Power, PowerOff, Trash2, Edit2, X, Save, ChevronLeft, ChevronRight, ChevronRight as ArrowRight } from 'lucide-react';
 import { api } from '../../api/client';
-import type { ToolRegistryView } from '../../api/client';
+import type { ToolRegistryView, McpConnectionState } from '../../api/client';
 
 export default function Mcp() {
+  const navigate = useNavigate();
   const [tools, setTools] = useState<ToolRegistryView[]>([]);
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
@@ -13,6 +15,7 @@ export default function Mcp() {
   const [editing, setEditing] = useState<ToolRegistryView | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [statusMap, setStatusMap] = useState<Record<string, McpConnectionState>>({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -32,6 +35,19 @@ export default function Mcp() {
 
   const mcpServers = tools.filter(t => t.type === 'MCP');
   const pagedServers = mcpServers.slice(offset, offset + limit);
+
+  useEffect(() => {
+    if (pagedServers.length === 0) return;
+    let cancelled = false;
+    pagedServers.forEach(s => {
+      if (!s.enabled) return;
+      api.tools.getMcpServerStatus(s.id).then(r => {
+        if (!cancelled) setStatusMap(prev => ({ ...prev, [s.id]: r.state }));
+      }).catch(() => {});
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, limit, mcpServers.length]);
 
   const handleToggle = async (server: ToolRegistryView) => {
     try {
@@ -146,12 +162,13 @@ export default function Mcp() {
           </div>
         ) : pagedServers.map(s => (
           <div key={s.id}
-            className="rounded-xl border p-4 transition-colors"
+            className="rounded-xl border p-4 transition-colors cursor-pointer hover:opacity-90"
             style={{
               background: s.enabled ? 'var(--color-bg-secondary)' : 'var(--color-bg-secondary)',
               borderColor: s.enabled ? 'var(--color-border)' : '#7f1d1d',
               opacity: s.enabled ? 1 : 0.7,
-            }}>
+            }}
+            onClick={() => navigate(`/mcp/${encodeURIComponent(s.id)}`)}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Server size={18} style={{ color: s.enabled ? 'var(--color-primary)' : 'var(--color-text-secondary)' }} />
@@ -162,6 +179,7 @@ export default function Mcp() {
                     : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                   {s.enabled ? 'Enabled' : 'Disabled'}
                 </span>
+                {s.enabled && <ConnectionStateBadge state={statusMap[s.id]} />}
                 {s.category && (
                   <span className="px-2 py-0.5 rounded text-xs"
                     style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
@@ -169,7 +187,7 @@ export default function Mcp() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                 <button onClick={() => {
                   setEditing({ ...s });
                   setCreating(false);
@@ -190,6 +208,12 @@ export default function Mcp() {
                   style={{ borderColor: 'var(--color-border)', color: '#f87171' }}
                   title="Delete">
                   <Trash2 size={14} />
+                </button>
+                <button onClick={() => navigate(`/mcp/${encodeURIComponent(s.id)}`)}
+                  className="p-1.5 rounded border cursor-pointer"
+                  style={{ borderColor: 'var(--color-border)' }}
+                  title="Open details">
+                  <ArrowRight size={14} />
                 </button>
               </div>
             </div>
@@ -244,6 +268,24 @@ export default function Mcp() {
         />
       )}
     </div>
+  );
+}
+
+function ConnectionStateBadge({ state }: { state?: McpConnectionState }) {
+  const s = state ?? 'NOT_CONNECTED';
+  const styleMap: Record<McpConnectionState, { bg: string; fg: string; label: string }> = {
+    CONNECTED: { bg: '#065f46', fg: '#fff', label: 'Connected' },
+    CONNECTING: { bg: '#1f3a8a', fg: '#fff', label: 'Connecting' },
+    RECONNECTING: { bg: '#92400e', fg: '#fff', label: 'Reconnecting' },
+    DISCONNECTED: { bg: 'var(--color-bg-tertiary)', fg: 'var(--color-text-secondary)', label: 'Disconnected' },
+    FAILED: { bg: '#7f1d1d', fg: '#fff', label: 'Failed' },
+    NOT_CONNECTED: { bg: 'var(--color-bg-tertiary)', fg: 'var(--color-text-secondary)', label: 'Idle' },
+  };
+  const v = styleMap[s];
+  return (
+    <span className="px-2 py-0.5 rounded text-xs" style={{ background: v.bg, color: v.fg }}>
+      {v.label}
+    </span>
   );
 }
 

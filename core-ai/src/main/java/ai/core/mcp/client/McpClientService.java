@@ -39,8 +39,43 @@ public class McpClientService implements AutoCloseable {
     public McpClientService(McpServerConfig config) {
         this.config = config;
         this.serverName = config.getName();
-        this.transport = createTransport(config);
-        this.client = createClient(transport, config);
+        McpClientTransport createdTransport = null;
+        McpSyncClient createdClient = null;
+        try {
+            createdTransport = createTransport(config);
+            // extract subprocess handle right after transport creation so failure cleanup can kill it
+            if (createdTransport instanceof StdioClientTransport stdioTransport) {
+                extractProcessFromTransport(stdioTransport);
+            }
+            createdClient = createClient(createdTransport, config);
+        } catch (RuntimeException e) {
+            // initialize() failure (auth/network/protocol) must not leak HttpClient, SSE stream or stdio subprocess
+            closeQuietly(createdClient, createdTransport);
+            throw e;
+        }
+        this.transport = createdTransport;
+        this.client = createdClient;
+    }
+
+    private void closeQuietly(McpSyncClient partialClient, McpClientTransport partialTransport) {
+        if (partialClient != null) {
+            try {
+                partialClient.closeGracefully();
+            } catch (Exception suppressed) {
+                LOGGER.warn("Failed to close partially-initialized MCP client: {}", serverName, suppressed);
+            }
+        }
+        if (partialTransport != null) {
+            try {
+                partialTransport.closeGracefully().block(Duration.ofSeconds(2));
+            } catch (Exception suppressed) {
+                LOGGER.warn("Failed to close partially-initialized MCP transport: {}", serverName, suppressed);
+            }
+        }
+        if (stdioProcess != null && stdioProcess.isAlive()) {
+            forceDestroyProcessTree(stdioProcess);
+            stdioProcess = null;
+        }
     }
 
     public List<McpSchema.Tool> listTools(List<String> namespaces) {
@@ -204,9 +239,6 @@ public class McpClientService implements AutoCloseable {
             .initializationTimeout(config.getInitializationTimeout())
             .build();
         syncClient.initialize();
-        if (transport instanceof StdioClientTransport stdioTransport) {
-            extractProcessFromTransport(stdioTransport);
-        }
         LOGGER.debug("MCP client initialized: name={}, transport={}, requestTimeout={}s",
             config.getName(), config.getTransportType(), config.getRequestTimeout().toSeconds());
         return syncClient;

@@ -23,5 +23,8 @@ public class McpServerToolsResponse {
 
         @Property(name = "description")
         public String description;
+
+        @Property(name = "input_schema")
+        public String inputSchema;
     }
 }

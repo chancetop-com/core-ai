@@ -7,12 +7,17 @@ import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
+import ai.core.api.server.tool.McpServerStatusResponse;
 import ai.core.api.server.tool.McpServerToolsResponse;
+import ai.core.api.server.tool.TestMcpToolRequest;
+import ai.core.api.server.tool.TestMcpToolResponse;
 import ai.core.api.server.tool.ToolRegistryView;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import ai.core.server.domain.ToolRegistry;
 import ai.core.server.tool.InternalApiToolLoader;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.tool.ToolCallResult;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 
 /**
@@ -71,15 +76,51 @@ public class ToolRegistryWebServiceImpl implements ToolRegistryWebService {
     @Override
     public McpServerToolsResponse listMcpServerTools(String id) {
         var entity = toolRegistryService.getTool(id);
-        var toolNames = toolRegistryService.listMcpServerTools(id);
+        var toolDetails = toolRegistryService.listMcpServerToolDetails(id);
         var response = new McpServerToolsResponse();
         response.serverId = id;
         response.serverName = entity.name;
-        response.tools = toolNames.stream().map(name -> {
+        response.tools = toolDetails.stream().map(t -> {
             var info = new McpServerToolsResponse.McpToolInfo();
-            info.name = name;
+            info.name = t.name();
+            info.description = t.description();
+            info.inputSchema = t.inputSchema() != null ? JsonUtil.toJsonNotOnlyPublic(t.inputSchema()) : null;
             return info;
         }).toList();
+        return response;
+    }
+
+    @Override
+    public McpServerStatusResponse getMcpServerStatus(String id) {
+        var entity = toolRegistryService.getTool(id);
+        var state = toolRegistryService.getMcpServerState(id);
+        var response = new McpServerStatusResponse();
+        response.serverId = id;
+        response.state = state.name();
+        response.message = entity.enabled ? null : "server is disabled";
+        return response;
+    }
+
+    @Override
+    public McpServerStatusResponse connectMcpServer(String id) {
+        var state = toolRegistryService.connectMcpServer(id);
+        var response = new McpServerStatusResponse();
+        response.serverId = id;
+        response.state = state.name();
+        return response;
+    }
+
+    @Override
+    public TestMcpToolResponse testMcpServerTool(String id, TestMcpToolRequest request) {
+        if (request == null || request.toolName == null || request.toolName.isBlank()) {
+            throw new IllegalArgumentException("tool_name is required");
+        }
+        var start = System.currentTimeMillis();
+        var result = toolRegistryService.callMcpServerTool(id, request.toolName, request.arguments);
+        var response = new TestMcpToolResponse();
+        response.success = result.getStatus() == ToolCallResult.Status.COMPLETED;
+        response.result = result.toResultForLLM();
+        response.durationMs = System.currentTimeMillis() - start;
         return response;
     }
 

@@ -6,7 +6,10 @@ import ai.core.api.server.tool.ListApiAppsResponse;
 import ai.core.api.server.tool.ListToolCategoriesResponse;
 import ai.core.api.server.tool.ListToolsRequest;
 import ai.core.api.server.tool.ListToolsResponse;
+import ai.core.api.server.tool.McpServerStatusResponse;
 import ai.core.api.server.tool.McpServerToolsResponse;
+import ai.core.api.server.tool.TestMcpToolRequest;
+import ai.core.api.server.tool.TestMcpToolResponse;
 import ai.core.api.server.tool.ToolRegistryView;
 import ai.core.api.server.tool.UpdateMcpServerRequest;
 import core.framework.api.web.service.DELETE;
@@ -55,6 +58,18 @@ public interface ToolRegistryWebService {
     @GET
     @Path("/api/tools/mcp-servers/:id/tools")
     McpServerToolsResponse listMcpServerTools(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/tools/mcp-servers/:id/status")
+    McpServerStatusResponse getMcpServerStatus(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/tools/mcp-servers/:id/connect")
+    McpServerStatusResponse connectMcpServer(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/tools/mcp-servers/:id/test-tool")
+    TestMcpToolResponse testMcpServerTool(@PathParam("id") String id, TestMcpToolRequest request);
 
     @GET
     @Path("/api/tools/service-api/apps")

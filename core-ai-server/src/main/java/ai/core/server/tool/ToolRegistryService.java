@@ -10,10 +10,12 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ToolType;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -338,12 +340,18 @@ public class ToolRegistryService {
 
     private void warmupMcpServer(String serverId) {
         var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager != null && mcpManager.hasServer(serverId)) {
-            try {
-                mcpManager.getClient(serverId);
-            } catch (Exception e) {
-                LOGGER.warn("failed to warmup mcp server, id={}", serverId, e);
-            }
+        if (mcpManager == null || !mcpManager.hasServer(serverId)) return;
+        // skip when ConnectionMonitor is already driving backoff recovery; warmup must not race the monitor
+        var state = mcpManager.getState(serverId);
+        if (state == McpClientManager.ConnectionState.FAILED
+            || state == McpClientManager.ConnectionState.RECONNECTING
+            || state == McpClientManager.ConnectionState.CONNECTING) {
+            return;
+        }
+        try {
+            mcpManager.getClient(serverId);
+        } catch (Exception e) {
+            LOGGER.warn("failed to warmup mcp server, id={}, reason={}", serverId, e.getMessage());
         }
     }
 
@@ -393,6 +401,66 @@ public class ToolRegistryService {
             LOGGER.warn("failed to list tools from mcp server, id={}", serverId, e);
             return List.of();
         }
+    }
+
+    public List<McpSchema.Tool> listMcpServerToolDetails(String serverId) {
+        var entity = requireMcpEntity(serverId);
+        var mcpManager = McpClientManagerRegistry.getManager();
+        if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
+            return List.of();
+        }
+        try {
+            return mcpManager.safeListTools(entity.id);
+        } catch (Exception e) {
+            LOGGER.warn("failed to list tool details from mcp server, id={}", serverId, e);
+            return List.of();
+        }
+    }
+
+    public McpClientManager.ConnectionState getMcpServerState(String serverId) {
+        var entity = requireMcpEntity(serverId);
+        var mcpManager = McpClientManagerRegistry.getManager();
+        if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
+            return McpClientManager.ConnectionState.NOT_CONNECTED;
+        }
+        return mcpManager.getState(entity.id);
+    }
+
+    public McpClientManager.ConnectionState connectMcpServer(String serverId) {
+        var entity = requireMcpEntity(serverId);
+        if (!Boolean.TRUE.equals(entity.enabled)) throw new RuntimeException("mcp server is disabled, id=" + serverId);
+
+        registerMcpServer(entity);
+        var mcpManager = McpClientManagerRegistry.getManager();
+        if (mcpManager == null) throw new RuntimeException("mcp manager not initialized");
+
+        var state = mcpManager.getState(entity.id);
+        if (state == McpClientManager.ConnectionState.CONNECTED) return state;
+
+        try {
+            mcpManager.getClient(entity.id);
+        } catch (Exception e) {
+            LOGGER.warn("failed to connect mcp server, id={}", serverId, e);
+        }
+        return mcpManager.getState(entity.id);
+    }
+
+    public ToolCallResult callMcpServerTool(String serverId, String toolName, String argumentsJson) {
+        var entity = requireMcpEntity(serverId);
+        var mcpManager = McpClientManagerRegistry.getManager();
+        if (mcpManager == null || !mcpManager.hasServer(entity.id)) {
+            throw new RuntimeException("mcp server not connected, id=" + serverId);
+        }
+        var payload = argumentsJson == null || argumentsJson.isBlank() ? "{}" : argumentsJson;
+        return mcpManager.safeCallTool(entity.id, toolName, payload);
+    }
+
+    private ToolRegistry requireMcpEntity(String serverId) {
+        var entity = tools.get(serverId);
+        if (entity == null || entity.type != ToolType.MCP) {
+            throw new RuntimeException("mcp server not found or not MCP type, id=" + serverId);
+        }
+        return entity;
     }
 
     public void reloadApiTools() {

@@ -363,12 +363,33 @@ export interface ListToolCategoriesResponse {
 export interface McpToolInfo {
   name: string;
   description: string;
+  input_schema?: string;
 }
 
 export interface McpServerToolsResponse {
   server_id: string;
   server_name: string;
   tools: McpToolInfo[];
+}
+
+export type McpConnectionState =
+  | 'NOT_CONNECTED'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'DISCONNECTED'
+  | 'RECONNECTING'
+  | 'FAILED';
+
+export interface McpServerStatusResponse {
+  server_id: string;
+  state: McpConnectionState;
+  message?: string;
+}
+
+export interface TestMcpToolResponse {
+  success: boolean;
+  result: string;
+  duration_ms: number;
 }
 
 export interface ApiAppView {
@@ -701,6 +722,15 @@ export const api = {
       request<ListApiAppServicesResponse>(`/api/tools/service-api/apps/${appName}/services`),
     listMcpServerTools: (serverId: string) =>
       request<McpServerToolsResponse>(`/api/tools/mcp-servers/${serverId}/tools`),
+    getMcpServerStatus: (serverId: string) =>
+      request<McpServerStatusResponse>(`/api/tools/mcp-servers/${serverId}/status`),
+    connectMcpServer: (serverId: string) =>
+      request<McpServerStatusResponse>(`/api/tools/mcp-servers/${serverId}/connect`, { method: 'POST' }),
+    testMcpServerTool: (serverId: string, toolName: string, args: string) =>
+      request<TestMcpToolResponse>(`/api/tools/mcp-servers/${serverId}/test-tool`, {
+        method: 'POST',
+        body: JSON.stringify({ tool_name: toolName, arguments: args }),
+      }),
   },
   serviceApis: {
     list: () =>

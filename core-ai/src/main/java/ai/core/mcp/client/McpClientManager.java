@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 import java.io.Serial;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -115,10 +114,22 @@ public class McpClientManager implements AutoCloseable {
             return existingClient;
         }
 
+        // short-circuit when ConnectionMonitor is already driving recovery: callers must not trigger another
+        // createClient() because each attempt allocates native resources (HttpClient/SSE stream/stdio process)
+        var currentState = getState(serverName);
+        if (currentState == ConnectionState.FAILED || currentState == ConnectionState.RECONNECTING) {
+            throw new McpClientException("MCP server " + serverName + " unavailable, state=" + currentState, null);
+        }
+
         var lock = locks.get(serverName);
         synchronized (lock) {
             existingClient = clients.get(serverName);
-            return Objects.requireNonNullElseGet(existingClient, () -> createClient(serverName, config));
+            if (existingClient != null) return existingClient;
+            currentState = getState(serverName);
+            if (currentState == ConnectionState.FAILED || currentState == ConnectionState.RECONNECTING) {
+                throw new McpClientException("MCP server " + serverName + " unavailable, state=" + currentState, null);
+            }
+            return createClient(serverName, config);
         }
     }
 
@@ -319,10 +330,20 @@ public class McpClientManager implements AutoCloseable {
             var client = new McpClientService(config);
             clients.put(serverName, client);
             updateState(serverName, ConnectionState.CONNECTED);
+            getConnectionMonitor().resetReconnectAttempts(serverName);
             LOGGER.debug("Created MCP client: {}, transport: {}", serverName, config.getTransportType());
             return client;
         } catch (Exception e) {
             updateState(serverName, ConnectionState.FAILED);
+            // hand initial failure off to ConnectionMonitor so future retries follow exponential backoff
+            // instead of the caller (e.g. scheduled job) hammering createClient every fixed interval
+            if (config.isAutoReconnect() && !closed) {
+                try {
+                    getConnectionMonitor().scheduleReconnect(serverName);
+                } catch (Exception scheduleErr) {
+                    LOGGER.warn("Failed to schedule reconnect for {}: {}", serverName, scheduleErr.getMessage());
+                }
+            }
             throw new McpClientException("Failed to create client for server: " + serverName, e);
         }
     }

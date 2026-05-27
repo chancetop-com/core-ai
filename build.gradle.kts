@@ -93,8 +93,8 @@ project(":core-ai") {
         implementation("io.opentelemetry:opentelemetry-api:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-sdk:${Versions.OPENTELEMETRY_VERSION}")
         implementation("io.opentelemetry:opentelemetry-exporter-otlp:${Versions.OPENTELEMETRY_VERSION}")
-        // MCP SDK
-        implementation("io.modelcontextprotocol.sdk:mcp:${Versions.MCP_SDK_VERSION}")
+        // MCP SDK — exposed via api so downstream modules (server/cli) can reference McpSchema types
+        api("io.modelcontextprotocol.sdk:mcp:${Versions.MCP_SDK_VERSION}")
         // SnakeYAML for Skills YAML frontmatter parsing
         implementation("org.yaml:snakeyaml:${Versions.SNAKEYAML_VERSION}")
         // Jsoup for HTML parsing (DuckDuckGo search provider)

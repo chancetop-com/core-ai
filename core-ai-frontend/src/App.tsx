@@ -20,6 +20,7 @@ import SettingsPage from './pages/settings/Settings';
 import Scheduler from './pages/scheduler/Scheduler';
 import Tasks from './pages/tasks/Tasks';
 import Mcp from './pages/mcp/Mcp';
+import McpDetail from './pages/mcp/McpDetail';
 import BuiltinTools from './pages/tools/BuiltinTools';
 import ApiTools from './pages/api-tools/ApiTools';
 import ApiToolDetail from './pages/api-tools/ApiToolDetail';
@@ -103,6 +104,7 @@ export default function App() {
                 <Route path="/scheduler" element={<Navigate to="/triggers/schedule" replace />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/mcp" element={<Mcp />} />
+                <Route path="/mcp/:id" element={<McpDetail />} />
                 <Route path="/tools" element={<Navigate to="/tools/builtin" replace />} />
                 <Route path="/tools/builtin" element={<BuiltinTools />} />
                 <Route path="/api-tools" element={<ApiTools />} />
