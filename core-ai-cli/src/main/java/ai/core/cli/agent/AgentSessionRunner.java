@@ -38,8 +38,14 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class AgentSessionRunner {
@@ -47,6 +53,7 @@ public class AgentSessionRunner {
 
     private static final String POISON_PILL = "\0__EXIT__";
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final AtomicBoolean UPGRADE_CHECK_DONE = new AtomicBoolean(false);
 
     private final TerminalUI ui;
     private final Agent agent;
@@ -100,6 +107,7 @@ public class AgentSessionRunner {
         Semaphore readyForInput = new Semaphore(1);
 
         printBanner();
+        checkAndHintUpgrade();
         printSessionHistory();
         startSenderThread(messageQueue, listener, session, readyForInput);
         readInputLoop(messageQueue, readyForInput);
@@ -134,23 +142,25 @@ public class AgentSessionRunner {
 
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), modelName, VersionUtil.getCurrentVersion(), null);
-        startUpgradeCheck();
         LOGGER.debug("terminal: type={}, jline={}, ansi={}", ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
     }
 
-    private void startUpgradeCheck() {
-        Thread.ofVirtual().name("upgrade-check").start(() -> {
-            try {
-                var info = upgradeChecker.check();
-                if (info != null && info.isNewer()) {
-                    ui.getWriter().println("  " + AnsiTheme.WARNING + "New version v" + info.latestVersion()
-                            + " available! Run /upgrade for details" + AnsiTheme.RESET);
-                    ui.getWriter().flush();
-                }
-            } catch (Exception e) {
-                // silently ignore network errors during background check
+    private void checkAndHintUpgrade() {
+        if (!UPGRADE_CHECK_DONE.compareAndSet(false, true)) return;
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<UpgradeChecker.UpgradeInfo> future = executor.submit(upgradeChecker::check);
+            var info = future.get(1500, TimeUnit.MILLISECONDS);
+            if (info != null && info.isNewer()) {
+                ui.getWriter().println("  " + AnsiTheme.WARNING + "New version v" + info.latestVersion()
+                        + " available! Run /upgrade for details" + AnsiTheme.RESET);
+                ui.getWriter().flush();
             }
-        });
+        } catch (ExecutionException | InterruptedException | java.util.concurrent.TimeoutException e) {
+            // network slow or error, skip silently
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private void printSessionHistory() {
