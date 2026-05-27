@@ -28,7 +28,7 @@ public class SessionCommandQueue {
     }
 
     public void enqueueTaskNotification(String value) {
-        enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, null));
+        enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null)));
     }
 
     private void enqueue(QueuedCommand command) {
