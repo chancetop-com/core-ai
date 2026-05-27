@@ -4,6 +4,7 @@ import ai.core.cli.DebugLog;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
+import ai.core.cli.upgrade.UpgradeChecker;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,9 +15,11 @@ import java.nio.file.Path;
  */
 public class ReplCommandHandler {
     private final TerminalUI ui;
+    private final UpgradeChecker upgradeChecker;
 
     public ReplCommandHandler(TerminalUI ui) {
         this.ui = ui;
+        this.upgradeChecker = new UpgradeChecker();
     }
 
     public void handle(String input) {
@@ -35,10 +38,31 @@ public class ReplCommandHandler {
             case "/help" -> printHelp();
             case "/init" -> initProject();
             case "/debug" -> toggleDebug();
+            case "/upgrade" -> checkUpgrade();
             case "/exit" -> {
             }
             default -> ui.printStreamingChunk(AnsiTheme.WARNING + "Unknown command: " + command + ". Type /help for available commands." + AnsiTheme.RESET + "\n");
         }
+    }
+
+    private void checkUpgrade() {
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Checking for updates..." + AnsiTheme.RESET + "\n");
+        var info = upgradeChecker.check();
+        if (info == null || info.latestVersion() == null) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to check for updates. Please try again later.\n" + AnsiTheme.RESET);
+            return;
+        }
+        if (!info.isNewer()) {
+            ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " You are up to date (v" + info.currentVersion() + ")\n");
+            return;
+        }
+        ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "New version available!" + AnsiTheme.RESET + "\n");
+        ui.printStreamingChunk("  Current: v" + info.currentVersion() + "  →  Latest: " + AnsiTheme.SUCCESS + "v" + info.latestVersion() + AnsiTheme.RESET + "\n\n");
+        if (info.releaseUrl() != null) {
+            ui.printStreamingChunk("  " + AnsiTheme.PROMPT + "Download:" + AnsiTheme.RESET + " " + info.releaseUrl() + "\n");
+        }
+        ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Or run: core-ai-cli --upgrade" + AnsiTheme.RESET + "\n");
+        ui.printStreamingChunk("  " + AnsiTheme.MUTED + "To auto-update: refer to the release page for your platform binary." + AnsiTheme.RESET + "\n\n");
     }
 
     private void printHelp() {

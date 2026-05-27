@@ -18,6 +18,8 @@ import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.TextUtil;
+import ai.core.cli.upgrade.UpgradeChecker;
+import ai.core.cli.upgrade.VersionUtil;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
@@ -60,6 +62,7 @@ public class AgentSessionRunner {
     private final Path workspace;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
+    private final UpgradeChecker upgradeChecker = new UpgradeChecker();
     private ReplCommandHandler commands;
 
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
@@ -130,8 +133,24 @@ public class AgentSessionRunner {
     }
 
     private void printBanner() {
-        BannerPrinter.print(ui.getWriter(), modelName);
+        BannerPrinter.print(ui.getWriter(), modelName, VersionUtil.getCurrentVersion(), null);
+        startUpgradeCheck();
         LOGGER.debug("terminal: type={}, jline={}, ansi={}", ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
+    }
+
+    private void startUpgradeCheck() {
+        Thread.ofVirtual().name("upgrade-check").start(() -> {
+            try {
+                var info = upgradeChecker.check();
+                if (info != null && info.isNewer()) {
+                    ui.getWriter().println("  " + AnsiTheme.WARNING + "New version v" + info.latestVersion()
+                            + " available! Run /upgrade for details" + AnsiTheme.RESET);
+                    ui.getWriter().flush();
+                }
+            } catch (Exception e) {
+                // silently ignore network errors during background check
+            }
+        });
     }
 
     private void printSessionHistory() {

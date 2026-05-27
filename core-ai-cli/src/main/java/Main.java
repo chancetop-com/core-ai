@@ -1,6 +1,7 @@
 import ai.core.cli.CliApp;
 import ai.core.cli.CliAppOptions;
 import ai.core.cli.DebugLog;
+import ai.core.cli.upgrade.UpgradeChecker;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -83,8 +84,15 @@ public class Main implements Callable<Integer> {
     @Option(names = "--acp-agent", description = "Start in ACP (Agent Client Protocol) stdio mode for editor integration")
     boolean acpAgent;
 
+    @Option(names = "--upgrade", description = "Check for new CLI version and show upgrade instructions")
+    boolean upgrade;
+
     @Override
     public Integer call() {
+        if (upgrade) {
+            checkUpgrade();
+            return 0;
+        }
         if (debug) {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
@@ -100,5 +108,22 @@ public class Main implements Callable<Integer> {
             new CliApp(options).start();
         }
         return 0;
+    }
+
+    private static void checkUpgrade() {
+        var info = new UpgradeChecker().check();
+        if (info == null || info.latestVersion() == null) {
+            System.out.println("Failed to check for updates. Please try again later.");
+            return;
+        }
+        if (!info.isNewer()) {
+            System.out.println("You are up to date (v" + info.currentVersion() + ")");
+            return;
+        }
+        System.out.println("New version available: v" + info.latestVersion() + " (current: v" + info.currentVersion() + ")");
+        if (info.releaseUrl() != null) {
+            System.out.println("Download: " + info.releaseUrl());
+        }
+        System.out.println("To upgrade: download the binary for your platform from the release page above.");
     }
 }

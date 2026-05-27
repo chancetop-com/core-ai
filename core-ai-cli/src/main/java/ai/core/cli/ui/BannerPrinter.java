@@ -19,7 +19,7 @@ public final class BannerPrinter {
 
     private static final Path CONFIG_FILE = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
 
-    public static void print(PrintWriter writer, String model) {
+    public static void print(PrintWriter writer, String model, String version, String upgradeHint) {
         String modelInfo = model != null ? model : "default";
         String cwd = "~/" + Path.of("").toAbsolutePath().getFileName();
         String username = readUsername();
@@ -30,8 +30,11 @@ public final class BannerPrinter {
         }
         String userTag = username != null
                 ? AnsiTheme.SUCCESS + username + AnsiTheme.RESET + AnsiTheme.MUTED + " · " : "";
-        writer.println("  " + AnsiTheme.MUTED + "v0.1.0 · " + userTag + modelInfo
+        writer.println("  " + AnsiTheme.MUTED + "v" + version + " · " + userTag + modelInfo
                 + " · " + cwd + AnsiTheme.RESET);
+        if (upgradeHint != null) {
+            writer.println("  " + AnsiTheme.WARNING + upgradeHint + AnsiTheme.RESET);
+        }
         writer.println();
         writer.flush();
     }

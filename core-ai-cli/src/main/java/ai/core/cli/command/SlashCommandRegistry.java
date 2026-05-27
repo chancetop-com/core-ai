@@ -27,6 +27,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/plugins", "Manage plugins (/plugins help for more)"),
             new SlashCommand("/mcp", "Show MCP server status"),
             new SlashCommand("/undo", "Undo last message and its response"),
+            new SlashCommand("/upgrade", "Check for new CLI version and upgrade instructions"),
             new SlashCommand("/remote", "Connect to a remote core-ai-server"),
             new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/debug", "Toggle debug mode"),
