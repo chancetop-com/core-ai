@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'core-ai-sandbox-runtime/**'
+      - 'core-ai-sandbox-runtime/VERSION'
   workflow_dispatch:
 
 env:
@@ -27,12 +27,18 @@ jobs:
           username: ${{ env.DOCKER_USER }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
+      - name: Read version
+        id: version
+        run: echo "value=$(cat core-ai-sandbox-runtime/VERSION)" >> $GITHUB_OUTPUT
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: core-ai-sandbox-runtime
           platforms: linux/amd64
           push: true
-          tags: ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+          tags: |
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
