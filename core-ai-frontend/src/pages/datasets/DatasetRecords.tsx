@@ -76,10 +76,10 @@ export default function DatasetRecords() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/datasets/${id}`)}
-            className="flex items-center gap-1 text-sm cursor-pointer"
-            style={{ color: 'var(--color-primary)' }}>
-            <ArrowLeft size={16} /> Back to Dataset
+          <button onClick={() => navigate('/datasets')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+            <ArrowLeft size={16} /> Back to Datasets
           </button>
           <Database size={20} style={{ color: 'var(--color-primary)' }} />
           <h1 className="text-xl font-semibold">{dataset?.name || 'Loading...'} Records</h1>

@@ -24,6 +24,9 @@ public class DatasetView {
     @Property(name = "created_at")
     public ZonedDateTime createdAt;
 
+    @Property(name = "created_by")
+    public String createdBy;
+
     @Property(name = "updated_at")
     public ZonedDateTime updatedAt;
 }

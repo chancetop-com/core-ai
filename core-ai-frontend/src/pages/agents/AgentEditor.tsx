@@ -875,14 +875,17 @@ The system prompt should define how this agent behaves, its capabilities, and it
             />
           </div>
 
-          {/* Response Schema */}
-          <ResponseSchemaEditor
-            value={agent.response_schema}
-            onChange={v => update('response_schema', v)}
-            inputStyle={inputStyle}
-          />
+          {/* Response Schema - only for LLM_CALL */}
+          {agent.type === 'LLM_CALL' && (
+            <ResponseSchemaEditor
+              value={agent.response_schema}
+              onChange={v => update('response_schema', v)}
+              inputStyle={inputStyle}
+            />
+          )}
 
-          {/* Tools */}
+          {/* Tools - not shown for LLM_CALL */}
+          {agent.type !== 'LLM_CALL' && (
           <div className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
@@ -1177,7 +1180,11 @@ The system prompt should define how this agent behaves, its capabilities, and it
               )}
             </div>
           </div>
+          )}
 
+          {/* Subagents & Skills - not shown for LLM_CALL */}
+          {agent.type !== 'LLM_CALL' && (
+          <>
           {/* Subagents */}
           <div className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
@@ -1350,6 +1357,8 @@ The system prompt should define how this agent behaves, its capabilities, and it
               )}
             </div>
           </div>
+          </>
+          )}
 
           {/* Sandbox Configuration */}
           {agent.type === 'AGENT' && (

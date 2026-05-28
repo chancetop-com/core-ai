@@ -860,6 +860,7 @@ export interface DatasetView {
   description: string;
   schema: SchemaFieldView[];
   created_at: string;
+  created_by: string;
   updated_at: string;
 }
 

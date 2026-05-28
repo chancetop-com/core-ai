@@ -365,7 +365,7 @@ Description: ${description || 'N/A'}`,
       </div>
 
       {/* Record structure info */}
-      <div className="rounded-xl border p-4 mb-4 text-xs"
+      <div className="rounded-xl border p-4 mt-4 text-xs"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         <p className="font-medium mb-2" style={{ color: 'var(--color-text)' }}>Record Structure</p>
         <p className="mb-2" style={{ color: 'var(--color-text-secondary)' }}>
@@ -408,15 +408,6 @@ Description: ${description || 'N/A'}`,
           </tbody>
         </table>
       </div>
-
-      {/* View records button for existing datasets */}
-      {!isNew && (
-        <button onClick={() => navigate(`/datasets/${id}/records`)}
-          className="w-full py-2 rounded-lg text-sm border cursor-pointer transition-colors"
-          style={{ borderColor: 'var(--color-border)', color: 'var(--color-primary)' }}>
-          View Records
-        </button>
-      )}
     </div>
   );
 }

@@ -13,9 +13,11 @@ import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
+import ai.core.server.domain.User;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
+import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 
 import java.time.ZonedDateTime;
@@ -36,6 +38,9 @@ public class DatasetWebServiceImpl implements DatasetWebService {
 
     @Inject
     DatasetRecordService datasetRecordService;
+
+    @Inject
+    MongoCollection<User> userCollection;
 
     @Override
     public DatasetView create(CreateDatasetRequest request) {
@@ -123,6 +128,9 @@ public class DatasetWebServiceImpl implements DatasetWebService {
         view.schema = toSchemaFieldViews(entity.schema);
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;
+        view.createdBy = entity.userId != null
+                ? userCollection.get(entity.userId).map(u -> u.name).orElse(entity.userId)
+                : null;
         return view;
     }
 

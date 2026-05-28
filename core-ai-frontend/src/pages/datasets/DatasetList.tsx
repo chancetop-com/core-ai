@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Database, Plus, Search, RefreshCw, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Database, Plus, Search, RefreshCw, ChevronLeft, ChevronRight, Trash2, Table2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { DatasetView } from '../../api/client';
 
@@ -117,14 +117,13 @@ export default function DatasetList() {
               <div className="flex items-center gap-3">
                 <Database size={18} style={{ color: 'var(--color-primary)' }} />
                 <span className="font-medium">{d.name}</span>
-                {d.schema && d.schema.length > 0 && (
-                  <span className="px-2 py-0.5 rounded text-xs"
-                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                    {d.schema.length} field{d.schema.length !== 1 ? 's' : ''}
-                  </span>
-                )}
               </div>
               <div className="flex items-center gap-2">
+                <button onClick={e => { e.stopPropagation(); navigate(`/datasets/${d.id}/records`); }}
+                  className="px-2 py-1 rounded text-xs border cursor-pointer flex items-center gap-1"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                  <Table2 size={12} /> Records
+                </button>
                 <button onClick={e => handleDelete(d.id, e)}
                   className="px-2 py-1 rounded text-xs border cursor-pointer"
                   style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
@@ -138,17 +137,9 @@ export default function DatasetList() {
             {d.description && (
               <p className="text-sm mt-1 ml-7" style={{ color: 'var(--color-text-secondary)' }}>{d.description}</p>
             )}
-            {d.schema && d.schema.length > 0 && (
-              <div className="flex gap-2 mt-2 ml-7 flex-wrap">
-                {d.schema.map(f => (
-                  <span key={f.name} className="px-2 py-0.5 rounded text-xs"
-                    style={{ background: '#1e293b', color: '#93c5fd' }}>
-                    {f.label || f.name}
-                    <span className="ml-1 opacity-50">{f.type}</span>
-                  </span>
-                ))}
-              </div>
-            )}
+            <p className="text-xs mt-1 ml-7" style={{ color: 'var(--color-text-tertiary)' }}>
+              Created by {d.created_by || 'unknown'} &middot; {formatTime(d.created_at)}
+            </p>
           </div>
         ))}
       </div>
