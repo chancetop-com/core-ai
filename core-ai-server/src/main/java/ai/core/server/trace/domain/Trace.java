@@ -42,6 +42,9 @@ public class Trace {
     @Field(name = "status")
     public TraceStatus status;
 
+    @Field(name = "error_message")
+    public String errorMessage;
+
     @Field(name = "input")
     public String input;
 

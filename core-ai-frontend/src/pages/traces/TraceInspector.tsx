@@ -1,5 +1,6 @@
 import { useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import {
+  AlertCircle,
   ArrowLeft,
   Bot,
   Brain,
@@ -221,6 +222,46 @@ function TraceHeader({ trace, spans, mode, onClose }: {
           )}
         </div>
       </div>
+      {trace.status === 'ERROR' && trace.errorMessage && (
+        <div className="mt-3">
+          <ErrorBlock message={trace.errorMessage} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ErrorBlock({ message }: { message: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = message.length > 240;
+  const display = !expanded && isLong ? message.slice(0, 240) + '…' : message;
+  const copy = () => { navigator.clipboard?.writeText(message); };
+  return (
+    <div className="rounded-md border text-xs"
+      style={{ borderColor: 'var(--color-error)', background: 'var(--color-error-bg, rgba(239,68,68,0.08))' }}>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b"
+        style={{ borderColor: 'var(--color-error)', color: 'var(--color-error)' }}>
+        <div className="flex items-center gap-1.5 font-semibold">
+          <AlertCircle size={13} /> Error
+        </div>
+        <div className="flex items-center gap-1">
+          {isLong && (
+            <button onClick={() => setExpanded(v => !v)}
+              className="px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:opacity-80"
+              style={{ color: 'var(--color-error)' }}>
+              {expanded ? 'Collapse' : 'Expand'}
+            </button>
+          )}
+          <button onClick={copy}
+            className="p-0.5 rounded cursor-pointer hover:opacity-80"
+            style={{ color: 'var(--color-error)' }}
+            title="Copy error message">
+            <Copy size={12} />
+          </button>
+        </div>
+      </div>
+      <pre className="px-3 py-2 font-mono whitespace-pre-wrap break-words max-h-72 overflow-auto"
+        style={{ color: 'var(--color-text)' }}>{display}</pre>
     </div>
   );
 }
@@ -429,6 +470,11 @@ function SpanInspector({ span, parentSpan }: { span: Span; parentSpan?: Span }) 
       </div>
 
       <div className="p-3 max-h-[520px] overflow-auto">
+        {span.status === 'ERROR' && span.errorMessage && (
+          <div className="mb-3">
+            <ErrorBlock message={span.errorMessage} />
+          </div>
+        )}
         {tab === 'summary' && <SpanSummary span={span} parentSpan={parentSpan} />}
         {tab === 'messages' && <MessagesView messages={messages} output={output} inputRaw={span.input} outputRaw={span.output} />}
         {tab === 'attributes' && <AttributesView attributes={span.attributes} />}

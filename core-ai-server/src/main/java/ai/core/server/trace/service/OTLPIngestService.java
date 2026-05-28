@@ -97,6 +97,7 @@ public class OTLPIngestService {
         span.output = resolveOutput(attrs);
         span.durationMs = endMs - startMs;
         span.status = protoSpan.getStatus().getCode() == Status.StatusCode.STATUS_CODE_ERROR ? SpanStatus.ERROR : SpanStatus.OK;
+        span.errorMessage = span.status == SpanStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
         span.attributes = attrs;
         span.startedAt = toZonedDateTime(startMs);
         span.completedAt = toZonedDateTime(endMs);
@@ -138,6 +139,7 @@ public class OTLPIngestService {
     private void updateExistingTrace(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
                                     Map<String, String> attrs, long endMs) {
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
+        trace.errorMessage = trace.status == TraceStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.output = resolveOutput(attrs);
         trace.durationMs = endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
         trace.completedAt = toZonedDateTime(endMs);
@@ -182,6 +184,7 @@ public class OTLPIngestService {
         trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
+        trace.errorMessage = trace.status == TraceStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.input = resolveInput(attrs);
         trace.output = resolveOutput(attrs);
         trace.metadata = Map.of(
@@ -270,6 +273,10 @@ public class OTLPIngestService {
         var output = attrs.get("gen_ai.completion");
         if (output != null) return output;
         return attrs.get("langfuse.observation.output");
+    }
+
+    private String nonEmpty(String value) {
+        return value == null || value.isEmpty() ? null : value;
     }
 
     private String resolveSource(Map<String, String> attrs, Map<String, String> resourceAttrs, String sessionId) {

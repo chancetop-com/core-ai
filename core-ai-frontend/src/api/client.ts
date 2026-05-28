@@ -94,6 +94,7 @@ export interface Trace {
   sessionId: string;
   userId: string;
   status: 'RUNNING' | 'COMPLETED' | 'ERROR';
+  errorMessage?: string;
   input: string;
   output: string;
   metadata: Record<string, string>;
@@ -124,6 +125,7 @@ export interface Span {
   costUsd?: number;
   durationMs: number;
   status: 'OK' | 'ERROR';
+  errorMessage?: string;
   attributes: Record<string, string>;
   startedAt: string;
   completedAt: string;

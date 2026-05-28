@@ -57,6 +57,9 @@ public class Span {
     @Field(name = "status")
     public SpanStatus status;
 
+    @Field(name = "error_message")
+    public String errorMessage;
+
     @Field(name = "attributes")
     public Map<String, String> attributes;
 
