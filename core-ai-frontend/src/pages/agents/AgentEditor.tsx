@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -14,7 +14,7 @@ const NEW_AGENT_SKELETON: AgentDefinition = {
   tools: [], input_template: '', variables: {},
   system_default: false, type: 'AGENT', response_schema: null,
   created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
-  subagent_ids: [], skill_ids: [],
+  subagent_ids: [], skill_ids: [], output_datasets: [],
 };
 
 export default function AgentEditor() {
@@ -55,6 +55,15 @@ export default function AgentEditor() {
   const [apiAppServices, setApiAppServices] = useState<Record<string, ApiServiceView[]>>({});
   const [showApiPicker, setShowApiPicker] = useState(false);
   const [expandedApiService, setExpandedApiService] = useState<string | null>(null);
+
+  // Output datasets
+  const [allDatasets, setAllDatasets] = useState<{ id: string; name: string }[]>([]);
+  const [datasetsLoaded, setDatasetsLoaded] = useState(false);
+  const [showDatasetPicker, setShowDatasetPicker] = useState(false);
+  const [datasetsOpen, setDatasetsOpen] = useState(false);
+  const [inputTemplateOpen, setInputTemplateOpen] = useState(false);
+  const [variablesOpen, setVariablesOpen] = useState(false);
+  const [modelConfigOpen, setModelConfigOpen] = useState(true);
 
   // multi-modal model toggle
   const [showMultiModalModel, setShowMultiModalModel] = useState(false);
@@ -179,6 +188,17 @@ The system prompt should define how this agent behaves, its capabilities, and it
       setApiAppsLoaded(true);
     } catch (e) {
       console.error('Failed to load API apps:', e);
+    }
+  };
+
+  const loadDatasets = async () => {
+    if (datasetsLoaded) return;
+    try {
+      const res = await api.datasets.list();
+      setAllDatasets((res.datasets || []).map(d => ({ id: d.id, name: d.name })));
+      setDatasetsLoaded(true);
+    } catch (e) {
+      console.error('Failed to load datasets:', e);
     }
   };
 
@@ -798,81 +818,215 @@ The system prompt should define how this agent behaves, its capabilities, and it
             </div>
           </div>
 
-          {/* Model & Parameters */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Model</label>
-              <input value={agent.model || ''} onChange={e => update('model', e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                style={inputStyle}
-                placeholder="e.g. gpt-4" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Temperature</label>
-              <input type="number" step="0.1" min="0" max="2"
-                value={agent.temperature ?? ''} onChange={e => update('temperature', e.target.value ? parseFloat(e.target.value) : null)}
-                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                style={inputStyle}
-                placeholder="0.7" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Max Turns</label>
-              <input type="number" min="1"
-                value={agent.max_turns ?? ''} onChange={e => update('max_turns', e.target.value ? parseInt(e.target.value) : null)}
-                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                style={inputStyle}
-                placeholder="20" />
-            </div>
-          </div>
+          {/* Model Config */}
+          <div className="rounded-xl border mt-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <button
+              onClick={() => setModelConfigOpen(!modelConfigOpen)}
+              className="w-full flex items-center justify-between p-4 cursor-pointer">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal size={16} style={{ color: 'var(--color-text-secondary)' }} />
+                <span className="font-medium text-sm">Model Config</span>
+              </div>
+              {modelConfigOpen ? <ChevronDown size={16} style={{ color: 'var(--color-text-secondary)' }} /> : <ChevronRight size={16} style={{ color: 'var(--color-text-secondary)' }} />}
+            </button>
+            {modelConfigOpen && (
+              <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="grid grid-cols-4 gap-4 pt-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Model</label>
+                    <input value={agent.model || ''} onChange={e => update('model', e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                      placeholder="e.g. gpt-4" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Temperature</label>
+                    <input type="number" step="0.1" min="0" max="2"
+                      value={agent.temperature ?? ''} onChange={e => update('temperature', e.target.value ? parseFloat(e.target.value) : null)}
+                      className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                      placeholder="0.7" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Max Turns</label>
+                    <input type="number" min="1"
+                      value={agent.max_turns ?? ''} onChange={e => update('max_turns', e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                      placeholder="20" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Timeout (s)</label>
+                    <input type="number" min="1"
+                      value={agent.timeout_seconds ?? ''} onChange={e => update('timeout_seconds', e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                      style={inputStyle}
+                      placeholder="600" />
+                  </div>
+                </div>
 
-          {/* Multi-Modal Model (optional) */}
-          <div className="mt-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox"
-                checked={showMultiModalModel}
-                onChange={e => {
-                  setShowMultiModalModel(e.target.checked);
-                  if (!e.target.checked) update('multi_modal_model', '');
-                }}
-                className="w-4 h-4 rounded accent-[var(--color-accent)]" />
-              <span className="text-sm font-medium">Enable multi-modal model</span>
-            </label>
-            <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-tertiary)' }}>
-              Only needed when your main model lacks vision / multi-modal capabilities and you need to handle images or files.
-              When a request contains images or file attachments, it will be routed to this model instead.
-            </p>
-            {showMultiModalModel && (
-              <div className="mt-2 ml-6 w-80">
-                <input value={agent.multi_modal_model || ''} onChange={e => update('multi_modal_model', e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                  style={inputStyle}
-                  placeholder="e.g. gpt-4o" />
+                <div className="mt-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox"
+                      checked={showMultiModalModel}
+                      onChange={e => {
+                        setShowMultiModalModel(e.target.checked);
+                        if (!e.target.checked) update('multi_modal_model', '');
+                      }}
+                      className="w-4 h-4 rounded accent-[var(--color-accent)]" />
+                    <span className="text-sm font-medium">Enable multi-modal model</span>
+                  </label>
+                  <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-tertiary)' }}>
+                    Only needed when your main model lacks vision / multi-modal capabilities and you need to handle images or files.
+                    When a request contains images or file attachments, it will be routed to this model instead.
+                  </p>
+                  {showMultiModalModel && (
+                    <div className="mt-2 ml-6 w-80">
+                      <input value={agent.multi_modal_model || ''} onChange={e => update('multi_modal_model', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                        style={inputStyle}
+                        placeholder="e.g. gpt-4o" />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Input Template</label>
-            <textarea value={agent.input_template || ''}
-              onChange={e => update('input_template', e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y"
-              style={inputStyle}
-              placeholder="Input template with {{variable}} placeholders..." />
+          {/* Input Template */}
+          <div className="rounded-xl border mt-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <button
+              onClick={() => setInputTemplateOpen(!inputTemplateOpen)}
+              className="w-full flex items-center justify-between p-4 cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Code size={16} style={{ color: 'var(--color-text-secondary)' }} />
+                <span className="font-medium text-sm">Input Template</span>
+              </div>
+              {inputTemplateOpen ? <ChevronDown size={16} style={{ color: 'var(--color-text-secondary)' }} /> : <ChevronRight size={16} style={{ color: 'var(--color-text-secondary)' }} />}
+            </button>
+            {inputTemplateOpen && (
+              <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <textarea value={agent.input_template || ''}
+                  onChange={e => update('input_template', e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none resize-y mt-3"
+                  style={inputStyle}
+                  placeholder="Input template with {{variable}} placeholders..." />
+              </div>
+            )}
           </div>
 
-          <div className="rounded-xl border p-4"
-            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-            <h3 className="font-medium text-sm mb-3">Variables</h3>
-            <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
-              Configure default variable values. These defaults are used by chat and schedule unless overridden.
-            </p>
-            <KeyValueVariablesEditor
-              value={agent.variables}
-              onChange={value => update('variables', value)}
-              keyPlaceholder="Variable key"
-              valuePlaceholder="Default value"
-            />
+          {/* Variables */}
+          <div className="rounded-xl border mt-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <button
+              onClick={() => setVariablesOpen(!variablesOpen)}
+              className="w-full flex items-center justify-between p-4 cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Braces size={16} style={{ color: 'var(--color-text-secondary)' }} />
+                <span className="font-medium text-sm">Variables</span>
+                {agent.variables && Object.keys(agent.variables).length > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                    {Object.keys(agent.variables).length}
+                  </span>
+                )}
+              </div>
+              {variablesOpen ? <ChevronDown size={16} style={{ color: 'var(--color-text-secondary)' }} /> : <ChevronRight size={16} style={{ color: 'var(--color-text-secondary)' }} />}
+            </button>
+            {variablesOpen && (
+              <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <p className="text-xs pt-3 mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  Configure default variable values. These defaults are used by chat and schedule unless overridden.
+                </p>
+                <KeyValueVariablesEditor
+                  value={agent.variables}
+                  onChange={value => update('variables', value)}
+                  keyPlaceholder="Variable key"
+                  valuePlaceholder="Default value"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Output Datasets */}
+          <div className="rounded-xl border mt-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+            <button
+              onClick={() => { if (!datasetsOpen) loadDatasets(); setDatasetsOpen(!datasetsOpen); }}
+              className="w-full flex items-center justify-between p-4 cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Database size={16} style={{ color: 'var(--color-primary)' }} />
+                <span className="font-medium text-sm">Output Datasets</span>
+                {(agent.output_datasets?.length ?? 0) > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                    {agent.output_datasets!.length}
+                  </span>
+                )}
+              </div>
+              {datasetsOpen ? <ChevronDown size={16} style={{ color: 'var(--color-text-secondary)' }} /> : <ChevronRight size={16} style={{ color: 'var(--color-text-secondary)' }} />}
+            </button>
+            {datasetsOpen && (
+              <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <p className="text-xs pt-3 mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  Select datasets to extract structured data from each agent run output.
+                </p>
+                {(agent.output_datasets?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {agent.output_datasets!.map(binding => {
+                      const ds = allDatasets.find(d => d.id === binding.dataset_id);
+                      return (
+                        <span key={binding.dataset_id}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                          style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-primary)' }} />
+                          <span className="font-medium">{ds?.name || binding.dataset_id}</span>
+                          <button onClick={() => setAgent(prev => prev ? {
+                            ...prev,
+                            output_datasets: (prev.output_datasets || []).filter(b => b.dataset_id !== binding.dataset_id)
+                          } : prev)}
+                            className="cursor-pointer ml-0.5 rounded"
+                            style={{ color: 'var(--color-text-secondary)' }}>
+                            <X size={12} />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="relative">
+                  <button onClick={() => setShowDatasetPicker(!showDatasetPicker)}
+                    onBlur={() => setTimeout(() => setShowDatasetPicker(false), 200)}
+                    className="w-full px-3 py-2 rounded-lg border text-sm text-left cursor-pointer flex items-center justify-between"
+                    style={inputStyle}>
+                    <span style={{ color: 'var(--color-text-secondary)' }}>Add dataset...</span>
+                    <ChevronDown size={14} style={{ color: 'var(--color-text-secondary)' }} />
+                  </button>
+                  {showDatasetPicker && (
+                    <div className="absolute z-10 w-full mt-1 rounded-lg border max-h-48 overflow-y-auto"
+                      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+                      {allDatasets
+                        .filter(d => !(agent.output_datasets || []).some(b => b.dataset_id === d.id))
+                        .map(d => (
+                          <button key={d.id}
+                            onMouseDown={() => {
+                              setAgent(prev => prev ? {
+                                ...prev,
+                                output_datasets: [...(prev.output_datasets || []), { dataset_id: d.id }]
+                              } : prev);
+                            }}
+                            className="w-full px-3 py-2 text-left text-sm cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+                            style={{ color: 'var(--color-text)' }}>
+                            {d.name}
+                          </button>
+                        ))}
+                      {allDatasets.filter(d => !(agent.output_datasets || []).some(b => b.dataset_id === d.id)).length === 0 && (
+                        <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                          {allDatasets.length === 0 ? 'No datasets available' : 'All datasets selected'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Response Schema - only for LLM_CALL */}

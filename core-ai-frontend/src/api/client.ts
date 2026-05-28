@@ -255,6 +255,11 @@ export interface AgentDefinition {
   subagent_ids?: string[];
   skill_ids?: string[];
   sandbox_config?: SandboxConfig;
+  output_datasets?: OutputDatasetBinding[];
+}
+
+export interface OutputDatasetBinding {
+  dataset_id: string;
 }
 
 export interface ListAgentsResponse {

@@ -4,6 +4,7 @@ import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
+import ai.core.api.server.agent.OutputDatasetBindingView;
 import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.api.server.tool.ToolRefView;
@@ -12,6 +13,7 @@ import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentSandboxConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.OutputDatasetBinding;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.User;
@@ -71,6 +73,7 @@ public class AgentDefinitionService {
         entity.type = request.type != null ? DefinitionType.valueOf(request.type) : DefinitionType.AGENT;
         entity.responseSchema = request.responseSchema;
         entity.sandboxConfig = request.sandboxConfig != null ? fromSandboxConfigView(request.sandboxConfig) : null;
+        entity.outputDatasets = request.outputDatasets != null ? toOutputDatasetBindings(request.outputDatasets) : null;
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -144,6 +147,7 @@ public class AgentDefinitionService {
         if (request.subAgentIds != null) entity.subAgentIds = request.subAgentIds;
         if (request.skillIds != null) entity.skillIds = request.skillIds;
         if (request.sandboxConfig != null) entity.sandboxConfig = fromSandboxConfigView(request.sandboxConfig);
+        if (request.outputDatasets != null) entity.outputDatasets = toOutputDatasetBindings(request.outputDatasets);
         entity.updatedAt = ZonedDateTime.now();
 
         agentDefinitionCollection.replace(entity);
@@ -238,6 +242,7 @@ public class AgentDefinitionService {
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;
         view.sandboxConfig = toSandboxConfigView(entity.sandboxConfig);
+        view.outputDatasets = toOutputDatasetBindingViews(entity.outputDatasets);
         return view;
     }
 
@@ -303,6 +308,24 @@ public class AgentDefinitionService {
         config.maxAsyncTasks = view.maxAsyncTasks;
         config.environmentVariables = view.envVars;
         return config;
+    }
+
+    private List<OutputDatasetBindingView> toOutputDatasetBindingViews(List<OutputDatasetBinding> bindings) {
+        if (bindings == null || bindings.isEmpty()) return null;
+        return bindings.stream().map(b -> {
+            var view = new OutputDatasetBindingView();
+            view.datasetId = b.datasetId;
+            return view;
+        }).toList();
+    }
+
+    private List<OutputDatasetBinding> toOutputDatasetBindings(List<OutputDatasetBindingView> views) {
+        if (views == null || views.isEmpty()) return null;
+        return views.stream().map(v -> {
+            var binding = new OutputDatasetBinding();
+            binding.datasetId = v.datasetId;
+            return binding;
+        }).toList();
     }
 
 }

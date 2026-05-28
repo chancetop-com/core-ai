@@ -62,4 +62,7 @@ public class CreateAgentRequest {
 
     @Property(name = "sandbox_config")
     public SandboxConfigView sandboxConfig;
+
+    @Property(name = "output_datasets")
+    public List<OutputDatasetBindingView> outputDatasets;
 }
