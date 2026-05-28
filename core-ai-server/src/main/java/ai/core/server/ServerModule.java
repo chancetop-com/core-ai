@@ -260,9 +260,11 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/favicon.svg", controller::serve);
         http().route(HTTPMethod.GET, "/favicon.ico", controller::serve);
         http().route(HTTPMethod.GET, "/icons.svg", controller::serve);
-        http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
-        // iOS Safari / legacy crawlers probe these paths; reuse favicon.svg to silence 404 noise.
+        http().route(HTTPMethod.GET, "/logo-lockup.svg", controller::serve);
+        http().route(HTTPMethod.GET, "/logo-lockup-dark.svg", controller::serve);
         http().route(HTTPMethod.GET, "/apple-touch-icon.png", controller::serveAppleTouchIcon);
+        http().route(HTTPMethod.GET, "/assets/:file", controller::serve);
+        // iOS Safari legacy probe; reuse favicon.svg to silence 404 noise.
         http().route(HTTPMethod.GET, "/apple-touch-icon-precomposed.png", controller::serveAppleTouchIcon);
         var spaRoutes = new String[]{
             "/", "/login", "/chat", "/agents", "/sessions",

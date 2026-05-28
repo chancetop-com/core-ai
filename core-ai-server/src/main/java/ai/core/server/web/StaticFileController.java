@@ -44,15 +44,25 @@ public class StaticFileController {
         }
     }
 
-    // Serve favicon.svg for legacy apple-touch-icon probes (iOS Safari, crawlers).
+    // Serve the requested apple-touch-icon file if present; otherwise fall back
+    // to favicon.svg so iOS Safari / legacy crawler probes do not produce 404 noise.
     // Skips SPA fallback to avoid returning HTML for image requests.
     public Response serveAppleTouchIcon(Request request) {
-        var file = webDir.resolve("favicon.svg");
-        if (!Files.exists(file)) {
+        var path = request.path();
+        var requested = webDir.resolve(path.substring(1)).normalize();
+        if (requested.startsWith(webDir) && Files.exists(requested) && !Files.isDirectory(requested)) {
+            try {
+                return Response.file(requested).contentType(ContentType.IMAGE_PNG);
+            } catch (UncheckedIOException ignored) {
+                // fall through to favicon fallback
+            }
+        }
+        var fallback = webDir.resolve("favicon.svg");
+        if (!Files.exists(fallback)) {
             return Response.empty().status(HTTPStatus.NO_CONTENT);
         }
         try {
-            return Response.file(file).contentType(IMAGE_SVG);
+            return Response.file(fallback).contentType(IMAGE_SVG);
         } catch (UncheckedIOException e) {
             return Response.empty().status(HTTPStatus.NO_CONTENT);
         }
