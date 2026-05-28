@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bot, UserPlus } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
 import { authApi } from '../../api/client';
+import { useTheme } from '../../hooks/useTheme';
 
 export default function Register() {
   const [name, setName] = useState('');
@@ -10,6 +11,7 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { dark } = useTheme();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,11 +47,12 @@ export default function Register() {
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg)' }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: 'var(--color-primary)', opacity: 0.9 }}>
-            <Bot size={28} color="white" />
-          </div>
-          <h1 className="text-2xl font-bold">Create Account</h1>
+          <img
+            src={dark ? '/logo-lockup-dark.svg' : '/logo-lockup.svg'}
+            alt="core-ai"
+            className="h-10 mx-auto mb-3"
+          />
+          <h1 className="text-xl font-semibold">Create Account</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>Sign up to get started</p>
         </div>
 

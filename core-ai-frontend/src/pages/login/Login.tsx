@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Bot, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import { authApi } from '../../api/client';
 import { useAuth } from '../../api/auth';
+import { useTheme } from '../../hooks/useTheme';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -11,6 +12,7 @@ export default function Login() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { dark } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -47,11 +49,11 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg)' }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: 'var(--color-primary)', opacity: 0.9 }}>
-            <Bot size={28} color="white" />
-          </div>
-          <h1 className="text-2xl font-bold">Core AI</h1>
+          <img
+            src={dark ? '/logo-lockup-dark.svg' : '/logo-lockup.svg'}
+            alt="core-ai"
+            className="h-10 mx-auto mb-3"
+          />
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>Sign in to continue</p>
         </div>
 

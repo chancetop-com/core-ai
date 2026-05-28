@@ -49,8 +49,8 @@ export default function Layout() {
       || (path.startsWith('/system-prompts/') ? 'System Prompt' : null)
       || (path.startsWith('/api-tools/') ? 'API Tool Detail' : null)
       || (path.startsWith('/settings/') ? 'Settings' : null)
-      || 'Core AI';
-    document.title = `${title} - Core AI`;
+      || 'core-ai';
+    document.title = `${title} - core-ai`;
   }, [location.pathname]);
 
   const [expandedNav, setExpandedNav] = useState<string | null>(null);
@@ -104,9 +104,12 @@ export default function Layout() {
             <PanelLeft size={18} />
           </button>
           {!collapsed && (
-            <NavLink to="/" className="font-semibold text-lg cursor-pointer"
-              style={{ color: 'var(--color-text)' }}>
-              Core AI
+            <NavLink to="/" className="cursor-pointer flex items-center" aria-label="core-ai">
+              <img
+                src={dark ? '/logo-lockup-dark.svg' : '/logo-lockup.svg'}
+                alt="core-ai"
+                className="h-7"
+              />
             </NavLink>
           )}
         </div>
