@@ -5,11 +5,11 @@ import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
-import ai.core.api.server.agent.GenerateSystemPromptRequest;
-import ai.core.api.server.agent.GenerateSystemPromptResponse;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
+import ai.core.api.server.utils.GenerateRequest;
+import ai.core.api.server.utils.GenerateResponse;
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.DELETE;
 import core.framework.api.web.service.GET;
@@ -62,6 +62,6 @@ public interface AgentDefinitionWebService {
     ConvertJavaToSchemaResponse convertJavaToSchema(ConvertJavaToSchemaRequest request);
 
     @POST
-    @Path("/api/agents/generate-system-prompt")
-    GenerateSystemPromptResponse generateSystemPrompt(GenerateSystemPromptRequest request);
+    @Path("/api/utils/generate")
+    GenerateResponse generate(GenerateRequest request);
 }

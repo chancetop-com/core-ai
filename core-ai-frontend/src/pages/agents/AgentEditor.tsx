@@ -143,9 +143,26 @@ export default function AgentEditor() {
     if (!agent.name && !agent.description) return;
     setGeneratingPrompt(true);
     try {
-      const res = await api.agents.generateSystemPrompt({ name: agent.name, description: agent.description });
-      if (res.system_prompt) {
-        update('system_prompt', res.system_prompt);
+      const res = await api.utils.generate({
+        system_prompt: `You are a system prompt generator for AI agents. Your task is to generate effective, well-structured system prompts based on the agent's name and description.
+
+Generate a system prompt that:
+- Defines the agent's role and personality clearly
+- Specifies how the agent should behave and respond
+- Includes any relevant constraints or guidelines
+- Uses clear, actionable language
+- Is concise but comprehensive
+
+Return ONLY the system prompt text without any additional commentary, markdown formatting, or labels.`,
+        user_prompt: `Generate a system prompt for an AI agent with the following details:
+
+Name: ${agent.name || 'N/A'}
+Description: ${agent.description || 'N/A'}
+
+The system prompt should define how this agent behaves, its capabilities, and its constraints.`,
+      });
+      if (res.output) {
+        update('system_prompt', res.output);
       }
     } catch (e) {
       console.error('Failed to generate system prompt:', e);

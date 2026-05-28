@@ -26,6 +26,9 @@ import ApiTools from './pages/api-tools/ApiTools';
 import ApiToolDetail from './pages/api-tools/ApiToolDetail';
 import SkillList from './pages/skills/SkillList';
 import SkillEditor from './pages/skills/SkillEditor';
+import DatasetList from './pages/datasets/DatasetList';
+import DatasetEditor from './pages/datasets/DatasetEditor';
+import DatasetRecords from './pages/datasets/DatasetRecords';
 import TriggersWebhook from './pages/triggers/TriggersWebhook';
 import { CapabilitiesContext, fetchCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
@@ -109,6 +112,9 @@ export default function App() {
                 <Route path="/api-tools/:id" element={<ApiToolDetail />} />
                 <Route path="/skills" element={<SkillList />} />
                 <Route path="/skills/:id/edit" element={<SkillEditor />} />
+                <Route path="/datasets" element={<DatasetList />} />
+                <Route path="/datasets/:id" element={<DatasetEditor />} />
+                <Route path="/datasets/:id/records" element={<DatasetRecords />} />
                 <Route path="/settings" element={<SettingsPage />}>
                   {user?.role === 'admin' && <Route index element={<Dashboard />} />}
                   {user?.role === 'admin' && <Route path="users" element={<UserManagement />} />}

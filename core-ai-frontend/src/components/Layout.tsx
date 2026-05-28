@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench, Settings, Webhook, Zap } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Database, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench, Settings, Webhook, Zap } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -36,6 +36,7 @@ export default function Layout() {
       '/tools/builtin': 'Built-in Tools',
       '/api-tools': 'API Tools',
       '/skills': 'Skills',
+      '/datasets': 'Datasets',
       '/settings': 'Settings',
       '/triggers': 'Triggers',
       '/triggers/webhook': 'Webhook Triggers',
@@ -48,6 +49,7 @@ export default function Layout() {
       || (path.startsWith('/runs/') ? 'Run Detail' : null)
       || (path.startsWith('/system-prompts/') ? 'System Prompt' : null)
       || (path.startsWith('/api-tools/') ? 'API Tool Detail' : null)
+      || (path.startsWith('/datasets/') ? 'Dataset Detail' : null)
       || (path.startsWith('/settings/') ? 'Settings' : null)
       || 'core-ai';
     document.title = `${title} - core-ai`;
@@ -62,6 +64,7 @@ export default function Layout() {
     if (to === '/tools') return pathname === '/tools' || pathname.startsWith('/tools/');
     if (to === '/api-tools') return pathname === '/api-tools' || pathname.startsWith('/api-tools/');
     if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
+    if (to === '/datasets') return pathname === '/datasets' || pathname.startsWith('/datasets/');
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
     if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
     if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule';
@@ -84,6 +87,7 @@ export default function Layout() {
       { to: '/api-tools', icon: Key, label: 'API Tools', show: true },
     ]},
     { to: '/skills', icon: Sparkles, label: 'Skills', show: true },
+    { to: '/datasets', icon: Database, label: 'Datasets', show: true },
   ].filter(item => item.show);
 
   return (

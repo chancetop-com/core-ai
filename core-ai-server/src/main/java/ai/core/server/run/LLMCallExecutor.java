@@ -133,6 +133,13 @@ public class LLMCallExecutor {
     public Map<String, Object> extractStructured(String output, Dataset dataset, AgentDefinition definition) {
         if (output == null || output.isBlank()) return Map.of();
 
+        // When no schema defined, save raw output as-is without any LLM call
+        if (dataset.schema == null || dataset.schema.isEmpty()) {
+            var result = new LinkedHashMap<String, Object>();
+            result.put("output", output);
+            return result;
+        }
+
         var config = definition.publishedConfig;
         var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
 

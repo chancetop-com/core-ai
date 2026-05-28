@@ -1,18 +1,18 @@
 package ai.core.server.web;
 
-import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.AgentDefinitionWebService;
+import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
-import ai.core.api.server.agent.GenerateSystemPromptRequest;
-import ai.core.api.server.agent.GenerateSystemPromptResponse;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
+import ai.core.api.server.utils.GenerateRequest;
+import ai.core.api.server.utils.GenerateResponse;
 import ai.core.server.agent.AgentDefinitionService;
-import ai.core.server.agent.GenerateSystemPromptService;
+import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
@@ -30,7 +30,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     @Inject
     JavaToSchemaService javaToSchemaService;
     @Inject
-    GenerateSystemPromptService generateSystemPromptService;
+    GenerateService generateService;
 
     @Override
     public AgentDefinitionView create(CreateAgentRequest request) {
@@ -94,7 +94,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     }
 
     @Override
-    public GenerateSystemPromptResponse generateSystemPrompt(GenerateSystemPromptRequest request) {
-        return generateSystemPromptService.generate(request);
+    public GenerateResponse generate(GenerateRequest request) {
+        return generateService.generate(request);
     }
 }

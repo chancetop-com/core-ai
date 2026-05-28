@@ -16,7 +16,6 @@ public class CreateDatasetRequest {
     @Property(name = "description")
     public String description;
 
-    @NotNull
     @Property(name = "schema")
     public List<SchemaFieldView> schema;
 }

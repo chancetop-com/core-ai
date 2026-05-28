@@ -644,8 +644,10 @@ export const api = {
       request<LLMCallResponse>(`/api/llm/${id}/call`, { method: 'POST', body: JSON.stringify({ input, attachments }) }),
     javaToSchema: (javaCode: string) =>
       request<ConvertJavaToSchemaResponse>('/api/utils/java-to-schema', { method: 'POST', body: JSON.stringify({ java_code: javaCode }) }),
-    generateSystemPrompt: (data: { name: string; description: string }) =>
-      request<{ system_prompt: string }>('/api/agents/generate-system-prompt', { method: 'POST', body: JSON.stringify(data) }),
+  },
+  utils: {
+    generate: (data: { system_prompt: string; user_prompt: string }) =>
+      request<{ output: string }>('/api/utils/generate', { method: 'POST', body: JSON.stringify(data) }),
   },
   systemPrompts: {
     list: (offset = 0, limit = 20) =>
@@ -786,6 +788,26 @@ export const api = {
     rotateSecret: (id: string) =>
       request<TriggerView>(`/api/triggers/${id}/rotate-secret`, { method: 'POST' }),
   },
+  datasets: {
+    list: () =>
+      request<ListDatasetsResponse>('/api/datasets'),
+    get: (id: string) =>
+      request<DatasetView>(`/api/datasets/${id}`),
+    create: (data: CreateDatasetRequest) =>
+      request<DatasetView>('/api/datasets', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: UpdateDatasetRequest) =>
+      request<DatasetView>(`/api/datasets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/api/datasets/${id}`, { method: 'DELETE' }),
+    records: (id: string, filters?: DatasetRecordFilter) => {
+      const params = new URLSearchParams();
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => { if (v !== undefined && v !== null) params.set(k, String(v)); });
+      }
+      const qs = params.toString();
+      return request<ListDatasetRecordsResponse>(`/api/datasets/${id}/records${qs ? `?${qs}` : ''}`);
+    },
+  },
 };
 
 export interface TriggerView {
@@ -824,4 +846,58 @@ export interface UpdateTriggerRequest {
   config?: Record<string, string>;
   action_type?: string;
   action_config?: Record<string, string>;
+}
+
+export interface SchemaFieldView {
+  name: string;
+  type: string;
+  label: string;
+}
+
+export interface DatasetView {
+  id: string;
+  name: string;
+  description: string;
+  schema: SchemaFieldView[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListDatasetsResponse {
+  datasets: DatasetView[];
+  total: number;
+}
+
+export interface CreateDatasetRequest {
+  name: string;
+  description?: string;
+  schema: SchemaFieldView[];
+}
+
+export interface UpdateDatasetRequest {
+  name?: string;
+  description?: string;
+  schema?: SchemaFieldView[];
+}
+
+export interface DatasetRecordView {
+  id: string;
+  run_id: string;
+  agent_id: string;
+  run_started_at: string;
+  data: string;
+}
+
+export interface ListDatasetRecordsResponse {
+  records: DatasetRecordView[];
+  total: number;
+}
+
+export interface DatasetRecordFilter {
+  from?: string;
+  to?: string;
+  fields?: string;
+  limit?: number;
+  offset?: number;
+  agent_id?: string;
 }
