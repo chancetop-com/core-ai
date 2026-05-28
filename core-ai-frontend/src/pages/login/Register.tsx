@@ -50,7 +50,7 @@ export default function Register() {
           <img
             src={dark ? '/logo-lockup-dark.svg' : '/logo-lockup.svg'}
             alt="core-ai"
-            className="h-10 mx-auto mb-3"
+            className="h-14 mx-auto mb-3"
           />
           <h1 className="text-xl font-semibold">Create Account</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>Sign up to get started</p>

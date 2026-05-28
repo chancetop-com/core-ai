@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320" role="img" aria-label="core-ai icon">
-  <rect width="320" height="320" fill="#14120F"/>
-  
+
     <g transform="translate(0 0) scale(1.0)" fill="none" stroke-linecap="round" stroke-linejoin="round">
       <path d="M201 65 C134 45 68 92 68 160 C68 228 134 275 201 255" stroke="#FAF6EE" stroke-width="29"/>
       <path d="M200 112 C161 100 122 126 122 160 C122 194 161 220 200 208" stroke="#FAF6EE" stroke-width="20" opacity="0.94"/>

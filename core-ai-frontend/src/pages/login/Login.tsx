@@ -52,7 +52,7 @@ export default function Login() {
           <img
             src={dark ? '/logo-lockup-dark.svg' : '/logo-lockup.svg'}
             alt="core-ai"
-            className="h-10 mx-auto mb-3"
+            className="h-14 mx-auto mb-3"
           />
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>Sign in to continue</p>
         </div>

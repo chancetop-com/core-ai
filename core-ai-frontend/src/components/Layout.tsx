@@ -112,7 +112,7 @@ export default function Layout() {
               <img
                 src={dark ? '/logo-lockup-dark.svg' : '/logo-lockup.svg'}
                 alt="core-ai"
-                className="h-7"
+                className="h-9"
               />
             </NavLink>
           )}
