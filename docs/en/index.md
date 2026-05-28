@@ -6,7 +6,7 @@ hero:
   text: Java AI Agent Framework
   tagline: Build intelligent agents, multi-agent systems, RAG and flow orchestration
   image:
-    src: /core-ai-logo-v4-icon.svg
+    src: /core-ai-logo-v5-symbol-c-icon.svg
     alt: core-ai
   actions:
     - theme: brand

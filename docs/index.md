@@ -6,7 +6,7 @@ hero:
   text: Java AI Agent 框架
   tagline: 构建智能 Agent、多 Agent 协作、RAG、Flow 编排
   image:
-    src: /core-ai-logo-v4-icon.svg
+    src: /core-ai-logo-v5-symbol-c-icon.svg
     alt: core-ai
   actions:
     - theme: brand

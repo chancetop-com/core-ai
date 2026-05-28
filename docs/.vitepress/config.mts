@@ -21,16 +21,17 @@ export default defineConfig({
   },
 
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/core-ai/core-ai-logo-v4-icon.svg' }],
-    ['meta', { name: 'theme-color', content: '#B88361' }]
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/core-ai/core-ai-logo-v5-symbol-c-icon.svg' }],
+    ['meta', { name: 'theme-color', content: '#A87967' }]
   ],
 
   themeConfig: {
     logo: {
-      light: '/core-ai-logo-v4-icon.svg',
-      dark: '/core-ai-logo-v4-icon-dark.svg',
+      light: '/core-ai-logo-v5-symbol-c-wordmark.svg',
+      dark: '/core-ai-logo-v5-symbol-c-wordmark-dark.svg',
       alt: 'core-ai'
     },
+    siteTitle: false,
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: GITHUB_URL }]
   },

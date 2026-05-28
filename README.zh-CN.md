@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./assets/core-ai-logo-v4-wordmark-tagline-dark.svg">
-    <img src="./assets/core-ai-logo-v4-wordmark-tagline.svg" alt="core-ai — agent framework" width="520">
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/core-ai-logo-v5-symbol-c-wordmark-dark.svg">
+    <img src="./assets/core-ai-logo-v5-symbol-c-wordmark.svg" alt="core-ai" width="640">
   </picture>
 </p>
 

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="240" viewBox="0 0 180 240" role="img" aria-label="core-ai icon">
+
+  <g transform="translate(18 20)">
+
+<g id="core-ai-c-mark" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M120 24 C56 12 14 51 14 100 C14 149 56 188 120 176" stroke="#F7F3EA" stroke-width="26"/>
+  <path d="M118 66 C87 60 65 76 65 100 C65 124 87 140 118 134" stroke="#F7F3EA" stroke-width="17"/>
+  <circle cx="127" cy="100" r="10.5" fill="#C79A80" stroke="none"/>
+</g>
+  </g>
+</svg>
