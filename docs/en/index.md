@@ -2,12 +2,12 @@
 layout: home
 
 hero:
-  name: Core-AI
+  name: core-ai
   text: Java AI Agent Framework
   tagline: Build intelligent agents, multi-agent systems, RAG and flow orchestration
   image:
-    src: /logo.svg
-    alt: Core-AI
+    src: /core-ai-logo-v4-icon.svg
+    alt: core-ai
   actions:
     - theme: brand
       text: Quick Start

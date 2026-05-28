@@ -2,12 +2,12 @@
 layout: home
 
 hero:
-  name: Core-AI
+  name: core-ai
   text: Java AI Agent 框架
   tagline: 构建智能 Agent、多 Agent 协作、RAG、Flow 编排
   image:
-    src: /logo.svg
-    alt: Core-AI
+    src: /core-ai-logo-v4-icon.svg
+    alt: core-ai
   actions:
     - theme: brand
       text: 快速开始

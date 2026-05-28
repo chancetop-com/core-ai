@@ -1,24 +1,36 @@
 import { defineConfig } from 'vitepress';
+import { resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { sidebarCn } from './sidebars/cn';
 import { sidebarEn } from './sidebars/en';
 
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const GITHUB_URL = 'https://github.com/chancetop-com/core-ai';
 
 export default defineConfig({
-  title: 'Core-AI',
+  title: 'core-ai',
   description: 'A powerful Java framework for building AI agents and multi-agent applications',
   base: '/core-ai/',
   cleanUrls: true,
   lastUpdated: true,
   ignoreDeadLinks: true,
 
+  // Serve /assets/ at the site root so README and VitePress share one asset source
+  vite: {
+    publicDir: resolve(__dirname, '../../assets')
+  },
+
   head: [
-    ['link', { rel: 'icon', href: '/core-ai/favicon.ico' }],
-    ['meta', { name: 'theme-color', content: '#3c8772' }]
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/core-ai/core-ai-logo-v4-icon.svg' }],
+    ['meta', { name: 'theme-color', content: '#B88361' }]
   ],
 
   themeConfig: {
-    logo: { src: '/logo.svg', alt: 'Core-AI' },
+    logo: {
+      light: '/core-ai-logo-v4-icon.svg',
+      dark: '/core-ai-logo-v4-icon-dark.svg',
+      alt: 'core-ai'
+    },
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: GITHUB_URL }]
   },

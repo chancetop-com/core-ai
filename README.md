@@ -1,10 +1,15 @@
-# Core-AI Framework
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/core-ai-logo-v4-wordmark-tagline-dark.svg">
+    <img src="./assets/core-ai-logo-v4-wordmark-tagline.svg" alt="core-ai — agent framework" width="520">
+  </picture>
+</p>
 
 <div align="center">
 
 [![Java Version](https://img.shields.io/badge/Java-21%2B-blue.svg)](https://www.oracle.com/java/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![Documentation](https://img.shields.io/badge/Documentation-Available-brightgreen.svg)](./docs/)
+[![Documentation](https://img.shields.io/badge/Documentation-Available-brightgreen.svg)](https://chancetop-com.github.io/core-ai/)
 [![GitHub Stars](https://img.shields.io/github/stars/chancetop-com/core-ai?style=social)](https://github.com/chancetop-com/core-ai)
 
 [English](README.md) | [中文](README.zh-CN.md)
