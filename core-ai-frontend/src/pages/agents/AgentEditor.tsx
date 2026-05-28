@@ -739,7 +739,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Description</label>
+            <label className="block text-sm font-medium mb-1">Description <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></label>
             <input value={agent.description || ''} onChange={e => update('description', e.target.value)}
               className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
               style={inputStyle} />
@@ -748,7 +748,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           {/* System Prompt Selection */}
           <div className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-            <h3 className="font-medium text-sm mb-3">System Prompt</h3>
+            <h3 className="font-medium text-sm mb-3">System Prompt <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></h3>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>
@@ -825,7 +825,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
               className="w-full flex items-center justify-between p-4 cursor-pointer">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal size={16} style={{ color: 'var(--color-text-secondary)' }} />
-                <span className="font-medium text-sm">Model Config</span>
+                <span className="font-medium text-sm">Model Config <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></span>
               </div>
               {modelConfigOpen ? <ChevronDown size={16} style={{ color: 'var(--color-text-secondary)' }} /> : <ChevronRight size={16} style={{ color: 'var(--color-text-secondary)' }} />}
             </button>
@@ -900,7 +900,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
               className="w-full flex items-center justify-between p-4 cursor-pointer">
               <div className="flex items-center gap-2">
                 <Code size={16} style={{ color: 'var(--color-text-secondary)' }} />
-                <span className="font-medium text-sm">Input Template</span>
+                <span className="font-medium text-sm">Input Template <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></span>
               </div>
               {inputTemplateOpen ? <ChevronDown size={16} style={{ color: 'var(--color-text-secondary)' }} /> : <ChevronRight size={16} style={{ color: 'var(--color-text-secondary)' }} />}
             </button>
@@ -923,7 +923,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
               className="w-full flex items-center justify-between p-4 cursor-pointer">
               <div className="flex items-center gap-2">
                 <Braces size={16} style={{ color: 'var(--color-text-secondary)' }} />
-                <span className="font-medium text-sm">Variables</span>
+                <span className="font-medium text-sm">Variables <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></span>
                 {agent.variables && Object.keys(agent.variables).length > 0 && (
                   <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                     {Object.keys(agent.variables).length}
@@ -954,7 +954,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
               className="w-full flex items-center justify-between p-4 cursor-pointer">
               <div className="flex items-center gap-2">
                 <Database size={16} style={{ color: 'var(--color-primary)' }} />
-                <span className="font-medium text-sm">Output Datasets</span>
+                <span className="font-medium text-sm">Output Datasets <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></span>
                 {(agent.output_datasets?.length ?? 0) > 0 && (
                   <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                     {agent.output_datasets!.length}
@@ -1043,7 +1043,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           <div className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
-              <Wrench size={16} style={{ color: '#f59e0b' }} /> Tools
+              <Wrench size={16} style={{ color: '#f59e0b' }} /> Tools <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
               {agent.tools && agent.tools.length > 0 && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                   {agent.tools.length} selected
@@ -1343,7 +1343,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           <div className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
-              <Users size={16} style={{ color: '#8b5cf6' }} /> Subagents
+              <Users size={16} style={{ color: '#8b5cf6' }} /> Subagents <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
             </h3>
             <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
               Select agents to load as subagents when this agent is used in a chat session.
@@ -1428,7 +1428,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           <div className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
-              <Sparkles size={16} style={{ color: '#ec4899' }} /> Skills
+              <Sparkles size={16} style={{ color: '#ec4899' }} /> Skills <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
             </h3>
             <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
               Select skills to enhance this agent's capabilities.
@@ -2082,6 +2082,7 @@ function ResponseSchemaEditor({ value, onChange, inputStyle }: {
         <div className="flex items-center gap-2">
           <Code size={14} style={{ color: 'var(--color-text-secondary)' }} />
           <span>Response Schema</span>
+          <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
           {!open && hasValue && (
             <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               schema set
@@ -2314,6 +2315,7 @@ function SandboxConfigSection({ config, onChange, onEnvChange, inputStyle }: {
         <div className="flex items-center gap-2">
           <Wrench size={14} style={{ color: 'var(--color-text-secondary)' }} />
           <span>Sandbox Configuration</span>
+          <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
           {!open && (config?.image || hasEnv) && (
             <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               {config?.image ? 'image set' : ''}{config?.image && hasEnv ? ', ' : ''}{hasEnv ? `${envRows.filter(r => r.key.trim()).length} env vars` : ''}
