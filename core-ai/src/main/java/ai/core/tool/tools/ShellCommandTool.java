@@ -267,6 +267,11 @@ public class ShellCommandTool extends ToolCall {
             process.destroyForcibly();
             waitFor(process);
             return "Command timed out after " + timeout + " seconds\nPlease check your command and workspace dir\n" + String.join("\n", outputLines);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            process.destroyForcibly();
+            waitFor(process);
+            return "Command cancelled\n" + String.join("\n", outputLines);
         } catch (Exception e) {
             process.destroyForcibly();
             var cause = e.getCause();

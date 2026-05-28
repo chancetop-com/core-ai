@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -131,7 +132,9 @@ public class ToolExecutor {
         // use it as the explicit parent so the trace tree shows LLM -> tool causal chain.
         var llmSpanContext = context.getLastLLMSpanContext();
 
+        var threadRef = new AtomicReference<Thread>();
         var future = CompletableFuture.supplyAsync(() -> {
+            threadRef.set(Thread.currentThread());
             try (var scope = otelContext.makeCurrent()) {
                 if (tracer != null) {
                     return tracer.traceToolCall(
@@ -155,6 +158,10 @@ public class ToolExecutor {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             future.cancel(true);
+            var asyncThread = threadRef.get();
+            if (asyncThread != null) {
+                asyncThread.interrupt();
+            }
             return ToolCallResult.failed(Strings.format("tool call interrupted: {}", functionCall.function.name));
         } catch (ExecutionException e) {
             var cause = e.getCause();
