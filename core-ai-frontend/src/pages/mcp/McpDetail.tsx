@@ -3,15 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Server, RefreshCw, Plug, Play, ChevronDown, ChevronRight, Wrench, Loader2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ToolRegistryView, McpToolInfo, McpConnectionState } from '../../api/client';
-
-const STATE_COLORS: Record<McpConnectionState, { bg: string; fg: string; label: string }> = {
-  CONNECTED: { bg: '#065f46', fg: '#fff', label: 'Connected' },
-  CONNECTING: { bg: '#1f3a8a', fg: '#fff', label: 'Connecting' },
-  RECONNECTING: { bg: '#92400e', fg: '#fff', label: 'Reconnecting' },
-  DISCONNECTED: { bg: 'var(--color-bg-tertiary)', fg: 'var(--color-text-secondary)', label: 'Disconnected' },
-  FAILED: { bg: '#7f1d1d', fg: '#fff', label: 'Failed' },
-  NOT_CONNECTED: { bg: 'var(--color-bg-tertiary)', fg: 'var(--color-text-secondary)', label: 'Idle' },
-};
+import { ConnectionStateBadge, EnabledBadge } from './badges';
 
 export default function McpDetail() {
   const { id = '' } = useParams<{ id: string }>();
@@ -75,7 +67,6 @@ export default function McpDetail() {
     }
   };
 
-  const stateStyle = STATE_COLORS[state];
   const alreadyConnected = state === 'CONNECTED';
   const connectDisabled = !server?.enabled || connecting || alreadyConnected;
 
@@ -103,21 +94,15 @@ export default function McpDetail() {
 
       <div className="rounded-xl border p-4 mb-4"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-1 flex-wrap">
-              <Server size={18} style={{ color: 'var(--color-primary)' }} />
-              <h1 className="text-xl font-semibold truncate">{server.name}</h1>
-              <span className="px-2 py-0.5 rounded text-xs"
-                style={server.enabled
-                  ? { background: '#065f46', color: '#fff' }
-                  : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                {server.enabled ? 'Enabled' : 'Disabled'}
-              </span>
-              <span className="px-2 py-0.5 rounded text-xs"
-                style={{ background: stateStyle.bg, color: stateStyle.fg }}>
-                {stateStyle.label}
-              </span>
+            <div className="flex items-center gap-2">
+              <Server size={18} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
+              <h1 className="text-xl font-semibold break-words" title={server.name}>{server.name}</h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <EnabledBadge enabled={server.enabled} />
+              <ConnectionStateBadge state={state} />
               {server.category && (
                 <span className="px-2 py-0.5 rounded text-xs"
                   style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
@@ -126,10 +111,10 @@ export default function McpDetail() {
               )}
             </div>
             {server.description && (
-              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>{server.description}</p>
+              <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>{server.description}</p>
             )}
             {stateMessage && (
-              <p className="text-xs mt-1" style={{ color: '#fbbf24' }}>{stateMessage}</p>
+              <p className="text-xs mt-2" style={{ color: '#fbbf24' }}>{stateMessage}</p>
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -150,11 +135,11 @@ export default function McpDetail() {
         </div>
 
         {Object.keys(server.config || {}).length > 0 && (
-          <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
-            <div className="text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Configuration</div>
-            <div className="grid grid-cols-2 gap-2">
+          <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+            <div className="text-xs mb-2" style={{ color: 'var(--color-text-secondary)' }}>Configuration</div>
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
               {Object.entries(server.config).map(([k, v]) => (
-                <div key={k} className="text-xs font-mono rounded px-2 py-1"
+                <div key={k} className="text-xs font-mono rounded px-2 py-1 min-w-0"
                   style={{ background: 'var(--color-bg-tertiary)' }}>
                   <span style={{ color: 'var(--color-text-secondary)' }}>{k}: </span>
                   <span className="break-all">{v}</span>
@@ -267,19 +252,21 @@ function ToolRow({
   return (
     <div className="rounded-lg border"
       style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
-      <div className="flex items-center justify-between p-3 cursor-pointer" onClick={onToggle}>
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex items-start gap-3 p-3 cursor-pointer" onClick={onToggle}>
+        <div className="pt-0.5 shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <span className="font-mono text-sm truncate">{tool.name}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-sm break-all" title={tool.name}>{tool.name}</div>
           {tool.description && (
-            <span className="text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
-              — {tool.description}
-            </span>
+            <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-secondary)' }} title={tool.description}>
+              {tool.description}
+            </div>
           )}
         </div>
         <button onClick={e => { e.stopPropagation(); if (!expanded) onToggle(); }}
           disabled={!canTest}
-          className="flex items-center gap-1 px-2 py-1 rounded border text-xs cursor-pointer disabled:opacity-40 ml-2"
+          className="shrink-0 flex items-center gap-1 px-2 py-1 rounded border text-xs cursor-pointer disabled:opacity-40"
           style={{ borderColor: 'var(--color-border)' }}
           title={canTest ? 'Test this tool' : 'Connect first'}>
           <Play size={12} /> Test

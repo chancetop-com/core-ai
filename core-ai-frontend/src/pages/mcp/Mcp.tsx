@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Server, Power, PowerOff, Trash2, Edit2, X, Save, ChevronLeft, ChevronRight, ChevronRight as ArrowRight } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ToolRegistryView, McpConnectionState } from '../../api/client';
+import { ConnectionStateBadge, EnabledBadge } from './badges';
 
 export default function Mcp() {
   const navigate = useNavigate();
@@ -169,25 +170,24 @@ export default function Mcp() {
               opacity: s.enabled ? 1 : 0.7,
             }}
             onClick={() => navigate(`/mcp/${encodeURIComponent(s.id)}`)}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Server size={18} style={{ color: s.enabled ? 'var(--color-primary)' : 'var(--color-text-secondary)' }} />
-                <span className="font-medium">{s.name}</span>
-                <span className={`px-2 py-0.5 rounded text-xs ${s.enabled ? 'text-white' : ''}`}
-                  style={s.enabled
-                    ? { background: '#065f46' }
-                    : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                  {s.enabled ? 'Enabled' : 'Disabled'}
-                </span>
-                {s.enabled && <ConnectionStateBadge state={statusMap[s.id]} />}
-                {s.category && (
-                  <span className="px-2 py-0.5 rounded text-xs"
-                    style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                    {s.category}
-                  </span>
-                )}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <Server size={18} className="shrink-0 mt-0.5" style={{ color: s.enabled ? 'var(--color-primary)' : 'var(--color-text-secondary)' }} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium break-words" title={s.name}>{s.name}</div>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <EnabledBadge enabled={s.enabled} />
+                    {s.enabled && <ConnectionStateBadge state={statusMap[s.id]} />}
+                    {s.category && (
+                      <span className="px-2 py-0.5 rounded text-xs"
+                        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                        {s.category}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                 <button onClick={() => {
                   setEditing({ ...s });
                   setCreating(false);
@@ -217,11 +217,14 @@ export default function Mcp() {
                 </button>
               </div>
             </div>
-            {s.description && (
-              <p className="text-sm mt-1 ml-7" style={{ color: 'var(--color-text-secondary)' }}>{s.description}</p>
-            )}
-            <div className="mt-1 ml-7 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-              Config keys: {getConfigSummary(s.config)}
+            {/* ml = Server icon width (18px) + gap-3 (12px) so description aligns under the name */}
+            <div className="ml-[30px] mt-2 space-y-1">
+              {s.description && (
+                <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{s.description}</p>
+              )}
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                Config keys: {getConfigSummary(s.config)}
+              </div>
             </div>
           </div>
         ))}
@@ -268,24 +271,6 @@ export default function Mcp() {
         />
       )}
     </div>
-  );
-}
-
-function ConnectionStateBadge({ state }: { state?: McpConnectionState }) {
-  const s = state ?? 'NOT_CONNECTED';
-  const styleMap: Record<McpConnectionState, { bg: string; fg: string; label: string }> = {
-    CONNECTED: { bg: '#065f46', fg: '#fff', label: 'Connected' },
-    CONNECTING: { bg: '#1f3a8a', fg: '#fff', label: 'Connecting' },
-    RECONNECTING: { bg: '#92400e', fg: '#fff', label: 'Reconnecting' },
-    DISCONNECTED: { bg: 'var(--color-bg-tertiary)', fg: 'var(--color-text-secondary)', label: 'Disconnected' },
-    FAILED: { bg: '#7f1d1d', fg: '#fff', label: 'Failed' },
-    NOT_CONNECTED: { bg: 'var(--color-bg-tertiary)', fg: 'var(--color-text-secondary)', label: 'Idle' },
-  };
-  const v = styleMap[s];
-  return (
-    <span className="px-2 py-0.5 rounded text-xs" style={{ background: v.bg, color: v.fg }}>
-      {v.label}
-    </span>
   );
 }
 
