@@ -2,6 +2,7 @@ import ai.core.cli.CliApp;
 import ai.core.cli.CliAppOptions;
 import ai.core.cli.DebugLog;
 import ai.core.cli.upgrade.UpgradeChecker;
+import ai.core.cli.upgrade.UpgradeDownloader;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -84,8 +85,11 @@ public class Main implements Callable<Integer> {
     @Option(names = "--acp-agent", description = "Start in ACP (Agent Client Protocol) stdio mode for editor integration")
     boolean acpAgent;
 
-    @Option(names = "--upgrade", description = "Check for new CLI version and show upgrade instructions")
+    @Option(names = "--upgrade", description = "Download and install the latest CLI version")
     boolean upgrade;
+
+    @Option(names = "--upgrade-dir", description = "Install directory for --upgrade (default: current binary dir or ~/.core-ai/bin/)")
+    Path upgradeDir;
 
     @Override
     public Integer call() {
@@ -110,20 +114,49 @@ public class Main implements Callable<Integer> {
         return 0;
     }
 
-    private static void checkUpgrade() {
-        var info = new UpgradeChecker().check();
+    private void checkUpgrade() {
+        var checker = new UpgradeChecker();
+        var info = checker.check();
         if (info == null || info.latestVersion() == null) {
             System.out.println("Failed to check for updates. Please try again later.");
+            System.exit(1);
             return;
         }
         if (!info.isNewer()) {
             System.out.println("You are up to date (v" + info.currentVersion() + ")");
             return;
         }
+
         System.out.println("New version available: v" + info.latestVersion() + " (current: v" + info.currentVersion() + ")");
-        if (info.releaseUrl() != null) {
-            System.out.println("Download: " + info.releaseUrl());
+        System.out.println("Platform: " + UpgradeDownloader.detectPlatformSuffix());
+
+        Path installDir = upgradeDir != null ? upgradeDir : UpgradeDownloader.resolveInstallDir();
+        try {
+            System.out.println("Downloading to " + installDir + "...");
+            Path downloaded = UpgradeDownloader.download(info.latestVersion(), installDir);
+
+            Path currentBinary = UpgradeDownloader.findCurrentBinary();
+            if (currentBinary != null) {
+                Path replaced = UpgradeDownloader.tryReplaceCurrent(downloaded, currentBinary);
+                if (replaced.equals(currentBinary)) {
+                    System.out.println("Replaced " + currentBinary.getFileName() + ". Restart to use v" + info.latestVersion());
+                } else {
+                    System.out.println("Saved as " + replaced + " (cannot overwrite running binary)");
+                    System.out.println("Replace manually and restart to use v" + info.latestVersion());
+                }
+            } else {
+                System.out.println("Downloaded to " + downloaded);
+                System.out.println("Run: " + downloaded);
+            }
+
+            if (!UpgradeDownloader.isInPath(installDir)) {
+                System.out.println();
+                System.out.println("Install directory is not in PATH:");
+                System.out.println(UpgradeDownloader.pathSetupInstructions(installDir));
+            }
+        } catch (UpgradeDownloader.UpgradeException e) {
+            System.err.println("Upgrade failed: " + e.getMessage());
+            System.exit(1);
         }
-        System.out.println("To upgrade: download the binary for your platform from the release page above.");
     }
 }
