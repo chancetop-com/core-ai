@@ -1,0 +1,14 @@
+{
+  "name": "core-ai-docs",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Core-AI documentation site powered by VitePress",
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build .",
+    "preview": "vitepress preview ."
+  },
+  "devDependencies": {
+    "vitepress": "^1.5.0"
+  }
+}
