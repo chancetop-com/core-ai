@@ -167,8 +167,9 @@ public class OutputPanel {
             writer.println("\n" + AnsiTheme.SEPARATOR + "●" + AnsiTheme.RESET + " " + group + "(" + summary + ")");
         }
         writer.flush();
+        boolean wasReasoningShown = reasoningShown;
         resetShown();
-        startSpinner();
+        startSpinner(wasReasoningShown);
     }
 
     public void toolStart(String toolName, String arguments, String diff, Boolean frontTask) {
@@ -188,8 +189,9 @@ public class OutputPanel {
             }
         }
         writer.flush();
+        boolean wasReasoningShown = reasoningShown;
         resetShown();
-        startSpinner();
+        startSpinner(wasReasoningShown);
 
     }
 
@@ -197,8 +199,9 @@ public class OutputPanel {
         stopSpinnerIfActive();
         writer.println(INDENT + AnsiTheme.MUTED + "\u23BF  Running in background" + AnsiTheme.RESET);
         writer.flush();
+        boolean wasReasoningShown = reasoningShown;
         resetShown();
-        startSpinner();
+        startSpinner(wasReasoningShown);
     }
 
 
@@ -220,8 +223,9 @@ public class OutputPanel {
         }
         writer.flush();
         toolOutputStreaming = false;
+        boolean wasReasoningShown = reasoningShown;
         resetShown();
-        startSpinner();
+        startSpinner(wasReasoningShown);
     }
 
     public void batchResult(String status, String result) {
@@ -241,8 +245,9 @@ public class OutputPanel {
             }
         }
         writer.flush();
+        boolean wasReasoningShown = reasoningShown;
         resetShown();
-        startSpinner();
+        startSpinner(wasReasoningShown);
     }
 
     public void toolOutputChunk(String line) {
@@ -368,8 +373,9 @@ public class OutputPanel {
         writer.println("\n" + AnsiTheme.CMD_NAME + "\u25CF Planning:" + AnsiTheme.RESET);
         var normalized = todos.stream().map(todoItem -> new PlanUpdateEvent.TodoItem(todoItem.content, todoItem.status.toLowerCase(Locale.ROOT))).toList();
         planRenderer.render(normalized);
+        boolean wasReasoningShown = reasoningShown;
         resetShown();
-        startSpinner();
+        startSpinner(wasReasoningShown);
     }
 
     public void endTurn() {
@@ -387,9 +393,13 @@ public class OutputPanel {
     }
 
     public void startSpinner() {
+        startSpinner(reasoningShown);
+    }
+
+    public void startSpinner(boolean wasReasoningShown) {
         if (spinnerActive.compareAndSet(false, true)) {
             mdRenderer.flush();
-            if (reasoningShown && !textStarted) {
+            if (wasReasoningShown && !textStarted) {
                 writer.println();
                 writer.flush();
             }

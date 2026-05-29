@@ -86,8 +86,7 @@ public class ThinkingSpinner {
                 content = content.substring(0, termWidth - 1);
             }
             clearWrappedLines(termWidth, prevContentLen);
-            int pad = Math.max(0, prevContentLen - content.length());
-            writer.print("\r" + AnsiTheme.PROMPT + content + AnsiTheme.RESET + " ".repeat(pad));
+            writer.print("\r\u001B[2K" + AnsiTheme.PROMPT + content + AnsiTheme.RESET);
             writer.flush();
             lastContentLen = content.length();
             prevContentLen = lastContentLen;
@@ -150,7 +149,7 @@ public class ThinkingSpinner {
         if (termWidth > 0) {
             clearWrappedLines(termWidth, lastContentLen);
         }
-        writer.print("\r" + " ".repeat(lastContentLen) + "\r");
+        writer.print("\r\u001B[2K");
         writer.flush();
         lastContentLen = 0;
     }
