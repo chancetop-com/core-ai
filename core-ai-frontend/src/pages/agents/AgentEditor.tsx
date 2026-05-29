@@ -14,7 +14,7 @@ const NEW_AGENT_SKELETON: AgentDefinition = {
   tools: [], input_template: '', variables: {},
   system_default: false, type: 'AGENT', response_schema: null,
   created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
-  subagent_ids: [], skill_ids: [], output_datasets: [],
+  subagent_ids: [], skill_ids: [],
 };
 
 export default function AgentEditor() {
@@ -59,7 +59,8 @@ export default function AgentEditor() {
   // Output datasets
   const [allDatasets, setAllDatasets] = useState<{ id: string; name: string }[]>([]);
   const [datasetsLoaded, setDatasetsLoaded] = useState(false);
-  const [showDatasetPicker, setShowDatasetPicker] = useState(false);
+  const [datasetSearch, setDatasetSearch] = useState('');
+  const [datasetFocused, setDatasetFocused] = useState(false);
   const [datasetsOpen, setDatasetsOpen] = useState(false);
   const [inputTemplateOpen, setInputTemplateOpen] = useState(false);
   const [variablesOpen, setVariablesOpen] = useState(false);
@@ -345,6 +346,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           response_schema: agent.response_schema,
           subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined,
           skill_ids: (agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined,
+          output_dataset_id: agent.output_dataset_id,
         });
         navigate(`/agents/${created.id}`);
         return;
@@ -365,10 +367,11 @@ The system prompt should define how this agent behaves, its capabilities, and it
         input_template: agent.input_template,
         variables: agent.variables,
         response_schema: agent.response_schema,
-        subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined,
-        skill_ids: (agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined,
-      });
-      setAgent(updated);
+          subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined,
+          skill_ids: (agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined,
+          output_dataset_id: agent.output_dataset_id,
+        });
+        setAgent(updated);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
@@ -947,17 +950,17 @@ The system prompt should define how this agent behaves, its capabilities, and it
             )}
           </div>
 
-          {/* Output Datasets */}
+          {/* Output Dataset */}
           <div className="rounded-xl border mt-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <button
               onClick={() => { if (!datasetsOpen) loadDatasets(); setDatasetsOpen(!datasetsOpen); }}
               className="w-full flex items-center justify-between p-4 cursor-pointer">
               <div className="flex items-center gap-2">
                 <Database size={16} style={{ color: 'var(--color-primary)' }} />
-                <span className="font-medium text-sm">Output Datasets <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></span>
-                {(agent.output_datasets?.length ?? 0) > 0 && (
+                <span className="font-medium text-sm">Output Dataset <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></span>
+                {agent.output_dataset_id && (
                   <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                    {agent.output_datasets!.length}
+                    set
                   </span>
                 )}
               </div>
@@ -966,58 +969,55 @@ The system prompt should define how this agent behaves, its capabilities, and it
             {datasetsOpen && (
               <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
                 <p className="text-xs pt-3 mb-3" style={{ color: 'var(--color-text-secondary)' }}>
-                  Select datasets to extract structured data from each agent run output.
+                  Select a dataset to extract structured data from each agent run output.
                 </p>
-                {(agent.output_datasets?.length ?? 0) > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {agent.output_datasets!.map(binding => {
-                      const ds = allDatasets.find(d => d.id === binding.dataset_id);
-                      return (
-                        <span key={binding.dataset_id}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-                          style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-primary)' }} />
-                          <span className="font-medium">{ds?.name || binding.dataset_id}</span>
-                          <button onClick={() => setAgent(prev => prev ? {
-                            ...prev,
-                            output_datasets: (prev.output_datasets || []).filter(b => b.dataset_id !== binding.dataset_id)
-                          } : prev)}
-                            className="cursor-pointer ml-0.5 rounded"
-                            style={{ color: 'var(--color-text-secondary)' }}>
-                            <X size={12} />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                {agent.output_dataset_id && (() => {
+                  const ds = allDatasets.find(d => d.id === agent.output_dataset_id);
+                  return (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                        style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-primary)' }} />
+                        <span className="font-medium">{ds?.name || agent.output_dataset_id}</span>
+                        <button onClick={() => update('output_dataset_id', '')}
+                          className="cursor-pointer ml-0.5 rounded"
+                          style={{ color: 'var(--color-text-secondary)' }}>
+                          <X size={12} />
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="relative">
-                  <button onClick={() => setShowDatasetPicker(!showDatasetPicker)}
-                    onBlur={() => setTimeout(() => setShowDatasetPicker(false), 200)}
-                    className="w-full px-3 py-2 rounded-lg border text-sm text-left cursor-pointer flex items-center justify-between"
+                  <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-sm"
                     style={inputStyle}>
-                    <span style={{ color: 'var(--color-text-secondary)' }}>Add dataset...</span>
-                    <ChevronDown size={14} style={{ color: 'var(--color-text-secondary)' }} />
-                  </button>
-                  {showDatasetPicker && (
-                    <div className="absolute z-10 w-full mt-1 rounded-lg border max-h-48 overflow-y-auto"
-                      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+                    <Search size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+                    <input value={datasetSearch} onChange={e => setDatasetSearch(e.target.value)}
+                      onFocus={() => setDatasetFocused(true)}
+                      onBlur={() => setDatasetFocused(false)}
+                      className="flex-1 bg-transparent outline-none text-sm"
+                      placeholder="Search datasets..." />
+                  </div>
+                  {(datasetFocused || datasetSearch) && (
+                    <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
+                      onMouseDown={e => e.preventDefault()}
+                      style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
                       {allDatasets
-                        .filter(d => !(agent.output_datasets || []).some(b => b.dataset_id === d.id))
+                        .filter(d => d.id !== agent.output_dataset_id)
+                        .filter(d => !datasetSearch || d.name.toLowerCase().includes(datasetSearch.toLowerCase()))
                         .map(d => (
                           <button key={d.id}
-                            onMouseDown={() => {
-                              setAgent(prev => prev ? {
-                                ...prev,
-                                output_datasets: [...(prev.output_datasets || []), { dataset_id: d.id }]
-                              } : prev);
+                            onClick={() => {
+                              update('output_dataset_id', d.id);
+                              setDatasetSearch('');
                             }}
-                            className="w-full px-3 py-2 text-left text-sm cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
-                            style={{ color: 'var(--color-text)' }}>
-                            {d.name}
+                            className="w-full px-3 py-2 text-left text-sm cursor-pointer hover:bg-[var(--color-bg-tertiary)] flex items-center gap-2"
+                            style={{ borderBottom: '1px solid var(--color-border)' }}>
+                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-primary)' }} />
+                            <span style={{ color: 'var(--color-text)' }}>{d.name}</span>
                           </button>
                         ))}
-                      {allDatasets.filter(d => !(agent.output_datasets || []).some(b => b.dataset_id === d.id)).length === 0 && (
+                      {allDatasets.filter(d => d.id !== agent.output_dataset_id).length === 0 && (
                         <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                           {allDatasets.length === 0 ? 'No datasets available' : 'All datasets selected'}
                         </div>

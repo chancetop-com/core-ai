@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Database, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Sun, FileText, LogOut, Wrench, Settings, Webhook, Zap } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Database, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Zap } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -24,6 +24,7 @@ export default function Layout() {
   useEffect(() => {
     const titles: Record<string, string> = {
       '/chat': 'Chat',
+      '/for-you': 'For You',
       '/traces': 'Traces',
       '/sessions': 'Sessions',
       '/agents': 'Agents',
@@ -72,6 +73,7 @@ export default function Layout() {
   };
 
   const navItems: NavItem[] = [
+    { to: '/for-you', icon: Star, label: 'For You', show: true },
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
     { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces },
     { to: '/agents', icon: Bot, label: 'Agents', show: true },

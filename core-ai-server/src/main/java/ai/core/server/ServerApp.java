@@ -17,6 +17,8 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SystemPrompt;
 import ai.core.server.domain.ToolRegistry;
 import ai.core.server.domain.User;
+import ai.core.server.domain.UserReport;
+import ai.core.server.domain.UserTodo;
 import ai.core.server.domain.migration.SchemaVersion;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
@@ -78,5 +80,8 @@ public class ServerApp extends App {
         // dataset collections
         mongo.collection(Dataset.class);
         mongo.collection(DatasetRecord.class);
+
+        mongo.collection(UserReport.class);
+        mongo.collection(UserTodo.class);
     }
 }

@@ -78,6 +78,8 @@ import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.web.CapabilitiesController;
 import ai.core.server.web.SpeechController;
 import ai.core.server.web.StaticFileController;
+import ai.core.server.web.foryou.ForYouController;
+import ai.core.server.web.foryou.ForYouService;
 import ai.core.server.trace.service.IngestService;
 import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.PromptService;
@@ -137,6 +139,7 @@ public class ServerModule extends Module {
         registerTrace();
         registerSystemPrompt();
         registerCapabilities();
+        registerForYou();
         var sseConfig = config(PatchedServerSentEventConfig.class, "core-ai-server-sse");
         sseConfig.listen(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class));
         sseConfig.listen(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class));
@@ -193,9 +196,10 @@ public class ServerModule extends Module {
         bind(AgentRunService.class);
         bind(AgentScheduleService.class);
         bind(UserService.class);
-        var triggerService = bind(TriggerService.class);
+        var triggerService =         bind(TriggerService.class);
         triggerService.publicUrl = publicUrl;
         bind(RunAgentAction.class);
+        bind(ForYouService.class);
     }
 
     private void bindWebService() {
@@ -270,7 +274,7 @@ public class ServerModule extends Module {
             "/", "/login", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
             "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools",
-            "/triggers", "/datasets"
+            "/triggers", "/datasets", "/for-you"
         };
         for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);
@@ -358,5 +362,21 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.POST, "/v1/traces", otlpController::receive);
         http().route(HTTPMethod.POST, "/api/public/otel/v1/traces", otlpController::receive);
         http().route(HTTPMethod.POST, "/api/ingest/spans", ingestController::ingestSpans);
+    }
+
+    private void registerForYou() {
+        var controller = bind(ForYouController.class);
+
+        http().route(HTTPMethod.GET, "/api/for-you", controller::dashboard);
+        http().route(HTTPMethod.GET, "/api/for-you/reports", controller::listReports);
+        http().route(HTTPMethod.POST, "/api/for-you/reports", controller::createReport);
+        http().route(HTTPMethod.PUT, "/api/for-you/reports/:id", controller::updateReport);
+        http().route(HTTPMethod.DELETE, "/api/for-you/reports/:id", controller::deleteReport);
+        http().route(HTTPMethod.GET, "/api/for-you/todos", controller::listTodos);
+        http().route(HTTPMethod.POST, "/api/for-you/todos", controller::createTodo);
+        http().route(HTTPMethod.PUT, "/api/for-you/todos/:id", controller::updateTodo);
+        http().route(HTTPMethod.DELETE, "/api/for-you/todos/:id", controller::deleteTodo);
+        http().route(HTTPMethod.GET, "/api/for-you/files", controller::listFiles);
+        http().route(HTTPMethod.GET, "/api/for-you/token-usage", controller::tokenUsage);
     }
 }

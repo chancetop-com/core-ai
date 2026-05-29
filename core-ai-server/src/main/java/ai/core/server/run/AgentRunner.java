@@ -11,7 +11,6 @@ import ai.core.tool.ToolCall;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
-import ai.core.server.domain.OutputDatasetBinding;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.TranscriptEntry;
@@ -398,22 +397,21 @@ public class AgentRunner {
 
     private void extractDatasetRecords(String output, AgentDefinition definition, String runId, String agentId, ZonedDateTime runStartedAt) {
         var config = definition.publishedConfig;
-        List<OutputDatasetBinding> bindings = config != null ? config.outputDatasets : definition.outputDatasets;
-        if (bindings == null || bindings.isEmpty() || output == null || output.isBlank()) return;
+        String datasetId = config != null ? config.outputDatasetId : definition.outputDatasetId;
+        if (datasetId == null || output == null || output.isBlank()) return;
 
-        for (var binding : bindings) {
-            try {
-                var dataset = datasetService.get(binding.datasetId, definition.userId);
-                if (dataset == null) {
-                    LOGGER.warn("output dataset not found, datasetId={}, runId={}", binding.datasetId, runId);
-                    continue;
-                }
-                var data = llmCallExecutor.extractStructured(output, dataset, definition);
-                if (data == null || data.isEmpty()) continue;
-                datasetRecordService.insert(dataset.id, agentId, runId, runStartedAt, data);
-            } catch (Exception e) {
-                LOGGER.warn("failed to extract dataset record, datasetId={}, runId={}", binding.datasetId, runId, e);
+        try {
+            var dataset = datasetService.get(datasetId, definition.userId);
+            if (dataset == null) {
+                LOGGER.warn("output dataset not found, datasetId={}, runId={}", datasetId, runId);
+                return;
             }
+            var data = llmCallExecutor.extractStructured(output, dataset, definition);
+            if (data != null && !data.isEmpty()) {
+                datasetRecordService.insert(dataset.id, agentId, runId, runStartedAt, data);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("failed to extract dataset record, datasetId={}, runId={}", datasetId, runId, e);
         }
     }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, FileText, Code as CodeIcon, FileCode, Globe, Image as ImageIcon, Download, Copy, Check, Loader2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, FileText, Code as CodeIcon, FileCode, Globe, Image as ImageIcon, Download, Copy, Check, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -121,6 +122,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   const [fileLoading, setFileLoading] = useState(false);
   const [width, setWidth] = useState<number>(() => loadStoredWidth());
   const [isDragging, setIsDragging] = useState(false);
+  const [maximized, setMaximized] = useState(false);
 
   // While dragging the left edge: track cursor with window listeners so iframe
   // content inside the drawer can't swallow the mousemove. Clamp to viewport.
@@ -218,16 +220,18 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
     }
   };
 
-  return (
+  const drawerContent = (
     <div className="flex flex-col h-full shrink-0 border-l relative"
-      style={{ width, borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
+      style={{ width: maximized ? '100%' : width, borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
       {/* drag handle on left edge — 6px hit area but only 1px visible accent */}
-      <div
-        onMouseDown={e => { e.preventDefault(); setIsDragging(true); }}
-        className="absolute top-0 left-0 h-full z-20"
-        style={{ width: 6, marginLeft: -3, cursor: 'col-resize' }}
-        title="Drag to resize"
-      />
+      {!maximized && (
+        <div
+          onMouseDown={e => { e.preventDefault(); setIsDragging(true); }}
+          className="absolute top-0 left-0 h-full z-20"
+          style={{ width: 6, marginLeft: -3, cursor: 'col-resize' }}
+          title="Drag to resize"
+        />
+      )}
       {/* drag-time overlay: blocks iframe pointer events + forces col-resize cursor everywhere */}
       {isDragging && (
         <div className="fixed inset-0 z-50" style={{ cursor: 'col-resize' }} />
@@ -269,6 +273,14 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
               <Download size={14} />
             </button>
           )}
+          <button onClick={() => setMaximized(m => !m)}
+            className="p-1.5 rounded-lg cursor-pointer transition-colors"
+            style={{ color: 'var(--color-text-secondary)' }}
+            title={maximized ? 'Restore' : 'Maximize'}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            {maximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
           <button onClick={onClose}
             className="p-1.5 rounded-lg cursor-pointer transition-colors"
             style={{ color: 'var(--color-text-secondary)' }}
@@ -308,6 +320,15 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
       </div>
     </div>
   );
+
+  if (maximized) {
+    return createPortal(
+      <div className="fixed inset-0 z-50">{drawerContent}</div>,
+      document.body
+    );
+  }
+
+  return drawerContent;
 }
 
 interface FileState {

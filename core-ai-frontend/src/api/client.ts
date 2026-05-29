@@ -255,11 +255,7 @@ export interface AgentDefinition {
   subagent_ids?: string[];
   skill_ids?: string[];
   sandbox_config?: SandboxConfig;
-  output_datasets?: OutputDatasetBinding[];
-}
-
-export interface OutputDatasetBinding {
-  dataset_id: string;
+  output_dataset_id?: string;
 }
 
 export interface ListAgentsResponse {
@@ -813,6 +809,40 @@ export const api = {
       return request<ListDatasetRecordsResponse>(`/api/datasets/${id}/records${qs ? `?${qs}` : ''}`);
     },
   },
+  forYou: {
+    dashboard: () =>
+      request<ForYouDashboard>('/api/for-you'),
+    listReports: () =>
+      request<{ reports: ForYouReport[] }>('/api/for-you/reports'),
+    createReport: (data: { title: string; content?: string; type?: string; tags?: string[] }) =>
+      request<{ report: ForYouReport }>('/api/for-you/reports', { method: 'POST', body: JSON.stringify(data) }),
+    updateReport: (id: string, data: { title?: string; content?: string; type?: string; tags?: string[] }) =>
+      request<{ report: ForYouReport }>(`/api/for-you/reports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteReport: (id: string) =>
+      request<{ deleted: boolean }>(`/api/for-you/reports/${id}`, { method: 'DELETE' }),
+    listTodos: () =>
+      request<{ todos: ForYouTodo[] }>('/api/for-you/todos'),
+    createTodo: (data: { title: string; description?: string; priority?: string; due_date?: string }) =>
+      request<{ todo: ForYouTodo }>('/api/for-you/todos', { method: 'POST', body: JSON.stringify(data) }),
+    updateTodo: (id: string, data: { title?: string; description?: string; completed?: boolean; priority?: string; due_date?: string }) =>
+      request<{ todo: ForYouTodo }>(`/api/for-you/todos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteTodo: (id: string) =>
+      request<{ deleted: boolean }>(`/api/for-you/todos/${id}`, { method: 'DELETE' }),
+    listFiles: () =>
+      request<{ files: ForYouFile[] }>('/api/for-you/files'),
+    tokenUsage: (range?: string, from?: string, to?: string) => {
+        const params = new URLSearchParams();
+        if (from && to) {
+          params.set('from', from);
+          params.set('to', to);
+        } else if (range) {
+          params.set('range', range);
+        } else {
+          params.set('range', '7d');
+        }
+        return request<ForYouTokenUsage>(`/api/for-you/token-usage?${params.toString()}`);
+      },
+  },
 };
 
 export interface TriggerView {
@@ -906,4 +936,78 @@ export interface DatasetRecordFilter {
   limit?: number;
   offset?: number;
   agent_id?: string;
+}
+
+// --- For You types ---
+
+export interface ForYouDashboard {
+  report_count: number;
+  todo_count: number;
+  active_todo_count: number;
+  file_count: number;
+  recent_sessions: ForYouSession[];
+  recent_reports: ForYouReport[];
+  active_todos: ForYouTodo[];
+  recent_files: ForYouFile[];
+}
+
+export interface ForYouSession {
+  id: string;
+  user_id: string;
+  agent_id: string;
+  source: string;
+  title: string;
+  message_count: number;
+  created_at: string;
+  last_message_at: string | null;
+}
+
+export interface ForYouReport {
+  id: string;
+  user_id: string;
+  title: string;
+  content: string | null;
+  type: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForYouTodo {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  priority: string;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForYouFile {
+  id: string;
+  user_id: string;
+  file_name: string;
+  content_type: string;
+  size: number;
+  created_at: string;
+}
+
+export interface ForYouTokenUsage {
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cached_tokens: number;
+  total_cost_usd: number;
+  daily: DailyTokenUsage[];
+}
+
+export interface DailyTokenUsage {
+  date: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cached_tokens: number;
+  cost_usd: number;
 }

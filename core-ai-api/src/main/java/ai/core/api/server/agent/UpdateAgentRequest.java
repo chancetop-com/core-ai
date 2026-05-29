@@ -61,6 +61,6 @@ public class UpdateAgentRequest {
     @Property(name = "sandbox_config")
     public SandboxConfigView sandboxConfig;
 
-    @Property(name = "output_datasets")
-    public List<OutputDatasetBindingView> outputDatasets;
+    @Property(name = "output_dataset_id")
+    public String outputDatasetId;
 }

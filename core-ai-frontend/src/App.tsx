@@ -30,6 +30,7 @@ import DatasetList from './pages/datasets/DatasetList';
 import DatasetEditor from './pages/datasets/DatasetEditor';
 import DatasetRecords from './pages/datasets/DatasetRecords';
 import TriggersWebhook from './pages/triggers/TriggersWebhook';
+import ForYou from './pages/for-you/ForYou';
 import { CapabilitiesContext, fetchCapabilities } from './api/capabilities';
 import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
@@ -70,7 +71,7 @@ export default function App() {
   if (loading || caps === null) return null;
 
   const authRequired = caps.authRequired;
-  const defaultPath = caps.chat ? '/chat' : '/agents';
+  const defaultPath = '/for-you';
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
@@ -87,6 +88,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/login" replace />} />
             ) : (
               <Route element={<Layout />}>
+                <Route path="/for-you" element={<ForYou />} />
                 {caps.chat && <Route path="/chat" element={<Chat />} />}
                 {caps.traces && <Route path="/traces" element={<TraceList />} />}
                 {caps.traces && <Route path="/traces/:id" element={<TraceDetail />} />}
