@@ -1,5 +1,6 @@
 package ai.core.sandbox;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -55,7 +56,7 @@ public class SandboxConfig {
         }
         if (env != null) {
             for (var key : env.keySet()) {
-                if (BLOCKED_ENV_NAMES.contains(key.toUpperCase())) {
+                if (BLOCKED_ENV_NAMES.contains(key.toUpperCase(Locale.ROOT))) {
                     throw new IllegalArgumentException("env var '" + key + "' is not allowed");
                 }
             }

@@ -12,6 +12,7 @@ import java.util.function.Consumer;
  * and executes them synchronously via the provided handler.
  */
 public class TurnDriver {
+    private static final long IDLE_RENEW_INTERVAL_SECONDS = 25;
 
     private final Logger logger = LoggerFactory.getLogger(TurnDriver.class);
 
@@ -20,10 +21,6 @@ public class TurnDriver {
     private volatile boolean running = true;
     private final Thread driverThread;
     private volatile Runnable onIdle;
-
-    // Renew ownership every 25s — well within the 30s Redis TTL.
-    // This keeps the session pinned to this pod as long as the TurnDriver is alive.
-    private static final long IDLE_RENEW_INTERVAL_SECONDS = 25;
 
     public TurnDriver(SessionCommandQueue commandQueue, Consumer<SessionCommandQueue.CommandBatch> commandHandler) {
         this.commandQueue = commandQueue;

@@ -132,7 +132,7 @@ public class RemoteSessionCommandHandler {
                 var result = JsonUtil.fromJson(LoadSubAgentsResponse.class, resultJson);
                 if (result.loadedSubAgents != null && !result.loadedSubAgents.isEmpty()) {
                     loadedSubAgentIds.add(agentId);
-                    ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Loaded subagent: " + String.join(", ", result.loadedSubAgents) + AnsiTheme.RESET + "\n\n");
+                    ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Loaded subagent: " + result.loadedSubAgents.stream().map(i -> i.name).collect(java.util.stream.Collectors.joining(", ")) + AnsiTheme.RESET + "\n\n");
                 } else {
                     ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "SubAgent was not loaded." + AnsiTheme.RESET + "\n\n");
                 }
@@ -287,7 +287,7 @@ public class RemoteSessionCommandHandler {
             var result = JsonUtil.fromJson(LoadToolsResponse.class, resultJson);
             if (result.loadedTools != null && !result.loadedTools.isEmpty()) {
                 loadedToolIds.add(toolId);
-                ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Loaded: " + String.join(", ", result.loadedTools) + AnsiTheme.RESET + "\n");
+                ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "Loaded: " + result.loadedTools.stream().map(i -> i.name).collect(java.util.stream.Collectors.joining(", ")) + AnsiTheme.RESET + "\n");
             } else {
                 ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "Tool was not loaded." + AnsiTheme.RESET + "\n");
             }

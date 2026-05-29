@@ -82,12 +82,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.promptTemplate = promptTemplate;
         return this;
     }
-
     public AgentBuilder maxTurn(Integer maxTurnNumber) {
         this.maxTurnNumber = maxTurnNumber;
         return this;
     }
-
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String summaryModel) {
         this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, llmProvider, this.model, summaryModel);
         return this;
@@ -104,12 +102,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, this.llmProvider, this.model, this.model);
         return this;
     }
-
     public AgentBuilder compression(boolean enabled) {
         this.compressionEnabled = enabled;
         return this;
     }
-
     public AgentBuilder toolCallPruning(boolean enabled) {
         this.toolCallPruningEnabled = enabled;
         return this;
@@ -128,12 +124,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.memoryConfig = config;
         return this;
     }
-
     public AgentBuilder systemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
         return this;
     }
-
     public AgentBuilder systemPromptSection(PromptInject section) {
         this.systemPromptSections.add(section);
         return this;
@@ -143,32 +137,26 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.systemPromptSections.addAll(sections);
         return this;
     }
-
     public AgentBuilder temperature(Double temperature) {
         this.temperature = temperature;
         return this;
     }
-
     public AgentBuilder model(String model) {
         this.model = model;
         return this;
     }
-
     public AgentBuilder multiModalModel(String multiModalModel) {
         this.multiModalModel = multiModalModel;
         return this;
     }
-
     public AgentBuilder llmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
         return this;
     }
-
     public AgentBuilder toolCalls(List<? extends ToolCall> toolCalls) {
         this.toolCalls.addAll(0, toolCalls);
         return this;
     }
-
     public AgentBuilder mcpServers(List<String> serverNames) {
         return mcpServers(serverNames, null, null);
     }
@@ -184,7 +172,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.toolCalls.addAll(McpToolCalls.from(manager, serverNames, includes, excludes));
         return this;
     }
-
     public AgentBuilder mcpServersDiscoverable(List<String> serverNames) {
         return mcpServersDiscoverable(serverNames, null, null);
     }
@@ -202,27 +189,22 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.toolCalls.addAll(tools);
         return this;
     }
-
     public AgentBuilder skillRegistry(SkillRegistry skillRegistry) {
         this.skillRegistry = skillRegistry;
         return this;
     }
-
     public AgentBuilder ragConfig(RagConfig ragConfig) {
         this.ragConfig = ragConfig;
         return this;
     }
-
     public AgentBuilder reflectionConfig(ReflectionConfig config) {
         this.reflectionConfig = config;
         return this;
     }
-
     public AgentBuilder reflectionListener(ReflectionListener listener) {
         this.reflectionListener = listener;
         return this;
     }
-
     public AgentBuilder useGroupContext(Boolean useGroupContext) {
         this.useGroupContext = useGroupContext;
         return this;
@@ -235,7 +217,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.reflectionConfig = ReflectionConfig.withEvaluationCriteria(evaluationCriteria);
         return this;
     }
-
     public AgentBuilder langfuseSystemPrompt(String promptName) {
         this.langfuseSystemPromptName = promptName;
         return this;
@@ -252,7 +233,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.langfusePromptLabel = label;
         return this;
     }
-
     public AgentBuilder agentLifecycle(List<AbstractLifecycle> agentLifecycles) {
         this.agentLifecycles.addAll(agentLifecycles);
         return this;
@@ -261,7 +241,6 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.agentLifecycles.add(lifecycle);
         return this;
     }
-
     public AgentBuilder subAgents(List<SubAgentToolCall> subAgents) {
         this.subAgents = new ArrayList<>(subAgents);
         return this;

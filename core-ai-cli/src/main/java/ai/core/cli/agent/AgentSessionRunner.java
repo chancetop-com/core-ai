@@ -29,7 +29,6 @@ import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,14 +46,11 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-
 public class AgentSessionRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionRunner.class);
-
     private static final String POISON_PILL = "\0__EXIT__";
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final AtomicBoolean UPGRADE_CHECK_DONE = new AtomicBoolean(false);
-
     private final TerminalUI ui;
     private final Agent agent;
     private final LLMProviders llmProviders;
@@ -71,7 +67,6 @@ public class AgentSessionRunner {
     private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
     private final UpgradeChecker upgradeChecker = new UpgradeChecker();
     private ReplCommandHandler commands;
-
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
         this.ui = ui;
         this.agent = agent;
@@ -88,7 +83,6 @@ public class AgentSessionRunner {
                 : null;
         this.memoryEnabled = config.memoryEnabled;
     }
-
     public String run() {
         // Load session history if resuming an existing session
         if (agent.hasPersistenceProvider()) {
@@ -101,11 +95,9 @@ public class AgentSessionRunner {
         var listener = new CliEventListener(ui, session, agent);
         session.onEvent(listener);
         setupCompressionListener(listener);
-
         commands = new ReplCommandHandler(ui);
         BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
         Semaphore readyForInput = new Semaphore(1);
-
         printBanner();
         checkAndHintUpgrade();
         printSessionHistory();
@@ -116,7 +108,6 @@ public class AgentSessionRunner {
         session.close();
         return switchSessionId.get();
     }
-
     public void runPrompt(String prompt) {
         // Load session history if resuming an existing session
         if (agent.hasPersistenceProvider()) {
@@ -126,7 +117,6 @@ public class AgentSessionRunner {
         var listener = new CliEventListener(ui, session, agent);
         session.onEvent(listener);
         setupCompressionListener(listener);
-
         printBanner();
         printSessionHistory();
         if (prompt != null && !prompt.isBlank()) {
@@ -135,16 +125,13 @@ public class AgentSessionRunner {
         sendPrompt(listener, session, prompt);
         session.close();
     }
-
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
     }
-
     private void printBanner() {
         BannerPrinter.print(ui.getWriter(), modelName, VersionUtil.getCurrentVersion(), null);
         LOGGER.debug("terminal: type={}, jline={}, ansi={}", ui.getTerminalType(), ui.isJLineEnabled(), ui.isAnsiSupported());
     }
-
     private void checkAndHintUpgrade() {
         if (!UPGRADE_CHECK_DONE.compareAndSet(false, true)) return;
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -162,7 +149,6 @@ public class AgentSessionRunner {
             executor.shutdownNow();
         }
     }
-
     private void printSessionHistory() {
         var messages = agent.getMessages();
         boolean hasHistory = false;
@@ -185,7 +171,6 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.MUTED + "  ↑ restored " + sessionId + AnsiTheme.RESET + "\n");
         }
     }
-
     private void startSenderThread(BlockingQueue<String> queue, CliEventListener listener, InProcessAgentSession session, Semaphore readyForInput) {
         Thread senderThread = new Thread(() -> {
             try {
@@ -207,7 +192,6 @@ public class AgentSessionRunner {
         senderThread.setDaemon(true);
         senderThread.start();
     }
-
     private void sendPrompt(CliEventListener listener, InProcessAgentSession session, String prompt) {
         LOGGER.debug("sending prompt: {}", prompt);
         listener.prepareTurn();
@@ -217,7 +201,6 @@ public class AgentSessionRunner {
         listener.waitForTurn();
         LOGGER.debug("turn finished");
     }
-
     private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {
         var dispatcher = new CommandDispatcher(new CommandDispatcher.Config(
                 ui, this, switchSessionId, remoteConfig, commands, memoryCommand, memoryEnabled));
@@ -254,7 +237,6 @@ public class AgentSessionRunner {
             queue.offer(FileReferenceExpander.expand(expanded));
         }
     }
-
     void showModelPicker() {
         String currentModel = getCurrentModelName();
         var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
@@ -306,7 +288,6 @@ public class AgentSessionRunner {
             switchModel(currentModel, input, null);
         }
     }
-
     void switchModel(String currentModel, String newModel, LLMProviderType providerType) {
         var currentProviderType = llmProviders.getProviderType(agent.getLLMProvider());
         if (currentModel.equals(newModel) && (providerType == null || providerType == currentProviderType)) {
@@ -324,11 +305,9 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model switched: "
                 + currentModel + " → " + AnsiTheme.PROMPT + newModel + AnsiTheme.RESET + "\n\n");
     }
-
     String getCurrentModelName() {
         return agent.getModel() != null ? agent.getModel() : agent.getLLMProvider().config.getModel();
     }
-
     void handleStats() {
         var u = agent.getCurrentTokenUsage();
         String model = getCurrentModelName();
@@ -336,7 +315,6 @@ public class AgentSessionRunner {
         ui.printStreamingChunk(String.format("%n  %sSession Stats%s%n  Model:       %s%n  Session:     %s%n  Turns:       %d%n  Tokens:      %,d (prompt: %,d, completion: %,d)%n  Tools:       %d available%n%n",
                 AnsiTheme.PROMPT, AnsiTheme.RESET, model, sessionId, turns, (long) u.getTotalTokens(), (long) u.getPromptTokens(), (long) u.getCompletionTokens(), agent.getToolCalls().size()));
     }
-
     void handleTools() {
         var tools = agent.getToolCalls();
         ui.printStreamingChunk(String.format("%n  %sAvailable Tools (%d)%s%n", AnsiTheme.PROMPT, tools.size(), AnsiTheme.RESET));
@@ -347,7 +325,6 @@ public class AgentSessionRunner {
         }
         ui.printStreamingChunk("\n");
     }
-
     void handleExport(String trimmed) {
         String[] parts = trimmed.split("\\s+", 2);
         String filePath = parts.length > 1 ? parts[1].trim() : "session-" + sessionId + ".md";
@@ -364,7 +341,6 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Export failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
-
     void handleCopy() {
         var messages = agent.getMessages();
         String lastAssistant = null;
@@ -386,7 +362,6 @@ public class AgentSessionRunner {
             ui.printStreamingChunk(AnsiTheme.ERROR + "  Failed to copy: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
-
     private void setupCompressionListener(CliEventListener listener) {
         var compression = agent.getCompression();
         if (compression == null) return;
@@ -400,7 +375,6 @@ public class AgentSessionRunner {
             panel.startSpinner();
         });
     }
-
     void handleCompact() {
         var messages = agent.getMessages();
         var compression = agent.getCompression();
@@ -424,7 +398,6 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Compacted: "
                 + beforeCount + " → " + messages.size() + " messages\n\n");
     }
-
     void handleUndo() {
         var messages = agent.getMessages();
         int idx = messages.size() - 1;
@@ -441,7 +414,6 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Undone " + removed
                 + " message(s): " + AnsiTheme.MUTED + preview + AnsiTheme.RESET + "\n\n");
     }
-
     String showSessionPicker() {
         var sessions = sessionManager.listSessions();
         if (sessions.isEmpty()) {
@@ -469,7 +441,6 @@ public class AgentSessionRunner {
         ui.printStreamingChunk(AnsiTheme.MUTED + "Switching to session: " + picked + AnsiTheme.RESET + "\n");
         return picked;
     }
-
     public record Config(String modelName, boolean autoApproveAll, String sessionId,
                          SessionManager sessionManager, ToolPermissionStore permissionStore,
                          MdMemoryProvider memory, ModelRegistry modelRegistry,

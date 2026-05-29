@@ -47,51 +47,40 @@ public class Compression {
     private final List<CompressionListener> listeners = new ArrayList<>();
 
     public Compression(LLMProvider llmProvider, String agentModel) {
-        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, DEFAULT_KEEP_TOKENS, DEFAULT_TOOL_RESULT_RATIO, llmProvider, agentModel, agentModel);
+        this(DEFAULT_TRIGGER_THRESHOLD, DEFAULT_KEEP_RECENT_TURNS, DEFAULT_KEEP_TOKENS, llmProvider, agentModel, agentModel);
     }
-
     public Compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String agentModel, String summaryModel) {
-        this(triggerThreshold, keepRecentTurns, DEFAULT_KEEP_TOKENS, DEFAULT_TOOL_RESULT_RATIO, llmProvider, agentModel, summaryModel);
+        this(triggerThreshold, keepRecentTurns, DEFAULT_KEEP_TOKENS, llmProvider, agentModel, summaryModel);
     }
-
     public Compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, LLMProvider llmProvider, String agentModel, String summaryModel) {
-        this(triggerThreshold, keepRecentTurns, keepMinTokens, DEFAULT_TOOL_RESULT_RATIO, llmProvider, agentModel, summaryModel);
-    }
-
-    public Compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, double toolResultRatio, LLMProvider llmProvider, String agentModel, String summaryModel) {
         this.triggerThreshold = triggerThreshold;
         this.keepRecentTurns = keepRecentTurns;
         this.keepTokens = keepMinTokens;
-        this.toolResultRatio = toolResultRatio;
+        this.toolResultRatio = DEFAULT_TOOL_RESULT_RATIO;
         this.llmProvider = llmProvider;
         this.summaryModel = summaryModel;
         this.maxContextTokens = LLMModelContextRegistry.getInstance().getMaxInputTokens(agentModel);
         this.maxToolResultTokens = calculateMaxToolResultTokens();
     }
-
     private int calculateMaxToolResultTokens() {
         if (maxContextTokens <= 0) {
             return FALLBACK_MAX_TOOL_RESULT_TOKENS;
         }
         return (int) (maxContextTokens * toolResultRatio);
     }
-
     public void addListener(CompressionListener listener) {
         this.listeners.add(listener);
     }
-
     public void setListener(CompressionListener listener) {
         this.listeners.clear();
         this.listeners.add(listener);
     }
-
     public boolean shouldCompress(int currentTokens) {
         if (llmProvider == null) {
             return false;
         }
         return currentTokens >= (int) (maxContextTokens * triggerThreshold);
     }
-
     public List<Message> compress(List<Message> messages) {
         if (messages == null || messages.isEmpty() || llmProvider == null) {
             return messages;
@@ -105,14 +94,12 @@ public class Compression {
         LOGGER.debug("Compressing messages: currentTokens={}, threshold={}", currentTokens, (int) (maxContextTokens * triggerThreshold));
         return doCompress(messages, false);
     }
-
     public List<Message> forceCompress(List<Message> messages) {
         if (messages == null || messages.isEmpty() || llmProvider == null) {
             return messages;
         }
         return doCompress(messages, true);
     }
-
     private List<Message> doCompress(List<Message> messages, boolean force) {
         var systemMsg = extractSystemMessage(messages);
         var conversationMsgs = extractConversationMessages(messages);
@@ -169,7 +156,6 @@ public class Compression {
         LOGGER.debug("Compression complete: {} -> {} messages", messages.size(), result.size());
         return result;
     }
-
     private Message findPreservedUserMessage(List<Message> toCompress, List<Message> toKeep) {
         boolean hasUserInKeep = toKeep.stream().anyMatch(m -> m.role == RoleType.USER);
         if (hasUserInKeep) {
@@ -180,7 +166,6 @@ public class Compression {
             .reduce((first, second) -> second)
             .orElse(null);
     }
-
     private int calculateForceKeepFromIndex(List<Message> conversationMsgs) {
         int accumulatedTokens = 0;
         int keepFromIndex = conversationMsgs.size() - 1;
@@ -196,7 +181,6 @@ public class Compression {
         }
         return keepFromIndex;
     }
-
     private int adjustToToolSegmentBoundary(List<Message> msgs, int index) {
         for (int i = index; i < msgs.size(); i++) {
             Message msg = msgs.get(i);
@@ -209,7 +193,6 @@ public class Compression {
         }
         return index + 1;
     }
-
     private List<Message> buildCompressedResult(Message systemMsg, String summary, Message preservedUserMsg, List<Message> toKeep) {
         var toolCallId = COMPRESSION_TOOL_NAME + "_" + System.currentTimeMillis();
         var compressCall = FunctionCall.of(toolCallId, "function", COMPRESSION_TOOL_NAME, "{}");
@@ -228,28 +211,23 @@ public class Compression {
         result.addAll(toKeep);
         return ToolCallPruning.dropOrphanToolMessages(result);
     }
-
     public double getTriggerThreshold() {
         return triggerThreshold;
     }
-
     public int getKeepRecentTurns() {
         return keepRecentTurns;
     }
-
     private Message extractSystemMessage(List<Message> messages) {
         return messages.stream()
             .filter(m -> m.role == RoleType.SYSTEM)
             .findFirst()
             .orElse(null);
     }
-
     private List<Message> extractConversationMessages(List<Message> messages) {
         return messages.stream()
             .filter(m -> m.role != RoleType.SYSTEM)
             .toList();
     }
-
     private int calculateKeepFromIndex(List<Message> conversationMsgs, int lastUserIndex) {
         var keepFromIndex = findKeepFromIndexByTurnsAndTokens(conversationMsgs, lastUserIndex);
         var tokensFromKeep = MessageTokenCounterUtil.countFrom(conversationMsgs, keepFromIndex);
@@ -259,7 +237,6 @@ public class Compression {
         }
         return keepFromIndex;
     }
-
     private int findLastUserIndex(List<Message> messages) {
         for (int i = messages.size() - 1; i >= 0; i--) {
             if (messages.get(i).role == RoleType.USER) {
@@ -268,7 +245,6 @@ public class Compression {
         }
         return -1;
     }
-
     private int findKeepFromIndexByTurnsAndTokens(List<Message> conversationMsgs, int lastUserIndex) {
         int turnCount = 0;
         int accumulatedTokens = 0;
@@ -305,7 +281,6 @@ public class Compression {
 
         return Math.max(indexByTurns, indexByTokens);
     }
-
     private String summarize(List<Message> messagesToSummarize) {
         String content = formatMessages(messagesToSummarize);
         if (content.isBlank()) return "";
@@ -315,7 +290,6 @@ public class Compression {
         if (summary.isBlank()) return "";
         return Prompts.COMPRESSION_SUMMARY_PREFIX + summary + Prompts.COMPRESSION_SUMMARY_SUFFIX;
     }
-
     private String callLLM(String prompt) {
         try {
             var msgs = List.of(Message.of(RoleType.USER, prompt));
@@ -333,7 +307,6 @@ public class Compression {
         }
         return "";
     }
-
     private String formatMessages(List<Message> messages) {
         StringBuilder sb = new StringBuilder(1024);
         for (Message msg : messages) {
@@ -361,7 +334,6 @@ public class Compression {
         }
         return sb.toString();
     }
-
     public String compressToolResult(String toolName, String result, String sessionId) {
         if (result == null || result.isEmpty()) {
             return result;
@@ -386,7 +358,6 @@ public class Compression {
             return result;
         }
     }
-
     public boolean shouldCompressToolResult(String result) {
         if (result == null || result.isEmpty()) {
             return false;
@@ -394,7 +365,6 @@ public class Compression {
         int tokenCount = Tokenizer.tokenCount(result);
         return tokenCount > maxToolResultTokens;
     }
-
     private Path writeToolResultToFile(String toolName, String content, String sessionId) throws IOException {
         String sid = sessionId != null ? sessionId : "default";
         Path baseTempDir = Path.of(System.getProperty("java.io.tmpdir"), TEMP_DIR_NAME);
@@ -409,7 +379,6 @@ public class Compression {
         Files.writeString(filePath, content);
         return filePath;
     }
-
     private String buildToolResultSummary(String toolName, String content, int tokenCount, Path filePath) {
         String headContent = truncateToTokens(content);
         String tailContent = extractTailTokens(content);
@@ -436,7 +405,6 @@ public class Compression {
             TAIL_TOKENS, tailContent,
             filePath);
     }
-
     private String truncateToTokens(String content) {
         List<Integer> tokens = Tokenizer.encode(content);
         if (tokens.size() <= HEAD_TOKENS) {
@@ -444,7 +412,6 @@ public class Compression {
         }
         return Tokenizer.decode(tokens.subList(0, HEAD_TOKENS));
     }
-
     private String extractTailTokens(String content) {
         List<Integer> tokens = Tokenizer.encode(content);
         if (tokens.size() <= TAIL_TOKENS) {
@@ -453,19 +420,15 @@ public class Compression {
         int startIndex = tokens.size() - TAIL_TOKENS;
         return Tokenizer.decode(tokens.subList(startIndex, tokens.size()));
     }
-
     private String sanitizeFileName(String name) {
         return name.replaceAll("[^a-zA-Z0-9_-]", "_");
     }
-
     public int getMaxContextTokens() {
         return maxContextTokens;
     }
-
     public int getMaxToolResultTokens() {
         return maxToolResultTokens;
     }
-
     private void notifyListener(int beforeCount, int afterCount, boolean completed) {
         for (CompressionListener l : listeners) {
             l.onCompression(beforeCount, afterCount, completed);

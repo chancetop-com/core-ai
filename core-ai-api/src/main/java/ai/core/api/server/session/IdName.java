@@ -16,6 +16,4 @@ public class IdName {
     @Property(name = "name")
     public String name;
 
-    public IdName() {
-    }
 }

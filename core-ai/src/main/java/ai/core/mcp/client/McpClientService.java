@@ -29,6 +29,8 @@ import java.util.concurrent.TimeoutException;
  */
 public class McpClientService implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpClientService.class);
+    private static final String SDK_DEFAULT_STREAMABLE_ENDPOINT = "/mcp";
+    private static final String SDK_DEFAULT_SSE_ENDPOINT = "/sse";
 
     private final McpSyncClient client;
     private final McpClientTransport transport;
@@ -302,8 +304,6 @@ public class McpClientService implements AutoCloseable {
                 || cmd.endsWith(".cmd") || cmd.endsWith(".bat");
     }
 
-    private static final String SDK_DEFAULT_STREAMABLE_ENDPOINT = "/mcp";
-
     private McpClientTransport createStreamableHttpTransport(McpServerConfig config) {
         String url = config.getUrl();
         String endpoint = config.getEndpoint();
@@ -338,12 +338,6 @@ public class McpClientService implements AutoCloseable {
         }
         return builder.build();
     }
-
-    /**
-     * Default SSE endpoint appended by the MCP SDK.
-     * @see HttpClientSseClientTransport#DEFAULT_SSE_ENDPOINT
-     */
-    private static final String SDK_DEFAULT_SSE_ENDPOINT = "/sse";
 
     private McpClientTransport createSseTransport(McpServerConfig config) {
         String url = config.getUrl();

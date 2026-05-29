@@ -54,7 +54,7 @@ public final class DiffGenerator {
         int newLineCount = countLines(newContent);
 
         if (oldLineCount > MAX_LINES || newLineCount > MAX_LINES) {
-            return largeFileSummary(filePath, oldLineCount, newLineCount);
+            return largeFileSummary(oldLineCount, newLineCount);
         }
 
         String[] oldLines = oldContent.split("\n", -1);
@@ -73,7 +73,7 @@ public final class DiffGenerator {
         return count;
     }
 
-    private static DiffResult largeFileSummary(String filePath, int oldLines, int newLines) {
+    private static DiffResult largeFileSummary(int oldLines, int newLines) {
         var lines = new ArrayList<DisplayLine>();
         lines.add(new DisplayLine(0, Tag.EQUAL, "Old file: " + oldLines + " lines → New file: " + newLines + " lines (diff skipped for large file)"));
         return new DiffResult(0, 0, lines);

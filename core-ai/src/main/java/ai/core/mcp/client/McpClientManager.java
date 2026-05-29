@@ -338,13 +338,17 @@ public class McpClientManager implements AutoCloseable {
             // hand initial failure off to ConnectionMonitor so future retries follow exponential backoff
             // instead of the caller (e.g. scheduled job) hammering createClient every fixed interval
             if (config.isAutoReconnect() && !closed) {
-                try {
-                    getConnectionMonitor().scheduleReconnect(serverName);
-                } catch (Exception scheduleErr) {
-                    LOGGER.warn("Failed to schedule reconnect for {}: {}", serverName, scheduleErr.getMessage());
-                }
+                scheduleReconnectSafely(serverName);
             }
             throw new McpClientException("Failed to create client for server: " + serverName, e);
+        }
+    }
+
+    private void scheduleReconnectSafely(String serverName) {
+        try {
+            getConnectionMonitor().scheduleReconnect(serverName);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to schedule reconnect for {}: {}", serverName, e.getMessage());
         }
     }
 

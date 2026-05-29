@@ -10,6 +10,7 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.agent.streaming.StreamingCallback;
 import ai.core.llm.domain.Usage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,7 +60,7 @@ class RefTest {
         });
 
         // Mock completionStream responses (used by Agent)
-        when(mockLLMProvider.completionStream(any(CompletionRequest.class), any())).thenAnswer(invocation -> {
+        when(mockLLMProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any())).thenAnswer(invocation -> {
             CompletionRequest request = invocation.getArgument(0);
             int count = callCount.incrementAndGet();
 
@@ -315,7 +316,7 @@ class RefTest {
             }
         });
 
-        when(lowScoreMock.completionStream(any(CompletionRequest.class), any())).thenAnswer(invocation -> {
+        when(lowScoreMock.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any())).thenAnswer(invocation -> {
             CompletionRequest request = invocation.getArgument(0);
             if (request.responseFormat != null) {
                 // Always return score 5 to continue reflection

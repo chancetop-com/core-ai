@@ -77,7 +77,7 @@ class WriteTodoTaskToolTest {
         var crs1 = JsonUtil.fromJson(CompletionResponse.class, toolCallResponse);
         var crs2 = JsonUtil.fromJson(CompletionResponse.class, finishResponse);
 
-        when(llmProvider.completionStream(any(), any())).thenReturn(crs1, crs2);
+        when(llmProvider.completionStream(any(), any(), any())).thenReturn(crs1, crs2);
         try {
             agent.run("Fix the file length checkstyle issue");
         } catch (Exception ignored) {

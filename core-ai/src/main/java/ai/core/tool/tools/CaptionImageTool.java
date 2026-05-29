@@ -46,15 +46,15 @@ public class CaptionImageTool extends ToolCall {
         return ToolCallResult.completed(rsp.choices.getFirst().message.content);
     }
 
+    @Override
+    public ToolCallResult execute(String arguments) {
+        throw new AgentRuntimeException("CAPTION_IMAGE_TOOL_FAILED", "CaptionImageTool requires ExecutionContext");
+    }
+
     private String resolveModel(ExecutionContext context, LLMProvider llmProvider) {
         if (context.getMultiModalModel() != null) return context.getMultiModalModel();
         if (context.getModel() != null) return context.getModel();
         return llmProvider.config.getModel();
-    }
-
-    @Override
-    public ToolCallResult execute(String arguments) {
-        throw new AgentRuntimeException("CAPTION_IMAGE_TOOL_FAILED", "CaptionImageTool requires ExecutionContext");
     }
 
     public static class Builder extends ToolCall.Builder<Builder, CaptionImageTool> {

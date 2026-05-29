@@ -56,7 +56,6 @@ public class Agent extends Node<Agent> {
     public static AgentBuilder builder() {
         return new AgentBuilder();
     }
-
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
     private volatile boolean cancelled = false;
     String systemPrompt;
@@ -76,7 +75,6 @@ public class Agent extends Node<Agent> {
     Compression compression;
     ReasoningEffort reasoningEffort;
     List<SubAgentToolCall> subAgents = new ArrayList<>();
-
     @Override
     String execute(String query, Map<String, Object> variables) {
         var activeTracer = (AgentTracer) getTracer();
@@ -105,7 +103,6 @@ public class Agent extends Node<Agent> {
     private void chatCommand(String query, Map<String, Object> variables) {
         chatTurns(query, variables, this::constructionFakeSlashCommandAssistantMsg);
     }
-
     private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
@@ -122,7 +119,6 @@ public class Agent extends Node<Agent> {
             reflectionLoop(variables);
         }
     }
-
     private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
         boolean isFirstExecution = getInput() == null;
         if (isFirstExecution) {
@@ -138,7 +134,6 @@ public class Agent extends Node<Agent> {
         }
         return getOutput();
     }
-
     private void commandOrLoops(String query, Map<String, Object> variables, boolean skipReflection) {
         if (SlashCommandParser.isSlashCommand(query)) {
             chatCommand(query, variables);
@@ -146,7 +141,6 @@ public class Agent extends Node<Agent> {
             chatLoops(query, variables, skipReflection);
         }
     }
-
     private void reflectionLoop(Map<String, Object> variables) {
         ReflectionHistory history = new ReflectionHistory(getId(), getName(), getInput(), reflectionConfig.evaluationCriteria());
         int currentRound = 1;
@@ -210,7 +204,6 @@ public class Agent extends Node<Agent> {
         buildUserQueryToMessage(query, variables);
         runTurnsLoop(constructionAssistantMsg);
     }
-
     private String runTurnsLoop(BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
@@ -261,7 +254,6 @@ public class Agent extends Node<Agent> {
         ctx.setLastLLMSpanContext(null);
         return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback()), ctx::setLastLLMSpanContext), req);
     }
-
     private String resolveEffectiveModel(List<Message> messages) {
         if (multiModalModel == null) return model;
         for (var message : messages) {
@@ -274,7 +266,6 @@ public class Agent extends Node<Agent> {
         }
         return model;
     }
-
     private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
         var resp = callLLM(func, request);
@@ -290,20 +281,17 @@ public class Agent extends Node<Agent> {
 
         return resp.choices.getFirst();
     }
-
     private CompletionResponse callLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         var resp = func.apply(request);
         addTokenCost(resp.usage);
         agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
         return resp;
     }
-
     public List<Message> handleFunc(Message funcMsg) {
         if (cancelled) return List.of();
         var orchestration = new ToolOrchestration(toolCalls, agentLifecycles, getToolExecutor(), getExecutionContext());
         return orchestration.execute(funcMsg.toolCalls);
     }
-
     private ToolExecutor getToolExecutor() {
         if (toolExecutor == null) {
             toolExecutor = new ToolExecutor(toolCalls, agentLifecycles, getTracer(), this::updateNodeStatus);
@@ -311,7 +299,6 @@ public class Agent extends Node<Agent> {
         toolExecutor.setAuthenticated(authenticated);
         return toolExecutor;
     }
-
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
@@ -325,7 +312,6 @@ public class Agent extends Node<Agent> {
         removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
     }
-
     private void removeLastAssistantToolCallMessageIfNotToolResult(Message reqMsg) {
         var lastMsg = getMessages().getLast();
         if (lastMsg.role == RoleType.ASSISTANT && lastMsg.toolCalls != null
@@ -333,11 +319,9 @@ public class Agent extends Node<Agent> {
             removeMessage(lastMsg);
         }
     }
-
     @Override
     void setChildrenParentNode() {
     }
-
     private Message buildSystemMessage(Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && isUseGroupContext()) {
@@ -349,7 +333,6 @@ public class Agent extends Node<Agent> {
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
         return Message.of(RoleType.SYSTEM, prompt);
     }
-
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
             throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
@@ -367,7 +350,6 @@ public class Agent extends Node<Agent> {
         var context = ragConfig.llmProvider().rerankings(RerankingRequest.of(ragQuery, docs.stream().map(v -> v.content).toList())).rerankedDocuments.getFirst();
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
     }
-
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
     }
@@ -439,11 +421,9 @@ public class Agent extends Node<Agent> {
         if (messages == null || messages.isEmpty()) return;
         addMessages(messages);
     }
-
     public String continueWithInjectedMessage() {
         return runTurnsLoop(this::handLLM);
     }
-
     public void cancel() {
         this.cancelled = true;
         var cb = getStreamingCallback();

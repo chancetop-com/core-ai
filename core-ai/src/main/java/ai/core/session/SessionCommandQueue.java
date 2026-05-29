@@ -87,7 +87,7 @@ public class SessionCommandQueue {
                 if (remaining <= 0) {
                     return false;
                 }
-                notEmpty.await(remaining, java.util.concurrent.TimeUnit.NANOSECONDS);
+                notEmpty.await(remaining, TimeUnit.NANOSECONDS);
             }
             return true;
         } finally {

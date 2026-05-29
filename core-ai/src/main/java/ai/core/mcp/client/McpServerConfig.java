@@ -15,15 +15,12 @@ import java.util.Map;
  */
 public class McpServerConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpServerConfig.class);
-
     public static StdioBuilder stdio(String command) {
         return new StdioBuilder(command);
     }
-
     public static HttpBuilder http(String url) {
         return new HttpBuilder(url);
     }
-
     public static McpServerConfig fromMap(String serverName, Map<String, Object> config) {
         if (config.containsKey("command")) {
             return parseStdioConfig(serverName, config);
@@ -85,7 +82,6 @@ public class McpServerConfig {
         parseCommonConfig(builder, config);
         return builder.build();
     }
-
     private static void parseCommonConfig(CommonConfigBuilder<?> builder, Map<String, Object> config) {
         if (config.containsKey("heartbeat")) {
             Object heartbeatValue = config.get("heartbeat");
@@ -108,7 +104,6 @@ public class McpServerConfig {
         }
         parseDuration(config, "reconnectInterval", builder::reconnectInterval);
     }
-
     private static void parseDuration(Map<String, Object> config, String key, java.util.function.Consumer<Duration> setter) {
         if (config.get(key) instanceof Number num) {
             setter.accept(Duration.ofSeconds(num.longValue()));
@@ -129,7 +124,6 @@ public class McpServerConfig {
             return Map.of();
         }
     }
-
     private String name;
     private TransportType transportType;
 
@@ -158,93 +152,71 @@ public class McpServerConfig {
     private boolean enableHeartbeat = true;
     private Duration heartbeatInterval = Duration.ofSeconds(30);
     private Duration heartbeatTimeout = Duration.ofSeconds(10);
-
     public String getName() {
         return name;
     }
-
     public TransportType getTransportType() {
         return transportType;
     }
-
     public String getCommand() {
         return command;
     }
-
     public List<String> getArgs() {
         return args;
     }
-
     public Map<String, String> getEnv() {
         return env;
     }
-
     public String getUrl() {
         return url;
     }
-
     public String getEndpoint() {
         return endpoint;
     }
-
     public Map<String, String> getHeaders() {
         return headers;
     }
-
     public Duration getConnectTimeout() {
         return connectTimeout;
     }
-
     public Duration getRequestTimeout() {
         return requestTimeout;
     }
-
     public Duration getInitializationTimeout() {
         return initializationTimeout;
     }
-
     public boolean isAutoReconnect() {
         return autoReconnect;
     }
-
     public int getMaxReconnectAttempts() {
         return maxReconnectAttempts;
     }
-
     public Duration getReconnectInterval() {
         return reconnectInterval;
     }
-
     public Duration getReconnectBackoffMax() {
         return reconnectBackoffMax;
     }
-
     public boolean isEnableHeartbeat() {
         return enableHeartbeat;
     }
-
     public Duration getHeartbeatInterval() {
         return heartbeatInterval;
     }
-
     public Duration getHeartbeatTimeout() {
         return heartbeatTimeout;
     }
-
     public boolean isStdio() {
         return transportType == TransportType.STDIO;
     }
-
     public boolean isHttp() {
         return transportType == TransportType.STREAMABLE_HTTP || transportType == TransportType.SSE;
     }
-
     public enum TransportType {
         STDIO,
         STREAMABLE_HTTP,
         SSE
     }
-
     private interface CommonConfigBuilder<T> {
         void enableHeartbeat(boolean enable);
         void heartbeatInterval(Duration interval);
@@ -256,7 +228,6 @@ public class McpServerConfig {
         void maxReconnectAttempts(int maxAttempts);
         void reconnectInterval(Duration interval);
     }
-
     public static final class StdioBuilder implements CommonConfigBuilder<StdioBuilder> {
         private final McpServerConfig config = new McpServerConfig();
 
@@ -354,7 +325,6 @@ public class McpServerConfig {
             return config;
         }
     }
-
     public static final class HttpBuilder implements CommonConfigBuilder<HttpBuilder> {
 
         // strip BOM, zero-width chars and surrounding whitespace/quotes that may

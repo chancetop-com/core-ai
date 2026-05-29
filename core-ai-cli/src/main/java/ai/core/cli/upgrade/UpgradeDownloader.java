@@ -78,13 +78,17 @@ public final class UpgradeDownloader {
             Files.move(downloaded, currentBinary, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             return currentBinary;
         } catch (IOException e) {
-            Path newFile = currentBinary.resolveSibling(currentBinary.getFileName() + ".new");
-            try {
-                Files.move(downloaded, newFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                return newFile;
-            } catch (IOException e2) {
-                throw new UpgradeException("Cannot install: " + e2.getMessage(), e2);
-            }
+            return fallbackMove(downloaded, currentBinary);
+        }
+    }
+
+    private static Path fallbackMove(Path downloaded, Path currentBinary) throws UpgradeException {
+        Path newFile = currentBinary.resolveSibling(currentBinary.getFileName() + ".new");
+        try {
+            Files.move(downloaded, newFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            return newFile;
+        } catch (IOException e2) {
+            throw new UpgradeException("Cannot install: " + e2.getMessage(), e2);
         }
     }
 

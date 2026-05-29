@@ -79,7 +79,7 @@ class AgentChatTest {
         var agent = Agent.builder()
                 .llmProvider(llmProvider)
                 .build();
-        when(llmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class))).thenReturn(crs);
+        when(llmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any())).thenReturn(crs);
         String out = agent.run("Hello", ExecutionContext.builder().build());
         assert out != null;
     }
@@ -102,7 +102,7 @@ class AgentChatTest {
                 new Usage(10, 5, 15)
         );
 
-        when(llmProvider.completionStream(any(), any())).thenReturn(mockResponse);
+        when(llmProvider.completionStream(any(), any(), any())).thenReturn(mockResponse);
         agent.run("Make scrambled eggs with tomatoes");
         verify(wtl).queryPerson(any());
     }

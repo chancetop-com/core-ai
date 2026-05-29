@@ -20,6 +20,16 @@ public final class UpgradeChecker {
 
     private final HttpClient httpClient;
 
+    private static String extractTag(String json) {
+        Matcher m = TAG_PATTERN.matcher(json);
+        return m.find() ? m.group(1) : null;
+    }
+
+    private static String extractHtmlUrl(String json) {
+        Matcher m = HTML_URL_PATTERN.matcher(json);
+        return m.find() ? m.group(1) : null;
+    }
+
     public UpgradeChecker() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
@@ -52,16 +62,6 @@ public final class UpgradeChecker {
         } catch (IOException | InterruptedException e) {
             return new UpgradeInfo(current, null, false, null);
         }
-    }
-
-    private static String extractTag(String json) {
-        Matcher m = TAG_PATTERN.matcher(json);
-        return m.find() ? m.group(1) : null;
-    }
-
-    private static String extractHtmlUrl(String json) {
-        Matcher m = HTML_URL_PATTERN.matcher(json);
-        return m.find() ? m.group(1) : null;
     }
 
     public record UpgradeInfo(String currentVersion, String latestVersion, boolean isNewer, String releaseUrl) {

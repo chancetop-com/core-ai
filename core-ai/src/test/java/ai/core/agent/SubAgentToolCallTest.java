@@ -114,7 +114,7 @@ class SubAgentToolCallTest {
                 )),
                 new Usage(50, 30, 80)
         );
-        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class)))
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
                 .thenReturn(subAgentResponse);
 
         // Create subagent
@@ -146,7 +146,7 @@ class SubAgentToolCallTest {
                 )),
                 new Usage(50, 30, 80)
         );
-        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class)))
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
                 .thenReturn(subAgentResponse);
 
         // Mock coordinator response - it decides to call the researcher subagent
@@ -168,7 +168,7 @@ class SubAgentToolCallTest {
                 new Usage(30, 20, 50)
         );
 
-        when(llmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class)))
+        when(llmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
                 .thenReturn(coordinatorToolCallResponse)
                 .thenReturn(coordinatorFinalResponse);
 
@@ -285,7 +285,7 @@ class SubAgentToolCallTest {
                 )),
                 new Usage(10, 10, 20)
         );
-        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class)))
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
                 .thenReturn(subAgentResponse);
 
         var callCount = new AtomicInteger(0);
@@ -327,7 +327,7 @@ class SubAgentToolCallTest {
                 )),
                 new Usage(10, 10, 20)
         );
-        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class)))
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
                 .thenReturn(subAgentResponse);
 
         var subAgent = Agent.builder()

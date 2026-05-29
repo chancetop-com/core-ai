@@ -47,7 +47,7 @@ class WriteTodosTest {
                 """;
         var crs = JsonUtil.fromJson(CompletionResponse.class, cc);
 
-        when(llmProvider.completionStream(any(), any())).thenReturn(crs);
+        when(llmProvider.completionStream(any(), any(), any())).thenReturn(crs);
         agent.run("Make scrambled eggs with tomatoes");
         verify(wtl).writeTodos(anyList(), any());
 
