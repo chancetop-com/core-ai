@@ -70,5 +70,22 @@ public class DatasetRecordService {
         return new QueryResult(records, total);
     }
 
+    public boolean update(String id, Map<String, Object> data) {
+        var record = datasetRecordCollection.get(id).orElse(null);
+        if (record == null) return false;
+        record.data = JsonUtil.toJson(data);
+        datasetRecordCollection.replace(record);
+        LOGGER.info("dataset record updated, id={}", id);
+        return true;
+    }
+
+    public boolean delete(String id) {
+        var record = datasetRecordCollection.get(id).orElse(null);
+        if (record == null) return false;
+        datasetRecordCollection.delete(id);
+        LOGGER.info("dataset record deleted, id={}", id);
+        return true;
+    }
+
     public record QueryResult(List<DatasetRecord> records, long total) {}
 }

@@ -6,6 +6,7 @@ import ai.core.api.server.agent.CreateAgentRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.agent.UpdateAgentRequest;
+import ai.core.api.server.session.IdName;
 import ai.core.api.server.tool.ToolRefView;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -16,6 +17,7 @@ import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.User;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.skill.SkillService;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -37,6 +39,8 @@ public class AgentDefinitionService {
 
     @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    SkillService skillService;
 
     @Inject
     AgentSessionManager sessionManager;
@@ -233,8 +237,12 @@ public class AgentDefinitionService {
         view.createdBy = resolveUserName(entity.userId);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
-        view.subAgentIds = entity.subAgentIds;
-        view.skillIds = entity.skillIds;
+        view.subAgentIds = entity.subAgentIds != null ? entity.subAgentIds.stream()
+                .map(id -> { var v = new IdName(); v.id = id; v.name = resolveAgentName(id); return v; })
+                .toList() : null;
+        view.skillIds = entity.skillIds != null ? entity.skillIds.stream()
+                .map(id -> { var v = new IdName(); v.id = id; v.name = resolveSkillName(id); return v; })
+                .toList() : null;
         view.status = entity.status != null ? entity.status.name() : null;
         view.publishedAt = entity.publishedAt;
         view.createdAt = entity.createdAt;
@@ -247,6 +255,22 @@ public class AgentDefinitionService {
     private String resolveUserName(String userId) {
         if (userId == null) return null;
         return userCollection.get(userId).map(u -> u.name).orElse(userId);
+    }
+
+    private String resolveAgentName(String agentId) {
+        try {
+            return agentDefinitionCollection.get(agentId).map(a -> a.name).orElse(agentId);
+        } catch (Exception e) {
+            return agentId;
+        }
+    }
+
+    private String resolveSkillName(String skillId) {
+        try {
+            return skillService.get(skillId).name;
+        } catch (Exception e) {
+            return skillId;
+        }
     }
 
     private List<ToolRef> toToolRefs(List<ToolRefView> views) {

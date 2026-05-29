@@ -145,23 +145,28 @@ export interface HistoryMessage {
   metadata?: Record<string, string>;
 }
 
+export interface IdName {
+  id: string;
+  name: string;
+}
+
 export interface CreateSessionResponse {
   sessionId: string;
-  loaded_tools?: string[];
-  loaded_skills?: string[];
-  loaded_sub_agents?: string[];
+  loaded_tools?: IdName[];
+  loaded_skills?: IdName[];
+  loaded_sub_agents?: IdName[];
 }
 
 export interface LoadToolsResponse {
-  loaded_tools: string[];
+  loaded_tools: IdName[];
 }
 
 export interface LoadSkillsResponse {
-  loaded_skills: string[];
+  loaded_skills: IdName[];
 }
 
 export interface LoadSubAgentsResponse {
-  loaded_sub_agents: string[];
+  loaded_sub_agents: IdName[];
 }
 
 export interface SessionInfo {

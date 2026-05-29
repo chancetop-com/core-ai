@@ -252,8 +252,8 @@ export interface AgentDefinition {
   published_at: string;
   created_at: string;
   updated_at: string;
-  subagent_ids?: string[];
-  skill_ids?: string[];
+  subagent_ids?: { id: string; name: string }[];
+  skill_ids?: { id: string; name: string }[];
   sandbox_config?: SandboxConfig;
   output_dataset_id?: string;
 }

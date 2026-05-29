@@ -9,5 +9,5 @@ import java.util.List;
  */
 public class LoadToolsResponse {
     @Property(name = "loaded_tools")
-    public List<String> loadedTools;
+    public List<IdName> loadedTools;
 }

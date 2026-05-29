@@ -31,4 +31,7 @@ public class SessionConfig {
 
     @Property(name = "mcpServers")
     public List<String> mcpServers;
+
+    @Property(name = "datasetId")
+    public String datasetId;
 }

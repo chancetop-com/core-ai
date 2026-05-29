@@ -5,14 +5,16 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
 import { chatSanitizeSchema } from './markdownSanitizeSchema';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Sparkles, Users, Check, Search, Star, Mic, Maximize2, Minimize2, Paperclip, X } from 'lucide-react';
+import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Settings, Wrench, Sparkles, Users, Database, Check, Search, Star, Mic, Maximize2, Minimize2, Paperclip, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
 import { api } from '../../api/client';
-import type { AgentDefinition, ToolRegistryView, SkillDefinition, ToolRef } from '../../api/client';
+import type { AgentDefinition, ToolRegistryView, SkillDefinition, DatasetView, ToolRef } from '../../api/client';
+import type { IdName } from '../../api/session';
 import ResourcePicker from './ResourcePicker';
 import ToolPickerModal from './ToolPickerModal';
+import ChatConfigModal from './ChatConfigModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
 import VoiceTranscriberSidebar from './components/VoiceTranscriberSidebar';
 import ArtifactDrawer from './components/ArtifactDrawer';
@@ -94,6 +96,13 @@ export default function Chat() {
   const [preToolIds, setPreToolIds] = useState<Set<string>>(new Set());
   const [preSkillIds, setPreSkillIds] = useState<Set<string>>(new Set());
   const [preSubAgentIds, setPreSubAgentIds] = useState<Set<string>>(new Set());
+  // Human-readable names for loaded entities (id -> name)
+  const [loadedNames, setLoadedNames] = useState<Map<string, string>>(new Map());
+  // Dataset selection (only one can be active)
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
+  const [loadedDatasetId, setLoadedDatasetId] = useState<string | null>(null);
+  const [preDatasetId, setPreDatasetId] = useState<string | null>(null);
+  const [datasets, setDatasets] = useState<DatasetView[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolRegistryView[]>([]);
   const [availableSkills, setAvailableSkills] = useState<SkillDefinition[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
@@ -101,6 +110,7 @@ export default function Chat() {
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [showAgentPicker, setShowAgentPicker] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set());
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
@@ -269,6 +279,11 @@ export default function Chat() {
     setShowJumpToBottom(false);
   }, []);
 
+  // Fetch datasets on mount for name resolution
+  useEffect(() => {
+    api.datasets.list().then(res => setDatasets(res.datasets || [])).catch(() => {});
+  }, []);
+
   // Track whether the user is parked at the bottom. Recompute on every scroll;
   // the threshold of 80px tolerates streaming-induced flicker and slow scrollbars.
   const handleMessagesScroll = useCallback(() => {
@@ -382,6 +397,28 @@ export default function Chat() {
     });
   }, [agents, selectedAgentId]);
 
+  // Sync dataset and skills/subagents from agent definition
+  useEffect(() => {
+    const agent = agents.find(a => a.id === selectedAgentId);
+    if (!agent) return;
+
+    const dsId = (agent as unknown as Record<string, unknown>)?.output_dataset_id as string || null;
+    setLoadedDatasetId(dsId);
+    setPreDatasetId(null);
+    setSelectedDatasetId(null);
+
+    const skillIds = agent.skill_ids;
+    if (skillIds && skillIds.length > 0) {
+      setLoadedSkillIds(new Set(skillIds.map(s => s.id)));
+      setLoadedNames(prev => { const m = new Map(prev); for (const s of skillIds) m.set(s.id, s.name); return m; });
+    }
+    const subAgentIds = agent.subagent_ids;
+    if (subAgentIds && subAgentIds.length > 0) {
+      setLoadedSubAgentIds(new Set(subAgentIds.map(a => a.id)));
+      setLoadedNames(prev => { const m = new Map(prev); for (const a of subAgentIds) m.set(a.id, a.name); return m; });
+    }
+  }, [agents, selectedAgentId]);
+
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
   const hydrateSession = useCallback(async (session: ChatSessionSummary) => {
@@ -493,14 +530,20 @@ export default function Chat() {
           const sid = res.sessionId;
           setSessionId(sid);
           doConnectSSE(sid);
-          if (res.loaded_tools && res.loaded_tools.length > 0) {
-            setLoadedToolIds(new Set(res.loaded_tools));
+          const lt = res.loaded_tools;
+          if (lt && lt.length > 0) {
+            setLoadedToolIds(new Set(lt.map(t => t.id)));
+            setLoadedNames(prev => { const m = new Map(prev); for (const t of lt) m.set(t.id, t.name); return m; });
           }
-          if (res.loaded_skills && res.loaded_skills.length > 0) {
-            setLoadedSkillIds(new Set(res.loaded_skills));
+          const ls = res.loaded_skills;
+          if (ls && ls.length > 0) {
+            setLoadedSkillIds(new Set(ls.map(s => s.id)));
+            setLoadedNames(prev => { const m = new Map(prev); for (const s of ls) m.set(s.id, s.name); return m; });
           }
-          if (res.loaded_sub_agents && res.loaded_sub_agents.length > 0) {
-            setLoadedSubAgentIds(new Set(res.loaded_sub_agents));
+          const la = res.loaded_sub_agents;
+          if (la && la.length > 0) {
+            setLoadedSubAgentIds(new Set(la.map(a => a.id)));
+            setLoadedNames(prev => { const m = new Map(prev); for (const a of la) m.set(a.id, a.name); return m; });
           }
           setPreToolIds(new Set());
           setPreSkillIds(new Set());
@@ -909,6 +952,7 @@ export default function Chat() {
     const preSkillIdsArr = Array.from(preSkillIds);
     const preSubAgentIdsArr = Array.from(preSubAgentIds);
     const res = await sessionApi.create(selectedAgentId, {
+      config: preDatasetId ? { datasetId: preDatasetId } : undefined,
       tools: preToolIdsArr.length > 0 ? preToolIdsArr : undefined,
       skill_ids: preSkillIdsArr.length > 0 ? preSkillIdsArr : undefined,
       sub_agent_ids: preSubAgentIdsArr.length > 0 ? preSubAgentIdsArr : undefined,
@@ -918,21 +962,33 @@ export default function Chat() {
     doConnectSSE(id);
 
     // Update loaded state from server response
-    if (res.loaded_tools && res.loaded_tools.length > 0) {
-      setLoadedToolIds(new Set(res.loaded_tools));
-      showToast(`Loaded ${res.loaded_tools.length} tool(s)`);
+    const loadedTools = res.loaded_tools;
+    if (loadedTools && loadedTools.length > 0) {
+      const { ids } = mergeIdNames(loadedTools);
+      setLoadedToolIds(ids);
+      setLoadedNames(prev => { const m = new Map(prev); for (const t of loadedTools) m.set(t.id, t.name); return m; });
+      showToast(`Loaded ${loadedTools.length} tool(s)`);
     }
-    if (res.loaded_skills && res.loaded_skills.length > 0) {
-      setLoadedSkillIds(new Set(res.loaded_skills));
-      showToast(`Loaded ${res.loaded_skills.length} skill(s)`);
+    const loadedSkills = res.loaded_skills;
+    if (loadedSkills && loadedSkills.length > 0) {
+      setLoadedSkillIds(new Set(loadedSkills.map(s => s.id)));
+      setLoadedNames(prev => { const m = new Map(prev); for (const s of loadedSkills) m.set(s.id, s.name); return m; });
+      showToast(`Loaded ${loadedSkills.length} skill(s)`);
     }
-    if (res.loaded_sub_agents && res.loaded_sub_agents.length > 0) {
-      setLoadedSubAgentIds(new Set(res.loaded_sub_agents));
-      showToast(`Loaded ${res.loaded_sub_agents.length} sub-agent(s)`);
+    const loadedSubAgents = res.loaded_sub_agents;
+    if (loadedSubAgents && loadedSubAgents.length > 0) {
+      setLoadedSubAgentIds(new Set(loadedSubAgents.map(a => a.id)));
+      setLoadedNames(prev => { const m = new Map(prev); for (const a of loadedSubAgents) m.set(a.id, a.name); return m; });
+      showToast(`Loaded ${loadedSubAgents.length} sub-agent(s)`);
     }
     setPreToolIds(new Set());
     setPreSkillIds(new Set());
     setPreSubAgentIds(new Set());
+    if (preDatasetId) {
+      setLoadedDatasetId(preDatasetId);
+      setPreDatasetId(null);
+      showToast('Dataset bound to session');
+    }
 
     // Wait for SSE to connect
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -1028,14 +1084,57 @@ export default function Chat() {
     setCompressionInfo(null);
     setLoadedToolIds(new Set());
     setLoadedSkillIds(new Set());
+    setLoadedSubAgentIds(new Set());
     setPreToolIds(new Set());
     setPreSkillIds(new Set());
+    setPreSubAgentIds(new Set());
+    setPreDatasetId(null);
+    setSelectedDatasetId(null);
+    setLoadedDatasetId(null);
+    setLoadedNames(new Map());
     setPendingAttachments([]);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     sessionStorage.removeItem('chat_messages');
     sessionStorage.removeItem('chat_sessionId');
     sessionStorage.removeItem('chat_artifacts');
+  };
+
+  const datasetNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ds of datasets) map.set(ds.id, ds.name);
+    return map;
+  }, [datasets]);
+
+  const getDatasetChipName = (id: string | null) => {
+    if (!id) return 'Dataset';
+    return datasetNameMap.get(id) || id;
+  };
+
+  const skillNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of availableSkills) map.set(s.id, s.name);
+    return map;
+  }, [availableSkills]);
+
+  const agentNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of agents) map.set(a.id, a.name);
+    return map;
+  }, [agents]);
+
+  const getSkillChipName = (id: string) => loadedNames.get(id) || skillNameMap.get(id) || id;
+  const getAgentChipName = (id: string) => loadedNames.get(id) || agentNameMap.get(id) || id;
+
+  // Merge IdName pairs from API into id set and name map
+  const mergeIdNames = (idNames: IdName[]): { ids: Set<string>; names: Map<string, string> } => {
+    const ids = new Set<string>();
+    const names = new Map<string, string>();
+    for (const item of idNames) {
+      ids.add(item.id);
+      names.set(item.id, item.name);
+    }
+    return { ids, names };
   };
 
   // Fetch available tools for picker
@@ -1067,38 +1166,43 @@ export default function Chat() {
       setSkillsLoading(false);
     }
   }, []);
-
-  // Open tool picker
-  const openToolPicker = useCallback(() => {
-    // Start with agent's configured tools
+  // Open config modal — pre-populate selections from agent config and session state
+  const openConfigModal = useCallback(() => {
+    // Tools: start with agent's configured tools + session tools
     const agentToolIds = selectedAgent?.tools?.map(t => t.id) || [];
-    // Merge with session tools (loaded or pre-selected)
     const sessionToolIds = sessionId ? loadedToolIds : preToolIds;
     setSelectedToolIds(new Set([...agentToolIds, ...sessionToolIds]));
     fetchTools();
-    setShowToolPicker(true);
-  }, [sessionId, selectedAgent, loadedToolIds, preToolIds, fetchTools]);
 
-  // Open skill picker
-  const openSkillPicker = useCallback(() => {
-    // Start with agent's configured skills
-    const agentSkillIds = (selectedAgent as unknown as Record<string, unknown>)?.skill_ids as string[] || [];
-    // Merge with session skills (loaded or pre-selected)
+    // Skills
+    const agentSkillIds = selectedAgent?.skill_ids?.map(s => s.id) || [];
     const sessionSkillIds = sessionId ? loadedSkillIds : preSkillIds;
     setSelectedSkillIds(new Set([...agentSkillIds, ...sessionSkillIds]));
     fetchSkills();
-    setShowSkillPicker(true);
-  }, [sessionId, selectedAgent, loadedSkillIds, preSkillIds, fetchSkills]);
 
-  // Open agent picker
-  const openAgentPicker = useCallback(() => {
-    // Start with agent's configured subagents
-    const agentSubAgentIds = (selectedAgent as unknown as Record<string, unknown>)?.subagent_ids as string[] || [];
-    // Merge with session subagents (loaded or pre-selected)
+    // Subagents
+    const agentSubAgentIds = selectedAgent?.subagent_ids?.map(a => a.id) || [];
     const sessionSubAgentIds = sessionId ? loadedSubAgentIds : preSubAgentIds;
     setSelectedAgentIds(new Set([...agentSubAgentIds, ...sessionSubAgentIds]));
-    setShowAgentPicker(true);
-  }, [sessionId, selectedAgent, loadedSubAgentIds, preSubAgentIds]);
+
+    // Dataset: agent's binding takes precedence, then session's selection
+    const agentDsId = (selectedAgent as unknown as Record<string, unknown>)?.output_dataset_id as string || null;
+    const sessionDs = sessionId ? loadedDatasetId : preDatasetId;
+    setSelectedDatasetId(agentDsId || sessionDs);
+
+    setShowConfigModal(true);
+  }, [sessionId, selectedAgent, loadedToolIds, preToolIds, loadedSkillIds, preSkillIds, loadedSubAgentIds, preSubAgentIds, loadedDatasetId, preDatasetId, fetchTools, fetchSkills]);
+
+  // Handle dataset selection from modal
+  const handleSelectDataset = useCallback((id: string | null) => {
+    if (!sessionId) {
+      setPreDatasetId(id);
+    } else {
+      setLoadedDatasetId(id);
+    }
+    setSelectedDatasetId(id);
+    // dataset config is sent during session creation, no need for API call here
+  }, [sessionId]);
 
   // Toggle agent selection
   const toggleAgent = useCallback((id: string) => {
@@ -1114,6 +1218,7 @@ export default function Chat() {
   const loadSelectedAgents = useCallback(async () => {
     if (selectedAgentIds.size === 0) {
       setShowAgentPicker(false);
+      setShowConfigModal(false);
       return;
     }
 
@@ -1122,6 +1227,7 @@ export default function Chat() {
       setPreSubAgentIds(new Set(selectedAgentIds));
       showToast(`Selected ${selectedAgentIds.size} agent(s), will load as subagent on first message`);
       setShowAgentPicker(false);
+      setShowConfigModal(false);
       setSelectedAgentIds(new Set());
       return;
     }
@@ -1131,12 +1237,18 @@ export default function Chat() {
       if (res.loaded_sub_agents && res.loaded_sub_agents.length > 0) {
         setLoadedSubAgentIds(prev => {
           const next = new Set(prev);
-          for (const name of res.loaded_sub_agents) next.add(name);
+          for (const a of res.loaded_sub_agents) next.add(a.id);
+          return next;
+        });
+        setLoadedNames(prev => {
+          const next = new Map(prev);
+          for (const a of res.loaded_sub_agents) next.set(a.id, a.name);
           return next;
         });
         showToast(`Loaded ${res.loaded_sub_agents.length} agent(s) as subagent(s)`);
       }
       setShowAgentPicker(false);
+      setShowConfigModal(false);
       setSelectedAgentIds(new Set());
     } catch (err) {
       console.error('Failed to load subagents:', err);
@@ -1168,6 +1280,7 @@ export default function Chat() {
   const loadSelectedTools = useCallback(async () => {
     if (selectedToolIds.size === 0) {
       setShowToolPicker(false);
+      setShowConfigModal(false);
       return;
     }
 
@@ -1176,6 +1289,7 @@ export default function Chat() {
       setPreToolIds(new Set(selectedToolIds));
       showToast(`Selected ${selectedToolIds.size} tool(s), will load on first message`);
       setShowToolPicker(false);
+      setShowConfigModal(false);
       setSelectedToolIds(new Set());
       return;
     }
@@ -1185,12 +1299,18 @@ export default function Chat() {
       if (res.loaded_tools && res.loaded_tools.length > 0) {
         setLoadedToolIds(prev => {
           const next = new Set(prev);
-          for (const name of res.loaded_tools) next.add(name);
+          for (const t of res.loaded_tools) next.add(t.id);
+          return next;
+        });
+        setLoadedNames(prev => {
+          const next = new Map(prev);
+          for (const t of res.loaded_tools) next.set(t.id, t.name);
           return next;
         });
         showToast(`Loaded ${res.loaded_tools.length} tool(s)`);
       }
       setShowToolPicker(false);
+      setShowConfigModal(false);
       setSelectedToolIds(new Set());
     } catch (err) {
       console.error('Failed to load tools:', err);
@@ -1202,6 +1322,7 @@ export default function Chat() {
   const loadSelectedSkills = useCallback(async () => {
     if (selectedSkillIds.size === 0) {
       setShowSkillPicker(false);
+      setShowConfigModal(false);
       return;
     }
 
@@ -1210,6 +1331,7 @@ export default function Chat() {
       setPreSkillIds(new Set(selectedSkillIds));
       showToast(`Selected ${selectedSkillIds.size} skill(s), will load on first message`);
       setShowSkillPicker(false);
+      setShowConfigModal(false);
       setSelectedSkillIds(new Set());
       return;
     }
@@ -1219,12 +1341,18 @@ export default function Chat() {
       if (res.loaded_skills && res.loaded_skills.length > 0) {
         setLoadedSkillIds(prev => {
           const next = new Set(prev);
-          for (const name of res.loaded_skills) next.add(name);
+          for (const s of res.loaded_skills) next.add(s.id);
+          return next;
+        });
+        setLoadedNames(prev => {
+          const next = new Map(prev);
+          for (const s of res.loaded_skills) next.set(s.id, s.name);
           return next;
         });
         showToast(`Loaded ${res.loaded_skills.length} skill(s)`);
       }
       setShowSkillPicker(false);
+      setShowConfigModal(false);
       setSelectedSkillIds(new Set());
     } catch (err) {
       console.error('Failed to load skills:', err);
@@ -1660,9 +1788,10 @@ export default function Chat() {
       {/* Input area */}
       <div className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
         <div className="max-w-4xl mx-auto">
-          {/* Loaded / pre-selected tools/skills chips */}
+          {/* Loaded / pre-selected tools/skills/subagents/dataset chips */}
           {(() => {
-            const totalChips = loadedToolIds.size + loadedSkillIds.size + loadedSubAgentIds.size + preToolIds.size + preSkillIds.size + preSubAgentIds.size;
+            const datasetChips = (loadedDatasetId || preDatasetId) ? 1 : 0;
+            const totalChips = loadedToolIds.size + loadedSkillIds.size + loadedSubAgentIds.size + preToolIds.size + preSkillIds.size + preSubAgentIds.size + datasetChips;
             if (totalChips === 0) return null;
             const COLLAPSE_THRESHOLD = 8;
             const collapsible = totalChips > COLLAPSE_THRESHOLD;
@@ -1679,6 +1808,7 @@ export default function Chat() {
                     {loadedToolIds.size + preToolIds.size > 0 && `${loadedToolIds.size + preToolIds.size} tools`}
                     {loadedSkillIds.size + preSkillIds.size > 0 && `${loadedToolIds.size + preToolIds.size > 0 ? ', ' : ''}${loadedSkillIds.size + preSkillIds.size} skills`}
                     {loadedSubAgentIds.size + preSubAgentIds.size > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0) ? ', ' : ''}${loadedSubAgentIds.size + preSubAgentIds.size} agents`}
+                    {datasetChips > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0 || loadedSubAgentIds.size + preSubAgentIds.size > 0) ? ', ' : ''}${getDatasetChipName(loadedDatasetId || preDatasetId)}`}
                     {' loaded'}
                   </span>
                 </button>
@@ -1710,8 +1840,8 @@ export default function Chat() {
                   <span className="ml-0.5 opacity-60">(pending)</span>
                 </span>
               ))}
-              {Array.from(loadedSkillIds).map(name => (
-                <span key={`s-${name}`}
+              {Array.from(loadedSkillIds).map(id => (
+                <span key={`s-${id}`}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
                   style={{
                     background: 'var(--color-warning)' + '18',
@@ -1719,11 +1849,11 @@ export default function Chat() {
                     border: '1px solid var(--color-warning)' + '30',
                   }}>
                   <Sparkles size={10} />
-                  {name}
+                  {getSkillChipName(id)}
                 </span>
               ))}
-              {Array.from(preSkillIds).map(name => (
-                <span key={`ps-${name}`}
+              {Array.from(preSkillIds).map(id => (
+                <span key={`ps-${id}`}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
                   style={{
                     background: 'var(--color-warning)' + '08',
@@ -1731,12 +1861,12 @@ export default function Chat() {
                     border: '1px dashed var(--color-border)',
                   }}>
                   <Sparkles size={10} />
-                  {name}
+                  {getSkillChipName(id)}
                   <span className="ml-0.5 opacity-60">(pending)</span>
                 </span>
               ))}
-              {Array.from(loadedSubAgentIds).map(name => (
-                <span key={`lsa-${name}`}
+              {Array.from(loadedSubAgentIds).map(id => (
+                <span key={`lsa-${id}`}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
                   style={{
                     background: '#8b5cf6' + '18',
@@ -1744,22 +1874,46 @@ export default function Chat() {
                     border: '1px solid #8b5cf6' + '30',
                   }}>
                   <Users size={10} />
-                  {name}
+                  {getAgentChipName(id)}
                 </span>
               ))}
-              {Array.from(preSubAgentIds).map(name => (
-                <span key={`psa-${name}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                  style={{
-                    background: '#8b5cf6' + '08',
-                    color: 'var(--color-text-muted)',
-                    border: '1px dashed var(--color-border)',
-                  }}>
-                  <Users size={10} />
-                  {name}
-                  <span className="ml-0.5 opacity-60">(pending)</span>
-                </span>
-              ))}
+               {Array.from(preSubAgentIds).map(id => (
+                 <span key={`psa-${id}`}
+                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                   style={{
+                     background: '#8b5cf6' + '08',
+                     color: 'var(--color-text-muted)',
+                     border: '1px dashed var(--color-border)',
+                   }}>
+                   <Users size={10} />
+                   {getAgentChipName(id)}
+                   <span className="ml-0.5 opacity-60">(pending)</span>
+                 </span>
+               ))}
+               {loadedDatasetId && (
+                 <span key="ds-loaded"
+                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                   style={{
+                     background: '#3b82f6' + '18',
+                     color: '#3b82f6',
+                     border: '1px solid #3b82f6' + '30',
+                   }}>
+                   <Database size={10} />
+                   {getDatasetChipName(loadedDatasetId)}
+                 </span>
+               )}
+               {preDatasetId && (
+                 <span key="ds-pending"
+                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                   style={{
+                     background: '#3b82f6' + '18',
+                     color: '#3b82f6',
+                     border: '1px solid #3b82f6' + '30',
+                   }}>
+                   <Database size={10} />
+                   {getDatasetChipName(preDatasetId)}
+                 </span>
+               )}
             </div>
               )}
             </div>
@@ -1798,46 +1952,29 @@ export default function Chat() {
           )}
 
           <div className="flex gap-2 items-end">
-            {/* Tool picker button — enabled when agent is selected */}
+            {/* Config button — opens modal with Tools, Skills, Subagents, Dataset */}
             <button
-              onClick={openToolPicker}
+              onClick={openConfigModal}
               disabled={!selectedAgentId || status === 'running'}
-              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
+              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0 relative"
               style={{
-                background: (loadedToolIds.size > 0 || preToolIds.size > 0) ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
+                background: (loadedToolIds.size > 0 || preToolIds.size > 0 || loadedSkillIds.size > 0 || preSkillIds.size > 0 || loadedSubAgentIds.size > 0 || preSubAgentIds.size > 0 || loadedDatasetId || preDatasetId)
+                  ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
                 border: '1px solid var(--color-border)',
-                color: (loadedToolIds.size > 0 || preToolIds.size > 0) ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                color: (loadedToolIds.size > 0 || preToolIds.size > 0 || loadedSkillIds.size > 0 || preSkillIds.size > 0 || loadedSubAgentIds.size > 0 || preSubAgentIds.size > 0 || loadedDatasetId || preDatasetId)
+                  ? 'var(--color-primary)' : 'var(--color-text-secondary)',
               }}
-              title="Load tools">
-              <Wrench size={18} />
-            </button>
-
-            {/* Skill picker button — enabled when agent is selected */}
-            <button
-              onClick={openSkillPicker}
-              disabled={!selectedAgentId || status === 'running'}
-              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
-              style={{
-                background: (loadedSkillIds.size > 0 || preSkillIds.size > 0) ? 'var(--color-warning)' + '20' : 'var(--color-bg-tertiary)',
-                border: '1px solid var(--color-border)',
-                color: (loadedSkillIds.size > 0 || preSkillIds.size > 0) ? 'var(--color-warning)' : 'var(--color-text-secondary)',
-              }}
-              title="Load skills">
-              <Sparkles size={18} />
-            </button>
-
-            {/* Agent picker button — enabled when agent is selected */}
-            <button
-              onClick={openAgentPicker}
-              disabled={!selectedAgentId || status === 'running'}
-              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
-              style={{
-                background: (loadedSubAgentIds.size > 0 || preSubAgentIds.size > 0) ? '#8b5cf620' : 'var(--color-bg-tertiary)',
-                border: '1px solid var(--color-border)',
-                color: (loadedSubAgentIds.size > 0 || preSubAgentIds.size > 0) ? '#8b5cf6' : 'var(--color-text-secondary)',
-              }}
-              title="Load agents as subagents">
-              <Users size={18} />
+              title="Configure tools, skills, subagents, and dataset">
+              <Settings size={18} />
+              {(() => {
+                const total = loadedToolIds.size + preToolIds.size + loadedSkillIds.size + preSkillIds.size + loadedSubAgentIds.size + preSubAgentIds.size + (loadedDatasetId ? 1 : 0) + (preDatasetId ? 1 : 0);
+                return total > 0 ? (
+                  <span className="absolute -top-1 -right-1 text-[9px] px-1 py-0.5 rounded-full font-medium"
+                    style={{ background: 'var(--color-primary)', color: 'white', minWidth: '16px', textAlign: 'center' }}>
+                    {total}
+                  </span>
+                ) : null;
+              })()}
             </button>
 
             {/* File upload button */}
@@ -1994,6 +2131,39 @@ export default function Chat() {
           onToggle={toggleAgent}
           onLoad={loadSelectedAgents}
           onClose={() => setShowAgentPicker(false)}
+        />
+      )}
+
+      {/* Unified Config Modal (Tools, Skills, Subagents, Dataset) */}
+      {showConfigModal && (
+        <ChatConfigModal
+          availableTools={availableTools}
+          toolsLoading={toolsLoading}
+          loadedToolIds={loadedToolIds}
+          preToolIds={preToolIds}
+          selectedToolIds={selectedToolIds}
+          onToggleTool={toggleTool}
+          onLoadTools={loadSelectedTools}
+          fetchTools={fetchTools}
+          availableSkills={availableSkills}
+          skillsLoading={skillsLoading}
+          loadedSkillIds={loadedSkillIds}
+          preSkillIds={preSkillIds}
+          selectedSkillIds={selectedSkillIds}
+          onToggleSkill={toggleSkill}
+          onLoadSkills={loadSelectedSkills}
+          agents={agents}
+          selectedAgentId={selectedAgentId}
+          loadedSubAgentIds={loadedSubAgentIds}
+          preSubAgentIds={preSubAgentIds}
+          selectedAgentIds={selectedAgentIds}
+          onToggleAgent={toggleAgent}
+          onLoadAgents={loadSelectedAgents}
+          selectedDatasetId={selectedDatasetId}
+          loadedDatasetId={loadedDatasetId}
+          preDatasetId={preDatasetId}
+          onSelectDataset={handleSelectDataset}
+          onClose={() => setShowConfigModal(false)}
         />
       )}
       </div>

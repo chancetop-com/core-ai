@@ -14,11 +14,11 @@ public class CreateSessionResponse {
     public String sessionId;
 
     @Property(name = "loaded_tools")
-    public List<String> loadedTools;
+    public List<IdName> loadedTools;
 
     @Property(name = "loaded_skills")
-    public List<String> loadedSkills;
+    public List<IdName> loadedSkills;
 
     @Property(name = "loaded_sub_agents")
-    public List<String> loadedSubAgents;
+    public List<IdName> loadedSubAgents;
 }

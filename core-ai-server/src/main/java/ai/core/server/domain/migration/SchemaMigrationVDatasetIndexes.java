@@ -1,6 +1,5 @@
 package ai.core.server.domain.migration;
 
-import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 
 import core.framework.mongo.Mongo;
@@ -21,7 +20,6 @@ public class SchemaMigrationVDatasetIndexes implements SchemaMigration {
 
     @Override
     public void migrate(Mongo mongo) {
-        mongo.createIndex("datasets", Indexes.ascending("user_id"));
         mongo.createIndex("datasets", Indexes.ascending("name"));
 
         mongo.createIndex("dataset_records", Indexes.ascending("dataset_id"));

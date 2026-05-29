@@ -13,6 +13,7 @@ export default function DatasetRecords() {
   const [records, setRecords] = useState<DatasetRecordView[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const limit = Number(searchParams.get('limit') || '20');
   const offset = Number(searchParams.get('offset') || '0');
@@ -55,7 +56,9 @@ export default function DatasetRecords() {
 
   const formatTime = (iso: string) => {
     if (!iso) return '-';
-    return new Date(iso).toLocaleString();
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString();
   };
 
   const parseData = (data: string): Record<string, unknown> => {
@@ -171,42 +174,64 @@ export default function DatasetRecords() {
                 <tbody>
                   {records.map(r => {
                     const data = parseData(r.data);
+                    const isExpanded = expandedId === r.id;
                     return (
-                      <tr key={r.id} className="border-t"
-                        style={{ borderColor: 'var(--color-border)' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-secondary)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        <td className="px-3 py-2 text-xs font-mono"
-                          style={{ color: 'var(--color-text-secondary)' }}>
-                          <button onClick={() => navigate(`/runs/${r.run_id}`)}
-                            className="cursor-pointer hover:underline"
-                            style={{ color: 'var(--color-primary)' }}>
+                      <>
+                        <tr key={r.id} className="border-t cursor-pointer"
+                          style={{ borderColor: 'var(--color-border)', background: isExpanded ? 'var(--color-bg-secondary)' : undefined }}
+                          onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                          onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--color-bg-secondary)' }}
+                          onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}>
+                          <td className="px-3 py-2 text-xs font-mono"
+                            style={{ color: 'var(--color-text-secondary)' }}>
                             {r.run_id?.slice(0, 12)}...
-                          </button>
-                        </td>
-                        <td className="px-3 py-2 text-xs"
-                          style={{ color: 'var(--color-text-secondary)' }}>
-                          {r.agent_id}
-                        </td>
-                        <td className="px-3 py-2 text-xs"
-                          style={{ color: 'var(--color-text-secondary)' }}>
-                          {formatTime(r.run_started_at)}
-                        </td>
-                        {hasSchema ? fieldNames.map(fn => (
-                          <td key={fn} className="px-3 py-2 text-xs max-w-xs truncate"
-                            title={String(data[fn] ?? '')}>
-                            {data[fn] != null ? String(data[fn]) : '-'}
                           </td>
-                        )) : (
-                          <td className="px-3 py-2 text-xs max-w-md" style={{ wordBreak: 'break-word' }}>
-                            {data.output != null ? (
-                              <div className="max-h-32 overflow-y-auto whitespace-pre-wrap">
-                                {String(data.output)}
+                          <td className="px-3 py-2 text-xs"
+                            style={{ color: 'var(--color-text-secondary)' }}>
+                            {r.agent_id}
+                          </td>
+                          <td className="px-3 py-2 text-xs"
+                            style={{ color: 'var(--color-text-secondary)' }}>
+                            {formatTime(r.run_started_at)}
+                          </td>
+                          {hasSchema ? fieldNames.map(fn => (
+                            <td key={fn} className="px-3 py-2 text-xs max-w-xs truncate"
+                              title={String(data[fn] ?? '')}>
+                              {data[fn] != null ? String(data[fn]) : '-'}
+                            </td>
+                          )) : (
+                            <td className="px-3 py-2 text-xs max-w-md" style={{ wordBreak: 'break-word' }}>
+                              {data.output != null ? (
+                                <div className="max-h-32 overflow-y-auto whitespace-pre-wrap">
+                                  {String(data.output)}
+                                </div>
+                              ) : '-'}
+                            </td>
+                          )}
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`${r.id}-detail`} style={{ background: 'var(--color-bg-secondary)' }}>
+                            <td colSpan={3 + (hasSchema ? fieldNames.length : 1)} className="px-4 py-3 border-t"
+                              style={{ borderColor: 'var(--color-border)' }}>
+                              <div className="grid grid-cols-[100px_1fr] gap-x-4 gap-y-1 text-xs mb-3">
+                                <div style={{ color: 'var(--color-text-secondary)' }}>Record ID</div>
+                                <div className="font-mono">{r.id}</div>
+                                <div style={{ color: 'var(--color-text-secondary)' }}>Run ID</div>
+                                <div className="font-mono" style={{ color: 'var(--color-text-secondary)' }}>{r.run_id || '-'}</div>
+                                <div style={{ color: 'var(--color-text-secondary)' }}>Agent</div>
+                                <div className="font-mono">{r.agent_id || '-'}</div>
+                                <div style={{ color: 'var(--color-text-secondary)' }}>Started At</div>
+                                <div>{formatTime(r.run_started_at)}</div>
                               </div>
-                            ) : '-'}
-                          </td>
+                              <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>Data</div>
+                              <pre className="text-xs rounded-lg p-3 overflow-x-auto whitespace-pre-wrap"
+                                style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
+                                {JSON.stringify(data, null, 2)}
+                              </pre>
+                            </td>
+                          </tr>
                         )}
-                      </tr>
+                      </>
                     );
                   })}
                 </tbody>

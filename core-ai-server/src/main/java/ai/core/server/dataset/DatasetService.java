@@ -33,26 +33,16 @@ public class DatasetService {
         return entity;
     }
 
-    public List<Dataset> list(String userId) {
-        return datasetCollection.find(Filters.eq("user_id", userId));
+    public List<Dataset> list() {
+        return datasetCollection.find(new org.bson.Document());
     }
 
     public Dataset get(String id) {
         return datasetCollection.get(id).orElse(null);
     }
 
-    public Dataset get(String id, String userId) {
-        return datasetCollection.findOne(Filters.and(
-            Filters.eq("_id", id),
-            Filters.eq("user_id", userId)
-        )).orElse(null);
-    }
-
-    public Dataset update(String id, String name, String description, List<ai.core.server.domain.SchemaField> schema, String userId) {
-        var entity = datasetCollection.findOne(Filters.and(
-            Filters.eq("_id", id),
-            Filters.eq("user_id", userId)
-        )).orElse(null);
+    public Dataset update(String id, String name, String description, List<ai.core.server.domain.SchemaField> schema) {
+        var entity = datasetCollection.get(id).orElse(null);
         if (entity == null) return null;
 
         if (name != null) entity.name = name;
@@ -65,11 +55,8 @@ public class DatasetService {
         return entity;
     }
 
-    public void delete(String id, String userId) {
-        var entity = datasetCollection.findOne(Filters.and(
-            Filters.eq("_id", id),
-            Filters.eq("user_id", userId)
-        )).orElse(null);
+    public void delete(String id) {
+        var entity = datasetCollection.get(id).orElse(null);
         if (entity == null) return;
 
         datasetRecordCollection.delete(Filters.eq("dataset_id", id));

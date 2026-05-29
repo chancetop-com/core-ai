@@ -53,8 +53,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
 
     @Override
     public ListDatasetsResponse list() {
-        var userId = AuthContext.userId(webContext);
-        var entities = datasetService.list(userId);
+        var entities = datasetService.list();
         var response = new ListDatasetsResponse();
         response.datasets = entities.stream().map(this::toView).toList();
         response.total = (long) response.datasets.size();
@@ -63,31 +62,27 @@ public class DatasetWebServiceImpl implements DatasetWebService {
 
     @Override
     public DatasetView get(String id) {
-        var userId = AuthContext.userId(webContext);
-        var entity = datasetService.get(id, userId);
+        var entity = datasetService.get(id);
         if (entity == null) throw new RuntimeException("dataset not found, id=" + id);
         return toView(entity);
     }
 
     @Override
     public DatasetView update(String id, UpdateDatasetRequest request) {
-        var userId = AuthContext.userId(webContext);
         var schema = request.schema != null ? toSchemaFields(request.schema) : null;
-        var entity = datasetService.update(id, request.name, request.description, schema, userId);
+        var entity = datasetService.update(id, request.name, request.description, schema);
         if (entity == null) throw new RuntimeException("dataset not found, id=" + id);
         return toView(entity);
     }
 
     @Override
     public void delete(String id) {
-        var userId = AuthContext.userId(webContext);
-        datasetService.delete(id, userId);
+        datasetService.delete(id);
     }
 
     @Override
     public ListDatasetRecordsResponse listRecords(String id) {
-        var userId = AuthContext.userId(webContext);
-        var dataset = datasetService.get(id, userId);
+        var dataset = datasetService.get(id);
         if (dataset == null) throw new RuntimeException("dataset not found, id=" + id);
 
         var params = webContext.request().queryParams();

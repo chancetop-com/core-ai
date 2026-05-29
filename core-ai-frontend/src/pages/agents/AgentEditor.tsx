@@ -126,7 +126,7 @@ export default function AgentEditor() {
       return;
     }
 
-    api.agents.get(id).then(setAgent).catch(console.error).finally(() => setLoading(false));
+    api.agents.get(id).then(data => setAgent({ ...data, skill_ids: data.skill_ids?.map((s: {id: string; name: string}) => s.id) || [], subagent_ids: data.subagent_ids?.map((a: {id: string; name: string}) => a.id) || [] } as any)).catch(console.error).finally(() => setLoading(false));
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id, isNew]);
@@ -344,10 +344,10 @@ The system prompt should define how this agent behaves, its capabilities, and it
           input_template: agent.input_template,
           variables: agent.variables,
           response_schema: agent.response_schema,
-          subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined,
-          skill_ids: (agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined,
+          subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids,
+          skill_ids: (agent as unknown as Record<string, unknown>).skill_ids,
           output_dataset_id: agent.output_dataset_id,
-        });
+        } as any);
         navigate(`/agents/${created.id}`);
         return;
       }
@@ -367,10 +367,10 @@ The system prompt should define how this agent behaves, its capabilities, and it
         input_template: agent.input_template,
         variables: agent.variables,
         response_schema: agent.response_schema,
-          subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined,
-          skill_ids: (agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined,
+          subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids,
+          skill_ids: (agent as unknown as Record<string, unknown>).skill_ids,
           output_dataset_id: agent.output_dataset_id,
-        });
+        } as any);
         setAgent(updated);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);

@@ -9,7 +9,7 @@ interface Props {
 export default function SandboxTerminalPanel({ sandbox, onClose }: Props) {
   return (
     <div className="w-[520px] shrink-0 flex flex-col border-l"
-      style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)' }}>
+      style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b shrink-0"
         style={{ borderColor: 'var(--color-border)' }}>

@@ -9,5 +9,5 @@ import java.util.List;
  */
 public class LoadSkillsResponse {
     @Property(name = "loaded_skills")
-    public List<String> loadedSkills;
+    public List<IdName> loadedSkills;
 }

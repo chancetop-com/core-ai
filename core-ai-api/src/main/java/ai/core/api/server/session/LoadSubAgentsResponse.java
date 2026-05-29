@@ -9,5 +9,5 @@ import java.util.List;
  */
 public class LoadSubAgentsResponse {
     @Property(name = "loaded_sub_agents")
-    public List<String> loadedSubAgents;
+    public List<IdName> loadedSubAgents;
 }

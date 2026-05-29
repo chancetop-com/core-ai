@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Database, Trash2, Code, ChevronDown, ChevronRight, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Database, Trash2, Code, ChevronDown, ChevronRight, Loader2, Sparkles, Table } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SchemaFieldView } from '../../api/client';
 
@@ -249,11 +249,18 @@ Description: ${description || 'N/A'}`,
         </div>
         <div className="flex items-center gap-2">
           {!isNew && (
-            <button onClick={handleDelete}
-              className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}>
-              <Trash2 size={14} /> Delete
-            </button>
+            <>
+              <button onClick={() => navigate(`/datasets/${id}/records`)}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-primary)' }}>
+                <Table size={14} /> Records
+              </button>
+              <button onClick={handleDelete}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}>
+                <Trash2 size={14} /> Delete
+              </button>
+            </>
           )}
           <button onClick={handleSave} disabled={saving}
             className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"

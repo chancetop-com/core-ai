@@ -5,6 +5,7 @@ import ai.core.api.server.agent.GenerateAgentDraftResponse;
 import ai.core.api.server.session.ApproveToolCallRequest;
 import ai.core.api.server.session.CreateSessionRequest;
 import ai.core.api.server.session.CreateSessionResponse;
+import ai.core.api.server.session.IdName;
 import ai.core.api.server.session.LoadSkillsRequest;
 import ai.core.api.server.session.LoadSkillsResponse;
 import ai.core.api.server.session.LoadSubAgentsRequest;
@@ -30,6 +31,7 @@ import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
+import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCall;
 import ai.core.utils.JsonUtil;
@@ -63,6 +65,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     @Inject
     ToolRegistryService toolRegistryService;
     @Inject
+    SkillService skillService;
+    @Inject
     ChatMessageService chatMessageService;
     @Inject
     CommandPublisher commandPublisher;
@@ -80,8 +84,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var state = new SessionState();
         state.userId = userId;
         state.config = request.config;
-        var loadedSubAgents = new ArrayList<String>();
-        var loadedSkills = new ArrayList<String>();
+        var loadedSubAgents = new ArrayList<IdName>();
+        var loadedSkills = new ArrayList<IdName>();
 
         if (request.agentId != null && !request.agentId.isBlank()) {
             sessionId = createSessionFromAgent(request.agentId, state, userId, loadedSubAgents, loadedSkills);
@@ -95,7 +99,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var extraLoadedSkills = loadSkillsOnSessionCreate(sessionId, request);
         if (extraLoadedSkills != null) {
             for (var skill : extraLoadedSkills) {
-                if (!loadedSkills.contains(skill)) loadedSkills.add(skill);
+                if (loadedSkills.stream().noneMatch(s -> s.id.equals(skill.id))) loadedSkills.add(skill);
             }
         }
         loadExtraSubAgentsOnSessionCreate(sessionId, request, loadedSubAgents);
@@ -111,16 +115,28 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     }
 
     private String createSessionFromAgent(String agentId, SessionState state, String userId,
-                                          List<String> loadedSubAgents, List<String> loadedSkills) {
+                                          List<IdName> loadedSubAgents, List<IdName> loadedSkills) {
         var agent = agentDefinitionService.getEntity(agentId);
         var result = sessionManager.createSessionFromAgent(agent, state.config, userId);
         state.fromAgent = true;
         state.agentConfig = buildAgentConfigSnapshot(agent);
-        if (result.loadedSubAgents() != null && !result.loadedSubAgents().isEmpty()) {
-            loadedSubAgents.addAll(result.loadedSubAgents());
+        if (result.loadedSubAgentIds() != null && !result.loadedSubAgentIds().isEmpty()) {
+            for (var id : result.loadedSubAgentIds()) {
+                String name = resolveAgentName(id);
+                var v = new IdName();
+                v.id = id;
+                v.name = name;
+                loadedSubAgents.add(v);
+            }
         }
-        if (result.loadedSkills() != null && !result.loadedSkills().isEmpty()) {
-            loadedSkills.addAll(result.loadedSkills());
+        if (result.loadedSkillIds() != null && !result.loadedSkillIds().isEmpty()) {
+            for (var id : result.loadedSkillIds()) {
+                String name = resolveSkillName(id);
+                var v = new IdName();
+                v.id = id;
+                v.name = name != null ? name : id;
+                loadedSkills.add(v);
+            }
         }
         return result.sessionId();
     }
@@ -141,7 +157,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         return snapshot;
     }
 
-    private List<String> loadToolsOnSessionCreate(String sessionId, CreateSessionRequest request) {
+    private List<IdName> loadToolsOnSessionCreate(String sessionId, CreateSessionRequest request) {
         if (request.tools == null || request.tools.isEmpty()) return null;
 
         var toolRefs = request.tools.stream()
@@ -159,7 +175,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
 
         var loadedTools = toolRegistryService.resolveToolRefs(toolRefs);
         if (loadedTools.isEmpty()) {
-            // Tools requested but none found — log warning but don't fail
             LOGGER.warn("no tools found for refs, skipping: {}", toolRefs);
             return null;
         }
@@ -167,15 +182,23 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         session.loadTools(loadedTools);
         chatMessageService.addLoadedTools(sessionId, toolRefs);
-        return loadedTools.stream().map(ToolCall::getName).toList();
+        return loadedTools.stream().map(t -> { var v = new IdName(); v.id = t.getName(); v.name = t.getName(); return v; }).toList();
     }
 
-    private List<String> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {
+    private List<IdName> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {
         if (request.skillIds == null || request.skillIds.isEmpty()) return null;
-        return sessionManager.loadSkills(sessionId, request.skillIds);
+        var names = sessionManager.loadSkills(sessionId, request.skillIds);
+        var result = new ArrayList<IdName>(request.skillIds.size());
+        for (int i = 0; i < request.skillIds.size() && i < names.size(); i++) {
+            var v = new IdName();
+            v.id = request.skillIds.get(i);
+            v.name = names.get(i);
+            result.add(v);
+        }
+        return result;
     }
 
-    private void loadExtraSubAgentsOnSessionCreate(String sessionId, CreateSessionRequest request, List<String> loadedSubAgents) {
+    private void loadExtraSubAgentsOnSessionCreate(String sessionId, CreateSessionRequest request, List<IdName> loadedSubAgents) {
         if (request.subAgentIds == null || request.subAgentIds.isEmpty()) return;
         var definitions = request.subAgentIds.stream()
                 .map(id -> {
@@ -190,7 +213,28 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                 .toList();
         if (definitions.isEmpty()) return;
         var names = sessionManager.loadSubAgents(sessionId, definitions);
-        loadedSubAgents.addAll(names);
+        for (int i = 0; i < definitions.size() && i < names.size(); i++) {
+            var v = new IdName();
+            v.id = definitions.get(i).id;
+            v.name = names.get(i);
+            loadedSubAgents.add(v);
+        }
+    }
+
+    private String resolveSkillName(String id) {
+        try {
+            return skillService.get(id).name;
+        } catch (Exception e) {
+            return id;
+        }
+    }
+
+    private String resolveAgentName(String id) {
+        try {
+            return agentDefinitionService.getEntity(id).name;
+        } catch (Exception e) {
+            return id;
+        }
     }
 
     private void saveSessionState(String sessionId, SessionState state) {
@@ -314,7 +358,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("session_id", sessionId);
 
         if (isLocalOwner(sessionId)) {
-            List<String> loadedTools;
+            List<IdName> loadedTools;
             if (request.tools != null && !request.tools.isEmpty()) {
                 var toolRefs = request.tools.stream()
                         .map(v -> {
@@ -325,7 +369,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                             if (ref.type == null) ref.inferTypeFromId();
                             return ref;
                         }).toList();
-                loadedTools = sessionManager.loadToolRefs(sessionId, toolRefs);
+                var names = sessionManager.loadToolRefs(sessionId, toolRefs);
+                loadedTools = names.stream().map(n -> { var v = new IdName(); v.id = n; v.name = n; return v; }).toList();
             } else {
                 loadedTools = List.of();
             }
@@ -355,7 +400,14 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("session_id", sessionId);
 
         if (isLocalOwner(sessionId)) {
-            var loadedSkills = sessionManager.loadSkills(sessionId, request.skillIds);
+            var names = sessionManager.loadSkills(sessionId, request.skillIds);
+            var loadedSkills = new ArrayList<IdName>(request.skillIds.size());
+            for (int i = 0; i < request.skillIds.size() && i < names.size(); i++) {
+            var v = new IdName();
+            v.id = request.skillIds.get(i);
+            v.name = names.get(i);
+            loadedSkills.add(v);
+            }
             var response = new LoadSkillsResponse();
             response.loadedSkills = loadedSkills;
             return response;
@@ -394,7 +446,14 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             var definitions = request.agentIds.stream()
                     .map(agentDefinitionService::getEntity)
                     .toList();
-            var loadedSubAgents = sessionManager.loadSubAgents(sessionId, definitions);
+            var names = sessionManager.loadSubAgents(sessionId, definitions);
+            var loadedSubAgents = new ArrayList<IdName>(definitions.size());
+            for (int i = 0; i < definitions.size() && i < names.size(); i++) {
+                var v = new IdName();
+            v.id = definitions.get(i).id;
+            v.name = names.get(i);
+            loadedSubAgents.add(v);
+            }
             var response = new LoadSubAgentsResponse();
             response.loadedSubAgents = loadedSubAgents;
             return response;

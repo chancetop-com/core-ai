@@ -228,7 +228,7 @@ export default function AgentList() {
             }}>
             <Bot size={14} />
             My Agents
-            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)' }}>
+            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
               {myAgents.filter(a => !a.system_default).length}
             </span>
           </button>
@@ -241,7 +241,7 @@ export default function AgentList() {
             }}>
             <Star size={14} />
             Shared Agents
-            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)' }}>
+            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
               {otherAgents.filter(a => !a.system_default).length}
             </span>
           </button>

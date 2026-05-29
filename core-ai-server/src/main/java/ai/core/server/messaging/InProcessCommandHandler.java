@@ -2,6 +2,7 @@ package ai.core.server.messaging;
 
 import ai.core.api.a2a.Message;
 import ai.core.api.server.session.ApprovalDecision;
+import ai.core.api.server.session.IdName;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
@@ -12,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPool;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -126,7 +128,8 @@ public class InProcessCommandHandler {
             return;
         }
         var loadedTools = sessionManager.loadToolRefs(command.sessionId(), toolRefs);
-        var result = JsonUtil.toJson(Map.of("loadedTools", loadedTools));
+        var idNames = loadedTools.stream().map(n -> { var v = new IdName(); v.id = n; v.name = n; return v; }).toList();
+        var result = JsonUtil.toJson(Map.of("loadedTools", idNames));
         respondOk(command, result);
     }
 
@@ -137,8 +140,15 @@ public class InProcessCommandHandler {
             respondOk(command, JsonUtil.toJson(Map.of("loadedSkills", List.of())));
             return;
         }
-        var loadedSkills = sessionManager.loadSkills(command.sessionId(), skillIds);
-        var result = JsonUtil.toJson(Map.of("loadedSkills", loadedSkills));
+        var names = sessionManager.loadSkills(command.sessionId(), skillIds);
+        var idNames = new ArrayList<IdName>(skillIds.size());
+        for (int i = 0; i < skillIds.size() && i < names.size(); i++) {
+            var v = new IdName();
+            v.id = skillIds.get(i);
+            v.name = names.get(i);
+            idNames.add(v);
+        }
+        var result = JsonUtil.toJson(Map.of("loadedSkills", idNames));
         respondOk(command, result);
     }
 
@@ -165,8 +175,15 @@ public class InProcessCommandHandler {
         var definitions = agentIds.stream()
                 .map(agentDefinitionService::getEntity)
                 .toList();
-        var loadedSubAgents = sessionManager.loadSubAgents(command.sessionId(), definitions);
-        var result = JsonUtil.toJson(Map.of("loadedSubAgents", loadedSubAgents));
+        var names = sessionManager.loadSubAgents(command.sessionId(), definitions);
+        var idNames = new ArrayList<IdName>(definitions.size());
+        for (int i = 0; i < definitions.size() && i < names.size(); i++) {
+            var v = new IdName();
+            v.id = definitions.get(i).id;
+            v.name = names.get(i);
+            idNames.add(v);
+        }
+        var result = JsonUtil.toJson(Map.of("loadedSubAgents", idNames));
         respondOk(command, result);
     }
 

@@ -17,6 +17,10 @@ import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
+import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
+import ai.core.server.dataset.tool.InsertDatasetRecordTool;
+import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
+import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -283,6 +287,7 @@ public class AgentRunner {
         }
         tools = new ArrayList<>(tools);
         if (sandbox != null) tools.add(SubmitArtifactsTool.create(definition.userId, fileService, new AgentRunArtifactSink(runEntity.id, agentRunCollection)));
+        addDatasetTools(tools, config, definition, runEntity.id);
         var context = ExecutionContext.builder()
             .sessionId("run:" + definition.id)
             .userId(definition.userId)
@@ -324,6 +329,17 @@ public class AgentRunner {
         var agent = builder.build();
         agent.setAuthenticated(true);
         return agent;
+    }
+
+    private void addDatasetTools(List<ToolCall> tools, AgentPublishedConfig config, AgentDefinition definition, String runId) {
+        String datasetId = config != null ? config.outputDatasetId : definition.outputDatasetId;
+        if (datasetId == null) return;
+        var dataset = datasetService.get(datasetId);
+        if (dataset == null) return;
+        tools.add(QueryDatasetRecordsTool.create(datasetId, datasetRecordService, dataset));
+        tools.add(InsertDatasetRecordTool.create(datasetId, definition.id, runId, datasetRecordService, dataset));
+        tools.add(UpdateDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
+        tools.add(DeleteDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
     }
 
     private void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, Agent agent) {
@@ -401,7 +417,7 @@ public class AgentRunner {
         if (datasetId == null || output == null || output.isBlank()) return;
 
         try {
-            var dataset = datasetService.get(datasetId, definition.userId);
+            var dataset = datasetService.get(datasetId);
             if (dataset == null) {
                 LOGGER.warn("output dataset not found, datasetId={}, runId={}", datasetId, runId);
                 return;

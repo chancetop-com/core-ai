@@ -1,5 +1,6 @@
 package ai.core.api.server.agent;
 
+import ai.core.api.server.session.IdName;
 import ai.core.api.server.tool.ToolRefView;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
@@ -66,10 +67,10 @@ public class AgentDefinitionView {
     public String createdBy;
 
     @Property(name = "subagent_ids")
-    public List<String> subAgentIds;
+    public List<IdName> subAgentIds;
 
     @Property(name = "skill_ids")
-    public List<String> skillIds;
+    public List<IdName> skillIds;
 
     @Property(name = "status")
     public String status;

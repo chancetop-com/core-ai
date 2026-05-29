@@ -6,6 +6,12 @@ import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.LLMProviders;
 import ai.core.persistence.PersistenceProviders;
 import ai.core.server.artifact.ChatArtifactSetup;
+import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetService;
+import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
+import ai.core.server.dataset.tool.InsertDatasetRecordTool;
+import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
+import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.sandbox.SandboxService;
@@ -33,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -76,6 +83,11 @@ public class AgentSessionManager {
     @Inject
     ChatArtifactSetup artifactSetup;
 
+    @Inject
+    DatasetService datasetService;
+    @Inject
+    DatasetRecordService datasetRecordService;
+
     EventPublisher eventPublisher;
     SessionOwnershipRegistry ownershipRegistry;
 
@@ -105,7 +117,8 @@ public class AgentSessionManager {
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var sandboxOn = sandboxService.isSandboxEnabled(null);
-        var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), artifactSetup.withSubmitArtifactsTool(null, sessionId, userId, sandboxOn), context, null);
+        var tools = buildDefaultSessionTools(config, sessionId);
+        var agent = buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn), artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, sandboxOn), context, null);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -133,6 +146,7 @@ public class AgentSessionManager {
         }
         var tools = resolveTools(definition);
         var sessionId = UUID.randomUUID().toString();
+        tools = addDatasetTools(tools, definition, sessionId);
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var sandboxConfig = sandboxService.getEffectiveConfig(definition);
         var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
@@ -146,9 +160,17 @@ public class AgentSessionManager {
         sessions.put(sessionId, session);
         touchActivity(sessionId);
         claimOwnership(sessionId);
-        var loadedSkills = loadSkillsFromDefinition(sessionId, definition);
-        var loadedSubAgents = loadSubAgentsFromDefinition(session, definition);
-        return new SessionCreationResult(sessionId, loadedSubAgents, loadedSkills);
+        var loadedSkillIds = definition.publishedConfig != null && definition.publishedConfig.skillIds != null
+                ? definition.publishedConfig.skillIds
+                : definition.skillIds;
+        var loadedSubAgentIds = definition.publishedConfig != null && definition.publishedConfig.subAgentIds != null
+                ? definition.publishedConfig.subAgentIds
+                : definition.subAgentIds;
+        loadSkillsFromDefinition(sessionId, definition);
+        loadSubAgentsFromDefinition(session, definition);
+        return new SessionCreationResult(sessionId,
+                loadedSubAgentIds != null ? loadedSubAgentIds : List.of(),
+                loadedSkillIds != null ? loadedSkillIds : List.of());
     }
 
     private void claimOwnership(String sessionId) {
@@ -551,6 +573,32 @@ public class AgentSessionManager {
         return List.of();
     }
 
+    private List<ToolCall> addDatasetTools(List<ToolCall> tools, AgentDefinition definition, String sessionId) {
+        var config = definition.publishedConfig;
+        String datasetId = config != null ? config.outputDatasetId : definition.outputDatasetId;
+        if (datasetId == null) return tools;
+        var dataset = datasetService.get(datasetId);
+        if (dataset == null) return tools;
+        var mutable = new ArrayList<>(tools);
+        mutable.add(QueryDatasetRecordsTool.create(datasetId, datasetRecordService, dataset));
+        mutable.add(InsertDatasetRecordTool.create(datasetId, definition.id, sessionId, datasetRecordService, dataset));
+        mutable.add(UpdateDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
+        mutable.add(DeleteDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
+        return mutable;
+    }
+
+    private List<ToolCall> buildDefaultSessionTools(SessionConfig config, String sessionId) {
+        if (config.datasetId == null) return null;
+        var dataset = datasetService.get(config.datasetId);
+        if (dataset == null) return null;
+        var tools = new ArrayList<ToolCall>(BuiltinTools.ALL);
+        tools.add(QueryDatasetRecordsTool.create(config.datasetId, datasetRecordService, dataset));
+        tools.add(InsertDatasetRecordTool.create(config.datasetId, "default", sessionId, datasetRecordService, dataset));
+        tools.add(UpdateDatasetRecordTool.create(config.datasetId, datasetRecordService, dataset));
+        tools.add(DeleteDatasetRecordTool.create(config.datasetId, datasetRecordService, dataset));
+        return tools;
+    }
+
     private SessionConfig toSessionConfig(AgentDefinition definition) {
         var config = new SessionConfig();
         var source = definition.publishedConfig;
@@ -597,7 +645,7 @@ public class AgentSessionManager {
         return builder.build();
     }
 
-    public record SessionCreationResult(String sessionId, List<String> loadedSubAgents, List<String> loadedSkills) {
+    public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) {
     }
 
     private static final class SessionSkillState {
