@@ -59,6 +59,7 @@ import ai.core.server.trigger.TriggerService;
 import ai.core.server.trigger.action.RunAgentAction;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
 import ai.core.server.web.ChatSessionController;
+import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.DatasetWebServiceImpl;
 import ai.core.server.web.SkillWebServiceImpl;
 import ai.core.server.web.AgentRunWebServiceImpl;
@@ -200,6 +201,7 @@ public class ServerModule extends Module {
         triggerService.publicUrl = publicUrl;
         bind(RunAgentAction.class);
         bind(ForYouService.class);
+        bind(SessionCreateHelper.class);
     }
 
     private void bindWebService() {
@@ -222,11 +224,11 @@ public class ServerModule extends Module {
         blobController.container = property("azure.blob.container").orElse("uploads");
         blobController.prefix = property("azure.blob.prefix").orElse(null);
         blobController.publicBaseUrl = property("azure.blob.public.base.url").orElse(null);
-        if (accountName != null && !accountName.isBlank() && accountKey != null && !accountKey.isBlank()) {
-            blobController.sasService = new AzureBlobSasService(accountName, accountKey);
+        blobController.sasService = AzureBlobSasService.tryCreate(accountName, accountKey);
+        if (blobController.sasService != null) {
             LOGGER.info("Azure Blob upload credential endpoint configured (container={})", blobController.container);
         } else {
-            LOGGER.info("Azure Blob Storage not configured (azure.blob.account.name/key missing), upload endpoint will return 500");
+            LOGGER.info("Azure Blob Storage not configured (azure.blob.account.name/key missing or invalid), upload endpoint will return 500");
         }
         http().bean(BlobUploadCredentialView.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);

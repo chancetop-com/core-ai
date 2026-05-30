@@ -1,5 +1,8 @@
 package ai.core.server.blob;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URLEncoder;
@@ -15,6 +18,7 @@ import java.util.Map;
  * @author stephen
  */
 public class AzureBlobSasService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AzureBlobSasService.class);
     private static final String SAS_VERSION = "2018-11-09";
     private static final DateTimeFormatter EXPIRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
 
@@ -24,6 +28,18 @@ public class AzureBlobSasService {
     public AzureBlobSasService(String accountName, String accountKey) {
         this.accountName = accountName;
         this.accountKey = Base64.getDecoder().decode(accountKey);
+    }
+
+    public static AzureBlobSasService tryCreate(String accountName, String accountKey) {
+        if (accountName == null || accountName.isBlank() || accountKey == null || accountKey.isBlank()) {
+            return null;
+        }
+        try {
+            return new AzureBlobSasService(accountName, accountKey);
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("Azure Blob Storage account key is not valid base64, blob upload will be unavailable", e);
+            return null;
+        }
     }
 
     public SasResult generateContainerSas(String containerName, String blobName, int expiryMinutes) {
