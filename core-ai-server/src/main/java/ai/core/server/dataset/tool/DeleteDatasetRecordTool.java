@@ -17,14 +17,6 @@ import java.util.List;
 public final class DeleteDatasetRecordTool extends ToolCall {
     public static final String TOOL_NAME = "delete_dataset_record";
 
-    private final String datasetId;
-    private final DatasetRecordService recordService;
-
-    private DeleteDatasetRecordTool(String datasetId, DatasetRecordService recordService) {
-        this.datasetId = datasetId;
-        this.recordService = recordService;
-    }
-
     public static DeleteDatasetRecordTool create(String datasetId, DatasetRecordService recordService, Dataset dataset) {
         var tool = new DeleteDatasetRecordTool(datasetId, recordService);
         tool.setName(TOOL_NAME);
@@ -42,6 +34,14 @@ public final class DeleteDatasetRecordTool extends ToolCall {
         return ToolCallParameters.of(
             ToolCallParameters.ParamSpec.of(String.class, "record_id", "The ID of the record to delete.").required()
         );
+    }
+
+    private final String datasetId;
+    private final DatasetRecordService recordService;
+
+    private DeleteDatasetRecordTool(String datasetId, DatasetRecordService recordService) {
+        this.datasetId = datasetId;
+        this.recordService = recordService;
     }
 
     @Override

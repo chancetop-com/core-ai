@@ -53,14 +53,14 @@ public final class SubmitArtifactsTool extends ToolCall {
             only the sandbox path and optional metadata.
             """;
 
+    /** Set once at module bootstrap via ServerModule. Used to build absolute download URLs in tool results. */
+    @SuppressWarnings("PMD.MutableStaticState")
+    public static String publicUrl = "";
+
     public static String appendInstructions(String systemPrompt) {
         if (systemPrompt == null || systemPrompt.isBlank()) return SYSTEM_INSTRUCTIONS.strip();
         return systemPrompt + SYSTEM_INSTRUCTIONS;
     }
-
-    /** Set once at module bootstrap via ServerModule. Used to build absolute download URLs in tool results. */
-    @SuppressWarnings("PMD.MutableStaticState")
-    public static String publicUrl = "";
 
     public static SubmitArtifactsTool create(String userId, FileService fileService, ArtifactSink sink) {
         var tool = new SubmitArtifactsTool(userId, fileService, sink);
@@ -85,6 +85,42 @@ public final class SubmitArtifactsTool extends ToolCall {
         );
     }
 
+    private static String baseUrl() {
+        var url = publicUrl;
+        if (url == null || url.isEmpty()) return "";
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    static String normalizeArguments(String arguments) {
+        if (Strings.isBlank(arguments)) return arguments;
+        try {
+            var root = JsonUtil.OBJECT_MAPPER.readTree(arguments);
+            var artifactsNode = root.get("artifacts");
+            if (artifactsNode == null) return arguments;
+            // Some LLMs double-encode the artifacts array as a JSON string,
+            // e.g. {"artifacts":"[{\"path\":\"/tmp/x\"}]"} instead of {"artifacts":[{"path":"/tmp/x"}]}.
+            // Unwrap the inner JSON before normal array handling.
+            if (artifactsNode.isTextual()) {
+                var parsed = JsonUtil.OBJECT_MAPPER.readTree(artifactsNode.asText());
+                if (!parsed.isArray()) return arguments;
+                artifactsNode = parsed;
+            }
+            if (!artifactsNode.isArray()) return arguments;
+            var rewritten = JsonUtil.OBJECT_MAPPER.createArrayNode();
+            for (var item : artifactsNode) {
+                if (item.isTextual()) {
+                    rewritten.add(JsonUtil.OBJECT_MAPPER.createObjectNode().put("path", item.asText()));
+                } else {
+                    rewritten.add(item);
+                }
+            }
+            ((ObjectNode) root).set("artifacts", rewritten);
+            return JsonUtil.OBJECT_MAPPER.writeValueAsString(root);
+        } catch (Exception e) {
+            return arguments;
+        }
+    }
+
     private final String userId;
     private final FileService fileService;
     private final ArtifactSink sink;
@@ -93,12 +129,6 @@ public final class SubmitArtifactsTool extends ToolCall {
         this.userId = userId;
         this.fileService = fileService;
         this.sink = sink;
-    }
-
-    private static String baseUrl() {
-        var url = publicUrl;
-        if (url == null || url.isEmpty()) return "";
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     @Override
@@ -173,36 +203,6 @@ public final class SubmitArtifactsTool extends ToolCall {
 
     private String errorMessage(Exception e) {
         return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-    }
-
-    static String normalizeArguments(String arguments) {
-        if (Strings.isBlank(arguments)) return arguments;
-        try {
-            var root = JsonUtil.OBJECT_MAPPER.readTree(arguments);
-            var artifactsNode = root.get("artifacts");
-            if (artifactsNode == null) return arguments;
-            // Some LLMs double-encode the artifacts array as a JSON string,
-            // e.g. {"artifacts":"[{\"path\":\"/tmp/x\"}]"} instead of {"artifacts":[{"path":"/tmp/x"}]}.
-            // Unwrap the inner JSON before normal array handling.
-            if (artifactsNode.isTextual()) {
-                var parsed = JsonUtil.OBJECT_MAPPER.readTree(artifactsNode.asText());
-                if (!parsed.isArray()) return arguments;
-                artifactsNode = parsed;
-            }
-            if (!artifactsNode.isArray()) return arguments;
-            var rewritten = JsonUtil.OBJECT_MAPPER.createArrayNode();
-            for (var item : artifactsNode) {
-                if (item.isTextual()) {
-                    rewritten.add(JsonUtil.OBJECT_MAPPER.createObjectNode().put("path", item.asText()));
-                } else {
-                    rewritten.add(item);
-                }
-            }
-            ((ObjectNode) root).set("artifacts", rewritten);
-            return JsonUtil.OBJECT_MAPPER.writeValueAsString(root);
-        } catch (Exception e) {
-            return arguments;
-        }
     }
 
     public static class Request {

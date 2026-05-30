@@ -20,14 +20,6 @@ import java.util.List;
 public final class QueryDatasetRecordsTool extends ToolCall {
     public static final String TOOL_NAME = "query_dataset_records";
 
-    private final String datasetId;
-    private final DatasetRecordService recordService;
-
-    private QueryDatasetRecordsTool(String datasetId, DatasetRecordService recordService) {
-        this.datasetId = datasetId;
-        this.recordService = recordService;
-    }
-
     public static QueryDatasetRecordsTool create(String datasetId, DatasetRecordService recordService, Dataset dataset) {
         var tool = new QueryDatasetRecordsTool(datasetId, recordService);
         tool.setName(TOOL_NAME);
@@ -64,6 +56,14 @@ public final class QueryDatasetRecordsTool extends ToolCall {
             ToolCallParameters.ParamSpec.of(Integer.class, "limit", "Maximum number of records to return. Default 100."),
             ToolCallParameters.ParamSpec.of(Integer.class, "offset", "Number of records to skip for pagination. Default 0.")
         );
+    }
+
+    private final String datasetId;
+    private final DatasetRecordService recordService;
+
+    private QueryDatasetRecordsTool(String datasetId, DatasetRecordService recordService) {
+        this.datasetId = datasetId;
+        this.recordService = recordService;
     }
 
     @Override

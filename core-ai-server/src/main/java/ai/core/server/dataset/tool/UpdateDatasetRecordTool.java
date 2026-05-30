@@ -21,16 +21,6 @@ import java.util.stream.Collectors;
 public final class UpdateDatasetRecordTool extends ToolCall {
     public static final String TOOL_NAME = "update_dataset_record";
 
-    private final String datasetId;
-    private final DatasetRecordService recordService;
-    private final List<String> schemaFieldNames;
-
-    private UpdateDatasetRecordTool(String datasetId, DatasetRecordService recordService, List<SchemaField> schema) {
-        this.datasetId = datasetId;
-        this.recordService = recordService;
-        this.schemaFieldNames = schema != null ? schema.stream().map(f -> f.name).collect(Collectors.toList()) : List.of();
-    }
-
     public static UpdateDatasetRecordTool create(String datasetId, DatasetRecordService recordService, Dataset dataset) {
         var tool = new UpdateDatasetRecordTool(datasetId, recordService, dataset != null ? dataset.schema : null);
         tool.setName(TOOL_NAME);
@@ -65,6 +55,16 @@ public final class UpdateDatasetRecordTool extends ToolCall {
             ToolCallParameters.ParamSpec.of(String.class, "record_id", "The ID of the record to update.").required(),
             ToolCallParameters.ParamSpec.of(Map.class, "data", "A JSON object containing the field values to update.").required()
         );
+    }
+
+    private final String datasetId;
+    private final DatasetRecordService recordService;
+    private final List<String> schemaFieldNames;
+
+    private UpdateDatasetRecordTool(String datasetId, DatasetRecordService recordService, List<SchemaField> schema) {
+        this.datasetId = datasetId;
+        this.recordService = recordService;
+        this.schemaFieldNames = schema != null ? schema.stream().map(f -> f.name).collect(Collectors.toList()) : List.of();
     }
 
     @Override

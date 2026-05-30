@@ -7,16 +7,4 @@
     <suppress checks="FileLengthCheck" files=".*Test\.java"/>
     <suppress checks="MethodLength" files=".*Test\.java"/>
     <suppress checks="FileLengthCheck" files="LanguageSeparators\.java"/>
-    <suppress checks="FileLengthCheck" files="AgentSessionManager\.java"/>
-    <suppress checks="FileLengthCheck" files="ToolRegistryService\.java"/>
-    <suppress checks="FileLengthCheck" files="AgentSessionWebServiceImpl\.java"/>
-    <suppress checks="NestedTryDepth" files="CommandConsumer\.java"/>
-    <suppress checks="NestedTryDepth" files="ChatMessageService\.java"/>
-    <suppress checks="NestedIfDepth" files="ToolRefResolver\.java"/>
-    <suppress checks="CustomDeclarationOrder" files="ToolRef\.java"/>
-    <suppress checks="CustomDeclarationOrder" files="SubmitArtifactsTool\.java"/>
-    <suppress checks="CustomDeclarationOrder" files="DeleteDatasetRecordTool\.java"/>
-    <suppress checks="CustomDeclarationOrder" files="InsertDatasetRecordTool\.java"/>
-    <suppress checks="CustomDeclarationOrder" files="QueryDatasetRecordsTool\.java"/>
-    <suppress checks="CustomDeclarationOrder" files="UpdateDatasetRecordTool\.java"/>
 </suppressions>

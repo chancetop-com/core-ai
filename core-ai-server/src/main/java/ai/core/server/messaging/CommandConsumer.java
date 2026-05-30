@@ -13,7 +13,6 @@ import java.util.Map;
 /**
  * @author stephen
  */
-@SuppressWarnings("deprecation")
 public class CommandConsumer {
     private static final Logger LOGGER = LoggerFactory.getLogger(CommandConsumer.class);
     private static final int BLOCK_MS = 5000;
@@ -117,7 +116,7 @@ public class CommandConsumer {
             try (var jedis = jedisPool.getResource()) {
                 var entries = jedis.xreadGroup(SessionCommand.UNOWNED_CONSUMER_GROUP, hostname,
                         XReadGroupParams.xReadGroupParams().block(BLOCK_MS).count(MAX_COUNT),
-                        Map.of(SessionCommand.UNOWNED_STREAM, StreamEntryID.UNRECEIVED_ENTRY));
+                        Map.of(SessionCommand.UNOWNED_STREAM, StreamEntryID.XREADGROUP_UNDELIVERED_ENTRY));
                 if (entries == null || entries.isEmpty()) continue;
                 for (var stream : entries) {
                     for (var entry : stream.getValue()) {
@@ -168,7 +167,7 @@ public class CommandConsumer {
     private void initUnownedConsumerGroup() {
         try (var jedis = jedisPool.getResource()) {
             jedis.xgroupCreate(SessionCommand.UNOWNED_STREAM, SessionCommand.UNOWNED_CONSUMER_GROUP,
-                    StreamEntryID.LAST_ENTRY, true);
+                    StreamEntryID.XGROUP_LAST_ENTRY, true);
             LOGGER.info("consumer group created: {}", SessionCommand.UNOWNED_CONSUMER_GROUP);
         } catch (Exception e) {
             LOGGER.debug("consumer group already exists: {}", SessionCommand.UNOWNED_CONSUMER_GROUP);

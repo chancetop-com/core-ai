@@ -23,20 +23,6 @@ import java.util.stream.Collectors;
 public final class InsertDatasetRecordTool extends ToolCall {
     public static final String TOOL_NAME = "insert_dataset_record";
 
-    private final String datasetId;
-    private final String agentId;
-    private final String runId;
-    private final DatasetRecordService recordService;
-    private final List<String> schemaFieldNames;
-
-    private InsertDatasetRecordTool(String datasetId, String agentId, String runId, DatasetRecordService recordService, List<SchemaField> schema) {
-        this.datasetId = datasetId;
-        this.agentId = agentId;
-        this.runId = runId;
-        this.recordService = recordService;
-        this.schemaFieldNames = schema != null ? schema.stream().map(f -> f.name).collect(Collectors.toList()) : List.of();
-    }
-
     public static InsertDatasetRecordTool create(String datasetId, String agentId, String runId, DatasetRecordService recordService, Dataset dataset) {
         var tool = new InsertDatasetRecordTool(datasetId, agentId, runId, recordService, dataset != null ? dataset.schema : null);
         tool.setName(TOOL_NAME);
@@ -72,6 +58,20 @@ public final class InsertDatasetRecordTool extends ToolCall {
         return ToolCallParameters.of(
             ToolCallParameters.ParamSpec.of(Map.class, "data", "A JSON object containing the record data with field keys matching the dataset schema.").required()
         );
+    }
+
+    private final String datasetId;
+    private final String agentId;
+    private final String runId;
+    private final DatasetRecordService recordService;
+    private final List<String> schemaFieldNames;
+
+    private InsertDatasetRecordTool(String datasetId, String agentId, String runId, DatasetRecordService recordService, List<SchemaField> schema) {
+        this.datasetId = datasetId;
+        this.agentId = agentId;
+        this.runId = runId;
+        this.recordService = recordService;
+        this.schemaFieldNames = schema != null ? schema.stream().map(f -> f.name).collect(Collectors.toList()) : List.of();
     }
 
     @Override

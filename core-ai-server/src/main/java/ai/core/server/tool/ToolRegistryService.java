@@ -29,7 +29,6 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * @author stephen
  */
-@SuppressWarnings("checkstyle:FileLength")
 public class ToolRegistryService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryService.class);
     private static final String CONFIG_PREFIX = "config:";
@@ -49,6 +48,7 @@ public class ToolRegistryService {
 
     private final Map<String, ToolRegistry> tools = new ConcurrentHashMap<>();
     private final Map<String, List<ToolCall>> dynamicToolSets = new ConcurrentHashMap<>();
+    private final McpServerConnectionManager mcpConnectionManager = new McpServerConnectionManager();
     private ToolRefResolver toolRefResolver;
 
     @Inject
@@ -154,7 +154,7 @@ public class ToolRegistryService {
                 continue;
             }
             tools.put(entry.id, entry);
-            if (entry.type == ToolType.MCP) registerMcpServer(entry);
+            if (entry.type == ToolType.MCP) mcpConnectionManager.registerMcpServer(entry);
         }
     }
 
@@ -169,12 +169,12 @@ public class ToolRegistryService {
             var memEntry = tools.get(dbEntry.id);
             if (memEntry == null) {
                 tools.put(dbEntry.id, dbEntry);
-                registerMcpServer(dbEntry);
-                warmupMcpServer(dbEntry.id);
+                mcpConnectionManager.registerMcpServer(dbEntry);
+                mcpConnectionManager.warmupMcpServer(dbEntry.id);
                 LOGGER.info("synced new mcp server from db, id={}, name={}", dbEntry.id, dbEntry.name);
             } else if (!dbEntry.enabled.equals(memEntry.enabled) || !dbEntry.config.equals(memEntry.config)) {
                 tools.put(dbEntry.id, dbEntry);
-                applyMcpServerState(dbEntry, !dbEntry.config.equals(memEntry.config));
+                mcpConnectionManager.applyMcpServerState(dbEntry, !dbEntry.config.equals(memEntry.config));
                 LOGGER.info("synced updated mcp server from db, id={}, name={}", dbEntry.id, dbEntry.name);
             }
         }
@@ -187,7 +187,7 @@ public class ToolRegistryService {
             if (!dbEntryIds.contains(id)) toRemove.add(id);
         }
         for (var id : toRemove) {
-            unregisterMcpServer(id);
+            mcpConnectionManager.unregisterMcpServer(id);
             tools.remove(id);
             LOGGER.info("synced removal of mcp server from db, id={}", id);
         }
@@ -231,8 +231,8 @@ public class ToolRegistryService {
 
         tools.put(entity.id, entity);
         if (entity.enabled) {
-            registerMcpServer(entity);
-            warmupMcpServer(entity.id);
+            mcpConnectionManager.registerMcpServer(entity);
+            mcpConnectionManager.warmupMcpServer(entity.id);
         }
         LOGGER.info("created mcp server, id={}, name={}", entity.id, entity.name);
         return entity;
@@ -261,7 +261,7 @@ public class ToolRegistryService {
         }
 
         toolRegistryCollection.replace(entity);
-        if (configChanged || enabledChanged) applyMcpServerState(entity, configChanged);
+        if (configChanged || enabledChanged) mcpConnectionManager.applyMcpServerState(entity, configChanged);
         LOGGER.info("updated mcp server, id={}, name={}", entity.id, entity.name);
         return entity;
     }
@@ -277,7 +277,7 @@ public class ToolRegistryService {
             throw new RuntimeException("tool is not an mcp server, id=" + id);
         }
 
-        unregisterMcpServer(id);
+        mcpConnectionManager.unregisterMcpServer(id);
         toolRegistryCollection.delete(id);
         LOGGER.info("deleted mcp server, id={}, name={}", id, entity.name);
     }
@@ -292,8 +292,8 @@ public class ToolRegistryService {
 
         entity.enabled = true;
         toolRegistryCollection.replace(entity);
-        registerMcpServer(entity);
-        warmupMcpServer(entity.id);
+        mcpConnectionManager.registerMcpServer(entity);
+        mcpConnectionManager.warmupMcpServer(entity.id);
         LOGGER.info("enabled mcp server, id={}, name={}", entity.id, entity.name);
         return entity;
     }
@@ -308,7 +308,7 @@ public class ToolRegistryService {
 
         entity.enabled = false;
         toolRegistryCollection.replace(entity);
-        unregisterMcpServer(id);
+        mcpConnectionManager.unregisterMcpServer(id);
         LOGGER.info("disabled mcp server, id={}, name={}", entity.id, entity.name);
         return entity;
     }
@@ -323,56 +323,6 @@ public class ToolRegistryService {
                 .filter(ref -> ref.type == ToolSourceType.AGENT)
                 .map(ref -> ref.id)
                 .toList();
-    }
-
-    private void registerMcpServer(ToolRegistry entry) {
-        var mcpManager = getOrCreateMcpManager();
-        if (mcpManager.hasServer(entry.id)) return;
-
-        var configMap = new HashMap<String, Object>(entry.config);
-        var serverConfig = McpServerConfig.fromMap(entry.id, configMap);
-        mcpManager.addServer(serverConfig);
-    }
-
-    private void unregisterMcpServer(String serverId) {
-        var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager != null && mcpManager.hasServer(serverId)) mcpManager.removeServer(serverId);
-    }
-
-    private void warmupMcpServer(String serverId) {
-        var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager == null || !mcpManager.hasServer(serverId)) return;
-        // skip when ConnectionMonitor is already driving backoff recovery; warmup must not race the monitor
-        var state = mcpManager.getState(serverId);
-        if (state == McpClientManager.ConnectionState.FAILED
-            || state == McpClientManager.ConnectionState.RECONNECTING
-            || state == McpClientManager.ConnectionState.CONNECTING) {
-            return;
-        }
-        try {
-            mcpManager.getClient(serverId);
-        } catch (Exception e) {
-            LOGGER.warn("failed to warmup mcp server, id={}, reason={}", serverId, e.getMessage());
-        }
-    }
-
-    private void applyMcpServerState(ToolRegistry entity, boolean configChanged) {
-        if (entity.enabled) {
-            if (configChanged) unregisterMcpServer(entity.id);
-            registerMcpServer(entity);
-            warmupMcpServer(entity.id);
-        } else {
-            unregisterMcpServer(entity.id);
-        }
-    }
-
-    private McpClientManager getOrCreateMcpManager() {
-        var mcpManager = McpClientManagerRegistry.getManager();
-        if (mcpManager == null) {
-            mcpManager = new McpClientManager();
-            McpClientManagerRegistry.setManager(mcpManager);
-        }
-        return mcpManager;
     }
 
     public InternalApiToolLoader getInternalApiToolLoader() {
@@ -431,7 +381,7 @@ public class ToolRegistryService {
         var entity = requireMcpEntity(serverId);
         if (!Boolean.TRUE.equals(entity.enabled)) throw new RuntimeException("mcp server is disabled, id=" + serverId);
 
-        registerMcpServer(entity);
+        mcpConnectionManager.registerMcpServer(entity);
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager == null) throw new RuntimeException("mcp manager not initialized");
 

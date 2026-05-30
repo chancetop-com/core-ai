@@ -17,20 +17,6 @@ public class ToolRef {
         return ref;
     }
 
-    public void inferTypeFromId() {
-        if (id == null) return;
-        if (id.startsWith("builtin-")) {
-            type = ToolSourceType.BUILTIN;
-        } else if (id.startsWith("mcp-tool:")) {
-            type = ToolSourceType.MCP;
-        } else if (id.startsWith("config:")) {
-            type = ToolSourceType.MCP;
-            source = id.substring("config:".length());
-        } else if (id.startsWith("api-app:") || "builtin-service-api".equals(id)) {
-            type = ToolSourceType.API;
-        }
-    }
-
     public static ToolRef of(String id, ToolSourceType type) {
         var ref = new ToolRef();
         ref.id = id;
@@ -54,6 +40,20 @@ public class ToolRef {
 
     @Field(name = "source")
     public String source;
+
+    public void inferTypeFromId() {
+        if (id == null) return;
+        if (id.startsWith("builtin-")) {
+            type = ToolSourceType.BUILTIN;
+        } else if (id.startsWith("mcp-tool:")) {
+            type = ToolSourceType.MCP;
+        } else if (id.startsWith("config:")) {
+            type = ToolSourceType.MCP;
+            source = id.substring("config:".length());
+        } else if (id.startsWith("api-app:") || "builtin-service-api".equals(id)) {
+            type = ToolSourceType.API;
+        }
+    }
 
     public String toLegacyToolId() {
         return id;
