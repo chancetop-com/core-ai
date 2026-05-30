@@ -279,6 +279,7 @@ public class OTLPIngestService {
         return value == null || value.isEmpty() ? null : value;
     }
 
+    @SuppressWarnings("unused")
     private String resolveSource(Map<String, String> attrs, Map<String, String> resourceAttrs, String sessionId) {
         // Highest priority: explicit client.type span attribute (set by server-side wrapper span, e.g. LLM call entry)
         var clientType = attrs.get("client.type");

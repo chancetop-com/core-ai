@@ -114,6 +114,7 @@ public class Main implements Callable<Integer> {
         return 0;
     }
 
+    @SuppressWarnings("PMD.SystemPrintln")
     private void checkUpgrade() {
         var checker = new UpgradeChecker();
         var info = checker.check();

@@ -72,7 +72,7 @@ public class MdMemoryProvider {
                     if (entry != null) entries.add(entry);
                 }
             } catch (IOException e) {
-                // type directory doesn't exist — skip
+                LOGGER.debug("Type directory does not exist, skipping: {}", e.getMessage());
             }
         }
         return entries;

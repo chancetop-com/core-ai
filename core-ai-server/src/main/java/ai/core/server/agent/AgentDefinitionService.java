@@ -238,10 +238,20 @@ public class AgentDefinitionService {
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
         view.subAgentIds = entity.subAgentIds != null ? entity.subAgentIds.stream()
-                .map(id -> { var v = new IdName(); v.id = id; v.name = resolveAgentName(id); return v; })
+                .map(id -> {
+                    var v = new IdName();
+                    v.id = id;
+                    v.name = resolveAgentName(id);
+                    return v;
+                })
                 .toList() : null;
         view.skillIds = entity.skillIds != null ? entity.skillIds.stream()
-                .map(id -> { var v = new IdName(); v.id = id; v.name = resolveSkillName(id); return v; })
+                .map(id -> {
+                    var v = new IdName();
+                    v.id = id;
+                    v.name = resolveSkillName(id);
+                    return v;
+                })
                 .toList() : null;
         view.status = entity.status != null ? entity.status.name() : null;
         view.publishedAt = entity.publishedAt;

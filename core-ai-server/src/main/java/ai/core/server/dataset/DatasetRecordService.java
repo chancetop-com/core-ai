@@ -40,6 +40,7 @@ public class DatasetRecordService {
         LOGGER.info("dataset record inserted, datasetId={}, runId={}", datasetId, runId);
     }
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     public QueryResult query(String datasetId, ZonedDateTime from, ZonedDateTime to, List<String> fields, Integer limit, Integer offset, String agentId) {
         var filters = new ArrayList<org.bson.conversions.Bson>();
         filters.add(Filters.eq("dataset_id", datasetId));
@@ -87,5 +88,5 @@ public class DatasetRecordService {
         return true;
     }
 
-    public record QueryResult(List<DatasetRecord> records, long total) {}
+    public record QueryResult(List<DatasetRecord> records, long total) { }
 }

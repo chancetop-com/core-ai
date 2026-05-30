@@ -18,8 +18,6 @@ public final class UpgradeChecker {
     private static final Pattern TAG_PATTERN = Pattern.compile("\"tag_name\"\\s*:\\s*\"v?([^\"]+)\"");
     private static final Pattern HTML_URL_PATTERN = Pattern.compile("\"html_url\"\\s*:\\s*\"([^\"]+)\"");
 
-    private final HttpClient httpClient;
-
     private static String extractTag(String json) {
         Matcher m = TAG_PATTERN.matcher(json);
         return m.find() ? m.group(1) : null;
@@ -29,6 +27,8 @@ public final class UpgradeChecker {
         Matcher m = HTML_URL_PATTERN.matcher(json);
         return m.find() ? m.group(1) : null;
     }
+
+    private final HttpClient httpClient;
 
     public UpgradeChecker() {
         this.httpClient = HttpClient.newBuilder()

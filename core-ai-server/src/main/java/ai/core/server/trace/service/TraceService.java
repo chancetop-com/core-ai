@@ -55,6 +55,7 @@ public class TraceService {
         return traces;
     }
 
+    @SuppressWarnings("checkstyle:MethodLength")
     private List<Bson> buildFilters(TraceListFilter filter) {
         List<Bson> bsonFilters = new ArrayList<>();
         // q is the user-friendly search. Strategy:
@@ -289,7 +290,7 @@ public class TraceService {
                 long errorCount = traces.stream().filter(t -> t.status == TraceStatus.ERROR).count();
                 var latestTrace = traces.getFirst();
                 var firstTrace = traces.getLast();
-                Map<String, Object> session = new java.util.LinkedHashMap<>();
+                Map<String, Object> session = new LinkedHashMap<>();
                 session.put("session_id", entry.getKey());
                 session.put("trace_count", traces.size());
                 session.put("total_tokens", totalTokens);

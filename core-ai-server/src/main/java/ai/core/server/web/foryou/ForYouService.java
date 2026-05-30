@@ -16,7 +16,6 @@ import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -141,6 +140,7 @@ public class ForYouService {
         return todo;
     }
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     public UserTodo updateTodo(String id, String userId, String title, String description,
                                 Boolean completed, String priority, ZonedDateTime dueDate) {
         var todo = todoCollection.get(id).orElse(null);
@@ -173,15 +173,16 @@ public class ForYouService {
 
     // --- Token Usage ---
 
+    @SuppressWarnings({"checkstyle:MethodLength", "checkstyle:ExecutableStatementCount"})
     public TokenUsageData tokenUsage(String userId, String range, String fromDate, String toDate) {
         ZonedDateTime start;
         ZonedDateTime end;
-        var now = ZonedDateTime.now(ZoneId.of("UTC"));
 
         if (fromDate != null && !fromDate.isBlank() && toDate != null && !toDate.isBlank()) {
             start = LocalDate.parse(fromDate).atStartOfDay(ZoneId.of("UTC"));
             end = LocalDate.parse(toDate).plusDays(1).atStartOfDay(ZoneId.of("UTC"));
         } else {
+            var now = ZonedDateTime.now(ZoneId.of("UTC"));
             int days = switch (range) {
                 case "yesterday" -> 1;
                 case "7d" -> 7;
@@ -254,7 +255,7 @@ public class ForYouService {
         return data;
     }
 
-    private static class DailyUsage {
+    private static final class DailyUsage {
         long inputTokens;
         long outputTokens;
         long totalTokens;

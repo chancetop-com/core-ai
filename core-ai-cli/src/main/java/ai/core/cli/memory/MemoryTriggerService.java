@@ -81,17 +81,14 @@ public final class MemoryTriggerService {
     private static volatile MemoryTriggerService instance;
 
     public static MemoryTriggerService getInstance() {
-        var inst = instance;
-        if (inst == null) {
+        if (instance == null) {
             synchronized (MemoryTriggerService.class) {
-                inst = instance;
-                if (inst == null) {
-                    inst = new MemoryTriggerService();
-                    instance = inst;
+                if (instance == null) {
+                    instance = new MemoryTriggerService();
                 }
             }
         }
-        return inst;
+        return instance;
     }
 
     private static void deleteIfExists(Path path) throws IOException {
@@ -382,8 +379,8 @@ public final class MemoryTriggerService {
             int cursor = readCursor();
             int totalMessages = mainAgent.getMessages().size();
             extractionTargetCount.set(totalMessages);
-            var agent = AgentFork.fork(mainAgent, new AgentFork.ForkConfig("extraction", MemoryTriggerService.EXTRACTION_MAX_TURNS, (double) EXTRACTION_TEMPERATURE, false, null));
-            agent.injectUserMessage(buildExtractionPrompt(cursor, totalMessages, MemoryTriggerService.EXTRACTION_MAX_TURNS));
+            var agent = AgentFork.fork(mainAgent, new AgentFork.ForkConfig("extraction", EXTRACTION_MAX_TURNS, (double) EXTRACTION_TEMPERATURE, false, null));
+            agent.injectUserMessage(buildExtractionPrompt(cursor, totalMessages, EXTRACTION_MAX_TURNS));
             agent.continueWithInjectedMessage();
         } catch (Exception e) {
             LOGGER.warn("{} agent failed: {}", "extraction", e.getMessage());

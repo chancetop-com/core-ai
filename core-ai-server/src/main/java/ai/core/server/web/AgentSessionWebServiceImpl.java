@@ -33,7 +33,6 @@ import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
-import ai.core.tool.ToolCall;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -50,6 +49,7 @@ import java.util.Map;
 /**
  * @author stephen
  */
+@SuppressWarnings("checkstyle:FileLength")
 public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionWebServiceImpl.class);
     private static final String SESSION_STATE_KEY = "agent-session-state";
@@ -182,7 +182,12 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var session = sessionManager.getSession(sessionId, resolveSessionState(sessionId));
         session.loadTools(loadedTools);
         chatMessageService.addLoadedTools(sessionId, toolRefs);
-        return loadedTools.stream().map(t -> { var v = new IdName(); v.id = t.getName(); v.name = t.getName(); return v; }).toList();
+        return loadedTools.stream().map(t -> {
+            var v = new IdName();
+            v.id = t.getName();
+            v.name = t.getName();
+            return v;
+        }).toList();
     }
 
     private List<IdName> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {
@@ -352,6 +357,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     }
 
     @Override
+    @SuppressWarnings("checkstyle:NestedIfDepth")
     public LoadToolsResponse loadTools(String sessionId, LoadToolsRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
@@ -370,7 +376,12 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                             return ref;
                         }).toList();
                 var names = sessionManager.loadToolRefs(sessionId, toolRefs);
-                loadedTools = names.stream().map(n -> { var v = new IdName(); v.id = n; v.name = n; return v; }).toList();
+                loadedTools = names.stream().map(n -> {
+                    var v = new IdName();
+                    v.id = n;
+                    v.name = n;
+                    return v;
+                }).toList();
             } else {
                 loadedTools = List.of();
             }
@@ -403,10 +414,10 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             var names = sessionManager.loadSkills(sessionId, request.skillIds);
             var loadedSkills = new ArrayList<IdName>(request.skillIds.size());
             for (int i = 0; i < request.skillIds.size() && i < names.size(); i++) {
-            var v = new IdName();
-            v.id = request.skillIds.get(i);
-            v.name = names.get(i);
-            loadedSkills.add(v);
+                var v = new IdName();
+                v.id = request.skillIds.get(i);
+                v.name = names.get(i);
+                loadedSkills.add(v);
             }
             var response = new LoadSkillsResponse();
             response.loadedSkills = loadedSkills;
@@ -450,9 +461,9 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             var loadedSubAgents = new ArrayList<IdName>(definitions.size());
             for (int i = 0; i < definitions.size() && i < names.size(); i++) {
                 var v = new IdName();
-            v.id = definitions.get(i).id;
-            v.name = names.get(i);
-            loadedSubAgents.add(v);
+                v.id = definitions.get(i).id;
+                v.name = names.get(i);
+                loadedSubAgents.add(v);
             }
             var response = new LoadSubAgentsResponse();
             response.loadedSubAgents = loadedSubAgents;

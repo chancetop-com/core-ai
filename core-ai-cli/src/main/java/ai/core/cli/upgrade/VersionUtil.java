@@ -3,10 +3,14 @@ package ai.core.cli.upgrade;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * @author stephen
  */
 public final class VersionUtil {
+    private static final Logger LOGGER = LoggerFactory.getLogger(VersionUtil.class);
 
     private static final String VERSION_RESOURCE = "/VERSION";
 
@@ -16,7 +20,7 @@ public final class VersionUtil {
                 return new String(is.readAllBytes(), StandardCharsets.UTF_8).trim();
             }
         } catch (Exception e) {
-            // fall through
+            LOGGER.debug("Failed to read version resource", e);
         }
         return "unknown";
     }

@@ -144,7 +144,7 @@ public class AgentSessionRunner {
                 ui.getWriter().flush();
             }
         } catch (ExecutionException | InterruptedException | java.util.concurrent.TimeoutException e) {
-            // network slow or error, skip silently
+            LOGGER.debug("Upgrade check skipped: {}", e.getMessage());
         } finally {
             executor.shutdownNow();
         }

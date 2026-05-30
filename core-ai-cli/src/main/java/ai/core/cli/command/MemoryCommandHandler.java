@@ -126,7 +126,7 @@ public class MemoryCommandHandler {
     private void openFolder() {
         var dir = memory.getMemoryDir();
         try {
-            java.nio.file.Files.createDirectories(dir);
+            Files.createDirectories(dir);
         } catch (IOException e) {
             LOGGER.warn("Failed to create memory dir: {}", e.getMessage());
         }
@@ -187,7 +187,7 @@ public class MemoryCommandHandler {
                 return;
             }
             String replacement = "agent.memory.enabled=" + enabled;
-            List<String> lines = Files.readAllLines(configFile, java.nio.charset.StandardCharsets.UTF_8);
+            List<String> lines = Files.readAllLines(configFile, StandardCharsets.UTF_8);
             boolean found = false;
             for (int i = 0; i < lines.size(); i++) {
                 if (lines.get(i).trim().startsWith("agent.memory.enabled=")) {
@@ -199,7 +199,7 @@ public class MemoryCommandHandler {
             if (!found) {
                 lines.add(replacement);
             }
-            Files.write(configFile, lines, java.nio.charset.StandardCharsets.UTF_8);
+            Files.write(configFile, lines, StandardCharsets.UTF_8);
             String status = enabled ? "enabled" : "disabled";
             ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                     + " Memory " + status + ". Restart the CLI for the change to take effect.\n\n");

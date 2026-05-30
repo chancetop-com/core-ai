@@ -21,11 +21,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -211,24 +210,25 @@ public class LLMCallExecutor {
         }
     }
 
+    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar", "PMD.ConsecutiveAppendsShouldReuse"})
     private String buildExtractionPrompt(List<SchemaField> schema, String output) {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(1024);
         sb.append("Extract the following structured data from the agent's output below.\n\n");
         sb.append("Schema fields:\n");
         for (var field : schema) {
-            sb.append("- ").append(field.name).append(" (").append(field.type.name().toLowerCase()).append(")");
+            sb.append("- ").append(field.name).append(" (").append(field.type.name().toLowerCase(Locale.ROOT)).append(")");
             if (field.label != null) sb.append(": ").append(field.label);
-            sb.append("\n");
+            sb.append('\n');
         }
-        sb.append("\nRules:\n");
-        sb.append("- Extract only values explicitly stated in the text. Do not infer or fabricate data.\n");
-        sb.append("- If a field is not present in the text, set it to null.\n");
-        sb.append("- For numeric fields, coerce string representations to numbers (e.g., \"42\" → 42).\n");
-        sb.append("- For boolean fields, accept true/false or yes/no.\n");
-        sb.append("- Return a valid JSON object matching the schema. Do not include extra fields.\n\n");
-        sb.append("Agent output:\n---\n");
-        sb.append(output);
-        sb.append("\n---\n\nReturn JSON:");
+        sb.append("\nRules:\n")
+            .append("- Extract only values explicitly stated in the text. Do not infer or fabricate data.\n")
+            .append("- If a field is not present in the text, set it to null.\n")
+            .append("- For numeric fields, coerce string representations to numbers (e.g., \"42\" → 42).\n")
+            .append("- For boolean fields, accept true/false or yes/no.\n")
+            .append("- Return a valid JSON object matching the schema. Do not include extra fields.\n\n")
+            .append("Agent output:\n---\n")
+            .append(output)
+            .append("\n---\n\nReturn JSON:");
         return sb.toString();
     }
 

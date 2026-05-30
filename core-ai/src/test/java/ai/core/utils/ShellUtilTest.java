@@ -14,6 +14,8 @@ class ShellUtilTest {
 
     @Test
     void getPreferredShellOnUnixReturnsBashOrFallback() {
+        assumeTrue(SystemUtil.detectPlatform().isLinux() || SystemUtil.detectPlatform().isMac(),
+                "which command is required for Unix shell detection");
         var shell = ShellUtil.getPreferredShell(Platform.LINUX_X64);
         assertTrue(shell.equals("bash") || shell.equals("zsh") || shell.equals("sh"),
                 "Unix preferred shell must be one of bash/zsh/sh, but got: " + shell);
@@ -21,6 +23,8 @@ class ShellUtilTest {
 
     @Test
     void getPreferredShellOnMacReturnsBashOrFallback() {
+        assumeTrue(SystemUtil.detectPlatform().isLinux() || SystemUtil.detectPlatform().isMac(),
+                "which command is required for Unix shell detection");
         var shell = ShellUtil.getPreferredShell(Platform.MACOS_X64);
         assertTrue(shell.equals("bash") || shell.equals("zsh") || shell.equals("sh"),
                 "Mac preferred shell must be one of bash/zsh/sh, but got: " + shell);
@@ -39,6 +43,8 @@ class ShellUtilTest {
 
     @Test
     void getPreferredShellCommandPrefixOnUnixUsesDashC() {
+        assumeTrue(SystemUtil.detectPlatform().isLinux() || SystemUtil.detectPlatform().isMac(),
+                "which command is required for Unix shell detection");
         var prefix = ShellUtil.getPreferredShellCommandPrefix(Platform.LINUX_X64);
         assertTrue(prefix.endsWith(" -c "),
                 "Unix shell prefix must end with ' -c ', but got: " + prefix);
@@ -46,6 +52,8 @@ class ShellUtilTest {
 
     @Test
     void getPreferredShellCommandPrefixOnMacUsesDashC() {
+        assumeTrue(SystemUtil.detectPlatform().isLinux() || SystemUtil.detectPlatform().isMac(),
+                "which command is required for Unix shell detection");
         var prefix = ShellUtil.getPreferredShellCommandPrefix(Platform.MACOS_X64);
         assertTrue(prefix.endsWith(" -c "),
                 "Mac shell prefix must end with ' -c ', but got: " + prefix);

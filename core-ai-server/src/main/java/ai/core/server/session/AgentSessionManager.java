@@ -49,6 +49,7 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * @author stephen
  */
+@SuppressWarnings("checkstyle:FileLength")
 public class AgentSessionManager {
     private final Logger logger = LoggerFactory.getLogger(AgentSessionManager.class);
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
@@ -391,7 +392,7 @@ public class AgentSessionManager {
         try {
             var records = chatMessageService.history(sessionId);
             if (records.isEmpty()) return;
-            List<ai.core.llm.domain.Message> restored = new java.util.ArrayList<>(records.size());
+            List<ai.core.llm.domain.Message> restored = new ArrayList<>(records.size());
             for (var r : records) {
                 if (r.content == null || r.content.isBlank()) continue;
                 var role = "user".equals(r.role) ? ai.core.llm.domain.RoleType.USER : ai.core.llm.domain.RoleType.ASSISTANT;
@@ -526,7 +527,7 @@ public class AgentSessionManager {
     }
 
     private List<String> applySubAgentsToSession(InProcessAgentSession session, List<AgentDefinition> definitions) {
-        var names = new java.util.ArrayList<String>();
+        var names = new ArrayList<String>();
         for (var definition : definitions) {
             var subAgent = buildSubAgent(definition);
             var subAgentToolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
@@ -541,7 +542,7 @@ public class AgentSessionManager {
         if (subAgentIds == null || subAgentIds.isEmpty()) {
             return List.of();
         }
-        var names = new java.util.ArrayList<String>();
+        var names = new ArrayList<String>();
         for (var subAgentId : subAgentIds) {
             try {
                 var subAgentDef = agentDefinitionCollection.get(subAgentId)
@@ -613,6 +614,7 @@ public class AgentSessionManager {
         return config;
     }
 
+    @SuppressWarnings("checkstyle:NestedIfDepth")
     private Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()

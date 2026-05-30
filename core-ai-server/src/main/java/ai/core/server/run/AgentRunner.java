@@ -275,6 +275,7 @@ public class AgentRunner {
         }, timeoutSeconds, TimeUnit.SECONDS);
     }
 
+    @SuppressWarnings("checkstyle:MethodLength")
     private Agent buildAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
         var config = definition.publishedConfig;
         List<ToolCall> tools;

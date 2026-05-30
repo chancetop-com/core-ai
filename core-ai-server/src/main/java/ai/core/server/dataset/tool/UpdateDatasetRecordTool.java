@@ -43,17 +43,17 @@ public final class UpdateDatasetRecordTool extends ToolCall {
         return tool;
     }
 
+    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar", "PMD.ConsecutiveAppendsShouldReuse", "PMD.UseLocaleWithCaseConversions"})
     private static String buildDescription(Dataset dataset) {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(320);
         sb.append("Update an existing record in the dataset \"").append(dataset != null ? dataset.name : "unknown").append("\".\n");
-        sb.append("Provide the record_id and the updated field values as a JSON object.\n");
-        sb.append("The dataset_id is automatically injected.\n");
+        sb.append("Provide the record_id and the updated field values as a JSON object.\n").append("The dataset_id is automatically injected.\n");
         if (dataset != null && dataset.schema != null && !dataset.schema.isEmpty()) {
             sb.append("\nSchema fields (only include fields you want to update):\n");
             for (var field : dataset.schema) {
                 sb.append("  - ").append(field.name).append(" (").append(field.type.name().toLowerCase()).append(")");
                 if (field.label != null) sb.append(": ").append(field.label);
-                sb.append("\n");
+                sb.append('\n');
             }
             sb.append("\nYou may provide a subset of fields — only the provided fields will be updated.");
         }

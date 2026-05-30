@@ -59,6 +59,7 @@ public final class SubmitArtifactsTool extends ToolCall {
     }
 
     /** Set once at module bootstrap via ServerModule. Used to build absolute download URLs in tool results. */
+    @SuppressWarnings("PMD.MutableStaticState")
     public static String publicUrl = "";
 
     public static SubmitArtifactsTool create(String userId, FileService fileService, ArtifactSink sink) {

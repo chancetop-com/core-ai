@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
+import java.util.Locale;
 
 /**
  * @author stephen
@@ -21,7 +22,7 @@ public final class UpgradeDownloader {
     private static final Path DEFAULT_INSTALL_DIR = Path.of(System.getProperty("user.home"), ".core-ai", "bin");
 
     public static String detectPlatformSuffix() {
-        String os = System.getProperty("os.name").toLowerCase();
+        String os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
         if (os.contains("win")) return "windows.exe";
         if (os.contains("mac") || os.contains("darwin")) return "darwin";
         return "linux";
@@ -48,7 +49,7 @@ public final class UpgradeDownloader {
 
     public static boolean isInPath(Path dir) {
         String dirStr = dir.toAbsolutePath().normalize().toString();
-        return Arrays.stream(System.getenv("PATH").split(java.io.File.pathSeparator))
+        return Arrays.stream(System.getenv("PATH").split(File.pathSeparator))
                 .map(p -> Path.of(p).toAbsolutePath().normalize().toString())
                 .anyMatch(p -> p.equalsIgnoreCase(dirStr));
     }
@@ -110,7 +111,7 @@ public final class UpgradeDownloader {
     }
 
     private static boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase().contains("win");
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
     }
 
     public static final class UpgradeException extends Exception {

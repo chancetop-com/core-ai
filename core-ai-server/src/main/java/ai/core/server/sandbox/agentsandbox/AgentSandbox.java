@@ -28,14 +28,17 @@ public class AgentSandbox implements Sandbox {
     private volatile SandboxStatus status = SandboxStatus.READY;
     private final Instant createdAt;
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds) {
         this(crName, serviceName, host, port, timeoutSeconds, null, null);
     }
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds, String image) {
         this(crName, serviceName, host, port, timeoutSeconds, image, null);
     }
 
+    @SuppressWarnings("checkstyle:ParameterNumber")
     public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds, String image, String podName) {
         this.crName = crName;
         this.serviceName = serviceName;

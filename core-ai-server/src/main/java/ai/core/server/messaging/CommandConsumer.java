@@ -75,6 +75,7 @@ public class CommandConsumer {
         LOGGER.info("drained {} commands from per-Pod stream", buffer.size());
     }
 
+    @SuppressWarnings("checkstyle:NestedTryDepth")
     private void podStreamLoop() {
         var streamKey = SessionCommand.podStreamKey(hostname);
         LOGGER.info("consuming from pod stream: {}", streamKey);
@@ -109,6 +110,7 @@ public class CommandConsumer {
         }
     }
 
+    @SuppressWarnings("checkstyle:NestedTryDepth")
     private void unownedStreamLoop() {
         LOGGER.info("consuming from unowned stream: {}", SessionCommand.UNOWNED_STREAM);
         while (running) {

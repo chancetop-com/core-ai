@@ -357,7 +357,7 @@ public class CliAgent {
 
         @Override
         public String inject() {
-            var sb = new StringBuilder();
+            var sb = new StringBuilder(256);
             var projectPaths = findProjectInstructions(workspace);
             for (var path : projectPaths) {
                 try {

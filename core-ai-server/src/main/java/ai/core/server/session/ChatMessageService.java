@@ -131,6 +131,7 @@ public class ChatMessageService {
         metaBySession.remove(sessionId);
     }
 
+    @SuppressWarnings("checkstyle:NestedTryDepth")
     public void addLoadedTools(String sessionId, List<ToolRef> toolRefs) {
         if (toolRefs == null || toolRefs.isEmpty()) return;
         try {
@@ -152,6 +153,7 @@ public class ChatMessageService {
         }
     }
 
+    @SuppressWarnings("checkstyle:NestedTryDepth")
     public void addLoadedSkillIds(String sessionId, List<String> skillIds) {
         if (skillIds == null || skillIds.isEmpty()) return;
         try {
@@ -173,6 +175,7 @@ public class ChatMessageService {
         }
     }
 
+    @SuppressWarnings("checkstyle:NestedTryDepth")
     public void addLoadedSubAgentIds(String sessionId, List<String> agentIds) {
         if (agentIds == null || agentIds.isEmpty()) return;
         try {

@@ -49,8 +49,9 @@ public final class InsertDatasetRecordTool extends ToolCall {
         return tool;
     }
 
+    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar", "PMD.ConsecutiveAppendsShouldReuse", "PMD.UseLocaleWithCaseConversions"})
     private static String buildDescription(Dataset dataset) {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(320);
         sb.append("Insert a new record into the dataset \"").append(dataset != null ? dataset.name : "unknown").append("\".\n");
         sb.append("Provide the data as a JSON object. The dataset_id and agent_id are automatically injected.\n");
         if (dataset != null && dataset.schema != null && !dataset.schema.isEmpty()) {
@@ -58,7 +59,7 @@ public final class InsertDatasetRecordTool extends ToolCall {
             for (var field : dataset.schema) {
                 sb.append("  - ").append(field.name).append(" (").append(field.type.name().toLowerCase()).append(")");
                 if (field.label != null) sb.append(": ").append(field.label);
-                sb.append("\n");
+                sb.append('\n');
             }
             sb.append("\nOnly include the fields listed above. Values must match the declared types.");
         } else {

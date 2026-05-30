@@ -7,6 +7,8 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +23,7 @@ import java.util.stream.Collectors;
  * returning results as strings (no TerminalUI dependency).
  */
 class AcpSlashCommandHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AcpSlashCommandHandler.class);
 
     private final Path workspace;
 
@@ -83,7 +86,7 @@ class AcpSlashCommandHandler {
         var def = providers.getProviderDefaultModel();
         var sb = new StringBuilder("Available models:\n");
         types.forEach(t -> sb.append("  ").append(t.name())
-                .append(t == def ? " [active]" : "").append("\n"));
+                .append(t == def ? " [active]" : "").append('\n'));
         return sb.toString();
     }
 
@@ -151,7 +154,7 @@ class AcpSlashCommandHandler {
             if (t.getDescription() != null && !t.getDescription().isBlank()) {
                 sb.append(" - ").append(t.getDescription());
             }
-            sb.append("\n");
+            sb.append('\n');
         });
         return sb.toString();
     }
@@ -218,12 +221,12 @@ class AcpSlashCommandHandler {
                     if (Files.isDirectory(entry) || entry.toString().endsWith(".md")) {
                         String n = entry.getFileName().toString();
                         if (n.endsWith(".md")) n = n.substring(0, n.length() - 3);
-                        sb.append("  ").append(n).append("\n");
+                        sb.append("  ").append(n).append('\n');
                         found = true;
                     }
                 }
             } catch (IOException e) {
-                // ignore inaccessible directories
+                LOGGER.debug("Cannot read skills directory: {}", d, e);
             }
         }
         if (!found) sb.append("  (none)");
@@ -235,7 +238,7 @@ class AcpSlashCommandHandler {
         if (mgr == null || mgr.getServerNames() == null || mgr.getServerNames().isEmpty()) {
             return "No MCP servers configured.\nAdd mcp.servers to agent.properties.";
         }
-        var sbn = new StringBuilder("MCP Servers (").append(mgr.getServerNames().size()).append("):\n");
+        var sbn = new StringBuilder(256).append("MCP Servers (").append(mgr.getServerNames().size()).append("):\n");
         for (var n : mgr.getServerNames()) {
             try {
                 var cl = mgr.getClient(n);
@@ -253,8 +256,8 @@ class AcpSlashCommandHandler {
 
     private String handleMemory(String[] parts) {
         var args = parts.length > 1 && !parts[1].isBlank() ? parts[1].trim() : "";
-        if ("enable".equals(args)) return setMemoryEnabled(true);
-        if ("disable".equals(args)) return setMemoryEnabled(false);
+        if ("enable".equals(args)) return updateMemoryEnabledConfig(true);
+        if ("disable".equals(args)) return updateMemoryEnabledConfig(false);
         if (args.startsWith("search ")) return memorySearch(args.substring(7).trim());
         if ("clear".equals(args)) {
             MemoryTriggerService.getInstance().clearKnowledge();
@@ -273,11 +276,11 @@ class AcpSlashCommandHandler {
     private String handleSessions(AcpSession session) {
         var list = session.persistence().listSessions();
         if (list.isEmpty()) return "No saved sessions found.";
-        var sbn = new StringBuilder("Saved sessions (").append(list.size()).append("):\n");
+        var sbn = new StringBuilder(256).append("Saved sessions (").append(list.size()).append("):\n");
         int limit = Math.min(list.size(), 15);
         for (int i = 0; i < limit; i++) {
             var s = list.get(i);
-            sbn.append("  ").append(s.id()).append(s.id().equals(session.sessionId()) ? " [current]" : "").append("\n");
+            sbn.append("  ").append(s.id()).append(s.id().equals(session.sessionId()) ? " [current]" : "").append('\n');
         }
         sbn.append("\nUse /resume <sessionId> to switch.");
         return sbn.toString();
@@ -304,12 +307,12 @@ class AcpSlashCommandHandler {
         if (results.isEmpty()) return "No entries matched '" + query + "'.";
         var sb = new StringBuilder("Memory entries matching '").append(query).append("' (").append(results.size()).append("):\n");
         for (var entry : results) {
-            sb.append("  ").append(entry.toSummary()).append("\n");
+            sb.append("  ").append(entry.toSummary()).append('\n');
         }
         return sb.toString();
     }
 
-    private String setMemoryEnabled(boolean enabled) {
+    private String updateMemoryEnabledConfig(boolean enabled) {
         try {
             var configFile = workspace.resolve("agent.properties");
             if (!Files.exists(configFile)) {

@@ -17,6 +17,7 @@ import java.util.Map;
  */
 public final class CreateAgentDraftTool extends ToolCall {
     public static final String TOOL_NAME = "create_agent_draft";
+    @SuppressWarnings("PMD.MutableStaticState")
     public static String publicUrl;
 
     public static CreateAgentDraftTool create(AgentDefinitionService agentDefinitionService) {
@@ -44,7 +45,7 @@ public final class CreateAgentDraftTool extends ToolCall {
         return doExecute(text, userId != null ? userId : "system");
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar"})
     private ToolCallResult doExecute(String text, String creator) {
         long startTime = System.currentTimeMillis();
         try {

@@ -40,17 +40,17 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         return tool;
     }
 
+    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar", "PMD.ConsecutiveAppendsShouldReuse", "PMD.UseLocaleWithCaseConversions"})
     private static String buildDescription(Dataset dataset) {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(320);
         sb.append("Query records from the dataset \"").append(dataset != null ? dataset.name : "unknown").append("\".\n");
-        sb.append("Use this tool to search, filter, and retrieve records by time range and field projection.\n");
-        sb.append("The dataset is automatically determined — do NOT specify a dataset_id.\n");
+        sb.append("Use this tool to search, filter, and retrieve records by time range and field projection.\n").append("The dataset is automatically determined — do NOT specify a dataset_id.\n");
         if (dataset != null && dataset.schema != null && !dataset.schema.isEmpty()) {
             sb.append("\nSchema fields:\n");
             for (var field : dataset.schema) {
                 sb.append("  - ").append(field.name).append(" (").append(field.type.name().toLowerCase()).append(")");
                 if (field.label != null) sb.append(": ").append(field.label);
-                sb.append("\n");
+                sb.append('\n');
             }
         }
         return sb.toString();

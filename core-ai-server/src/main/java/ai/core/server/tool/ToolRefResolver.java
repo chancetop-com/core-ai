@@ -74,6 +74,7 @@ public class ToolRefResolver {
         if (dynamicSet != null) result.addAll(dynamicSet);
     }
 
+    @SuppressWarnings("checkstyle:NestedIfDepth")
     private void resolveMcpRef(ToolRef toolRef, List<ToolCall> result) {
         var mcpManager = McpClientManagerRegistry.getManager();
         if (mcpManager == null) return;

@@ -31,7 +31,7 @@ public final class UpdateAgentDraftTool extends ToolCall {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "checkstyle:MethodLength", "PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar"})
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {

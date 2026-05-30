@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicReference;
  * ACP streaming callback — forwards core-ai Agent streaming output as ACP session updates.
  */
 class AcpStreamingCallback implements StreamingCallback {
-    private static final int FLUSH_THRESHOLD = 50;
 
     private final SyncPromptContext ctx;
     private final String sessionId;

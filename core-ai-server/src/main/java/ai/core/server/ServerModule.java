@@ -196,7 +196,7 @@ public class ServerModule extends Module {
         bind(AgentRunService.class);
         bind(AgentScheduleService.class);
         bind(UserService.class);
-        var triggerService =         bind(TriggerService.class);
+        var triggerService = bind(TriggerService.class);
         triggerService.publicUrl = publicUrl;
         bind(RunAgentAction.class);
         bind(ForYouService.class);

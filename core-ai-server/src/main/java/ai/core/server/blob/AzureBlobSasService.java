@@ -57,18 +57,28 @@ public class AzureBlobSasService {
     // signedIP + "\n" + signedProtocol + "\n" + signedVersion + "\n" +
     // signedResource + "\n" + signedSnapshotTime + "\n" +
     // rscc + "\n" + rscd + "\n" + rsce + "\n" + rscl + "\n" + rsct
+    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.ConsecutiveAppendsShouldReuse"})
     private String buildStringToSign(String containerName, Map<String, String> params) {
         var canonicalized = "/blob/" + accountName + "/" + containerName;
         var sb = new StringBuilder();
-        sb.append(params.getOrDefault("sp", "")).append('\n');
-        sb.append(params.getOrDefault("st", "")).append('\n');
-        sb.append(params.getOrDefault("se", "")).append('\n');
-        sb.append(canonicalized).append('\n');
-        sb.append(params.getOrDefault("si", "")).append('\n');
-        sb.append(params.getOrDefault("sip", "")).append('\n');
-        sb.append(params.getOrDefault("spr", "")).append('\n');
-        sb.append(params.getOrDefault("sv", "")).append('\n');
-        sb.append(params.getOrDefault("sr", "")).append('\n');  // signedResource
+        sb.append(params.getOrDefault("sp", ""))
+            .append('\n')
+            .append(params.getOrDefault("st", ""))
+            .append('\n')
+            .append(params.getOrDefault("se", ""))
+            .append('\n')
+            .append(canonicalized)
+            .append('\n')
+            .append(params.getOrDefault("si", ""))
+            .append('\n')
+            .append(params.getOrDefault("sip", ""))
+            .append('\n')
+            .append(params.getOrDefault("spr", ""))
+            .append('\n')
+            .append(params.getOrDefault("sv", ""))
+            .append('\n')
+            .append(params.getOrDefault("sr", ""))
+            .append('\n');
         sb.append('\n');  // signedSnapshotTime
         sb.append('\n');  // rscc
         sb.append('\n');  // rscd
@@ -93,12 +103,12 @@ public class AzureBlobSasService {
         var sb = new StringBuilder();
         for (var entry : params.entrySet()) {
             if (!sb.isEmpty()) sb.append('&');
-            sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8));
-            sb.append('=');
-            sb.append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
+            sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
+                .append('=')
+                .append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
         }
         return sb.toString();
     }
 
-    public record SasResult(String uploadUrl, String blobUrl, String container, String blobName, String expiresAt) {}
+    public record SasResult(String uploadUrl, String blobUrl, String container, String blobName, String expiresAt) { }
 }

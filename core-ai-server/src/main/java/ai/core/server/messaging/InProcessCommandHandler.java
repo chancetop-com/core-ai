@@ -45,6 +45,7 @@ public class InProcessCommandHandler {
     /**
      * Process a single command. Called by {@link CommandConsumer} from any thread.
      */
+    @SuppressWarnings("checkstyle:NestedTryDepth")
     public void handle(SessionCommand command) {
         LOGGER.info("processing command: type={}, sessionId={}", command.type(), command.sessionId());
         // any command for a session counts as activity — keeps idle-session sweeper from
@@ -128,7 +129,12 @@ public class InProcessCommandHandler {
             return;
         }
         var loadedTools = sessionManager.loadToolRefs(command.sessionId(), toolRefs);
-        var idNames = loadedTools.stream().map(n -> { var v = new IdName(); v.id = n; v.name = n; return v; }).toList();
+        var idNames = loadedTools.stream().map(n -> {
+            var v = new IdName();
+            v.id = n;
+            v.name = n;
+            return v;
+        }).toList();
         var result = JsonUtil.toJson(Map.of("loadedTools", idNames));
         respondOk(command, result);
     }

@@ -126,6 +126,7 @@ public class DockerSandboxProvider implements SandboxProvider {
         }
     }
 
+    @SuppressWarnings("checkstyle:MethodLength")
     private Map<String, Object> buildContainerRequest(SandboxConfig config, String containerName, String sessionId, String userId) {
         var request = new HashMap<String, Object>();
 

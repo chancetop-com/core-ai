@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * @author stephen
  */
+@SuppressWarnings("checkstyle:FileLength")
 public class ToolRegistryService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolRegistryService.class);
     private static final String CONFIG_PREFIX = "config:";

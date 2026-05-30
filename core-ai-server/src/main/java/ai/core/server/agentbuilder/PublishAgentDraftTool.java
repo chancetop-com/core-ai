@@ -13,6 +13,7 @@ import java.util.Map;
  */
 public final class PublishAgentDraftTool extends ToolCall {
     public static final String TOOL_NAME = "publish_agent_draft";
+    @SuppressWarnings("PMD.MutableStaticState")
     public static String publicUrl;
 
     public static PublishAgentDraftTool create(AgentDefinitionService agentDefinitionService) {
@@ -28,7 +29,7 @@ public final class PublishAgentDraftTool extends ToolCall {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar"})
     public ToolCallResult execute(String text) {
         long startTime = System.currentTimeMillis();
         try {

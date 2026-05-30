@@ -11,11 +11,15 @@ public class ShellUtil {
     private static final List<String> WINDOWS_NATIVE_SHELLS = List.of("pwsh.exe", "powershell.exe", "cmd.exe");
 
     public static boolean isCommandExists(Platform os, String command) {
-        return switch (os) {
-            case LINUX_X64, MACOS_X64 -> run(List.of("which", command)) == 0;
-            case WINDOWS_X64 -> run(List.of("where.exe", command)) == 0;
-            default -> false;
-        };
+        try {
+            return switch (os) {
+                case LINUX_X64, MACOS_X64 -> run(List.of("which", command)) == 0;
+                case WINDOWS_X64 -> run(List.of("where.exe", command)) == 0;
+                default -> false;
+            };
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     public static int run(List<String> commands) {

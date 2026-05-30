@@ -66,7 +66,7 @@ public class AcpAgentRunner {
     private final boolean autoApproveAll;
     private final Path workspace;
     private final AcpSlashCommandHandler slashCommands;
-    private final ConcurrentHashMap<String, AcpSession> sessions = new ConcurrentHashMap<>();
+    private final Map<String, AcpSession> sessions = new ConcurrentHashMap<>();
     private final AtomicReference<AcpSyncAgent> acpAgentRef = new AtomicReference<>();
 
     public AcpAgentRunner(Path configFile, String modelOverride, boolean autoApproveAll, Path workspace) {

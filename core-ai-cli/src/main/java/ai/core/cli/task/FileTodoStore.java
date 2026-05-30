@@ -38,7 +38,7 @@ public class FileTodoStore implements TodoStore {
     }
 
     private int scanMaxId() {
-        if (!java.nio.file.Files.exists(taskListDir)) return 0;
+        if (!Files.exists(taskListDir)) return 0;
         File[] files = taskListDir.toFile().listFiles((_, name) -> name.endsWith(".json"));
         if (files == null || files.length == 0) return 0;
         int max = 0;

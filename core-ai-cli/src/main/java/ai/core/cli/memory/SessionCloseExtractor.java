@@ -117,10 +117,10 @@ public class SessionCloseExtractor {
     }
 
     private static String listExistingFiles(Path workspace, String today) {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(256);
         Path dailyDir = workspace.resolve(".core-ai/daily-logs").resolve(today);
 
-        sb.append("Daily-logs dir: ").append(dailyDir.toAbsolutePath()).append("\n");
+        sb.append("Daily-logs dir: ").append(dailyDir.toAbsolutePath()).append('\n');
         if (Files.isDirectory(dailyDir)) {
             try (var s = Files.list(dailyDir)) {
                 var files = s.filter(Files::isRegularFile)
@@ -131,7 +131,7 @@ public class SessionCloseExtractor {
                 if (files.isEmpty()) {
                     sb.append("  (empty)\n");
                 } else {
-                    sb.append(files).append("\n");
+                    sb.append(files).append('\n');
                 }
             } catch (Exception e) {
                 sb.append("  (error listing)\n");
