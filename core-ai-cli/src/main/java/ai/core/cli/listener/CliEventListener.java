@@ -10,6 +10,7 @@ import ai.core.api.server.session.ToolStartEvent;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.llm.domain.Usage;
+import ai.core.tool.tools.AskUserTool;
 import org.jline.terminal.Attributes;
 import org.jline.utils.NonBlockingReader;
 import org.slf4j.Logger;
@@ -17,6 +18,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -44,6 +47,7 @@ public class CliEventListener extends BaseEventListener {
     private volatile long turnCachedBefore;
     private Thread escReaderThread;
     private Attributes savedTerminalAttributes;
+    private final Set<String> askUserCallIds = new HashSet<>();
 
     public CliEventListener(TerminalUI ui, AgentSession session, Agent agent) {
         super(ui, session);
@@ -130,6 +134,10 @@ public class CliEventListener extends BaseEventListener {
         panel.stopSpinnerIfActive();
         panel.getMarkdownRenderer().flush();
         showSkillHintIfApplicable(event);
+        if (AskUserTool.TOOL_NAME.equals(event.toolName)) {
+            askUserCallIds.add(event.callId);
+            stopEscReader();
+        }
         super.onToolStart(event);
     }
 
@@ -158,6 +166,9 @@ public class CliEventListener extends BaseEventListener {
         LOGGER.debug("tool result: {} callId={} status={} result={}",
                 event.toolName, event.callId, event.status, truncate(event.result));
         super.onToolResult(event);
+        if (askUserCallIds.remove(event.callId) && turnRunning.get() && askUserCallIds.isEmpty()) {
+            startEscReader();
+        }
     }
 
     @Override

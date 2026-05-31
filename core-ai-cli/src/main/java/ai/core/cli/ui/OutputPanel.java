@@ -173,6 +173,10 @@ public class OutputPanel {
     }
 
     public void toolStart(String toolName, String arguments, String diff, Boolean frontTask) {
+        toolStart(toolName, arguments, diff, frontTask, true);
+    }
+
+    public void toolStart(String toolName, String arguments, String diff, Boolean frontTask, boolean restartSpinner) {
         stopSpinnerIfActive();
         mdRenderer.flush();
         toolStartTime = System.currentTimeMillis();
@@ -191,7 +195,9 @@ public class OutputPanel {
         writer.flush();
         boolean wasReasoningShown = reasoningShown;
         resetShown();
-        startSpinner(wasReasoningShown);
+        if (restartSpinner) {
+            startSpinner(wasReasoningShown);
+        }
 
     }
 

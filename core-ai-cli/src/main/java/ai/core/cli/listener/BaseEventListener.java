@@ -18,6 +18,7 @@ import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.cli.ui.OutputPanel;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.ThinkingSpinner;
+import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.TaskTool;
 
 import java.util.HashSet;
@@ -108,15 +109,16 @@ public class BaseEventListener implements AgentEventListener {
         if (batchCallIds.contains(event.callId)) {
             return;
         }
+        boolean restartSpinner = !AskUserTool.TOOL_NAME.equals(event.toolName);
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
             runTasks.put(event.taskId, new RuntimeTask(event.taskId, System.currentTimeMillis(), event.runInBackground, 0));
-            panel.toolStart(event.toolName, event.arguments, event.diff, false);
+            panel.toolStart(event.toolName, event.arguments, event.diff, false, restartSpinner);
         } else if (Objects.isNull(event.taskId)) {
-            panel.toolStart(event.toolName, event.arguments, event.diff, false);
+            panel.toolStart(event.toolName, event.arguments, event.diff, false, restartSpinner);
         } else {
             increaseToolCallCount(event.taskId);
             if (!isInBackgroundTask(event.taskId)) {
-                panel.toolStart(event.toolName, event.arguments, event.diff, isInFrontTask(event.taskId));
+                panel.toolStart(event.toolName, event.arguments, event.diff, isInFrontTask(event.taskId), restartSpinner);
             }
         }
     }

@@ -772,6 +772,7 @@ export default function Chat() {
       case 'TOOL_APPROVAL_REQUEST':
       case 'tool_approval_request': {
         const approvalEvent = event as SseToolApprovalRequestEvent;
+        setIsThinking(false);
         const info: AwaitInfo = {
           callId: approvalEvent.call_id,
           tool: approvalEvent.tool_name,
