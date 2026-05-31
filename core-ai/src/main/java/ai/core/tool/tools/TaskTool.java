@@ -6,6 +6,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.Task;
 import ai.core.llm.LLMProvider;
 import ai.core.defaultagents.DefaultCodeSimplifierAgent;
+import ai.core.defaultagents.DeepResearchAgent;
 import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.defaultagents.DefaultGeneralAgent;
 import ai.core.tool.ToolCall;
@@ -175,6 +176,9 @@ public class TaskTool extends ToolCall {
     private Agent createAgent(String subagentType, ExecutionContext context) {
         var llmProvider = resolveLlmProvider(subagentType, context);
         var model = resolveModel(subagentType, context);
+        if (DeepResearchAgent.AGENT_NAME.equals(subagentType)) {
+            return DeepResearchAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+        }
         if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
             return DefaultExploreAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
         }
@@ -217,6 +221,8 @@ public class TaskTool extends ToolCall {
 
         public TaskTool build() {
             var subagentType = "- "
+                    + String.join(":", DeepResearchAgent.AGENT_NAME, DeepResearchAgent.AGENT_DESCRIPTION)
+                    + "\n- "
                     + String.join(":", DefaultExploreAgent.AGENT_NAME, DefaultExploreAgent.AGENT_DESCRIPTION)
                     + "\n- "
                     + String.join(":", DefaultCodeSimplifierAgent.AGENT_NAME, DefaultCodeSimplifierAgent.AGENT_DESCRIPTION)
