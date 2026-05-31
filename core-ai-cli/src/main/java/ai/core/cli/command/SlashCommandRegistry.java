@@ -31,7 +31,8 @@ public final class SlashCommandRegistry {
             new SlashCommand("/resume", "Switch to a previous session"),
             new SlashCommand("/debug", "Toggle debug mode"),
             new SlashCommand("/clear", "Start new session"),
-            new SlashCommand("/exit", "Quit")
+            new SlashCommand("/exit", "Quit"),
+            new SlashCommand("/upgrade", "Check for updates and upgrade CLI")
     );
 
     public static List<SlashCommand> all() {
