@@ -33,10 +33,6 @@ public final class UpgradeDownloader {
     }
 
     public static Path resolveInstallDir() {
-        Path current = findCurrentBinary();
-        if (current != null) {
-            return current.getParent();
-        }
         return DEFAULT_INSTALL_DIR;
     }
 
@@ -79,18 +75,79 @@ public final class UpgradeDownloader {
             Files.move(downloaded, currentBinary, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             return currentBinary;
         } catch (IOException e) {
-            return fallbackMove(downloaded, currentBinary);
+            return scheduleReplaceOnExit(downloaded, currentBinary);
         }
     }
 
-    private static Path fallbackMove(Path downloaded, Path currentBinary) throws UpgradeException {
+    /**
+     * When the running binary cannot be replaced in-place (e.g. Windows locks running .exe),
+     * save the new binary as .new alongside the current one and spawn a detached script
+     * that will replace it after this process exits.
+     * Returns currentBinary on success (replacement scheduled), newFile on failure (manual fallback).
+     */
+    static Path scheduleReplaceOnExit(Path downloaded, Path currentBinary) throws UpgradeException {
         Path newFile = currentBinary.resolveSibling(currentBinary.getFileName() + ".new");
         try {
-            Files.move(downloaded, newFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            return newFile;
-        } catch (IOException e2) {
-            throw new UpgradeException("Cannot install: " + e2.getMessage(), e2);
+            Files.move(downloaded, newFile, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new UpgradeException("Cannot save new binary: " + e.getMessage(), e);
         }
+        try {
+            spawnUpgradeScript(newFile, currentBinary);
+        } catch (IOException e) {
+            return newFile;
+        }
+        return currentBinary;
+    }
+
+    /**
+     * Returns true if an upgrade script is pending (scheduled but not yet executed).
+     */
+    public static boolean isUpgradeScheduled(Path currentBinary) {
+        if (currentBinary == null) return false;
+        Path newFile = currentBinary.resolveSibling(currentBinary.getFileName() + ".new");
+        return Files.exists(newFile);
+    }
+
+    private static void spawnUpgradeScript(Path newFile, Path targetFile) throws IOException {
+        if (isWindows()) {
+            spawnWindowsUpgradeScript(newFile, targetFile);
+        } else {
+            spawnUnixUpgradeScript(newFile, targetFile);
+        }
+    }
+
+    private static void spawnWindowsUpgradeScript(Path newFile, Path targetFile) throws IOException {
+        Path script = targetFile.resolveSibling("core-ai-upgrade.ps1");
+        String scriptContent = String.format("""
+                $ErrorActionPreference = 'Stop'
+                Start-Sleep -Seconds 1
+                Move-Item -Force -LiteralPath '%s' -Destination '%s'
+                Remove-Item -Force -LiteralPath '%s'
+                """, newFile, targetFile, script);
+        Files.writeString(script, scriptContent);
+        new ProcessBuilder("cmd", "/c", "start", "/min", "", "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", script.toAbsolutePath().toString())
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
+    }
+
+    private static void spawnUnixUpgradeScript(Path newFile, Path targetFile) throws IOException {
+        Path script = targetFile.resolveSibling("core-ai-upgrade.sh");
+        String scriptContent = String.format("""
+                #!/bin/sh
+                while kill -0 %d 2>/dev/null; do sleep 0.5; done
+                sleep 0.5
+                mv '%s' '%s'
+                chmod +x '%s'
+                rm -f '%s'
+                """, ProcessHandle.current().pid(), newFile, targetFile, targetFile, script);
+        Files.writeString(script, scriptContent);
+        script.toFile().setExecutable(true, false);
+        new ProcessBuilder("sh", "-c", script.toAbsolutePath().toString())
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
     }
 
     public static String pathSetupInstructions(Path dir) {

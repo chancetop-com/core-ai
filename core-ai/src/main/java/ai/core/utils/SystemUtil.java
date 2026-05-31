@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Locale;
 import java.util.Set;
@@ -113,26 +115,55 @@ public class SystemUtil {
             Files.copy(new File(uri.getFile()).toPath(), tmp.toPath(), StandardCopyOption.REPLACE_EXISTING);
             return tmp;
         }
-        if (isFileAlreadyDownloaded(tmp, uri)) {
-            LOGGER.debug("File already exist, skipping download.");
-            return tmp;
+        return downloadHttpWithResume(url, tmp, uri);
+    }
+
+    private static File downloadHttpWithResume(String url, File tempFile, URL uri) throws IOException, URISyntaxException {
+        long existingSize = tempFile.exists() ? tempFile.length() : 0;
+
+        if (existingSize > 0) {
+            var headConn = (HttpURLConnection) uri.openConnection();
+            headConn.setRequestMethod("HEAD");
+            int headCode = headConn.getResponseCode();
+            if (headCode == HttpURLConnection.HTTP_OK) {
+                long remoteSize = headConn.getContentLengthLong();
+                if (remoteSize > 0 && existingSize == remoteSize) {
+                    LOGGER.debug("File already downloaded, skipping.");
+                    return tempFile;
+                }
+                if (remoteSize > 0 && existingSize < remoteSize) {
+                    LOGGER.debug("Resuming download from byte {} (total {})", existingSize, remoteSize);
+                    return downloadHttp(url, tempFile, existingSize);
+                }
+                // existing file is larger than remote or remote size unknown, re-download
+                Files.delete(tempFile.toPath());
+                existingSize = 0;
+            }
         }
-        return downloadHttp(url, tmp);
+        return downloadHttp(url, tempFile, 0);
     }
 
     public static File downloadHttp(String url, File tempFile) throws IOException, URISyntaxException {
+        return downloadHttp(url, tempFile, 0);
+    }
+
+    private static File downloadHttp(String url, File tempFile, long resumeFrom) throws IOException, URISyntaxException {
         var uri = new URI(url).toURL();
         var connection = (HttpURLConnection) uri.openConnection();
         connection.setRequestMethod("GET");
+        if (resumeFrom > 0) {
+            connection.setRequestProperty("Range", "bytes=" + resumeFrom + "-");
+        }
 
         int responseCode = connection.getResponseCode();
-        if (responseCode != HttpURLConnection.HTTP_OK) {
+        boolean isResume = resumeFrom > 0 && responseCode == HttpURLConnection.HTTP_PARTIAL;
+        if (responseCode != HttpURLConnection.HTTP_OK && !isResume) {
             throw new IOException("Failed to download file. Server responded with code: " + responseCode);
         }
 
         try (var in = connection.getInputStream();
-             var out = Files.newOutputStream(tempFile.toPath())) {
-            var buffer = new byte[4096];
+             var out = Files.newOutputStream(tempFile.toPath(), resumeFrom > 0 ? StandardOpenOption.APPEND : StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            var buffer = new byte[8192];
             int bytesRead = in.read(buffer);
             while (bytesRead != -1) {
                 out.write(buffer, 0, bytesRead);
@@ -140,19 +171,5 @@ public class SystemUtil {
             }
         }
         return tempFile;
-    }
-
-    private static boolean isFileAlreadyDownloaded(File localFile, URL remoteUrl) throws IOException {
-        if (localFile.exists()) {
-            var connection = (HttpURLConnection) remoteUrl.openConnection();
-            connection.setRequestMethod("HEAD");
-            var responseCode = connection.getResponseCode();
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                var localFileSize = localFile.length();
-                var remoteFileSize = connection.getContentLengthLong();
-                return localFileSize == remoteFileSize;
-            }
-        }
-        return false;
     }
 }

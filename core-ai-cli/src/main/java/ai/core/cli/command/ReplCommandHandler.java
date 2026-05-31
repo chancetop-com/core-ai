@@ -4,9 +4,6 @@ import ai.core.cli.DebugLog;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
-import ai.core.cli.upgrade.UpgradeChecker;
-import ai.core.cli.upgrade.UpgradeDownloader;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,11 +13,9 @@ import java.nio.file.Path;
  */
 public class ReplCommandHandler {
     private final TerminalUI ui;
-    private final UpgradeChecker upgradeChecker;
 
     public ReplCommandHandler(TerminalUI ui) {
         this.ui = ui;
-        this.upgradeChecker = new UpgradeChecker();
     }
 
     public void handle(String input) {
@@ -39,57 +34,9 @@ public class ReplCommandHandler {
             case "/help" -> printHelp();
             case "/init" -> initProject();
             case "/debug" -> toggleDebug();
-            case "/upgrade" -> checkUpgrade();
             case "/exit" -> {
             }
             default -> ui.printStreamingChunk(AnsiTheme.WARNING + "Unknown command: " + command + ". Type /help for available commands." + AnsiTheme.RESET + "\n");
-        }
-    }
-
-    private void checkUpgrade() {
-        ui.printStreamingChunk(AnsiTheme.MUTED + "  Checking for updates..." + AnsiTheme.RESET + "\n");
-        var info = upgradeChecker.check();
-        if (info == null || info.latestVersion() == null) {
-            ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to check for updates. Please try again later.\n" + AnsiTheme.RESET);
-            return;
-        }
-        if (!info.isNewer()) {
-            ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " You are up to date (v" + info.currentVersion() + ")\n");
-            return;
-        }
-
-        String platform = UpgradeDownloader.detectPlatformSuffix();
-        ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "New version available!" + AnsiTheme.RESET + "\n");
-        ui.printStreamingChunk("  Current: v" + info.currentVersion() + "  →  Latest: " + AnsiTheme.SUCCESS + "v" + info.latestVersion() + AnsiTheme.RESET + "\n");
-        ui.printStreamingChunk("  Platform: " + AnsiTheme.MUTED + platform + AnsiTheme.RESET + "\n\n");
-
-        Path installDir = UpgradeDownloader.resolveInstallDir();
-        try {
-            ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Downloading core-ai-cli-" + platform + "..." + AnsiTheme.RESET + "\n");
-            Path downloaded = UpgradeDownloader.download(info.latestVersion(), installDir);
-
-            Path currentBinary = UpgradeDownloader.findCurrentBinary();
-            if (currentBinary != null) {
-                ui.printStreamingChunk("  " + AnsiTheme.MUTED + "Replacing " + currentBinary.getFileName() + "..." + AnsiTheme.RESET + "\n");
-                Path replaced = UpgradeDownloader.tryReplaceCurrent(downloaded, currentBinary);
-                if (replaced.equals(currentBinary)) {
-                    ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Replaced. Restart to use v" + info.latestVersion() + "\n");
-                } else {
-                    ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Saved as " + replaced.getFileName() + "\n");
-                    ui.printStreamingChunk("  " + AnsiTheme.MUTED + "  Replace manually and restart to use v" + info.latestVersion() + AnsiTheme.RESET + "\n");
-                }
-            } else {
-                ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Downloaded to " + downloaded + "\n");
-                ui.printStreamingChunk("  " + AnsiTheme.MUTED + "  Run: " + downloaded + AnsiTheme.RESET + "\n");
-            }
-
-            if (!UpgradeDownloader.isInPath(installDir)) {
-                ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "Install directory is not in PATH." + AnsiTheme.RESET + "\n");
-                ui.printStreamingChunk(UpgradeDownloader.pathSetupInstructions(installDir) + "\n");
-            }
-            ui.printStreamingChunk("\n");
-        } catch (UpgradeDownloader.UpgradeException e) {
-            ui.printStreamingChunk(AnsiTheme.ERROR + "  " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
 

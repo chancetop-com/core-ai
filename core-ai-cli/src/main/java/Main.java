@@ -140,10 +140,15 @@ public class Main implements Callable<Integer> {
             if (currentBinary != null) {
                 Path replaced = UpgradeDownloader.tryReplaceCurrent(downloaded, currentBinary);
                 if (replaced.equals(currentBinary)) {
-                    System.out.println("Replaced " + currentBinary.getFileName() + ". Restart to use v" + info.latestVersion());
+                    if (UpgradeDownloader.isUpgradeScheduled(currentBinary)) {
+                        System.out.println("Replacement scheduled — binary will be updated automatically in a moment.");
+                        System.out.println("Restart core-ai-cli to use v" + info.latestVersion());
+                    } else {
+                        System.out.println("Replaced " + currentBinary.getFileName() + ". Restart to use v" + info.latestVersion());
+                    }
                 } else {
                     System.out.println("Saved as " + replaced + " (cannot overwrite running binary)");
-                    System.out.println("Replace manually and restart to use v" + info.latestVersion());
+                    System.out.println("To complete upgrade: replace " + currentBinary + " with " + replaced + ", then restart.");
                 }
             } else {
                 System.out.println("Downloaded to " + downloaded);

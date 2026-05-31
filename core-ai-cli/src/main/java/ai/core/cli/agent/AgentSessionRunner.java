@@ -19,6 +19,7 @@ import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.ui.TextUtil;
 import ai.core.cli.upgrade.UpgradeChecker;
+import ai.core.cli.upgrade.UpgradeDownloader;
 import ai.core.cli.upgrade.VersionUtil;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
@@ -37,13 +38,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 public class AgentSessionRunner {
@@ -134,20 +130,22 @@ public class AgentSessionRunner {
     }
     private void checkAndHintUpgrade() {
         if (!UPGRADE_CHECK_DONE.compareAndSet(false, true)) return;
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        try {
-            Future<UpgradeChecker.UpgradeInfo> future = executor.submit(upgradeChecker::check);
-            var info = future.get(1500, TimeUnit.MILLISECONDS);
-            if (info != null && info.isNewer()) {
-                ui.getWriter().println("  " + AnsiTheme.WARNING + "New version v" + info.latestVersion()
-                        + " available! Run /upgrade for details" + AnsiTheme.RESET);
-                ui.getWriter().flush();
+        Thread.ofVirtual().start(() -> {
+            try {
+                var info = upgradeChecker.check();
+                if (info != null && info.isNewer()) {
+                    Path currentBinary = UpgradeDownloader.findCurrentBinary();
+                    if (currentBinary != null && UpgradeDownloader.isUpgradeScheduled(currentBinary)) {
+                        return;
+                    }
+                    ui.getWriter().println("  " + AnsiTheme.WARNING + "New version v" + info.latestVersion()
+                            + " available! Run: core-ai-cli --upgrade" + AnsiTheme.RESET);
+                    ui.getWriter().flush();
+                }
+            } catch (Exception e) {
+                LOGGER.debug("Upgrade check failed: {}", e.getMessage());
             }
-        } catch (ExecutionException | InterruptedException | java.util.concurrent.TimeoutException e) {
-            LOGGER.debug("Upgrade check skipped: {}", e.getMessage());
-        } finally {
-            executor.shutdownNow();
-        }
+        });
     }
     private void printSessionHistory() {
         var messages = agent.getMessages();
