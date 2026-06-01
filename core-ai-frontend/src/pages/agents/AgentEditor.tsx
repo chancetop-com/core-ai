@@ -17,6 +17,14 @@ const NEW_AGENT_SKELETON: AgentDefinition = {
   subagent_ids: [], skill_ids: [],
 };
 
+// Backend returns skill_ids/subagent_ids as [{id, name}] objects, but the editor renders them as plain id strings.
+// Both the load and the save/publish paths must normalize to id strings, otherwise React renders objects as children and the page crashes.
+const normalizeAgentRefs = (data: AgentDefinition): AgentDefinition => ({
+  ...data,
+  skill_ids: (data.skill_ids as unknown as { id: string }[] | undefined)?.map(s => s.id) || [],
+  subagent_ids: (data.subagent_ids as unknown as { id: string }[] | undefined)?.map(a => a.id) || [],
+} as unknown as AgentDefinition);
+
 export default function AgentEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -126,7 +134,7 @@ export default function AgentEditor() {
       return;
     }
 
-    api.agents.get(id).then(data => setAgent({ ...data, skill_ids: data.skill_ids?.map((s: {id: string; name: string}) => s.id) || [], subagent_ids: data.subagent_ids?.map((a: {id: string; name: string}) => a.id) || [] } as any)).catch(console.error).finally(() => setLoading(false));
+    api.agents.get(id).then(data => setAgent(normalizeAgentRefs(data))).catch(console.error).finally(() => setLoading(false));
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id, isNew]);
@@ -373,7 +381,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           output_dataset_id: agent.output_dataset_id,
           sandbox_config: agent.sandbox_config,
         } as any);
-        setAgent(updated);
+        setAgent(normalizeAgentRefs(updated));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
@@ -389,7 +397,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
     setPublishSuccess(false);
     try {
       const published = await api.agents.publish(id);
-      setAgent(published);
+      setAgent(normalizeAgentRefs(published));
       setPublishSuccess(true);
       setTimeout(() => setPublishSuccess(false), 3000);
     } catch (e) {

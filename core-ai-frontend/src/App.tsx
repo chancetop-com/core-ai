@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState, useCallback } from 'react';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import TraceList from './pages/traces/TraceList';
 import TraceDetail from './pages/traces/TraceDetail';
 import PromptList from './pages/prompts/PromptList';
@@ -77,6 +78,7 @@ export default function App() {
     <AuthContext.Provider value={{ user, login, logout }}>
       <CapabilitiesContext.Provider value={caps}>
         <BrowserRouter>
+          <ErrorBoundary>
           <Routes>
             {authRequired && (
               <>
@@ -125,6 +127,7 @@ export default function App() {
               </Route>
             )}
           </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
       </CapabilitiesContext.Provider>
     </AuthContext.Provider>
