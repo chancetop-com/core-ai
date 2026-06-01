@@ -347,6 +347,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids,
           skill_ids: (agent as unknown as Record<string, unknown>).skill_ids,
           output_dataset_id: agent.output_dataset_id,
+          sandbox_config: agent.sandbox_config,
         } as any);
         navigate(`/agents/${created.id}`);
         return;
@@ -370,6 +371,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids,
           skill_ids: (agent as unknown as Record<string, unknown>).skill_ids,
           output_dataset_id: agent.output_dataset_id,
+          sandbox_config: agent.sandbox_config,
         } as any);
         setAgent(updated);
       setSaveSuccess(true);
