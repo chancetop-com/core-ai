@@ -407,6 +407,31 @@ Description: ${description || 'N/A'}`,
               <td className="py-1 pr-3">datetime</td>
               <td className="py-1">When the agent run started</td>
             </tr>
+            <tr className="border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <td className="py-1 pr-3 font-mono">user_id</td>
+              <td className="py-1 pr-3">string</td>
+              <td className="py-1">The user who created the record</td>
+            </tr>
+            <tr className="border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <td className="py-1 pr-3 font-mono">created_by</td>
+              <td className="py-1 pr-3">string</td>
+              <td className="py-1">Who created the record (agent or user)</td>
+            </tr>
+            <tr className="border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <td className="py-1 pr-3 font-mono">created_at</td>
+              <td className="py-1 pr-3">datetime</td>
+              <td className="py-1">When the record was created</td>
+            </tr>
+            <tr className="border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <td className="py-1 pr-3 font-mono">updated_at</td>
+              <td className="py-1 pr-3">datetime</td>
+              <td className="py-1">Last update timestamp</td>
+            </tr>
+            <tr className="border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <td className="py-1 pr-3 font-mono">updated_by</td>
+              <td className="py-1 pr-3">string</td>
+              <td className="py-1">Who last updated the record</td>
+            </tr>
             <tr>
               <td className="py-1 pr-3 font-mono">data</td>
               <td className="py-1 pr-3">object</td>
