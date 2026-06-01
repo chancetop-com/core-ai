@@ -1,6 +1,7 @@
 package ai.core.server.sandbox.agentsandbox;
 
 import ai.core.sandbox.SandboxConfig;
+import ai.core.sandbox.SandboxConstants;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -28,7 +29,7 @@ public class SandboxCRSpecBuilder {
         this.sessionId = sessionId;
         this.userId = userId;
         var suffix = UUID.randomUUID().toString().substring(0, 8);
-        this.sandboxName = "sandbox-" + suffix;
+        this.sandboxName = "core-ai-sandbox-" + suffix;
     }
 
     public String sandboxName() {
@@ -87,7 +88,7 @@ public class SandboxCRSpecBuilder {
     private Map<String, Object> buildContainer() {
         var container = new LinkedHashMap<String, Object>();
         container.put("name", "sandbox");
-        container.put("image", config.image != null ? config.image : "core-ai-sandbox-runtime:latest");
+        container.put("image", config.image != null ? config.image : SandboxConstants.DEFAULT_IMAGE);
         container.put("imagePullPolicy", "IfNotPresent");
         container.put("ports", List.of(Map.of("containerPort", RUNTIME_PORT)));
 

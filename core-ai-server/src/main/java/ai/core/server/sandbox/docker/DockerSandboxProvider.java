@@ -42,7 +42,7 @@ public class DockerSandboxProvider implements SandboxProvider {
         effectiveConfig.validate();
 
         var containerId = UUID.randomUUID().toString().substring(0, 8);
-        var containerName = "sandbox-" + containerId;
+        var containerName = "core-ai-sandbox-" + containerId;
 
         LOGGER.info("creating docker sandbox: name={}, image={}, sessionId={}", containerName, effectiveConfig.image, sessionId);
 

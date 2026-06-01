@@ -1,6 +1,7 @@
 package ai.core.server.sandbox.kubernetes;
 
 import ai.core.sandbox.SandboxConfig;
+import ai.core.sandbox.SandboxConstants;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -27,7 +28,7 @@ public class KubernetesPodSpecBuilder {
         this.sessionId = sessionId;
         this.userId = userId;
         var suffix = UUID.randomUUID().toString().substring(0, 8);
-        this.podName = "sandbox-" + suffix;
+        this.podName = "core-ai-sandbox-" + suffix;
     }
 
     public KubernetesPodSpecBuilder(SandboxConfig config, String sessionId, String userId, boolean useHostPort) {
@@ -50,7 +51,7 @@ public class KubernetesPodSpecBuilder {
     private Map<String, Object> buildMetadata() {
         var metadata = new LinkedHashMap<String, Object>();
         metadata.put("name", podName);
-        metadata.put("generateName", "sandbox-");
+        metadata.put("generateName", "core-ai-sandbox-");
         metadata.put("labels", buildLabels());
         return metadata;
     }
@@ -103,7 +104,7 @@ public class KubernetesPodSpecBuilder {
     private Map<String, Object> buildContainer() {
         var container = new LinkedHashMap<String, Object>();
         container.put("name", "sandbox");
-        container.put("image", config.image != null ? config.image : "core-ai-sandbox-runtime:latest");
+        container.put("image", config.image != null ? config.image : SandboxConstants.DEFAULT_IMAGE);
         container.put("imagePullPolicy", "IfNotPresent");
         container.put("ports", List.of(Map.of("containerPort", RUNTIME_PORT)));
         container.put("securityContext", buildContainerSecurityContext());
