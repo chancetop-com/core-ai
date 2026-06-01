@@ -193,9 +193,9 @@ public class OutputPanel {
             }
         }
         writer.flush();
-        boolean wasReasoningShown = reasoningShown;
         resetShown();
         if (restartSpinner) {
+            boolean wasReasoningShown = reasoningShown;
             startSpinner(wasReasoningShown);
         }
 

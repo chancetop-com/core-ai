@@ -47,4 +47,12 @@ public class PropertiesFileSource implements PropertySource {
     public Set<String> propertyNames() {
         return Set.copyOf(properties.stringPropertyNames());
     }
+
+    /**
+     * Sets a property on the underlying Properties, for programmatic config
+     * merging (e.g. workspace-local MCP config overlay).
+     */
+    public void putProperty(String key, String value) {
+        properties.setProperty(key, value);
+    }
 }

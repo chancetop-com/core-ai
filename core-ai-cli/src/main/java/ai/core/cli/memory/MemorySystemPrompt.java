@@ -2,6 +2,9 @@ package ai.core.cli.memory;
 
 import ai.core.prompt.PromptInject;
 
+import java.time.format.TextStyle;
+import java.util.Locale;
+
 /**
  * System prompt section injected into the main agent when memory is enabled.
  * Defines the 4-layer memory architecture, file formats, knowledge types,
@@ -60,7 +63,7 @@ public final class MemorySystemPrompt implements PromptInject {
             ```
             | File | Description | Created | Updated |
             |------|-------------|---------|---------|
-            | daily-logs/{date}/{taskName}.md | brief task description | HH:MM | HH:MM |
+            | daily-logs/{date}/{taskName}.md | brief task description | HH:MM (%s) | HH:MM (%s) |
             ```
 
             ### knowledge/MEMORY.md
@@ -85,9 +88,11 @@ public final class MemorySystemPrompt implements PromptInject {
             ## Knowledge Types & When to Write
 
             ### Detection Signals
-            | Signal in conversation | Knowledge type |
-            |------------------------|----------------|
+            | Signal | Knowledge type |
+            |--------|----------------|
             | "No, that's wrong...", "Actually...", "Don't do X" | feedback |
+            | Test/verifier failure output revealing expected values | feedback |
+            | Programmatic error log containing the correct answer | feedback |
             | "I prefer...", "I usually...", "My workflow is..." | user |
             | "Remember that...", discovered constraint or pattern | project |
             | Command fails, unexpected output, exception | project (via Obstacles & Solutions) |
@@ -211,6 +216,10 @@ public final class MemorySystemPrompt implements PromptInject {
                Aggregate related facts into topic-based wiki pages (see Wiki Pages section above).
                If a page already covers the topic, edit_file to append; only create a new page
                for genuinely new topic areas.
+               **Feedback takes priority**: when a feedback signal (user corrections, test failures,
+               error logs) contradicts an existing wiki claim, UPDATE the existing claim via
+               edit_file — do NOT append as a parallel note, do NOT skip because the page "seems
+               accurate." The contradiction itself is the correction signal.
             5. **Update MEMORY.md** index: add new files, update Updated timestamp for modified files.
             6. **Record knowledge-layer operations** via `add_knowledge_log`: only if wiki pages
                or MEMORY.md actually changed (Added/Updated/Deleted). If nothing changed, skip this step.
@@ -251,7 +260,10 @@ public final class MemorySystemPrompt implements PromptInject {
 
     @Override
     public String inject() {
+        var tz = MemoryTriggerService.getTimezone();
+        var tzAbbr = tz.getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
         return MEMORY_SYSTEM_PROMPT_TEMPLATE.formatted(
+                tzAbbr, tzAbbr,
                 knowledgeContent.isBlank() ? "(empty)" : knowledgeContent);
     }
 }

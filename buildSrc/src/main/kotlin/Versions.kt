@@ -20,6 +20,7 @@ object Versions {
     const val GRAALVM_SDK_VERSION = "25.0.0"
     const val OPENTELEMETRY_PROTO_VERSION = "1.7.0-alpha"
     const val JEDIS_VERSION = "5.2.0"
+    const val NEO4J_JAVA_DRIVER_VERSION = "5.28.0"
 }
 
 object ProjectVersions {

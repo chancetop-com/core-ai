@@ -241,12 +241,8 @@ class AcpSlashCommandHandler {
         var sbn = new StringBuilder(256).append("MCP Servers (").append(mgr.getServerNames().size()).append("):\n");
         for (var n : mgr.getServerNames()) {
             try {
-                var cl = mgr.getClient(n);
-                if (cl == null) {
-                    sbn.append("  ").append(n).append(" - not found\n");
-                    continue;
-                }
-                sbn.append("  ").append(n).append(" (\u2713 ").append(cl.listTools().size()).append(" tools)\n");
+                int toolCount = mgr.safeListToolNames(n).size();
+                sbn.append("  ").append(n).append(" (\u2713 ").append(toolCount).append(" tools)\n");
             } catch (Exception e) {
                 sbn.append("  ").append(n).append(" (\u2717 ").append(e.getMessage()).append(")\n");
             }

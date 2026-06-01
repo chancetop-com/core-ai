@@ -186,6 +186,8 @@ project(":core-ai-cli") {
         implementation("io.projectreactor:reactor-core")
         // Undertow for embedded A2A web server (--serve mode)
         implementation("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
+        // Neo4j Java Driver for memory sync (agent.memory.neo4j.enabled)
+        implementation("org.neo4j.driver:neo4j-java-driver:${Versions.NEO4J_JAVA_DRIVER_VERSION}")
         // GraalVM SDK for native-image Feature (compile-time only)
         compileOnly("org.graalvm.sdk:nativeimage:${Versions.GRAALVM_SDK_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")

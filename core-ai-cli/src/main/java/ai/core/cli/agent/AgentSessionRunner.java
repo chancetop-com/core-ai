@@ -10,6 +10,8 @@ import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemorySectionManager;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.memory.SessionCloseExtractor;
+import ai.core.cli.memory.sync.MemorySyncConfig;
+import ai.core.cli.memory.sync.MemorySyncService;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
@@ -38,8 +40,14 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 public class AgentSessionRunner {
@@ -58,6 +66,9 @@ public class AgentSessionRunner {
     private final ModelRegistry modelRegistry;
     private final MemoryCommandHandler memoryCommand;
     private final boolean memoryEnabled;
+    private final MemorySyncConfig syncConfig;
+    private final boolean promptExtractionEnabled;
+    private final Integer timeLimitSeconds;
     private final Path workspace;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final AtomicReference<RemoteConfig> remoteConfig = new AtomicReference<>();
@@ -79,6 +90,12 @@ public class AgentSessionRunner {
                 ? new MemoryCommandHandler(ui, config.memory, MemoryTriggerService.getInstance())
                 : null;
         this.memoryEnabled = config.memoryEnabled;
+        this.syncConfig = config.syncConfig;
+        this.promptExtractionEnabled = config.promptExtractionEnabled;
+        this.timeLimitSeconds = config.timeLimitSeconds;
+        if (config.timeLimitSeconds != null && config.timeLimitSeconds > 0) {
+            agent.getExecutionContext().getCustomVariables().put("time_limit_seconds", config.timeLimitSeconds);
+        }
     }
     public String run() {
         // Load session history if resuming an existing session
@@ -103,6 +120,9 @@ public class AgentSessionRunner {
         ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Organizing memories..." + AnsiTheme.RESET + "\n");
         SessionCloseExtractor.onSessionClose(agent, workspace, memoryEnabled, switchSessionId);
         session.close();
+        if (syncConfig != null && syncConfig.enabled()) {
+            new MemorySyncService(syncConfig).backup(workspace);
+        }
         return switchSessionId.get();
     }
     public void runPrompt(String prompt) {
@@ -119,9 +139,47 @@ public class AgentSessionRunner {
         if (prompt != null && !prompt.isBlank()) {
             ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + prompt.strip() + "\n");
         }
-        sendPrompt(listener, session, prompt);
+        if (timeLimitSeconds != null && timeLimitSeconds > 0) {
+            LOGGER.info("Agent time limit: {}s", timeLimitSeconds);
+            runPromptWithTimeLimit(listener, session, prompt, timeLimitSeconds);
+        } else {
+            sendPrompt(listener, session, prompt);
+        }
+        if (memoryEnabled && promptExtractionEnabled) {
+            MemoryTriggerService.getInstance().runIncrementalExtractionAndWait();
+        }
         session.close();
+        if (syncConfig != null && syncConfig.enabled()) {
+            new MemorySyncService(syncConfig).backup(workspace);
+        }
     }
+
+    private void runPromptWithTimeLimit(CliEventListener listener, InProcessAgentSession session,
+                                         String prompt, int timeLimitSeconds) {
+        ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+            var t = new Thread(r, "prompt-time-limit");
+            t.setDaemon(true);
+            return t;
+        });
+        Future<?> future = executor.submit(() -> {
+            sendPrompt(listener, session, prompt);
+            return null;
+        });
+        try {
+            future.get(timeLimitSeconds, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            LOGGER.info("Time limit ({}s) reached", timeLimitSeconds);
+            future.cancel(true);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            future.cancel(true);
+        } catch (ExecutionException e) {
+            LOGGER.error("Agent execution failed", e.getCause());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     public RemoteConfig getRemoteConfig() {
         return remoteConfig.get();
     }
@@ -167,6 +225,10 @@ public class AgentSessionRunner {
             ui.getWriter().flush();
             return false;
         }
+        return performUpgradeInstall(info);
+    }
+
+    private boolean performUpgradeInstall(UpgradeChecker.UpgradeInfo info) {
         try {
             Path currentBinary = UpgradeDownloader.findCurrentBinary();
             if (currentBinary == null) {
@@ -511,6 +573,7 @@ public class AgentSessionRunner {
                          SessionManager sessionManager, ToolPermissionStore permissionStore,
                          MdMemoryProvider memory, ModelRegistry modelRegistry,
                          SessionPersistence sessionPersistence,
-                         boolean memoryEnabled) {
+                         boolean memoryEnabled, MemorySyncConfig syncConfig,
+                         boolean promptExtractionEnabled, Integer timeLimitSeconds) {
     }
 }

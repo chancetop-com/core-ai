@@ -11,6 +11,8 @@ import ai.core.cli.memory.CliMemoryLifecycle;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemorySystemPrompt;
 import ai.core.cli.memory.MemoryTriggerService;
+import ai.core.cli.memory.sync.MemorySyncConfig;
+import ai.core.cli.memory.sync.MemorySyncService;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteAgentDiscovery;
@@ -153,6 +155,9 @@ public class CliAgent {
         sections.add(new EnvironmentPrompt(config.workspace));
         sections.add(new InstructionsPrompt(config.workspace));
         if (config.memoryEnabled) {
+            if (config.syncConfig != null && config.syncConfig.enabled()) {
+                new MemorySyncService(config.syncConfig).restore(config.workspace);
+            }
             var content = new MdMemoryProvider(config.workspace).load();
             sections.add(new MemorySystemPrompt(content));
         }
@@ -180,7 +185,8 @@ public class CliAgent {
                          String sessionId,
                          List<A2ARemoteAgentConfig> remoteAgents,
                          List<A2ARemoteServerConfig> remoteServers,
-                         Map<String, SubAgentConfig> subAgentConfigs) {
+                         Map<String, SubAgentConfig> subAgentConfigs,
+                         MemorySyncConfig syncConfig) {
     }
 
     // ---- PromptInject implementations ----

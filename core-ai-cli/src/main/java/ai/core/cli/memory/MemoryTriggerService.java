@@ -13,8 +13,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -39,46 +39,19 @@ public final class MemoryTriggerService {
     private static final float EXTRACTION_TEMPERATURE = 0.3f;
 
     private static final String LOCK_SUFFIX = ".lock";
-    private static final DateTimeFormatter DATETIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    private static final String LOCK_AGENT_PROMPT = """
-            When a session closes, the session close agent creates a **lock file** listing
-            daily-logs that need deep knowledge extraction. The lock file is a work queue —
-            process each listed daily-log, extract knowledge into wiki pages, update episodes,
-            then **delete the lock file**.
-            
-            File formats and knowledge types are defined in your system prompt.
-            
-            ## Allowed Tools
-            Only use these tools — all others are forbidden for extraction:
-            - File: read_file, write_file, edit_file, glob_file, grep_file
-            - Knowledge log: add_knowledge_log
-            
-            ## Steps
-            
-            1. For each daily-log listed below, read it, extract durable knowledge into wiki pages.
-            2. Update `.core-ai/episodes/{date}.md` — add an index entry for each processed daily-log.
-            3. Call `add_knowledge_log` to record knowledge-layer changes only
-            (wiki pages, MEMORY.md — do NOT log daily-logs or episodes).
-            4. Delete the lock file.
-            
-            ## Lock File
-            
-            Lock file path: %s
-            Delete this file after all extraction is complete.
-            
-            Daily-logs to extract:
-            
-            ```
-            %s
-            ```
-            
-            Workspace: %s
-            Current datetime: %s
-            Max turns: %d
-            """;
+    private static volatile ZoneId timezone = ZoneId.systemDefault();
+
 
     private static volatile MemoryTriggerService instance;
+
+    public static void setTimezone(ZoneId zone) {
+        timezone = zone;
+    }
+
+    public static ZoneId getTimezone() {
+        return timezone;
+    }
 
     public static MemoryTriggerService getInstance() {
         if (instance == null) {
@@ -91,22 +64,18 @@ public final class MemoryTriggerService {
         return instance;
     }
 
-    private static void deleteIfExists(Path path) throws IOException {
-        if (Files.exists(path)) Files.deleteIfExists(path);
-    }
-
     private static void deleteRecursive(Path path) throws IOException {
         if (!Files.exists(path)) return;
         try (Stream<Path> stream = Files.walk(path)) {
-            stream.sorted(Comparator.reverseOrder()).forEach(MemoryTriggerService::deleteQuietly);
+            stream.sorted(Comparator.reverseOrder()).forEach(MemoryTriggerService::tryDelete);
         }
     }
 
-    private static void deleteQuietly(Path path) {
+    private static void tryDelete(Path path) {
         try {
             Files.deleteIfExists(path);
-        } catch (IOException e) {
-            LOGGER.debug("Failed to delete {}: {}", path, e.getMessage());
+        } catch (IOException ignored) {
+            LOGGER.debug("Failed to delete {}: {}", path, ignored.getMessage());
         }
     }
 
@@ -164,12 +133,11 @@ public final class MemoryTriggerService {
 
     public void ensureDirectories() {
         try {
-            Files.createDirectories(workspace.resolve(".core-ai/daily-logs"));
-            Files.createDirectories(workspace.resolve(".core-ai/episodes"));
-            Files.createDirectories(workspace.resolve(".core-ai/knowledge/project"));
-            Files.createDirectories(workspace.resolve(".core-ai/knowledge/user"));
-            Files.createDirectories(workspace.resolve(".core-ai/knowledge/feedback"));
-            Files.createDirectories(workspace.resolve(".core-ai/knowledge/reference"));
+            for (var dir : List.of(".core-ai/daily-logs", ".core-ai/episodes",
+                    ".core-ai/knowledge/project", ".core-ai/knowledge/user",
+                    ".core-ai/knowledge/feedback", ".core-ai/knowledge/reference")) {
+                Files.createDirectories(workspace.resolve(dir));
+            }
         } catch (IOException e) {
             LOGGER.warn("Failed to create memory directories: {}", e.getMessage());
         }
@@ -186,7 +154,7 @@ public final class MemoryTriggerService {
             if (Files.exists(knowledgeDir)) {
                 deleteRecursive(knowledgeDir);
             }
-            deleteIfExists(workspace.resolve(".core-ai/MEMORY.md"));
+            Files.deleteIfExists(workspace.resolve(".core-ai/MEMORY.md"));
             deleteRecursive(workspace.resolve(".core-ai/memory"));
             ensureDirectories();
             Files.createFile(workspace.resolve(".core-ai/knowledge/MEMORY.md"));
@@ -291,13 +259,10 @@ public final class MemoryTriggerService {
 
     private int readCursor() {
         int cursor = extractionCursor.get();
-        if (cursor >= 0) {
-            int msgCount = mainAgent.getMessages().size();
-            if (cursor >= msgCount) {
-                LOGGER.debug("Cursor {} stale (message count {}), resetting", cursor, msgCount);
-                extractionCursor.set(-1);
-                return -1;
-            }
+        if (cursor >= 0 && cursor >= mainAgent.getMessages().size()) {
+            LOGGER.debug("Cursor {} stale, resetting", cursor);
+            extractionCursor.set(-1);
+            return -1;
         }
         return cursor;
     }
@@ -336,8 +301,8 @@ public final class MemoryTriggerService {
             if (lockContent.isBlank()) {
                 return;
             }
-            String userPrompt = LOCK_AGENT_PROMPT.formatted(lockFile.toAbsolutePath(), lockContent,
-                    workspace.toAbsolutePath(), LocalDateTime.now().format(DATETIME_FMT), LOCK_PROCESSING_MAX_TURNS);
+            String userPrompt = LockProcessingPrompt.format(lockFile, lockContent,
+                    workspace, ZonedDateTime.now(timezone), LOCK_PROCESSING_MAX_TURNS);
 
             var tools = new ArrayList<>(BuiltinTools.FILE_OPERATIONS);
             tools.add(ShellCommandTool.builder().build());
@@ -390,43 +355,10 @@ public final class MemoryTriggerService {
     }
 
     private String buildExtractionPrompt(int cursor, int totalMessages, int maxTurns) {
-        String cursorInfo;
-        if (cursor >= 0) {
-            cursorInfo = "Messages 0–" + (cursor - 1) + " have been extracted (cursor=" + cursor
-                    + ", total=" + totalMessages + ").";
-        } else {
-            cursorInfo = "No messages have been extracted yet (total=" + totalMessages + ").";
-        }
-        return """
-                Run the knowledge extraction procedure defined in your system prompt.
-                
-                ## Allowed Tools
-                Only use these tools — all others are forbidden for extraction:
-                - File: read_file, write_file, edit_file, glob_file, grep_file
-                - Knowledge log: add_knowledge_log
-                - Cursor: read_extraction_cursor, advance_extraction_cursor
-                
-                When calling advance_extraction_cursor, pass the `cursor` parameter:
-                set it to the index you want the next extraction to start from
-                (i.e., the last message you processed + 1).
-                
-                ## Stale Knowledge Detection
-                While extracting, if the conversation reveals that an existing knowledge wiki page
-                is no longer accurate (e.g. user mentions a file was moved, a constraint changed,
-                a module was removed), update the wiki page via edit_file to reflect current reality.
-                Do NOT proactively scan the codebase beyond what the conversation already references.
-                
-                ## Knowledge Log
-                Record knowledge-layer changes only via add_knowledge_log
-                (wiki pages, MEMORY.md — do NOT log daily-logs or episodes).
-                
-                ## Context
-                Workspace: %s
-                %s
-                Current datetime: %s
-                Max turns: %d
-                """.formatted(workspace.toAbsolutePath(), cursorInfo,
-                LocalDateTime.now().format(DATETIME_FMT), maxTurns);
+        String cursorInfo = cursor >= 0
+                ? "Messages 0–" + (cursor - 1) + " have been extracted (cursor=" + cursor + ", total=" + totalMessages + ")."
+                : "No messages have been extracted yet (total=" + totalMessages + ").";
+        return ExtractionPrompt.format(workspace, cursorInfo, ZonedDateTime.now(timezone), maxTurns);
     }
 
     private List<Path> findLockFiles() {

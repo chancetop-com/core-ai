@@ -7,5 +7,6 @@ import java.nio.file.Path;
  */
 public record CliAppOptions(Path configFile, String modelOverride, String prompt,
                             boolean autoApproveAll, boolean continueSession,
-                            boolean resume, Path workspace) {
+                            boolean resume, Path workspace,
+                            Integer timeLimitSeconds) {
 }

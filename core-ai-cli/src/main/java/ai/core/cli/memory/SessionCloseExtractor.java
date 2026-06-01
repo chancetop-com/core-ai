@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -23,7 +23,7 @@ public class SessionCloseExtractor {
     private static final Logger LOGGER = LoggerFactory.getLogger(SessionCloseExtractor.class);
     private static final int MAX_TURNS = 7;
     private static final double TEMPERATURE = 0.3;
-    private static final DateTimeFormatter DATETIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final DateTimeFormatter DATETIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
 
     private static final String CLOSE_AGENT_PROMPT = """
             ## Role
@@ -106,14 +106,14 @@ public class SessionCloseExtractor {
     }
 
     private static String buildCloseExtractionPrompt(Path workspace, int cursor, int totalMessages) {
-        String today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String today = LocalDate.now(MemoryTriggerService.getTimezone()).format(DateTimeFormatter.ISO_LOCAL_DATE);
         String cursorInfo = "Messages 0–" + (cursor - 1) + " have been extracted (cursor=" + cursor
                     + ", total=" + totalMessages + ").";
         String existingFiles = listExistingFiles(workspace, today);
         return CLOSE_AGENT_PROMPT.formatted(today, existingFiles,
                 today, today, today, today,
                 workspace.toAbsolutePath(), cursorInfo,
-                LocalDateTime.now().format(DATETIME_FMT), MAX_TURNS - 2);
+                ZonedDateTime.now(MemoryTriggerService.getTimezone()).format(DATETIME_FMT), MAX_TURNS - 2);
     }
 
     private static String listExistingFiles(Path workspace, String today) {

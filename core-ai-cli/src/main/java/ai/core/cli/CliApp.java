@@ -14,6 +14,9 @@ import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.memory.MemoryTriggerService;
+import ai.core.cli.memory.sync.MemorySyncConfig;
+import ai.core.cli.memory.sync.MemorySyncService;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.remote.A2ARemoteAgentConfigLoader;
 import ai.core.cli.remote.A2ARemoteConnector;
@@ -95,6 +98,7 @@ public class CliApp {
     private final boolean continueSession;
     private final boolean resume;
     private final Path workspace;
+    private final Integer timeLimitSeconds;
     public CliApp(CliAppOptions options) {
         this.configFile = options.configFile() != null ? options.configFile() : PathUtils.DEFAULT_CONFIG;
         this.modelOverride = options.modelOverride();
@@ -103,6 +107,7 @@ public class CliApp {
         this.continueSession = options.continueSession();
         this.resume = options.resume();
         this.workspace = options.workspace() != null ? options.workspace().toAbsolutePath() : Paths.get("").toAbsolutePath();
+        this.timeLimitSeconds = options.timeLimitSeconds();
     }
     public void startAcpAgent() {
         System.setProperty("core.appName", "core-ai-cli");
@@ -137,6 +142,8 @@ public class CliApp {
         boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false);
         boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
         boolean todoV2Enabled = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);
+        boolean promptExtractionEnabled = props.property("agent.memory.prompt.extraction").map(Boolean::parseBoolean).orElse(false);
+        props.property("agent.memory.timezone").map(ZoneId::of).ifPresent(MemoryTriggerService::setTimezone);
         var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
@@ -148,8 +155,10 @@ public class CliApp {
         var noteMemory = memoryEnabled ? new MdMemoryProvider(workspace) : null;
         var modelRegistry = new ModelRegistry(result.llmProviders, props);
         var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
+        var syncConfig = MemorySyncConfig.load(props);
         return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName,
-                currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, coding, todoV2Enabled, remoteAgents, remoteServers, subAgentConfigs);
+                currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, coding, todoV2Enabled,
+                remoteAgents, remoteServers, subAgentConfigs, syncConfig, promptExtractionEnabled, timeLimitSeconds);
     }
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
         try {
@@ -182,9 +191,9 @@ public class CliApp {
     private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
         var agentConfig = new CliAgent.Config(ctx.result().llmProviders, modelOverride, ctx.maxTurn(), ctx.sessionPersistence(), workspace, question -> {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
-        }, ctx.memoryEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs());
+        }, ctx.memoryEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.syncConfig());
         var agent = CliAgent.of(agentConfig);
-        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled());
+        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.syncConfig(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds());
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
     }
     private void cleanup(TerminalUI ui, SessionContext ctx) {
@@ -299,34 +308,35 @@ public class CliApp {
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
         clearLoading();
-        LOGGER.info("bootstrap initialized for ACP serve mode");
         restoreActiveProvider(props, result.llmProviders);
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
         boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true);
         boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
         boolean todoV2Enabled = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);
+        props.property("agent.memory.timezone").map(ZoneId::of).ifPresent(MemoryTriggerService::setTimezone);
         var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
         var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = whiteToolsPermissionStore();
         var currentSessionId = resolveSessionIdForServe(sessionManager);
-        if (currentSessionId != null) {
-            LOGGER.info("Resuming session: {}", currentSessionId);
-        } else {
+        if (currentSessionId == null) {
             currentSessionId = "serve-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-            LOGGER.info("Starting new session: {}", currentSessionId);
         }
         CliLogger.initialize(workspace, currentSessionId);
         var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
+        var syncConfig = MemorySyncConfig.load(props);
         var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
-        }, memoryEnabled, coding, todoV2Enabled, currentSessionId, remoteAgents, remoteServers, subAgentConfigs);
+        }, memoryEnabled, coding, todoV2Enabled, currentSessionId, remoteAgents, remoteServers, subAgentConfigs, syncConfig);
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
         var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, sessionManager, sessionPersistence, workspace);
         var server = new A2AServer(port, runManager, chatSessionManager, sessionPersistence, webDir);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (syncConfig != null && syncConfig.enabled()) {
+                new MemorySyncService(syncConfig).backup(workspace);
+            }
             server.stop();
             closeShutdownResources(result);
         }));

@@ -10,6 +10,8 @@ import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.SessionCloseExtractor;
+import ai.core.cli.memory.sync.MemorySyncConfig;
+import ai.core.cli.memory.sync.MemorySyncService;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteAgentConfigLoader;
 import ai.core.cli.remote.A2ARemoteServerConfig;
@@ -32,6 +34,7 @@ import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WebFetchTool;
 import ai.core.tool.tools.WebSearchTool;
 import ai.core.tool.tools.WriteTodosTool;
+import ai.core.utils.JsonUtil;
 import com.agentclientprotocol.sdk.agent.AcpAgent;
 import com.agentclientprotocol.sdk.agent.AcpSyncAgent;
 import com.agentclientprotocol.sdk.agent.SyncPromptContext;
@@ -40,6 +43,7 @@ import com.agentclientprotocol.sdk.spec.AcpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
@@ -93,6 +97,7 @@ public class AcpAgentRunner {
         System.setProperty("user.dir", workspace.toString());
 
         var props = PropertiesFileSource.fromFile(configFile);
+        mergeWorkspaceMcpConfig(props);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
@@ -103,7 +108,8 @@ public class AcpAgentRunner {
                 props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false),
                 props.property("agent.max.turn").map(Integer::parseInt).orElse(100),
                 A2ARemoteAgentConfigLoader.load(props),
-                A2ARemoteAgentConfigLoader.loadServers(props));
+                A2ARemoteAgentConfigLoader.loadServers(props),
+                MemorySyncConfig.load(props));
         restoreActiveProvider(props, result.llmProviders);
 
         var agent = buildAgent(ctx);
@@ -113,10 +119,14 @@ public class AcpAgentRunner {
         LOGGER.info("ACP agent terminated");
 
         sessions.forEach((sid, acpSession) -> {
+            persistSession(acpSession);
             if (ctx.memoryEnabled) {
                 SessionCloseExtractor.onSessionClose(acpSession.agent(), workspace, ctx.memoryEnabled, null);
             }
         });
+        if (ctx.syncConfig != null && ctx.syncConfig.enabled()) {
+            new MemorySyncService(ctx.syncConfig).backup(workspace);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -167,7 +177,7 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of());
+                Map.of(), ctx.syncConfig);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -207,7 +217,7 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of());
+                Map.of(), ctx.syncConfig);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -260,6 +270,10 @@ public class AcpAgentRunner {
         acpSession.agent().setStreamingCallback(new AcpStreamingCallback(promptCtx, req.sessionId(), outputRef, thoughtRef));
         acpSession.currentContext().set(promptCtx);
 
+        // Reset cancellation flag so a cancelled session can continue with a new prompt.
+        // Consistent with how InProcessAgentSession.sendMessage() handles cancellation.
+        acpSession.agent().resetCancellation();
+
         try {
             String resultText = acpSession.agent().run(promptText);
             if (thoughtRef.get() != null && !thoughtRef.get().isEmpty()) {
@@ -270,11 +284,20 @@ public class AcpAgentRunner {
             }
             LOGGER.debug("ACP prompt completed: session={}, resultLength={}",
                     req.sessionId(), resultText.length());
+            persistSession(acpSession);
             return AcpSchema.PromptResponse.endTurn();
         } catch (Exception e) {
             LOGGER.error("ACP prompt execution failed", e);
             promptCtx.sendMessage("Error: " + e.getMessage());
+            persistSession(acpSession);
             return AcpSchema.PromptResponse.endTurn();
+        }
+    }
+
+    private void persistSession(AcpSession acpSession) {
+        if (acpSession.agent().hasPersistenceProvider()) {
+            acpSession.agent().save(acpSession.sessionId());
+            LOGGER.debug("ACP session persisted: {}", acpSession.sessionId());
         }
     }
 
@@ -348,8 +371,37 @@ public class AcpAgentRunner {
         LOGGER.debug("Broadcast {} available commands to session {}", commands.size(), sessionId);
     }
 
+    private void mergeWorkspaceMcpConfig(PropertiesFileSource props) {
+        Path mcpFile = workspace.resolve(".core-ai").resolve("MCP.json");
+        if (!Files.exists(mcpFile)) {
+            return;
+        }
+        try {
+            String localJson = Files.readString(mcpFile);
+            @SuppressWarnings("unchecked")
+            var localServers = (Map<String, Object>) JsonUtil.fromJson(Map.class, localJson);
+            if (localServers == null || localServers.isEmpty()) return;
+
+            var globalJson = props.property("mcp.servers.json");
+            Map<String, Object> merged;
+            if (globalJson.isPresent()) {
+                @SuppressWarnings("unchecked")
+                var globalServers = (Map<String, Object>) JsonUtil.fromJson(Map.class, globalJson.get());
+                merged = globalServers;
+                merged.putAll(localServers);
+            } else {
+                merged = localServers;
+            }
+            props.putProperty("mcp.servers.json", JsonUtil.toJson(merged));
+            LOGGER.info("merged workspace MCP config from {}: {} server(s)", mcpFile, merged.size());
+        } catch (Exception e) {
+            LOGGER.warn("failed to merge workspace MCP config from {}: {}", mcpFile, e.getMessage());
+        }
+    }
+
     private record AgentContext(BootstrapResult result, boolean memoryEnabled, boolean coding,
                                  int maxTurn, List<A2ARemoteAgentConfig> remoteAgents,
-                                 List<A2ARemoteServerConfig> remoteServers) {
+                                 List<A2ARemoteServerConfig> remoteServers,
+                                 MemorySyncConfig syncConfig) {
     }
 }

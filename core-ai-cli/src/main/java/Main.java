@@ -91,6 +91,9 @@ public class Main implements Callable<Integer> {
     @Option(names = "--upgrade-dir", description = "Install directory for --upgrade (default: current binary dir or ~/.core-ai/bin/)")
     Path upgradeDir;
 
+    @Option(names = "--time-limit-seconds", description = "Wall-clock time limit for agent execution. Extraction and cleanup run after the agent returns.")
+    Integer timeLimitSeconds;
+
     @Override
     public Integer call() {
         if (upgrade) {
@@ -101,7 +104,7 @@ public class Main implements Callable<Integer> {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
-        var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace);
+        var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace, timeLimitSeconds);
         if (acpAgent) {
             new CliApp(options).startAcpAgent();
         } else if (serve) {
@@ -139,13 +142,11 @@ public class Main implements Callable<Integer> {
             Path currentBinary = UpgradeDownloader.findCurrentBinary();
             if (currentBinary != null) {
                 Path replaced = UpgradeDownloader.tryReplaceCurrent(downloaded, currentBinary);
-                if (replaced.equals(currentBinary)) {
-                    if (UpgradeDownloader.isUpgradeScheduled(currentBinary)) {
-                        System.out.println("Replacement scheduled — binary will be updated automatically in a moment.");
-                        System.out.println("Restart core-ai-cli to use v" + info.latestVersion());
-                    } else {
-                        System.out.println("Replaced " + currentBinary.getFileName() + ". Restart to use v" + info.latestVersion());
-                    }
+                if (replaced.equals(currentBinary) && UpgradeDownloader.isUpgradeScheduled(currentBinary)) {
+                    System.out.println("Replacement scheduled — binary will be updated automatically in a moment.");
+                    System.out.println("Restart core-ai-cli to use v" + info.latestVersion());
+                } else if (replaced.equals(currentBinary)) {
+                    System.out.println("Replaced " + currentBinary.getFileName() + ". Restart to use v" + info.latestVersion());
                 } else {
                     System.out.println("Saved as " + replaced + " (cannot overwrite running binary)");
                     System.out.println("To complete upgrade: replace " + currentBinary + " with " + replaced + ", then restart.");
