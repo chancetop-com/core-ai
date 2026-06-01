@@ -1,5 +1,6 @@
 package ai.core.server.dataset.tool;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.domain.Dataset;
 import ai.core.tool.ToolCall;
@@ -46,6 +47,11 @@ public final class DeleteDatasetRecordTool extends ToolCall {
 
     @Override
     public ToolCallResult execute(String arguments) {
+        return execute(arguments, null);
+    }
+
+    @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
         var recordId = getStringValue(args, "record_id");
 

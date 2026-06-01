@@ -140,16 +140,14 @@ public class ForYouService {
         return todo;
     }
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public UserTodo updateTodo(String id, String userId, String title, String description,
-                                Boolean completed, String priority, ZonedDateTime dueDate) {
-        var todo = todoCollection.get(id).orElse(null);
-        if (todo == null || !userId.equals(todo.userId)) return null;
-        if (title != null) todo.title = title;
-        if (description != null) todo.description = description;
-        if (completed != null) todo.completed = completed;
-        if (priority != null) todo.priority = priority;
-        if (dueDate != null) todo.dueDate = dueDate;
+    public UserTodo updateTodo(UpdateTodoRequest request) {
+        var todo = todoCollection.get(request.id).orElse(null);
+        if (todo == null || !request.userId.equals(todo.userId)) return null;
+        if (request.title != null) todo.title = request.title;
+        if (request.description != null) todo.description = request.description;
+        if (request.completed != null) todo.completed = request.completed;
+        if (request.priority != null) todo.priority = request.priority;
+        if (request.dueDate != null) todo.dueDate = request.dueDate;
         todo.updatedAt = ZonedDateTime.now();
         todoCollection.replace(todo);
         return todo;
@@ -293,4 +291,7 @@ public class ForYouService {
         public List<UserTodo> activeTodos;
         public List<FileRecord> recentFiles;
     }
+
+    public record UpdateTodoRequest(String id, String userId, String title, String description,
+                                     Boolean completed, String priority, ZonedDateTime dueDate) { }
 }

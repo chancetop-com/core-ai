@@ -28,23 +28,12 @@ public class AgentSandbox implements Sandbox {
     private volatile SandboxStatus status = SandboxStatus.READY;
     private final Instant createdAt;
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds) {
-        this(crName, serviceName, host, port, timeoutSeconds, null, null);
-    }
-
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds, String image) {
-        this(crName, serviceName, host, port, timeoutSeconds, image, null);
-    }
-
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public AgentSandbox(String crName, String serviceName, String host, int port, int timeoutSeconds, String image, String podName) {
-        this.crName = crName;
-        this.serviceName = serviceName;
-        this.image = image;
-        this.podName = podName;
-        this.runtimeClient = new SandboxClient(host, port, timeoutSeconds);
+    public AgentSandbox(Config config) {
+        this.crName = config.crName;
+        this.serviceName = config.serviceName;
+        this.image = config.image;
+        this.podName = config.podName;
+        this.runtimeClient = new SandboxClient(config.host, config.port, config.timeoutSeconds);
         this.createdAt = Instant.now();
     }
 
@@ -128,4 +117,6 @@ public class AgentSandbox implements Sandbox {
         }
         return false;
     }
+
+    public record Config(String crName, String serviceName, String host, int port, int timeoutSeconds, String image, String podName) { }
 }

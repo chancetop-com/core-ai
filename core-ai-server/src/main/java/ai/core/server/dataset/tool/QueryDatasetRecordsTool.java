@@ -1,5 +1,6 @@
 package ai.core.server.dataset.tool;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.domain.Dataset;
 import ai.core.tool.ToolCall;
@@ -68,6 +69,11 @@ public final class QueryDatasetRecordsTool extends ToolCall {
 
     @Override
     public ToolCallResult execute(String arguments) {
+        return execute(arguments, null);
+    }
+
+    @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
         var fieldsStr = getStringValue(args, "fields");
         var fromStr = getStringValue(args, "from");
@@ -86,7 +92,7 @@ public final class QueryDatasetRecordsTool extends ToolCall {
 
         List<String> fields = fieldsStr != null ? List.of(fieldsStr.split(",")) : null;
 
-        var result = recordService.query(datasetId, from, to, fields, limit, offset, null);
+        var result = recordService.query(new DatasetRecordService.QueryRequest(datasetId, from, to, fields, limit, offset, null));
         var response = new LinkedHashMap<String, Object>();
         response.put("records", result.records().stream().map(r -> {
             var record = new LinkedHashMap<String, Object>();

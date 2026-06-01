@@ -38,27 +38,17 @@ public class SessionRebuildManager {
     private final EventPublisher eventPublisher;
     private final SessionOwnershipRegistry ownershipRegistry;
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public SessionRebuildManager(ChatMessageService chatMessageService,
-                                  MongoCollection<AgentDefinition> agentDefinitionCollection,
-                                  SessionSkillManager skillManager,
-                                  SessionSubAgentManager subAgentManager,
-                                  SandboxService sandboxService,
-                                  ChatArtifactSetup artifactSetup,
-                                  ToolRegistryService toolRegistryService,
-                                  SystemPromptService systemPromptService,
-                                  EventPublisher eventPublisher,
-                                  SessionOwnershipRegistry ownershipRegistry) {
-        this.chatMessageService = chatMessageService;
-        this.agentDefinitionCollection = agentDefinitionCollection;
-        this.skillManager = skillManager;
-        this.subAgentManager = subAgentManager;
-        this.sandboxService = sandboxService;
-        this.artifactSetup = artifactSetup;
-        this.toolRegistryService = toolRegistryService;
-        this.systemPromptService = systemPromptService;
-        this.eventPublisher = eventPublisher;
-        this.ownershipRegistry = ownershipRegistry;
+    public SessionRebuildManager(Deps deps) {
+        this.chatMessageService = deps.chatMessageService;
+        this.agentDefinitionCollection = deps.agentDefinitionCollection;
+        this.skillManager = deps.skillManager;
+        this.subAgentManager = deps.subAgentManager;
+        this.sandboxService = deps.sandboxService;
+        this.artifactSetup = deps.artifactSetup;
+        this.toolRegistryService = deps.toolRegistryService;
+        this.systemPromptService = deps.systemPromptService;
+        this.eventPublisher = deps.eventPublisher;
+        this.ownershipRegistry = deps.ownershipRegistry;
     }
 
     public SessionState buildStateFromDb(String sessionId) {
@@ -250,4 +240,15 @@ public class SessionRebuildManager {
             logger.warn("failed to restore agent history, sessionId={}", sessionId, e);
         }
     }
+
+    public record Deps(ChatMessageService chatMessageService,
+                        MongoCollection<AgentDefinition> agentDefinitionCollection,
+                        SessionSkillManager skillManager,
+                        SessionSubAgentManager subAgentManager,
+                        SandboxService sandboxService,
+                        ChatArtifactSetup artifactSetup,
+                        ToolRegistryService toolRegistryService,
+                        SystemPromptService systemPromptService,
+                        EventPublisher eventPublisher,
+                        SessionOwnershipRegistry ownershipRegistry) { }
 }

@@ -1,5 +1,6 @@
 package ai.core.server.dataset.tool;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.SchemaField;
@@ -76,6 +77,11 @@ public final class InsertDatasetRecordTool extends ToolCall {
 
     @Override
     public ToolCallResult execute(String arguments) {
+        return execute(arguments, null);
+    }
+
+    @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
         @SuppressWarnings("unchecked")
         var data = (Map<String, Object>) args.get("data");
@@ -89,7 +95,8 @@ public final class InsertDatasetRecordTool extends ToolCall {
         }
 
         var effectiveRunId = runId != null ? runId : UUID.randomUUID().toString();
-        recordService.insert(datasetId, agentId, effectiveRunId, ZonedDateTime.now(), filtered);
+        var userId = context != null ? context.getUserId() : null;
+        recordService.insert(new DatasetRecordService.InsertRequest(datasetId, agentId, effectiveRunId, ZonedDateTime.now(), filtered, userId, userId));
 
         var response = new LinkedHashMap<String, Object>();
         response.put("status", "created");

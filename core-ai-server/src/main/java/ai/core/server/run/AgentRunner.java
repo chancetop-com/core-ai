@@ -425,7 +425,7 @@ public class AgentRunner {
             }
             var data = llmCallExecutor.extractStructured(output, dataset, definition);
             if (data != null && !data.isEmpty()) {
-                datasetRecordService.insert(dataset.id, agentId, runId, runStartedAt, data);
+                datasetRecordService.insert(new DatasetRecordService.InsertRequest(dataset.id, agentId, runId, runStartedAt, data, definition.userId, definition.userId));
             }
         } catch (Exception e) {
             LOGGER.warn("failed to extract dataset record, datasetId={}, runId={}", datasetId, runId, e);

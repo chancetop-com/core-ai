@@ -70,7 +70,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVUsersIndexes(),
             new SchemaMigrationVFileRecordsTTL(),
             new SchemaMigrationVTriggerIndexes(),
-            new SchemaMigrationVDatasetIndexes()
+            new SchemaMigrationVDatasetIndexes(),
+            new SchemaMigrationVDatasetRecordUserIndex()
         );
     }
 }

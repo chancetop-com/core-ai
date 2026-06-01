@@ -222,6 +222,14 @@ export default function DatasetRecords() {
                                 <div className="font-mono">{r.agent_id || '-'}</div>
                                 <div style={{ color: 'var(--color-text-secondary)' }}>Started At</div>
                                 <div>{formatTime(r.run_started_at)}</div>
+                                <div style={{ color: 'var(--color-text-secondary)' }}>Created By</div>
+                                <div>{r.created_by || '-'}</div>
+                                <div style={{ color: 'var(--color-text-secondary)' }}>Created At</div>
+                                <div>{formatTime(r.created_at)}</div>
+                                <div style={{ color: 'var(--color-text-secondary)' }}>Updated By</div>
+                                <div>{r.updated_by || '-'}</div>
+                                <div style={{ color: 'var(--color-text-secondary)' }}>Updated At</div>
+                                <div>{formatTime(r.updated_at)}</div>
                               </div>
                               <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>Data</div>
                               <pre className="text-xs rounded-lg p-3 overflow-x-auto whitespace-pre-wrap"

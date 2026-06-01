@@ -152,7 +152,7 @@ public class ForYouController {
         var dueDateStr = (String) body.get("due_date");
         ZonedDateTime dueDate = dueDateStr != null ? ZonedDateTime.parse(dueDateStr) : null;
 
-        var todo = forYouService.updateTodo(id, userId, title, description, completed, priority, dueDate);
+        var todo = forYouService.updateTodo(new ForYouService.UpdateTodoRequest(id, userId, title, description, completed, priority, dueDate));
         if (todo == null) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
         return jsonResponse(Map.of("todo", toTodoMap(todo)));
     }

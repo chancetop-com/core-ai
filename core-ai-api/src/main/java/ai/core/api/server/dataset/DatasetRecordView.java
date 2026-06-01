@@ -20,4 +20,19 @@ public class DatasetRecordView {
 
     @Property(name = "data")
     public String data;
+
+    @Property(name = "user_id")
+    public String userId;
+
+    @Property(name = "created_by")
+    public String createdBy;
+
+    @Property(name = "created_at")
+    public String createdAt;
+
+    @Property(name = "updated_at")
+    public String updatedAt;
+
+    @Property(name = "updated_by")
+    public String updatedBy;
 }

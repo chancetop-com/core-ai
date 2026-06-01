@@ -27,36 +27,39 @@ public class DatasetRecordService {
     @Inject
     MongoCollection<DatasetRecord> datasetRecordCollection;
 
-    public void insert(String datasetId, String agentId, String runId, ZonedDateTime runStartedAt, Map<String, Object> data) {
+    public void insert(InsertRequest request) {
         var record = new DatasetRecord();
         record.id = UUID.randomUUID().toString();
-        record.datasetId = datasetId;
-        record.agentId = agentId;
-        record.runId = runId;
-        record.data = JsonUtil.toJson(data);
-        record.runStartedAt = runStartedAt;
+        record.datasetId = request.datasetId;
+        record.agentId = request.agentId;
+        record.runId = request.runId;
+        record.data = JsonUtil.toJson(request.data);
+        record.runStartedAt = request.runStartedAt;
+        record.userId = request.userId;
+        record.createdBy = request.createdBy;
         record.createdAt = ZonedDateTime.now();
+        record.updatedAt = record.createdAt;
+        record.updatedBy = request.createdBy;
         datasetRecordCollection.insert(record);
-        LOGGER.info("dataset record inserted, datasetId={}, runId={}", datasetId, runId);
+        LOGGER.info("dataset record inserted, datasetId={}, runId={}", request.datasetId, request.runId);
     }
 
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public QueryResult query(String datasetId, ZonedDateTime from, ZonedDateTime to, List<String> fields, Integer limit, Integer offset, String agentId) {
+    public QueryResult query(QueryRequest request) {
         var filters = new ArrayList<org.bson.conversions.Bson>();
-        filters.add(Filters.eq("dataset_id", datasetId));
-        if (from != null) filters.add(Filters.gte("run_started_at", from));
-        if (to != null) filters.add(Filters.lte("run_started_at", to));
-        if (agentId != null) filters.add(Filters.eq("agent_id", agentId));
+        filters.add(Filters.eq("dataset_id", request.datasetId));
+        if (request.from != null) filters.add(Filters.gte("run_started_at", request.from));
+        if (request.to != null) filters.add(Filters.lte("run_started_at", request.to));
+        if (request.agentId != null) filters.add(Filters.eq("agent_id", request.agentId));
 
         var filter = Filters.and(filters);
 
         var query = new Query();
         query.filter = filter;
         query.sort = Sorts.descending("run_started_at");
-        query.limit = limit != null ? limit : 100;
-        query.skip = offset != null ? offset : 0;
+        query.limit = request.limit != null ? request.limit : 100;
+        query.skip = request.offset != null ? request.offset : 0;
 
-        if (fields != null && !fields.isEmpty()) {
+        if (request.fields != null && !request.fields.isEmpty()) {
             var projection = new BsonDocument();
             projection.append("_id", new BsonInt32(1));
             projection.append("run_id", new BsonInt32(1));
@@ -71,10 +74,12 @@ public class DatasetRecordService {
         return new QueryResult(records, total);
     }
 
-    public boolean update(String id, Map<String, Object> data) {
+    public boolean update(String id, Map<String, Object> data, String updatedBy) {
         var record = datasetRecordCollection.get(id).orElse(null);
         if (record == null) return false;
         record.data = JsonUtil.toJson(data);
+        record.updatedAt = ZonedDateTime.now();
+        record.updatedBy = updatedBy;
         datasetRecordCollection.replace(record);
         LOGGER.info("dataset record updated, id={}", id);
         return true;
@@ -89,4 +94,7 @@ public class DatasetRecordService {
     }
 
     public record QueryResult(List<DatasetRecord> records, long total) { }
+
+    public record InsertRequest(String datasetId, String agentId, String runId, ZonedDateTime runStartedAt, Map<String, Object> data, String userId, String createdBy) { }
+    public record QueryRequest(String datasetId, ZonedDateTime from, ZonedDateTime to, List<String> fields, Integer limit, Integer offset, String agentId) { }
 }

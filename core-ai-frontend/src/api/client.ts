@@ -922,6 +922,11 @@ export interface DatasetRecordView {
   agent_id: string;
   run_started_at: string;
   data: string;
+  user_id: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
 }
 
 export interface ListDatasetRecordsResponse {

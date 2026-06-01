@@ -1,5 +1,6 @@
 package ai.core.server.dataset.tool;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.SchemaField;
@@ -69,6 +70,11 @@ public final class UpdateDatasetRecordTool extends ToolCall {
 
     @Override
     public ToolCallResult execute(String arguments) {
+        return execute(arguments, null);
+    }
+
+    @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
         var recordId = getStringValue(args, "record_id");
         @SuppressWarnings("unchecked")
@@ -86,7 +92,8 @@ public final class UpdateDatasetRecordTool extends ToolCall {
             return ToolCallResult.failed("none of the provided fields match the dataset schema: " + schemaFieldNames);
         }
 
-        var updated = recordService.update(recordId, filtered);
+        var updatedBy = context != null ? context.getUserId() : null;
+        var updated = recordService.update(recordId, filtered, updatedBy);
         if (!updated) {
             return ToolCallResult.failed("record not found, id=" + recordId);
         }

@@ -109,9 +109,9 @@ public class AgentSessionManager {
 
     private SessionRebuildManager rebuildManager() {
         if (rebuildManager == null) {
-            rebuildManager = new SessionRebuildManager(chatMessageService, agentDefinitionCollection,
+            rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection,
                     skillManager(), subAgentManager(), sandboxService, artifactSetup,
-                    toolRegistryService, systemPromptService, eventPublisher, ownershipRegistry);
+                    toolRegistryService, systemPromptService, eventPublisher, ownershipRegistry));
         }
         return rebuildManager;
     }

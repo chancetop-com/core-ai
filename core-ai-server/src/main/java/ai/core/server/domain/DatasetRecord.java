@@ -1,5 +1,6 @@
 package ai.core.server.domain;
 
+import core.framework.api.validate.NotBlank;
 import core.framework.api.validate.NotNull;
 import core.framework.mongo.Collection;
 import core.framework.mongo.Field;
@@ -27,6 +28,9 @@ public class DatasetRecord {
     @Field(name = "run_id")
     public String runId;
 
+    @Field(name = "user_id")
+    public String userId;
+
     @Field(name = "data")
     public String data;
 
@@ -37,4 +41,18 @@ public class DatasetRecord {
     @NotNull
     @Field(name = "created_at")
     public ZonedDateTime createdAt;
+
+    @NotNull
+    @NotBlank
+    @Field(name = "created_by")
+    public String createdBy;
+
+    @NotNull
+    @Field(name = "updated_at")
+    public ZonedDateTime updatedAt;
+
+    @NotNull
+    @NotBlank
+    @Field(name = "updated_by")
+    public String updatedBy;
 }
