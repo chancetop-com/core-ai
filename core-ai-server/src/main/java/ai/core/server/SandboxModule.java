@@ -1,5 +1,6 @@
 package ai.core.server;
 
+import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.TokenResolver;
@@ -36,12 +37,19 @@ class SandboxModule extends Module {
                 bind(new SandboxService());
                 return;
             }
-            var sandboxService = bind(new SandboxService(provider));
+            var sandboxService = bind(new SandboxService(provider, resolveDefaultConfig()));
             onShutdown(sandboxService::shutdown);
         });
         if (property("sys.sandbox.provider").isEmpty()) {
             bind(new SandboxService());
         }
+    }
+
+    // Sandbox lifetime in seconds, overridable via SYS_SANDBOX_TIMEOUT; defaults to createDefaultConfig (3900s).
+    private SandboxConfig resolveDefaultConfig() {
+        var config = SandboxService.createDefaultConfig();
+        property("sys.sandbox.timeout").ifPresent(v -> config.timeoutSeconds = Integer.parseInt(v.trim()));
+        return config;
     }
 
     private String resolveNamespace() {

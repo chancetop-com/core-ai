@@ -10,7 +10,6 @@ import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
@@ -248,6 +247,24 @@ public class AgentSandboxProvider implements SandboxProvider {
     }
 
     @Override
+    public void renew(Sandbox sandbox, int timeoutSeconds) {
+        if (sandbox == null) return;
+        var id = sandbox.getId();
+        var shutdownTime = Instant.now().plus(timeoutSeconds, ChronoUnit.SECONDS).toString();
+        try {
+            if (useWarmPool()) {
+                extensionsClient.patchShutdownTime(id, shutdownTime);
+            } else {
+                client.patchShutdownTime(id, shutdownTime);
+            }
+            LOGGER.debug("renewed agent sandbox lifetime: name={}, shutdownTime={}", id, shutdownTime);
+        } catch (Exception e) {
+            // Renewal is best-effort: the in-memory deadline is already extended, next message retries.
+            LOGGER.warn("failed to renew agent sandbox lifetime: name={}", id, e);
+        }
+    }
+
+    @Override
     public SandboxStatus getStatus(Sandbox sandbox) {
         if (sandbox == null) return SandboxStatus.TERMINATED;
         try {
@@ -328,16 +345,28 @@ public class AgentSandboxProvider implements SandboxProvider {
     private void cleanupExpiredClaim(AgentSandboxExtensionsClient.SandboxClaim claim, Instant now, int maxLifetimeSeconds) {
         try {
             if (claim.metadata == null || claim.metadata.creationTimestamp == null) return;
-            var created = ZonedDateTime.parse(claim.metadata.creationTimestamp).toInstant();
-            var age = Duration.between(created, now);
-            if (age.getSeconds() > maxLifetimeSeconds) {
-                LOGGER.info("deleting expired sandbox claim: name={}, age={}s", claim.getName(), age.getSeconds());
+            var deadline = claimDeadline(claim, maxLifetimeSeconds);
+            if (now.isAfter(deadline)) {
+                LOGGER.info("deleting expired sandbox claim: name={}, deadline={}", claim.getName(), deadline);
                 deleteServiceSilently("svc-" + claim.getName());
                 extensionsClient.deleteClaim(claim.getName());
             }
         } catch (Exception e) {
             LOGGER.warn("failed to cleanup sandbox claim: {}", claim.getName(), e);
         }
+    }
+
+    // Prefer the renewable shutdownTime so an active (renewed) claim is not deleted; fall back to
+    // creationTimestamp + maxLifetime for orphans that have no shutdownTime set.
+    private Instant claimDeadline(AgentSandboxExtensionsClient.SandboxClaim claim, int maxLifetimeSeconds) {
+        if (claim.spec != null && claim.spec.lifecycle != null && claim.spec.lifecycle.shutdownTime != null) {
+            try {
+                return ZonedDateTime.parse(claim.spec.lifecycle.shutdownTime).toInstant();
+            } catch (Exception e) {
+                LOGGER.warn("invalid shutdownTime on claim {}: {}", claim.getName(), claim.spec.lifecycle.shutdownTime);
+            }
+        }
+        return ZonedDateTime.parse(claim.metadata.creationTimestamp).toInstant().plus(maxLifetimeSeconds, ChronoUnit.SECONDS);
     }
 
     private void cleanupExpiredDirectSandboxes(int maxLifetimeSeconds) {
@@ -355,16 +384,27 @@ public class AgentSandboxProvider implements SandboxProvider {
     private void cleanupExpiredDirectSandbox(AgentSandboxClient.SandboxCR cr, Instant now, int maxLifetimeSeconds) {
         try {
             if (cr.metadata == null || cr.metadata.creationTimestamp == null) return;
-            var created = ZonedDateTime.parse(cr.metadata.creationTimestamp).toInstant();
-            var age = Duration.between(created, now);
-            if (age.getSeconds() > maxLifetimeSeconds) {
-                LOGGER.info("deleting expired agent sandbox CR: name={}, age={}s", cr.getName(), age.getSeconds());
+            var deadline = sandboxDeadline(cr, maxLifetimeSeconds);
+            if (now.isAfter(deadline)) {
+                LOGGER.info("deleting expired agent sandbox CR: name={}, deadline={}", cr.getName(), deadline);
                 deleteServiceSilently("svc-" + cr.getName());
                 client.deleteSandbox(cr.getName());
             }
         } catch (Exception e) {
             LOGGER.warn("failed to cleanup agent sandbox CR: {}", cr.getName(), e);
         }
+    }
+
+    // Prefer the renewable spec.shutdownTime; fall back to creationTimestamp + maxLifetime for orphans.
+    private Instant sandboxDeadline(AgentSandboxClient.SandboxCR cr, int maxLifetimeSeconds) {
+        if (cr.spec != null && cr.spec.shutdownTime != null) {
+            try {
+                return ZonedDateTime.parse(cr.spec.shutdownTime).toInstant();
+            } catch (Exception e) {
+                LOGGER.warn("invalid shutdownTime on sandbox CR {}: {}", cr.getName(), cr.spec.shutdownTime);
+            }
+        }
+        return ZonedDateTime.parse(cr.metadata.creationTimestamp).toInstant().plus(maxLifetimeSeconds, ChronoUnit.SECONDS);
     }
 
     private void deleteServiceSilently(String serviceName) {

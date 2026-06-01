@@ -21,13 +21,15 @@ import java.util.function.Consumer;
 public class SandboxService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxService.class);
 
-    private static SandboxConfig createDefaultConfig() {
+    // Default deadline slightly longer than the session idle threshold (60min) so that an active session's
+    // renewed sandbox is reclaimed by session close, not by its own expiry firing first.
+    public static SandboxConfig createDefaultConfig() {
         var config = new SandboxConfig();
         config.enabled = true;
         config.memoryLimitMb = 512;
         config.cpuLimitMillicores = 500;
         config.networkEnabled = false;
-        config.timeoutSeconds = 1800;
+        config.timeoutSeconds = 3900;
         return config;
     }
 
@@ -37,10 +39,6 @@ public class SandboxService {
     private final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
 
     private final boolean enabled;
-
-    public SandboxService(SandboxProvider provider) {
-        this(provider, createDefaultConfig());
-    }
 
     public SandboxService() {
         this.sandboxManager = null;

@@ -20,6 +20,7 @@ import java.util.Optional;
 public class AgentSandboxClient {
     private static final String API_GROUP = "agents.x-k8s.io";
     private static final String API_VERSION = "v1alpha1";
+    private static final ContentType MERGE_PATCH = ContentType.parse("application/merge-patch+json");
     private final String apiServer;
     private final String namespace;
     private final HTTPClient httpClient;
@@ -62,6 +63,17 @@ public class AgentSandboxClient {
         var response = delete(url);
         if (response.statusCode != 200 && response.statusCode != 202 && response.statusCode != 404) {
             throw new RuntimeException("Failed to delete Sandbox CR: " + response.statusCode + " " + response.text());
+        }
+    }
+
+    // Extends the sandbox lifetime by patching spec.shutdownTime, so an active session keeps its sandbox alive.
+    public void patchShutdownTime(String name, String shutdownTime) {
+        var url = baseUrl() + "/sandboxes/" + name;
+        var body = JSON.toJSON(Map.of("spec", Map.of("shutdownTime", shutdownTime)));
+        var response = patch(url, body);
+        if (response.statusCode == 404) return; // sandbox already gone, nothing to renew
+        if (response.statusCode != 200) {
+            throw new RuntimeException("Failed to patch Sandbox CR: " + response.statusCode + " " + response.text());
         }
     }
 
@@ -153,6 +165,17 @@ public class AgentSandboxClient {
         try {
             var req = new HTTPRequest(HTTPMethod.DELETE, url);
             req.headers.put("Authorization", "Bearer " + tokenResolver.resolve());
+            return httpClient.execute(req);
+        } catch (Exception e) {
+            throw new RuntimeException("Agent Sandbox API request failed: " + url, e);
+        }
+    }
+
+    private HTTPResponse patch(String url, String body) {
+        try {
+            var req = new HTTPRequest(HTTPMethod.PATCH, url);
+            req.headers.put("Authorization", "Bearer " + tokenResolver.resolve());
+            req.body(body, MERGE_PATCH);
             return httpClient.execute(req);
         } catch (Exception e) {
             throw new RuntimeException("Agent Sandbox API request failed: " + url, e);

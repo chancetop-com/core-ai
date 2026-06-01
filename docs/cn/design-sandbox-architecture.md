@@ -167,11 +167,13 @@ ToolExecutor.doExecute
 
 更关键的是：**`SandboxManager.renew()` 只更新内存里的 `createdAt`，从不 PATCH K8s**。因此机制 ① 和 ③ 完全无视续期 —— 即使会话一直活跃，沙箱也会在创建满 30min 后被硬删，触发 `released sandbox not tracked` WARN，并依赖自愈重建（伴随 `/tmp` 状态丢失）。
 
-**目标方案（按活动续期）**：
+**解决方案（按活动续期，已实现）**：
 
-- 给 `AgentSandboxProvider` 增加 `renewClaim`，在 `touchActivity` 时 PATCH `SandboxClaim.spec.lifecycle.shutdownTime = now + timeout`，让续期真正作用到 K8s。
-- 机制 ③ 的清理基准从 `creationTimestamp` 改为 claim 上的 `shutdownTime`，与 K8s 原生 lifecycle 对齐。
+- `SandboxProvider` 增加 `renew(sandbox, timeoutSeconds)` 默认空实现；`AgentSandboxProvider` 重写为 PATCH（JSON merge-patch）`SandboxClaim.spec.lifecycle.shutdownTime`（warm pool）或 `Sandbox.spec.shutdownTime`（direct）`= now + timeout`。
+- `SandboxManager.renew` 在更新内存 `createdAt` 的同时调用 `provider.renew`，让续期真正作用到 K8s。续期为 best-effort：失败仅告警，下条消息重试。
+- 机制 ③ 的清理判定从 `creationTimestamp + maxLifetime` 改为优先按 claim/CR 上的 `shutdownTime`（无则回退创建时间），与续期后的截止时间及 K8s 原生 lifecycle 对齐。
 - 效果：活跃会话沙箱不再被中途删除；只有真正空闲超时的沙箱才被回收。
+- 注意：`renew` 由 `touchActivity` 在每条用户消息时同步触发一次 K8s PATCH，后续可考虑节流或异步化以降低消息处理延迟。
 
 ### 8.2 缺少失效感知（watch/reconcile）
 

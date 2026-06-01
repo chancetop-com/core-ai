@@ -9,5 +9,8 @@ public interface SandboxProvider {
 
     void release(Sandbox sandbox);
 
+    default void renew(Sandbox sandbox, int timeoutSeconds) {
+    }
+
     SandboxStatus getStatus(Sandbox sandbox);
 }

@@ -116,10 +116,16 @@ public class SandboxManager {
 
     public void renew(String sandboxId) {
         var entry = activeSandboxes.get(sandboxId);
-        if (entry != null) {
-            entry.createdAt = Instant.now();
-            LOGGER.debug("sandbox renewed: id={}, sessionId={}", sandboxId, entry.sessionId);
-        }
+        if (entry == null) return;
+
+        entry.createdAt = Instant.now();
+        var timeout = entry.config.timeoutSeconds != null
+                ? entry.config.timeoutSeconds
+                : SandboxConstants.DEFAULT_TIMEOUT_SECONDS;
+        // Also extend the externally-tracked deadline (e.g. K8s shutdownTime), otherwise the in-memory
+        // renewal is defeated by the provider/K8s deleting the sandbox at its original deadline.
+        provider.renew(entry.sandbox, timeout);
+        LOGGER.debug("sandbox renewed: id={}, sessionId={}, timeout={}s", sandboxId, entry.sessionId, timeout);
     }
 
     public static final class SandboxEntry {
