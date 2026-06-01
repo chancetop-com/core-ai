@@ -157,6 +157,9 @@ public abstract class NodeBuilder<B extends NodeBuilder<B, T>, T extends Node<T>
         systemVariables.put(SystemVariables.NODE_MAX_ROUND, this.maxRound);
         systemVariables.put(SystemVariables.TERMINATE_WORD, Termination.DEFAULT_TERMINATION_WORD);
         systemVariables.put(SystemVariables.AGENT_WRITE_TODOS_SYSTEM_PROMPT, Prompts.WRITE_TODOS_SYSTEM_PROMPT);
+        systemVariables.put(SystemVariables.AGENT_DATASET_SYSTEM_PROMPT, Prompts.DATASET_SYSTEM_PROMPT);
+        systemVariables.put(SystemVariables.AGENT_DATASET_NAME, "");
+        systemVariables.put(SystemVariables.AGENT_DATASET_DESC, "");
     }
 
     private void validation() {

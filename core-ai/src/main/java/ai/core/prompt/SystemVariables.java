@@ -20,4 +20,7 @@ public class SystemVariables {
     public static final String TERMINATE_WORD = "system.default.terminate.word";
     public static final String SYSTEM_ENVIRONMENT = "system.environment";
     public static final String AGENT_WRITE_TODOS_SYSTEM_PROMPT = "system.agent.write.todos.system.prompt";
+    public static final String AGENT_DATASET_SYSTEM_PROMPT = "system.agent.dataset.system.prompt";
+    public static final String AGENT_DATASET_NAME = "system.agent.dataset.name";
+    public static final String AGENT_DATASET_DESC = "system.agent.dataset.desc";
 }

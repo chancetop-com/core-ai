@@ -1,6 +1,7 @@
 package ai.core.server.run;
 
 import ai.core.agent.Agent;
+import ai.core.agent.AgentBuilder;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.llm.LLMProviders;
@@ -28,6 +29,8 @@ import ai.core.server.skill.ServerSkillTool;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.prompt.Prompts;
+import ai.core.prompt.SystemVariables;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.skill.SkillRegistry;
 import ai.core.tool.tools.ReadSkillResourceTool;
@@ -296,6 +299,7 @@ public class AgentRunner {
             .build();
         if (sandbox != null) context.sandbox(sandbox);
         var systemPrompt = appendArtifactInstructions(resolveSystemPrompt(config, definition), sandbox != null);
+        systemPrompt = appendDatasetInstructions(systemPrompt, config, definition);
         var model = config != null ? config.model : definition.model;
         var multiModalModel = config != null ? config.multiModalModel : definition.multiModalModel;
         var temperature = config != null ? config.temperature : definition.temperature;
@@ -327,6 +331,7 @@ public class AgentRunner {
         if (temperature != null) builder.temperature(temperature);
         if (maxTurns != null) builder.maxTurn(maxTurns);
         if (skillRegistry != null) builder.skillRegistry(skillRegistry);
+        injectDatasetSystemVars(builder, config, definition);
         var agent = builder.build();
         agent.setAuthenticated(true);
         return agent;
@@ -405,6 +410,22 @@ public class AgentRunner {
         if (!sandboxEnabled) return systemPrompt;
         if (systemPrompt == null || systemPrompt.isBlank()) return SubmitArtifactsTool.SYSTEM_INSTRUCTIONS.strip();
         return systemPrompt + SubmitArtifactsTool.SYSTEM_INSTRUCTIONS;
+    }
+
+    private String appendDatasetInstructions(String systemPrompt, AgentPublishedConfig config, AgentDefinition definition) {
+        String datasetId = config != null ? config.outputDatasetId : definition.outputDatasetId;
+        if (datasetId == null) return systemPrompt;
+        if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
+        return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
+    }
+
+    private void injectDatasetSystemVars(AgentBuilder builder, AgentPublishedConfig config, AgentDefinition definition) {
+        String datasetId = config != null ? config.outputDatasetId : definition.outputDatasetId;
+        if (datasetId == null) return;
+        var dataset = datasetService.get(datasetId);
+        if (dataset == null) return;
+        builder.extraSystemVariable(SystemVariables.AGENT_DATASET_NAME, dataset.name);
+        builder.extraSystemVariable(SystemVariables.AGENT_DATASET_DESC, dataset.description != null && !dataset.description.isBlank() ? ": " + dataset.description : "");
     }
 
     private Throwable unwrapCause(Throwable e) {

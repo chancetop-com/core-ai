@@ -22,6 +22,8 @@ import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.sse.SessionChannelService;
+import ai.core.prompt.Prompts;
+import ai.core.prompt.SystemVariables;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
@@ -35,7 +37,9 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -135,8 +139,13 @@ public class AgentSessionManager {
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var tools = buildDefaultSessionTools(config, sessionId);
+        Map<String, Object> extraVars = null;
+        if (config.datasetId != null) {
+            config.systemPrompt = appendDatasetInstructions(config.systemPrompt);
+            extraVars = buildDatasetSystemVars(config.datasetId);
+        }
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
-                artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, sandboxOn), context, null);
+                artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, sandboxOn), context, null, extraVars);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -165,12 +174,18 @@ public class AgentSessionManager {
         var tools = subAgentManager().resolveTools(definition);
         var sessionId = UUID.randomUUID().toString();
         tools = addDatasetTools(tools, definition, sessionId);
+        var datasetId = definition.publishedConfig != null ? definition.publishedConfig.outputDatasetId : definition.outputDatasetId;
+        Map<String, Object> extraVars = null;
+        if (datasetId != null) {
+            config.systemPrompt = appendDatasetInstructions(config.systemPrompt);
+            extraVars = buildDatasetSystemVars(datasetId);
+        }
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var sandboxConfig = sandboxService.getEffectiveConfig(definition);
         var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
                 artifactSetup.withSubmitArtifactsTool(tools.isEmpty() ? null : tools, sessionId, userId, sandboxOn),
-                context, definition.name);
+                context, definition.name, extraVars);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         attachSessionListeners(session, sessionId);
@@ -319,6 +334,20 @@ public class AgentSessionManager {
         mutable.add(UpdateDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
         mutable.add(DeleteDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
         return mutable;
+    }
+
+    private String appendDatasetInstructions(String systemPrompt) {
+        if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
+        return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
+    }
+
+    private Map<String, Object> buildDatasetSystemVars(String datasetId) {
+        var dataset = datasetService.get(datasetId);
+        if (dataset == null) return null;
+        var vars = new HashMap<String, Object>();
+        vars.put(SystemVariables.AGENT_DATASET_NAME, dataset.name);
+        vars.put(SystemVariables.AGENT_DATASET_DESC, dataset.description != null && !dataset.description.isBlank() ? ": " + dataset.description : "");
+        return vars;
     }
 
     private List<ToolCall> buildDefaultSessionTools(SessionConfig config, String sessionId) {

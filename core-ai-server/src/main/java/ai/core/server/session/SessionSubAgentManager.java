@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -117,6 +118,11 @@ public class SessionSubAgentManager {
 
     @SuppressWarnings("checkstyle:NestedIfDepth")
     public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName) {
+        return buildAgent(config, tools, context, agentName, null);
+    }
+
+    @SuppressWarnings("checkstyle:NestedIfDepth")
+    public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName, Map<String, Object> extraSystemVars) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
                 .name(agentName != null ? agentName.replaceAll("\\s+", "-") : "assistant")
@@ -145,6 +151,9 @@ public class SessionSubAgentManager {
         if (context != null) builder.executionContext(context);
         var provider = persistenceProviders.getDefaultPersistenceProvider();
         if (provider != null) builder.persistenceProvider(provider);
+        if (extraSystemVars != null) {
+            extraSystemVars.forEach(builder::extraSystemVariable);
+        }
         return builder.build();
     }
 }

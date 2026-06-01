@@ -36,9 +36,11 @@ import ai.core.tool.tools.ToolActivationTool;
 import ai.core.tool.tools.WriteTodoTaskTool;
 import ai.core.tool.tools.WriteTodosTool;
 import core.framework.util.Lists;
+import core.framework.util.Maps;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
@@ -77,6 +79,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private String langfusePromptTemplateName;
     private Integer langfusePromptVersion;
     private String langfusePromptLabel;
+    private final Map<String, Object> extraSystemVariables = Maps.newHashMap();
 
     public AgentBuilder promptTemplate(String promptTemplate) {
         this.promptTemplate = promptTemplate;
@@ -135,6 +138,10 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     public AgentBuilder systemPromptSections(List<PromptInject> sections) {
         this.systemPromptSections.clear();
         this.systemPromptSections.addAll(sections);
+        return this;
+    }
+    public AgentBuilder extraSystemVariable(String key, Object value) {
+        this.extraSystemVariables.put(key, value);
         return this;
     }
     public AgentBuilder temperature(Double temperature) {
@@ -289,6 +296,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
         var systemVariables = agent.getSystemVariables();
         systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
+        systemVariables.putAll(extraSystemVariables);
         afterAgentBuildLifecycle(agent);
         return agent;
     }

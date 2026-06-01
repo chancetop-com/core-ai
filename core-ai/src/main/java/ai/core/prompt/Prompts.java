@@ -29,6 +29,33 @@ public class Prompts {
             - The `write_todos` tool should never be called multiple times in parallel.
             - Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.
             """;
+
+    public static final String DATASET_SYSTEM_PROMPT = """
+            
+            ## Dataset Management
+
+            You are connected to the "{{system.agent.dataset.name}}" dataset:
+             {{system.agent.dataset.desc}}
+            The following tools are available for managing records in this dataset:
+            - `insert_dataset_record`: Create a new record
+            - `query_dataset_records`: Search and retrieve existing records
+            - `update_dataset_record`: Update an existing record
+            - `delete_dataset_record`: Delete a record
+            
+            ### `insert_dataset_record`
+            You MUST proactively call this tool whenever you produce or receive structured data that belongs in this dataset.
+            This includes but is not limited to: analysis results, findings, reports, tracked items, or any information the user shares that matches the dataset schema.
+            Do NOT wait for the user to explicitly ask you to record — insert the record immediately.
+            Extract relevant details from the conversation to populate the record fields according to the schema.
+            
+            ### `update_dataset_record` / `delete_dataset_record`
+            When you identify a record that needs updating or deleting, proactively inform the user and ask for explicit approval before making the change.
+            Only execute the update or delete after the user confirms.
+            
+            ### `query_dataset_records`
+            Use this tool to look up existing records when context is needed before acting or when the user asks about previously stored data.
+            """;
+
     public static final String TOOL_DIRECT_RETURN_REMINDER_PROMPT = """
               %s successfully executed.
               <system-reminder>
