@@ -1,11 +1,4 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize from 'rehype-sanitize';
-import type { PluggableList } from 'unified';
-import { chatSanitizeSchema } from './markdownSanitizeSchema';
-import { Send, Square, Shield, ShieldOff, Loader2, Bot, User, ChevronDown, ChevronRight, Settings, Wrench, Sparkles, Users, Database, Check, Search, Star, Mic, Maximize2, Minimize2, Paperclip, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
@@ -18,60 +11,26 @@ import ChatConfigModal from './ChatConfigModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
 import VoiceTranscriberSidebar from './components/VoiceTranscriberSidebar';
 import ArtifactDrawer from './components/ArtifactDrawer';
-import ArtifactCard from './components/ArtifactCard';
-import AuthedImage from './components/AuthedImage';
 import type { ArtifactSpec } from './components/artifactTypes';
+import ChatMessagesPanel, { INITIAL_VISIBLE_MESSAGES, MESSAGE_RENDER_BATCH } from './components/ChatMessagesPanel';
+import ChatComposer from './components/ChatComposer';
+import type { ChatComposerHandle, ComposerAttachment } from './components/ChatComposer';
+import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, SandboxTerminalSpec } from './types';
-import { historyToChatMessages, getMessageText, formatMessageTime, formatMessageTimeFull } from './utils';
-import ToolsBlock from './components/ToolsBlock';
-import CopyButton from './components/CopyButton';
-import ThinkingBlock from './components/ThinkingBlock';
-import SandboxBlock from './components/SandboxBlock';
+import { historyToChatMessages } from './utils';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
-import PlanUpdateBlock from './components/PlanUpdateBlock';
-
-function hasTextSegments(segments?: MessageSegment[]): boolean {
-  return segments?.some(s => s.type === 'text' && s.content.trim()) ?? false;
-}
 
 function hasAnySegments(segments?: MessageSegment[]): boolean {
   return segments != null && segments.length > 0;
 }
-
-function getMessageArtifacts(msg: ChatMessage, all: { file_id: string; file_name: string; content_type?: string; size?: number; title?: string }[]): typeof all {
-  const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
-  if (!toolsSeg) return [];
-  const fileIds = new Set<string>();
-  for (const t of toolsSeg.tools) {
-    if (t.tool === 'submit_artifacts' && t.type === 'result' && t.result) {
-      try {
-        const parsed = JSON.parse(t.result);
-        const submitted = Array.isArray(parsed?.submitted) ? parsed.submitted : [];
-        for (const s of submitted) {
-          if (s?.file_id) fileIds.add(s.file_id);
-        }
-      } catch {
-        // ignore non-JSON tool result
-      }
-    }
-  }
-  if (fileIds.size === 0) return [];
-  return all.filter(a => fileIds.has(a.file_id));
-}
-
-// Module-level stable references so React-Markdown doesn't tear down subtrees on re-render.
-// rehype-raw lets inline HTML/SVG from the LLM through; rehype-sanitize gates it with a strict
-// whitelist. Only enabled on finished agent messages (see isStreamingLast below) — running a full
-// parse5 reparse per streaming token would tank performance on multi-KB SVG payloads.
-const AGENT_REHYPE_PLUGINS: PluggableList = [rehypeRaw, [rehypeSanitize, chatSanitizeSchema]];
 
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try { const s = sessionStorage.getItem('chat_messages'); return s ? JSON.parse(s) : []; } catch { return []; }
   });
-  const [input, setInput] = useState('');
+  const [visibleMessageLimit, setVisibleMessageLimit] = useState(INITIAL_VISIBLE_MESSAGES);
   const [status, setStatus] = useState<'idle' | 'running'>('idle');
   const [isThinking, setIsThinking] = useState(false);
   const [awaitInfo, setAwaitInfo] = useState<AwaitInfo | null>(null);
@@ -84,9 +43,6 @@ export default function Chat() {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(() => sessionStorage.getItem('chat_agentId') || '');
   const [sessionId, setSessionId] = useState<string | null>(() => sessionStorage.getItem('chat_sessionId'));
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
-  const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
-  const [agentSearchQuery, setAgentSearchQuery] = useState('');
-  const agentDropdownRef = useRef<HTMLDivElement>(null);
 
   // Loaded tools/skills (confirmed on server)
   const [loadedToolIds, setLoadedToolIds] = useState<Set<string>>(new Set());
@@ -137,55 +93,12 @@ export default function Chat() {
     setActiveSandboxTerminal(spec);
   }, []);
 
-  // Stable ReactMarkdown component overrides — inline arrow functions would change identity on every
-  // Chat render and force React to unmount/remount AuthedImage (which would abort its in-flight fetch
-  // and re-trigger loading). useMemo keyed on openArtifact (itself stable via useCallback) keeps the
-  // object reference stable so message-level markdown subtrees are not recreated.
-  const agentMarkdownComponents = useMemo(() => ({
-    code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) {
-      const match = /language-(\w+)/.exec(className || '');
-      if (!inline && match) {
-        const lang = match[1].toLowerCase();
-        const codeText = String(children ?? '').replace(/\n$/, '');
-        if (lang === 'html' || lang === 'svg') {
-          return (
-            <ArtifactCard
-              artifact={{ kind: lang, language: lang, title: lang === 'html' ? 'HTML page' : 'SVG image', content: codeText }}
-              onOpen={openArtifact}
-            />
-          );
-        }
-        return (
-          <ArtifactCard
-            artifact={{ kind: 'code', language: lang, title: `${lang} snippet`, content: codeText }}
-            onOpen={openArtifact}
-          />
-        );
-      }
-      return <code className={className} {...props}>{children}</code>;
-    },
-    img({ src, alt }: { src?: string; alt?: string }) {
-      const isAbsolute = !!src && (/^(https?:|data:|blob:|\/api\/)/.test(src) || src.startsWith('/'));
-      if (isAbsolute) {
-        return <AuthedImage src={src} alt={alt} />;
-      }
-      return (
-        <span className="my-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
-          style={{ borderColor: 'var(--color-warning)', background: 'var(--color-warning)' + '12', color: 'var(--color-text-secondary)' }}
-          title={src}>
-          <span style={{ color: 'var(--color-warning)' }}>⚠</span>
-          <span>Image <code style={{ color: 'var(--color-text)' }}>{src || alt || '?'}</code> not available — agent must call <code>submit_artifacts</code> first.</span>
-        </span>
-      );
-    },
-  }), [openArtifact]);
   const [voiceLanguage, setVoiceLanguage] = useState('zh-CN');
   const voice = useSpeechRecognition();
   const [variablesExpanded, setVariablesExpanded] = useState(false);
-  const [chipsExpanded, setChipsExpanded] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<ChatComposerHandle>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   // true while the user is parked near the bottom of the messages list.
   // Streaming chunks only auto-scroll when this is true — otherwise the user
@@ -193,78 +106,14 @@ export default function Chat() {
   const stickToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const variablesPanelRef = useRef<HTMLDivElement>(null);
-  const [isInputExpanded, setIsInputExpanded] = useState(false);
-  const [needsExpand, setNeedsExpand] = useState(false);
   const sseControllerRef = useRef<AbortController | null>(null);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // File upload state
-  interface PendingAttachment {
-    id: string;
-    name: string;
-    url: string;
-    contentType: string;
-    uploading: boolean;
-  }
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
-
-  const handleFileSelect = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    for (const file of Array.from(files)) {
-      const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'application/pdf'];
-      if (!validTypes.includes(file.type)) {
-        showToast(`Unsupported file type: ${file.type}. Only images and PDFs are allowed.`);
-        continue;
-      }
-      if (file.size > 50 * 1024 * 1024) {
-        showToast(`File too large: ${file.name}. Maximum size is 50MB.`);
-        continue;
-      }
-
-      const id = crypto.randomUUID();
-      setPendingAttachments(prev => [...prev, {
-        id, name: file.name, url: '', contentType: file.type, uploading: true,
-      }]);
-
-      try {
-        const credRes = await fetch(`/api/blob/upload-credential?content_type=${encodeURIComponent(file.type)}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('apiKey')}` },
-        });
-        if (!credRes.ok) throw new Error(`Credential request failed: ${credRes.status}`);
-        const cred = await credRes.json();
-
-        const uploadRes = await fetch(cred.upload_url, {
-          method: 'PUT',
-          headers: {
-            'x-ms-blob-type': 'BlockBlob',
-            'x-ms-blob-content-type': file.type,
-          },
-          body: file,
-        });
-        if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
-
-        setPendingAttachments(prev => prev.map(a =>
-          a.id === id ? { ...a, url: cred.blob_url, contentType: file.type, uploading: false } : a
-        ));
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        showToast(`Upload failed for ${file.name}: ${msg}`);
-        setPendingAttachments(prev => prev.filter(a => a.id !== id));
-      }
-    }
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }, []);
-
-  const removeAttachment = useCallback((id: string) => {
-    setPendingAttachments(prev => prev.filter(a => a.id !== id));
+  // Show a brief toast notification
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
   }, []);
 
   // All published agents for chat (my + others, filtered by status)
@@ -294,32 +143,25 @@ export default function Chat() {
     setShowJumpToBottom(!atBottom);
   }, []);
 
+  const handleShowEarlierMessages = useCallback(() => {
+    setVisibleMessageLimit(limit => limit + MESSAGE_RENDER_BATCH);
+  }, []);
+
+  const handleToggleVariables = useCallback(() => {
+    setVariablesExpanded(prev => !prev);
+  }, []);
+
+  const handleVariableChange = useCallback((key: string, value: string) => {
+    setVariableValues(prev => ({ ...prev, [key]: value }));
+  }, []);
+
   // Auto-scroll on new messages only when the user is still at the bottom.
   useEffect(() => {
     if (stickToBottomRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'auto' });
     }
   }, [messages]);
-  useEffect(() => { if (status === 'idle') inputRef.current?.focus(); }, [status]);
-
-  // Auto-resize textarea when expanded, detect overflow in normal mode
-  useEffect(() => {
-    const textarea = inputRef.current;
-    if (!textarea) return;
-
-    if (isInputExpanded) {
-      textarea.style.height = 'auto';
-      const maxHeight = (messagesContainerRef.current?.clientHeight ?? 600) / 3;
-      const newHeight = Math.min(textarea.scrollHeight, maxHeight);
-      textarea.style.height = `${newHeight}px`;
-      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
-    } else {
-      textarea.style.height = '';
-      textarea.style.overflowY = 'hidden';
-      const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 20;
-      setNeedsExpand(textarea.scrollHeight > lineHeight * 1.5);
-    }
-  }, [input, isInputExpanded]);
+  useEffect(() => { if (status === 'idle') composerRef.current?.focus(); }, [status]);
 
   // Persist chat state
   useEffect(() => {
@@ -359,26 +201,6 @@ export default function Chat() {
       document.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [variablesExpanded]);
-
-  // Close agent dropdown when clicking outside
-  useEffect(() => {
-    if (!agentDropdownOpen) return;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const dropdown = agentDropdownRef.current;
-      const target = event.target as Node | null;
-      if (!dropdown || !target) return;
-      if (!dropdown.contains(target)) {
-        setAgentDropdownOpen(false);
-        setAgentSearchQuery('');
-      }
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-    };
-  }, [agentDropdownOpen]);
 
   useEffect(() => {
     const agent = agents.find(a => a.id === selectedAgentId);
@@ -438,15 +260,20 @@ export default function Chat() {
     setCompressionInfo(null);
     setIsThinking(false);
     setStatus('idle');
+    setVisibleMessageLimit(INITIAL_VISIBLE_MESSAGES);
     try {
-      const res = await sessionApi.history(session.id);
+      const [res, sessionStatus] = await Promise.all([
+        sessionApi.history(session.id),
+        sessionApi.status(session.id).catch(() => null),
+      ]);
       const hydrated = historyToChatMessages(res.messages || []);
-      // an in-progress turn shows up as a trailing user message without an agent reply
-      // (agent reply is still streaming and not yet persisted). Push an empty agent
-      // placeholder and flip to running so the backend's SSE replay buffer can fill it.
+      // A trailing user message means the agent reply may not be persisted yet. Keep
+      // a hidden placeholder so future/replayed SSE chunks have a slot to fill, but
+      // only show running when the backend says the turn is currently active.
       const lastMsg = hydrated[hydrated.length - 1];
-      const turnInProgress = lastMsg?.role === 'user';
-      if (turnInProgress) {
+      const mayHavePendingReply = lastMsg?.role === 'user';
+      const turnInProgress = sessionStatus?.status === 'running';
+      if ((turnInProgress || mayHavePendingReply) && lastMsg?.role !== 'agent') {
         hydrated.push({ role: 'agent', segments: [], timestamp: new Date().toISOString() });
       }
       setMessages(hydrated);
@@ -457,9 +284,12 @@ export default function Chat() {
       if (turnInProgress) {
         setStatus('running');
       }
-      // Reconnect SSE so the backend replays any buffered in-progress events
-      // (text chunks, tool calls, etc.) and resumes live streaming.
-      doConnectSSE(session.id);
+      if (turnInProgress || mayHavePendingReply) {
+        // Reconnect SSE so the backend replays any buffered in-progress events
+        // (text chunks, tool calls, etc.) and resumes live streaming. If a prior
+        // turn was cancelled, no event will arrive and the placeholder remains hidden.
+        doConnectSSE(session.id);
+      }
     } catch (e) {
       console.warn('failed to hydrate session history', e);
     }
@@ -492,8 +322,8 @@ export default function Chat() {
       // Auto-select first published agent if none selected
       const allAgents = [...(myRes.agents || []), ...(otherRes.agents || [])]
         .filter(a => a.status === 'PUBLISHED' || a.type === 'local');
-      if (allAgents.length > 0 && !selectedAgentId) {
-        setSelectedAgentId(allAgents[0].id);
+      if (allAgents.length > 0) {
+        setSelectedAgentId(prev => prev || allAgents[0].id);
       }
     }).catch(console.error);
   }, []);
@@ -517,7 +347,6 @@ export default function Chat() {
       window.history.replaceState({}, '', window.location.pathname);
       const targetId = agentParam;
       const timer = setTimeout(async () => {
-        setInput('');
         setMessages([{ role: 'user' as const, segments: [{ type: 'text' as const, content: 'help' }], timestamp: new Date().toISOString() }]);
         setStatus('running');
         streamingContentRef.current = '';
@@ -577,6 +406,7 @@ export default function Chat() {
         const chunkEvent = event as SseTextChunkEvent;
         const chunk = chunkEvent.content || '';
         if (chunk) {
+          setStatus('running');
           setMessages(prev => {
             const updated = [...prev];
             let last = updated[updated.length - 1];
@@ -611,7 +441,12 @@ export default function Chat() {
         const chunk = chunkEvent.content || '';
         const isFinalChunk = chunkEvent.is_final_chunk;
 
+        if (isFinalChunk) {
+          setIsThinking(false);
+          break;
+        }
         if (!isFinalChunk && chunk) {
+          setStatus('running');
           setIsThinking(true);
           setMessages(prev => {
             const updated = [...prev];
@@ -641,6 +476,7 @@ export default function Chat() {
       }
       case 'TOOL_START':
       case 'tool_start': {
+        setStatus('running');
         setIsThinking(false);
         const toolEvent = event as SseToolStartEvent;
         setMessages(prev => {
@@ -884,12 +720,6 @@ export default function Chat() {
     }
   }, []);
 
-  // Show a brief toast notification
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  }, []);
-
   // Connect SSE - single source of truth
   const doConnectSSE = useCallback((sid: string) => {
     if (sseControllerRef.current) {
@@ -937,7 +767,7 @@ export default function Chat() {
     };
   }, []);
 
-  const ensureSession = async (): Promise<string> => {
+  const ensureSession = useCallback(async (): Promise<string> => {
     if (sessionId) {
       // Always reconnect SSE before sending a new message to ensure a fresh stream.
       // The old SSE connection may appear alive (sseControllerRef still set) even
@@ -994,22 +824,10 @@ export default function Chat() {
     // Wait for SSE to connect
     await new Promise(resolve => setTimeout(resolve, 500));
     return id;
-  };
+  }, [doConnectSSE, preDatasetId, preSkillIds, preSubAgentIds, preToolIds, selectedAgentId, sessionId, showToast]);
 
-  const handleSend = async () => {
-    const text = input.trim();
-    const readyAttachments = pendingAttachments.filter(a => !a.uploading);
-    const hasAttachments = readyAttachments.length > 0;
-    if ((!text && !hasAttachments) || status !== 'idle' || !selectedAgentId) return;
-
-    setInput('');
-    setIsInputExpanded(false);
-
-    const attachments = readyAttachments.map(a => ({
-      url: a.url,
-      type: a.contentType === 'application/pdf' ? 'PDF' as const : 'IMAGE' as const,
-    }));
-    setPendingAttachments([]);
+  const handleSend = useCallback(async (text: string, attachments: ComposerAttachment[]) => {
+    if ((!text && attachments.length === 0) || status !== 'idle' || !selectedAgentId) return;
 
     setMessages(prev => [...prev, {
       role: 'user',
@@ -1041,9 +859,9 @@ export default function Chat() {
       setStatus('idle');
       showToast(`Send failed: ${msg}. Please retry.`);
     }
-  };
+  }, [ensureSession, selectedAgentId, showToast, status, variableValues]);
 
-  const handleApproval = async (decision: 'APPROVE' | 'DENY') => {
+  const handleApproval = useCallback(async (decision: 'APPROVE' | 'DENY') => {
     if (!sessionId || !awaitInfo) return;
     try {
       await sessionApi.approve(sessionId, awaitInfo.callId, decision);
@@ -1057,18 +875,22 @@ export default function Chat() {
     } catch (err) {
       console.error('approval failed:', err);
     }
-  };
+  }, [sessionId, awaitInfo]);
 
   const handleCancel = () => {
     sseControllerRef.current?.abort();
     sseControllerRef.current = null;
     setStatus('idle');
+    setIsThinking(false);
+    setAwaitInfo(null);
+    setPlanTodos(null);
     if (sessionId) sessionApi.cancel(sessionId).catch(() => {});
   };
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     sseControllerRef.current?.abort();
     sseControllerRef.current = null;
+    composerRef.current?.reset();
     // Intentionally NOT calling sessionApi.close(sessionId): the previous session
     // may still be streaming an agent reply. Closing it forcibly cancels the turn
     // and loses the partial reply. The session stays alive on the backend, runs to
@@ -1080,6 +902,7 @@ export default function Chat() {
     setActiveArtifact(null);
     setActiveSandboxTerminal(null);
     setStatus('idle');
+    setVisibleMessageLimit(INITIAL_VISIBLE_MESSAGES);
     setAwaitInfo(null);
     setPlanTodos(null);
     setCompressionInfo(null);
@@ -1093,13 +916,17 @@ export default function Chat() {
     setSelectedDatasetId(null);
     setLoadedDatasetId(null);
     setLoadedNames(new Map());
-    setPendingAttachments([]);
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     sessionStorage.removeItem('chat_messages');
     sessionStorage.removeItem('chat_sessionId');
     sessionStorage.removeItem('chat_artifacts');
-  };
+  }, []);
+
+  const handleSelectAgent = useCallback((id: string) => {
+    handleNewChat();
+    setSelectedAgentId(id);
+  }, [handleNewChat]);
 
   const datasetNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1152,8 +979,8 @@ export default function Chat() {
   }, []);
 
   // Derived value: selected agent
-  const selectedAgent = agents.find(a => a.id === selectedAgentId);
-  const agentVariableEntries = Object.entries(selectedAgent?.variables || {});
+  const selectedAgent = useMemo(() => agents.find(a => a.id === selectedAgentId), [agents, selectedAgentId]);
+  const agentVariableEntries = useMemo(() => Object.entries(selectedAgent?.variables || {}), [selectedAgent]);
 
   // Fetch available skills for picker
   const fetchSkills = useCallback(async () => {
@@ -1361,13 +1188,6 @@ export default function Chat() {
     }
   }, [sessionId, selectedSkillIds, showToast]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   const handleVoiceLanguageChange = (lang: string) => {
     setVoiceLanguage(lang);
     if (voice.isListening) {
@@ -1376,15 +1196,22 @@ export default function Chat() {
     }
   };
 
+  const handleToggleVoiceSidebar = useCallback(() => {
+    if (showVoiceSidebar) {
+      voice.stopListening();
+      setShowVoiceSidebar(false);
+    } else {
+      openVoiceSidebar();
+    }
+  }, [openVoiceSidebar, showVoiceSidebar, voice]);
+
   const handleSendToChat = (text: string) => {
-    setInput(text);
-    inputRef.current?.focus();
+    composerRef.current?.setDraft(text);
   };
 
   const handleSendAllToChat = () => {
     const allText = voice.segments.map(s => s.text).join('\n');
-    setInput(allText);
-    inputRef.current?.focus();
+    composerRef.current?.setDraft(allText);
   };
 
   return (
@@ -1396,672 +1223,65 @@ export default function Chat() {
         onNewChat={handleNewChat}
       />
       <div className="flex flex-col h-full flex-1 min-w-0 overflow-hidden">
-      {/* Top bar: agent selector */}
-      <div className="border-b px-6 py-3 flex items-center justify-between"
-        style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="relative" ref={agentDropdownRef}>
-            <button
-              onClick={() => setAgentDropdownOpen(prev => !prev)}
-              disabled={status === 'running'}
-              className="flex w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm cursor-pointer disabled:opacity-40"
-              style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-              <Bot size={14} style={{ color: 'var(--color-primary)' }} />
-              <span className="truncate max-w-[160px]">{selectedAgent?.name || 'Select Agent'}</span>
-              <ChevronDown size={14} className={agentDropdownOpen ? 'rotate-180' : ''} />
-            </button>
-            {agentDropdownOpen && (
-              <div className="absolute left-0 top-11 z-50 w-[380px] rounded-xl border shadow-lg"
-                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
-                {/* Default Agents Section */}
-                {myAgents.filter(a => a.system_default && (a.status === 'PUBLISHED' || a.type === 'local')).length > 0 && (
-                  <div className="p-2">
-                    <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium"
-                      style={{ color: 'var(--color-text-secondary)' }}>
-                      <Bot size={12} /> Default
-                    </div>
-                    <div className="max-h-[200px] overflow-auto">
-                      {myAgents.filter(a => a.system_default && (a.status === 'PUBLISHED' || a.type === 'local')).map(a => (
-                        <button key={a.id}
-                          onClick={() => { handleNewChat(); setSelectedAgentId(a.id); setAgentDropdownOpen(false); setAgentSearchQuery(''); }}
-                          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
-                          style={{
-                            background: selectedAgentId === a.id ? 'var(--color-bg-tertiary)' : 'transparent',
-                            color: 'var(--color-text)',
-                          }}
-                          onMouseEnter={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
-                          onMouseLeave={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'transparent'; }}>
-                          <Bot size={14} style={{ color: 'var(--color-primary)' }} />
-                          <span className="flex-1 truncate">{a.name}</span>
-                          {selectedAgentId === a.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {/* My Agents Section */}
-                {myAgents.filter(a => !a.system_default && (a.status === 'PUBLISHED' || a.type === 'local')).length > 0 && (
-                  <div className="p-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                    <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium"
-                      style={{ color: 'var(--color-text-secondary)' }}>
-                      <Bot size={12} /> My Agents
-                    </div>
-                    <div className="max-h-[200px] overflow-auto">
-                      {myAgents.filter(a => !a.system_default && (a.status === 'PUBLISHED' || a.type === 'local')).map(a => (
-                        <button key={a.id}
-                          onClick={() => { handleNewChat(); setSelectedAgentId(a.id); setAgentDropdownOpen(false); setAgentSearchQuery(''); }}
-                          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
-                          style={{
-                            background: selectedAgentId === a.id ? 'var(--color-bg-tertiary)' : 'transparent',
-                            color: 'var(--color-text)',
-                          }}
-                          onMouseEnter={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
-                          onMouseLeave={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'transparent'; }}>
-                          <Bot size={14} style={{ color: 'var(--color-primary)' }} />
-                          <span className="flex-1 truncate">{a.name}</span>
-                          {selectedAgentId === a.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {/* Search Others Section */}
-                <div className="p-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                  <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium mb-1"
-                    style={{ color: 'var(--color-text-secondary)' }}>
-                    <Star size={12} /> Shared Agents
-                  </div>
-                  <div className="relative mb-1">
-                    <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2"
-                      style={{ color: 'var(--color-text-secondary)' }} />
-                    <input
-                      type="text"
-                      value={agentSearchQuery}
-                      onChange={e => setAgentSearchQuery(e.target.value)}
-                      placeholder="Search shared agents..."
-                      className="w-full pl-7 pr-2 py-1.5 rounded-lg border text-xs outline-none"
-                      style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                    />
-                  </div>
-                  {agentSearchQuery.length > 0 && (
-                    <div className="max-h-[200px] overflow-auto">
-                      {otherAgents.filter(a =>
-                        (a.status === 'PUBLISHED' || a.type === 'local') &&
-                        a.name.toLowerCase().includes(agentSearchQuery.toLowerCase())
-                      ).length === 0 ? (
-                        <div className="text-center py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                          No agents found
-                        </div>
-                      ) : (
-                        otherAgents.filter(a =>
-                          (a.status === 'PUBLISHED' || a.type === 'local') &&
-                          a.name.toLowerCase().includes(agentSearchQuery.toLowerCase())
-                        ).map(a => (
-                          <button key={a.id}
-                            onClick={() => { handleNewChat(); setSelectedAgentId(a.id); setAgentDropdownOpen(false); setAgentSearchQuery(''); }}
-                            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left cursor-pointer transition-colors"
-                            style={{
-                              background: selectedAgentId === a.id ? 'var(--color-bg-tertiary)' : 'transparent',
-                              color: 'var(--color-text)',
-                            }}
-                            onMouseEnter={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'var(--color-bg-secondary)'; }}
-                            onMouseLeave={e => { if (selectedAgentId !== a.id) e.currentTarget.style.background = 'transparent'; }}>
-                            <Star size={14} style={{ color: 'var(--color-text-secondary)' }} />
-                            <span className="flex-1 truncate">{a.name}</span>
-                            <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{a.created_by}</span>
-                            {selectedAgentId === a.id && <Check size={14} style={{ color: 'var(--color-primary)' }} />}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          {selectedAgent && (
-            <span className="flex-1 min-w-0 text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
-              {selectedAgent.model || 'default model'}
-              {selectedAgent.description && ` · ${selectedAgent.description}`}
-            </span>
-          )}
-        </div>
-      </div>
+      <AgentSelector
+        status={status}
+        myAgents={myAgents}
+        otherAgents={otherAgents}
+        selectedAgentId={selectedAgentId}
+        selectedAgent={selectedAgent}
+        onSelectAgent={handleSelectAgent}
+      />
 
       {/* Chat messages */}
-      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-auto p-6 relative">
-        {agentVariableEntries.length > 0 && (
-          <div className="absolute top-5 right-6 z-20">
-            <div className="relative" ref={variablesPanelRef}>
-              <button
-                onClick={() => setVariablesExpanded(prev => !prev)}
-                disabled={status === 'running'}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs cursor-pointer disabled:opacity-40"
-                style={{
-                  borderColor: 'var(--color-border)',
-                  background: variablesExpanded ? 'var(--color-bg-tertiary)' : 'var(--color-bg-secondary)',
-                  color: 'var(--color-text-secondary)',
-                }}
-                title="Configure variables"
-              >
-                Variables ({agentVariableEntries.length})
-                {variablesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </button>
-              {variablesExpanded && (
-                <div className="absolute right-0 top-11 z-20 w-[420px] rounded-xl border p-3 shadow-lg"
-                  style={{
-                    borderColor: 'var(--color-border)',
-                    background: 'var(--color-bg)',
-                  }}>
-                  <div className="text-xs mb-2 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                    Variables
-                  </div>
-                  <div className="grid grid-cols-1 gap-2">
-                    {agentVariableEntries.map(([key]) => (
-                      <div key={key} className="flex items-center gap-2">
-                        <label className="text-xs min-w-[110px]" style={{ color: 'var(--color-text-secondary)' }}>{key}</label>
-                        <input
-                          value={variableValues[key] ?? ''}
-                          onChange={e => setVariableValues(prev => ({ ...prev, [key]: e.target.value }))}
-                          className="flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none"
-                          style={{
-                            background: 'var(--color-bg-tertiary)',
-                            borderColor: 'var(--color-border)',
-                            color: 'var(--color-text)',
-                          }}
-                          placeholder={`Value for ${key}`}
-                          disabled={status === 'running'}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full gap-4"
-            style={{ color: 'var(--color-text-secondary)' }}>
-            <Bot size={48} strokeWidth={1.5} />
-            <div className="text-lg font-medium">{selectedAgent?.name || 'AI Assistant'}</div>
-            <div className="text-sm">Send a message to start</div>
-          </div>
-        )}
-        <div className="max-w-4xl mx-auto flex flex-col gap-4">
-          {compressionInfo && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs animate-pulse"
-              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
-              <Sparkles size={14} />
-              <span>Context compressed: {compressionInfo.before} → {compressionInfo.after} messages</span>
-            </div>
-          )}
-          {messages.filter((msg, idx) => msg.role === 'user' || hasAnySegments(msg.segments) || msg.approval || (status === 'running' && msg.role === 'agent' && idx === messages.length - 1)).map((msg, i) => (
-            <div key={i} className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-              {msg.role === 'agent' && (
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: 'var(--color-primary)', color: 'white' }}>
-                  <Bot size={18} />
-                </div>
-              )}
-              <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
-                {/* Render segments in fixed order: sandbox → thinking → tools → text */}
-                {(() => {
-                  const sandboxSeg = msg.segments?.find(s => s.type === 'sandbox') as SandboxSegment | undefined;
-                  const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
-                  const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
-                  const textSeg = msg.segments?.find(s => s.type === 'text');
-                  return (
-                    <>
-                      {sandboxSeg && (
-                        <div className="mb-3">
-                          <SandboxBlock seg={sandboxSeg} onOpenTerminal={openSandboxTerminal} />
-                        </div>
-                      )}
-                      {thinkingSeg && (
-                        <div className="mb-3">
-                          <ThinkingBlock thinking={thinkingSeg.content} isStreaming={isThinking} />
-                        </div>
-                      )}
-                      {toolsSeg && toolsSeg.tools.length > 0 && (
-                        <div className="mb-3">
-                          <ToolsBlock tools={toolsSeg.tools} />
-                        </div>
-                      )}
-                      {textSeg && (
-                        <div className="mb-3">
-                          {/* Attachments as thumbnails (IMAGES) or links (PDFs) */}
-                          {msg.attachments && msg.attachments.length > 0 && (
-                            <div className="flex gap-2 flex-wrap mb-2" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                              {msg.attachments.map((att, idx) => (
-                                att.type === 'IMAGE' ? (
-                                  <a key={idx} href={att.url} target="_blank" rel="noopener noreferrer"
-                                    className="block rounded-lg overflow-hidden border"
-                                    style={{ borderColor: 'var(--color-border)', maxWidth: '160px' }}>
-                                    <img src={att.url} alt={`attachment-${idx}`}
-                                      className="w-full h-24 object-cover"
-                                      loading="lazy" />
-                                  </a>
-                                ) : (
-                                  <a key={idx} href={att.url} target="_blank" rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
-                                    style={{
-                                      background: 'var(--color-bg-tertiary)',
-                                      border: '1px solid var(--color-border)',
-                                      color: 'var(--color-text-secondary)',
-                                    }}>
-                                    <Paperclip size={12} />
-                                    <span className="max-w-[120px] truncate">PDF</span>
-                                  </a>
-                                )
-                              ))}
-                            </div>
-                          )}
-                          <div className="rounded-xl px-4 py-3 text-sm overflow-x-auto"
-                            style={{
-                              background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
-                              color: msg.role === 'user' ? 'white' : 'var(--color-text)',
-                              border: msg.role === 'agent' ? '1px solid var(--color-border)' : 'none',
-                            }}>
-                            <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1 [&_svg]:block [&_svg]:max-w-full [&_svg]:h-auto">
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                rehypePlugins={msg.role === 'agent' && !(status === 'running' && i === messages.length - 1) ? AGENT_REHYPE_PLUGINS : undefined}
-                                components={msg.role === 'agent' ? agentMarkdownComponents : undefined}>
-                                {textSeg.content}
-                              </ReactMarkdown>
-                            </div>
-                            {/* Cursor: show after text content when streaming */}
-                            {status === 'running' && i === messages.length - 1 && textSeg.content && (
-                              <span className="inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: 'var(--color-primary)' }} />
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-                {/* Empty state (no segments yet) for streaming agent message */}
-                {status === 'running' && msg.role === 'agent' && i === messages.length - 1 && !hasAnySegments(msg.segments) && (
-                  <div className="flex items-center gap-2 py-2 px-1">
-                    <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-                    <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Thinking...</span>
-                  </div>
-                )}
-                {/* Plan update block */}
-                {planTodos && planTodos.length > 0 && msg.role === 'agent' && i === messages.length - 1 && <PlanUpdateBlock todos={planTodos} />}
-                {/* Per-message artifact cards: submitted by this message's submit_artifacts tool calls */}
-                {msg.role === 'agent' && (() => {
-                  const msgArtifacts = getMessageArtifacts(msg, sessionArtifacts);
-                  if (msgArtifacts.length === 0) return null;
-                  return (
-                    <div className="mt-2 flex flex-col items-start gap-1">
-                      {msgArtifacts.map(a => (
-                        <ArtifactCard key={a.file_id}
-                          artifact={{
-                            kind: 'file',
-                            title: a.title || a.file_name,
-                            fileId: a.file_id,
-                            fileName: a.file_name,
-                            contentType: a.content_type,
-                            size: a.size,
-                          }}
-                          onOpen={openArtifact}
-                        />
-                      ))}
-                    </div>
-                  );
-                })()}
-                {/* Timestamp + copy row */}
-                {(msg.timestamp || hasTextSegments(msg.segments)) && (
-                  <div className={`flex items-center gap-2 mt-1 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-                    {msg.timestamp && (
-                      <span className="text-[11px] leading-none select-none"
-                        title={formatMessageTimeFull(msg.timestamp)}
-                        style={{ color: 'var(--color-text-muted)' }}>
-                        {formatMessageTime(msg.timestamp)}
-                      </span>
-                    )}
-                    {hasTextSegments(msg.segments) && (
-                      <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                        <CopyButton text={getMessageText(msg)} />
-                      </span>
-                    )}
-                  </div>
-                )}
-                {/* Approval block */}
-                {msg.approval && (
-                  <div className="mt-2 rounded-xl border px-4 py-3"
-                    style={{ borderColor: 'var(--color-warning)', background: 'var(--color-bg-secondary)' }}>
-                    <div className="text-sm font-medium mb-2" style={{ color: 'var(--color-warning)' }}>
-                      Tool requires approval
-                    </div>
-                    <div className="text-xs font-mono mb-3" style={{ color: 'var(--color-text-secondary)' }}>
-                      <span className="font-bold">{msg.approval.tool}</span>
-                      {msg.approval.arguments && (
-                        <pre className="mt-1 whitespace-pre-wrap opacity-70">
-                          {msg.approval.arguments.length > 200 ? msg.approval.arguments.slice(0, 200) + '...' : msg.approval.arguments}
-                        </pre>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleApproval('APPROVE')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-                        style={{ background: 'var(--color-success)', color: 'white' }}>
-                        <Shield size={14} /> Approve
-                      </button>
-                      <button onClick={() => handleApproval('DENY')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-                        style={{ background: 'var(--color-error)', color: 'white' }}>
-                        <ShieldOff size={14} /> Deny
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                  <User size={18} />
-                </div>
-              )}
-            </div>
-          ))}
-          <div ref={bottomRef} />
-        </div>
-        {showJumpToBottom && (
-          <button
-            onClick={() => scrollToBottom('smooth')}
-            className="absolute bottom-4 right-4 z-10 flex items-center justify-center rounded-full shadow-md cursor-pointer transition-opacity"
-            style={{
-              width: 36,
-              height: 36,
-              background: 'var(--color-bg-secondary)',
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-text)',
-            }}
-            title="Jump to latest">
-            <ChevronDown size={18} />
-          </button>
-        )}
-      </div>
+      <ChatMessagesPanel
+        messages={messages}
+        status={status}
+        isThinking={isThinking}
+        planTodos={planTodos}
+        compressionInfo={compressionInfo}
+        sessionArtifacts={sessionArtifacts}
+        selectedAgentName={selectedAgent?.name}
+        agentVariableEntries={agentVariableEntries}
+        variableValues={variableValues}
+        variablesExpanded={variablesExpanded}
+        variablesPanelRef={variablesPanelRef}
+        messagesContainerRef={messagesContainerRef}
+        bottomRef={bottomRef}
+        showJumpToBottom={showJumpToBottom}
+        visibleMessageLimit={visibleMessageLimit}
+        onMessagesScroll={handleMessagesScroll}
+        onToggleVariables={handleToggleVariables}
+        onVariableChange={handleVariableChange}
+        onShowEarlierMessages={handleShowEarlierMessages}
+        onScrollToBottom={scrollToBottom}
+        onOpenArtifact={openArtifact}
+        onOpenSandboxTerminal={openSandboxTerminal}
+        onApproval={handleApproval}
+      />
 
-      {/* Input area */}
-      <div className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
-        <div className="max-w-4xl mx-auto">
-          {/* Loaded / pre-selected tools/skills/subagents/dataset chips */}
-          {(() => {
-            const datasetChips = (loadedDatasetId || preDatasetId) ? 1 : 0;
-            const totalChips = loadedToolIds.size + loadedSkillIds.size + loadedSubAgentIds.size + preToolIds.size + preSkillIds.size + preSubAgentIds.size + datasetChips;
-            if (totalChips === 0) return null;
-            const COLLAPSE_THRESHOLD = 8;
-            const collapsible = totalChips > COLLAPSE_THRESHOLD;
-            const collapsed = collapsible && !chipsExpanded;
-            return (
-            <div className="mb-2">
-              {collapsible && (
-                <button
-                  onClick={() => setChipsExpanded(v => !v)}
-                  className="inline-flex items-center gap-1 text-xs mb-1.5 cursor-pointer hover:opacity-80"
-                  style={{ color: 'var(--color-text-secondary)' }}>
-                  {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-                  <span>
-                    {loadedToolIds.size + preToolIds.size > 0 && `${loadedToolIds.size + preToolIds.size} tools`}
-                    {loadedSkillIds.size + preSkillIds.size > 0 && `${loadedToolIds.size + preToolIds.size > 0 ? ', ' : ''}${loadedSkillIds.size + preSkillIds.size} skills`}
-                    {loadedSubAgentIds.size + preSubAgentIds.size > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0) ? ', ' : ''}${loadedSubAgentIds.size + preSubAgentIds.size} agents`}
-                    {datasetChips > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0 || loadedSubAgentIds.size + preSubAgentIds.size > 0) ? ', ' : ''}${getDatasetChipName(loadedDatasetId || preDatasetId)}`}
-                    {' loaded'}
-                  </span>
-                </button>
-              )}
-              {!collapsed && (
-            <div className="flex flex-wrap gap-1.5 min-h-[24px]">
-              {Array.from(loadedToolIds).map(name => (
-                <span key={`t-${name}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                  style={{
-                    background: 'var(--color-primary)' + '18',
-                    color: 'var(--color-primary)',
-                    border: '1px solid var(--color-primary)' + '30',
-                  }}>
-                  <Wrench size={10} />
-                  {name}
-                </span>
-              ))}
-              {Array.from(preToolIds).map(name => (
-                <span key={`pt-${name}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                  style={{
-                    background: 'var(--color-primary)' + '08',
-                    color: 'var(--color-text-muted)',
-                    border: '1px dashed var(--color-border)',
-                  }}>
-                  <Wrench size={10} />
-                  {name}
-                  <span className="ml-0.5 opacity-60">(pending)</span>
-                </span>
-              ))}
-              {Array.from(loadedSkillIds).map(id => (
-                <span key={`s-${id}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                  style={{
-                    background: 'var(--color-warning)' + '18',
-                    color: 'var(--color-warning)',
-                    border: '1px solid var(--color-warning)' + '30',
-                  }}>
-                  <Sparkles size={10} />
-                  {getSkillChipName(id)}
-                </span>
-              ))}
-              {Array.from(preSkillIds).map(id => (
-                <span key={`ps-${id}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                  style={{
-                    background: 'var(--color-warning)' + '08',
-                    color: 'var(--color-text-muted)',
-                    border: '1px dashed var(--color-border)',
-                  }}>
-                  <Sparkles size={10} />
-                  {getSkillChipName(id)}
-                  <span className="ml-0.5 opacity-60">(pending)</span>
-                </span>
-              ))}
-              {Array.from(loadedSubAgentIds).map(id => (
-                <span key={`lsa-${id}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                  style={{
-                    background: '#8b5cf6' + '18',
-                    color: '#8b5cf6',
-                    border: '1px solid #8b5cf6' + '30',
-                  }}>
-                  <Users size={10} />
-                  {getAgentChipName(id)}
-                </span>
-              ))}
-               {Array.from(preSubAgentIds).map(id => (
-                 <span key={`psa-${id}`}
-                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                   style={{
-                     background: '#8b5cf6' + '08',
-                     color: 'var(--color-text-muted)',
-                     border: '1px dashed var(--color-border)',
-                   }}>
-                   <Users size={10} />
-                   {getAgentChipName(id)}
-                   <span className="ml-0.5 opacity-60">(pending)</span>
-                 </span>
-               ))}
-               {loadedDatasetId && (
-                 <span key="ds-loaded"
-                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                   style={{
-                     background: '#3b82f6' + '18',
-                     color: '#3b82f6',
-                     border: '1px solid #3b82f6' + '30',
-                   }}>
-                   <Database size={10} />
-                   {getDatasetChipName(loadedDatasetId)}
-                 </span>
-               )}
-               {preDatasetId && (
-                 <span key="ds-pending"
-                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                   style={{
-                     background: '#3b82f6' + '18',
-                     color: '#3b82f6',
-                     border: '1px solid #3b82f6' + '30',
-                   }}>
-                   <Database size={10} />
-                   {getDatasetChipName(preDatasetId)}
-                 </span>
-               )}
-            </div>
-              )}
-            </div>
-            );
-          })()}
-
-          {/* Attachment previews */}
-          {pendingAttachments.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-2">
-              {pendingAttachments.map((att) => (
-                <span key={att.id}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
-                  style={{
-                    background: att.uploading ? 'var(--color-bg-tertiary)' : 'var(--color-primary)' + '12',
-                    border: att.uploading ? '1px dashed var(--color-border)' : '1px solid var(--color-primary)' + '20',
-                    color: att.uploading ? 'var(--color-text-muted)' : 'var(--color-primary)',
-                  }}>
-                  {att.uploading ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : att.contentType === 'application/pdf' ? (
-                    <Paperclip size={12} />
-                  ) : (
-                    <Paperclip size={12} />
-                  )}
-                  <span className="max-w-[120px] truncate">{att.name}</span>
-                  {!att.uploading && (
-                    <button onClick={() => removeAttachment(att.id)}
-                      className="ml-0.5 hover:opacity-70"
-                      style={{ color: 'var(--color-text-muted)' }}>
-                      <X size={12} />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="flex gap-2 items-end">
-            {/* Config button — opens modal with Tools, Skills, Subagents, Dataset */}
-            <button
-              onClick={openConfigModal}
-              disabled={!selectedAgentId || status === 'running'}
-              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0 relative"
-              style={{
-                background: (loadedToolIds.size > 0 || preToolIds.size > 0 || loadedSkillIds.size > 0 || preSkillIds.size > 0 || loadedSubAgentIds.size > 0 || preSubAgentIds.size > 0 || loadedDatasetId || preDatasetId)
-                  ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
-                border: '1px solid var(--color-border)',
-                color: (loadedToolIds.size > 0 || preToolIds.size > 0 || loadedSkillIds.size > 0 || preSkillIds.size > 0 || loadedSubAgentIds.size > 0 || preSubAgentIds.size > 0 || loadedDatasetId || preDatasetId)
-                  ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              }}
-              title="Configure tools, skills, subagents, and dataset">
-              <Settings size={18} />
-              {(() => {
-                const total = loadedToolIds.size + preToolIds.size + loadedSkillIds.size + preSkillIds.size + loadedSubAgentIds.size + preSubAgentIds.size + (loadedDatasetId ? 1 : 0) + (preDatasetId ? 1 : 0);
-                return total > 0 ? (
-                  <span className="absolute -top-1 -right-1 text-[9px] px-1 py-0.5 rounded-full font-medium"
-                    style={{ background: 'var(--color-primary)', color: 'white', minWidth: '16px', textAlign: 'center' }}>
-                    {total}
-                  </span>
-                ) : null;
-              })()}
-            </button>
-
-            {/* File upload button */}
-            <button
-              onClick={handleFileSelect}
-              disabled={!selectedAgentId || status === 'running'}
-              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
-              style={{
-                background: pendingAttachments.length > 0 ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
-                border: '1px solid var(--color-border)',
-                color: pendingAttachments.length > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              }}
-              title="Upload image or PDF">
-              <Paperclip size={18} />
-            </button>
-
-            <span className="relative flex-1 self-stretch flex items-end">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={selectedAgentId ? 'Send a message...' : 'Select an agent first'}
-                rows={isInputExpanded ? undefined : 1}
-                className={`rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none w-full ${isInputExpanded ? 'absolute bottom-0 left-0 right-0 z-10' : ''}`}
-                style={{
-                  background: 'var(--color-bg-secondary)',
-                  borderColor: 'var(--color-border)',
-                  color: 'var(--color-text)',
-                  ...(isInputExpanded ? { minHeight: '80px' } : {}),
-                }}
-                disabled={status !== 'idle' || !selectedAgentId}
-              />
-            </span>
-            {/* Expand/collapse button — show when text exceeds 1 line */}
-            {needsExpand && (
-              <button
-                onClick={() => setIsInputExpanded(v => !v)}
-                disabled={!selectedAgentId || status === 'running'}
-                className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
-                style={{
-                  background: 'var(--color-bg-tertiary)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-secondary)',
-                }}
-                title={isInputExpanded ? 'Collapse input' : 'Expand input'}>
-                {isInputExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-              </button>
-            )}
-            {/* Mic button — between input and send */}
-            <button
-              onClick={() => {
-                if (showVoiceSidebar) {
-                  voice.stopListening();
-                  setShowVoiceSidebar(false);
-                } else {
-                  openVoiceSidebar();
-                }
-              }}
-              disabled={!selectedAgentId || status === 'running'}
-              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-30 shrink-0"
-              style={{
-                background: showVoiceSidebar ? 'var(--color-primary)' + '20' : 'var(--color-bg-tertiary)',
-                border: '1px solid ' + (showVoiceSidebar ? 'var(--color-primary)' : 'var(--color-border)'),
-                color: showVoiceSidebar ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              }}
-              title={showVoiceSidebar ? 'Close voice sidebar' : 'Open voice input'}>
-              <Mic size={18} />
-            </button>
-            {status === 'idle' ? (
-              <button onClick={handleSend}
-                disabled={!input.trim() || !selectedAgentId}
-                className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-40"
-                style={{ background: 'var(--color-primary)', color: 'white' }}>
-                <Send size={18} />
-              </button>
-            ) : (
-              <button onClick={handleCancel}
-                className="p-3 rounded-xl cursor-pointer transition-colors"
-                style={{ background: 'var(--color-error)', color: 'white' }}>
-                <Square size={18} />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <ChatComposer
+        ref={composerRef}
+        status={status}
+        selectedAgentId={selectedAgentId}
+        messagesContainerRef={messagesContainerRef}
+        loadedToolIds={loadedToolIds}
+        loadedSkillIds={loadedSkillIds}
+        loadedSubAgentIds={loadedSubAgentIds}
+        preToolIds={preToolIds}
+        preSkillIds={preSkillIds}
+        preSubAgentIds={preSubAgentIds}
+        loadedDatasetId={loadedDatasetId}
+        preDatasetId={preDatasetId}
+        showVoiceSidebar={showVoiceSidebar}
+        getSkillChipName={getSkillChipName}
+        getAgentChipName={getAgentChipName}
+        getDatasetChipName={getDatasetChipName}
+        onOpenConfig={openConfigModal}
+        onToggleVoiceSidebar={handleToggleVoiceSidebar}
+        onSend={handleSend}
+        onCancel={handleCancel}
+        onToast={showToast}
+      />
 
       {/* Toast notification */}
       {toast && (
@@ -2070,16 +1290,6 @@ export default function Chat() {
           {toast}
         </div>
       )}
-
-      {/* Hidden file input for image/pdf upload */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,application/pdf"
-        multiple
-        onChange={handleFileChange}
-        className="hidden"
-      />
 
       {/* Tool Picker Modal */}
       {showToolPicker && (

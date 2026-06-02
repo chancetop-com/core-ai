@@ -15,7 +15,6 @@ import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
 import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.api.server.session.SessionStatusResponse;
-import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.UnloadSkillsRequest;
 import ai.core.api.server.session.UnloadSkillsResponse;
 import ai.core.server.agent.AgentDraftGenerator;
@@ -33,6 +32,7 @@ import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.web.sse.SessionChannelService;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
@@ -65,6 +65,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     SkillService skillService;
     @Inject
     ChatMessageService chatMessageService;
+    @Inject
+    SessionChannelService sessionChannelService;
     @Inject
     CommandPublisher commandPublisher;
     @Inject
@@ -194,7 +196,13 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     public SessionStatusResponse status(String sessionId) {
         var response = new SessionStatusResponse();
         response.sessionId = sessionId;
-        response.status = SessionStatus.IDLE;
+        response.status = sessionChannelService.status(sessionId);
+        var meta = chatMessageService.getSessionMeta(sessionId);
+        if (meta != null) {
+            response.createdAt = meta.createdAt != null ? meta.createdAt.toInstant() : null;
+            response.lastActiveAt = meta.lastMessageAt != null ? meta.lastMessageAt.toInstant() : null;
+            response.messageCount = meta.messageCount != null ? (int) Math.min(meta.messageCount, (long) Integer.MAX_VALUE) : null;
+        }
         return response;
     }
 

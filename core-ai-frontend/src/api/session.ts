@@ -176,6 +176,15 @@ export interface SessionInfo {
   loaded_skill_ids?: string[];
 }
 
+export interface SessionStatusResponse {
+  sessionId: string;
+  status: 'idle' | 'running' | 'error';
+  createdAt?: string;
+  lastActiveAt?: string;
+  messageCount?: number;
+  estimatedTokens?: number;
+}
+
 export interface ToolRef {
   id: string;
   type?: string;
@@ -255,6 +264,9 @@ export const sessionApi = {
 
   getInfo: (sessionId: string) =>
     request<SessionInfo>(`/api/sessions/${sessionId}`),
+
+  status: (sessionId: string) =>
+    request<SessionStatusResponse>(`/api/sessions/${sessionId}/status`),
 
   connectSSE: (
     sessionId: string,

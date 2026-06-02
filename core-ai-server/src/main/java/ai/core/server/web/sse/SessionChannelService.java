@@ -1,7 +1,10 @@
 package ai.core.server.web.sse;
 
 import ai.core.api.server.session.EventType;
+import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.sse.SseBaseEvent;
+import ai.core.api.server.session.sse.SseErrorEvent;
+import ai.core.api.server.session.sse.SseStatusChangeEvent;
 import ai.core.api.server.session.sse.SseTurnCompleteEvent;
 import core.framework.inject.Inject;
 import core.framework.web.sse.Channel;
@@ -9,6 +12,7 @@ import core.framework.web.sse.Channel;
 import java.time.ZonedDateTime;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -94,6 +98,24 @@ public class SessionChannelService {
         if (state == null) return List.of();
         synchronized (state) {
             return List.copyOf(state.eventBuffer);
+        }
+    }
+
+    public SessionStatus status(String sessionId) {
+        var state = stateMap.get(sessionId);
+        if (state == null) return SessionStatus.IDLE;
+        synchronized (state) {
+            if (state.eventBuffer.isEmpty()) return SessionStatus.IDLE;
+            Iterator<SseBaseEvent> it = state.eventBuffer.descendingIterator();
+            while (it.hasNext()) {
+                var event = it.next();
+                if (event instanceof SseStatusChangeEvent statusChange && statusChange.status != null) {
+                    return statusChange.status;
+                }
+                if (event instanceof SseTurnCompleteEvent) return SessionStatus.IDLE;
+                if (event instanceof SseErrorEvent) return SessionStatus.ERROR;
+            }
+            return SessionStatus.RUNNING;
         }
     }
 
