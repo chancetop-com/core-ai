@@ -302,7 +302,8 @@ export default function Chat() {
   }, [messages]);
   useEffect(() => { if (status === 'idle') inputRef.current?.focus(); }, [status]);
 
-  // Auto-resize textarea when expanded, detect overflow in normal mode
+  // Auto-resize textarea when expanded, auto-grow in normal mode;
+  // only show expand button when content exceeds ~4 lines
   useEffect(() => {
     const textarea = inputRef.current;
     if (!textarea) return;
@@ -314,10 +315,19 @@ export default function Chat() {
       textarea.style.height = `${newHeight}px`;
       textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
     } else {
-      textarea.style.height = '';
+      textarea.style.height = 'auto';
       textarea.style.overflowY = 'hidden';
       const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 20;
-      setNeedsExpand(textarea.scrollHeight > lineHeight * 1.5);
+      const threshold = lineHeight * 4;
+      const exceedsThreshold = textarea.scrollHeight > threshold;
+      setNeedsExpand(exceedsThreshold);
+      if (exceedsThreshold) {
+        // Cap height at threshold and let user expand via button
+        textarea.style.height = `${threshold}px`;
+      } else {
+        // Auto-grow naturally, no expand button needed
+        textarea.style.height = `${Math.max(lineHeight, textarea.scrollHeight)}px`;
+      }
     }
   }, [input, isInputExpanded]);
 
