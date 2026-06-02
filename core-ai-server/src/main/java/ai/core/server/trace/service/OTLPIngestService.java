@@ -88,6 +88,7 @@ public class OTLPIngestService {
         var span = new Span();
         span.id = UUID.randomUUID().toString();
         span.traceId = traceId;
+        span.userId = attrs.get("user.id");
         span.spanId = spanId;
         span.parentSpanId = parentSpanId;
         span.name = protoSpan.getName();

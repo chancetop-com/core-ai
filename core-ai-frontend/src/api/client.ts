@@ -49,6 +49,14 @@ export interface UserStatus {
   created_at: string;
 }
 
+export interface TraceAccount {
+  userId: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+}
+
 export interface ListUsersResponse {
   users: UserStatus[];
 }
@@ -93,6 +101,7 @@ export interface Trace {
   model?: string;
   sessionId: string;
   userId: string;
+  account?: TraceAccount;
   status: 'RUNNING' | 'COMPLETED' | 'ERROR';
   errorMessage?: string;
   input: string;
@@ -112,6 +121,7 @@ export interface Trace {
 export interface Span {
   id: string;
   traceId: string;
+  userId?: string;
   spanId: string;
   parentSpanId: string | null;
   name: string;
@@ -160,6 +170,7 @@ export interface SessionSummary {
   total_duration_ms: number;
   error_count: number;
   user_id: string;
+  account?: TraceAccount;
   last_trace_at: string;
   first_trace_at: string;
   first_request: string;

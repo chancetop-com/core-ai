@@ -18,6 +18,9 @@ public class Span {
     @Field(name = "trace_id")
     public String traceId;
 
+    @Field(name = "user_id")
+    public String userId;
+
     @Field(name = "span_id")
     public String spanId;
 

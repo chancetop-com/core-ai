@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, MessageCircle, Search, X, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, MessageCircle, Search, UserCircle, X, Zap } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Trace, TraceFacet, TraceFilter } from '../../api/client';
+import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
 import TraceDetailPanel from './TraceDetailPanel';
 import { sourceColors, typeColors } from './colors';
@@ -88,16 +89,18 @@ interface TraceListState {
 export default function TraceList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [result, setResult] = useState<TraceListState>({ requestKey: '', traces: [] });
   const [offset, setOffset] = useState(0);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(() => hasAdvancedFilters(readFilters(searchParams)));
-  const [filters, setFilters] = useState<TraceFilter>(() => readFilters(searchParams));
+  const [showAdvanced, setShowAdvanced] = useState(() => hasAdvancedFilters(scopeFiltersForRole(readFilters(searchParams), isAdmin), isAdmin));
+  const [filters, setFilters] = useState<TraceFilter>(() => scopeFiltersForRole(readFilters(searchParams), isAdmin));
   const [modelFacets, setModelFacets] = useState<TraceFacet[]>([]);
   const [agentFacets, setAgentFacets] = useState<TraceFacet[]>([]);
 
   const activeFilterCount = countActiveFilters(filters);
-  const advancedFilterCount = countAdvancedFilters(filters);
+  const advancedFilterCount = countAdvancedFilters(filters, isAdmin);
   const requestKey = JSON.stringify({ offset, filters: normalizeFilters(filters) });
 
   useEffect(() => {
@@ -137,7 +140,7 @@ export default function TraceList() {
   const traces = loading ? [] : result.traces;
 
   const updateFilter = (patch: Partial<TraceFilter>) => {
-    const next = normalizeFilters({ ...filters, ...patch });
+    const next = normalizeFilters(scopeFiltersForRole({ ...filters, ...patch }, isAdmin));
     setFilters(next);
     setOffset(0);
     syncSearchParams(next, setSearchParams);
@@ -154,7 +157,7 @@ export default function TraceList() {
   const selectedKey = selectedTraceId || '';
   const searchKind = filters.q ? idMatchKind(filters.q.trim()) : 'none';
   const searchHint = filters.q
-    ? (searchKind === 'full' ? 'Detected ID → session/user/trace'
+    ? (searchKind === 'full' ? `Detected ID → ${isAdmin ? 'session/user/trace' : 'session/trace'}`
       : searchKind === 'prefix' ? 'Detected ID prefix → session/trace'
       : 'name / agent')
     : '';
@@ -219,7 +222,7 @@ export default function TraceList() {
             <input
               value={filters.q || ''}
               onChange={event => updateFilter({ q: event.target.value })}
-              placeholder="Search trace name, agent, or paste a session/user ID..."
+              placeholder={isAdmin ? 'Search trace name, agent, or paste a session/user ID...' : 'Search trace name, agent, or paste a session/trace ID...'}
               className="w-full pl-9 pr-32 py-2 rounded-md border text-sm"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
               autoComplete="off"
@@ -275,13 +278,15 @@ export default function TraceList() {
                 className="px-3 py-2 rounded-md border text-sm"
                 style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
               />
-              <input
-                value={filters.userId || ''}
-                onChange={event => updateFilter({ userId: event.target.value })}
-                placeholder="User ID (exact)"
-                className="px-3 py-2 rounded-md border text-sm"
-                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
-              />
+              {isAdmin && (
+                <input
+                  value={filters.userId || ''}
+                  onChange={event => updateFilter({ userId: event.target.value })}
+                  placeholder="User ID (exact)"
+                  className="px-3 py-2 rounded-md border text-sm"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
+                />
+              )}
               <input
                 value={filters.name || ''}
                 onChange={event => updateFilter({ name: event.target.value })}
@@ -409,6 +414,7 @@ function TraceRow({ trace, selected, onSelect, onOpenSession }: {
               {trace.name || trace.traceId}
             </span>
             {trace.agentName && <NeutralChip>{trace.agentName}</NeutralChip>}
+            {trace.userId && <AccountChip trace={trace} />}
             {trace.sessionId && (
               <button onClick={event => {
                 event.stopPropagation();
@@ -443,6 +449,24 @@ function TraceRow({ trace, selected, onSelect, onOpenSession }: {
         </div>
       </div>
     </div>
+  );
+}
+
+function AccountChip({ trace }: { trace: Trace }) {
+  const label = trace.account?.name || trace.account?.email || trace.userId;
+  const title = [
+    trace.account?.name,
+    trace.account?.email,
+    trace.userId,
+    trace.account?.role,
+  ].filter(Boolean).join(' · ');
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs max-w-[220px]"
+      style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
+      title={title}>
+      <UserCircle size={11} />
+      <span className="truncate">{label}</span>
+    </span>
   );
 }
 
@@ -529,6 +553,11 @@ function normalizeFilters(filters: TraceFilter): TraceFilter {
   };
 }
 
+function scopeFiltersForRole(filters: TraceFilter, isAdmin: boolean): TraceFilter {
+  if (isAdmin) return filters;
+  return { ...filters, userId: '' };
+}
+
 function cleanFilters(filters: TraceFilter): TraceFilter | undefined {
   const cleaned: Record<string, string> = {};
   (Object.entries(filters) as [keyof TraceFilter, string | undefined][]).forEach(([key, value]) => {
@@ -567,12 +596,12 @@ function countActiveFilters(filters: TraceFilter): number {
   return count;
 }
 
-function countAdvancedFilters(filters: TraceFilter): number {
-  return [filters.sessionId, filters.userId, filters.name].filter(Boolean).length;
+function countAdvancedFilters(filters: TraceFilter, isAdmin: boolean): number {
+  return [filters.sessionId, isAdmin ? filters.userId : '', filters.name].filter(Boolean).length;
 }
 
-function hasAdvancedFilters(filters: TraceFilter): boolean {
-  return countAdvancedFilters(filters) > 0;
+function hasAdvancedFilters(filters: TraceFilter, isAdmin: boolean): boolean {
+  return countAdvancedFilters(filters, isAdmin) > 0;
 }
 
 function toDateTimeLocalValue(value?: string): string {

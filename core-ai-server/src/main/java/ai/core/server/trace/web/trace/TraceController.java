@@ -2,14 +2,23 @@ package ai.core.server.trace.web.trace;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import core.framework.api.http.HTTPStatus;
 import core.framework.inject.Inject;
+import core.framework.mongo.MongoCollection;
 import core.framework.web.Request;
 import core.framework.web.Response;
+import core.framework.web.WebContext;
 
+import ai.core.server.domain.User;
+import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.web.auth.AuthContext;
 import ai.core.utils.JsonUtil;
 
 import java.time.ZonedDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author Xander
@@ -19,24 +28,34 @@ public class TraceController {
 
     @Inject
     TraceService traceService;
+    @Inject
+    MongoCollection<User> userCollection;
+    @Inject
+    WebContext webContext;
 
     public Response list(Request request) {
+        var scope = traceScope();
+        if (scope.userId() == null) return unauthorized();
         var params = request.queryParams();
         var filter = parseFilter(params);
+        applyScope(filter, scope);
         filter.offset = Integer.parseInt(params.getOrDefault("offset", "0"));
         filter.limit = Integer.parseInt(params.getOrDefault("limit", "20"));
         var traces = traceService.list(filter);
-        return jsonResponse(traces);
+        return jsonResponse(toTraceViews(traces));
     }
 
     public Response facets(Request request) {
+        var scope = traceScope();
+        if (scope.userId() == null) return unauthorized();
         var params = request.queryParams();
         String field = params.get("field");
         if (field == null || field.isEmpty()) {
-            return Response.text("missing field parameter").status(core.framework.api.http.HTTPStatus.BAD_REQUEST);
+            return Response.text("missing field parameter").status(HTTPStatus.BAD_REQUEST);
         }
         // Reuse list filter so the facet counts reflect the current query context
         var filter = parseFilter(params);
+        applyScope(filter, scope);
         var rows = traceService.facets(field, filter);
         return jsonResponse(rows);
     }
@@ -77,34 +96,47 @@ public class TraceController {
     }
 
     public Response get(Request request) {
+        var scope = traceScope();
+        if (scope.userId() == null) return unauthorized();
         String traceId = request.pathParam("traceId");
         var trace = traceService.get(traceId);
-        if (trace == null) {
-            return Response.text("not found").status(core.framework.api.http.HTTPStatus.NOT_FOUND);
+        if (!canRead(trace, scope)) {
+            return Response.text("not found").status(HTTPStatus.NOT_FOUND);
         }
-        return jsonResponse(trace);
+        return jsonResponse(toTraceView(trace, new HashMap<>()));
     }
 
     public Response spans(Request request) {
+        var scope = traceScope();
+        if (scope.userId() == null) return unauthorized();
         String traceId = request.pathParam("traceId");
-        var spans = traceService.spans(traceId);
+        var trace = traceService.get(traceId);
+        if (!canRead(trace, scope)) {
+            return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        }
+        var spans = traceService.spans(trace.traceId);
         return jsonResponse(spans);
     }
 
     public Response generations(Request request) {
+        var scope = traceScope();
+        if (scope.userId() == null) return unauthorized();
         var params = request.queryParams();
         int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
         int limit = Integer.parseInt(params.getOrDefault("limit", "20"));
         String model = params.get("model");
-        var spans = traceService.generations(offset, limit, model);
+        var spans = traceService.generations(offset, limit, model, scope.admin() ? null : scope.userId());
         return jsonResponse(spans);
     }
 
     public Response sessions(Request request) {
+        var scope = traceScope();
+        if (scope.userId() == null) return unauthorized();
         var params = request.queryParams();
         int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
         int limit = Integer.parseInt(params.getOrDefault("limit", "20"));
-        var sessions = traceService.sessions(offset, limit);
+        var sessions = traceService.sessions(offset, limit, scope.admin() ? null : scope.userId());
+        addAccounts(sessions);
         return jsonResponse(sessions);
     }
 
@@ -113,12 +145,109 @@ public class TraceController {
         return ZonedDateTime.parse(value);
     }
 
+    private TraceScope traceScope() {
+        var userId = AuthContext.userId(webContext);
+        var admin = userId != null && userCollection.get(userId)
+            .map(user -> "admin".equals(user.role))
+            .orElse(false);
+        return new TraceScope(userId, admin);
+    }
+
+    private void applyScope(TraceService.TraceListFilter filter, TraceScope scope) {
+        if (!scope.admin()) {
+            filter.userId = scope.userId();
+        }
+    }
+
+    private boolean canRead(Trace trace, TraceScope scope) {
+        if (trace == null) return false;
+        if (scope.admin()) return true;
+        return scope.userId() != null && scope.userId().equals(trace.userId);
+    }
+
+    private Response unauthorized() {
+        return Response.text("unauthorized").status(HTTPStatus.UNAUTHORIZED);
+    }
+
+    private List<TraceView> toTraceViews(List<Trace> traces) {
+        var accountCache = new HashMap<String, AccountView>();
+        return traces.stream().map(trace -> toTraceView(trace, accountCache)).toList();
+    }
+
+    private TraceView toTraceView(Trace trace, Map<String, AccountView> accountCache) {
+        var view = new TraceView();
+        view.id = trace.id;
+        view.traceId = trace.traceId;
+        view.name = trace.name;
+        view.model = trace.model;
+        view.type = trace.type;
+        view.source = trace.source;
+        view.agentName = trace.agentName;
+        view.sessionId = trace.sessionId;
+        view.userId = trace.userId;
+        view.status = trace.status;
+        view.errorMessage = trace.errorMessage;
+        view.input = trace.input;
+        view.output = trace.output;
+        view.metadata = trace.metadata;
+        view.inputTokens = trace.inputTokens;
+        view.outputTokens = trace.outputTokens;
+        view.totalTokens = trace.totalTokens;
+        view.cachedTokens = trace.cachedTokens;
+        view.costUsd = trace.costUsd;
+        view.durationMs = trace.durationMs;
+        view.startedAt = trace.startedAt;
+        view.completedAt = trace.completedAt;
+        view.createdAt = trace.createdAt;
+        view.updatedAt = trace.updatedAt;
+        view.account = accountFor(trace.userId, accountCache);
+        return view;
+    }
+
+    private void addAccounts(List<Map<String, Object>> sessions) {
+        var accountCache = new HashMap<String, AccountView>();
+        for (var session : sessions) {
+            var userId = (String) session.get("user_id");
+            session.put("account", accountFor(userId, accountCache));
+        }
+    }
+
+    private AccountView accountFor(String userId, Map<String, AccountView> accountCache) {
+        if (userId == null || userId.isEmpty()) return null;
+        return accountCache.computeIfAbsent(userId, id -> {
+            var view = new AccountView();
+            view.userId = id;
+            userCollection.get(id).ifPresent(user -> {
+                view.name = user.name;
+                view.email = user.email;
+                view.role = user.role;
+                view.status = user.status;
+            });
+            return view;
+        });
+    }
+
     private Response jsonResponse(Object data) {
         try {
             var json = MAPPER.writeValueAsBytes(data);
             return Response.bytes(json).contentType(core.framework.http.ContentType.APPLICATION_JSON);
         } catch (Exception e) {
-            return Response.text("serialization error").status(core.framework.api.http.HTTPStatus.INTERNAL_SERVER_ERROR);
+            return Response.text("serialization error").status(HTTPStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private record TraceScope(String userId, boolean admin) {
+    }
+
+    public static class TraceView extends Trace {
+        public AccountView account;
+    }
+
+    public static class AccountView {
+        public String userId;
+        public String name;
+        public String email;
+        public String role;
+        public String status;
     }
 }

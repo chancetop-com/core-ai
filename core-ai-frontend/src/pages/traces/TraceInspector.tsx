@@ -16,6 +16,7 @@ import {
   ListTree,
   MessageCircle,
   PanelTop,
+  UserCircle,
   Users,
   Wrench,
   X,
@@ -169,6 +170,11 @@ function TraceHeader({ trace, spans, mode, onClose }: {
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             {trace.agentName && <NeutralChip>{trace.agentName}</NeutralChip>}
             {trace.model && <NeutralChip mono>{trace.model}</NeutralChip>}
+            {trace.userId && (
+              <NeutralChip>
+                <UserCircle size={11} /> {accountLabel(trace)}
+              </NeutralChip>
+            )}
             {trace.sessionId && <NeutralChip mono>session {trace.sessionId.slice(0, 8)}</NeutralChip>}
             <span className="inline-flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
               <Clock size={12} /> {formatDuration(trace.durationMs)}
@@ -229,6 +235,10 @@ function TraceHeader({ trace, spans, mode, onClose }: {
       )}
     </div>
   );
+}
+
+function accountLabel(trace: Trace): string {
+  return trace.account?.name || trace.account?.email || trace.userId;
 }
 
 function ErrorBlock({ message }: { message: string }) {

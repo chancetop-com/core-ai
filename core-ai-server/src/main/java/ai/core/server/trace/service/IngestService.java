@@ -133,6 +133,7 @@ public class IngestService {
         var span = new Span();
         span.id = UUID.randomUUID().toString();
         span.traceId = spanReq.traceId;
+        span.userId = spanReq.attributes != null ? spanReq.attributes.get("user.id") : null;
         span.spanId = spanReq.spanId;
         span.parentSpanId = spanReq.parentSpanId;
         span.name = spanReq.name;

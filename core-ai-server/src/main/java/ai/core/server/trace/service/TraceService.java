@@ -34,6 +34,7 @@ public class TraceService {
     private static final Pattern LONG_HEX_PATTERN = Pattern.compile("^[0-9a-fA-F]{16,}$");
     // Partial hex prefix: enough chars to be specific (UI shows 8-char session prefix) but shorter than full IDs
     private static final Pattern HEX_PREFIX_PATTERN = Pattern.compile("^[0-9a-fA-F]{6,}$");
+    private static final int SCOPED_TRACE_ID_LOOKUP_LIMIT = 10_000;
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -251,7 +252,7 @@ public class TraceService {
         return spanCollection.find(query);
     }
 
-    public List<Span> generations(int offset, int limit, String model) {
+    public List<Span> generations(int offset, int limit, String model, String userId) {
         var query = new Query();
         query.skip = offset;
         query.limit = limit;
@@ -262,13 +263,40 @@ public class TraceService {
         if (model != null && !model.isEmpty()) {
             filters.add(Filters.eq("model", model));
         }
+        if (userId != null && !userId.isEmpty()) {
+            var traceIds = traceIdsForUser(userId);
+            if (traceIds.isEmpty()) {
+                filters.add(Filters.eq("user_id", userId));
+            } else {
+                filters.add(Filters.or(
+                    Filters.eq("user_id", userId),
+                    Filters.in("trace_id", traceIds)));
+            }
+        }
         query.filter = Filters.and(filters);
         return spanCollection.find(query);
     }
 
-    public List<Map<String, Object>> sessions(int offset, int limit) {
+    private List<String> traceIdsForUser(String userId) {
         var query = new Query();
-        query.filter = Filters.and(Filters.exists("session_id"), Filters.ne("session_id", null));
+        query.filter = Filters.eq("user_id", userId);
+        query.sort = Sorts.descending("created_at");
+        query.limit = SCOPED_TRACE_ID_LOOKUP_LIMIT;
+        return traceCollection.find(query).stream()
+            .map(trace -> trace.traceId)
+            .filter(traceId -> traceId != null && !traceId.isEmpty())
+            .toList();
+    }
+
+    public List<Map<String, Object>> sessions(int offset, int limit, String userId) {
+        var query = new Query();
+        var filters = new ArrayList<Bson>();
+        filters.add(Filters.exists("session_id"));
+        filters.add(Filters.ne("session_id", null));
+        if (userId != null && !userId.isEmpty()) {
+            filters.add(Filters.eq("user_id", userId));
+        }
+        query.filter = Filters.and(filters);
         query.sort = Sorts.descending("created_at");
         var allTraces = traceCollection.find(query);
         var groupedSessions = new ArrayList<>(allTraces.stream()

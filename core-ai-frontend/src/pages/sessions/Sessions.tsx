@@ -4,19 +4,35 @@ import { Clock, Zap, ChevronLeft, ChevronRight, Hash, AlertCircle, User, Message
 import { api } from '../../api/client';
 import type { SessionSummary } from '../../api/client';
 
+interface SessionsState {
+  requestKey: string;
+  sessions: SessionSummary[];
+}
+
 export default function Sessions() {
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<SessionsState>({ requestKey: '', sessions: [] });
   const limit = 20;
+  const requestKey = String(offset);
   const navigate = useNavigate();
 
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
     api.traces.sessions(offset, limit)
-      .then(setSessions)
-      .finally(() => setLoading(false));
-  }, [offset]);
+      .then(nextSessions => {
+        if (!cancelled) setState({ requestKey, sessions: nextSessions || [] });
+      })
+      .catch(error => {
+        console.warn('load sessions failed', error);
+        if (!cancelled) setState({ requestKey, sessions: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offset, requestKey]);
+
+  const loading = state.requestKey !== requestKey;
+  const sessions = loading ? [] : state.sessions;
 
   const formatDuration = (ms: number) => {
     if (!ms) return '-';
@@ -109,7 +125,9 @@ export default function Sessions() {
                     <span style={{ color: 'var(--color-text-secondary)' }}>0</span>
                   )}
                 </td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{s.user_id || '-'}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }} title={s.user_id || ''}>
+                  {s.account?.name || s.account?.email || s.user_id || '-'}
+                </td>
                 <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.last_trace_at)}</td>
               </tr>
             ))}
