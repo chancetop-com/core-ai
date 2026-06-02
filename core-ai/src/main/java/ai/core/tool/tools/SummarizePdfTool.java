@@ -10,7 +10,14 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Base64;
 import java.util.List;
 
 /**
@@ -21,10 +28,14 @@ import java.util.List;
 public class SummarizePdfTool extends ToolCall {
     public static final String TOOL_NAME = "summarize_pdf";
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(SummarizePdfTool.class);
+
     private static final String TOOL_DESC = """
-            Tool to read and analyze PDF documents from a URL.
-            IMPORTANT: You MUST use this tool whenever the user provides a PDF URL or asks about a PDF document.
-            This tool can read the PDF content and answer questions about it.
+            Tool to read and analyze PDF documents.
+            IMPORTANT: You MUST use this tool (NOT read_file) whenever the user provides a PDF file or URL, or asks about a PDF document.
+            read_file can only display PDF bytes but cannot actually understand PDF content. Only summarize_pdf sends the PDF to a model that can read and analyze it.
+            The query parameter specifies what you want to know about the PDF (e.g., "summarize this document", "extract key points", "what is this about?").
+            The url parameter supports HTTP/HTTPS URLs and local file paths.
             """;
 
     public static Builder builder() {
@@ -37,9 +48,10 @@ public class SummarizePdfTool extends ToolCall {
     public ToolCallResult execute(String text, ExecutionContext context) {
         var params = JsonUtil.fromJson(SummarizePdfToolParams.class, text);
         var llmProvider = context.getLlmProvider();
+        var fileContent = resolveFileContent(params.url());
         var messages = List.of(Message.of(new Message.MessageRecord(
                 RoleType.USER,
-                List.of(Content.of(params.query()), Content.ofFileUrl(params.url())),
+                List.of(Content.of(params.query()), fileContent),
                 null, null, null, null)));
         var targetModel = resolveModel(context);
         var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, targetModel, null));
@@ -56,6 +68,27 @@ public class SummarizePdfTool extends ToolCall {
         if (context.getMultiModalModel() != null) return context.getMultiModalModel();
         if (context.getModel() != null) return context.getModel();
         return context.getLlmProvider().config.getModel();
+    }
+
+    private Content resolveFileContent(String url) {
+        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+            return Content.ofFileUrl(url);
+        }
+        Path path = Paths.get(url);
+        if (!Files.isRegularFile(path)) {
+            throw new AgentRuntimeException("SUMMARIZE_PDF_TOOL_FAILED",
+                    "PDF file not found: " + url + ". Provide a valid HTTP URL or local file path.");
+        }
+        try {
+            byte[] bytes = Files.readAllBytes(path);
+            String base64 = Base64.getEncoder().encodeToString(bytes);
+            String filename = path.getFileName().toString();
+            LOGGER.info("summarize_pdf resolved local file [{}], size=[{}] bytes", url, bytes.length);
+            return Content.ofFileBase64(base64, "application/pdf", filename);
+        } catch (IOException e) {
+            throw new AgentRuntimeException("SUMMARIZE_PDF_TOOL_FAILED",
+                    "Failed to read PDF file: " + url + " - " + e.getMessage());
+        }
     }
 
     public static class Builder extends ToolCall.Builder<Builder, SummarizePdfTool> {
