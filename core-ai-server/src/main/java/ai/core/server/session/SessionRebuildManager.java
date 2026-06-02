@@ -3,7 +3,15 @@ package ai.core.server.session;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
+import ai.core.prompt.Prompts;
+import ai.core.prompt.SystemVariables;
 import ai.core.server.artifact.ChatArtifactSetup;
+import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetService;
+import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
+import ai.core.server.dataset.tool.InsertDatasetRecordTool;
+import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
+import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
@@ -19,7 +27,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -35,6 +45,8 @@ public class SessionRebuildManager {
     private final ChatArtifactSetup artifactSetup;
     private final ToolRegistryService toolRegistryService;
     private final SystemPromptService systemPromptService;
+    private final DatasetService datasetService;
+    private final DatasetRecordService datasetRecordService;
     private final EventPublisher eventPublisher;
     private final SessionOwnershipRegistry ownershipRegistry;
 
@@ -47,6 +59,8 @@ public class SessionRebuildManager {
         this.artifactSetup = deps.artifactSetup;
         this.toolRegistryService = deps.toolRegistryService;
         this.systemPromptService = deps.systemPromptService;
+        this.datasetService = deps.datasetService;
+        this.datasetRecordService = deps.datasetRecordService;
         this.eventPublisher = deps.eventPublisher;
         this.ownershipRegistry = deps.ownershipRegistry;
     }
@@ -91,6 +105,7 @@ public class SessionRebuildManager {
     private SessionState.AgentConfigSnapshot buildSnapshotFromDefinition(AgentDefinition def) {
         var pub = def.publishedConfig;
         var snapshot = new SessionState.AgentConfigSnapshot();
+        snapshot.agentId = def.id;
         snapshot.agentName = def.name;
         snapshot.systemPrompt = pub != null && pub.systemPrompt != null ? pub.systemPrompt : def.systemPrompt;
         snapshot.systemPromptId = pub != null && pub.systemPromptId != null ? pub.systemPromptId : def.systemPromptId;
@@ -101,6 +116,7 @@ public class SessionRebuildManager {
         snapshot.inputTemplate = pub != null && pub.inputTemplate != null ? pub.inputTemplate : def.inputTemplate;
         snapshot.variables = pub != null && pub.variables != null ? pub.variables : def.variables;
         snapshot.tools = pub != null && pub.tools != null && !pub.tools.isEmpty() ? pub.tools : def.tools;
+        snapshot.outputDatasetId = pub != null && pub.outputDatasetId != null ? pub.outputDatasetId : def.outputDatasetId;
         return snapshot;
     }
 
@@ -124,16 +140,27 @@ public class SessionRebuildManager {
         config.multiModalModel = snapshot.multiModalModel;
         config.temperature = snapshot.temperature;
         config.maxTurns = snapshot.maxTurns;
+        config.datasetId = state != null && state.config != null && hasText(state.config.datasetId)
+                ? state.config.datasetId
+                : snapshot.outputDatasetId;
         List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty()) ? toolRegistryService.resolveToolRefs(snapshot.tools) : List.of();
-        return doRebuild(sessionId, config, tools, userId, snapshot.agentName, state);
+        return doRebuild(sessionId, config, tools, userId, snapshot.agentName, state, snapshot.agentId);
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId, SessionState state) {
-        return doRebuild(sessionId, config, null, userId, null, state);
+        return doRebuild(sessionId, config, null, userId, null, state, "default");
     }
 
-    private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ToolCall> tools, String userId, String agentName, SessionState state) {
+    private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ToolCall> tools, String userId, String agentName,
+                                            SessionState state, String datasetAgentId) {
         var start = System.currentTimeMillis();
+        var effectiveConfig = config != null ? config : new SessionConfig();
+        tools = addDatasetTools(tools, effectiveConfig.datasetId, datasetAgentId, sessionId);
+        Map<String, Object> extraVars = null;
+        if (hasText(effectiveConfig.datasetId)) {
+            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt);
+            extraVars = buildDatasetSystemVars(effectiveConfig.datasetId);
+        }
         var toolCount = tools != null ? tools.size() : 0;
         var skillCount = state != null && state.skillIds != null ? state.skillIds.size() : 0;
         var subAgentCount = state != null && state.subAgentIds != null ? state.subAgentIds.size() : 0;
@@ -142,9 +169,9 @@ public class SessionRebuildManager {
                 sessionId, state != null && state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
         var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build() : null;
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
-        var agent = subAgentManager.buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
+        var agent = subAgentManager.buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
                 sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools,
-                context, agentName);
+                context, agentName, extraVars);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
         session.onEvent(chatMessageService.listener(sessionId));
@@ -241,6 +268,37 @@ public class SessionRebuildManager {
         }
     }
 
+    private List<ToolCall> addDatasetTools(List<ToolCall> tools, String datasetId, String agentId, String sessionId) {
+        if (!hasText(datasetId)) return tools;
+        var dataset = datasetService.get(datasetId);
+        if (dataset == null) return tools;
+        var mutable = new ArrayList<ToolCall>(tools != null ? tools : List.of());
+        var effectiveAgentId = hasText(agentId) ? agentId : "default";
+        mutable.add(QueryDatasetRecordsTool.create(datasetId, datasetRecordService, dataset));
+        mutable.add(InsertDatasetRecordTool.create(datasetId, effectiveAgentId, sessionId, datasetRecordService, dataset));
+        mutable.add(UpdateDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
+        mutable.add(DeleteDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
+        return mutable;
+    }
+
+    private String appendDatasetInstructions(String systemPrompt) {
+        if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
+        return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
+    }
+
+    private Map<String, Object> buildDatasetSystemVars(String datasetId) {
+        var dataset = datasetService.get(datasetId);
+        if (dataset == null) return null;
+        var vars = new HashMap<String, Object>();
+        vars.put(SystemVariables.AGENT_DATASET_NAME, dataset.name);
+        vars.put(SystemVariables.AGENT_DATASET_DESC, dataset.description != null && !dataset.description.isBlank() ? ": " + dataset.description : "");
+        return vars;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
     public record Deps(ChatMessageService chatMessageService,
                         MongoCollection<AgentDefinition> agentDefinitionCollection,
                         SessionSkillManager skillManager,
@@ -249,6 +307,8 @@ public class SessionRebuildManager {
                         ChatArtifactSetup artifactSetup,
                         ToolRegistryService toolRegistryService,
                         SystemPromptService systemPromptService,
+                        DatasetService datasetService,
+                        DatasetRecordService datasetRecordService,
                         EventPublisher eventPublisher,
                         SessionOwnershipRegistry ownershipRegistry) { }
 }

@@ -69,6 +69,7 @@ public class SessionCreateHelper {
         var published = agent.publishedConfig;
         var toolRefs = published != null ? published.tools : agent.tools;
         var snapshot = new SessionState.AgentConfigSnapshot();
+        snapshot.agentId = agent.id;
         snapshot.agentName = agent.name;
         snapshot.systemPrompt = published != null && published.systemPrompt != null ? published.systemPrompt : agent.systemPrompt;
         snapshot.systemPromptId = published != null && published.systemPromptId != null ? published.systemPromptId : agent.systemPromptId;
@@ -78,6 +79,7 @@ public class SessionCreateHelper {
         snapshot.inputTemplate = published != null && published.inputTemplate != null ? published.inputTemplate : agent.inputTemplate;
         snapshot.variables = published != null && published.variables != null ? published.variables : agent.variables;
         snapshot.tools = toolRefs;
+        snapshot.outputDatasetId = published != null && published.outputDatasetId != null ? published.outputDatasetId : agent.outputDatasetId;
         return snapshot;
     }
 

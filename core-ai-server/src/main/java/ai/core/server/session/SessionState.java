@@ -36,6 +36,7 @@ public class SessionState {
      * Lightweight snapshot of agent definition, sufficient to rebuild a session.
      */
     public static class AgentConfigSnapshot {
+        public String agentId;
         public String agentName;
         public String systemPrompt;
         public String systemPromptId;
@@ -46,5 +47,6 @@ public class SessionState {
         public String inputTemplate;
         public Map<String, String> variables;
         public List<ToolRef> tools;
+        public String outputDatasetId;
     }
 }

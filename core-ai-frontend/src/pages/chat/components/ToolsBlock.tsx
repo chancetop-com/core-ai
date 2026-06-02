@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Loader2, ChevronDown, ChevronRight, Wrench, Copy, Check } from 'lucide-react';
 import type { ToolEvent } from '../types';
 import { normalizeArgs, getArgsPreview } from '../utils';
-import JsonTreeView from '../../../components/JsonTreeView';
+
+const JsonTreeView = lazy(() => import('../../../components/JsonTreeView'));
 
 function tryParseJson(s: string): unknown | null {
   const trimmed = s.trim();
@@ -48,6 +49,19 @@ function CopyIconButton({ text }: { text: string }) {
       {copied ? <Check size={10} /> : <Copy size={10} />}
       <span>{copied ? 'Copied' : 'Copy'}</span>
     </button>
+  );
+}
+
+function JsonResultView({ value }: { value: string }) {
+  return (
+    <Suspense fallback={
+      <pre className="whitespace-pre-wrap font-mono px-3 py-2"
+        style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
+        Loading JSON...
+      </pre>
+    }>
+      <JsonTreeView value={value} defaultExpandDepth={1} showHeader={false} />
+    </Suspense>
   );
 }
 
@@ -147,7 +161,7 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
                   <CopyIconButton text={formatJson(t.result)} />
                 </div>
                 {tryParseJson(t.result) !== null ? (
-                  <JsonTreeView value={t.result} defaultExpandDepth={1} showHeader={false} />
+                  <JsonResultView value={t.result} />
                 ) : (
                   <pre className="whitespace-pre-wrap font-mono px-3 py-2"
                     style={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}>
@@ -191,7 +205,7 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
               <CopyIconButton text={formatJson(t.result)} />
             </div>
             {tryParseJson(t.result) !== null ? (
-              <JsonTreeView value={t.result} defaultExpandDepth={1} showHeader={false} />
+              <JsonResultView value={t.result} />
             ) : (
               <pre className="whitespace-pre-wrap font-mono px-3 py-2"
                 style={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}>

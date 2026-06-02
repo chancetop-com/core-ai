@@ -3,14 +3,23 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 const API_TARGET = 'https://localhost:8443'
+const ROUTE_ONLY_PRELOADS = [
+  'react-markdown',
+  'recharts',
+  '@codemirror',
+  'microsoft.cognitiveservices.speech',
+]
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
     outDir: 'build/dist',
-  },
-  optimizeDeps: {
-    include: ['microsoft-cognitiveservices-speech-sdk'],
+    modulePreload: {
+      resolveDependencies(_filename, deps, context) {
+        if (context.hostType !== 'html') return deps
+        return deps.filter(dep => !ROUTE_ONLY_PRELOADS.some(chunk => dep.includes(chunk)))
+      },
+    },
   },
   server: {
     port: 3000,

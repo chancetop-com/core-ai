@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
 import { fetchSpeechToken } from '../../../api/speech';
+
+type SpeechSdkModule = typeof import('microsoft-cognitiveservices-speech-sdk');
+type ConversationTranscriber = import('microsoft-cognitiveservices-speech-sdk').ConversationTranscriber;
+type ConversationTranscriptionEventArgs = import('microsoft-cognitiveservices-speech-sdk').ConversationTranscriptionEventArgs;
+type ConversationTranscriptionCanceledEventArgs = import('microsoft-cognitiveservices-speech-sdk').ConversationTranscriptionCanceledEventArgs;
+
+let speechSdkPromise: Promise<SpeechSdkModule> | null = null;
+
+function loadSpeechSdk(): Promise<SpeechSdkModule> {
+  speechSdkPromise ??= import('microsoft-cognitiveservices-speech-sdk');
+  return speechSdkPromise;
+}
 
 export interface TranscriptionSegment {
   id: string;
@@ -22,7 +33,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [isListening, setIsListening] = useState(false);
   const [segments, setSegments] = useState<TranscriptionSegment[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const recognizerRef = useRef<sdk.ConversationTranscriber | null>(null);
+  const recognizerRef = useRef<ConversationTranscriber | null>(null);
   const startTimeRef = useRef<number>(0);
 
   const stopListening = useCallback(() => {
@@ -51,6 +62,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
     setError(null);
     try {
+      const sdk = await loadSpeechSdk();
       const { token, region } = await fetchSpeechToken();
 
       const speechConfig = sdk.SpeechConfig.fromAuthorizationToken(token, region);
@@ -65,7 +77,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
       startTimeRef.current = Date.now();
 
-      transcriber.transcribed = (_sender: unknown, e: sdk.ConversationTranscriptionEventArgs) => {
+      transcriber.transcribed = (_sender: unknown, e: ConversationTranscriptionEventArgs) => {
         if (e.result.reason === sdk.ResultReason.RecognizedSpeech) {
           setSegments(prev => [...prev, {
             id: e.result.resultId,
@@ -76,7 +88,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
         }
       };
 
-      transcriber.canceled = (_sender: unknown, e: sdk.ConversationTranscriptionCanceledEventArgs) => {
+      transcriber.canceled = (_sender: unknown, e: ConversationTranscriptionCanceledEventArgs) => {
         console.warn('ConversationTranscriber canceled:', e.errorDetails);
         setError(e.errorDetails);
         setIsListening(false);

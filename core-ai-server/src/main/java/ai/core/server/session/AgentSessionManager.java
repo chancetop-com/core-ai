@@ -115,7 +115,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection,
                     skillManager(), subAgentManager(), sandboxService, artifactSetup,
-                    toolRegistryService, systemPromptService, eventPublisher, ownershipRegistry));
+                    toolRegistryService, systemPromptService, datasetService, datasetRecordService, eventPublisher, ownershipRegistry));
         }
         return rebuildManager;
     }
@@ -135,16 +135,17 @@ public class AgentSessionManager {
     }
 
     public String createSession(SessionConfig config, String userId, String source) {
+        var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var sandboxOn = sandboxService.isSandboxEnabled(null);
-        var tools = buildDefaultSessionTools(config, sessionId);
+        var tools = buildDefaultSessionTools(effectiveConfig, sessionId);
         Map<String, Object> extraVars = null;
-        if (config.datasetId != null) {
-            config.systemPrompt = appendDatasetInstructions(config.systemPrompt);
-            extraVars = buildDatasetSystemVars(config.datasetId);
+        if (hasText(effectiveConfig.datasetId)) {
+            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt);
+            extraVars = buildDatasetSystemVars(effectiveConfig.datasetId);
         }
-        var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
+        var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
                 artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, sandboxOn), context, null, extraVars);
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> renewSessionOwnership(sessionId));
@@ -173,10 +174,12 @@ public class AgentSessionManager {
         }
         var tools = subAgentManager().resolveTools(definition);
         var sessionId = UUID.randomUUID().toString();
-        tools = addDatasetTools(tools, definition, sessionId);
-        var datasetId = definition.publishedConfig != null ? definition.publishedConfig.outputDatasetId : definition.outputDatasetId;
+        var agentDatasetId = definition.publishedConfig != null ? definition.publishedConfig.outputDatasetId : definition.outputDatasetId;
+        var datasetId = overrides != null && hasText(overrides.datasetId) ? overrides.datasetId : agentDatasetId;
+        config.datasetId = datasetId;
+        tools = addDatasetTools(tools, datasetId, definition.id, sessionId);
         Map<String, Object> extraVars = null;
-        if (datasetId != null) {
+        if (hasText(datasetId)) {
             config.systemPrompt = appendDatasetInstructions(config.systemPrompt);
             extraVars = buildDatasetSystemVars(datasetId);
         }
@@ -322,15 +325,13 @@ public class AgentSessionManager {
         return subAgentManager().loadSubAgents(session, definitions);
     }
 
-    private List<ToolCall> addDatasetTools(List<ToolCall> tools, AgentDefinition definition, String sessionId) {
-        var config = definition.publishedConfig;
-        String datasetId = config != null ? config.outputDatasetId : definition.outputDatasetId;
-        if (datasetId == null) return tools;
+    private List<ToolCall> addDatasetTools(List<ToolCall> tools, String datasetId, String agentId, String sessionId) {
+        if (!hasText(datasetId)) return tools;
         var dataset = datasetService.get(datasetId);
         if (dataset == null) return tools;
         var mutable = new ArrayList<>(tools);
         mutable.add(QueryDatasetRecordsTool.create(datasetId, datasetRecordService, dataset));
-        mutable.add(InsertDatasetRecordTool.create(datasetId, definition.id, sessionId, datasetRecordService, dataset));
+        mutable.add(InsertDatasetRecordTool.create(datasetId, agentId, sessionId, datasetRecordService, dataset));
         mutable.add(UpdateDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
         mutable.add(DeleteDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
         return mutable;
@@ -351,7 +352,7 @@ public class AgentSessionManager {
     }
 
     private List<ToolCall> buildDefaultSessionTools(SessionConfig config, String sessionId) {
-        if (config.datasetId == null) return null;
+        if (config == null || !hasText(config.datasetId)) return null;
         var dataset = datasetService.get(config.datasetId);
         if (dataset == null) return null;
         var tools = new ArrayList<ToolCall>(BuiltinTools.ALL);
@@ -360,6 +361,10 @@ public class AgentSessionManager {
         tools.add(UpdateDatasetRecordTool.create(config.datasetId, datasetRecordService, dataset));
         tools.add(DeleteDatasetRecordTool.create(config.datasetId, datasetRecordService, dataset));
         return tools;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds) {

@@ -39,6 +39,8 @@ interface ChatConfigModalProps {
   loadedDatasetId: string | null;
   preDatasetId: string | null;
   onSelectDataset: (id: string | null) => void;
+  onApplyDataset: () => void;
+  datasetLocked: boolean;
 
   onClose: () => void;
 }
@@ -51,13 +53,15 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; color: string; 
 ];
 
 export default function ChatConfigModal(props: ChatConfigModalProps) {
+  const { onClose } = props;
   const [activeTab, setActiveTab] = useState<TabKey>('tools');
+  const datasetApplyDisabled = activeTab === 'dataset' && (!props.selectedDatasetId || props.datasetLocked);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') props.onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [props.onClose]);
+  }, [onClose]);
 
   const tabCounts: Record<TabKey, number> = {
     tools: props.loadedToolIds.size + props.preToolIds.size + props.selectedToolIds.size,
@@ -68,7 +72,7 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}
-      onClick={props.onClose}>
+      onClick={onClose}>
       <div className="rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         style={{ width: 'min(640px, 92vw)', maxHeight: '85vh', background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
         onClick={e => e.stopPropagation()}>
@@ -76,7 +80,7 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
           <h2 className="text-base font-semibold">Agent Configuration</h2>
-          <button onClick={props.onClose} className="p-1.5 rounded-lg cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+          <button onClick={onClose} className="p-1.5 rounded-lg cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
             <X size={18} />
           </button>
         </div>
@@ -116,10 +120,12 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
         <div className="flex items-center justify-between px-5 py-3 border-t"
           style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {tabCounts[activeTab] > 0 ? `${tabCounts[activeTab]} ${activeTab === 'dataset' ? 'selected' : 'selected'}` : `Configure ${activeTab}`}
+            {activeTab === 'dataset' && props.datasetLocked
+              ? 'Dataset changes apply before starting a session'
+              : tabCounts[activeTab] > 0 ? `${tabCounts[activeTab]} selected` : `Configure ${activeTab}`}
           </span>
           <div className="flex gap-2">
-            <button onClick={props.onClose}
+            <button onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm cursor-pointer"
               style={{ background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
               Done
@@ -141,10 +147,12 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
                 Load
               </button>
             )}
-            {activeTab === 'dataset' && props.selectedDatasetId && (
+            {activeTab === 'dataset' && (
               <button
-                onClick={() => props.onSelectDataset(props.selectedDatasetId)}
-                className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                onClick={props.onApplyDataset}
+                disabled={datasetApplyDisabled}
+                title={props.datasetLocked ? 'Start a new chat before changing the dataset' : undefined}
+                className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: 'var(--color-primary)', color: 'white' }}>
                 Apply
               </button>
@@ -564,7 +572,7 @@ function DatasetTab(props: ChatConfigModalProps) {
     })();
   }, []);
 
-  const currentId = props.loadedDatasetId ?? props.preDatasetId ?? props.selectedDatasetId;
+  const currentId = props.selectedDatasetId ?? props.preDatasetId ?? props.loadedDatasetId;
 
   const filtered = datasets.filter(ds =>
     ds.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -583,6 +591,12 @@ function DatasetTab(props: ChatConfigModalProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
+        {props.datasetLocked && (
+          <div className="mb-3 px-3 py-2 rounded-lg text-xs"
+            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
+            Dataset is bound when a session starts. Start a new chat to use a different dataset.
+          </div>
+        )}
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
           style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
           <Search size={14} style={{ color: 'var(--color-text-muted)' }} />
@@ -607,16 +621,31 @@ function DatasetTab(props: ChatConfigModalProps) {
         ) : (
           <div className="flex flex-col gap-1">
             {visible.map(ds => {
-              const isSelected = props.selectedDatasetId === ds.id || currentId === ds.id;
+              const isSelected = currentId === ds.id;
               const isExpanded = expandedDataset === ds.id;
+              const handleSelect = () => {
+                if (!props.datasetLocked) props.onSelectDataset(ds.id);
+              };
               return (
                 <div key={ds.id}>
-                  <button
-                    onClick={() => props.onSelectDataset(ds.id)}
+                  <div
+                    role="button"
+                    tabIndex={props.datasetLocked ? -1 : 0}
+                    aria-pressed={isSelected}
+                    aria-disabled={props.datasetLocked}
+                    onClick={handleSelect}
+                    onKeyDown={e => {
+                      if (props.datasetLocked) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        props.onSelectDataset(ds.id);
+                      }
+                    }}
                     className="flex items-start gap-3 px-4 py-3 rounded-lg text-left w-full cursor-pointer transition-colors hover:opacity-90"
                     style={{
                       background: isSelected ? 'var(--color-primary)' + '12' : 'transparent',
                       border: isSelected ? '1px solid var(--color-primary)' : '1px solid transparent',
+                      cursor: props.datasetLocked ? 'default' : 'pointer',
                     }}>
                     <div className="mt-0.5 shrink-0">
                       <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center"
@@ -654,7 +683,7 @@ function DatasetTab(props: ChatConfigModalProps) {
                         </>
                       )}
                     </div>
-                  </button>
+                  </div>
                 </div>
               );
             })}

@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import type { ComponentProps, HTMLAttributes, ReactNode, RefObject } from 'react';
+import type { ComponentProps, CSSProperties, HTMLAttributes, ReactNode, RefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -61,6 +61,10 @@ function getMessageArtifacts(msg: ChatMessage, all: { file_id: string; file_name
 
 const AGENT_REHYPE_PLUGINS: PluggableList = [rehypeRaw, [rehypeSanitize, chatSanitizeSchema]];
 const REMARK_PLUGINS: PluggableList = [remarkGfm];
+const OFFSCREEN_MESSAGE_STYLE: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '1px 160px',
+};
 
 function shouldRenderMessage(msg: ChatMessage, idx: number, messagesLength: number, status: ChatStatus): boolean {
   return msg.role === 'user'
@@ -107,7 +111,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   const msgArtifacts = msg.role === 'agent' ? getMessageArtifacts(msg, sessionArtifacts) : [];
 
   return (
-    <div className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+    <div className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`} style={OFFSCREEN_MESSAGE_STYLE}>
       {msg.role === 'agent' && (
         <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
           style={{ background: 'var(--color-primary)', color: 'white' }}>

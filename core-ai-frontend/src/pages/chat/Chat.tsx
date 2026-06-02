@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SsePlanUpdateEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, ChatSessionSummary, SessionArtifact } from '../../api/session';
@@ -9,8 +9,6 @@ import ResourcePicker from './ResourcePicker';
 import ToolPickerModal from './ToolPickerModal';
 import ChatConfigModal from './ChatConfigModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
-import VoiceTranscriberSidebar from './components/VoiceTranscriberSidebar';
-import ArtifactDrawer from './components/ArtifactDrawer';
 import type { ArtifactSpec } from './components/artifactTypes';
 import ChatMessagesPanel, { INITIAL_VISIBLE_MESSAGES, MESSAGE_RENDER_BATCH } from './components/ChatMessagesPanel';
 import ChatComposer from './components/ChatComposer';
@@ -20,6 +18,9 @@ import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages } from './utils';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
+
+const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
+const ArtifactDrawer = lazy(() => import('./components/ArtifactDrawer'));
 
 function hasAnySegments(segments?: MessageSegment[]): boolean {
   return segments != null && segments.length > 0;
@@ -94,7 +95,14 @@ export default function Chat() {
   }, []);
 
   const [voiceLanguage, setVoiceLanguage] = useState('zh-CN');
-  const voice = useSpeechRecognition();
+  const {
+    isListening: voiceIsListening,
+    segments: voiceSegments,
+    error: voiceError,
+    startListening,
+    stopListening,
+    clearSegments,
+  } = useSpeechRecognition();
   const [variablesExpanded, setVariablesExpanded] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -107,6 +115,7 @@ export default function Chat() {
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const variablesPanelRef = useRef<HTMLDivElement>(null);
   const sseControllerRef = useRef<AbortController | null>(null);
+  const hydrateRequestSeqRef = useRef(0);
   const streamingContentRef = useRef('');
   const streamingThinkingRef = useRef('');
 
@@ -245,6 +254,8 @@ export default function Chat() {
 
   const hydrateSession = useCallback(async (session: ChatSessionSummary) => {
     if (!session.id) return;
+    const hydrateSeq = ++hydrateRequestSeqRef.current;
+    const isCurrentHydration = () => hydrateSeq === hydrateRequestSeqRef.current;
     // Reset all session-scoped state synchronously before fetching new history.
     // This guarantees any pending SSE callbacks from the previous session can't
     // bleed into the next one, and any open drawer is closed.
@@ -266,6 +277,7 @@ export default function Chat() {
         sessionApi.history(session.id),
         sessionApi.status(session.id).catch(() => null),
       ]);
+      if (!isCurrentHydration()) return;
       const hydrated = historyToChatMessages(res.messages || []);
       // A trailing user message means the agent reply may not be persisted yet. Keep
       // a hidden placeholder so future/replayed SSE chunks have a slot to fill, but
@@ -291,6 +303,7 @@ export default function Chat() {
         doConnectSSE(session.id);
       }
     } catch (e) {
+      if (!isCurrentHydration()) return;
       console.warn('failed to hydrate session history', e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -829,6 +842,7 @@ export default function Chat() {
   const handleSend = useCallback(async (text: string, attachments: ComposerAttachment[]) => {
     if ((!text && attachments.length === 0) || status !== 'idle' || !selectedAgentId) return;
 
+    hydrateRequestSeqRef.current += 1;
     setMessages(prev => [...prev, {
       role: 'user',
       segments: [{ type: 'text', content: text }],
@@ -877,7 +891,7 @@ export default function Chat() {
     }
   }, [sessionId, awaitInfo]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     sseControllerRef.current?.abort();
     sseControllerRef.current = null;
     setStatus('idle');
@@ -885,9 +899,10 @@ export default function Chat() {
     setAwaitInfo(null);
     setPlanTodos(null);
     if (sessionId) sessionApi.cancel(sessionId).catch(() => {});
-  };
+  }, [sessionId]);
 
   const handleNewChat = useCallback(() => {
+    hydrateRequestSeqRef.current += 1;
     sseControllerRef.current?.abort();
     sseControllerRef.current = null;
     composerRef.current?.reset();
@@ -934,10 +949,10 @@ export default function Chat() {
     return map;
   }, [datasets]);
 
-  const getDatasetChipName = (id: string | null) => {
+  const getDatasetChipName = useCallback((id: string | null) => {
     if (!id) return 'Dataset';
     return datasetNameMap.get(id) || id;
-  };
+  }, [datasetNameMap]);
 
   const skillNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -951,8 +966,8 @@ export default function Chat() {
     return map;
   }, [agents]);
 
-  const getSkillChipName = (id: string) => loadedNames.get(id) || skillNameMap.get(id) || id;
-  const getAgentChipName = (id: string) => loadedNames.get(id) || agentNameMap.get(id) || id;
+  const getSkillChipName = useCallback((id: string) => loadedNames.get(id) || skillNameMap.get(id) || id, [loadedNames, skillNameMap]);
+  const getAgentChipName = useCallback((id: string) => loadedNames.get(id) || agentNameMap.get(id) || id, [agentNameMap, loadedNames]);
 
   // Merge IdName pairs from API into id set and name map
   const mergeIdNames = (idNames: IdName[]): { ids: Set<string>; names: Map<string, string> } => {
@@ -1013,24 +1028,29 @@ export default function Chat() {
     const sessionSubAgentIds = sessionId ? loadedSubAgentIds : preSubAgentIds;
     setSelectedAgentIds(new Set([...agentSubAgentIds, ...sessionSubAgentIds]));
 
-    // Dataset: agent's binding takes precedence, then session's selection
+    // Dataset: pending/session selection takes precedence over the agent default.
     const agentDsId = (selectedAgent as unknown as Record<string, unknown>)?.output_dataset_id as string || null;
     const sessionDs = sessionId ? loadedDatasetId : preDatasetId;
-    setSelectedDatasetId(agentDsId || sessionDs);
+    setSelectedDatasetId(sessionDs || agentDsId);
 
     setShowConfigModal(true);
   }, [sessionId, selectedAgent, loadedToolIds, preToolIds, loadedSkillIds, preSkillIds, loadedSubAgentIds, preSubAgentIds, loadedDatasetId, preDatasetId, fetchTools, fetchSkills]);
 
-  // Handle dataset selection from modal
+  // Draft dataset selection from modal. Applying writes it to pre-session config.
   const handleSelectDataset = useCallback((id: string | null) => {
-    if (!sessionId) {
-      setPreDatasetId(id);
-    } else {
-      setLoadedDatasetId(id);
-    }
     setSelectedDatasetId(id);
-    // dataset config is sent during session creation, no need for API call here
-  }, [sessionId]);
+  }, []);
+
+  const applySelectedDataset = useCallback(() => {
+    if (sessionId) {
+      showToast('Start a new chat to change the dataset');
+      return;
+    }
+    if (!selectedDatasetId) return;
+    setPreDatasetId(selectedDatasetId);
+    setShowConfigModal(false);
+    showToast('Dataset selected, will bind on first message');
+  }, [selectedDatasetId, sessionId, showToast]);
 
   // Toggle agent selection
   const toggleAgent = useCallback((id: string) => {
@@ -1188,31 +1208,31 @@ export default function Chat() {
     }
   }, [sessionId, selectedSkillIds, showToast]);
 
-  const handleVoiceLanguageChange = (lang: string) => {
+  const handleVoiceLanguageChange = useCallback((lang: string) => {
     setVoiceLanguage(lang);
-    if (voice.isListening) {
-      voice.stopListening();
-      voice.startListening(lang);
+    if (voiceIsListening) {
+      stopListening();
+      startListening(lang);
     }
-  };
+  }, [startListening, stopListening, voiceIsListening]);
 
   const handleToggleVoiceSidebar = useCallback(() => {
     if (showVoiceSidebar) {
-      voice.stopListening();
+      stopListening();
       setShowVoiceSidebar(false);
     } else {
       openVoiceSidebar();
     }
-  }, [openVoiceSidebar, showVoiceSidebar, voice]);
+  }, [openVoiceSidebar, showVoiceSidebar, stopListening]);
 
-  const handleSendToChat = (text: string) => {
+  const handleSendToChat = useCallback((text: string) => {
     composerRef.current?.setDraft(text);
-  };
+  }, []);
 
-  const handleSendAllToChat = () => {
-    const allText = voice.segments.map(s => s.text).join('\n');
+  const handleSendAllToChat = useCallback(() => {
+    const allText = voiceSegments.map(s => s.text).join('\n');
     composerRef.current?.setDraft(allText);
-  };
+  }, [voiceSegments]);
 
   return (
     <div className="flex h-full">
@@ -1374,27 +1394,33 @@ export default function Chat() {
           loadedDatasetId={loadedDatasetId}
           preDatasetId={preDatasetId}
           onSelectDataset={handleSelectDataset}
+          onApplyDataset={applySelectedDataset}
+          datasetLocked={Boolean(sessionId)}
           onClose={() => setShowConfigModal(false)}
         />
       )}
       </div>
       {showVoiceSidebar && (
-        <VoiceTranscriberSidebar
-          segments={voice.segments}
-          isListening={voice.isListening}
-          error={voice.error}
-          language={voiceLanguage}
-          onLanguageChange={handleVoiceLanguageChange}
-          onStop={voice.stopListening}
-          onClose={() => { voice.stopListening(); setShowVoiceSidebar(false); }}
-          onStartListening={() => voice.startListening(voiceLanguage)}
-          onClear={voice.clearSegments}
-          onSendToChat={handleSendToChat}
-          onSendAllToChat={handleSendAllToChat}
-        />
+        <Suspense fallback={<div className="w-80 shrink-0 border-l" style={{ borderColor: 'var(--color-border)' }} />}>
+          <VoiceTranscriberSidebar
+            segments={voiceSegments}
+            isListening={voiceIsListening}
+            error={voiceError}
+            language={voiceLanguage}
+            onLanguageChange={handleVoiceLanguageChange}
+            onStop={stopListening}
+            onClose={() => { stopListening(); setShowVoiceSidebar(false); }}
+            onStartListening={() => startListening(voiceLanguage)}
+            onClear={clearSegments}
+            onSendToChat={handleSendToChat}
+            onSendAllToChat={handleSendAllToChat}
+          />
+        </Suspense>
       )}
       {activeArtifact && (
-        <ArtifactDrawer artifact={activeArtifact} onClose={() => setActiveArtifact(null)} />
+        <Suspense fallback={null}>
+          <ArtifactDrawer artifact={activeArtifact} onClose={() => setActiveArtifact(null)} />
+        </Suspense>
       )}
       {activeSandboxTerminal && (
         <SandboxTerminalPanel sandbox={activeSandboxTerminal} onClose={() => setActiveSandboxTerminal(null)} />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LineChart,
@@ -26,10 +26,11 @@ import {
 import { api } from '../../api/client';
 import type { ForYouDashboard, ForYouFile, ForYouReport, ForYouTodo, ForYouTokenUsage } from '../../api/client';
 import { useAuth } from '../../api/auth';
-import ArtifactDrawer from '../chat/components/ArtifactDrawer';
 import type { ArtifactSpec } from '../chat/components/artifactTypes';
 
 type RangeMode = 'yesterday' | '7d' | '30d' | 'custom';
+
+const ArtifactDrawer = lazy(() => import('../chat/components/ArtifactDrawer'));
 
 export default function ForYou() {
   const { user } = useAuth();
@@ -57,16 +58,16 @@ export default function ForYou() {
 
   useEffect(() => { loadDashboard(); }, []);
 
-  const loadTokenUsage = () => {
+  const loadTokenUsage = useCallback(() => {
     if (tokenRange === 'custom' && customFrom && customTo) {
       api.forYou.tokenUsage(undefined, customFrom, customTo).then(setTokenUsage).catch(() => {});
     } else {
       const range = tokenRange === 'custom' ? '7d' : tokenRange;
       api.forYou.tokenUsage(range).then(setTokenUsage).catch(() => {});
     }
-  };
+  }, [customFrom, customTo, tokenRange]);
 
-  useEffect(() => { loadTokenUsage(); }, [tokenRange, customFrom, customTo]);
+  useEffect(() => { loadTokenUsage(); }, [loadTokenUsage]);
 
   const addTodo = async () => {
     if (!newTodoTitle.trim()) return;
@@ -317,7 +318,9 @@ export default function ForYou() {
         </div>
       </div>
       {activeArtifact && (
-        <ArtifactDrawer artifact={activeArtifact} onClose={() => setActiveArtifact(null)} />
+        <Suspense fallback={null}>
+          <ArtifactDrawer artifact={activeArtifact} onClose={() => setActiveArtifact(null)} />
+        </Suspense>
       )}
     </div>
   );
@@ -515,11 +518,12 @@ function TokenUsageSection({ tokenUsage, tokenRange, onRangeChange,
                   borderRadius: 8,
                   fontSize: 12,
                 }}
-                formatter={(_value: any, name: any) => {
-                  const v = Number(_value);
-                  if (name === 'tokens') return [formatLargeNum(v), 'Tokens'];
-                  if (name === 'cost') return [`$${v.toFixed(4)}`, 'Cost'];
-                  return [String(v), name];
+                formatter={(value: unknown, name: unknown) => {
+                  const v = Number(value);
+                  const label = String(name);
+                  if (label === 'tokens') return [formatLargeNum(v), 'Tokens'];
+                  if (label === 'cost') return [`$${v.toFixed(4)}`, 'Cost'];
+                  return [String(v), label];
                 }}
               />
               <Legend />

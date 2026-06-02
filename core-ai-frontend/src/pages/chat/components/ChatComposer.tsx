@@ -74,6 +74,158 @@ const VALID_ATTACHMENT_TYPES = new Set([
 const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024;
 const COLLAPSE_THRESHOLD = 8;
 
+interface ComposerConfigChipsProps {
+  totalChips: number;
+  datasetChips: number;
+  loadedToolIds: Set<string>;
+  loadedSkillIds: Set<string>;
+  loadedSubAgentIds: Set<string>;
+  preToolIds: Set<string>;
+  preSkillIds: Set<string>;
+  preSubAgentIds: Set<string>;
+  loadedDatasetId: string | null;
+  preDatasetId: string | null;
+  getSkillChipName: (id: string) => string;
+  getAgentChipName: (id: string) => string;
+  getDatasetChipName: (id: string | null) => string;
+}
+
+const ComposerConfigChips = memo(function ComposerConfigChips({
+  totalChips,
+  datasetChips,
+  loadedToolIds,
+  loadedSkillIds,
+  loadedSubAgentIds,
+  preToolIds,
+  preSkillIds,
+  preSubAgentIds,
+  loadedDatasetId,
+  preDatasetId,
+  getSkillChipName,
+  getAgentChipName,
+  getDatasetChipName,
+}: ComposerConfigChipsProps) {
+  const [chipsExpanded, setChipsExpanded] = useState(false);
+  const collapsible = totalChips > COLLAPSE_THRESHOLD;
+  const collapsed = collapsible && !chipsExpanded;
+  const effectiveDatasetId = preDatasetId || loadedDatasetId;
+  const datasetPending = Boolean(preDatasetId);
+
+  if (totalChips === 0) return null;
+
+  return (
+    <div className="mb-2">
+      {collapsible && (
+        <button
+          onClick={() => setChipsExpanded(value => !value)}
+          className="inline-flex items-center gap-1 text-xs mb-1.5 cursor-pointer hover:opacity-80"
+          style={{ color: 'var(--color-text-secondary)' }}>
+          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          <span>
+            {loadedToolIds.size + preToolIds.size > 0 && `${loadedToolIds.size + preToolIds.size} tools`}
+            {loadedSkillIds.size + preSkillIds.size > 0 && `${loadedToolIds.size + preToolIds.size > 0 ? ', ' : ''}${loadedSkillIds.size + preSkillIds.size} skills`}
+            {loadedSubAgentIds.size + preSubAgentIds.size > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0) ? ', ' : ''}${loadedSubAgentIds.size + preSubAgentIds.size} agents`}
+            {datasetChips > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0 || loadedSubAgentIds.size + preSubAgentIds.size > 0) ? ', ' : ''}${getDatasetChipName(effectiveDatasetId)}`}
+            {' loaded'}
+          </span>
+        </button>
+      )}
+      {!collapsed && (
+        <div className="flex flex-wrap gap-1.5 min-h-[24px]">
+          {Array.from(loadedToolIds).map(name => (
+            <span key={`t-${name}`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+              style={{
+                background: 'var(--color-primary)' + '18',
+                color: 'var(--color-primary)',
+                border: '1px solid var(--color-primary)' + '30',
+              }}>
+              <Wrench size={10} />
+              {name}
+            </span>
+          ))}
+          {Array.from(preToolIds).map(name => (
+            <span key={`pt-${name}`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+              style={{
+                background: 'var(--color-primary)' + '08',
+                color: 'var(--color-text-muted)',
+                border: '1px dashed var(--color-border)',
+              }}>
+              <Wrench size={10} />
+              {name}
+              <span className="ml-0.5 opacity-60">(pending)</span>
+            </span>
+          ))}
+          {Array.from(loadedSkillIds).map(id => (
+            <span key={`s-${id}`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+              style={{
+                background: 'var(--color-warning)' + '18',
+                color: 'var(--color-warning)',
+                border: '1px solid var(--color-warning)' + '30',
+              }}>
+              <Sparkles size={10} />
+              {getSkillChipName(id)}
+            </span>
+          ))}
+          {Array.from(preSkillIds).map(id => (
+            <span key={`ps-${id}`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+              style={{
+                background: 'var(--color-warning)' + '08',
+                color: 'var(--color-text-muted)',
+                border: '1px dashed var(--color-border)',
+              }}>
+              <Sparkles size={10} />
+              {getSkillChipName(id)}
+              <span className="ml-0.5 opacity-60">(pending)</span>
+            </span>
+          ))}
+          {Array.from(loadedSubAgentIds).map(id => (
+            <span key={`lsa-${id}`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+              style={{
+                background: '#8b5cf6' + '18',
+                color: '#8b5cf6',
+                border: '1px solid #8b5cf6' + '30',
+              }}>
+              <Users size={10} />
+              {getAgentChipName(id)}
+            </span>
+          ))}
+          {Array.from(preSubAgentIds).map(id => (
+            <span key={`psa-${id}`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+              style={{
+                background: '#8b5cf6' + '08',
+                color: 'var(--color-text-muted)',
+                border: '1px dashed var(--color-border)',
+              }}>
+              <Users size={10} />
+              {getAgentChipName(id)}
+              <span className="ml-0.5 opacity-60">(pending)</span>
+            </span>
+          ))}
+          {effectiveDatasetId && (
+            <span key="ds-effective"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+              style={{
+                background: datasetPending ? '#3b82f6' + '08' : '#3b82f6' + '18',
+                color: datasetPending ? 'var(--color-text-muted)' : '#3b82f6',
+                border: datasetPending ? '1px dashed var(--color-border)' : '1px solid #3b82f6' + '30',
+              }}>
+              <Database size={10} />
+              {getDatasetChipName(effectiveDatasetId)}
+              {datasetPending && <span className="ml-0.5 opacity-60">(pending)</span>}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer({
   status,
   selectedAgentId,
@@ -99,7 +251,6 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
   const [input, setInput] = useState('');
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [needsExpand, setNeedsExpand] = useState(false);
-  const [chipsExpanded, setChipsExpanded] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -232,134 +383,25 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     + preSubAgentIds.size
     + datasetChips;
   const hasConfig = totalChips > 0;
-  const collapsible = totalChips > COLLAPSE_THRESHOLD;
-  const collapsed = collapsible && !chipsExpanded;
 
   return (
     <div className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
       <div className="max-w-4xl mx-auto">
-        {hasConfig && (
-          <div className="mb-2">
-            {collapsible && (
-              <button
-                onClick={() => setChipsExpanded(value => !value)}
-                className="inline-flex items-center gap-1 text-xs mb-1.5 cursor-pointer hover:opacity-80"
-                style={{ color: 'var(--color-text-secondary)' }}>
-                {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-                <span>
-                  {loadedToolIds.size + preToolIds.size > 0 && `${loadedToolIds.size + preToolIds.size} tools`}
-                  {loadedSkillIds.size + preSkillIds.size > 0 && `${loadedToolIds.size + preToolIds.size > 0 ? ', ' : ''}${loadedSkillIds.size + preSkillIds.size} skills`}
-                  {loadedSubAgentIds.size + preSubAgentIds.size > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0) ? ', ' : ''}${loadedSubAgentIds.size + preSubAgentIds.size} agents`}
-                  {datasetChips > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0 || loadedSubAgentIds.size + preSubAgentIds.size > 0) ? ', ' : ''}${getDatasetChipName(loadedDatasetId || preDatasetId)}`}
-                  {' loaded'}
-                </span>
-              </button>
-            )}
-            {!collapsed && (
-              <div className="flex flex-wrap gap-1.5 min-h-[24px]">
-                {Array.from(loadedToolIds).map(name => (
-                  <span key={`t-${name}`}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                    style={{
-                      background: 'var(--color-primary)' + '18',
-                      color: 'var(--color-primary)',
-                      border: '1px solid var(--color-primary)' + '30',
-                    }}>
-                    <Wrench size={10} />
-                    {name}
-                  </span>
-                ))}
-                {Array.from(preToolIds).map(name => (
-                  <span key={`pt-${name}`}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                    style={{
-                      background: 'var(--color-primary)' + '08',
-                      color: 'var(--color-text-muted)',
-                      border: '1px dashed var(--color-border)',
-                    }}>
-                    <Wrench size={10} />
-                    {name}
-                    <span className="ml-0.5 opacity-60">(pending)</span>
-                  </span>
-                ))}
-                {Array.from(loadedSkillIds).map(id => (
-                  <span key={`s-${id}`}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                    style={{
-                      background: 'var(--color-warning)' + '18',
-                      color: 'var(--color-warning)',
-                      border: '1px solid var(--color-warning)' + '30',
-                    }}>
-                    <Sparkles size={10} />
-                    {getSkillChipName(id)}
-                  </span>
-                ))}
-                {Array.from(preSkillIds).map(id => (
-                  <span key={`ps-${id}`}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                    style={{
-                      background: 'var(--color-warning)' + '08',
-                      color: 'var(--color-text-muted)',
-                      border: '1px dashed var(--color-border)',
-                    }}>
-                    <Sparkles size={10} />
-                    {getSkillChipName(id)}
-                    <span className="ml-0.5 opacity-60">(pending)</span>
-                  </span>
-                ))}
-                {Array.from(loadedSubAgentIds).map(id => (
-                  <span key={`lsa-${id}`}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                    style={{
-                      background: '#8b5cf6' + '18',
-                      color: '#8b5cf6',
-                      border: '1px solid #8b5cf6' + '30',
-                    }}>
-                    <Users size={10} />
-                    {getAgentChipName(id)}
-                  </span>
-                ))}
-                {Array.from(preSubAgentIds).map(id => (
-                  <span key={`psa-${id}`}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                    style={{
-                      background: '#8b5cf6' + '08',
-                      color: 'var(--color-text-muted)',
-                      border: '1px dashed var(--color-border)',
-                    }}>
-                    <Users size={10} />
-                    {getAgentChipName(id)}
-                    <span className="ml-0.5 opacity-60">(pending)</span>
-                  </span>
-                ))}
-                {loadedDatasetId && (
-                  <span key="ds-loaded"
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                    style={{
-                      background: '#3b82f6' + '18',
-                      color: '#3b82f6',
-                      border: '1px solid #3b82f6' + '30',
-                    }}>
-                    <Database size={10} />
-                    {getDatasetChipName(loadedDatasetId)}
-                  </span>
-                )}
-                {preDatasetId && (
-                  <span key="ds-pending"
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                    style={{
-                      background: '#3b82f6' + '18',
-                      color: '#3b82f6',
-                      border: '1px solid #3b82f6' + '30',
-                    }}>
-                    <Database size={10} />
-                    {getDatasetChipName(preDatasetId)}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <ComposerConfigChips
+          totalChips={totalChips}
+          datasetChips={datasetChips}
+          loadedToolIds={loadedToolIds}
+          loadedSkillIds={loadedSkillIds}
+          loadedSubAgentIds={loadedSubAgentIds}
+          preToolIds={preToolIds}
+          preSkillIds={preSkillIds}
+          preSubAgentIds={preSubAgentIds}
+          loadedDatasetId={loadedDatasetId}
+          preDatasetId={preDatasetId}
+          getSkillChipName={getSkillChipName}
+          getAgentChipName={getAgentChipName}
+          getDatasetChipName={getDatasetChipName}
+        />
 
         {pendingAttachments.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-2">
