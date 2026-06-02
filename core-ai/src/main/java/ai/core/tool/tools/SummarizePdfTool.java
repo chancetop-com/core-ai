@@ -39,7 +39,7 @@ public class SummarizePdfTool extends ToolCall {
         var llmProvider = context.getLlmProvider();
         var messages = List.of(Message.of(new Message.MessageRecord(
                 RoleType.USER,
-                List.of(Content.of(params.query), Content.ofFileUrl(params.url)),
+                List.of(Content.of(params.query()), Content.ofFileUrl(params.url())),
                 null, null, null, null)));
         var targetModel = resolveModel(context);
         var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, targetModel, null));
@@ -85,8 +85,6 @@ public class SummarizePdfTool extends ToolCall {
         }
     }
 
-    public static class SummarizePdfToolParams {
-        public String query;
-        public String url;
+    public record SummarizePdfToolParams(String query, String url) {
     }
 }

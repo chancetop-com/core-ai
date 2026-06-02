@@ -11,6 +11,8 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -19,6 +21,8 @@ import java.util.List;
  */
 public class CaptionImageTool extends ToolCall {
     public static final String TOOL_NAME = "caption_image";
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CaptionImageTool.class);
 
     private static final String TOOL_DESC = """
             tool to generate a caption for an image based on the image content and a query.
@@ -39,9 +43,11 @@ public class CaptionImageTool extends ToolCall {
         var llmProvider = context.getLlmProvider();
         var messages = List.of(Message.of(new Message.MessageRecord(
                 RoleType.USER,
-                List.of(Content.of(params.query), Content.of(Content.ImageUrl.of(params.url, null))),
+                List.of(Content.of(params.query()), Content.of(Content.ImageUrl.of(params.url(), null))),
                 null, null, null, null)));
         var effectiveModel = resolveModel(context, llmProvider);
+        LOGGER.info("caption_image using model=[{}], context.multiModalModel=[{}], context.model=[{}]",
+                effectiveModel, context.getMultiModalModel(), context.getModel());
         var rsp = llmProvider.completion(CompletionRequest.of(messages, List.of(), null, effectiveModel, null));
         return ToolCallResult.completed(rsp.choices.getFirst().message.content);
     }
@@ -76,8 +82,6 @@ public class CaptionImageTool extends ToolCall {
         }
     }
 
-    public static class CaptionImageToolParams {
-        public String query;
-        public String url;
+    public record CaptionImageToolParams(String query, String url) {
     }
 }
