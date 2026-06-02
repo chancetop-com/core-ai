@@ -105,7 +105,7 @@ public class KubernetesPodSpecBuilder {
         var container = new LinkedHashMap<String, Object>();
         container.put("name", "sandbox");
         container.put("image", config.image != null ? config.image : SandboxConstants.DEFAULT_IMAGE);
-        container.put("imagePullPolicy", "IfNotPresent");
+        container.put("imagePullPolicy", "Always");
         container.put("ports", List.of(Map.of("containerPort", RUNTIME_PORT)));
         container.put("securityContext", buildContainerSecurityContext());
         container.put("resources", buildResources());
