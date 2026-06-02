@@ -295,6 +295,17 @@ public class AgentBootstrap {
         props.property(prefix + ".timeout.seconds").ifPresent(v -> config.setTimeout(Long.parseLong(v)));
         props.property(prefix + ".connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.parseLong(v)));
         props.property(prefix + ".stream.buffer.size").ifPresent(v -> config.setStreamBufferSize(Integer.parseInt(v)));
+        applyModelExtraBodies(config, prefix);
+    }
+
+    private void applyModelExtraBodies(LLMProviderConfig config, String prefix) {
+        var extraBodyPrefix = prefix + ".request.extra_body.";
+        for (var key : props.propertyNames()) {
+            if (key.startsWith(extraBodyPrefix) && key.length() > extraBodyPrefix.length()) {
+                var modelName = key.substring(extraBodyPrefix.length());
+                props.property(key).ifPresent(value -> config.addModelExtraBody(modelName, value));
+            }
+        }
     }
 
     private void injectTracerIfAvailable(LLMProvider provider) {

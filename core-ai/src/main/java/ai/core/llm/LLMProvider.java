@@ -112,8 +112,8 @@ public abstract class LLMProvider {
         preprocess(request);
         request.stream = true;
         request.streamOptions = new StreamOptions();
-        if (request.getExtraBody() != null && config.getRequestExtraBody() != null) {
-            LOGGER.warn("both request and provider config set extra body, provider config extra body will be ignored, request extra body={}, config extra body={}", request.getExtraBody(), config.getRequestExtraBody());
+        if (request.getExtraBody() != null && config.resolveExtraBody(request.model) != null) {
+            LOGGER.warn("both request and provider config set extra body, provider config extra body will be ignored, request extra body={}, config extra body={}", request.getExtraBody(), config.resolveExtraBody(request.model));
         }
         var wrappedCallback = wrapCallback(callback);
         CompletionResponse response;

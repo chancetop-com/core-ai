@@ -3,6 +3,8 @@ package ai.core.llm;
 import ai.core.utils.JsonUtil;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -13,6 +15,7 @@ public class LLMProviderConfig {
     private Double temperature;
     private String embeddingModel;
     private Object requestExtraBody;
+    private final Map<String, Object> modelExtraBodies = new HashMap<>();
     private Duration timeout = Duration.ofSeconds(300);
     private Duration connectTimeout = Duration.ofSeconds(3);
     private int streamBufferSize = 0;
@@ -29,6 +32,7 @@ public class LLMProviderConfig {
         this.temperature = other.temperature;
         this.embeddingModel = other.embeddingModel;
         this.requestExtraBody = other.requestExtraBody;
+        this.modelExtraBodies.putAll(other.modelExtraBodies);
         this.timeout = other.timeout;
         this.connectTimeout = other.connectTimeout;
         this.streamBufferSize = other.streamBufferSize;
@@ -88,6 +92,30 @@ public class LLMProviderConfig {
 
     public void setRequestExtraBody(String requestExtraBody) {
         this.requestExtraBody = JsonUtil.fromJson(Object.class, requestExtraBody);
+    }
+
+    public void addModelExtraBody(String modelName, String json) {
+        if (json == null || json.isBlank()) {
+            modelExtraBodies.put(modelName, null);
+        } else {
+            modelExtraBodies.put(modelName, JsonUtil.fromJson(Object.class, json));
+        }
+    }
+
+    public Object resolveExtraBody(String modelName) {
+        if (modelName != null) {
+            if (modelExtraBodies.containsKey(modelName)) {
+                return modelExtraBodies.get(modelName);
+            }
+            int slash = modelName.lastIndexOf('/');
+            if (slash >= 0) {
+                var nameOnly = modelName.substring(slash + 1);
+                if (modelExtraBodies.containsKey(nameOnly)) {
+                    return modelExtraBodies.get(nameOnly);
+                }
+            }
+        }
+        return requestExtraBody;
     }
 
     public int getStreamBufferSize() {
