@@ -55,6 +55,8 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.tool.tools.WriteTodoTaskTool.UpdateTaskParams",
         "ai.core.tool.tools.WriteTodoTaskTool.GetTaskParams",
         "ai.core.tool.tools.WriteTodoTaskTool.TaskEntity",
+        "ai.core.tool.tools.CaptionImageTool$CaptionImageToolParams",
+        "ai.core.tool.tools.SummarizePdfTool$SummarizePdfToolParams",
         // Vendor management classes for GraalVM reflection
         "ai.core.vender.Vendor",
         "ai.core.vender.VendorConfig",
