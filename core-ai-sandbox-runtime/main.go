@@ -843,14 +843,29 @@ func extractZip(data []byte, targetDir string) error {
 }
 
 func minimalEnv() []string {
-	return []string{
-		"PATH=/usr/local/bin:/usr/bin:/bin",
-		"HOME=/tmp",
-		"LANG=en_US.UTF-8",
-		"PYTHONIOENCODING=utf-8",
-		"PYTHONDONTWRITEBYTECODE=1",
-		"PIP_USER=1",
+	// Start from the parent process environment so container-level env vars
+	// (API_KEY, K8s service vars, etc.) are inherited by child processes.
+	parent := os.Environ()
+	overrides := map[string]string{
+		"PATH":                      "/usr/local/bin:/usr/bin:/bin",
+		"HOME":                      "/tmp",
+		"LANG":                      "en_US.UTF-8",
+		"PYTHONIOENCODING":          "utf-8",
+		"PYTHONDONTWRITEBYTECODE":   "1",
+		"PIP_USER":                  "1",
 	}
+	result := make([]string, 0, len(parent)+len(overrides))
+	for _, e := range parent {
+		key, _, found := strings.Cut(e, "=")
+		if found && overrides[key] != "" {
+			continue // will be overridden below
+		}
+		result = append(result, e)
+	}
+	for k, v := range overrides {
+		result = append(result, k+"="+v)
+	}
+	return result
 }
 
 func findPython() string {
