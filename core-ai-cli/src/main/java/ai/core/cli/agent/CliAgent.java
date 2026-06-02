@@ -85,6 +85,10 @@ public class CliAgent {
         if (config.modelOverride != null) {
             builder.model(config.modelOverride);
         }
+        var multiModalModel = config.providers.getDefaultProvider().config.getMultiModalModel();
+        if (multiModalModel != null) {
+            builder.multiModalModel(multiModalModel);
+        }
         var agent = builder.build();
         var execCtx = ExecutionContext.builder()
                 .sessionId(config.sessionId)
