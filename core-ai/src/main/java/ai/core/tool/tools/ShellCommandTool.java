@@ -335,7 +335,7 @@ public class ShellCommandTool extends ToolCall {
             var prefixParts = shellPrefix.split(" ");
             var taskManager = context.getTaskManager();
             var commands = new ArrayList<>(Arrays.asList(prefixParts));
-            commands.add(command);
+            commands.add(ShellUtil.wrapCommand(prefixParts[0], command));
             if (runInBackground && taskManager != null) {
                 var taskId = UUID.randomUUID().toString().replace("-", "");
                 var description = getStringValue(argsMap, "description");

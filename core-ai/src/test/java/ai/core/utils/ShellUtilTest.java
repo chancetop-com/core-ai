@@ -67,9 +67,12 @@ class ShellUtilTest {
         if (java.util.List.of("bash", "zsh", "sh").contains(shell)) {
             assertTrue(prefix.endsWith(" -c "),
                     "Windows shell prefix for " + shell + " must end with ' -c ', but got: " + prefix);
+        } else if (shell.contains("pwsh") || shell.contains("powershell")) {
+            assertTrue(prefix.endsWith(" -NoProfile -Command "),
+                    "PowerShell prefix must end with ' -NoProfile -Command ', but got: " + prefix);
         } else {
-            assertTrue(prefix.endsWith(" -Command "),
-                    "Windows shell prefix for " + shell + " must end with ' -Command ', but got: " + prefix);
+            assertTrue(prefix.endsWith(" /c "),
+                    "cmd prefix must end with ' /c ', but got: " + prefix);
         }
     }
 

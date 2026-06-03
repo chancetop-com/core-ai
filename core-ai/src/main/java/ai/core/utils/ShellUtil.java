@@ -58,9 +58,29 @@ public class ShellUtil {
         return UNIX_SHELLS.contains(shell);
     }
 
+    public static boolean isPowerShell(String shell) {
+        return shell != null && (shell.contains("pwsh") || shell.contains("powershell"));
+    }
+
     public static String getPreferredShellCommandPrefix(Platform os) {
         var shell = getPreferredShell(os);
-        var flag = isUnixShell(shell) ? "-c" : "-Command";
-        return shell + " " + flag + " ";
+        if (isUnixShell(shell)) {
+            return shell + " -c ";
+        }
+        if (isPowerShell(shell)) {
+            return shell + " -NoProfile -Command ";
+        }
+        return shell + " /c ";
+    }
+
+    public static String getPowerShellEncodingSetup() {
+        return "$OutputEncoding=[System.Text.UTF8Encoding]::new();[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();";
+    }
+
+    public static String wrapCommand(String shell, String command) {
+        if (isPowerShell(shell) && command != null) {
+            return getPowerShellEncodingSetup() + command;
+        }
+        return command;
     }
 }
