@@ -303,6 +303,11 @@ public class McpClientManager implements AutoCloseable {
         }
     }
 
+    // Register a JVM shutdown hook as a safety net for MCP subprocess cleanup.
+    // Note: GraalVM native-image may not guarantee orderly shutdown hook execution
+    // on SIGINT (Ctrl+C). CliApp also registers a separate shutdown hook that calls
+    // closeShutdownResources(), which in turn calls McpClientManager.close(), as an
+    // additional layer of defense.
     void registerShutdownHook() {
         shutdownHook = new Thread(() -> {
             if (!closed) {

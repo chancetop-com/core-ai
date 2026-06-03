@@ -143,6 +143,28 @@ public class CliApp {
         var ui = new TerminalUI();
         InteractiveConfigSetup.setupIfNeeded(ui);
         var sessionContext = initializeSession(ui);
+
+        // Register shutdown hook to clean up MCP subprocesses and other resources
+        // on Ctrl+C (SIGINT). GraalVM native-image may not guarantee orderly shutdown
+        // hook execution for SIGINT, so this is a best-effort safety net combined with
+        // the hooks registered deeper in McpClientManager and McpClientService.
+        var shutdownResources = sessionContext.result().shutdownResources();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            ScriptHookLifecycle.fireSessionStopHooks(workspace);
+            for (var resource : shutdownResources) {
+                try {
+                    resource.close();
+                } catch (Exception ignored) {
+                    // shutdown cleanup failure is non-critical
+                }
+            }
+            try {
+                ui.close();
+            } catch (Exception ignored) {
+                // terminal cleanup failure is non-critical
+            }
+        }, "cli-shutdown-hook"));
+
         if (prompt != null) {
             runSinglePrompt(ui, sessionContext, prompt);
         } else {

@@ -170,6 +170,16 @@ public class McpClientService implements AutoCloseable {
     @Override
     public void close() {
         LOGGER.debug("Closing MCP client: {}", serverName);
+
+        // Kill the subprocess tree first — on Windows with Ctrl+C, the cmd.exe
+        // wrapper may already be dead by the time shutdown hooks run, so we must
+        // try to clean up before that window closes.
+        if (stdioProcess != null) {
+            forceDestroyProcessTree(stdioProcess);
+        } else {
+            LOGGER.debug("No subprocess to destroy for: {}", serverName);
+        }
+
         if (client != null) {
             try {
                 client.closeGracefully();
@@ -185,21 +195,24 @@ public class McpClientService implements AutoCloseable {
             }
         }
 
-        if (stdioProcess != null) {
-            forceDestroyProcessTree(stdioProcess);
-        } else {
-            LOGGER.debug("No subprocess to destroy for: {}", serverName);
-        }
         LOGGER.debug("MCP client closed: {}", serverName);
     }
 
     private void forceDestroyProcessTree(Process process) {
+        long pid = process.pid();
+
         if (!process.isAlive()) {
-            LOGGER.debug("Process already terminated for: {}", serverName);
+            LOGGER.debug("Process already terminated for: {}, attempting fallback cleanup", serverName);
+            // On Windows, when the parent process (cmd.exe wrapper) is killed by
+            // Ctrl+C before we get here, its descendants (npx, node) may still be
+            // running as orphans. process.descendants() won't work on a dead parent,
+            // so we find them by parent PID and kill them explicitly.
+            if (SystemUtil.detectPlatform().isWindows()) {
+                killOrphanedChildrenOnWindows(pid);
+            }
             return;
         }
 
-        long pid = process.pid();
         LOGGER.debug("Force destroying MCP subprocess tree: server={}, pid={}", serverName, pid);
 
         process.descendants().forEach(ph -> {
@@ -232,6 +245,21 @@ public class McpClientService implements AutoCloseable {
             killProcess.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
             LOGGER.warn("Failed to execute taskkill: {}", e.getMessage());
+        }
+    }
+
+    private void killOrphanedChildrenOnWindows(long parentPid) {
+        try {
+            LOGGER.debug("Searching for orphaned children of dead parent pid={}", parentPid);
+            String psCommand = String.format(
+                "Get-CimInstance Win32_Process -Filter \"ParentProcessId=%d\" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
+                parentPid);
+            var pb = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", psCommand);
+            pb.redirectErrorStream(true);
+            var psProcess = pb.start();
+            psProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to kill orphaned children for parent pid={}: {}", parentPid, e.getMessage());
         }
     }
 
