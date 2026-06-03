@@ -238,15 +238,15 @@ export default function Chat() {
     setPreDatasetId(null);
     setSelectedDatasetId(null);
 
-    const skillIds = agent.skill_ids;
-    if (skillIds && skillIds.length > 0) {
-      setLoadedSkillIds(new Set(skillIds.map(s => s.id)));
-      setLoadedNames(prev => { const m = new Map(prev); for (const s of skillIds) m.set(s.id, s.name); return m; });
+    const skills = agent.skills;
+    if (skills && skills.length > 0) {
+      setLoadedSkillIds(new Set(skills.map(s => s.id)));
+      setLoadedNames(prev => { const m = new Map(prev); for (const s of skills) m.set(s.id, s.name); return m; });
     }
-    const subAgentIds = agent.subagent_ids;
-    if (subAgentIds && subAgentIds.length > 0) {
-      setLoadedSubAgentIds(new Set(subAgentIds.map(a => a.id)));
-      setLoadedNames(prev => { const m = new Map(prev); for (const a of subAgentIds) m.set(a.id, a.name); return m; });
+    const subAgents = agent.sub_agents;
+    if (subAgents && subAgents.length > 0) {
+      setLoadedSubAgentIds(new Set(subAgents.map(a => a.id)));
+      setLoadedNames(prev => { const m = new Map(prev); for (const a of subAgents) m.set(a.id, a.name); return m; });
     }
   }, [agents, selectedAgentId]);
 
@@ -1018,13 +1018,13 @@ export default function Chat() {
     fetchTools();
 
     // Skills
-    const agentSkillIds = selectedAgent?.skill_ids?.map(s => s.id) || [];
+    const agentSkillIds = selectedAgent?.skill_ids || [];
     const sessionSkillIds = sessionId ? loadedSkillIds : preSkillIds;
     setSelectedSkillIds(new Set([...agentSkillIds, ...sessionSkillIds]));
     fetchSkills();
 
     // Subagents
-    const agentSubAgentIds = selectedAgent?.subagent_ids?.map(a => a.id) || [];
+    const agentSubAgentIds = selectedAgent?.subagent_ids || [];
     const sessionSubAgentIds = sessionId ? loadedSubAgentIds : preSubAgentIds;
     setSelectedAgentIds(new Set([...agentSubAgentIds, ...sessionSubAgentIds]));
 

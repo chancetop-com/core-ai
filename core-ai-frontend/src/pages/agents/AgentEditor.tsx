@@ -17,14 +17,6 @@ const NEW_AGENT_SKELETON: AgentDefinition = {
   subagent_ids: [], skill_ids: [],
 };
 
-// Backend returns skill_ids/subagent_ids as [{id, name}] objects, but the editor renders them as plain id strings.
-// Both the load and the save/publish paths must normalize to id strings, otherwise React renders objects as children and the page crashes.
-const normalizeAgentRefs = (data: AgentDefinition): AgentDefinition => ({
-  ...data,
-  skill_ids: (data.skill_ids as unknown as { id: string }[] | undefined)?.map(s => s.id) || [],
-  subagent_ids: (data.subagent_ids as unknown as { id: string }[] | undefined)?.map(a => a.id) || [],
-} as unknown as AgentDefinition);
-
 export default function AgentEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -134,7 +126,7 @@ export default function AgentEditor() {
       return;
     }
 
-    api.agents.get(id).then(data => setAgent(normalizeAgentRefs(data))).catch(console.error).finally(() => setLoading(false));
+    api.agents.get(id).then(data => setAgent(data)).catch(console.error).finally(() => setLoading(false));
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
   }, [id, isNew]);
@@ -352,8 +344,8 @@ The system prompt should define how this agent behaves, its capabilities, and it
           input_template: agent.input_template,
           variables: agent.variables,
           response_schema: agent.response_schema,
-          subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids,
-          skill_ids: (agent as unknown as Record<string, unknown>).skill_ids,
+          subagent_ids: agent.subagent_ids,
+          skill_ids: agent.skill_ids,
           output_dataset_id: agent.output_dataset_id,
           sandbox_config: agent.sandbox_config,
         } as any);
@@ -376,12 +368,12 @@ The system prompt should define how this agent behaves, its capabilities, and it
         input_template: agent.input_template,
         variables: agent.variables,
         response_schema: agent.response_schema,
-          subagent_ids: (agent as unknown as Record<string, unknown>).subagent_ids,
-          skill_ids: (agent as unknown as Record<string, unknown>).skill_ids,
+          subagent_ids: agent.subagent_ids,
+          skill_ids: agent.skill_ids,
           output_dataset_id: agent.output_dataset_id,
           sandbox_config: agent.sandbox_config,
         } as any);
-        setAgent(normalizeAgentRefs(updated));
+        setAgent(updated);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
@@ -397,7 +389,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
     setPublishSuccess(false);
     try {
       const published = await api.agents.publish(id);
-      setAgent(normalizeAgentRefs(published));
+      setAgent(published);
       setPublishSuccess(true);
       setTimeout(() => setPublishSuccess(false), 3000);
     } catch (e) {
@@ -623,8 +615,8 @@ The system prompt should define how this agent behaves, its capabilities, and it
       system_prompt: a.system_prompt, model: a.model, multi_modal_model: a.multi_modal_model, temperature: a.temperature,
       max_turns: a.max_turns, timeout_seconds: a.timeout_seconds,         tools: a.tools,
       input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
-      subagent_ids: (a as unknown as Record<string, unknown>).subagent_ids,
-      skill_ids: (a as unknown as Record<string, unknown>).skill_ids,
+      subagent_ids: a.subagent_ids,
+      skill_ids: a.skill_ids,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1360,9 +1352,9 @@ The system prompt should define how this agent behaves, its capabilities, and it
             </p>
 
             {/* Selected subagents */}
-            {(agent as unknown as Record<string, unknown>).subagent_ids && ((agent as unknown as Record<string, unknown>).subagent_ids as string[]).length > 0 ? (
+            {agent.subagent_ids && agent.subagent_ids.length > 0 ? (
               <div className="flex flex-wrap gap-2 mb-3">
-                {((agent as unknown as Record<string, unknown>).subagent_ids as string[]).map((subAgentId: string) => {
+                {agent.subagent_ids.map((subAgentId: string) => {
                   const subAgent = allAgents.find(a => a.id === subAgentId);
                   return (
                     <span key={subAgentId}
@@ -1370,7 +1362,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
                       <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#8b5cf6' }} />
                       <span className="font-medium">{subAgent?.name || subAgentId}</span>
-                      <button onClick={() => update('subagent_ids', ((agent as unknown as Record<string, unknown>).subagent_ids as string[]).filter((id: string) => id !== subAgentId))}
+                      <button onClick={() => update('subagent_ids', agent.subagent_ids!.filter((id: string) => id !== subAgentId))}
                         className="cursor-pointer ml-0.5 rounded hover:bg-[var(--color-bg-tertiary)]"
                         style={{ color: 'var(--color-text-secondary)' }}>
                         <X size={12} />
@@ -1400,12 +1392,12 @@ The system prompt should define how this agent behaves, its capabilities, and it
                   onMouseDown={e => e.preventDefault()}
                   style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
                   {allAgents
-                    .filter(a => !((agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined)?.includes(a.id))
+                    .filter(a => !agent.subagent_ids?.includes(a.id))
                     .filter(a => !subAgentSearch || a.name.toLowerCase().includes(subAgentSearch.toLowerCase()) || a.type?.toLowerCase().includes(subAgentSearch.toLowerCase()))
                     .map(a => (
                       <button key={a.id}
                         onClick={() => {
-                          const currentIds = ((agent as unknown as Record<string, unknown>).subagent_ids as string[]) || [];
+                          const currentIds = agent.subagent_ids || [];
                           update('subagent_ids', [...currentIds, a.id]);
                           setSubAgentSearch('');
                         }}
@@ -1423,7 +1415,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       </button>
                     ))}
                   {allAgents
-                    .filter(a => !((agent as unknown as Record<string, unknown>).subagent_ids as string[] | undefined)?.includes(a.id))
+                    .filter(a => !agent.subagent_ids?.includes(a.id))
                     .filter(a => !subAgentSearch || a.name.toLowerCase().includes(subAgentSearch.toLowerCase())).length === 0 && (
                     <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                       {subAgentSearch ? 'No matching agents' : 'No more agents available'}
@@ -1445,9 +1437,9 @@ The system prompt should define how this agent behaves, its capabilities, and it
             </p>
 
             {/* Selected skills */}
-            {(agent as unknown as Record<string, unknown>).skill_ids && ((agent as unknown as Record<string, unknown>).skill_ids as string[]).length > 0 ? (
+            {agent.skill_ids && agent.skill_ids.length > 0 ? (
               <div className="flex flex-wrap gap-2 mb-3">
-                {((agent as unknown as Record<string, unknown>).skill_ids as string[]).map((skillId: string) => {
+                {agent.skill_ids.map((skillId: string) => {
                   const skill = allSkills.find(s => s.id === skillId);
                   return (
                     <span key={skillId}
@@ -1459,7 +1451,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                         style={{ background: '#ec489915', color: '#ec4899' }}>
                         {skill?.namespace || 'custom'}
                       </span>
-                      <button onClick={() => update('skill_ids', ((agent as unknown as Record<string, unknown>).skill_ids as string[]).filter((id: string) => id !== skillId))}
+                      <button onClick={() => update('skill_ids', agent.skill_ids!.filter((id: string) => id !== skillId))}
                         className="cursor-pointer ml-0.5 rounded hover:bg-[var(--color-bg-tertiary)]"
                         style={{ color: 'var(--color-text-secondary)' }}>
                         <X size={12} />
@@ -1488,12 +1480,12 @@ The system prompt should define how this agent behaves, its capabilities, and it
                   onMouseDown={e => e.preventDefault()}
                   style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
                   {allSkills
-                    .filter(s => !((agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined)?.includes(s.id))
+                    .filter(s => !agent.skill_ids?.includes(s.id))
                     .filter(s => !skillSearch || s.name.toLowerCase().includes(skillSearch.toLowerCase()) || s.namespace?.toLowerCase().includes(skillSearch.toLowerCase()))
                     .map(s => (
                       <button key={s.id}
                         onClick={() => {
-                          const currentIds = ((agent as unknown as Record<string, unknown>).skill_ids as string[]) || [];
+                          const currentIds = agent.skill_ids || [];
                           update('skill_ids', [...currentIds, s.id]);
                           setSkillSearch('');
                         }}
@@ -1511,7 +1503,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                       </button>
                     ))}
                   {allSkills
-                    .filter(s => !((agent as unknown as Record<string, unknown>).skill_ids as string[] | undefined)?.includes(s.id))
+                    .filter(s => !agent.skill_ids?.includes(s.id))
                     .filter(s => !skillSearch || s.name.toLowerCase().includes(skillSearch.toLowerCase())).length === 0 && (
                     <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                       {skillSearch ? 'No matching skills' : 'No more skills available'}

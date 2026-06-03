@@ -237,7 +237,9 @@ public class AgentDefinitionService {
         view.createdBy = resolveUserName(entity.userId);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
-        view.subAgentIds = entity.subAgentIds != null ? entity.subAgentIds.stream()
+        view.subAgentIds = entity.subAgentIds;
+        view.skillIds = entity.skillIds;
+        view.subAgents = entity.subAgentIds != null ? entity.subAgentIds.stream()
                 .map(id -> {
                     var v = new IdName();
                     v.id = id;
@@ -245,7 +247,7 @@ public class AgentDefinitionService {
                     return v;
                 })
                 .toList() : null;
-        view.skillIds = entity.skillIds != null ? entity.skillIds.stream()
+        view.skills = entity.skillIds != null ? entity.skillIds.stream()
                 .map(id -> {
                     var v = new IdName();
                     v.id = id;

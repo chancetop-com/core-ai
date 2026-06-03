@@ -67,10 +67,16 @@ public class AgentDefinitionView {
     public String createdBy;
 
     @Property(name = "subagent_ids")
-    public List<IdName> subAgentIds;
+    public List<String> subAgentIds;
 
     @Property(name = "skill_ids")
-    public List<IdName> skillIds;
+    public List<String> skillIds;
+
+    @Property(name = "sub_agents")
+    public List<IdName> subAgents;
+
+    @Property(name = "skills")
+    public List<IdName> skills;
 
     @Property(name = "status")
     public String status;
