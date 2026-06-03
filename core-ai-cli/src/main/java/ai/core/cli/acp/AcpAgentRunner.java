@@ -7,6 +7,7 @@ import ai.core.api.server.session.ToolApprovalRequestEvent;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
+import ai.core.cli.CliApp;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.log.CliLogger;
@@ -96,7 +97,7 @@ public class AcpAgentRunner {
         System.setProperty("user.dir", workspace.toString());
 
         var props = PropertiesFileSource.fromFile(configFile);
-        PropertiesFileSource.mergeWorkspaceLocal(props, workspace);
+        CliApp.mergeWorkspaceConfig(props, workspace);
         mergeWorkspaceMcpConfig(props);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();

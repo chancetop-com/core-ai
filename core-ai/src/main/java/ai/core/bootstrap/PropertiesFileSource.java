@@ -55,21 +55,4 @@ public class PropertiesFileSource implements PropertySource {
     public void putProperty(String key, String value) {
         properties.setProperty(key, value);
     }
-
-    /**
-     * Loads workspace-local agent.properties and overlays its values onto this
-     * source. Workspace-local values override global defaults. Safe to call
-     * when no local config exists (no-op).
-     */
-    public static void mergeWorkspaceLocal(PropertiesFileSource global, Path workspace) {
-        Path localConfig = workspace.resolve(".core-ai").resolve("agent.properties");
-        if (!Files.exists(localConfig)) return;
-        try (var is = Files.newInputStream(localConfig)) {
-            var localProps = new Properties();
-            localProps.load(is);
-            localProps.forEach((k, v) -> global.putProperty((String) k, (String) v));
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to load workspace-local config: " + localConfig, e);
-        }
-    }
 }

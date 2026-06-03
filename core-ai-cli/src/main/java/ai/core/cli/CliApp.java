@@ -49,17 +49,39 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 public class CliApp {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliApp.class);
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+    /**
+     * Loads workspace-local agent.properties and overlays its values onto the
+     * global config. Workspace-local values override global defaults.
+     */
+    public static void mergeWorkspaceConfig(PropertiesFileSource global, Path workspace) {
+        Path localConfig = workspace.resolve(".core-ai").resolve("agent.properties");
+        if (!Files.exists(localConfig)) return;
+        try (var is = Files.newInputStream(localConfig)) {
+            var localProps = new Properties();
+            localProps.load(is);
+            localProps.forEach((k, v) -> global.putProperty((String) k, (String) v));
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to load workspace-local config: " + localConfig, e);
+        }
+    }
+
     private static Map<String, SubAgentConfig> parseSubAgentConfig(PropertiesFileSource props, LLMProviders llmProviders) {
         Map<String, SubAgentConfig> configs = new HashMap<>();
         String prefix = "agent.sub.";
@@ -131,7 +153,7 @@ public class CliApp {
     private SessionContext initializeSession(TerminalUI ui) {
         LOGGER.info("loading config from {}", configFile);
         var props = PropertiesFileSource.fromFile(configFile);
-        PropertiesFileSource.mergeWorkspaceLocal(props, workspace);
+        mergeWorkspaceConfig(props, workspace);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
@@ -304,7 +326,7 @@ public class CliApp {
         System.setProperty("core.appName", "core-ai-cli");
         LOGGER.info("loading config from {}", configFile);
         var props = PropertiesFileSource.fromFile(configFile);
-        PropertiesFileSource.mergeWorkspaceLocal(props, workspace);
+        mergeWorkspaceConfig(props, workspace);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
