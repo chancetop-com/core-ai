@@ -102,7 +102,7 @@ export interface Trace {
   sessionId: string;
   userId: string;
   account?: TraceAccount;
-  status: 'RUNNING' | 'COMPLETED' | 'ERROR';
+  status: 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'ERROR';
   errorMessage?: string;
   input: string;
   output: string;
@@ -134,7 +134,7 @@ export interface Span {
   cachedTokens?: number;
   costUsd?: number;
   durationMs: number;
-  status: 'OK' | 'ERROR';
+  status: 'OK' | 'CANCELLED' | 'ERROR';
   errorMessage?: string;
   attributes: Record<string, string>;
   startedAt: string;

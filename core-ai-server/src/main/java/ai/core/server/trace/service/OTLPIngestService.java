@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class OTLPIngestService {
     private static final Logger LOGGER = LoggerFactory.getLogger(OTLPIngestService.class);
+    private static final String CORE_AI_CANCELLED = "core_ai.cancelled";
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -97,7 +98,7 @@ public class OTLPIngestService {
         span.input = resolveInput(attrs);
         span.output = resolveOutput(attrs);
         span.durationMs = endMs - startMs;
-        span.status = protoSpan.getStatus().getCode() == Status.StatusCode.STATUS_CODE_ERROR ? SpanStatus.ERROR : SpanStatus.OK;
+        span.status = mapSpanStatus(protoSpan.getStatus().getCode(), attrs);
         span.errorMessage = span.status == SpanStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
         span.attributes = attrs;
         span.startedAt = toZonedDateTime(startMs);
@@ -139,7 +140,7 @@ public class OTLPIngestService {
 
     private void updateExistingTrace(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
                                     Map<String, String> attrs, long endMs) {
-        trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
+        trace.status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
         trace.errorMessage = trace.status == TraceStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.output = resolveOutput(attrs);
         trace.durationMs = endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
@@ -184,7 +185,7 @@ public class OTLPIngestService {
         trace.model = attrs.get("gen_ai.request.model");
         trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
-        trace.status = mapTraceStatus(protoSpan.getStatus().getCode());
+        trace.status = mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
         trace.errorMessage = trace.status == TraceStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.input = resolveInput(attrs);
         trace.output = resolveOutput(attrs);
@@ -314,10 +315,21 @@ public class OTLPIngestService {
         return serviceName == null || serviceName.isBlank() || "core-ai".equals(serviceName) || serviceName.startsWith("core-ai-");
     }
 
-    private TraceStatus mapTraceStatus(Status.StatusCode code) {
+    private SpanStatus mapSpanStatus(Status.StatusCode code, Map<String, String> attrs) {
+        if (isCancelled(attrs)) return SpanStatus.CANCELLED;
+        if (code == Status.StatusCode.STATUS_CODE_ERROR) return SpanStatus.ERROR;
+        return SpanStatus.OK;
+    }
+
+    private TraceStatus mapTraceStatus(Status.StatusCode code, Map<String, String> attrs) {
+        if (isCancelled(attrs)) return TraceStatus.CANCELLED;
         if (code == Status.StatusCode.STATUS_CODE_ERROR) return TraceStatus.ERROR;
         if (code == Status.StatusCode.STATUS_CODE_OK) return TraceStatus.COMPLETED;
         return TraceStatus.COMPLETED;
+    }
+
+    private boolean isCancelled(Map<String, String> attrs) {
+        return "true".equalsIgnoreCase(attrs.get(CORE_AI_CANCELLED));
     }
 
     private Map<String, String> extractAttributes(List<KeyValue> kvList) {

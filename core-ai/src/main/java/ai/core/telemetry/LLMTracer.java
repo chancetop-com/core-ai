@@ -13,6 +13,7 @@ import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 
 import java.util.LinkedHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -34,6 +35,7 @@ public class LLMTracer extends Tracer {
     private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
     private static final AttributeKey<Double> GEN_AI_USAGE_COST_USD = AttributeKey.doubleKey("gen_ai.usage.cost_usd");
     private static final AttributeKey<String> GEN_AI_RESPONSE_FINISH_REASON = AttributeKey.stringKey("gen_ai.response.finish_reasons");
+    private static final AttributeKey<Boolean> CORE_AI_RESPONSE_NULL = AttributeKey.booleanKey("core_ai.response.null");
 
     // Langfuse-specific attributes (maps directly to Langfuse data model)
     // langfuse.observation.input: Full request including messages and tools (enables Playground integration)
@@ -52,17 +54,27 @@ public class LLMTracer extends Tracer {
      * Creates context internally and updates it from the response
      */
     public CompletionResponse traceLLMCompletion(String providerName, CompletionRequest request, Supplier<CompletionResponse> operation) {
-        return traceLLMCompletion(providerName, request, operation, null);
+        return traceLLMCompletion(providerName, request, operation, null, null);
     }
 
     /**
      * Trace LLM completion with an optional sink that receives the started span's context.
      * Used by callers (e.g. Agent) to remember which LLM call triggered subsequent tool calls.
      */
-    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     public CompletionResponse traceLLMCompletion(String providerName, CompletionRequest request,
                                                  Supplier<CompletionResponse> operation,
                                                  Consumer<SpanContext> spanContextSink) {
+        return traceLLMCompletion(providerName, request, operation, spanContextSink, null);
+    }
+
+    /**
+     * Trace LLM completion and mark the span as user-cancelled when the caller reports cancellation.
+     */
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    public CompletionResponse traceLLMCompletion(String providerName, CompletionRequest request,
+                                                 Supplier<CompletionResponse> operation,
+                                                 Consumer<SpanContext> spanContextSink,
+                                                 BooleanSupplier cancellationSupplier) {
         if (!enabled) {
             return operation.get();
         }
@@ -87,15 +99,31 @@ public class LLMTracer extends Tracer {
 
         try (var scope = span.makeCurrent()) {
             var response = operation.get();
+            if (response == null) {
+                span.setAttribute(CORE_AI_RESPONSE_NULL, true);
+                if (isCancelled(cancellationSupplier)) {
+                    markCancelled(span);
+                    return null;
+                }
+                throw new IllegalStateException("LLM provider returned null completion response");
+            }
             recordResponseAttributes(span, request, response);
+            if (isCancelled(cancellationSupplier)) {
+                markCancelled(span);
+            }
 
             // Add output as attribute for Langfuse
-            if (!response.choices.isEmpty() && response.choices.getFirst().message != null) {
-                span.setAttribute(LANGFUSE_OUTPUT, serializeMessageToJson(response.choices.getFirst().message));
+            var message = firstMessage(response);
+            if (message != null) {
+                span.setAttribute(LANGFUSE_OUTPUT, serializeMessageToJson(message));
             }
 
             return response;
         } catch (Exception e) {
+            if (isCancelled(cancellationSupplier)) {
+                markCancelled(span);
+                throw e;
+            }
             span.setStatus(StatusCode.ERROR, e.getMessage());
             span.recordException(e);
             throw e;
@@ -124,6 +152,10 @@ public class LLMTracer extends Tracer {
      * Record response attributes on the span
      */
     private void recordResponseAttributes(Span span, CompletionRequest request, CompletionResponse response) {
+        if (response == null) {
+            span.setAttribute(CORE_AI_RESPONSE_NULL, true);
+            return;
+        }
         if (response.usage != null) {
             var inputTokens = response.usage.getPromptTokens();
             var outputTokens = response.usage.getCompletionTokens();
@@ -140,9 +172,25 @@ public class LLMTracer extends Tracer {
             }
         }
 
-        if (!response.choices.isEmpty() && response.choices.getFirst().finishReason != null) {
-            span.setAttribute(GEN_AI_RESPONSE_FINISH_REASON, response.choices.getFirst().finishReason.name());
+        var choice = firstChoice(response);
+        if (choice != null && choice.finishReason != null) {
+            span.setAttribute(GEN_AI_RESPONSE_FINISH_REASON, choice.finishReason.name());
         }
+    }
+
+    private ai.core.llm.domain.Choice firstChoice(CompletionResponse response) {
+        if (response.choices == null || response.choices.isEmpty()) {
+            return null;
+        }
+        return response.choices.getFirst();
+    }
+
+    private ai.core.llm.domain.AssistantMessage firstMessage(CompletionResponse response) {
+        var choice = firstChoice(response);
+        if (choice == null) {
+            return null;
+        }
+        return choice.message;
     }
 
     /**

@@ -118,7 +118,7 @@ public abstract class LLMProvider {
         var wrappedCallback = wrapCallback(callback);
         CompletionResponse response;
         if (tracer != null) {
-            response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback), llmSpanContextSink);
+            response = tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback), llmSpanContextSink, wrappedCallback::isCancelled);
         } else {
             response = doCompletionStream(request, wrappedCallback);
         }

@@ -9,6 +9,7 @@ import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Context;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -50,6 +51,14 @@ public class AgentTracer extends Tracer {
      */
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     public <T> T traceAgentExecution(AgentTraceContext context, Supplier<T> operation) {
+        return traceAgentExecution(context, operation, null);
+    }
+
+    /**
+     * Trace agent execution and mark the span as user-cancelled when the caller reports cancellation.
+     */
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    public <T> T traceAgentExecution(AgentTraceContext context, Supplier<T> operation, BooleanSupplier cancellationSupplier) {
         if (!enabled) {
             return operation.get();
         }
@@ -90,12 +99,21 @@ public class AgentTracer extends Tracer {
             if (context.getStatus() != null) {
                 span.setAttribute(AGENT_STATUS, context.getStatus());
             }
+            if (isCancelled(cancellationSupplier)) {
+                markCancelled(span);
+                span.setAttribute(AGENT_STATUS, "CANCELLED");
+            }
             if (context.getMessageCount() > 0) {
                 span.setAttribute(AGENT_MESSAGE_COUNT, (long) context.getMessageCount());
             }
 
             return result;
         } catch (Exception e) {
+            if (isCancelled(cancellationSupplier)) {
+                markCancelled(span);
+                span.setAttribute(AGENT_STATUS, "CANCELLED");
+                throw e;
+            }
             span.setStatus(StatusCode.ERROR, e.getMessage());
             span.recordException(e);
             throw e;

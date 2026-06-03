@@ -40,6 +40,7 @@ const SOURCE_OPTIONS: { key: string; label: string }[] = [
 const STATUS_SEGMENTS: { key: string; label: string; dotColor?: string }[] = [
   { key: '', label: 'All' },
   { key: 'COMPLETED', label: 'Completed', dotColor: 'var(--color-success, #16a34a)' },
+  { key: 'CANCELLED', label: 'Cancelled', dotColor: '#b45309' },
   { key: 'ERROR', label: 'Errors', dotColor: 'var(--color-danger, #dc2626)' },
   { key: 'RUNNING', label: 'Running', dotColor: 'var(--color-primary, #4f46e5)' },
 ];

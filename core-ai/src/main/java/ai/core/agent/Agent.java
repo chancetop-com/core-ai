@@ -96,7 +96,7 @@ public class Agent extends Node<Agent> {
                 context.setStatus(getNodeStatus().name());
                 context.setMessageCount(getMessages().size());
                 return result;
-            });
+            }, this::isCancelled);
         }
         return doExecute(query, variables, false);
     }

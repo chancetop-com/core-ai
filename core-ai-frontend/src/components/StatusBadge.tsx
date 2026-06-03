@@ -7,6 +7,7 @@ const colorMap: Record<string, { bg: string; text: string }> = {
   OK: { bg: '#dcfce7', text: '#16a34a' },
   PUBLISHED: { bg: '#dcfce7', text: '#16a34a' },
   RUNNING: { bg: '#dbeafe', text: '#2563eb' },
+  CANCELLED: { bg: '#fef3c7', text: '#b45309' },
   DRAFT: { bg: '#f1f5f9', text: '#64748b' },
   ERROR: { bg: '#fee2e2', text: '#dc2626' },
   ARCHIVED: { bg: '#f1f5f9', text: '#94a3b8' },

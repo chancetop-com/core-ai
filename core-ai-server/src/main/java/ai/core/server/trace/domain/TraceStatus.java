@@ -10,6 +10,8 @@ public enum TraceStatus {
     RUNNING,
     @MongoEnumValue("COMPLETED")
     COMPLETED,
+    @MongoEnumValue("CANCELLED")
+    CANCELLED,
     @MongoEnumValue("ERROR")
     ERROR
 }

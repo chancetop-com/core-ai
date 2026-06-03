@@ -36,6 +36,7 @@ import java.util.UUID;
  */
 public class IngestService {
     private static final Logger LOGGER = LoggerFactory.getLogger(IngestService.class);
+    private static final String CORE_AI_CANCELLED = "core_ai.cancelled";
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -82,7 +83,7 @@ public class IngestService {
         trace.name = rootSpan.name;
         trace.sessionId = rootSpan.attributes != null ? rootSpan.attributes.get("session.id") : null;
         trace.userId = rootSpan.attributes != null ? rootSpan.attributes.get("user.id") : null;
-        trace.status = mapTraceStatus(rootSpan.status);
+        trace.status = mapTraceStatus(rootSpan.status, rootSpan.attributes);
         trace.input = rootSpan.input;
         trace.output = rootSpan.output;
         trace.metadata = Map.of("service", request.serviceName != null ? request.serviceName : "unknown",
@@ -119,7 +120,7 @@ public class IngestService {
         // Use targeted $set updates instead of full document replace so concurrent $inc
         // operations on token/cost counters aren't overwritten with a stale snapshot.
         List<Bson> updates = new ArrayList<>();
-        updates.add(Updates.set("status", mapTraceStatus(rootSpan.status)));
+        updates.add(Updates.set("status", mapTraceStatus(rootSpan.status, rootSpan.attributes)));
         updates.add(Updates.set("updated_at", ZonedDateTime.now()));
         if (rootSpan.output != null) updates.add(Updates.set("output", rootSpan.output));
         if (rootSpan.input != null) updates.add(Updates.set("input", rootSpan.input));
@@ -147,7 +148,7 @@ public class IngestService {
         span.costUsd = resolveCostUsd(spanReq.model, span.inputTokens, span.outputTokens, span.cachedTokens,
             spanReq.costUsd, spanReq.attributes);
         span.durationMs = spanReq.durationMs;
-        span.status = "ERROR".equals(spanReq.status) ? SpanStatus.ERROR : SpanStatus.OK;
+        span.status = mapSpanStatus(spanReq.status, spanReq.attributes);
         span.attributes = spanReq.attributes;
         span.startedAt = toZonedDateTime(spanReq.startedAtEpochMs);
         span.completedAt = toZonedDateTime(spanReq.completedAtEpochMs);
@@ -261,10 +262,22 @@ public class IngestService {
         return value != null ? value : 0L;
     }
 
-    private TraceStatus mapTraceStatus(String status) {
+    private SpanStatus mapSpanStatus(String status, Map<String, String> attributes) {
+        if (isCancelled(status, attributes)) return SpanStatus.CANCELLED;
+        if ("ERROR".equals(status)) return SpanStatus.ERROR;
+        return SpanStatus.OK;
+    }
+
+    private TraceStatus mapTraceStatus(String status, Map<String, String> attributes) {
+        if (isCancelled(status, attributes)) return TraceStatus.CANCELLED;
         if ("ERROR".equals(status)) return TraceStatus.ERROR;
         if ("OK".equals(status)) return TraceStatus.COMPLETED;
         return TraceStatus.RUNNING;
+    }
+
+    private boolean isCancelled(String status, Map<String, String> attributes) {
+        return "CANCELLED".equals(status)
+            || attributes != null && "true".equalsIgnoreCase(attributes.get(CORE_AI_CANCELLED));
     }
 
     private SpanType mapSpanType(String type) {

@@ -6,6 +6,7 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -20,6 +21,8 @@ public abstract class Tracer {
 
     // Attribute key for langfuse
     static final AttributeKey<String> LANGFUSE_OBSERVATION_TYPE = AttributeKey.stringKey("langfuse.observation.type");
+    static final AttributeKey<Boolean> CORE_AI_CANCELLED = AttributeKey.booleanKey("core_ai.cancelled");
+    static final AttributeKey<String> CORE_AI_CANCEL_REASON = AttributeKey.stringKey("core_ai.cancel.reason");
 
     protected final io.opentelemetry.api.trace.Tracer tracer;
     protected final boolean enabled;
@@ -94,5 +97,14 @@ public abstract class Tracer {
         if (text == null) return "";
         if (text.length() <= maxLength) return text;
         return text.substring(0, maxLength) + "...";
+    }
+
+    protected boolean isCancelled(BooleanSupplier cancellationSupplier) {
+        return cancellationSupplier != null && cancellationSupplier.getAsBoolean();
+    }
+
+    protected void markCancelled(Span span) {
+        span.setAttribute(CORE_AI_CANCELLED, true);
+        span.setAttribute(CORE_AI_CANCEL_REASON, "user");
     }
 }

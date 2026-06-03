@@ -8,6 +8,8 @@ import core.framework.mongo.MongoEnumValue;
 public enum SpanStatus {
     @MongoEnumValue("OK")
     OK,
+    @MongoEnumValue("CANCELLED")
+    CANCELLED,
     @MongoEnumValue("ERROR")
     ERROR
 }
