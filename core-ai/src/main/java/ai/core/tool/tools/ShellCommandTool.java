@@ -203,7 +203,9 @@ public class ShellCommandTool extends ToolCall {
                     - Avoid 2>&1 on native executables. In PowerShell, redirecting a native command's stderr inside PowerShell wraps each line in an ErrorRecord (NativeCommandError) and sets $? to $false even when the exe returned exit code 0. stderr is already captured for you — don't redirect it.
                     - Default file encoding is UTF-16 LE (with BOM). When writing files other tools will read, pass -Encoding utf8 to Out-File/Set-Content.
                     - ConvertFrom-Json returns a PSCustomObject, not a hashtable. -AsHashtable is not available.
-                    """;
+                    - To read any file, always prefer the dedicated %s tool instead of `Get-Content`, `cat`, or `type`. The %s tool handles all file types (text, images, PDFs) and automatically limits output size, preventing issues with large or growing files.
+                    - If you absolutely must use `Get-Content` to read a file (e.g., for piping or filtering the content), ALWAYS append `-Last N` (e.g., `-Last 500`) to limit the number of lines read. Without `-Last`, Get-Content will attempt to read the entire file — on log files that agents are actively appending to, this causes an infinite read that never completes.
+                    """.formatted(ReadFileTool.TOOL_NAME, ReadFileTool.TOOL_NAME);
         }
         return shellSpecific;
     }
