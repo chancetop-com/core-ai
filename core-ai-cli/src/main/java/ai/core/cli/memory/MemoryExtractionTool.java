@@ -220,14 +220,14 @@ public final class MemoryExtractionTool extends ToolCall {
 
             Read the cursor via `read_extraction_cursor` first; process only messages after it.
 
-            1. **Identify completed tasks** — coherent units of work that were finished since the last cursor.
-             2. **Create or update daily-logs** for each task. If a daily-log already exists for this task
-                (e.g., from a prior extraction), edit_file to append new sections. Otherwise write_file to create.
-                Body sections
+             1. **Identify completed tasks** — coherent units of work that were finished since the last cursor.
+             2. **Create or update daily-logs** for each task at `.core-ai/daily-logs/{date}/{taskName}.md`.
+                If a daily-log already exists for this task (e.g., from a prior extraction), edit_file to
+                append new sections. Otherwise write_file to create. Body sections
                 (Context, Actions, Obstacles & Solutions, User Feedback, Key Decisions, Results, Notes, Pending).
                 Omit sections with no content.
-            3. **Update episodes**: add or update the index table entry for each daily-log.
-            4. **Extract knowledge to wiki pages**: before writing, apply the Durability Check below.
+             3. **Update episodes** at `.core-ai/episodes/{date}.md`: add or update the index table entry for each daily-log.
+             4. **Extract knowledge to wiki pages** at `.core-ai/knowledge/{type}/{name}.md`:
                Aggregate related facts into topic-based wiki pages (see Wiki Pages section above).
                If a page already covers the topic, edit_file to append; only create a new page
                for genuinely new topic areas.
@@ -235,8 +235,8 @@ public final class MemoryExtractionTool extends ToolCall {
                error logs) contradicts an existing wiki claim, UPDATE the existing claim via
                edit_file — do NOT append as a parallel note, do NOT skip because the page "seems
                accurate." The contradiction itself is the correction signal.
-             5. **Update MEMORY.md** index: add new files with Description and When to Use columns,
-                update Updated timestamp for modified files.
+             5. **Update `.core-ai/knowledge/MEMORY.md` index**: add new files with Description
+                and When to Use columns, update Updated timestamp for modified files.
             6. **Record knowledge-layer operations** via `add_knowledge_log`: only if wiki pages
                or MEMORY.md actually changed (Added/Updated/Deleted). If nothing changed, skip this step.
                Never log execution details. Do NOT log daily-logs or episodes.
@@ -435,11 +435,13 @@ public final class MemoryExtractionTool extends ToolCall {
                - **No** — skip, it's transient.
                - **Yes** — proceed to write.
                - **Uncertain** — keep in mind; if it recurs, reconsider.
-            3. **Write to wiki pages** — use edit_file to append, write_file for new pages.
+             3. **Write to wiki pages** at `.core-ai/knowledge/{type}/{name}.md` — use edit_file to
+                append, write_file for new pages.
                **Feedback takes priority**: when a contradiction (user correction, test failure,
                error log) conflicts with an existing wiki claim, UPDATE via edit_file — do NOT
                append as a parallel note.
-            4. **Update MEMORY.md** index: add new files with Description and When to Use columns, update timestamps.
+             4. **Update `.core-ai/knowledge/MEMORY.md` index**: add new files with Description
+                and When to Use columns, update timestamps.
             5. **Call add_knowledge_log** — record knowledge-layer changes (wiki pages, MEMORY.md).
             6. **Call advance_extraction_cursor** — always call it, whether you extracted or not.
             """;
