@@ -24,13 +24,13 @@ public class OutputPanel {
     private static final int DEFAULT_SUMMARY_ARG_COUNT = 3;
 
     @SuppressWarnings("unchecked")
-    public static String formatToolSummary(String toolName, String arguments) {
+    public static String formatToolSummary(String toolName, String arguments, String model) {
         if (arguments == null || arguments.isBlank() || "{}".equals(arguments.trim())) {
             return toolName;
         }
         try {
             Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
-            String summary = specialTaskSummary(toolName, argsMap);
+            String summary = specialTaskSummary(toolName, argsMap, model);
             if (summary == null) return toolName;
             if (summary.length() > 100) summary = summary.substring(0, 100) + "...";
             return toolName + "(" + summary + ")";
@@ -39,9 +39,14 @@ public class OutputPanel {
         }
     }
 
-    static String specialTaskSummary(String toolName, Map<String, Object> argsMap) {
+    static String specialTaskSummary(String toolName, Map<String, Object> argsMap, String model) {
         if (TaskTool.TOOL_NAME.equals(toolName)) {
-            return "%s:%s".formatted(argsMap.get("subagent_type"), argsMap.get("description"));
+            var subagentType = argsMap.get("subagent_type");
+            var description = argsMap.get("description");
+            if (model != null && !model.equals(subagentType)) {
+                return "%s[%s]:%s".formatted(subagentType, model, description);
+            }
+            return "%s:%s".formatted(subagentType, description);
         } else if (ShellCommandTool.TOOL_NAME.equals(toolName)) {
             return (String) argsMap.get("command");
         } else {
@@ -173,16 +178,20 @@ public class OutputPanel {
     }
 
     public void toolStart(String toolName, String arguments, String diff, Boolean frontTask) {
-        toolStart(toolName, arguments, diff, frontTask, true);
+        toolStart(toolName, arguments, diff, frontTask, true, null);
     }
 
     public void toolStart(String toolName, String arguments, String diff, Boolean frontTask, boolean restartSpinner) {
+        toolStart(toolName, arguments, diff, frontTask, restartSpinner, null);
+    }
+
+    public void toolStart(String toolName, String arguments, String diff, Boolean frontTask, boolean restartSpinner, String model) {
         stopSpinnerIfActive();
         mdRenderer.flush();
         toolStartTime = System.currentTimeMillis();
         toolOutputStreaming = false;
         toolOutputLineCount = 0;
-        String summary = formatToolSummary(toolName, arguments);
+        String summary = formatToolSummary(toolName, arguments, model);
         if (frontTask) {
             writer.println(INDENT + AnsiTheme.MUTED + "\u23BF" + AnsiTheme.RESET + " " + AnsiTheme.MUTED + summary + AnsiTheme.RESET);
         } else {

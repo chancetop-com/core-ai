@@ -37,6 +37,7 @@ export interface SseToolStartEvent extends SseBaseEvent {
   tool_notes?: string;
   task_id?: string;
   run_in_background?: boolean;
+  model?: string;
 }
 
 export interface SseToolResultEvent extends SseBaseEvent {

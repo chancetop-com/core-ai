@@ -14,6 +14,7 @@ export interface ToolEvent {
   taskId?: string;
   runInBackground?: boolean;
   toolType?: string;
+  model?: string;
   children?: ToolEvent[];
 }
 

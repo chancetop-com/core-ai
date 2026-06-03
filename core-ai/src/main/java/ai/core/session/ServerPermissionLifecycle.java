@@ -13,6 +13,7 @@ import ai.core.session.permission.PermissionRule;
 import ai.core.tool.DiffGenerator;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.EditFileTool;
+import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WriteFileTool;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
@@ -141,7 +142,23 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         }
         startEvent.taskId = (String) argMap.getOrDefault("task_id", context.getTaskId());
         startEvent.runInBackground = isBackground(argMap);
+        if (TaskTool.TOOL_NAME.equals(toolName)) {
+            startEvent.model = resolveSubagentModel(argMap, context);
+        }
         dispatcher.accept(startEvent);
+    }
+
+    private String resolveSubagentModel(Map<String, Object> argMap, ExecutionContext context) {
+        var subagentType = (String) argMap.get("subagent_type");
+        if (subagentType == null || subagentType.isBlank()) return null;
+        var configs = context.getSubAgentConfigs();
+        if (configs != null) {
+            var config = configs.get(subagentType);
+            if (config != null && config.model() != null && !config.model().isBlank()) {
+                return config.model();
+            }
+        }
+        return context.getModel();
     }
 
     private Boolean isBackground(Map<String, Object> argMap) {

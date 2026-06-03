@@ -80,7 +80,7 @@ public class BaseEventListener implements AgentEventListener {
         batchResultSeen = false;
 
         var summary = event.tools().size() <= 2
-                ? event.tools().stream().map(ti -> OutputPanel.formatToolSummary(ti.toolName(), ti.arguments())).collect(Collectors.joining(", "))
+                ? event.tools().stream().map(ti -> OutputPanel.formatToolSummary(ti.toolName(), ti.arguments(), null)).collect(Collectors.joining(", "))
                 : compactSummary(event);
 
         if (event.taskId() != null) {
@@ -112,13 +112,13 @@ public class BaseEventListener implements AgentEventListener {
         boolean restartSpinner = !AskUserTool.TOOL_NAME.equals(event.toolName);
         if (TaskTool.TOOL_NAME.equals(event.toolName)) {
             runTasks.put(event.taskId, new RuntimeTask(event.taskId, System.currentTimeMillis(), event.runInBackground, 0));
-            panel.toolStart(event.toolName, event.arguments, event.diff, false, restartSpinner);
+            panel.toolStart(event.toolName, event.arguments, event.diff, false, restartSpinner, event.model);
         } else if (Objects.isNull(event.taskId)) {
-            panel.toolStart(event.toolName, event.arguments, event.diff, false, restartSpinner);
+            panel.toolStart(event.toolName, event.arguments, event.diff, false, restartSpinner, event.model);
         } else {
             increaseToolCallCount(event.taskId);
             if (!isInBackgroundTask(event.taskId)) {
-                panel.toolStart(event.toolName, event.arguments, event.diff, isInFrontTask(event.taskId), restartSpinner);
+                panel.toolStart(event.toolName, event.arguments, event.diff, isInFrontTask(event.taskId), restartSpinner, event.model);
             }
         }
     }

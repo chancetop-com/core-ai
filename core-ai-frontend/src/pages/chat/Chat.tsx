@@ -518,6 +518,7 @@ export default function Chat() {
             type: 'start', tool: toolEvent.tool_name, callId: toolEvent.call_id,
             arguments: toolEvent.tool_args ? JSON.stringify(toolEvent.tool_args) : undefined,
             taskId: toolEvent.task_id, runInBackground: toolEvent.run_in_background,
+            model: toolEvent.model,
           };
           if (toolEvent.task_id) {
             // Try to find a parent with the same taskId (not callId)

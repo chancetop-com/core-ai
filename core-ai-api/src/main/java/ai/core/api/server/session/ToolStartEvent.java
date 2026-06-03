@@ -39,6 +39,9 @@ public class ToolStartEvent implements AgentEvent {
     @Property(name = "run_in_background")
     public Boolean runInBackground;
 
+    @Property(name = "model")
+    public String model;
+
     @Override
     public String sessionId() {
         return sessionId;

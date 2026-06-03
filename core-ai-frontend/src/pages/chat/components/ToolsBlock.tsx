@@ -88,6 +88,19 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
   };
   const doneCount = tools.filter(t => t.type === 'result' && (t.resultStatus === 'success' || t.resultStatus === 'COMPLETED')).length;
 
+  const buildTaskToolLabel = (t: ToolEvent): string | null => {
+    if (t.tool !== 'task') return null;
+    const args = normalizeArgs(t.arguments);
+    if (!args) return null;
+    const subagentType = typeof args.subagent_type === 'string' ? args.subagent_type : null;
+    if (!subagentType) return null;
+    const model = t.model;
+    if (model && model !== subagentType) {
+      return `task(${subagentType}[${model}])`;
+    }
+    return `task(${subagentType})`;
+  };
+
   // Check if any tool (including nested) is still running
   const isRunning = (t: ToolEvent): boolean => {
     if (t.type === 'start') return true;
@@ -108,7 +121,7 @@ export default function ToolsBlock({ tools }: { tools: ToolEvent[] }) {
             {(t.resultStatus === 'success' || t.resultStatus === 'COMPLETED') ? '\u2713' : '\u2717'}
           </span>
         )}
-        <span className="font-mono font-medium truncate" style={{ color: hasChildren ? '#8b5cf6' : 'var(--color-primary)' }}>{t.tool}</span>
+        <span className="font-mono font-medium truncate" style={{ color: hasChildren ? '#8b5cf6' : 'var(--color-primary)' }}>{buildTaskToolLabel(t) ?? t.tool}</span>
         {showTaskIdBadge && (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-mono shrink-0 max-w-[200px] truncate"
             style={{ background: t.runInBackground ? 'var(--color-warning)' + '20' : '#8b5cf6' + '20', color: t.runInBackground ? 'var(--color-warning)' : '#8b5cf6' }}>

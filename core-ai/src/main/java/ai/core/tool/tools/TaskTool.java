@@ -102,6 +102,7 @@ public class TaskTool extends ToolCall {
             var taskManager = context.getTaskManager();
             var description = getStringValue(argsMap, "description");
             var taskId = String.valueOf(argsMap.get("task_id"));
+            var model = resolveModel(subagentType, context);
             var subContext = buildSubContext(subagentType, context, taskId, description);
             var subAgent = createAgent(subagentType, subContext);
             if (runInBackground && taskManager != null) {
@@ -111,7 +112,7 @@ public class TaskTool extends ToolCall {
                     return lastContent != null && !lastContent.isEmpty() ? lastContent.getFirst().text : "";
                 });
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), subContext));
-                return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, subagentType))
+                return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, subagentType, model))
                         .withDuration(System.currentTimeMillis() - startTime);
             } else {
                 subAgent.run(prompt, subContext);
@@ -128,7 +129,7 @@ public class TaskTool extends ToolCall {
     }
 
 
-    private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description, String subagentType) {
+    private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description, String subagentType, String model) {
         var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
         var reminder = """
                   Async agent launched successfully.
@@ -144,11 +145,12 @@ public class TaskTool extends ToolCall {
                 <task-id>%s</task-id>
                 <task-type>%s</task-type>
                 <task-description>%s</task-description>
+                <task-model>%s</task-model>
                 <status>%s</status>
                 %s
                 <system-reminder>%s</system-reminder>
                 </task-notification>
-                """.formatted(taskId, subagentType, description, "async_launched", outputRefXml, reminder);
+                """.formatted(taskId, subagentType, description, model != null ? model : "default", "async_launched", outputRefXml, reminder);
     }
 
     private ExecutionContext buildSubContext(String subagentType, ExecutionContext context, String taskId, String taskName) {
