@@ -93,6 +93,7 @@ public final class MemoryTriggerService {
     private final AtomicBoolean agentBusy = new AtomicBoolean(false);
     private volatile ScheduledExecutorService scheduler;
     private volatile Agent mainAgent;
+    private volatile boolean dailyLogsEnabled = false;
 
     private MemoryTriggerService() {
         this.workspace = Path.of("");
@@ -100,11 +101,20 @@ public final class MemoryTriggerService {
         this.memoryProvider = new MdMemoryProvider(workspace);
     }
 
+    public void setDailyLogsEnabled(boolean enabled) {
+        this.dailyLogsEnabled = enabled;
+        MemoryExtractionTool.setDirectMode(!enabled);
+    }
+
     // ---- public instance methods ----
 
     public void init(Agent agent) {
         this.mainAgent = agent;
         if (this.scheduler != null) return;
+
+        if (dailyLogsEnabled) {
+            ensureDirectories();
+        }
 
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             var t = new Thread(r, "memory-trigger");
@@ -238,6 +248,7 @@ public final class MemoryTriggerService {
 
     public List<ToolCall> buildMemoryTools(Agent agent) {
         var tools = new ArrayList<ToolCall>();
+        tools.add(MemoryExtractionTool.builder().build());
         tools.add(KnowledgeLogTool.addBuilder().workspace(workspace).build());
         tools.add(ExtractionCursorTool.readBuilder()
                 .cursorReader(extractionCursor::get)
@@ -282,6 +293,7 @@ public final class MemoryTriggerService {
     }
 
     private void processLockFiles() {
+        if (!dailyLogsEnabled) return;
         try {
             List<Path> lockFiles = findLockFiles();
             if (lockFiles.isEmpty()) return;
@@ -306,6 +318,7 @@ public final class MemoryTriggerService {
 
             var tools = new ArrayList<>(BuiltinTools.FILE_OPERATIONS);
             tools.add(ShellCommandTool.builder().build());
+            tools.add(MemoryExtractionTool.builder().build());
             tools.add(KnowledgeLogTool.addBuilder().workspace(workspace).build());
             var agent = AgentFork.forkConfigOnly(mainAgent, new AgentFork.ForkConfig("lock", LOCK_PROCESSING_MAX_TURNS,
                     (double) EXTRACTION_TEMPERATURE, false, null, tools));

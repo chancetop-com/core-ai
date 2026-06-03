@@ -2,9 +2,11 @@ package ai.core.cli.hook;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.cli.plugin.PluginManager;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.tool.ToolCallResult;
 
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -13,6 +15,19 @@ public class ScriptHookLifecycle extends AbstractLifecycle {
 
     private static String toolName(FunctionCall functionCall) {
         return functionCall.function != null ? functionCall.function.name : "";
+    }
+
+    /**
+     * Convenience method to fire SessionStop hooks for the given workspace.
+     * Encapsulates PluginManager + HookConfig loading so callers don't
+     * need to duplicate it at every session-close point.
+     */
+    public static void fireSessionStopHooks(Path workspace) {
+        var rootDir = Path.of(System.getProperty("user.home"), ".core-ai");
+        var hookConfig = HookConfig.load(workspace, PluginManager.getInstance(rootDir));
+        if (!hookConfig.isEmpty()) {
+            new ScriptHookLifecycle(hookConfig, new ScriptHookRunner(workspace)).runSessionStopHooks();
+        }
     }
 
     private final HookConfig config;
@@ -35,6 +50,15 @@ public class ScriptHookLifecycle extends AbstractLifecycle {
             }
         }
         return sb.toString().strip();
+    }
+
+    public void runSessionStopHooks() {
+        var hooks = config.getHooks(HookEvent.SESSION_STOP);
+        if (hooks.isEmpty()) return;
+
+        for (var hook : hooks) {
+            runner.run(hook.command(), Collections.emptyMap());
+        }
     }
 
     @Override

@@ -8,10 +8,9 @@ import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.agent.CliAgent;
+import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.SessionCloseExtractor;
-import ai.core.cli.memory.sync.MemorySyncConfig;
-import ai.core.cli.memory.sync.MemorySyncService;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteAgentConfigLoader;
 import ai.core.cli.remote.A2ARemoteServerConfig;
@@ -97,6 +96,7 @@ public class AcpAgentRunner {
         System.setProperty("user.dir", workspace.toString());
 
         var props = PropertiesFileSource.fromFile(configFile);
+        PropertiesFileSource.mergeWorkspaceLocal(props, workspace);
         mergeWorkspaceMcpConfig(props);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
@@ -105,11 +105,11 @@ public class AcpAgentRunner {
 
         var ctx = new AgentContext(result,
                 props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false),
+                props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(false),
                 props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false),
                 props.property("agent.max.turn").map(Integer::parseInt).orElse(100),
                 A2ARemoteAgentConfigLoader.load(props),
-                A2ARemoteAgentConfigLoader.loadServers(props),
-                MemorySyncConfig.load(props));
+                A2ARemoteAgentConfigLoader.loadServers(props));
         restoreActiveProvider(props, result.llmProviders);
 
         var agent = buildAgent(ctx);
@@ -121,12 +121,10 @@ public class AcpAgentRunner {
         sessions.forEach((sid, acpSession) -> {
             persistSession(acpSession);
             if (ctx.memoryEnabled) {
-                SessionCloseExtractor.onSessionClose(acpSession.agent(), workspace, ctx.memoryEnabled, null);
+                SessionCloseExtractor.onSessionClose(acpSession.agent(), workspace, ctx.memoryEnabled, ctx.dailyLogsEnabled, null);
             }
         });
-        if (ctx.syncConfig != null && ctx.syncConfig.enabled()) {
-            new MemorySyncService(ctx.syncConfig).backup(workspace);
-        }
+        ScriptHookLifecycle.fireSessionStopHooks(workspace);
     }
 
     @SuppressWarnings("unchecked")
@@ -176,8 +174,8 @@ public class AcpAgentRunner {
                 ctx.result.llmProviders, modelOverride, ctx.maxTurn, sessionPersistence,
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
-                ctx.memoryEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of(), ctx.syncConfig);
+                ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
+                Map.of());
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -216,14 +214,13 @@ public class AcpAgentRunner {
                 ctx.result.llmProviders, modelOverride, ctx.maxTurn, sessionPersistence,
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
-                ctx.memoryEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of(), ctx.syncConfig);
+                ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
+                Map.of());
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
             coreAgent.load(sessionId);
         }
-
         var currentContext = new AtomicReference<SyncPromptContext>();
         var permissionGate = new PermissionGate();
         coreAgent.addLifecycle(new ServerPermissionLifecycle(
@@ -399,9 +396,9 @@ public class AcpAgentRunner {
         }
     }
 
-    private record AgentContext(BootstrapResult result, boolean memoryEnabled, boolean coding,
+    private record AgentContext(BootstrapResult result, boolean memoryEnabled,
+                                 boolean dailyLogsEnabled, boolean coding,
                                  int maxTurn, List<A2ARemoteAgentConfig> remoteAgents,
-                                 List<A2ARemoteServerConfig> remoteServers,
-                                 MemorySyncConfig syncConfig) {
+                                 List<A2ARemoteServerConfig> remoteServers) {
     }
 }

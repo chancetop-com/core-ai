@@ -5,7 +5,6 @@ import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.memory.MdMemoryProvider;
-import ai.core.cli.memory.sync.MemorySyncConfig;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
 import ai.core.cli.remote.A2ARemoteServerConfig;
 import ai.core.session.FileSessionPersistence;
@@ -21,8 +20,9 @@ import java.util.Map;
 record SessionContext(BootstrapResult result, PropertiesFileSource props, int maxTurn,
         FileSessionPersistence sessionPersistence, SessionManager sessionManager, String modelName,
         String currentSessionId, ToolPermissionStore permissionStore, MdMemoryProvider noteMemory,
-        ModelRegistry modelRegistry, boolean memoryEnabled, boolean coding, boolean todoV2Enabled,
+        ModelRegistry modelRegistry, boolean memoryEnabled, boolean dailyLogsEnabled,
+        boolean coding, boolean todoV2Enabled,
         List<A2ARemoteAgentConfig> remoteAgents, List<A2ARemoteServerConfig> remoteServers,
-        Map<String, SubAgentConfig> subAgentConfigs, MemorySyncConfig syncConfig,
+        Map<String, SubAgentConfig> subAgentConfigs,
         boolean promptExtractionEnabled, Integer timeLimitSeconds) {
 }

@@ -24,13 +24,16 @@ import java.util.concurrent.atomic.AtomicReference;
 public class CliMemoryLifecycle extends AbstractLifecycle {
 
     private final MemoryTriggerService service;
+    private final boolean dailyLogsEnabled;
 
-    public CliMemoryLifecycle(MemoryTriggerService service) {
+    public CliMemoryLifecycle(MemoryTriggerService service, boolean dailyLogsEnabled) {
         this.service = service;
+        this.dailyLogsEnabled = dailyLogsEnabled;
     }
 
     @Override
     public void afterAgentBuild(Agent agent) {
+        service.setDailyLogsEnabled(dailyLogsEnabled);
         service.init(agent);
         var tools = new ArrayList<>(service.buildMemoryTools(agent));
         agent.addTools(tools);

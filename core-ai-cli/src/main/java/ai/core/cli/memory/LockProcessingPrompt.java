@@ -12,8 +12,7 @@ final class LockProcessingPrompt {
             daily-logs that need deep knowledge extraction. The lock file is a work queue —
             process each listed daily-log, extract knowledge into wiki pages, update episodes,
             then **delete the lock file**.
-
-            File formats and knowledge types are defined in your system prompt.
+            """ + MemoryExtractionTool.EXTRACTION_SPEC + """
 
             ## Allowed Tools
             Only use these tools — all others are forbidden for extraction:

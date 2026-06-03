@@ -32,31 +32,30 @@ public class SessionCloseExtractor {
             2. Create a lock file listing those daily-logs so MemoryTriggerService can
                pick them up on the next restart for deep knowledge extraction.
             
-            All directories already exist. File formats are defined in your system prompt
-            (see the ## Memory section for daily-logs format, kebab-case file naming, etc.).
+            All directories already exist.
+            """ + MemoryExtractionTool.EXTRACTION_SPEC + """
             
             ## Today
-            Date: %s
+            Date: %1$s
             
             ## Existing files for today
-            %s
+            %2$s
             
             ## Workflow
             
             ### Step 1 — Create daily-logs
             Scan the unprocessed messages (after the cursor) for completed tasks.
-            For each task, create `.core-ai/daily-logs/%s/{taskName}.md`.
-            Only include these sections in the YAML frontmatter: task, date, result.
+            For each task, create `.core-ai/daily-logs/%1$s/{taskName}.md`.
             Only include these body sections: `## Context` and `## Actions`.
             If a daily-log for this task already exists (check the existing files above),
             append to it instead of overwriting.
             
             ### Step 2 — Create the lock file
-            Once all daily-logs from Step 1 are created, create `.core-ai/daily-logs/%s.lock`
+            Once all daily-logs from Step 1 are created, create `.core-ai/daily-logs/%1$s.lock`
             listing each daily-log path (one per line) that needs deep extraction on restart:
             ```
-            daily-logs/%s/{taskName1}.md
-            daily-logs/%s/{taskName2}.md
+            daily-logs/%1$s/{taskName1}.md
+            daily-logs/%1$s/{taskName2}.md
             ```
             This lock file is a work queue — MemoryTriggerService reads it on next startup,
             processes each listed daily-log into wiki pages and episodes, then deletes it.
@@ -66,15 +65,16 @@ public class SessionCloseExtractor {
             Do NOT use cursor tools or add_knowledge_log. Episodes update is handled by lock processing.
             
             ## Workspace
-            %s
-            %s
-            Current datetime: %s
+            %3$s
+            %4$s
+            Current datetime: %5$s
             Max turns: %d — after creating the lock file, stop (the session is closing).
             """;
 
     public static void onSessionClose(Agent mainAgent, Path workspace, boolean memoryEnabled,
-                                      AtomicReference<String> switchSessionId) {
-        if (!memoryEnabled) {
+                                       boolean dailyLogsEnabled,
+                                       AtomicReference<String> switchSessionId) {
+        if (!memoryEnabled || !dailyLogsEnabled) {
             return;
         }
 
@@ -111,7 +111,6 @@ public class SessionCloseExtractor {
                     + ", total=" + totalMessages + ").";
         String existingFiles = listExistingFiles(workspace, today);
         return CLOSE_AGENT_PROMPT.formatted(today, existingFiles,
-                today, today, today, today,
                 workspace.toAbsolutePath(), cursorInfo,
                 ZonedDateTime.now(MemoryTriggerService.getTimezone()).format(DATETIME_FMT), MAX_TURNS - 2);
     }

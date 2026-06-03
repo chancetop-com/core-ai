@@ -5,13 +5,12 @@ import ai.core.cli.command.MemoryCommandHandler;
 import ai.core.cli.command.ReplCommandHandler;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.config.ProviderConfigurator;
+import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.listener.CliEventListener;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemorySectionManager;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.memory.SessionCloseExtractor;
-import ai.core.cli.memory.sync.MemorySyncConfig;
-import ai.core.cli.memory.sync.MemorySyncService;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
@@ -66,7 +65,7 @@ public class AgentSessionRunner {
     private final ModelRegistry modelRegistry;
     private final MemoryCommandHandler memoryCommand;
     private final boolean memoryEnabled;
-    private final MemorySyncConfig syncConfig;
+    private final boolean dailyLogsEnabled;
     private final boolean promptExtractionEnabled;
     private final Integer timeLimitSeconds;
     private final Path workspace;
@@ -90,7 +89,7 @@ public class AgentSessionRunner {
                 ? new MemoryCommandHandler(ui, config.memory, MemoryTriggerService.getInstance())
                 : null;
         this.memoryEnabled = config.memoryEnabled;
-        this.syncConfig = config.syncConfig;
+        this.dailyLogsEnabled = config.dailyLogsEnabled;
         this.promptExtractionEnabled = config.promptExtractionEnabled;
         this.timeLimitSeconds = config.timeLimitSeconds;
         if (config.timeLimitSeconds != null && config.timeLimitSeconds > 0) {
@@ -118,11 +117,9 @@ public class AgentSessionRunner {
         startSenderThread(messageQueue, listener, session, readyForInput);
         readInputLoop(messageQueue, readyForInput);
         ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Organizing memories..." + AnsiTheme.RESET + "\n");
-        SessionCloseExtractor.onSessionClose(agent, workspace, memoryEnabled, switchSessionId);
+        SessionCloseExtractor.onSessionClose(agent, workspace, memoryEnabled, dailyLogsEnabled, switchSessionId);
         session.close();
-        if (syncConfig != null && syncConfig.enabled()) {
-            new MemorySyncService(syncConfig).backup(workspace);
-        }
+        ScriptHookLifecycle.fireSessionStopHooks(workspace);
         return switchSessionId.get();
     }
     public void runPrompt(String prompt) {
@@ -149,9 +146,7 @@ public class AgentSessionRunner {
             MemoryTriggerService.getInstance().runIncrementalExtractionAndWait();
         }
         session.close();
-        if (syncConfig != null && syncConfig.enabled()) {
-            new MemorySyncService(syncConfig).backup(workspace);
-        }
+        ScriptHookLifecycle.fireSessionStopHooks(workspace);
     }
 
     private void runPromptWithTimeLimit(CliEventListener listener, InProcessAgentSession session,
@@ -573,7 +568,7 @@ public class AgentSessionRunner {
                          SessionManager sessionManager, ToolPermissionStore permissionStore,
                          MdMemoryProvider memory, ModelRegistry modelRegistry,
                          SessionPersistence sessionPersistence,
-                         boolean memoryEnabled, MemorySyncConfig syncConfig,
+                         boolean memoryEnabled, boolean dailyLogsEnabled,
                          boolean promptExtractionEnabled, Integer timeLimitSeconds) {
     }
 }
