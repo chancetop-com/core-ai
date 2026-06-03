@@ -47,10 +47,24 @@ public final class MemoryExtractionTool extends ToolCall {
             - `## Obstacles & Solutions` — `| Obstacle | Solution |` table
             - `## User Feedback` — corrections, validations, preferences expressed
             - `## Key Decisions` — architectural choices, trade-offs, rationale
+            - `## Self-Verified (⚠️ untrusted)` — agent-authored check results. The agent
+              ran its own code to verify its output and believed it passed — but
+              self-verification code may have bugs. Record what was checked and
+              what the self-check claimed. This is a training signal (where the agent
+              was blind to its own errors), NOT a success claim.
             - `## Results` — deliverables, metrics, outcome summary.
-              **Only include when there is verifiable confirmation of success** — user approval,
-              test pass, verifier output, or explicit positive feedback. Without verification,
-              record only the execution process (Context, Actions), not a claimed result.
+              **Reliable verification** (include as verified result):
+              user explicitly confirms, external test suite passes, verifier script
+              from the project/test framework produces matching output.
+              **Self-verification is NOT reliable** — agent-authored check code,
+              script output the agent wrote and ran. The agent's verification code
+              may have bugs it cannot detect, producing false positives (as seen
+              with self-written Python scripts returning wrong values).
+              When self-verification is the only evidence, record under
+              `## Self-Verified (⚠️ untrusted)` instead of `## Results` —
+              report what the self-check claimed, but flag it as potentially wrong.
+              Without ANY verification, record only the execution process
+              (Context, Actions), not a claimed result.
               A false positive result contaminates the entire knowledge base.
               **User-reported failures are high-priority knowledge** — what went wrong and why.
               A failure prevents future mistakes; document it explicitly.
@@ -253,12 +267,20 @@ public final class MemoryExtractionTool extends ToolCall {
 
             ## Task Outcome Reconciliation
 
-            ⚠️ **No unverified results.** Only reconcile tasks where success is verifiable:
-            user explicitly confirms, tests pass, verifier output matches, or the agent receives
-            positive feedback. If the task merely executed without error but no outcome was
-            validated, do NOT claim success — record only the process, not a result.
-            A false success claim can permanently corrupt the knowledge base by teaching
-            the system to trust an unverified approach.
+            ⚠️ **Two classes of verification — only the first counts for reconciliation.**
+
+            | Verification type | Examples | Reliable? | Reconcile to wiki? |
+            |-------------------|----------|-----------|-------------------|
+            | **Reliable** | User confirms, external test suite passes, verifier script from project/test framework outputs match | Yes | Yes |
+            | **Self-verification** | Agent writes its own Python/script to check its own output | **No** — agent code may have bugs it cannot detect | **No** — keep in daily-log only |
+
+            **Self-verification is a training signal, not a success claim.** The agent
+            genuinely believes it succeeded, but the self-check code itself may be wrong.
+            Record it under `## Self-Verified (⚠️ untrusted)` — this is valuable for
+            identifying verification blind spots, not for building knowledge.
+
+            Only reconcile tasks verified by **reliable** sources. If the only
+            verification is self-written code, do NOT reconcile or promote to wiki.
 
             **User-reported failures are just as valuable as successes.** When the user says
             something didn't work, record the failure and the attempted approach. This is
@@ -266,7 +288,7 @@ public final class MemoryExtractionTool extends ToolCall {
             Reconcile it with wiki: if a page recommends the failed approach, update it.
 
             After each daily-log, reconcile the task outcome with existing wiki knowledge.
-            Success: explicit approval, verifier output used to complete, no user objection.
+            Success: reliable verification only (user approval, verifier output, test pass).
 
             For successful tasks:
             1. Identify approach — compare with wiki: does any page claim it's impossible?
