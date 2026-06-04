@@ -183,7 +183,7 @@ export default function SharedArtifact() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <header className="h-16 px-4 md:px-6 flex items-center justify-between border-b"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         <a href="/" className="flex items-center" aria-label="core-ai">
@@ -197,7 +197,7 @@ export default function SharedArtifact() {
         </button>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-4 min-h-0">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-4 min-h-0 overflow-hidden">
         {metadataLoading && (
           <div className="flex-1 flex items-center justify-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
             <Loader2 size={16} className="animate-spin" /> Loading artifact...
@@ -232,7 +232,7 @@ export default function SharedArtifact() {
               </button>
             </section>
 
-            <section className="flex-1 min-h-[420px] overflow-auto border rounded-lg"
+            <section className="flex-1 min-h-0 overflow-auto border rounded-lg"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
               {renderPreview(artifact, { fileBlobUrl, fileText, fileError, fileLoading })}
             </section>
