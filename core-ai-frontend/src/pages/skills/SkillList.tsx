@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, FileUp } from 'lucide-react';
+import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, FileUp, X } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SkillDefinition } from '../../api/client';
 
@@ -11,6 +11,8 @@ export default function SkillList() {
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
+  const [namespaceFilter, setNamespaceFilter] = useState<string>('');
+  const [ownerFilter, setOwnerFilter] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -29,16 +31,40 @@ export default function SkillList() {
     load();
   }, [load]);
 
-  const filteredSkills = skills.filter(s => {
-    const matchSearch = !search ||
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.description?.toLowerCase().includes(search.toLowerCase()) ||
-      s.namespace.toLowerCase().includes(search.toLowerCase());
-    const matchSource = !sourceFilter || s.source_type === sourceFilter;
-    return matchSearch && matchSource;
-  });
+  const sourceOptions = useMemo(() => uniqueSorted(skills.map(s => s.source_type)), [skills]);
+  const namespaceOptions = useMemo(() => uniqueSorted(skills.map(s => s.namespace)), [skills]);
+  const ownerOptions = useMemo(() => uniqueSorted(skills.map(s => s.user_id)), [skills]);
+
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredSkills = useMemo(() => skills.filter(s => {
+    if (sourceFilter && s.source_type !== sourceFilter) return false;
+    if (namespaceFilter && s.namespace !== namespaceFilter) return false;
+    if (ownerFilter && s.user_id !== ownerFilter) return false;
+    if (!normalizedSearch) return true;
+    return [
+      s.name,
+      s.qualified_name,
+      s.description,
+      s.namespace,
+      s.source_type,
+      s.user_id,
+      s.version,
+      ...(s.allowed_tools || []),
+    ].some(value => value?.toLowerCase().includes(normalizedSearch));
+  }), [skills, sourceFilter, namespaceFilter, ownerFilter, normalizedSearch]);
+
+  useEffect(() => {
+    if (filteredSkills.length === 0 && offset !== 0) {
+      setOffset(0);
+      return;
+    }
+    if (filteredSkills.length > 0 && offset >= filteredSkills.length) {
+      setOffset(Math.floor((filteredSkills.length - 1) / limit) * limit);
+    }
+  }, [filteredSkills.length, limit, offset]);
 
   const pagedSkills = filteredSkills.slice(offset, offset + limit);
+  const hasActiveFilters = Boolean(search || sourceFilter || namespaceFilter || ownerFilter);
 
   const formatTime = (iso: string) => {
     if (!iso) return '-';
@@ -67,6 +93,14 @@ export default function SkillList() {
     e.stopPropagation();
     await api.skills.sync(id);
     load();
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setSourceFilter('');
+    setNamespaceFilter('');
+    setOwnerFilter('');
+    setOffset(0);
   };
 
   const handleFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -132,7 +166,7 @@ export default function SkillList() {
       </div>
 
       {/* Filters bar */}
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-sm">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2"
             style={{ color: 'var(--color-text-secondary)' }} />
@@ -151,12 +185,34 @@ export default function SkillList() {
         <select
           value={sourceFilter}
           onChange={e => { setSourceFilter(e.target.value); setOffset(0); }}
-          className="px-3 py-2 rounded-lg border text-sm"
+          className="px-3 py-2 rounded-lg border text-sm min-w-36"
           style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
           <option value="">All Sources</option>
-          <option value="UPLOAD">Upload</option>
-          <option value="REPO">Repo</option>
+          {sourceOptions.map(source => <option key={source} value={source}>{formatSource(source)}</option>)}
         </select>
+        <select
+          value={namespaceFilter}
+          onChange={e => { setNamespaceFilter(e.target.value); setOffset(0); }}
+          className="px-3 py-2 rounded-lg border text-sm min-w-40"
+          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+          <option value="">All Namespaces</option>
+          {namespaceOptions.map(namespace => <option key={namespace} value={namespace}>{namespace}</option>)}
+        </select>
+        <select
+          value={ownerFilter}
+          onChange={e => { setOwnerFilter(e.target.value); setOffset(0); }}
+          className="px-3 py-2 rounded-lg border text-sm min-w-40"
+          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+          <option value="">All Owners</option>
+          {ownerOptions.map(owner => <option key={owner} value={owner}>{owner}</option>)}
+        </select>
+        {hasActiveFilters && (
+          <button onClick={clearFilters}
+            className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border text-sm cursor-pointer"
+            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}>
+            <X size={14} /> Clear
+          </button>
+        )}
       </div>
 
       {/* Skill cards */}
@@ -258,4 +314,12 @@ export default function SkillList() {
       )}
     </div>
   );
+}
+
+function uniqueSorted(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b));
+}
+
+function formatSource(source: string) {
+  return source.charAt(0) + source.slice(1).toLowerCase();
 }
