@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, FileUp } from 'lucide-react';
 import { api } from '../../api/client';
@@ -15,14 +15,19 @@ export default function SkillList() {
   const uploadRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
-    api.skills.list(undefined, sourceFilter || undefined, search || undefined)
+    api.skills.list()
       .then(res => setSkills(res.skills || []))
+      .catch(err => {
+        console.error('Failed to load skills:', err);
+      })
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const filteredSkills = skills.filter(s => {
     const matchSearch = !search ||
@@ -49,8 +54,13 @@ export default function SkillList() {
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Delete this skill?')) return;
-    await api.skills.delete(id);
-    load();
+    try {
+      await api.skills.delete(id);
+      setSkills(prev => prev.filter(s => s.id !== id));
+      void load();
+    } catch (err) {
+      alert('Delete failed: ' + (err instanceof Error ? err.message : 'unknown error'));
+    }
   };
 
   const handleSync = async (id: string, e: React.MouseEvent) => {

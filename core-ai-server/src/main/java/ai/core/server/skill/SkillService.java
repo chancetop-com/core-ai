@@ -10,6 +10,7 @@ import ai.core.skill.SkillMetadata;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
@@ -23,6 +24,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -115,26 +117,18 @@ public class SkillService {
         if (sourceType != null && !sourceType.isBlank()) {
             filters.add(Filters.eq("source_type", SkillSourceType.valueOf(sourceType)));
         }
-        if (query != null && !query.isBlank()) {
-            filters.add(Filters.or(
-                Filters.regex("name", query, "i"),
-                Filters.regex("description", query, "i"),
-                Filters.regex("namespace", query, "i")
-            ));
-        }
-
         Bson filter = filters.isEmpty() ? Filters.exists("_id") : Filters.and(filters);
-        return skillCollection.find(filter);
+        return filterByQuery(skillCollection.find(filter), query);
     }
 
     public SkillDefinition get(String id) {
         return skillCollection.get(id)
-            .orElseThrow(() -> new RuntimeException("skill not found, id=" + id));
+            .orElseThrow(() -> new NotFoundException("skill not found, id=" + id));
     }
 
     public SkillDefinition findByQualifiedName(String qualifiedName) {
         return skillCollection.findOne(Filters.eq("qualified_name", qualifiedName))
-            .orElseThrow(() -> new RuntimeException("skill not found: " + qualifiedName));
+            .orElseThrow(() -> new NotFoundException("skill not found: " + qualifiedName));
     }
 
     public void delete(String id) {
@@ -198,6 +192,21 @@ public class SkillService {
 
     public SkillDefinition download(String id) {
         return get(id);
+    }
+
+    private List<SkillDefinition> filterByQuery(List<SkillDefinition> skills, String query) {
+        if (query == null || query.isBlank()) return skills;
+
+        String normalizedQuery = query.trim().toLowerCase(Locale.ROOT);
+        return skills.stream()
+            .filter(skill -> containsNormalized(skill.name, normalizedQuery)
+                || containsNormalized(skill.description, normalizedQuery)
+                || containsNormalized(skill.namespace, normalizedQuery))
+            .toList();
+    }
+
+    private boolean containsNormalized(String value, String normalizedQuery) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedQuery);
     }
 
     public List<SkillMetadata> resolveSkills(List<String> skillIds) {
