@@ -28,16 +28,16 @@ public class DeepResearchAgent {
             """;
 
     public static Agent of(LLMProvider llmProvider) {
-        return of(llmProvider, null, null, List.of(), List.of());
+        return of(llmProvider, null, null, List.of(), List.of(), null);
     }
 
     public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback,
                            List<AbstractLifecycle> lifecycles) {
-        return of(llmProvider, model, streamingCallback, lifecycles, List.of());
+        return of(llmProvider, model, streamingCallback, lifecycles, List.of(), null);
     }
 
     public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback,
-                           List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects) {
+                           List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {
         return Agent.builder()
                 .name(AGENT_NAME)
                 .streamingCallback(streamingCallback)
@@ -52,7 +52,7 @@ public class DeepResearchAgent {
                         BuiltinTools.WEB,
                         List.of()
                 ))
-                .maxTurn(100)
+                .maxTurn(maxTurnNumber)
                 .llmProvider(llmProvider)
                 .reasoningEffort(ReasoningEffort.HIGH)
                 .build();

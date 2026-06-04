@@ -22,7 +22,7 @@ public class DefaultGeneralAgent {
                 General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you.
             """;
 
-    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects) {
+    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {
         return Agent.builder()
                 .name(AGENT_NAME)
                 .streamingCallback(streamingCallback)
@@ -32,7 +32,9 @@ public class DefaultGeneralAgent {
                 .systemPrompt(buildSystemPrompt())
                 .systemPromptSections(resolvePromptInjects(promptInjects))
                 .toolCalls(BuiltinTools.combine(BuiltinTools.FILE_OPERATIONS, BuiltinTools.CODE_EXECUTION, BuiltinTools.WEB))
-                .llmProvider(llmProvider).build();
+                .llmProvider(llmProvider)
+                .maxTurn(maxTurnNumber)
+                .build();
     }
 
     private static List<PromptInject> resolvePromptInjects(List<PromptInject> promptInjects) {

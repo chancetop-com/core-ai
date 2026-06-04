@@ -10,6 +10,7 @@ import ai.core.llm.LLMProvider;
 public class SubAgentConfig {
     private String model;
     private LLMProvider llmProvider;
+    private Integer maxTurnNumber;
 
     public String model() {
         return model;
@@ -26,6 +27,15 @@ public class SubAgentConfig {
 
     public SubAgentConfig llmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
+        return this;
+    }
+
+    public Integer maxTurnNumber() {
+        return maxTurnNumber;
+    }
+
+    public SubAgentConfig maxTurnNumber(Integer maxTurnNumber) {
+        this.maxTurnNumber = maxTurnNumber;
         return this;
     }
 }

@@ -100,6 +100,10 @@ public class CliApp {
                         configs.computeIfAbsent(agentName, k -> new SubAgentConfig()).llmProvider(provider);
                     }
                 });
+            } else if (suffix.endsWith(".max-turn")) {
+                agentName = suffix.substring(0, suffix.length() - ".max-turn".length());
+                props.property(key).map(Integer::parseInt).ifPresent(maxTurn ->
+                        configs.computeIfAbsent(agentName, k -> new SubAgentConfig()).maxTurnNumber(maxTurn));
             }
         }
         return configs;

@@ -25,15 +25,15 @@ public class DefaultExploreAgent {
             """;
 
     public static Agent of(LLMProvider llmProvider) {
-        return of(llmProvider, "", null, List.of());
+        return of(llmProvider, "", null, List.of(), List.of(), null);
     }
 
     public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles) {
-        return of(llmProvider, model, streamingCallback, lifecycles, List.of());
+        return of(llmProvider, model, streamingCallback, lifecycles, List.of(), null);
 
     }
 
-    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects) {
+    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {
         var prompt = buildSystemPrompt();
         return Agent.builder()
                 .name(AGENT_NAME)
@@ -48,7 +48,9 @@ public class DefaultExploreAgent {
                         GlobFileTool.builder().build(),
                         ReadFileTool.builder().build(),
                         ShellCommandTool.builder().build()))
-                .llmProvider(llmProvider).build();
+                .llmProvider(llmProvider)
+                .maxTurn(maxTurnNumber)
+                .build();
     }
 
     private static List<PromptInject> resolvePromptInjects(List<PromptInject> promptInjects) {

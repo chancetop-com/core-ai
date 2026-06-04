@@ -178,19 +178,31 @@ public class TaskTool extends ToolCall {
     private Agent createAgent(String subagentType, ExecutionContext context) {
         var llmProvider = resolveLlmProvider(subagentType, context);
         var model = resolveModel(subagentType, context);
+        var maxTurnNumber = resolveMaxTurnNumber(subagentType, context);
         if (DeepResearchAgent.AGENT_NAME.equals(subagentType)) {
-            return DeepResearchAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+            return DeepResearchAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultExploreAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+            return DefaultExploreAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         if (DefaultCodeSimplifierAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultCodeSimplifierAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+            return DefaultCodeSimplifierAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         if (DefaultGeneralAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultGeneralAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections());
+            return DefaultGeneralAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
+    }
+
+    private int resolveMaxTurnNumber(String subagentType, ExecutionContext context) {
+        var configs = context.getSubAgentConfigs();
+        if (configs != null) {
+            var config = configs.get(subagentType);
+            if (config != null && config.maxTurnNumber() != null) {
+                return config.maxTurnNumber();
+            }
+        }
+        return 200;
     }
 
     private String resolveModel(String subagentType, ExecutionContext context) {
