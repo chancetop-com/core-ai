@@ -11,7 +11,6 @@ export default function SkillList() {
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
-  const [namespaceFilter, setNamespaceFilter] = useState<string>('');
   const [ownerFilter, setOwnerFilter] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -32,13 +31,11 @@ export default function SkillList() {
   }, [load]);
 
   const sourceOptions = useMemo(() => uniqueSorted(skills.map(s => s.source_type)), [skills]);
-  const namespaceOptions = useMemo(() => uniqueSorted(skills.map(s => s.namespace)), [skills]);
   const ownerOptions = useMemo(() => uniqueSorted(skills.map(s => s.user_id)), [skills]);
 
   const normalizedSearch = search.trim().toLowerCase();
   const filteredSkills = useMemo(() => skills.filter(s => {
     if (sourceFilter && s.source_type !== sourceFilter) return false;
-    if (namespaceFilter && s.namespace !== namespaceFilter) return false;
     if (ownerFilter && s.user_id !== ownerFilter) return false;
     if (!normalizedSearch) return true;
     return [
@@ -51,7 +48,7 @@ export default function SkillList() {
       s.version,
       ...(s.allowed_tools || []),
     ].some(value => value?.toLowerCase().includes(normalizedSearch));
-  }), [skills, sourceFilter, namespaceFilter, ownerFilter, normalizedSearch]);
+  }), [skills, sourceFilter, ownerFilter, normalizedSearch]);
 
   useEffect(() => {
     if (filteredSkills.length === 0 && offset !== 0) {
@@ -64,7 +61,7 @@ export default function SkillList() {
   }, [filteredSkills.length, limit, offset]);
 
   const pagedSkills = filteredSkills.slice(offset, offset + limit);
-  const hasActiveFilters = Boolean(search || sourceFilter || namespaceFilter || ownerFilter);
+  const hasActiveFilters = Boolean(search || sourceFilter || ownerFilter);
 
   const formatTime = (iso: string) => {
     if (!iso) return '-';
@@ -98,7 +95,6 @@ export default function SkillList() {
   const clearFilters = () => {
     setSearch('');
     setSourceFilter('');
-    setNamespaceFilter('');
     setOwnerFilter('');
     setOffset(0);
   };
@@ -191,19 +187,11 @@ export default function SkillList() {
           {sourceOptions.map(source => <option key={source} value={source}>{formatSource(source)}</option>)}
         </select>
         <select
-          value={namespaceFilter}
-          onChange={e => { setNamespaceFilter(e.target.value); setOffset(0); }}
-          className="px-3 py-2 rounded-lg border text-sm min-w-40"
-          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
-          <option value="">All Namespaces</option>
-          {namespaceOptions.map(namespace => <option key={namespace} value={namespace}>{namespace}</option>)}
-        </select>
-        <select
           value={ownerFilter}
           onChange={e => { setOwnerFilter(e.target.value); setOffset(0); }}
           className="px-3 py-2 rounded-lg border text-sm min-w-40"
           style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
-          <option value="">All Owners</option>
+          <option value="">All Creators</option>
           {ownerOptions.map(owner => <option key={owner} value={owner}>{owner}</option>)}
         </select>
         {hasActiveFilters && (
