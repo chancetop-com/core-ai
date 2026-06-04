@@ -10,7 +10,7 @@ import core.framework.mongo.Mongo;
 public class SchemaMigrationVFileShareTokenIndex implements SchemaMigration {
     @Override
     public String version() {
-        return "20260604001";
+        return "20260604002";
     }
 
     @Override
