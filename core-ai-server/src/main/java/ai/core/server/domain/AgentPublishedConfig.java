@@ -53,4 +53,7 @@ public class AgentPublishedConfig {
 
     @Field(name = "output_dataset_id")
     public String outputDatasetId;
+
+    @Field(name = "dataset_permissions")
+    public List<AgentDatasetPermission> datasetPermissions;
 }

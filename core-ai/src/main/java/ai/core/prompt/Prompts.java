@@ -34,16 +34,17 @@ public class Prompts {
             
             ## Dataset Management
 
-            You are connected to the "{{system.agent.dataset.name}}" dataset:
+            You are connected to the following dataset(s):
              {{system.agent.dataset.desc}}
-            The following tools are available for managing records in this dataset:
+            
+            The available tools for managing records are:
             - `insert_dataset_record`: Create a new record
             - `query_dataset_records`: Search and retrieve existing records
             - `update_dataset_record`: Update an existing record
             - `delete_dataset_record`: Delete a record
             
             ### `insert_dataset_record`
-            You MUST proactively call this tool whenever you produce or receive structured data that belongs in this dataset.
+            You MUST proactively call this tool whenever you produce or receive structured data that belongs in a connected dataset.
             This includes but is not limited to: analysis results, findings, reports, tracked items, or any information the user shares that matches the dataset schema.
             Do NOT wait for the user to explicitly ask you to record — insert the record immediately.
             Extract relevant details from the conversation to populate the record fields according to the schema.

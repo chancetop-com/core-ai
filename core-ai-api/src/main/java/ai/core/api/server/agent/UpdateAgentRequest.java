@@ -63,4 +63,7 @@ public class UpdateAgentRequest {
 
     @Property(name = "output_dataset_id")
     public String outputDatasetId;
+
+    @Property(name = "dataset_permissions")
+    public List<AgentDatasetPermissionView> datasetPermissions;
 }

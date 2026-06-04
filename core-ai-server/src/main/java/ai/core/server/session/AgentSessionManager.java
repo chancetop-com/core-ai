@@ -11,7 +11,10 @@ import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
 import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
+import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.domain.AgentDatasetPermission;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
@@ -143,8 +146,12 @@ public class AgentSessionManager {
         var tools = buildDefaultSessionTools(effectiveConfig, sessionId);
         Map<String, Object> extraVars = null;
         if (hasText(effectiveConfig.datasetId)) {
-            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt);
-            extraVars = buildDatasetSystemVars(effectiveConfig.datasetId);
+            var dp = new AgentDatasetPermission();
+            dp.datasetId = effectiveConfig.datasetId;
+            dp.permission = DatasetPermission.READ;
+            var datasetPermissions = List.of(dp);
+            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetPermissions);
+            extraVars = buildDatasetSystemVars(datasetPermissions);
         }
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
                 artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, sandboxOn), context, null, extraVars);
@@ -175,14 +182,20 @@ public class AgentSessionManager {
         }
         var tools = subAgentManager().resolveTools(definition);
         var sessionId = UUID.randomUUID().toString();
-        var agentDatasetId = definition.publishedConfig != null ? definition.publishedConfig.outputDatasetId : definition.outputDatasetId;
-        var datasetId = overrides != null && hasText(overrides.datasetId) ? overrides.datasetId : agentDatasetId;
-        config.datasetId = datasetId;
-        tools = addDatasetTools(tools, datasetId, definition.id, sessionId);
+        var datasetPermissions = AgentDefinitionService.resolveDatasetPermissions(definition);
+        // SessionConfig.datasetId override: if set, use that single dataset with READ permission
+        if (overrides != null && hasText(overrides.datasetId)) {
+            var overridePerm = new AgentDatasetPermission();
+            overridePerm.datasetId = overrides.datasetId;
+            overridePerm.permission = DatasetPermission.READ;
+            datasetPermissions = List.of(overridePerm);
+            config.datasetId = overrides.datasetId;
+        }
+        tools = addDatasetTools(tools, datasetPermissions, definition.id, sessionId);
         Map<String, Object> extraVars = null;
-        if (hasText(datasetId)) {
-            config.systemPrompt = appendDatasetInstructions(config.systemPrompt);
-            extraVars = buildDatasetSystemVars(datasetId);
+        if (datasetPermissions != null && !datasetPermissions.isEmpty()) {
+            config.systemPrompt = appendDatasetInstructions(config.systemPrompt, datasetPermissions);
+            extraVars = buildDatasetSystemVars(datasetPermissions);
         }
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
         var sandboxConfig = sandboxService.getEffectiveConfig(definition);
@@ -326,30 +339,60 @@ public class AgentSessionManager {
         return subAgentManager().loadSubAgents(session, definitions);
     }
 
-    private List<ToolCall> addDatasetTools(List<ToolCall> tools, String datasetId, String agentId, String sessionId) {
-        if (!hasText(datasetId)) return tools;
-        var dataset = datasetService.get(datasetId);
-        if (dataset == null) return tools;
+    private List<ToolCall> addDatasetTools(List<ToolCall> tools, List<AgentDatasetPermission> datasetPermissions, String agentId, String sessionId) {
+        if (datasetPermissions == null || datasetPermissions.isEmpty()) return tools;
         var mutable = new ArrayList<>(tools);
-        mutable.add(QueryDatasetRecordsTool.create(datasetId, datasetRecordService, dataset));
-        mutable.add(InsertDatasetRecordTool.create(datasetId, agentId, sessionId, datasetRecordService, dataset));
-        mutable.add(UpdateDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
-        mutable.add(DeleteDatasetRecordTool.create(datasetId, datasetRecordService, dataset));
+        for (var perm : datasetPermissions) {
+            var dataset = datasetService.get(perm.datasetId);
+            if (dataset == null) continue;
+            mutable.add(QueryDatasetRecordsTool.create(perm.datasetId, datasetRecordService, dataset));
+            if (perm.permission == DatasetPermission.WRITE || perm.permission == DatasetPermission.FULL) {
+                mutable.add(InsertDatasetRecordTool.create(perm.datasetId, agentId, sessionId, datasetRecordService, dataset));
+                mutable.add(UpdateDatasetRecordTool.create(perm.datasetId, datasetRecordService, dataset));
+            }
+            if (perm.permission == DatasetPermission.FULL) {
+                mutable.add(DeleteDatasetRecordTool.create(perm.datasetId, datasetRecordService, dataset));
+            }
+        }
         return mutable;
     }
 
-    private String appendDatasetInstructions(String systemPrompt) {
+    private String appendDatasetInstructions(String systemPrompt, List<AgentDatasetPermission> datasetPermissions) {
         if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
         return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
     }
 
-    private Map<String, Object> buildDatasetSystemVars(String datasetId) {
-        var dataset = datasetService.get(datasetId);
+    private Map<String, Object> buildDatasetSystemVars(List<AgentDatasetPermission> datasetPermissions) {
+        if (datasetPermissions == null || datasetPermissions.isEmpty()) return null;
+        var first = datasetPermissions.getFirst();
+        var dataset = datasetService.get(first.datasetId);
         if (dataset == null) return null;
         var vars = new HashMap<String, Object>();
-        vars.put(SystemVariables.AGENT_DATASET_NAME, dataset.name);
-        vars.put(SystemVariables.AGENT_DATASET_DESC, dataset.description != null && !dataset.description.isBlank() ? ": " + dataset.description : "");
+        vars.put(SystemVariables.AGENT_DATASET_NAME, buildDatasetNames(datasetPermissions));
+        vars.put(SystemVariables.AGENT_DATASET_DESC, buildDatasetDesc(datasetPermissions));
         return vars;
+    }
+
+    private String buildDatasetNames(List<AgentDatasetPermission> datasetPermissions) {
+        var names = new ArrayList<String>();
+        for (var perm : datasetPermissions) {
+            var dataset = datasetService.get(perm.datasetId);
+            if (dataset != null) names.add(dataset.name);
+        }
+        return String.join(", ", names);
+    }
+
+    private String buildDatasetDesc(List<AgentDatasetPermission> datasetPermissions) {
+        var sb = new StringBuilder();
+        for (var perm : datasetPermissions) {
+            var dataset = datasetService.get(perm.datasetId);
+            if (dataset == null) continue;
+            sb.append("\n- \"").append(dataset.name).append("\" (").append(perm.permission.name()).append(")");
+            if (dataset.description != null && !dataset.description.isBlank()) {
+                sb.append(": ").append(dataset.description);
+            }
+        }
+        return sb.toString();
     }
 
     private List<ToolCall> buildDefaultSessionTools(SessionConfig config, String sessionId) {
