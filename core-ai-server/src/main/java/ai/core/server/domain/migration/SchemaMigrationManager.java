@@ -72,9 +72,7 @@ public class SchemaMigrationManager {
             new SchemaMigrationVTriggerIndexes(),
             new SchemaMigrationVDatasetIndexes(),
             new SchemaMigrationVDatasetRecordUserIndex(),
-            new SchemaMigrationVTraceAccountScopeIndexes(),
-            new SchemaMigrationVCleanAgentIdLists(),
-            new SchemaMigrationVCleanAgentIdListsWithPipeline()
+            new SchemaMigrationVTraceAccountScopeIndexes()
         );
     }
 }
