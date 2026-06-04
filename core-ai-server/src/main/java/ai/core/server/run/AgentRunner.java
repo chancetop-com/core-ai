@@ -29,6 +29,7 @@ import ai.core.server.skill.ServerSkillTool;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.server.util.IdLists;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.tool.ToolRegistryService;
@@ -304,9 +305,9 @@ public class AgentRunner {
         var multiModalModel = config != null ? config.multiModalModel : definition.multiModalModel;
         var temperature = config != null ? config.temperature : definition.temperature;
         var maxTurns = config != null ? config.maxTurns : definition.maxTurns;
-        var skillIds = config != null ? config.skillIds : definition.skillIds;
+        var skillIds = IdLists.clean(config != null ? config.skillIds : definition.skillIds);
         SkillRegistry skillRegistry = null;
-        if (skillIds != null && !skillIds.isEmpty()) {
+        if (!skillIds.isEmpty()) {
             skillRegistry = new SkillRegistry();
             skillRegistry.addProvider(mongoSkillProvider.scoped(new HashSet<>(skillIds)));
             tools.add(ServerSkillTool.builder()

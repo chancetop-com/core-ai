@@ -18,6 +18,7 @@ import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
@@ -95,10 +96,10 @@ public class SessionRebuildManager {
             logger.info("loaded {} tool ref(s) from DB for session {}, refs={}", meta.loadedTools.size(), meta.id, meta.loadedTools);
         }
         if (meta.loadedSkillIds != null && !meta.loadedSkillIds.isEmpty()) {
-            state.skillIds = meta.loadedSkillIds;
+            state.skillIds = IdLists.clean(meta.loadedSkillIds);
         }
         if (meta.loadedSubAgentIds != null && !meta.loadedSubAgentIds.isEmpty()) {
-            state.subAgentIds = meta.loadedSubAgentIds;
+            state.subAgentIds = IdLists.clean(meta.loadedSubAgentIds);
         }
     }
 
@@ -221,7 +222,7 @@ public class SessionRebuildManager {
         }
         if (state.subAgentIds != null && !state.subAgentIds.isEmpty()) {
             try {
-                var definitions = state.subAgentIds.stream()
+                var definitions = IdLists.clean(state.subAgentIds).stream()
                         .map(id -> agentDefinitionCollection.get(id).orElse(null))
                         .filter(def -> def != null)
                         .toList();

@@ -8,6 +8,7 @@ import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
+import ai.core.server.util.IdLists;
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
@@ -155,12 +156,13 @@ public class ChatMessageService {
 
     @SuppressWarnings("checkstyle:NestedTryDepth")
     public void addLoadedSkillIds(String sessionId, List<String> skillIds) {
-        if (skillIds == null || skillIds.isEmpty()) return;
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return;
         try {
             var existing = chatSessionCollection.get(sessionId).orElse(null);
             if (existing == null) {
                 var stub = newStub(sessionId);
-                stub.loadedSkillIds = new java.util.ArrayList<>(skillIds);
+                stub.loadedSkillIds = new java.util.ArrayList<>(cleanSkillIds);
                 try {
                     chatSessionCollection.insert(stub);
                     return;
@@ -169,7 +171,7 @@ public class ChatMessageService {
                 }
             }
             chatSessionCollection.update(Filters.eq("_id", sessionId),
-                Updates.addEachToSet("loaded_skill_ids", skillIds));
+                Updates.addEachToSet("loaded_skill_ids", cleanSkillIds));
         } catch (Exception e) {
             LOGGER.warn("failed to persist loaded skills, sessionId={}", sessionId, e);
         }
@@ -177,12 +179,13 @@ public class ChatMessageService {
 
     @SuppressWarnings("checkstyle:NestedTryDepth")
     public void addLoadedSubAgentIds(String sessionId, List<String> agentIds) {
-        if (agentIds == null || agentIds.isEmpty()) return;
+        var cleanAgentIds = IdLists.clean(agentIds);
+        if (cleanAgentIds.isEmpty()) return;
         try {
             var existing = chatSessionCollection.get(sessionId).orElse(null);
             if (existing == null) {
                 var stub = newStub(sessionId);
-                stub.loadedSubAgentIds = new java.util.ArrayList<>(agentIds);
+                stub.loadedSubAgentIds = new java.util.ArrayList<>(cleanAgentIds);
                 try {
                     chatSessionCollection.insert(stub);
                     return;
@@ -191,7 +194,7 @@ public class ChatMessageService {
                 }
             }
             chatSessionCollection.update(Filters.eq("_id", sessionId),
-                Updates.addEachToSet("loaded_sub_agent_ids", agentIds));
+                Updates.addEachToSet("loaded_sub_agent_ids", cleanAgentIds));
         } catch (Exception e) {
             LOGGER.warn("failed to persist loaded sub-agents, sessionId={}", sessionId, e);
         }
@@ -210,10 +213,11 @@ public class ChatMessageService {
     }
 
     public void removeLoadedSkillIds(String sessionId, List<String> skillIds) {
-        if (skillIds == null || skillIds.isEmpty()) return;
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return;
         try {
             chatSessionCollection.update(Filters.eq("_id", sessionId),
-                Updates.pullAll("loaded_skill_ids", skillIds));
+                Updates.pullAll("loaded_skill_ids", cleanSkillIds));
         } catch (Exception e) {
             LOGGER.warn("failed to remove loaded skills, sessionId={}", sessionId, e);
         }

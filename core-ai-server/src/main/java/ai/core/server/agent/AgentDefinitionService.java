@@ -18,6 +18,7 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.User;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.skill.SkillService;
+import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -68,8 +69,8 @@ public class AgentDefinitionService {
             entity.timeoutSeconds = request.timeoutSeconds != null ? request.timeoutSeconds : 600;
         }
         entity.tools = request.tools != null ? toToolRefs(request.tools) : null;
-        entity.subAgentIds = request.subAgentIds;
-        entity.skillIds = request.skillIds;
+        entity.subAgentIds = IdLists.cleanOrNull(request.subAgentIds);
+        entity.skillIds = IdLists.cleanOrNull(request.skillIds);
         entity.inputTemplate = request.inputTemplate;
         entity.variables = request.variables;
         entity.type = request.type != null ? DefinitionType.valueOf(request.type) : DefinitionType.AGENT;
@@ -146,8 +147,8 @@ public class AgentDefinitionService {
         if (request.variables != null) entity.variables = request.variables;
         if (request.responseSchema != null) entity.responseSchema = request.responseSchema;
         if (request.type != null) entity.type = DefinitionType.valueOf(request.type);
-        if (request.subAgentIds != null) entity.subAgentIds = request.subAgentIds;
-        if (request.skillIds != null) entity.skillIds = request.skillIds;
+        if (request.subAgentIds != null) entity.subAgentIds = IdLists.cleanOrNull(request.subAgentIds);
+        if (request.skillIds != null) entity.skillIds = IdLists.cleanOrNull(request.skillIds);
         if (request.sandboxConfig != null) entity.sandboxConfig = fromSandboxConfigView(request.sandboxConfig);
         if (request.outputDatasetId != null) entity.outputDatasetId = request.outputDatasetId;
         entity.updatedAt = ZonedDateTime.now();
@@ -159,6 +160,9 @@ public class AgentDefinitionService {
     public AgentDefinitionView publish(String id) {
         var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+
+        entity.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
+        entity.skillIds = IdLists.cleanOrNull(entity.skillIds);
 
         var config = new AgentPublishedConfig();
         config.systemPrompt = entity.systemPrompt;
@@ -172,8 +176,8 @@ public class AgentDefinitionService {
         config.inputTemplate = entity.inputTemplate;
         config.variables = entity.variables;
         config.responseSchema = entity.responseSchema;
-        config.subAgentIds = entity.subAgentIds;
-        config.skillIds = entity.skillIds;
+        config.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
+        config.skillIds = IdLists.cleanOrNull(entity.skillIds);
         config.sandboxConfig = entity.sandboxConfig;
         config.outputDatasetId = entity.outputDatasetId;
 
@@ -237,9 +241,9 @@ public class AgentDefinitionService {
         view.createdBy = resolveUserName(entity.userId);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
-        view.subAgentIds = entity.subAgentIds;
-        view.skillIds = entity.skillIds;
-        view.subAgents = entity.subAgentIds != null ? entity.subAgentIds.stream()
+        view.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
+        view.skillIds = IdLists.cleanOrNull(entity.skillIds);
+        view.subAgents = view.subAgentIds != null ? view.subAgentIds.stream()
                 .map(id -> {
                     var v = new IdName();
                     v.id = id;
@@ -247,7 +251,7 @@ public class AgentDefinitionService {
                     return v;
                 })
                 .toList() : null;
-        view.skills = entity.skillIds != null ? entity.skillIds.stream()
+        view.skills = view.skillIds != null ? view.skillIds.stream()
                 .map(id -> {
                     var v = new IdName();
                     v.id = id;

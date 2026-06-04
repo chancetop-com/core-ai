@@ -8,6 +8,7 @@ import ai.core.persistence.PersistenceProviders;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.util.IdLists;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
@@ -55,8 +56,8 @@ public class SessionSubAgentManager {
     }
 
     public List<String> loadSubAgentsFromDefinition(InProcessAgentSession session, AgentDefinition definition) {
-        var subAgentIds = definition.subAgentIds;
-        if (subAgentIds == null || subAgentIds.isEmpty()) {
+        var subAgentIds = IdLists.clean(definition.subAgentIds);
+        if (subAgentIds.isEmpty()) {
             return List.of();
         }
         var names = new ArrayList<String>();

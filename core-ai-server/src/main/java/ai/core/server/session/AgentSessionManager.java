@@ -21,6 +21,7 @@ import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
@@ -207,8 +208,8 @@ public class AgentSessionManager {
         skillManager().loadSkillsFromDefinition(session, definition);
         subAgentManager().loadSubAgentsFromDefinition(session, definition);
         return new SessionCreationResult(sessionId,
-                loadedSubAgentIds != null ? loadedSubAgentIds : List.of(),
-                loadedSkillIds != null ? loadedSkillIds : List.of());
+                IdLists.clean(loadedSubAgentIds),
+                IdLists.clean(loadedSkillIds));
     }
 
     private void claimOwnership(String sessionId) {

@@ -10,6 +10,7 @@ import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.util.IdLists;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
 import org.slf4j.Logger;
@@ -117,12 +118,13 @@ public class SessionCreateHelper {
     }
 
     List<IdName> loadSkillsOnSessionCreate(String sessionId, CreateSessionRequest request) {
-        if (request.skillIds == null || request.skillIds.isEmpty()) return null;
-        var names = sessionManager.loadSkills(sessionId, request.skillIds);
-        var result = new ArrayList<IdName>(request.skillIds.size());
-        for (int i = 0; i < request.skillIds.size() && i < names.size(); i++) {
+        var cleanSkillIds = IdLists.clean(request.skillIds);
+        if (cleanSkillIds.isEmpty()) return null;
+        var names = sessionManager.loadSkills(sessionId, cleanSkillIds);
+        var result = new ArrayList<IdName>(cleanSkillIds.size());
+        for (int i = 0; i < cleanSkillIds.size() && i < names.size(); i++) {
             var v = new IdName();
-            v.id = request.skillIds.get(i);
+            v.id = cleanSkillIds.get(i);
             v.name = names.get(i);
             result.add(v);
         }
@@ -130,8 +132,9 @@ public class SessionCreateHelper {
     }
 
     void loadExtraSubAgentsOnSessionCreate(String sessionId, CreateSessionRequest request, List<IdName> loadedSubAgents) {
-        if (request.subAgentIds == null || request.subAgentIds.isEmpty()) return;
-        var definitions = request.subAgentIds.stream()
+        var cleanSubAgentIds = IdLists.clean(request.subAgentIds);
+        if (cleanSubAgentIds.isEmpty()) return;
+        var definitions = cleanSubAgentIds.stream()
                 .map(id -> {
                     try {
                         return agentDefinitionService.getEntity(id);
@@ -153,6 +156,7 @@ public class SessionCreateHelper {
     }
 
     String resolveSkillName(String id) {
+        if (id == null) return null;
         try {
             return skillService.get(id).name;
         } catch (Exception e) {

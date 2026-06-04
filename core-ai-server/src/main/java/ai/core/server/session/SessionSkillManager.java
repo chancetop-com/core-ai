@@ -5,6 +5,7 @@ import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.ServerSkillTool;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
+import ai.core.server.util.IdLists;
 import ai.core.session.InProcessAgentSession;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
@@ -41,18 +42,21 @@ public class SessionSkillManager {
 
     public List<String> unloadSkills(String sessionId, List<String> skillIds) {
         var state = sessionSkillStates.get(sessionId);
-        if (state == null || skillIds == null || skillIds.isEmpty()) {
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (state == null || cleanSkillIds.isEmpty()) {
             return state == null ? List.of() : List.copyOf(state.allowedIds);
         }
-        state.allowedIds.removeAll(skillIds);
+        state.allowedIds.removeAll(cleanSkillIds);
         state.registry.invalidateCache();
-        chatMessageService.removeLoadedSkillIds(sessionId, skillIds);
+        chatMessageService.removeLoadedSkillIds(sessionId, cleanSkillIds);
         return List.copyOf(state.allowedIds);
     }
 
     public List<String> loadSkills(InProcessAgentSession session, List<String> skillIds) {
-        var qualifiedNames = applySkillsToSession(session, skillIds);
-        chatMessageService.addLoadedSkillIds(session.id(), skillIds);
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return List.of();
+        var qualifiedNames = applySkillsToSession(session, cleanSkillIds);
+        chatMessageService.addLoadedSkillIds(session.id(), cleanSkillIds);
         return qualifiedNames;
     }
 
@@ -60,24 +64,27 @@ public class SessionSkillManager {
         var skillIds = definition.publishedConfig != null && definition.publishedConfig.skillIds != null
                 ? definition.publishedConfig.skillIds
                 : definition.skillIds;
-        if (skillIds == null || skillIds.isEmpty()) return List.of();
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return List.of();
         try {
-            var qualifiedNames = applySkillsToSession(session, skillIds);
-            chatMessageService.addLoadedSkillIds(session.id(), skillIds);
+            var qualifiedNames = applySkillsToSession(session, cleanSkillIds);
+            chatMessageService.addLoadedSkillIds(session.id(), cleanSkillIds);
             return qualifiedNames;
         } catch (Exception e) {
-            logger.warn("failed to load skills from definition, sessionId={}, skillIds={}", session.id(), skillIds, e);
+            logger.warn("failed to load skills from definition, sessionId={}, skillIds={}", session.id(), cleanSkillIds, e);
             return List.of();
         }
     }
 
     List<String> applySkillsToSession(InProcessAgentSession session, List<String> skillIds) {
-        var skills = skillService.resolveSkills(skillIds);
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return List.of();
+        var skills = skillService.resolveSkills(cleanSkillIds);
         if (skills.isEmpty()) {
-            throw new NotFoundException("no skills found for ids: " + skillIds);
+            throw new NotFoundException("no skills found for ids: " + cleanSkillIds);
         }
         var state = sessionSkillStates.computeIfAbsent(session.id(), k -> initSkillState(session));
-        state.allowedIds.addAll(skillIds);
+        state.allowedIds.addAll(cleanSkillIds);
         state.registry.invalidateCache();
         return skills.stream().map(SkillMetadata::getQualifiedName).toList();
     }

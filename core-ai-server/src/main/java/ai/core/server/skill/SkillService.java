@@ -4,6 +4,7 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.util.IdLists;
 import ai.core.skill.SkillLoader;
 import ai.core.skill.SkillMetadata;
 import com.mongodb.client.model.Filters;
@@ -200,9 +201,10 @@ public class SkillService {
     }
 
     public List<SkillMetadata> resolveSkills(List<String> skillIds) {
-        if (skillIds == null || skillIds.isEmpty()) return List.of();
+        var cleanSkillIds = IdLists.clean(skillIds);
+        if (cleanSkillIds.isEmpty()) return List.of();
         var result = new ArrayList<SkillMetadata>();
-        for (var id : skillIds) {
+        for (var id : cleanSkillIds) {
             skillCollection.get(id).ifPresent(def -> result.add(toMetadata(def)));
         }
         return result;

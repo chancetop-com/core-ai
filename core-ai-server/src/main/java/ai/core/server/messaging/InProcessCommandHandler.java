@@ -8,6 +8,7 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.server.util.IdLists;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -141,8 +142,8 @@ public class InProcessCommandHandler {
 
     private void handleLoadSkills(SessionCommand command) {
         var payload = JsonUtil.fromJson(LoadSkillsPayload.class, command.payload());
-        var skillIds = payload != null ? payload.skillIds : null;
-        if (skillIds == null || skillIds.isEmpty()) {
+        var skillIds = IdLists.clean(payload != null ? payload.skillIds : null);
+        if (skillIds.isEmpty()) {
             respondOk(command, JsonUtil.toJson(Map.of("loadedSkills", List.of())));
             return;
         }
@@ -160,8 +161,8 @@ public class InProcessCommandHandler {
 
     private void handleUnloadSkills(SessionCommand command) {
         var payload = JsonUtil.fromJson(UnloadSkillsPayload.class, command.payload());
-        var skillIds = payload != null ? payload.skillIds : null;
-        if (skillIds == null || skillIds.isEmpty()) {
+        var skillIds = IdLists.clean(payload != null ? payload.skillIds : null);
+        if (skillIds.isEmpty()) {
             var remaining = sessionManager.unloadSkills(command.sessionId(), List.of());
             respondOk(command, JsonUtil.toJson(Map.of("remainingSkills", remaining)));
             return;
@@ -173,8 +174,8 @@ public class InProcessCommandHandler {
 
     private void handleLoadSubAgents(SessionCommand command) {
         var payload = JsonUtil.fromJson(LoadSubAgentsPayload.class, command.payload());
-        var agentIds = payload != null ? payload.agentIds : null;
-        if (agentIds == null || agentIds.isEmpty()) {
+        var agentIds = IdLists.clean(payload != null ? payload.agentIds : null);
+        if (agentIds.isEmpty()) {
             respondOk(command, JsonUtil.toJson(Map.of("loadedSubAgents", List.of())));
             return;
         }

@@ -32,6 +32,7 @@ import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
@@ -284,12 +285,13 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
 
+        var cleanSkillIds = IdLists.clean(request.skillIds);
         if (isLocalOwner(sessionId)) {
-            var names = sessionManager.loadSkills(sessionId, request.skillIds);
-            var loadedSkills = new ArrayList<IdName>(request.skillIds.size());
-            for (int i = 0; i < request.skillIds.size() && i < names.size(); i++) {
+            var names = sessionManager.loadSkills(sessionId, cleanSkillIds);
+            var loadedSkills = new ArrayList<IdName>(cleanSkillIds.size());
+            for (int i = 0; i < cleanSkillIds.size() && i < names.size(); i++) {
                 var v = new IdName();
-                v.id = request.skillIds.get(i);
+                v.id = cleanSkillIds.get(i);
                 v.name = names.get(i);
                 loadedSkills.add(v);
             }
@@ -297,7 +299,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             response.loadedSkills = loadedSkills;
             return response;
         } else {
-            var payload = JsonUtil.toJson(Map.of("skillIds", request.skillIds != null ? request.skillIds : List.of()));
+            var payload = JsonUtil.toJson(Map.of("skillIds", cleanSkillIds));
             var command = SessionCommand.loadSkills(sessionId, userId, payload, rpcClient.newRequestId());
             return rpcClient.call(command, LoadSkillsResponse.class);
         }
@@ -309,13 +311,14 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
 
+        var cleanSkillIds = IdLists.clean(request.skillIds);
         if (isLocalOwner(sessionId)) {
-            var remainingSkills = sessionManager.unloadSkills(sessionId, request.skillIds);
+            var remainingSkills = sessionManager.unloadSkills(sessionId, cleanSkillIds);
             var response = new UnloadSkillsResponse();
             response.remainingSkills = remainingSkills;
             return response;
         } else {
-            var payload = JsonUtil.toJson(Map.of("skillIds", request.skillIds != null ? request.skillIds : List.of()));
+            var payload = JsonUtil.toJson(Map.of("skillIds", cleanSkillIds));
             var command = SessionCommand.unloadSkills(sessionId, userId, payload, rpcClient.newRequestId());
             return rpcClient.call(command, UnloadSkillsResponse.class);
         }
@@ -327,8 +330,9 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
 
+        var cleanAgentIds = IdLists.clean(request.agentIds);
         if (isLocalOwner(sessionId)) {
-            var definitions = request.agentIds.stream()
+            var definitions = cleanAgentIds.stream()
                     .map(agentDefinitionService::getEntity)
                     .toList();
             var names = sessionManager.loadSubAgents(sessionId, definitions);
@@ -343,7 +347,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             response.loadedSubAgents = loadedSubAgents;
             return response;
         } else {
-            var payload = JsonUtil.toJson(Map.of("agentIds", request.agentIds != null ? request.agentIds : List.of()));
+            var payload = JsonUtil.toJson(Map.of("agentIds", cleanAgentIds));
             var command = SessionCommand.loadSubAgents(sessionId, userId, payload, rpcClient.newRequestId());
             return rpcClient.call(command, LoadSubAgentsResponse.class);
         }
