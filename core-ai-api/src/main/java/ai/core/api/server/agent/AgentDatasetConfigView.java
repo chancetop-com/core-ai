@@ -6,7 +6,7 @@ import core.framework.api.validate.NotNull;
 /**
  * @author stephen
  */
-public class AgentDatasetPermissionView {
+public class AgentDatasetConfigView {
     @NotNull
     @Property(name = "dataset_id")
     public String datasetId;
@@ -14,4 +14,7 @@ public class AgentDatasetPermissionView {
     @NotNull
     @Property(name = "permission")
     public String permission = "READ";
+
+    @Property(name = "is_output")
+    public Boolean isOutput;
 }

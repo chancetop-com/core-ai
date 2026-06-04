@@ -8,12 +8,13 @@ import ai.core.prompt.SystemVariables;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
+import ai.core.server.dataset.tool.DatasetAccessRegistry;
 import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
 import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
 import ai.core.server.agent.AgentDefinitionService;
-import ai.core.server.domain.AgentDatasetPermission;
+import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.server.messaging.EventPublisher;
@@ -120,8 +121,7 @@ public class SessionRebuildManager {
         snapshot.inputTemplate = pub != null && pub.inputTemplate != null ? pub.inputTemplate : def.inputTemplate;
         snapshot.variables = pub != null && pub.variables != null ? pub.variables : def.variables;
         snapshot.tools = pub != null && pub.tools != null && !pub.tools.isEmpty() ? pub.tools : def.tools;
-        snapshot.outputDatasetId = pub != null && pub.outputDatasetId != null ? pub.outputDatasetId : def.outputDatasetId;
-        snapshot.datasetPermissions = pub != null && pub.datasetPermissions != null ? pub.datasetPermissions : def.datasetPermissions;
+        snapshot.datasetConfig = pub != null && pub.datasetConfig != null ? pub.datasetConfig : def.datasetConfig;
         return snapshot;
     }
 
@@ -147,12 +147,12 @@ public class SessionRebuildManager {
         config.maxTurns = snapshot.maxTurns;
         config.datasetId = state != null && state.config != null && hasText(state.config.datasetId)
                 ? state.config.datasetId
-                : snapshot.outputDatasetId;
-        var datasetPermissions = state != null && state.config != null && hasText(state.config.datasetId)
-                ? List.of(createPermission(state.config.datasetId, DatasetPermission.READ))
-                : snapshot.datasetPermissions;
+                : findOutputDatasetId(snapshot.datasetConfig);
+        var datasetConfig = state != null && state.config != null && hasText(state.config.datasetId)
+                ? List.of(createConfig(state.config.datasetId, DatasetPermission.READ))
+                : snapshot.datasetConfig;
         List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty()) ? toolRegistryService.resolveToolRefs(snapshot.tools) : List.of();
-        return doRebuild(sessionId, config, tools, userId, snapshot.agentName, state, snapshot.agentId, datasetPermissions);
+        return doRebuild(sessionId, config, tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig);
     }
 
     private InProcessAgentSession rebuildFromConfig(String sessionId, SessionConfig config, String userId, SessionState state) {
@@ -160,14 +160,14 @@ public class SessionRebuildManager {
     }
 
     private InProcessAgentSession doRebuild(String sessionId, SessionConfig config, List<ToolCall> tools, String userId, String agentName,
-                                            SessionState state, String datasetAgentId, List<AgentDatasetPermission> datasetPermissions) {
+                                             SessionState state, String datasetAgentId, List<AgentDatasetConfig> datasetConfig) {
         var start = System.currentTimeMillis();
         var effectiveConfig = config != null ? config : new SessionConfig();
-        tools = addDatasetTools(tools, datasetPermissions, datasetAgentId, sessionId);
+        tools = addDatasetTools(tools, datasetConfig, datasetAgentId, sessionId);
         Map<String, Object> extraVars = null;
-        if (datasetPermissions != null && !datasetPermissions.isEmpty()) {
-            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetPermissions);
-            extraVars = buildDatasetSystemVars(datasetPermissions);
+        if (datasetConfig != null && !datasetConfig.isEmpty()) {
+            effectiveConfig.systemPrompt = appendDatasetInstructions(effectiveConfig.systemPrompt, datasetConfig);
+            extraVars = buildDatasetSystemVars(datasetConfig);
         }
         var toolCount = tools != null ? tools.size() : 0;
         var skillCount = state != null && state.skillIds != null ? state.skillIds.size() : 0;
@@ -276,39 +276,36 @@ public class SessionRebuildManager {
         }
     }
 
-    private List<ToolCall> addDatasetTools(List<ToolCall> tools, List<AgentDatasetPermission> datasetPermissions, String agentId, String sessionId) {
-        if (datasetPermissions == null || datasetPermissions.isEmpty()) return tools;
+    private List<ToolCall> addDatasetTools(List<ToolCall> tools, List<AgentDatasetConfig> datasetConfig, String agentId, String sessionId) {
+        if (datasetConfig == null || datasetConfig.isEmpty()) return tools;
+        var registry = DatasetAccessRegistry.from(datasetConfig);
         var mutable = new ArrayList<ToolCall>(tools != null ? tools : List.of());
         var effectiveAgentId = hasText(agentId) ? agentId : "default";
-        for (var perm : datasetPermissions) {
-            var dataset = datasetService.get(perm.datasetId);
-            if (dataset == null) continue;
-            mutable.add(QueryDatasetRecordsTool.create(perm.datasetId, datasetRecordService, dataset));
-            if (perm.permission == DatasetPermission.WRITE || perm.permission == DatasetPermission.FULL) {
-                mutable.add(InsertDatasetRecordTool.create(perm.datasetId, effectiveAgentId, sessionId, datasetRecordService, dataset));
-                mutable.add(UpdateDatasetRecordTool.create(perm.datasetId, datasetRecordService, dataset));
-            }
-            if (perm.permission == DatasetPermission.FULL) {
-                mutable.add(DeleteDatasetRecordTool.create(perm.datasetId, datasetRecordService, dataset));
-            }
+        mutable.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
+        if (registry.hasAnyWrite()) {
+            mutable.add(InsertDatasetRecordTool.create(effectiveAgentId, sessionId, datasetService, datasetRecordService, registry));
+            mutable.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+        }
+        if (registry.hasAnyFull()) {
+            mutable.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));
         }
         return mutable;
     }
 
-    private String appendDatasetInstructions(String systemPrompt, List<AgentDatasetPermission> datasetPermissions) {
+    private String appendDatasetInstructions(String systemPrompt, List<AgentDatasetConfig> datasetConfig) {
         if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
         return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
     }
 
-    private Map<String, Object> buildDatasetSystemVars(List<AgentDatasetPermission> datasetPermissions) {
-        if (datasetPermissions == null || datasetPermissions.isEmpty()) return null;
+    private Map<String, Object> buildDatasetSystemVars(List<AgentDatasetConfig> datasetConfig) {
+        if (datasetConfig == null || datasetConfig.isEmpty()) return null;
         var names = new ArrayList<String>();
         var desc = new StringBuilder();
-        for (var perm : datasetPermissions) {
-            var dataset = datasetService.get(perm.datasetId);
+        for (var cfg : datasetConfig) {
+            var dataset = datasetService.get(cfg.datasetId);
             if (dataset == null) continue;
             names.add(dataset.name);
-            desc.append("\n- \"").append(dataset.name).append("\" (").append(perm.permission.name()).append(")");
+            desc.append("\n- \"").append(dataset.name).append("\" (").append(cfg.permission.name()).append(")");
             if (dataset.description != null && !dataset.description.isBlank()) {
                 desc.append(": ").append(dataset.description);
             }
@@ -319,15 +316,24 @@ public class SessionRebuildManager {
         return vars;
     }
 
-    private AgentDatasetPermission createPermission(String datasetId, DatasetPermission permission) {
-        var p = new AgentDatasetPermission();
-        p.datasetId = datasetId;
-        p.permission = permission;
-        return p;
+    private AgentDatasetConfig createConfig(String datasetId, DatasetPermission permission) {
+        var c = new AgentDatasetConfig();
+        c.datasetId = datasetId;
+        c.permission = permission;
+        return c;
     }
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private String findOutputDatasetId(List<AgentDatasetConfig> configs) {
+        if (configs == null) return null;
+        return configs.stream()
+                .filter(c -> c.isOutput != null && c.isOutput)
+                .findFirst()
+                .map(c -> c.datasetId)
+                .orElse(null);
     }
 
     public record Deps(ChatMessageService chatMessageService,

@@ -8,8 +8,8 @@ import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.api.server.session.IdName;
 import ai.core.api.server.tool.ToolRefView;
-import ai.core.api.server.agent.AgentDatasetPermissionView;
-import ai.core.server.domain.AgentDatasetPermission;
+import ai.core.api.server.agent.AgentDatasetConfigView;
+import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentSandboxConfig;
@@ -79,8 +79,7 @@ public class AgentDefinitionService {
         entity.type = request.type != null ? DefinitionType.valueOf(request.type) : DefinitionType.AGENT;
         entity.responseSchema = request.responseSchema;
         entity.sandboxConfig = request.sandboxConfig != null ? fromSandboxConfigView(request.sandboxConfig) : null;
-        entity.outputDatasetId = request.outputDatasetId;
-        entity.datasetPermissions = toDatasetPermissions(request.datasetPermissions);
+        entity.datasetConfig = toDatasetConfigs(request.datasetConfig);
         entity.status = AgentStatus.DRAFT;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
@@ -154,8 +153,7 @@ public class AgentDefinitionService {
         if (request.subAgentIds != null) entity.subAgentIds = IdLists.cleanOrNull(request.subAgentIds);
         if (request.skillIds != null) entity.skillIds = IdLists.cleanOrNull(request.skillIds);
         if (request.sandboxConfig != null) entity.sandboxConfig = fromSandboxConfigView(request.sandboxConfig);
-        if (request.outputDatasetId != null) entity.outputDatasetId = request.outputDatasetId;
-        if (request.datasetPermissions != null) entity.datasetPermissions = toDatasetPermissions(request.datasetPermissions);
+        if (request.datasetConfig != null) entity.datasetConfig = toDatasetConfigs(request.datasetConfig);
         entity.updatedAt = ZonedDateTime.now();
 
         agentDefinitionCollection.replace(entity);
@@ -184,8 +182,7 @@ public class AgentDefinitionService {
         config.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
         config.skillIds = IdLists.cleanOrNull(entity.skillIds);
         config.sandboxConfig = entity.sandboxConfig;
-        config.outputDatasetId = entity.outputDatasetId;
-        config.datasetPermissions = entity.datasetPermissions;
+        config.datasetConfig = entity.datasetConfig;
 
         entity.publishedConfig = config;
         entity.status = AgentStatus.PUBLISHED;
@@ -270,8 +267,7 @@ public class AgentDefinitionService {
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;
         view.sandboxConfig = toSandboxConfigView(entity.sandboxConfig);
-        view.outputDatasetId = entity.outputDatasetId;
-        view.datasetPermissions = toDatasetPermissionViews(entity.datasetPermissions);
+        view.datasetConfig = toDatasetConfigViews(entity.datasetConfig);
         return view;
     }
 
@@ -355,49 +351,47 @@ public class AgentDefinitionService {
         return config;
     }
 
-    private List<AgentDatasetPermission> toDatasetPermissions(List<AgentDatasetPermissionView> views) {
+    private List<AgentDatasetConfig> toDatasetConfigs(List<AgentDatasetConfigView> views) {
         if (views == null || views.isEmpty()) return null;
         return views.stream().map(v -> {
-            var perm = new AgentDatasetPermission();
-            perm.datasetId = v.datasetId;
-            perm.permission = v.permission != null ? DatasetPermission.valueOf(v.permission) : DatasetPermission.READ;
-            return perm;
+            var config = new AgentDatasetConfig();
+            config.datasetId = v.datasetId;
+            config.permission = v.permission != null ? DatasetPermission.valueOf(v.permission) : DatasetPermission.READ;
+            config.isOutput = v.isOutput;
+            return config;
         }).toList();
     }
 
-    private List<AgentDatasetPermissionView> toDatasetPermissionViews(List<AgentDatasetPermission> permissions) {
-        if (permissions == null) return null;
-        return permissions.stream().map(p -> {
-            var view = new AgentDatasetPermissionView();
-            view.datasetId = p.datasetId;
-            view.permission = p.permission.name();
+    private List<AgentDatasetConfigView> toDatasetConfigViews(List<AgentDatasetConfig> configs) {
+        if (configs == null) return null;
+        return configs.stream().map(c -> {
+            var view = new AgentDatasetConfigView();
+            view.datasetId = c.datasetId;
+            view.permission = c.permission.name();
+            view.isOutput = c.isOutput;
             return view;
         }).toList();
     }
 
-    public static List<AgentDatasetPermission> resolveDatasetPermissions(AgentDefinition definition) {
-        var config = definition.publishedConfig;
-        if (config != null && config.datasetPermissions != null && !config.datasetPermissions.isEmpty()) {
-            return config.datasetPermissions;
-        }
-        if (definition.datasetPermissions != null && !definition.datasetPermissions.isEmpty()) {
-            return definition.datasetPermissions;
-        }
-        // backward compat: convert old outputDatasetId to READ permission
-        if (config != null && config.outputDatasetId != null && !config.outputDatasetId.isBlank()) {
-            return List.of(createPermission(config.outputDatasetId, DatasetPermission.READ));
-        }
-        if (definition.outputDatasetId != null && !definition.outputDatasetId.isBlank()) {
-            return List.of(createPermission(definition.outputDatasetId, DatasetPermission.READ));
-        }
-        return null;
+    public static String resolveOutputDatasetId(AgentDefinition definition) {
+        var configs = resolveDatasetConfig(definition);
+        if (configs == null) return null;
+        return configs.stream()
+                .filter(c -> c.isOutput != null && c.isOutput)
+                .findFirst()
+                .map(c -> c.datasetId)
+                .orElse(null);
     }
 
-    private static AgentDatasetPermission createPermission(String datasetId, DatasetPermission permission) {
-        var p = new AgentDatasetPermission();
-        p.datasetId = datasetId;
-        p.permission = permission;
-        return p;
+    public static List<AgentDatasetConfig> resolveDatasetConfig(AgentDefinition definition) {
+        var config = definition.publishedConfig;
+        if (config != null && config.datasetConfig != null && !config.datasetConfig.isEmpty()) {
+            return config.datasetConfig;
+        }
+        if (definition.datasetConfig != null && !definition.datasetConfig.isEmpty()) {
+            return definition.datasetConfig;
+        }
+        return null;
     }
 
 }

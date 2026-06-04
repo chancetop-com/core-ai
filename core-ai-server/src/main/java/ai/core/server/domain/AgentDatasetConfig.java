@@ -6,7 +6,7 @@ import core.framework.mongo.Field;
 /**
  * @author stephen
  */
-public class AgentDatasetPermission {
+public class AgentDatasetConfig {
     @NotNull
     @Field(name = "dataset_id")
     public String datasetId;
@@ -14,4 +14,7 @@ public class AgentDatasetPermission {
     @NotNull
     @Field(name = "permission")
     public DatasetPermission permission = DatasetPermission.READ;
+
+    @Field(name = "is_output")
+    public Boolean isOutput;
 }

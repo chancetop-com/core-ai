@@ -80,8 +80,7 @@ public class SessionCreateHelper {
         snapshot.inputTemplate = published != null && published.inputTemplate != null ? published.inputTemplate : agent.inputTemplate;
         snapshot.variables = published != null && published.variables != null ? published.variables : agent.variables;
         snapshot.tools = toolRefs;
-        snapshot.outputDatasetId = published != null && published.outputDatasetId != null ? published.outputDatasetId : agent.outputDatasetId;
-        snapshot.datasetPermissions = published != null && published.datasetPermissions != null ? published.datasetPermissions : agent.datasetPermissions;
+        snapshot.datasetConfig = published != null && published.datasetConfig != null ? published.datasetConfig : agent.datasetConfig;
         return snapshot;
     }
 

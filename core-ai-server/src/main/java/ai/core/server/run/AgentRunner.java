@@ -12,7 +12,6 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.tool.ToolCall;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
-import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TokenUsage;
@@ -20,6 +19,7 @@ import ai.core.server.domain.TranscriptEntry;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
+import ai.core.server.dataset.tool.DatasetAccessRegistry;
 import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
@@ -341,19 +341,16 @@ public class AgentRunner {
     }
 
     private void addDatasetTools(List<ToolCall> tools, AgentPublishedConfig config, AgentDefinition definition, String runId) {
-        var datasetPermissions = AgentDefinitionService.resolveDatasetPermissions(definition);
-        if (datasetPermissions == null || datasetPermissions.isEmpty()) return;
-        for (var perm : datasetPermissions) {
-            var dataset = datasetService.get(perm.datasetId);
-            if (dataset == null) continue;
-            tools.add(QueryDatasetRecordsTool.create(perm.datasetId, datasetRecordService, dataset));
-            if (perm.permission == DatasetPermission.WRITE || perm.permission == DatasetPermission.FULL) {
-                tools.add(InsertDatasetRecordTool.create(perm.datasetId, definition.id, runId, datasetRecordService, dataset));
-                tools.add(UpdateDatasetRecordTool.create(perm.datasetId, datasetRecordService, dataset));
-            }
-            if (perm.permission == DatasetPermission.FULL) {
-                tools.add(DeleteDatasetRecordTool.create(perm.datasetId, datasetRecordService, dataset));
-            }
+        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
+        if (datasetConfig == null || datasetConfig.isEmpty()) return;
+        var registry = DatasetAccessRegistry.from(datasetConfig);
+        tools.add(QueryDatasetRecordsTool.create(datasetService, datasetRecordService, registry));
+        if (registry.hasAnyWrite()) {
+            tools.add(InsertDatasetRecordTool.create(definition.id, runId, datasetService, datasetRecordService, registry));
+            tools.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+        }
+        if (registry.hasAnyFull()) {
+            tools.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));
         }
     }
 
@@ -422,22 +419,22 @@ public class AgentRunner {
     }
 
     private String appendDatasetInstructions(String systemPrompt, AgentPublishedConfig config, AgentDefinition definition) {
-        var datasetPermissions = AgentDefinitionService.resolveDatasetPermissions(definition);
-        if (datasetPermissions == null || datasetPermissions.isEmpty()) return systemPrompt;
+        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
+        if (datasetConfig == null || datasetConfig.isEmpty()) return systemPrompt;
         if (systemPrompt == null || systemPrompt.isBlank()) return Prompts.DATASET_SYSTEM_PROMPT.strip();
         return systemPrompt + Prompts.DATASET_SYSTEM_PROMPT;
     }
 
     private void injectDatasetSystemVars(AgentBuilder builder, AgentPublishedConfig config, AgentDefinition definition) {
-        var datasetPermissions = AgentDefinitionService.resolveDatasetPermissions(definition);
-        if (datasetPermissions == null || datasetPermissions.isEmpty()) return;
+        var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
+        if (datasetConfig == null || datasetConfig.isEmpty()) return;
         var names = new ArrayList<String>();
         var desc = new StringBuilder();
-        for (var perm : datasetPermissions) {
-            var dataset = datasetService.get(perm.datasetId);
+        for (var cfg : datasetConfig) {
+            var dataset = datasetService.get(cfg.datasetId);
             if (dataset == null) continue;
             names.add(dataset.name);
-            desc.append("\n- \"").append(dataset.name).append("\" (").append(perm.permission.name()).append(")");
+            desc.append("\n- \"").append(dataset.name).append("\" (").append(cfg.permission.name()).append(")");
             if (dataset.description != null && !dataset.description.isBlank()) {
                 desc.append(": ").append(dataset.description);
             }
@@ -453,25 +450,21 @@ public class AgentRunner {
 
     private void extractDatasetRecords(String output, AgentDefinition definition, String runId, String agentId, ZonedDateTime runStartedAt) {
         if (output == null || output.isBlank()) return;
-        var datasetPermissions = AgentDefinitionService.resolveDatasetPermissions(definition);
-        if (datasetPermissions == null || datasetPermissions.isEmpty()) return;
-
-        for (var perm : datasetPermissions) {
-            // Only auto-extract/insert for WRITE or FULL permission
-            if (perm.permission != DatasetPermission.WRITE && perm.permission != DatasetPermission.FULL) continue;
-            try {
-                var dataset = datasetService.get(perm.datasetId);
-                if (dataset == null) {
-                    LOGGER.warn("output dataset not found, datasetId={}, runId={}", perm.datasetId, runId);
-                    continue;
-                }
-                var data = llmCallExecutor.extractStructured(output, dataset, definition);
-                if (data != null && !data.isEmpty()) {
-                    datasetRecordService.insert(new DatasetRecordService.InsertRequest(dataset.id, agentId, runId, runStartedAt, data, definition.userId, definition.userId));
-                }
-            } catch (Exception e) {
-                LOGGER.warn("failed to extract dataset record, datasetId={}, runId={}", perm.datasetId, runId, e);
+        var outputDatasetId = AgentDefinitionService.resolveOutputDatasetId(definition);
+        if (outputDatasetId == null) return;
+        try {
+            var dataset = datasetService.get(outputDatasetId);
+            if (dataset == null) {
+                LOGGER.warn("output dataset not found, datasetId={}, runId={}", outputDatasetId, runId);
+                return;
             }
+            var data = llmCallExecutor.extractStructured(output, dataset, definition);
+            if (data != null && !data.isEmpty()) {
+                datasetRecordService.insert(new DatasetRecordService.InsertRequest(
+                        dataset.id, agentId, runId, runStartedAt, data, definition.userId, definition.userId));
+            }
+        } catch (Exception e) {
+            LOGGER.warn("failed to extract dataset record, datasetId={}, runId={}", outputDatasetId, runId, e);
         }
     }
 }

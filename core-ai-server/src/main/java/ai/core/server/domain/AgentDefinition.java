@@ -84,11 +84,8 @@ public class AgentDefinition {
     @Field(name = "sandbox_config")
     public AgentSandboxConfig sandboxConfig;
 
-    @Field(name = "output_dataset_id")
-    public String outputDatasetId;
-
-    @Field(name = "dataset_permissions")
-    public List<AgentDatasetPermission> datasetPermissions;
+    @Field(name = "dataset_config")
+    public List<AgentDatasetConfig> datasetConfig;
 
     @Field(name = "published_at")
     public ZonedDateTime publishedAt;

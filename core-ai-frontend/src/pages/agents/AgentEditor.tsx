@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal } from 'lucide-react';
 import { api } from '../../api/client';
-import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo } from '../../api/client';
+import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo, AgentDatasetConfig } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
@@ -15,6 +15,7 @@ const NEW_AGENT_SKELETON: AgentDefinition = {
   system_default: false, type: 'AGENT', response_schema: null,
   created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',
   subagent_ids: [], skill_ids: [],
+  dataset_config: [],
 };
 
 export default function AgentEditor() {
@@ -147,6 +148,49 @@ export default function AgentEditor() {
 
   const update = (field: string, value: unknown) => {
     setAgent({ ...agent, [field]: value } as AgentDefinition);
+  };
+
+  const datasetConfig = agent.dataset_config || [];
+
+  const addDatasetConfig = (datasetId: string) => {
+    const current = agent.dataset_config || [];
+    if (current.some(c => c.dataset_id === datasetId)) return;
+    const entry: AgentDatasetConfig = { dataset_id: datasetId, permission: 'READ' };
+    setAgent({ ...agent, dataset_config: [...current, entry] } as AgentDefinition);
+    setDatasetSearch('');
+  };
+
+  const removeDatasetConfig = (datasetId: string) => {
+    setAgent({
+      ...agent,
+      dataset_config: (agent.dataset_config || []).filter(c => c.dataset_id !== datasetId),
+    } as AgentDefinition);
+  };
+
+  const changeDatasetPermission = (datasetId: string, permission: 'READ' | 'WRITE' | 'FULL') => {
+    const current = agent.dataset_config || [];
+    setAgent({
+      ...agent,
+      dataset_config: current.map(c => c.dataset_id === datasetId
+        ? { ...c, permission, is_output: permission === 'READ' ? false : c.is_output }
+        : c),
+    } as AgentDefinition);
+  };
+
+  const setOutputDataset = (datasetId: string) => {
+    const current = agent.dataset_config || [];
+    setAgent({
+      ...agent,
+      dataset_config: current.map(c => ({ ...c, is_output: c.dataset_id === datasetId })),
+    } as AgentDefinition);
+  };
+
+  const clearOutputDataset = () => {
+    const current = agent.dataset_config || [];
+    setAgent({
+      ...agent,
+      dataset_config: current.map(c => ({ ...c, is_output: false })),
+    } as AgentDefinition);
   };
 
   const handleGeneratePrompt = async () => {
@@ -346,7 +390,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           response_schema: agent.response_schema,
           subagent_ids: agent.subagent_ids,
           skill_ids: agent.skill_ids,
-          output_dataset_id: agent.output_dataset_id,
+          dataset_config: agent.dataset_config,
           sandbox_config: agent.sandbox_config,
         } as any);
         navigate(`/agents/${created.id}`);
@@ -370,7 +414,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
         response_schema: agent.response_schema,
           subagent_ids: agent.subagent_ids,
           skill_ids: agent.skill_ids,
-          output_dataset_id: agent.output_dataset_id,
+          dataset_config: agent.dataset_config,
           sandbox_config: agent.sandbox_config,
         } as any);
         setAgent(updated);
@@ -952,17 +996,17 @@ The system prompt should define how this agent behaves, its capabilities, and it
             )}
           </div>
 
-          {/* Output Dataset */}
+          {/* Datasets */}
           <div className="rounded-xl border mt-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <button
               onClick={() => { if (!datasetsOpen) loadDatasets(); setDatasetsOpen(!datasetsOpen); }}
               className="w-full flex items-center justify-between p-4 cursor-pointer">
               <div className="flex items-center gap-2">
                 <Database size={16} style={{ color: 'var(--color-primary)' }} />
-                <span className="font-medium text-sm">Output Dataset <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></span>
-                {agent.output_dataset_id && (
-                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                    set
+                <span className="font-medium text-sm">Datasets <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></span>
+                {datasetConfig.length > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--color-primary)', color: '#fff' }}>
+                    {datasetConfig.length}
                   </span>
                 )}
               </div>
@@ -970,58 +1014,84 @@ The system prompt should define how this agent behaves, its capabilities, and it
             </button>
             {datasetsOpen && (
               <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                <p className="text-xs pt-3 mb-3" style={{ color: 'var(--color-text-secondary)' }}>
-                  Select a dataset to extract structured data from each agent run output.
+                <p className="text-xs pt-3 mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Datasets the agent can read from. Auto-extraction results can optionally be written to a single output dataset.
                 </p>
-                {agent.output_dataset_id && (() => {
-                  const ds = allDatasets.find(d => d.id === agent.output_dataset_id);
-                  return (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-                        style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-primary)' }} />
-                        <span className="font-medium">{ds?.name || agent.output_dataset_id}</span>
-                        <button onClick={() => update('output_dataset_id', '')}
-                          className="cursor-pointer ml-0.5 rounded"
-                          style={{ color: 'var(--color-text-secondary)' }}>
-                          <X size={12} />
-                        </button>
-                      </span>
-                    </div>
-                  );
-                })()}
+                <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
+                  Tip: At most one dataset can be the output target. Output requires WRITE or FULL permission.
+                </p>
+
+                {/* Current dataset config */}
+                {datasetConfig.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {datasetConfig.map(cfg => {
+                      const ds = allDatasets.find(d => d.id === cfg.dataset_id);
+                      return (
+                        <div key={cfg.dataset_id} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+                          style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-primary)' }} />
+                          <span className="font-medium flex-1" style={{ color: 'var(--color-text)' }}>{ds?.name || cfg.dataset_id}</span>
+                          <select value={cfg.permission}
+                            onChange={e => changeDatasetPermission(cfg.dataset_id, e.target.value as 'READ' | 'WRITE' | 'FULL')}
+                            className="text-xs px-1.5 py-0.5 rounded border outline-none"
+                            style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                            <option value="READ">READ</option>
+                            <option value="WRITE">WRITE</option>
+                            <option value="FULL">FULL</option>
+                          </select>
+                          {cfg.is_output ? (
+                            <button onClick={clearOutputDataset}
+                              className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 cursor-pointer"
+                              style={{ background: 'var(--color-primary)', color: '#fff' }}
+                              title="Click to unset output">output</button>
+                          ) : (cfg.permission !== 'READ') ? (
+                            <button onClick={() => setOutputDataset(cfg.dataset_id)}
+                              className="text-xs px-1.5 py-0.5 rounded cursor-pointer flex-shrink-0"
+                              style={{ color: 'var(--color-text-secondary)', border: '1px dashed var(--color-border)' }}
+                              title="Set as output dataset">output</button>
+                          ) : (
+                            <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-secondary)', opacity: 0.4 }}>—</span>
+                          )}
+                          <button onClick={() => removeDatasetConfig(cfg.dataset_id)}
+                            className="cursor-pointer rounded flex-shrink-0"
+                            style={{ color: 'var(--color-text-secondary)' }}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Add dataset */}
                 <div className="relative">
-                  <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-sm"
-                    style={inputStyle}>
+                  <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-sm" style={inputStyle}>
                     <Search size={14} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
                     <input value={datasetSearch} onChange={e => setDatasetSearch(e.target.value)}
                       onFocus={() => setDatasetFocused(true)}
                       onBlur={() => setDatasetFocused(false)}
                       className="flex-1 bg-transparent outline-none text-sm"
-                      placeholder="Search datasets..." />
+                      placeholder="Add dataset..." />
                   </div>
                   {(datasetFocused || datasetSearch) && (
                     <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-auto"
                       onMouseDown={e => e.preventDefault()}
                       style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', maxHeight: '200px' }}>
                       {allDatasets
-                        .filter(d => d.id !== agent.output_dataset_id)
+                        .filter(d => !datasetConfig.some(c => c.dataset_id === d.id))
                         .filter(d => !datasetSearch || d.name.toLowerCase().includes(datasetSearch.toLowerCase()))
                         .map(d => (
                           <button key={d.id}
-                            onClick={() => {
-                              update('output_dataset_id', d.id);
-                              setDatasetSearch('');
-                            }}
+                            onClick={() => addDatasetConfig(d.id)}
                             className="w-full px-3 py-2 text-left text-sm cursor-pointer hover:bg-[var(--color-bg-tertiary)] flex items-center gap-2"
                             style={{ borderBottom: '1px solid var(--color-border)' }}>
-                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-primary)' }} />
+                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-text-secondary)' }} />
                             <span style={{ color: 'var(--color-text)' }}>{d.name}</span>
                           </button>
                         ))}
-                      {allDatasets.filter(d => d.id !== agent.output_dataset_id).length === 0 && (
+                      {allDatasets.filter(d => !datasetConfig.some(c => c.dataset_id === d.id)).length === 0 && (
                         <div className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                          {allDatasets.length === 0 ? 'No datasets available' : 'All datasets selected'}
+                          {allDatasets.length === 0 ? 'No datasets available' : 'All datasets added'}
                         </div>
                       )}
                     </div>

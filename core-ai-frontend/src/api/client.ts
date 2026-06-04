@@ -268,7 +268,13 @@ export interface AgentDefinition {
   sub_agents?: { id: string; name: string }[];
   skills?: { id: string; name: string }[];
   sandbox_config?: SandboxConfig;
-  output_dataset_id?: string;
+  dataset_config?: AgentDatasetConfig[];
+}
+
+export interface AgentDatasetConfig {
+  dataset_id: string;
+  permission: 'READ' | 'WRITE' | 'FULL';
+  is_output?: boolean;
 }
 
 export interface ListAgentsResponse {

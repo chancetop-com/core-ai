@@ -2,7 +2,7 @@ package ai.core.server.dataset.tool;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetRecordService;
-import ai.core.server.domain.Dataset;
+import ai.core.server.dataset.DatasetService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * @author stephen
@@ -21,10 +22,10 @@ import java.util.List;
 public final class QueryDatasetRecordsTool extends ToolCall {
     public static final String TOOL_NAME = "query_dataset_records";
 
-    public static QueryDatasetRecordsTool create(String datasetId, DatasetRecordService recordService, Dataset dataset) {
-        var tool = new QueryDatasetRecordsTool(datasetId, recordService);
+    public static QueryDatasetRecordsTool create(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
+        var tool = new QueryDatasetRecordsTool(datasetService, recordService, registry);
         tool.setName(TOOL_NAME);
-        tool.setDescription(buildDescription(dataset));
+        tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
         tool.setNeedAuth(false);
         tool.setDirectReturn(false);
@@ -33,24 +34,37 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         return tool;
     }
 
-    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar", "PMD.ConsecutiveAppendsShouldReuse", "PMD.UseLocaleWithCaseConversions"})
-    private static String buildDescription(Dataset dataset) {
-        var sb = new StringBuilder(320);
-        sb.append("Query records from the dataset \"").append(dataset != null ? dataset.name : "unknown").append("\".\n");
-        sb.append("Use this tool to search, filter, and retrieve records by time range and field projection.\n").append("The dataset is automatically determined — do NOT specify a dataset_id.\n");
-        if (dataset != null && dataset.schema != null && !dataset.schema.isEmpty()) {
-            sb.append("\nSchema fields:\n");
-            for (var field : dataset.schema) {
-                sb.append("  - ").append(field.name).append(" (").append(field.type.name().toLowerCase()).append(")");
-                if (field.label != null) sb.append(": ").append(field.label);
-                sb.append('\n');
+    private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
+        var sb = new StringBuilder(512);
+        sb.append("Query records from a dataset by dataset_id.\n");
+        sb.append("Use this tool to search, filter, and retrieve records by time range and field projection.\n");
+        sb.append(buildAvailableDatasetsSection(datasetService, registry));
+        return sb.toString();
+    }
+
+    static String buildAvailableDatasetsSection(DatasetService datasetService, DatasetAccessRegistry registry) {
+        var sb = new StringBuilder();
+        sb.append("\nAvailable datasets (specify dataset_id to choose):\n");
+        for (var entry : registry.allowedDatasets().entrySet()) {
+            var dataset = datasetService.get(entry.getKey());
+            if (dataset == null) continue;
+            sb.append("- \"").append(dataset.name).append("\" (id: ").append(entry.getKey())
+              .append(", permission: ").append(entry.getValue().name()).append(")");
+            if (dataset.schema != null && !dataset.schema.isEmpty()) {
+                sb.append("\n  schema: ");
+                var fieldDescs = dataset.schema.stream()
+                    .map(f -> f.name + "(" + f.type.name().toLowerCase(Locale.ROOT) + ")")
+                    .toList();
+                sb.append(String.join(", ", fieldDescs));
             }
+            sb.append("\n");
         }
         return sb.toString();
     }
 
     private static List<ToolCallParameter> parameters() {
         return ToolCallParameters.of(
+            ToolCallParameters.ParamSpec.of(String.class, "dataset_id", "The ID of the dataset to query. Required — choose from available datasets listed above.").required(),
             ToolCallParameters.ParamSpec.of(String.class, "fields", "Comma-separated field names to include in results. If not specified, all fields are returned."),
             ToolCallParameters.ParamSpec.of(String.class, "from", "ISO 8601 datetime string for the lower bound of run_started_at. e.g. 2026-01-01T00:00:00Z"),
             ToolCallParameters.ParamSpec.of(String.class, "to", "ISO 8601 datetime string for the upper bound of run_started_at."),
@@ -59,12 +73,14 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         );
     }
 
-    private final String datasetId;
+    private final DatasetService datasetService;
     private final DatasetRecordService recordService;
+    private final DatasetAccessRegistry registry;
 
-    private QueryDatasetRecordsTool(String datasetId, DatasetRecordService recordService) {
-        this.datasetId = datasetId;
+    private QueryDatasetRecordsTool(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
+        this.datasetService = datasetService;
         this.recordService = recordService;
+        this.registry = registry;
     }
 
     @Override
@@ -75,6 +91,14 @@ public final class QueryDatasetRecordsTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
+        var datasetId = getStringValue(args, "dataset_id");
+        if (datasetId == null || datasetId.isBlank()) {
+            return ToolCallResult.failed("dataset_id is required");
+        }
+        if (registry.resolve(datasetId) == null) {
+            return ToolCallResult.failed("access denied to dataset: " + datasetId);
+        }
+
         var fieldsStr = getStringValue(args, "fields");
         var fromStr = getStringValue(args, "from");
         var toStr = getStringValue(args, "to");

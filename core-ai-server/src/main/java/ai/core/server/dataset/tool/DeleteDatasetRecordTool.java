@@ -2,7 +2,7 @@ package ai.core.server.dataset.tool;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetRecordService;
-import ai.core.server.domain.Dataset;
+import ai.core.server.dataset.DatasetService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
@@ -18,11 +18,10 @@ import java.util.List;
 public final class DeleteDatasetRecordTool extends ToolCall {
     public static final String TOOL_NAME = "delete_dataset_record";
 
-    public static DeleteDatasetRecordTool create(String datasetId, DatasetRecordService recordService, Dataset dataset) {
-        var tool = new DeleteDatasetRecordTool(datasetId, recordService);
+    public static DeleteDatasetRecordTool create(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
+        var tool = new DeleteDatasetRecordTool(datasetService, recordService, registry);
         tool.setName(TOOL_NAME);
-        tool.setDescription("Delete a record from the dataset \"" + (dataset != null ? dataset.name : "unknown") + "\".\n"
-            + "Provide the record_id to delete. The dataset_id is automatically injected.");
+        tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
         tool.setNeedAuth(false);
         tool.setDirectReturn(false);
@@ -31,18 +30,29 @@ public final class DeleteDatasetRecordTool extends ToolCall {
         return tool;
     }
 
+    private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
+        var sb = new StringBuilder(512);
+        sb.append("Delete a record from a dataset.\n");
+        sb.append("Provide the dataset_id and record_id to delete.\n");
+        sb.append(QueryDatasetRecordsTool.buildAvailableDatasetsSection(datasetService, registry));
+        return sb.toString();
+    }
+
     private static List<ToolCallParameter> parameters() {
         return ToolCallParameters.of(
+            ToolCallParameters.ParamSpec.of(String.class, "dataset_id", "The ID of the dataset. Required — choose from available datasets listed above.").required(),
             ToolCallParameters.ParamSpec.of(String.class, "record_id", "The ID of the record to delete.").required()
         );
     }
 
-    private final String datasetId;
+    private final DatasetService datasetService;
     private final DatasetRecordService recordService;
+    private final DatasetAccessRegistry registry;
 
-    private DeleteDatasetRecordTool(String datasetId, DatasetRecordService recordService) {
-        this.datasetId = datasetId;
+    private DeleteDatasetRecordTool(DatasetService datasetService, DatasetRecordService recordService, DatasetAccessRegistry registry) {
+        this.datasetService = datasetService;
         this.recordService = recordService;
+        this.registry = registry;
     }
 
     @Override
@@ -53,8 +63,15 @@ public final class DeleteDatasetRecordTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
-        var recordId = getStringValue(args, "record_id");
+        var datasetId = getStringValue(args, "dataset_id");
+        if (datasetId == null || datasetId.isBlank()) {
+            return ToolCallResult.failed("dataset_id is required");
+        }
+        if (!registry.isDeletable(datasetId)) {
+            return ToolCallResult.failed("delete access denied to dataset: " + datasetId);
+        }
 
+        var recordId = getStringValue(args, "record_id");
         if (recordId == null || recordId.isBlank()) {
             return ToolCallResult.failed("record_id is required");
         }

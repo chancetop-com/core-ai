@@ -61,9 +61,6 @@ public class UpdateAgentRequest {
     @Property(name = "sandbox_config")
     public SandboxConfigView sandboxConfig;
 
-    @Property(name = "output_dataset_id")
-    public String outputDatasetId;
-
-    @Property(name = "dataset_permissions")
-    public List<AgentDatasetPermissionView> datasetPermissions;
+    @Property(name = "dataset_config")
+    public List<AgentDatasetConfigView> datasetConfig;
 }

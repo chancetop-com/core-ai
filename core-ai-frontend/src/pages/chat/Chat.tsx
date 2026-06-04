@@ -233,7 +233,7 @@ export default function Chat() {
     const agent = agents.find(a => a.id === selectedAgentId);
     if (!agent) return;
 
-    const dsId = (agent as unknown as Record<string, unknown>)?.output_dataset_id as string || null;
+    const dsId = ((agent as unknown as Record<string, unknown>)?.dataset_config as Array<Record<string, unknown>> | undefined)?.find(c => c.is_output)?.dataset_id as string || null;
     setLoadedDatasetId(dsId);
     setPreDatasetId(null);
     setSelectedDatasetId(null);
@@ -1030,7 +1030,7 @@ export default function Chat() {
     setSelectedAgentIds(new Set([...agentSubAgentIds, ...sessionSubAgentIds]));
 
     // Dataset: pending/session selection takes precedence over the agent default.
-    const agentDsId = (selectedAgent as unknown as Record<string, unknown>)?.output_dataset_id as string || null;
+    const agentDsId = ((selectedAgent as unknown as Record<string, unknown>)?.dataset_config as Array<Record<string, unknown>> | undefined)?.find(c => c.is_output)?.dataset_id as string || null;
     const sessionDs = sessionId ? loadedDatasetId : preDatasetId;
     setSelectedDatasetId(sessionDs || agentDsId);
 

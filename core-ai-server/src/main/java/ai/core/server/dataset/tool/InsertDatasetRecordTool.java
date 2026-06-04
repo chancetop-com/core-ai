@@ -2,8 +2,7 @@ package ai.core.server.dataset.tool;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetRecordService;
-import ai.core.server.domain.Dataset;
-import ai.core.server.domain.SchemaField;
+import ai.core.server.dataset.DatasetService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
@@ -16,7 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -24,10 +22,11 @@ import java.util.stream.Collectors;
 public final class InsertDatasetRecordTool extends ToolCall {
     public static final String TOOL_NAME = "insert_dataset_record";
 
-    public static InsertDatasetRecordTool create(String datasetId, String agentId, String runId, DatasetRecordService recordService, Dataset dataset) {
-        var tool = new InsertDatasetRecordTool(datasetId, agentId, runId, recordService, dataset != null ? dataset.schema : null);
+    public static InsertDatasetRecordTool create(String agentId, String runId, DatasetService datasetService,
+                                                  DatasetRecordService recordService, DatasetAccessRegistry registry) {
+        var tool = new InsertDatasetRecordTool(agentId, runId, datasetService, recordService, registry);
         tool.setName(TOOL_NAME);
-        tool.setDescription(buildDescription(dataset));
+        tool.setDescription(buildDescription(datasetService, registry));
         tool.setParameters(parameters());
         tool.setNeedAuth(false);
         tool.setDirectReturn(false);
@@ -36,43 +35,34 @@ public final class InsertDatasetRecordTool extends ToolCall {
         return tool;
     }
 
-    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar", "PMD.ConsecutiveAppendsShouldReuse", "PMD.UseLocaleWithCaseConversions"})
-    private static String buildDescription(Dataset dataset) {
-        var sb = new StringBuilder(320);
-        sb.append("Insert a new record into the dataset \"").append(dataset != null ? dataset.name : "unknown").append("\".\n");
-        sb.append("Provide the data as a JSON object. The dataset_id and agent_id are automatically injected.\n");
-        if (dataset != null && dataset.schema != null && !dataset.schema.isEmpty()) {
-            sb.append("\nSchema fields:\n");
-            for (var field : dataset.schema) {
-                sb.append("  - ").append(field.name).append(" (").append(field.type.name().toLowerCase()).append(")");
-                if (field.label != null) sb.append(": ").append(field.label);
-                sb.append('\n');
-            }
-            sb.append("\nOnly include the fields listed above. Values must match the declared types.");
-        } else {
-            sb.append("\nNo schema defined — you may provide arbitrary key-value pairs.");
-        }
+    private static String buildDescription(DatasetService datasetService, DatasetAccessRegistry registry) {
+        var sb = new StringBuilder(512);
+        sb.append("Insert a new record into a dataset.\n");
+        sb.append("Provide the data as a JSON object and the target dataset_id.\n");
+        sb.append(QueryDatasetRecordsTool.buildAvailableDatasetsSection(datasetService, registry));
         return sb.toString();
     }
 
     private static List<ToolCallParameter> parameters() {
         return ToolCallParameters.of(
+            ToolCallParameters.ParamSpec.of(String.class, "dataset_id", "The ID of the dataset to insert into. Required — choose from available datasets listed above.").required(),
             ToolCallParameters.ParamSpec.of(Map.class, "data", "A JSON object containing the record data with field keys matching the dataset schema.").required()
         );
     }
 
-    private final String datasetId;
     private final String agentId;
     private final String runId;
+    private final DatasetService datasetService;
     private final DatasetRecordService recordService;
-    private final List<String> schemaFieldNames;
+    private final DatasetAccessRegistry registry;
 
-    private InsertDatasetRecordTool(String datasetId, String agentId, String runId, DatasetRecordService recordService, List<SchemaField> schema) {
-        this.datasetId = datasetId;
+    private InsertDatasetRecordTool(String agentId, String runId, DatasetService datasetService,
+                                    DatasetRecordService recordService, DatasetAccessRegistry registry) {
         this.agentId = agentId;
         this.runId = runId;
+        this.datasetService = datasetService;
         this.recordService = recordService;
-        this.schemaFieldNames = schema != null ? schema.stream().map(f -> f.name).collect(Collectors.toList()) : List.of();
+        this.registry = registry;
     }
 
     @Override
@@ -83,14 +73,25 @@ public final class InsertDatasetRecordTool extends ToolCall {
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         var args = parseArguments(arguments);
+        var datasetId = getStringValue(args, "dataset_id");
+        if (datasetId == null || datasetId.isBlank()) {
+            return ToolCallResult.failed("dataset_id is required");
+        }
+        if (!registry.isWritable(datasetId)) {
+            return ToolCallResult.failed("write access denied to dataset: " + datasetId);
+        }
+
         @SuppressWarnings("unchecked")
         var data = (Map<String, Object>) args.get("data");
         if (data == null || data.isEmpty()) {
             return ToolCallResult.failed("data is required and must not be empty");
         }
 
-        Map<String, Object> filtered = filterToSchema(data);
+        var dataset = datasetService.get(datasetId);
+        Map<String, Object> filtered = filterToSchema(data, dataset);
         if (filtered.isEmpty()) {
+            var schemaFieldNames = dataset != null && dataset.schema != null
+                ? dataset.schema.stream().map(f -> f.name).toList() : List.of();
             return ToolCallResult.failed("none of the provided fields match the dataset schema: " + schemaFieldNames);
         }
 
@@ -106,8 +107,9 @@ public final class InsertDatasetRecordTool extends ToolCall {
         return ToolCallResult.completed(JsonUtil.toJson(response));
     }
 
-    private Map<String, Object> filterToSchema(Map<String, Object> data) {
-        if (schemaFieldNames.isEmpty()) return new LinkedHashMap<>(data);
+    private Map<String, Object> filterToSchema(Map<String, Object> data, ai.core.server.domain.Dataset dataset) {
+        if (dataset == null || dataset.schema == null || dataset.schema.isEmpty()) return new LinkedHashMap<>(data);
+        var schemaFieldNames = dataset.schema.stream().map(f -> f.name).toList();
         var result = new LinkedHashMap<String, Object>();
         for (var fieldName : schemaFieldNames) {
             if (data.containsKey(fieldName)) {

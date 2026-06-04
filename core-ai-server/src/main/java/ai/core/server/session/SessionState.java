@@ -1,7 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.api.server.session.SessionConfig;
-import ai.core.server.domain.AgentDatasetPermission;
+import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.ToolRef;
 import core.framework.json.JSON;
 import core.framework.util.Strings;
@@ -48,7 +48,6 @@ public class SessionState {
         public String inputTemplate;
         public Map<String, String> variables;
         public List<ToolRef> tools;
-        public String outputDatasetId;
-        public List<AgentDatasetPermission> datasetPermissions;
+        public List<AgentDatasetConfig> datasetConfig;
     }
 }
