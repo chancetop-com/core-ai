@@ -34,6 +34,7 @@ import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.file.FileDownloadController;
 import ai.core.server.file.FileService;
 import ai.core.server.file.FileUploadController;
+import ai.core.server.file.SharedFileDownloadController;
 import ai.core.server.github.GitHubInstallationTokenService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
@@ -291,6 +292,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/api-tools/:id", controller::serve);
         http().route(HTTPMethod.GET, "/datasets/:id", controller::serve);
         http().route(HTTPMethod.GET, "/datasets/:id/records", controller::serve);
+        http().route(HTTPMethod.GET, "/shared/artifacts/:token", controller::serve);
         // nested SPA routes (multi-segment paths that need direct URL access / refresh support)
         http().route(HTTPMethod.GET, "/triggers/webhook", controller::serve);
         http().route(HTTPMethod.GET, "/triggers/schedule", controller::serve);
@@ -302,6 +304,7 @@ public class ServerModule extends Module {
         api().service(FileWebService.class, bind(FileWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
         http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));
+        http().route(HTTPMethod.GET, "/api/public/artifacts/:token/content", bind(SharedFileDownloadController.class));
     }
     private void registerSkill() {
         bind(SkillService.class);

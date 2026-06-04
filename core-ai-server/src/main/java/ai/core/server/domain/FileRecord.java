@@ -36,6 +36,12 @@ public class FileRecord {
     @Field(name = "storage_path")
     public String storagePath;
 
+    @Field(name = "share_token")
+    public String shareToken;
+
+    @Field(name = "shared_at")
+    public ZonedDateTime sharedAt;
+
     @NotNull
     @Field(name = "created_at")
     public ZonedDateTime createdAt;

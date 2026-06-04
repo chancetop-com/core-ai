@@ -36,6 +36,7 @@ const DatasetEditor = lazy(() => import('./pages/datasets/DatasetEditor'));
 const DatasetRecords = lazy(() => import('./pages/datasets/DatasetRecords'));
 const TriggersWebhook = lazy(() => import('./pages/triggers/TriggersWebhook'));
 const ForYou = lazy(() => import('./pages/for-you/ForYou'));
+const SharedArtifact = lazy(() => import('./pages/shared/SharedArtifact'));
 
 function PageFallback() {
   return (
@@ -89,6 +90,7 @@ export default function App() {
           <ErrorBoundary>
             <Suspense fallback={<PageFallback />}>
               <Routes>
+                <Route path="/shared/artifacts/:token" element={<SharedArtifact />} />
                 {authRequired && (
                   <>
                     <Route path="/login" element={user ? <Navigate to={defaultPath} replace /> : <Login />} />

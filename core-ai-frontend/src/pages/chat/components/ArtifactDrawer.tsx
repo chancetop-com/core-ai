@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, FileText, Code as CodeIcon, FileCode, Globe, Image as ImageIcon, Download, Copy, Check, Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { X, FileText, Code as CodeIcon, FileCode, Globe, Image as ImageIcon, Download, Copy, Check, Loader2, Maximize2, Minimize2, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
+import { fileApi } from '../../../api/files';
 import CodeMirrorEditor from '../../../components/CodeMirrorEditor';
 import JsonTreeView from '../../../components/JsonTreeView';
 import type { ArtifactSpec } from './artifactTypes';
@@ -32,6 +33,7 @@ interface Props {
 }
 
 type ViewMode = 'preview' | 'source';
+type ShareStatus = 'idle' | 'loading' | 'copied' | 'error';
 
 function iconFor(spec: ArtifactSpec) {
   if (spec.kind === 'html') return <Globe size={16} style={{ color: 'var(--color-primary)' }} />;
@@ -116,6 +118,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   const canSource = supportsSource(artifact);
   const [mode, setMode] = useState<ViewMode>(canPreview ? 'preview' : 'source');
   const [copied, setCopied] = useState(false);
+  const [shareStatus, setShareStatus] = useState<ShareStatus>('idle');
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const [fileText, setFileText] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -155,6 +158,10 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   useEffect(() => {
     setMode(canPreview ? 'preview' : 'source');
   }, [canPreview, artifact.title]);
+
+  useEffect(() => {
+    setShareStatus('idle');
+  }, [artifact.fileId]);
 
   useEffect(() => {
     if (artifact.kind !== 'file' || !artifact.fileId) {
@@ -220,6 +227,32 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
     }
   };
 
+  const handleShare = async () => {
+    if (!artifact.fileId || shareStatus === 'loading') return;
+    setShareStatus('loading');
+    try {
+      const res = await fileApi.share(artifact.fileId);
+      const shareUrl = new URL(res.share_url, window.location.origin).toString();
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+      } catch {
+        window.prompt('Share link', shareUrl);
+      }
+      setShareStatus('copied');
+      setTimeout(() => setShareStatus('idle'), 1800);
+    } catch (err) {
+      console.warn('share failed', err);
+      setShareStatus('error');
+      setTimeout(() => setShareStatus('idle'), 1800);
+    }
+  };
+
+  const shareTitle = shareStatus === 'copied'
+    ? 'Share link copied'
+    : shareStatus === 'error'
+      ? 'Share failed'
+      : 'Share';
+
   const drawerContent = (
     <div className="flex flex-col h-full shrink-0 border-l relative"
       style={{ width: maximized ? '100%' : width, borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
@@ -271,6 +304,21 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
               <Download size={14} />
+            </button>
+          )}
+          {downloadUrl && (
+            <button onClick={handleShare}
+              disabled={shareStatus === 'loading'}
+              className="p-1.5 rounded-lg cursor-pointer transition-colors inline-flex items-center disabled:cursor-wait disabled:opacity-70"
+              style={{ color: shareStatus === 'error' ? 'var(--color-error)' : shareStatus === 'copied' ? 'var(--color-success)' : 'var(--color-text-secondary)' }}
+              title={shareTitle}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              {shareStatus === 'loading'
+                ? <Loader2 size={14} className="animate-spin" />
+                : shareStatus === 'copied'
+                  ? <Check size={14} />
+                  : <Share2 size={14} />}
             </button>
           )}
           <button onClick={() => setMaximized(m => !m)}
