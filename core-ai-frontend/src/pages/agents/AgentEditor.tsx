@@ -10,7 +10,7 @@ import StatusBadge from '../../components/StatusBadge';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
   id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
-  model: '', multi_modal_model: '', temperature: 0.7, max_turns: 20, timeout_seconds: 600,
+  model: '', multi_modal_model: '', temperature: 0.7, max_turns: 100, timeout_seconds: 600,
   tools: [], input_template: '', variables: {},
   system_default: false, type: 'AGENT', response_schema: null,
   created_by: '', status: 'DRAFT', published_at: '', created_at: '', updated_at: '',

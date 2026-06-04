@@ -127,7 +127,7 @@ public final class CreateAgentDraftTool extends ToolCall {
                 ToolCallParameters.ParamSpec.of(String.class, "system_prompt", "The system prompt that defines the agent's behavior").required(),
                 ToolCallParameters.ParamSpec.of(String.class, "model", "LLM model to use (optional)"),
                 ToolCallParameters.ParamSpec.of(Double.class, "temperature", "Temperature 0-1 (optional)"),
-                ToolCallParameters.ParamSpec.of(Integer.class, "max_turns", "Maximum conversation turns (optional, default 20)"),
+                ToolCallParameters.ParamSpec.of(Integer.class, "max_turns", "Maximum conversation turns (optional, default 100)"),
                 ToolCallParameters.ParamSpec.of(Integer.class, "timeout_seconds", "Timeout in seconds (optional, default 600)"),
                 ToolCallParameters.ParamSpec.of(String.class, "input_template", "Input template with {{variable}} placeholders (optional)"),
                 ToolCallParameters.ParamSpec.of(String.class, "multi_modal_model", "Multimodal model for image understanding (optional, e.g. 'gpt-4o')"),

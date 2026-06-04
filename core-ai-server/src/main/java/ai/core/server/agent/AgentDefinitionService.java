@@ -65,7 +65,7 @@ public class AgentDefinitionService {
         entity.temperature = request.temperature;
         var isLLMCall = "LLM_CALL".equals(request.type);
         if (!isLLMCall) {
-            entity.maxTurns = request.maxTurns != null ? request.maxTurns : 20;
+            entity.maxTurns = request.maxTurns != null ? request.maxTurns : 100;
             entity.timeoutSeconds = request.timeoutSeconds != null ? request.timeoutSeconds : 600;
         }
         entity.tools = request.tools != null ? toToolRefs(request.tools) : null;
@@ -203,7 +203,7 @@ public class AgentDefinitionService {
         entity.model = agent.getModel();
         entity.multiModalModel = agent.getMultiModalModel();
         entity.temperature = agent.getTemperature();
-        entity.maxTurns = 20;
+        entity.maxTurns = 100;
         entity.timeoutSeconds = 600;
         entity.tools = agent.getToolCalls().stream()
                 .map(tc -> ToolRef.fromLegacyToolId(tc.getName()))
