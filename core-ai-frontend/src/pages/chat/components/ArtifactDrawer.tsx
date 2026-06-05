@@ -119,6 +119,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
   const [mode, setMode] = useState<ViewMode>(canPreview ? 'preview' : 'source');
   const [copied, setCopied] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus>('idle');
+  const [shareToast, setShareToast] = useState<string | null>(null);
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const [fileText, setFileText] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -161,6 +162,7 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
 
   useEffect(() => {
     setShareStatus('idle');
+    setShareToast(null);
   }, [artifact.fileId]);
 
   useEffect(() => {
@@ -239,11 +241,15 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
         window.prompt('Share link', shareUrl);
       }
       setShareStatus('copied');
+      setShareToast('Share link copied, go share to your friend!');
       setTimeout(() => setShareStatus('idle'), 1800);
+      setTimeout(() => setShareToast(null), 2500);
     } catch (err) {
       console.warn('share failed', err);
       setShareStatus('error');
+      setShareToast('Share failed, please try again.');
       setTimeout(() => setShareStatus('idle'), 1800);
+      setTimeout(() => setShareToast(null), 2500);
     }
   };
 
@@ -307,19 +313,27 @@ export default function ArtifactDrawer({ artifact, onClose }: Props) {
             </button>
           )}
           {downloadUrl && (
-            <button onClick={handleShare}
-              disabled={shareStatus === 'loading'}
-              className="p-1.5 rounded-lg cursor-pointer transition-colors inline-flex items-center disabled:cursor-wait disabled:opacity-70"
-              style={{ color: shareStatus === 'error' ? 'var(--color-error)' : shareStatus === 'copied' ? 'var(--color-success)' : 'var(--color-text-secondary)' }}
-              title={shareTitle}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-              {shareStatus === 'loading'
-                ? <Loader2 size={14} className="animate-spin" />
-                : shareStatus === 'copied'
-                  ? <Check size={14} />
-                  : <Share2 size={14} />}
-            </button>
+            <div className="relative">
+              <button onClick={handleShare}
+                disabled={shareStatus === 'loading'}
+                className="p-1.5 rounded-lg cursor-pointer transition-colors inline-flex items-center disabled:cursor-wait disabled:opacity-70"
+                style={{ color: shareStatus === 'error' ? 'var(--color-error)' : shareStatus === 'copied' ? 'var(--color-success)' : 'var(--color-text-secondary)' }}
+                title={shareTitle}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                {shareStatus === 'loading'
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : shareStatus === 'copied'
+                    ? <Check size={14} />
+                    : <Share2 size={14} />}
+              </button>
+              {shareToast && (
+                <div className="absolute top-full right-0 mt-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap shadow-lg z-30"
+                  style={{ background: 'var(--color-bg)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+                  {shareToast}
+                </div>
+              )}
+            </div>
           )}
           <button onClick={() => setMaximized(m => !m)}
             className="p-1.5 rounded-lg cursor-pointer transition-colors"
