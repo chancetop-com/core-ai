@@ -38,10 +38,8 @@ public class WorkflowPublishService {
         WorkflowDefinition definition = definitionCollection.get(definitionId)
             .orElseThrow(() -> new IllegalStateException("workflow not found: " + definitionId));
 
-        WorkflowGraph graph = WorkflowGraphParser.parse(definition.draftGraph);
-        List<String> errors = new ArrayList<>(WorkflowValidator.validate(graph));
         Map<String, String> agentSnapshots = new LinkedHashMap<>();
-        captureAgentSnapshots(graph, definition.userId, errors, agentSnapshots);
+        List<String> errors = collectErrors(definition, agentSnapshots);
         if (!errors.isEmpty()) {
             throw new WorkflowValidationException(errors);
         }
@@ -66,6 +64,19 @@ public class WorkflowPublishService {
         definition.updatedAt = now;
         definitionCollection.replace(definition);
         return published;
+    }
+
+    /** Validate a draft without publishing (the editor's Validate button). Returns all errors, empty if valid. */
+    public List<String> validate(WorkflowDefinition definition) {
+        return collectErrors(definition, new LinkedHashMap<>());
+    }
+
+    // Parse + structural/type/dominator validation + agent-snapshot validation; fills snapshots as a side effect.
+    private List<String> collectErrors(WorkflowDefinition definition, Map<String, String> snapshots) {
+        WorkflowGraph graph = WorkflowGraphParser.parse(definition.draftGraph);
+        List<String> errors = new ArrayList<>(WorkflowValidator.validate(graph));
+        captureAgentSnapshots(graph, definition.userId, errors, snapshots);
+        return errors;
     }
 
     // Embed each AGENT/LLM node's referenced Agent published config; referencing an unknown, inaccessible or

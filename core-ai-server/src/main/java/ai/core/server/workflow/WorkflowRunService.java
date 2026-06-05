@@ -3,8 +3,10 @@ package ai.core.server.workflow;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowDefinition;
+import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
@@ -12,6 +14,7 @@ import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -29,6 +32,9 @@ public class WorkflowRunService {
 
     @Inject
     MongoCollection<WorkflowRun> runCollection;
+
+    @Inject
+    MongoCollection<WorkflowNodeRun> nodeRunCollection;
 
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
         WorkflowDefinition definition = definitionCollection.get(workflowId)
@@ -66,5 +72,16 @@ public class WorkflowRunService {
             throw new ForbiddenException("workflow run does not belong to the current user: " + runId);
         }
         return run;
+    }
+
+    public List<WorkflowRun> listRuns(String workflowId, String userId) {
+        return runCollection.find(Filters.and(
+            Filters.eq("workflow_id", workflowId),
+            Filters.eq("user_id", userId)));
+    }
+
+    public List<WorkflowNodeRun> listNodeRuns(String runId, String userId) {
+        getRun(runId, userId);   // ownership check
+        return nodeRunCollection.find(Filters.eq("run_id", runId));
     }
 }

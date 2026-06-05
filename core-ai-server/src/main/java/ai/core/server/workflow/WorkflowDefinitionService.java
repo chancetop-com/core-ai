@@ -2,12 +2,14 @@ package ai.core.server.workflow;
 
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowMode;
+import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -39,6 +41,23 @@ public class WorkflowDefinitionService {
         if (!definition.userId.equals(userId)) {
             throw new ForbiddenException("workflow does not belong to the current user: " + id);
         }
+        return definition;
+    }
+
+    public List<WorkflowDefinition> list(String userId) {
+        return definitionCollection.find(Filters.eq("user_id", userId));
+    }
+
+    public WorkflowDefinition update(String id, String name, String graph, String userId) {
+        var definition = get(id, userId);
+        if (name != null) {
+            definition.name = name;
+        }
+        if (graph != null) {
+            definition.draftGraph = graph;
+        }
+        definition.updatedAt = ZonedDateTime.now();
+        definitionCollection.replace(definition);
         return definition;
     }
 }

@@ -83,5 +83,12 @@ class WorkflowEndToEndTest {
         var nodeRuns = nodeRunCollection.find(Filters.eq("run_id", created.id));
         assertEquals(2, nodeRuns.size());   // start + end, persisted as node-runs
         assertTrue(nodeRuns.stream().allMatch(nodeRun -> nodeRun.status == NodeRunStatus.COMPLETED));
+
+        // read-side endpoints the editor depends on
+        assertTrue(definitionService.list("user-1").stream().anyMatch(d -> d.id.equals(definition.id)));
+        assertTrue(definitionService.get(definition.id, "user-1").draftGraph.contains("START"));
+        assertTrue(publishService.validate(definitionService.get(definition.id, "user-1")).isEmpty());
+        assertTrue(runService.listRuns(definition.id, "user-1").stream().anyMatch(r -> r.id.equals(created.id)));
+        assertEquals(2, runService.listNodeRuns(created.id, "user-1").size());
     }
 }

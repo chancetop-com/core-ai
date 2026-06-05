@@ -23,4 +23,7 @@ public class WorkflowView {
 
     @Property(name = "published_version_id")
     public String publishedVersionId;
+
+    @Property(name = "draft_graph")
+    public String draftGraph;   // included on get/list for the editor; null on create/publish responses
 }
