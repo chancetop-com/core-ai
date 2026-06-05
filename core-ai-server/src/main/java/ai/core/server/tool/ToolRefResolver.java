@@ -62,8 +62,8 @@ public class ToolRefResolver {
     }
 
     private void resolveBuiltinRef(ToolRef toolRef, List<ToolCall> result) {
-        var entry = toolRegistry.get(toolRef.id);
-        if (entry != null && entry.type == ToolType.BUILTIN) {
+        var entry = lookupBuiltinEntry(toolRef.id);
+        if (entry != null) {
             var setName = entry.config != null ? entry.config.get("set") : null;
             var builtinSet = ToolRegistryService.BUILTIN_TOOL_SETS.get(setName);
             if (builtinSet != null) result.addAll(builtinSet);
@@ -72,6 +72,15 @@ public class ToolRefResolver {
         // fallback for dynamically registered builtin tool sets
         var dynamicSet = dynamicToolSets.get(toolRef.id);
         if (dynamicSet != null) result.addAll(dynamicSet);
+    }
+
+    private ToolRegistry lookupBuiltinEntry(String id) {
+        var entry = toolRegistry.get(id);
+        if (entry != null && entry.type == ToolType.BUILTIN) return entry;
+        // builtin tools are registered with "builtin:" prefix, e.g. "builtin:builtin-all"
+        entry = toolRegistry.get("builtin:" + id);
+        if (entry != null && entry.type == ToolType.BUILTIN) return entry;
+        return null;
     }
 
     @SuppressWarnings("checkstyle:NestedIfDepth")
@@ -144,6 +153,10 @@ public class ToolRefResolver {
 
     private void resolveLegacyRef(ToolRef toolRef, List<ToolCall> result) {
         var entry = toolRegistry.get(toolRef.id);
+        if (entry == null) {
+            // builtin tools are registered with "builtin:" prefix, e.g. "builtin:builtin-all"
+            entry = toolRegistry.get("builtin:" + toolRef.id);
+        }
         if (entry == null) return;
 
         switch (entry.type) {
