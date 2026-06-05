@@ -24,6 +24,7 @@ const maxOutputSize = 30 * 1024       // 30KB
 const skillBaseDir = "/skill"         // sandbox-side mount target for materialized skills
 const maxSkillArchiveSize = 5 << 20   // 5 MB
 const maxDownloadFileSize = 100 << 20 // 100 MB
+const maxUploadFileSize = 20 << 20    // 20 MB
 
 // ---- Request / Response ----
 
@@ -37,6 +38,13 @@ type ExecuteResponse struct {
 	Result     string `json:"result"`
 	TaskID     string `json:"task_id,omitempty"`
 	DurationMs int64  `json:"duration_ms,omitempty"`
+}
+
+type FileUploadResponse struct {
+	Status string `json:"status"` // ok, error
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
+	Error  string `json:"error,omitempty"`
 }
 
 // ---- Async task registry ----
@@ -164,6 +172,7 @@ func main() {
 	http.HandleFunc("/execute", handleExecute)
 	http.HandleFunc("/tasks/", handleTaskPoll)
 	http.HandleFunc("/files/content", handleFileContent)
+	http.HandleFunc("/files/upload", handleFileUpload)
 	http.HandleFunc("/skills/", handleSkillMaterialize)
 
 	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d", port, workspaceDir, maxAsync)
@@ -309,6 +318,84 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(w, file); err != nil {
 		log.Printf("failed to stream file %s: %v", safePath, err)
 	}
+}
+
+// handleFileUpload handles POST /files/upload?path=/workspace/data.csv.
+// Accepts raw bytes in the request body and writes them to the specified path.
+func handleFileUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	requested := r.URL.Query().Get("path")
+	if requested == "" {
+		writeFileUploadError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+
+	safePath, err := resolveUploadPath(requested)
+	if err != nil {
+		writeFileUploadError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxUploadFileSize+1))
+	if err != nil {
+		writeFileUploadError(w, http.StatusBadRequest, "failed to read body: "+err.Error())
+		return
+	}
+	if int64(len(body)) > maxUploadFileSize {
+		writeFileUploadError(w, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("file exceeds max size (%d bytes)", maxUploadFileSize))
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
+		writeFileUploadError(w, http.StatusInternalServerError,
+			"failed to create directory: "+err.Error())
+		return
+	}
+
+	if err := os.WriteFile(safePath, body, 0644); err != nil {
+		writeFileUploadError(w, http.StatusInternalServerError,
+			"failed to write file: "+err.Error())
+		return
+	}
+
+	log.Printf("file uploaded: path=%s, size=%d", safePath, len(body))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(FileUploadResponse{
+		Status: "ok",
+		Path:   safePath,
+		Size:   int64(len(body)),
+	})
+}
+
+// resolveUploadPath resolves and validates the target upload path.
+// Allowed roots are /workspace and /tmp (same as download).
+func resolveUploadPath(requested string) (string, error) {
+	cleaned := resolvePath(requested)
+	allowedRoots := []string{workspaceDir, os.TempDir()}
+	for _, root := range allowedRoots {
+		rootResolved, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			rootResolved = filepath.Clean(root)
+		}
+		if isPathWithin(cleaned, rootResolved) {
+			return cleaned, nil
+		}
+	}
+	return "", fmt.Errorf("path is outside allowed directories")
+}
+
+func writeFileUploadError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(FileUploadResponse{
+		Status: "error",
+		Error:  msg,
+	})
 }
 
 // ---- Code execution tools ----
