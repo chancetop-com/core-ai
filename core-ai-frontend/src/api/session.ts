@@ -197,6 +197,7 @@ export interface CreateSessionOptions {
   tools?: ToolRef[];
   skill_ids?: string[];
   sub_agent_ids?: string[];
+  dataset_configs?: { dataset_id: string; permission: string; is_output?: boolean }[];
 }
 
 export const sessionApi = {

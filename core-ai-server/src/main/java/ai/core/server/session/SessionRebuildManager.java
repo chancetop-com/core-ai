@@ -145,12 +145,25 @@ public class SessionRebuildManager {
         config.multiModalModel = snapshot.multiModalModel;
         config.temperature = snapshot.temperature;
         config.maxTurns = snapshot.maxTurns;
-        config.datasetId = state != null && state.config != null && hasText(state.config.datasetId)
-                ? state.config.datasetId
-                : findOutputDatasetId(snapshot.datasetConfig);
-        var datasetConfig = state != null && state.config != null && hasText(state.config.datasetId)
-                ? List.of(createConfig(state.config.datasetId, DatasetPermission.READ))
-                : snapshot.datasetConfig;
+        List<AgentDatasetConfig> datasetConfig;
+        if (state != null && state.config != null && state.config.datasetConfigs != null && !state.config.datasetConfigs.isEmpty()) {
+            // Session-level override: use stored datasetConfigs
+            datasetConfig = state.config.datasetConfigs.stream().map(entry -> {
+                var dc = new AgentDatasetConfig();
+                dc.datasetId = entry.datasetId;
+                dc.permission = DatasetPermission.valueOf(entry.permission);
+                dc.isOutput = entry.isOutput;
+                return dc;
+            }).toList();
+            config.datasetConfigs = state.config.datasetConfigs;
+        } else if (state != null && state.config != null && hasText(state.config.datasetId)) {
+            // Backward compat: single datasetId override
+            config.datasetId = state.config.datasetId;
+            datasetConfig = List.of(createConfig(state.config.datasetId, DatasetPermission.READ));
+        } else {
+            config.datasetId = findOutputDatasetId(snapshot.datasetConfig);
+            datasetConfig = snapshot.datasetConfig;
+        }
         List<ToolCall> tools = (snapshot.tools != null && !snapshot.tools.isEmpty()) ? toolRegistryService.resolveToolRefs(snapshot.tools) : List.of();
         return doRebuild(sessionId, config, tools, userId, snapshot.agentName, state, snapshot.agentId, datasetConfig);
     }

@@ -13,6 +13,7 @@ import ai.core.api.server.session.LoadSubAgentsResponse;
 import ai.core.api.server.session.LoadToolsRequest;
 import ai.core.api.server.session.LoadToolsResponse;
 import ai.core.api.server.session.SendMessageRequest;
+import ai.core.api.server.session.SessionConfig;
 import ai.core.api.server.session.SessionHistoryResponse;
 import ai.core.api.server.session.SessionStatusResponse;
 import ai.core.api.server.session.UnloadSkillsRequest;
@@ -86,6 +87,12 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var state = new SessionState();
         state.userId = userId;
         state.config = request.config;
+        if (state.config == null) {
+            state.config = new SessionConfig();
+        }
+        if (request.datasetConfigs != null && !request.datasetConfigs.isEmpty()) {
+            state.config.datasetConfigs = request.datasetConfigs;
+        }
         var loadedSubAgents = new ArrayList<IdName>();
         var loadedSkills = new ArrayList<IdName>();
 

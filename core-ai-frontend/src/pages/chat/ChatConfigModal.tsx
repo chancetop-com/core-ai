@@ -1,9 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Search, Check, Loader2, Wrench, Sparkles, Users, Database, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Search, Check, Loader2, Wrench, Sparkles, Users, Database, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
-import type { ToolRegistryView, SkillDefinition, AgentDefinition, DatasetView, ApiAppView, ApiServiceView, McpToolInfo } from '../../api/client';
+import type { ToolRegistryView, SkillDefinition, AgentDefinition, DatasetView, ApiAppView, ApiServiceView, McpToolInfo, AgentDatasetConfig } from '../../api/client';
 
 type TabKey = 'tools' | 'skills' | 'subagents' | 'dataset';
+
+export interface DatasetConfigDraft extends AgentDatasetConfig {
+  // extends AgentDatasetConfig with runtime-only key for React reconciliation
+  _key: string;
+}
 
 interface ChatConfigModalProps {
   // Tools
@@ -34,13 +39,9 @@ interface ChatConfigModalProps {
   onToggleAgent: (id: string) => void;
   onLoadAgents: () => void;
 
-  // Datasets
-  selectedDatasetId: string | null;
-  loadedDatasetId: string | null;
-  preDatasetId: string | null;
-  onSelectDataset: (id: string | null) => void;
-  onApplyDataset: () => void;
-  datasetLocked: boolean;
+  // Datasets — full editor for session-level override
+  draftDatasetConfigs: DatasetConfigDraft[];
+  onUpdateDatasetConfigs: (configs: DatasetConfigDraft[]) => void;
 
   onClose: () => void;
 }
@@ -55,7 +56,6 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; color: string; 
 export default function ChatConfigModal(props: ChatConfigModalProps) {
   const { onClose } = props;
   const [activeTab, setActiveTab] = useState<TabKey>('tools');
-  const datasetApplyDisabled = activeTab === 'dataset' && (!props.selectedDatasetId || props.datasetLocked);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -67,7 +67,7 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
     tools: props.loadedToolIds.size + props.preToolIds.size + props.selectedToolIds.size,
     skills: props.loadedSkillIds.size + props.preSkillIds.size + props.selectedSkillIds.size,
     subagents: props.loadedSubAgentIds.size + props.preSubAgentIds.size + props.selectedAgentIds.size,
-    dataset: (props.selectedDatasetId || props.preDatasetId || props.loadedDatasetId) ? 1 : 0,
+    dataset: props.draftDatasetConfigs.length,
   };
 
   return (
@@ -120,9 +120,7 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
         <div className="flex items-center justify-between px-5 py-3 border-t"
           style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {activeTab === 'dataset' && props.datasetLocked
-              ? 'Dataset changes apply before starting a session'
-              : tabCounts[activeTab] > 0 ? `${tabCounts[activeTab]} selected` : `Configure ${activeTab}`}
+            {tabCounts[activeTab] > 0 ? `${tabCounts[activeTab]} selected` : `Configure ${activeTab}`}
           </span>
           <div className="flex gap-2">
             <button onClick={onClose}
@@ -145,16 +143,6 @@ export default function ChatConfigModal(props: ChatConfigModalProps) {
                 className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-40"
                 style={{ background: 'var(--color-primary)', color: 'white' }}>
                 Load
-              </button>
-            )}
-            {activeTab === 'dataset' && (
-              <button
-                onClick={props.onApplyDataset}
-                disabled={datasetApplyDisabled}
-                title={props.datasetLocked ? 'Start a new chat before changing the dataset' : undefined}
-                className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: 'var(--color-primary)', color: 'white' }}>
-                Apply
               </button>
             )}
           </div>
@@ -557,10 +545,8 @@ function SubAgentsTab(props: ChatConfigModalProps) {
 function DatasetTab(props: ChatConfigModalProps) {
   const [datasets, setDatasets] = useState<DatasetView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedDataset, setExpandedDataset] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState('');
-  const [showAll, setShowAll] = useState(false);
-  const MAX_VISIBLE = 5;
 
   useEffect(() => {
     (async () => {
@@ -572,13 +558,40 @@ function DatasetTab(props: ChatConfigModalProps) {
     })();
   }, []);
 
-  const currentId = props.selectedDatasetId ?? props.preDatasetId ?? props.loadedDatasetId;
-
-  const filtered = datasets.filter(ds =>
-    ds.name.toLowerCase().includes(search.toLowerCase()) ||
-    (ds.description || '').toLowerCase().includes(search.toLowerCase())
+  const configs = props.draftDatasetConfigs;
+  const boundIds = new Set(configs.map(c => c.dataset_id));
+  const availableDatasets = datasets.filter(d => !boundIds.has(d.id));
+  const filteredAvailable = availableDatasets.filter(d =>
+    d.name.toLowerCase().includes(search.toLowerCase())
   );
-  const visible = showAll ? filtered : filtered.slice(0, MAX_VISIBLE);
+
+  const handleAdd = (datasetId: string) => {
+    if (!datasetId) return;
+    const newEntry: DatasetConfigDraft = {
+      _key: crypto.randomUUID(),
+      dataset_id: datasetId,
+      permission: 'READ',
+      is_output: false,
+    };
+    props.onUpdateDatasetConfigs([...configs, newEntry]);
+    setAdding(false);
+    setSearch('');
+  };
+
+  const handleRemove = (key: string) => {
+    props.onUpdateDatasetConfigs(configs.filter(c => c._key !== key));
+  };
+
+  const handlePermissionChange = (key: string, permission: 'READ' | 'WRITE' | 'FULL') => {
+    props.onUpdateDatasetConfigs(configs.map(c => c._key === key ? { ...c, permission } : c));
+  };
+
+  const handleSetOutput = (key: string) => {
+    props.onUpdateDatasetConfigs(configs.map(c => ({
+      ...c,
+      is_output: c._key === key,
+    })));
+  };
 
   if (loading) {
     return (
@@ -589,113 +602,104 @@ function DatasetTab(props: ChatConfigModalProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
-        {props.datasetLocked && (
-          <div className="mb-3 px-3 py-2 rounded-lg text-xs"
-            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
-            Dataset is bound when a session starts. Start a new chat to use a different dataset.
-          </div>
-        )}
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
-          style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
-          <Search size={14} style={{ color: 'var(--color-text-muted)' }} />
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setShowAll(false); }}
-            placeholder="Search datasets..."
-            className="flex-1 text-sm outline-none"
-            style={{ background: 'transparent', color: 'var(--color-text)' }}
-          />
+    <div className="flex flex-col h-full p-4">
+      <div className="text-xs font-medium mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+        Session datasets {configs.length > 0 && `(${configs.length})`}
+      </div>
+
+      {configs.length > 0 && (
+        <div className="space-y-1.5 mb-4">
+          {configs.map(cfg => {
+            const ds = datasets.find(d => d.id === cfg.dataset_id);
+            const label = ds?.name || cfg.dataset_id;
+            return (
+              <div key={cfg._key} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-primary)' }} />
+                <span className="font-medium flex-1 truncate" style={{ color: 'var(--color-text)' }}>{label}</span>
+                <select
+                  value={cfg.permission}
+                  onChange={e => handlePermissionChange(cfg._key, e.target.value as 'READ' | 'WRITE' | 'FULL')}
+                  className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 cursor-pointer outline-none"
+                  style={{
+                    background: 'var(--color-bg-tertiary)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border)',
+                  }}>
+                  <option value="READ">READ</option>
+                  <option value="WRITE">WRITE</option>
+                  <option value="FULL">FULL</option>
+                </select>
+                {cfg.is_output ? (
+                  <button onClick={() => handleSetOutput(cfg._key)}
+                    className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 cursor-pointer border-none"
+                    style={{ background: 'var(--color-primary)', color: '#fff' }}>output</button>
+                ) : cfg.permission !== 'READ' ? (
+                  <button onClick={() => handleSetOutput(cfg._key)}
+                    className="text-xs px-1.5 py-0.5 rounded cursor-pointer flex-shrink-0 bg-transparent border-none"
+                    style={{ color: 'var(--color-text-secondary)', border: '1px dashed var(--color-border)' }}>output</button>
+                ) : (
+                  <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-secondary)', opacity: 0.4 }}>—</span>
+                )}
+                <button onClick={() => handleRemove(cfg._key)}
+                  className="flex-shrink-0 cursor-pointer p-0.5 rounded hover:opacity-70 bg-transparent border-none"
+                  style={{ color: 'var(--color-text-muted)' }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            );
+          })}
         </div>
-      </div>
-      <div className="flex-1 overflow-auto p-4">
-        {datasets.length === 0 ? (
-          <div className="text-center py-12 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            No datasets available. Create one in the Datasets page first.
+      )}
+
+      {!adding ? (
+        <button
+          onClick={() => setAdding(true)}
+          className="flex items-center gap-1.5 text-xs cursor-pointer hover:opacity-80 px-3 py-2 rounded-lg border-dashed bg-transparent border-none"
+          style={{ color: 'var(--color-text-secondary)', border: '1px dashed var(--color-border)' }}>
+          <Plus size={14} />
+          <span>Add dataset</span>
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+            style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
+            <Search size={14} style={{ color: 'var(--color-text-muted)' }} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Filter datasets..."
+              className="flex-1 text-sm outline-none"
+              style={{ background: 'transparent', color: 'var(--color-text)' }}
+            />
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            No datasets match your search.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            {visible.map(ds => {
-              const isSelected = currentId === ds.id;
-              const isExpanded = expandedDataset === ds.id;
-              const handleSelect = () => {
-                if (!props.datasetLocked) props.onSelectDataset(ds.id);
-              };
-              return (
-                <div key={ds.id}>
-                  <div
-                    role="button"
-                    tabIndex={props.datasetLocked ? -1 : 0}
-                    aria-pressed={isSelected}
-                    aria-disabled={props.datasetLocked}
-                    onClick={handleSelect}
-                    onKeyDown={e => {
-                      if (props.datasetLocked) return;
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        props.onSelectDataset(ds.id);
-                      }
-                    }}
-                    className="flex items-start gap-3 px-4 py-3 rounded-lg text-left w-full cursor-pointer transition-colors hover:opacity-90"
-                    style={{
-                      background: isSelected ? 'var(--color-primary)' + '12' : 'transparent',
-                      border: isSelected ? '1px solid var(--color-primary)' : '1px solid transparent',
-                      cursor: props.datasetLocked ? 'default' : 'pointer',
-                    }}>
-                    <div className="mt-0.5 shrink-0">
-                      <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center"
-                        style={{ borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)' }}>
-                        {isSelected && <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--color-primary)' }} />}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{ds.name}</span>
-                      </div>
-                      {ds.description && (
-                        <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{ds.description}</div>
-                      )}
-                      {ds.schema && ds.schema.length > 0 && (
-                        <>
-                          <button
-                            onClick={e => { e.stopPropagation(); setExpandedDataset(isExpanded ? null : ds.id); }}
-                            className="text-xs mt-1 flex items-center gap-1 cursor-pointer"
-                            style={{ color: 'var(--color-text-muted)' }}>
-                            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            {ds.schema.length} field(s)
-                          </button>
-                          {isExpanded && (
-                            <div className="mt-2 pl-2 border-l-2" style={{ borderColor: 'var(--color-border)' }}>
-                              {ds.schema.map((field, i) => (
-                                <div key={i} className="text-xs py-0.5 flex gap-3">
-                                  <span className="font-medium" style={{ minWidth: '100px' }}>{field.name}</span>
-                                  <span style={{ color: 'var(--color-text-secondary)' }}>{field.type}</span>
-                                  {field.label && <span style={{ color: 'var(--color-text-muted)' }}>{field.label}</span>}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {!showAll && filtered.length > MAX_VISIBLE && (
-              <button onClick={() => setShowAll(true)}
-                className="text-xs py-2 cursor-pointer hover:opacity-80" style={{ color: '#3b82f6' }}>
-                Show all {filtered.length} datasets...
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+          {filteredAvailable.length > 0 ? (
+            <div className="max-h-40 overflow-auto space-y-1">
+              {filteredAvailable.slice(0, 20).map(ds => (
+                <button key={ds.id}
+                  onClick={() => handleAdd(ds.id)}
+                  className="w-full text-left px-3 py-2 rounded-lg text-sm cursor-pointer hover:opacity-80 bg-transparent border-none"
+                  style={{ color: 'var(--color-text)', background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
+                  <span className="font-medium">{ds.name}</span>
+                  {ds.description && (
+                    <span className="ml-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{ds.description}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs py-3 text-center" style={{ color: 'var(--color-text-muted)' }}>
+              {availableDatasets.length === 0 ? 'All datasets already added.' : 'No datasets match your filter.'}
+            </div>
+          )}
+          <button
+            onClick={() => { setAdding(false); setSearch(''); }}
+            className="text-xs cursor-pointer hover:opacity-80 bg-transparent border-none"
+            style={{ color: 'var(--color-text-secondary)' }}>
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

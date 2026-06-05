@@ -184,8 +184,18 @@ public class AgentSessionManager {
         var tools = subAgentManager().resolveTools(definition);
         var sessionId = UUID.randomUUID().toString();
         var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
-        // SessionConfig.datasetId override: if set, use that single dataset with READ permission
-        if (overrides != null && hasText(overrides.datasetId)) {
+        // SessionConfig overrides: if datasetConfigs is set, use those instead of agent defaults
+        if (overrides != null && overrides.datasetConfigs != null && !overrides.datasetConfigs.isEmpty()) {
+            datasetConfig = overrides.datasetConfigs.stream().map(entry -> {
+                var perm = new AgentDatasetConfig();
+                perm.datasetId = entry.datasetId;
+                perm.permission = DatasetPermission.valueOf(entry.permission);
+                perm.isOutput = entry.isOutput;
+                return perm;
+            }).toList();
+            config.datasetConfigs = overrides.datasetConfigs;
+        } else if (overrides != null && hasText(overrides.datasetId)) {
+            // Backward compat: single datasetId override
             var overridePerm = new AgentDatasetConfig();
             overridePerm.datasetId = overrides.datasetId;
             overridePerm.permission = DatasetPermission.READ;

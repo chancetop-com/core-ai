@@ -34,4 +34,7 @@ public class SessionConfig {
 
     @Property(name = "datasetId")
     public String datasetId;
+
+    @Property(name = "datasetConfigs")
+    public List<DatasetConfigEntry> datasetConfigs;
 }

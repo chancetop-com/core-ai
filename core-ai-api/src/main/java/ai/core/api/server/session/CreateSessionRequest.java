@@ -23,4 +23,7 @@ public class CreateSessionRequest {
 
     @Property(name = "sub_agent_ids")
     public List<String> subAgentIds;
+
+    @Property(name = "dataset_configs")
+    public List<DatasetConfigEntry> datasetConfigs;
 }

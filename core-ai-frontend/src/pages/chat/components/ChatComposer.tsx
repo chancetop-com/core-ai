@@ -49,12 +49,10 @@ interface ChatComposerProps {
   preToolIds: Set<string>;
   preSkillIds: Set<string>;
   preSubAgentIds: Set<string>;
-  loadedDatasetId: string | null;
-  preDatasetId: string | null;
+  datasetConfigs: { dataset_id: string; permission: string; is_output?: boolean; name?: string }[];
   showVoiceSidebar: boolean;
   getSkillChipName: (id: string) => string;
   getAgentChipName: (id: string) => string;
-  getDatasetChipName: (id: string | null) => string;
   onOpenConfig: () => void;
   onToggleVoiceSidebar: () => void;
   onSend: (text: string, attachments: ComposerAttachment[]) => void | Promise<void>;
@@ -76,42 +74,34 @@ const COLLAPSE_THRESHOLD = 8;
 
 interface ComposerConfigChipsProps {
   totalChips: number;
-  datasetChips: number;
   loadedToolIds: Set<string>;
   loadedSkillIds: Set<string>;
   loadedSubAgentIds: Set<string>;
   preToolIds: Set<string>;
   preSkillIds: Set<string>;
   preSubAgentIds: Set<string>;
-  loadedDatasetId: string | null;
-  preDatasetId: string | null;
+  datasetConfigs: { dataset_id: string; permission: string; is_output?: boolean; name?: string }[];
   getSkillChipName: (id: string) => string;
   getAgentChipName: (id: string) => string;
-  getDatasetChipName: (id: string | null) => string;
 }
 
 const ComposerConfigChips = memo(function ComposerConfigChips({
   totalChips,
-  datasetChips,
   loadedToolIds,
   loadedSkillIds,
   loadedSubAgentIds,
   preToolIds,
   preSkillIds,
   preSubAgentIds,
-  loadedDatasetId,
-  preDatasetId,
+  datasetConfigs,
   getSkillChipName,
   getAgentChipName,
-  getDatasetChipName,
 }: ComposerConfigChipsProps) {
   const [chipsExpanded, setChipsExpanded] = useState(false);
   const collapsible = totalChips > COLLAPSE_THRESHOLD;
   const collapsed = collapsible && !chipsExpanded;
-  const effectiveDatasetId = preDatasetId || loadedDatasetId;
-  const datasetPending = Boolean(preDatasetId);
 
-  if (totalChips === 0) return null;
+  if (totalChips === 0 && datasetConfigs.length === 0) return null;
 
   return (
     <div className="mb-2">
@@ -125,7 +115,7 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
             {loadedToolIds.size + preToolIds.size > 0 && `${loadedToolIds.size + preToolIds.size} tools`}
             {loadedSkillIds.size + preSkillIds.size > 0 && `${loadedToolIds.size + preToolIds.size > 0 ? ', ' : ''}${loadedSkillIds.size + preSkillIds.size} skills`}
             {loadedSubAgentIds.size + preSubAgentIds.size > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0) ? ', ' : ''}${loadedSubAgentIds.size + preSubAgentIds.size} agents`}
-            {datasetChips > 0 && `${(loadedToolIds.size + preToolIds.size > 0 || loadedSkillIds.size + preSkillIds.size > 0 || loadedSubAgentIds.size + preSubAgentIds.size > 0) ? ', ' : ''}${getDatasetChipName(effectiveDatasetId)}`}
+            {datasetConfigs.length > 0 && `, ${datasetConfigs.length} dataset${datasetConfigs.length > 1 ? 's' : ''}`}
             {' loaded'}
           </span>
         </button>
@@ -207,19 +197,22 @@ const ComposerConfigChips = memo(function ComposerConfigChips({
               <span className="ml-0.5 opacity-60">(pending)</span>
             </span>
           ))}
-          {effectiveDatasetId && (
-            <span key="ds-effective"
+          {datasetConfigs.map(cfg => (
+            <span key={`ds-${cfg.dataset_id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
               style={{
-                background: datasetPending ? '#3b82f6' + '08' : '#3b82f6' + '18',
-                color: datasetPending ? 'var(--color-text-muted)' : '#3b82f6',
-                border: datasetPending ? '1px dashed var(--color-border)' : '1px solid #3b82f6' + '30',
+                background: '#3b82f6' + '18',
+                color: '#3b82f6',
+                border: '1px solid #3b82f6' + '30',
               }}>
               <Database size={10} />
-              {getDatasetChipName(effectiveDatasetId)}
-              {datasetPending && <span className="ml-0.5 opacity-60">(pending)</span>}
+              {cfg.name || cfg.dataset_id}
+              <span className="opacity-60" style={{ fontSize: '9px' }}>{cfg.permission}</span>
+              {cfg.is_output && (
+                <span className="rounded px-1 text-[10px]" style={{ background: '#3b82f6', color: '#fff' }}>out</span>
+              )}
             </span>
-          )}
+          ))}
         </div>
       )}
     </div>
@@ -236,12 +229,10 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
   preToolIds,
   preSkillIds,
   preSubAgentIds,
-  loadedDatasetId,
-  preDatasetId,
+  datasetConfigs,
   showVoiceSidebar,
   getSkillChipName,
   getAgentChipName,
-  getDatasetChipName,
   onOpenConfig,
   onToggleVoiceSidebar,
   onSend,
@@ -374,14 +365,13 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     }
   }, [handleSend]);
 
-  const datasetChips = loadedDatasetId || preDatasetId ? 1 : 0;
   const totalChips = loadedToolIds.size
     + loadedSkillIds.size
     + loadedSubAgentIds.size
     + preToolIds.size
     + preSkillIds.size
     + preSubAgentIds.size
-    + datasetChips;
+    + datasetConfigs.length;
   const hasConfig = totalChips > 0;
 
   return (
@@ -389,18 +379,15 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       <div className="max-w-4xl mx-auto">
         <ComposerConfigChips
           totalChips={totalChips}
-          datasetChips={datasetChips}
           loadedToolIds={loadedToolIds}
           loadedSkillIds={loadedSkillIds}
           loadedSubAgentIds={loadedSubAgentIds}
           preToolIds={preToolIds}
           preSkillIds={preSkillIds}
           preSubAgentIds={preSubAgentIds}
-          loadedDatasetId={loadedDatasetId}
-          preDatasetId={preDatasetId}
+          datasetConfigs={datasetConfigs}
           getSkillChipName={getSkillChipName}
           getAgentChipName={getAgentChipName}
-          getDatasetChipName={getDatasetChipName}
         />
 
         {pendingAttachments.length > 0 && (
