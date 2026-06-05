@@ -37,6 +37,9 @@ public class SessionOwnershipRegistry {
                 LOGGER.debug("claimed session ownership, sessionId={}", sessionId);
             }
             return claimed;
+        } catch (Exception e) {
+            LOGGER.warn("failed to claim session ownership (Redis unavailable), sessionId={}", sessionId, e);
+            return false;
         }
     }
 
@@ -45,6 +48,9 @@ public class SessionOwnershipRegistry {
             var result = jedis.set(ownerKey(sessionId), hostname,
                     SetParams.setParams().xx().ex((int) OWNERSHIP_TTL.toSeconds()));
             return "OK".equals(result);
+        } catch (Exception e) {
+            LOGGER.warn("failed to renew session ownership (Redis unavailable), sessionId={}", sessionId, e);
+            return false;
         }
     }
 
@@ -56,6 +62,9 @@ public class SessionOwnershipRegistry {
     public String getOwner(String sessionId) {
         try (var jedis = jedisPool.getResource()) {
             return jedis.get(ownerKey(sessionId));
+        } catch (Exception e) {
+            LOGGER.warn("failed to get session owner (Redis unavailable), sessionId={}", sessionId, e);
+            return null;
         }
     }
 
@@ -71,6 +80,8 @@ public class SessionOwnershipRegistry {
                     List.of(ownerKey(sessionId)),
                     List.of(hostname));
             LOGGER.debug("released session ownership, sessionId={}", sessionId);
+        } catch (Exception e) {
+            LOGGER.warn("failed to release session ownership (Redis unavailable), sessionId={}", sessionId, e);
         }
     }
 

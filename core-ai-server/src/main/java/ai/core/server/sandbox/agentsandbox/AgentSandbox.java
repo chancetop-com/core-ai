@@ -75,6 +75,11 @@ public class AgentSandbox implements Sandbox {
     }
 
     @Override
+    public void uploadFile(String path, byte[] content) {
+        runtimeClient.uploadFile(path, content);
+    }
+
+    @Override
     public SandboxStatus getStatus() {
         return status;
     }

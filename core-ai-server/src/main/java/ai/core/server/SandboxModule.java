@@ -21,6 +21,8 @@ import java.nio.file.Path;
  */
 class SandboxModule extends Module {
 
+    SandboxService sandboxService;
+
     @Override
     protected void initialize() {
         property("sys.sandbox.provider").ifPresent(p -> {
@@ -34,14 +36,17 @@ class SandboxModule extends Module {
                 var workspaceBase = Path.of(property("sys.sandbox.docker.workspace.base").orElse("/tmp/workspaces"));
                 provider = new DockerSandboxProvider(socketPath, workspaceBase, null);
             } else {
-                bind(new SandboxService());
+                sandboxService = new SandboxService();
+                bind(sandboxService);
                 return;
             }
-            var sandboxService = bind(new SandboxService(provider, resolveDefaultConfig()));
+            sandboxService = new SandboxService(provider, resolveDefaultConfig());
+            bind(sandboxService);
             onShutdown(sandboxService::shutdown);
         });
         if (property("sys.sandbox.provider").isEmpty()) {
-            bind(new SandboxService());
+            sandboxService = new SandboxService();
+            bind(sandboxService);
         }
     }
 

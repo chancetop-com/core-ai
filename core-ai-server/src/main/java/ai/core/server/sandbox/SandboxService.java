@@ -3,11 +3,15 @@ package ai.core.server.sandbox;
 import ai.core.api.server.session.SandboxEvent;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
+import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.sandbox.Sandbox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -37,8 +41,10 @@ public class SandboxService {
     private final SandboxConfig defaultConfig;
     private final ScheduledExecutorService cleanupScheduler;
     private final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
+    private final Map<String, List<PendingFile>> pendingFiles = new ConcurrentHashMap<>();
 
     private final boolean enabled;
+    private ObjectStorageService storageService;
 
     public SandboxService() {
         this.sandboxManager = null;
@@ -61,6 +67,10 @@ public class SandboxService {
         cleanupScheduler.scheduleAtFixedRate(new SandboxCleanupJob(sandboxManager, provider), 5, 5, TimeUnit.MINUTES);
     }
 
+    public void setStorageService(ObjectStorageService storageService) {
+        this.storageService = storageService;
+    }
+
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
         return createSandbox(config, sessionId, userId, null);
     }
@@ -75,11 +85,76 @@ public class SandboxService {
             return null;
         }
 
-        var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, sessionId, userId);
+        var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, sessionId, userId,
+                () -> uploadPendingFiles(sessionId));
         sessionSandboxes.put(sessionId, lazySandbox);
 
         LOGGER.info("sandbox created for session: {}, config={}", sessionId, effectiveConfig);
         return lazySandbox;
+    }
+
+    public void addPendingFile(String sessionId, String fileName, String container, String blobName) {
+        pendingFiles.computeIfAbsent(sessionId, k -> Collections.synchronizedList(new ArrayList<>()))
+                .add(new PendingFile(fileName, container, blobName));
+        LOGGER.info("[ENQUEUE] pending file added: session={}, file={}, blob={}/{}, totalFilesForSession={}",
+                sessionId, fileName, container, blobName, pendingFiles.get(sessionId).size());
+    }
+
+    public void ensurePendingFilesUploaded(String sessionId) {
+        var files = pendingFiles.get(sessionId);
+        if (files == null || files.isEmpty()) {
+            return;
+        }
+        var sandbox = sessionSandboxes.get(sessionId);
+        LOGGER.info("[UPLOAD] ensurePendingFilesUploaded called, sessionId={}, sandboxExists={}, sandboxType={}",
+                sessionId, sandbox != null, sandbox != null ? sandbox.getClass().getSimpleName() : "null");
+        if (sandbox == null) {
+            LOGGER.info("no sandbox for session {}, pending files will be uploaded when sandbox is created", sessionId);
+            return;
+        }
+        if (sandbox instanceof LazySandbox lazy) {
+            LOGGER.info("[UPLOAD] calling lazy.ensureReady(), sandboxId={}, status={}", lazy.getId(), lazy.getStatus());
+            lazy.ensureReady();
+            LOGGER.info("[UPLOAD] lazy.ensureReady() returned, sandboxId={}, status={}", lazy.getId(), lazy.getStatus());
+        }
+        uploadPendingFiles(sessionId);
+    }
+
+    private void uploadPendingFiles(String sessionId) {
+        var files = pendingFiles.get(sessionId);
+        LOGGER.info("[UPLOAD] uploadPendingFiles called, sessionId={}, filesExist={}, fileCount={}",
+                sessionId, files != null, files != null ? files.size() : 0);
+        if (files == null || files.isEmpty()) {
+            LOGGER.info("[UPLOAD] no pending files for sessionId={}, total pending sessions={}", sessionId, pendingFiles.size());
+            return;
+        }
+
+        var sandbox = sessionSandboxes.get(sessionId);
+        if (sandbox == null) {
+            LOGGER.warn("no sandbox found for session {} when uploading pending files", sessionId);
+            return;
+        }
+
+        if (storageService == null) {
+            LOGGER.warn("storageService not configured, cannot upload pending files for session {}", sessionId);
+            return;
+        }
+
+        LOGGER.info("[UPLOAD] uploading {} files for sessionId={}, sandboxId={}", files.size(), sessionId, sandbox.getId());
+        for (var file : files) {
+            try {
+                LOGGER.info("[UPLOAD] downloading blob: container={}, blobName={}", file.container, file.blobName);
+                var data = storageService.downloadObject(file.container, file.blobName);
+                LOGGER.info("[UPLOAD] blob downloaded: size={} bytes, uploading to /tmp/{}", data.length, file.fileName);
+                sandbox.uploadFile("/tmp/" + file.fileName, data);
+                LOGGER.info("pending file uploaded: session={}, file={}", sessionId, file.fileName);
+            } catch (Exception e) {
+                LOGGER.error("failed to upload pending file to sandbox: session={}, file={}", sessionId, file.fileName, e);
+                return;
+            }
+        }
+        pendingFiles.remove(sessionId);
+        LOGGER.info("[UPLOAD] all {} files uploaded and removed from queue, sessionId={}", files.size(), sessionId);
     }
 
     public Sandbox getSandbox(String sessionId) {
@@ -98,6 +173,7 @@ public class SandboxService {
     public void releaseSandbox(String sessionId) {
         if (!enabled) return;
         var sandbox = sessionSandboxes.remove(sessionId);
+        pendingFiles.remove(sessionId);
         if (sandbox != null) {
             sandbox.close();
             LOGGER.info("sandbox released for session: {}", sessionId);
@@ -161,6 +237,7 @@ public class SandboxService {
             }
         }
         sessionSandboxes.clear();
+        pendingFiles.clear();
 
         // Shutdown cleanup scheduler
         cleanupScheduler.shutdown();
@@ -174,5 +251,8 @@ public class SandboxService {
         }
 
         LOGGER.info("sandbox service shutdown complete");
+    }
+
+    public record PendingFile(String fileName, String container, String blobName) {
     }
 }

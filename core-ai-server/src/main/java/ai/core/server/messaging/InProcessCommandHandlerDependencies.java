@@ -3,6 +3,7 @@ package ai.core.server.messaging;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import redis.clients.jedis.JedisPool;
@@ -20,4 +21,5 @@ public class InProcessCommandHandlerDependencies {
     public AgentDefinitionService agentDefinitionService;
     public ServerA2AService serverA2AService;
     public JedisPool jedisPool;
+    public SandboxService sandboxService;
 }

@@ -162,6 +162,18 @@ public class SandboxClient {
         }
     }
 
+    public void uploadFile(String path, byte[] content) {
+        var url = baseUrl + "/files/upload?path=" + URLEncoder.encode(path, StandardCharsets.UTF_8);
+        var req = new HTTPRequest(HTTPMethod.POST, url);
+        req.body(content, ContentType.APPLICATION_OCTET_STREAM);
+        var response = httpClient.execute(req);
+        if (response.statusCode != 200) {
+            throw new RuntimeException("sandbox file upload failed: status=" + response.statusCode
+                    + ", body=" + response.text());
+        }
+        LOGGER.info("uploaded file to sandbox: path={}, size={}bytes", path, content.length);
+    }
+
     private String header(HTTPResponse response, String name) {
         return response.headers.get(name);
     }

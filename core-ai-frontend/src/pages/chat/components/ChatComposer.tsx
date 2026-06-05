@@ -22,7 +22,11 @@ type ChatStatus = 'idle' | 'running';
 
 export interface ComposerAttachment {
   url: string;
-  type: 'PDF' | 'IMAGE';
+  type: 'PDF' | 'IMAGE' | 'FILE';
+  file_name?: string;
+  category?: string;
+  container?: string;
+  blob_name?: string;
 }
 
 export interface ChatComposerHandle {
@@ -36,6 +40,9 @@ interface PendingAttachment {
   name: string;
   url: string;
   contentType: string;
+  category: string;
+  container?: string;
+  blobName?: string;
   uploading: boolean;
 }
 
@@ -61,15 +68,37 @@ interface ChatComposerProps {
 }
 
 const VALID_ATTACHMENT_TYPES = new Set([
+  // images
   'image/jpeg',
   'image/png',
   'image/gif',
   'image/webp',
   'image/svg+xml',
+  // documents
   'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  // text / code / data
+  'text/plain',
+  'text/csv',
+  'text/html',
+  'text/css',
+  'text/javascript',
+  'application/javascript',
+  'application/json',
+  'application/xml',
+  'text/xml',
+  // archives
+  'application/zip',
+  'application/x-tar',
+  'application/gzip',
+  'application/x-gzip',
 ]);
 
-const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024;
+const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
 const COLLAPSE_THRESHOLD = 8;
 
 interface ComposerConfigChipsProps {
@@ -289,25 +318,28 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
 
     for (const file of Array.from(files)) {
       if (!VALID_ATTACHMENT_TYPES.has(file.type)) {
-        onToast(`Unsupported file type: ${file.type}. Only images and PDFs are allowed.`);
+        onToast(`Unsupported file type: ${file.type}.`);
         continue;
       }
       if (file.size > MAX_ATTACHMENT_SIZE) {
-        onToast(`File too large: ${file.name}. Maximum size is 50MB.`);
+        onToast(`File too large: ${file.name}. Maximum size is 20MB.`);
         continue;
       }
 
+      const isMultimodal = file.type.startsWith('image/') || file.type === 'application/pdf';
+      const category = isMultimodal ? 'multimodal' : 'sandbox';
       const id = crypto.randomUUID();
       setPendingAttachments(prev => [...prev, {
         id,
         name: file.name,
         url: '',
         contentType: file.type,
+        category,
         uploading: true,
       }]);
 
       try {
-        const credentialResponse = await fetch(`/api/blob/upload-credential?content_type=${encodeURIComponent(file.type)}`, {
+        const credentialResponse = await fetch(`/api/blob/upload-credential?content_type=${encodeURIComponent(file.type)}&category=${category}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('apiKey')}` },
         });
         if (!credentialResponse.ok) throw new Error(`Credential request failed: ${credentialResponse.status}`);
@@ -325,7 +357,14 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
 
         setPendingAttachments(prev => prev.map(attachment =>
           attachment.id === id
-            ? { ...attachment, url: credential.blob_url, contentType: file.type, uploading: false }
+            ? {
+                ...attachment,
+                url: credential.blob_url,
+                contentType: file.type,
+                container: credential.container,
+                blobName: credential.blob_name,
+                uploading: false,
+              }
             : attachment
         ));
       } catch (error) {
@@ -354,7 +393,11 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
 
     await onSend(text, readyAttachments.map(attachment => ({
       url: attachment.url,
-      type: attachment.contentType === 'application/pdf' ? 'PDF' : 'IMAGE',
+      type: attachment.contentType === 'application/pdf' ? 'PDF' : attachment.contentType.startsWith('image/') ? 'IMAGE' : 'FILE',
+      file_name: attachment.name,
+      category: attachment.category,
+      container: attachment.container,
+      blob_name: attachment.blobName,
     })));
   }, [input, onSend, pendingAttachments, selectedAgentId, status]);
 
@@ -448,7 +491,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
               border: '1px solid var(--color-border)',
               color: pendingAttachments.length > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
             }}
-            title="Upload image or PDF">
+            title="Upload files (images, documents, code, archives)">
             <Paperclip size={18} />
           </button>
 
@@ -521,7 +564,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,application/pdf"
+        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/html,text/css,text/javascript,application/json,application/xml,text/xml,application/zip,application/x-tar,application/gzip"
         multiple
         onChange={handleFileChange}
         className="hidden"

@@ -16,6 +16,7 @@ import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.RpcResponseSubscriber;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.web.sse.SessionChannelService;
@@ -41,7 +42,8 @@ class MessagingModule extends Module {
         onShutdown(jedisPool::close);
 
         var ownershipRegistry = bind(new SessionOwnershipRegistry(jedisPool));
-        bind(new CommandPublisher(jedisPool, ownershipRegistry));
+        var sandboxService = bean(SandboxService.class);
+        var commandPublisher = bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService));
         bind(new EventPublisher(jedisPool));
         var a2aTaskRegistry = bind(new A2ATaskRegistry(jedisPool, ownershipRegistry));
         var a2aEventRelay = bind(new A2AEventRelay(jedisPool));
@@ -63,7 +65,9 @@ class MessagingModule extends Module {
         handlerDependencies.agentDefinitionService = bean(AgentDefinitionService.class);
         handlerDependencies.serverA2AService = bean(ServerA2AService.class);
         handlerDependencies.jedisPool = jedisPool;
+        handlerDependencies.sandboxService = bean(SandboxService.class);
         var commandHandler = new InProcessCommandHandler(handlerDependencies);
+        commandPublisher.setCommandHandler(commandHandler);
         var commandConsumer = new CommandConsumer(jedisPool, commandHandler, ownershipRegistry);
         onStartup(commandConsumer::start);
         onShutdown(() -> {

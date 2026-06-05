@@ -8,35 +8,39 @@ import core.framework.web.Response;
 import java.util.UUID;
 
 /**
- * Issues upload credentials (SAS token + container/blob info) for direct browser-to-Azure-Blob uploads.
+ * Issues upload credentials (pre-signed URL + container/blob info) for direct browser-to-storage uploads.
+ * <p>
+ * The storage provider (Azure, MinIO, etc.) is abstracted behind {@link ObjectStorageService}.
+ * To switch providers, change the binding in {@code ServerModule}.
  *
  * @author stephen
  */
 public class BlobUploadCredentialController {
-    private static final int SAS_EXPIRY_MINUTES = 10;
 
-    public AzureBlobSasService sasService;
-    public String container;
-    public String prefix;
-    public String publicBaseUrl;
+    public ObjectStorageService storageService;
+    public String multimodalContainer = "uploads";
+    public String sandboxContainer = "sandbox-uploads";
 
     public Response getCredential(Request request) {
-        if (sasService == null) {
-            return Response.text("Azure Blob Storage is not configured")
+        if (storageService == null) {
+            return Response.text("Object storage is not configured")
                     .status(HTTPStatus.INTERNAL_SERVER_ERROR);
         }
 
         var params = request.queryParams();
         var contentType = params.get("content_type");
         if (contentType == null) contentType = "application/octet-stream";
+        var category = params.get("category");
+        var container = "sandbox".equals(category) ? sandboxContainer : multimodalContainer;
         var ext = inferExtension(contentType);
-        var blobName = (prefix != null && !prefix.isBlank() ? prefix + "/" : "") + UUID.randomUUID() + ext;
+        var prefix = "sandbox".equals(category) ? "uploads" : "ai";
+        var blobName = prefix + "/" + UUID.randomUUID() + ext;
 
-        var result = sasService.generateContainerSas(container, blobName, SAS_EXPIRY_MINUTES);
+        var result = storageService.generateUploadCredential(container, blobName);
 
         var view = new BlobUploadCredentialView();
         view.uploadUrl = result.uploadUrl();
-        view.blobUrl = publicBaseUrl != null ? publicBaseUrl + "/" + result.container() + "/" + result.blobName() : result.blobUrl();
+        view.blobUrl = result.blobUrl();
         view.container = result.container();
         view.blobName = result.blobName();
         view.expiresAt = result.expiresAt();
@@ -46,12 +50,32 @@ public class BlobUploadCredentialController {
 
     private String inferExtension(String contentType) {
         return switch (contentType) {
+            // images
             case "image/jpeg" -> ".jpg";
             case "image/png" -> ".png";
             case "image/gif" -> ".gif";
             case "image/webp" -> ".webp";
             case "image/svg+xml" -> ".svg";
+            // documents
             case "application/pdf" -> ".pdf";
+            case "application/msword" -> ".doc";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> ".docx";
+            case "application/vnd.ms-excel" -> ".xls";
+            case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> ".xlsx";
+            case "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> ".pptx";
+            // text / code / data
+            case "text/plain", "text/markdown" -> ".txt";
+            case "text/csv" -> ".csv";
+            case "text/html" -> ".html";
+            case "text/css" -> ".css";
+            case "text/javascript", "application/javascript" -> ".js";
+            case "text/xml", "application/xml" -> ".xml";
+            case "application/json" -> ".json";
+            case "application/x-yaml", "text/yaml" -> ".yaml";
+            // archives
+            case "application/zip" -> ".zip";
+            case "application/x-tar" -> ".tar";
+            case "application/gzip", "application/x-gzip" -> ".gz";
             default -> "";
         };
     }

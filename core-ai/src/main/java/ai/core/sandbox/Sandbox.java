@@ -29,6 +29,11 @@ public interface Sandbox extends AutoCloseable {
         throw new UnsupportedOperationException("downloadFile not supported by this sandbox");
     }
 
+    /** Uploads file content to the sandbox at the specified path. */
+    default void uploadFile(String path, byte[] content) {
+        throw new UnsupportedOperationException("uploadFile not supported by this sandbox");
+    }
+
     default String ip() {
         return null;
     }

@@ -28,5 +28,17 @@ public class SendMessageRequest {
         @NotNull
         @Property(name = "type")
         public String type;
+
+        @Property(name = "file_name")
+        public String fileName;
+
+        @Property(name = "category")
+        public String category;
+
+        @Property(name = "container")
+        public String container;
+
+        @Property(name = "blob_name")
+        public String blobName;
     }
 }

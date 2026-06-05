@@ -860,7 +860,16 @@ export default function Chat() {
     try {
       const sid = await ensureSession();
       await sessionApi.sendMessage(sid, text, variableValues,
-        attachments.length > 0 ? attachments.map(a => ({ url: a.url, type: a.type })) : undefined);
+        attachments.length > 0
+          ? attachments.map(a => ({
+            url: a.url,
+            type: a.type,
+            file_name: a.file_name,
+            category: a.category,
+            container: a.container,
+            blob_name: a.blob_name,
+          }))
+          : undefined);
       setSidebarRefreshKey(k => k + 1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

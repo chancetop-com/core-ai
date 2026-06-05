@@ -25,15 +25,21 @@ public class LazySandbox implements Sandbox {
     private final Consumer<SandboxEvent> eventDispatcher;
     private final String sessionId;
     private final String userId;
+    private final Runnable postAcquireHook;
     private volatile Sandbox delegate;
     private volatile SandboxStatus status = SandboxStatus.PENDING;
 
     public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, String sessionId, String userId) {
+        this(config, manager, eventDispatcher, sessionId, userId, null);
+    }
+
+    public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, String sessionId, String userId, Runnable postAcquireHook) {
         this.config = config;
         this.manager = manager;
         this.eventDispatcher = eventDispatcher;
         this.sessionId = sessionId;
         this.userId = userId;
+        this.postAcquireHook = postAcquireHook;
     }
 
     @Override
@@ -62,6 +68,12 @@ public class LazySandbox implements Sandbox {
     public SandboxFile downloadFile(String path) {
         ensureReady();
         return delegate.downloadFile(path);
+    }
+
+    @Override
+    public void uploadFile(String path, byte[] content) {
+        ensureReady();
+        delegate.uploadFile(path, content);
     }
 
     @Override
@@ -97,10 +109,10 @@ public class LazySandbox implements Sandbox {
         }
     }
 
-    private void ensureReady() {
+    void ensureReady() {
         var current = delegate;
         if (current != null && current.getStatus() == SandboxStatus.READY) {
-            return; // Fast path - sandbox is healthy
+            return; // Fast path - sandbox is healthy, caller handles post-acquire actions
         }
 
         synchronized (this) {
@@ -120,9 +132,24 @@ public class LazySandbox implements Sandbox {
 
             var startTime = System.currentTimeMillis();
             delegate = manager.acquire(config, sessionId, userId);
-            var durationMs = System.currentTimeMillis() - startTime;
-            dispatchEvent(SandboxEventType.READY, durationMs);
-            LOGGER.info("sandbox ready: id={}, duration={}ms", delegate.getId(), durationMs);
+            var acquireDuration = System.currentTimeMillis() - startTime;
+            LOGGER.info("sandbox acquired: id={}, duration={}ms", delegate.getId(), acquireDuration);
+
+            runPostAcquireHook();
+
+            var totalDuration = System.currentTimeMillis() - startTime;
+            dispatchEvent(SandboxEventType.READY, totalDuration);
+            LOGGER.info("sandbox ready: id={}, totalDuration={}ms (acquire={}ms)", delegate.getId(), totalDuration, acquireDuration);
+        }
+    }
+
+    private void runPostAcquireHook() {
+        if (postAcquireHook != null) {
+            try {
+                postAcquireHook.run();
+            } catch (Exception e) {
+                LOGGER.warn("post-acquire hook failed for session={}", sessionId, e);
+            }
         }
     }
 

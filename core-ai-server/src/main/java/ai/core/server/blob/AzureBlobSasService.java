@@ -45,16 +45,37 @@ public class AzureBlobSasService {
     public SasResult generateContainerSas(String containerName, String blobName, int expiryMinutes) {
         var expiry = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(expiryMinutes);
         var expiryStr = EXPIRY_FORMATTER.format(expiry);
+        var startStr = EXPIRY_FORMATTER.format(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5));
 
         var params = new LinkedHashMap<String, String>();
         params.put("sv", SAS_VERSION);
         params.put("spr", "https");
-        params.put("st", EXPIRY_FORMATTER.format(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5)));
+        params.put("st", startStr);
         params.put("se", expiryStr);
         params.put("sr", "c");
         params.put("sp", "cw");  // create + write
 
-        var stringToSign = buildStringToSign(containerName, params);
+        return buildResult(containerName, blobName, params, expiryStr);
+    }
+
+    public SasResult generateReadBlobSas(String containerName, String blobName, int expiryMinutes) {
+        var expiry = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(expiryMinutes);
+        var expiryStr = EXPIRY_FORMATTER.format(expiry);
+        var startStr = EXPIRY_FORMATTER.format(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5));
+
+        var params = new LinkedHashMap<String, String>();
+        params.put("sv", SAS_VERSION);
+        params.put("spr", "https");
+        params.put("st", startStr);
+        params.put("se", expiryStr);
+        params.put("sr", "b");  // blob-level (not container)
+        params.put("sp", "r");  // read only
+
+        return buildResult(containerName, blobName, params, expiryStr);
+    }
+
+    private SasResult buildResult(String containerName, String blobName, Map<String, String> params, String expiryStr) {
+        var stringToSign = buildStringToSign(accountName, containerName, blobName, params);
         var signature = hmacSha256(stringToSign);
         params.put("sig", signature);
 
@@ -74,8 +95,9 @@ public class AzureBlobSasService {
     // signedResource + "\n" + signedSnapshotTime + "\n" +
     // rscc + "\n" + rscd + "\n" + rsce + "\n" + rscl + "\n" + rsct
     @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.ConsecutiveAppendsShouldReuse"})
-    private String buildStringToSign(String containerName, Map<String, String> params) {
-        var canonicalized = "/blob/" + accountName + "/" + containerName;
+    private String buildStringToSign(String accountName, String containerName, String blobName, Map<String, String> params) {
+        var resource = buildCanonicalizedResource(containerName, blobName, params.get("sr"));
+        var canonicalized = "/blob/" + accountName + "/" + resource;
         var sb = new StringBuilder();
         sb.append(params.getOrDefault("sp", ""))
             .append('\n')
@@ -113,6 +135,13 @@ public class AzureBlobSasService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to compute HMAC-SHA256 for SAS token", e);
         }
+    }
+
+    private static String buildCanonicalizedResource(String containerName, String blobName, String signedResource) {
+        if ("b".equals(signedResource) && blobName != null) {
+            return containerName + "/" + blobName;
+        }
+        return containerName;
     }
 
     private String buildQueryString(Map<String, String> params) {

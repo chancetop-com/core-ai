@@ -6,6 +6,7 @@ import ai.core.api.server.session.IdName;
 import ai.core.server.a2a.ServerA2AService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.util.IdLists;
@@ -32,6 +33,7 @@ public class InProcessCommandHandler {
     private final AgentDefinitionService agentDefinitionService;
     private final ServerA2AService serverA2AService;
     private final JedisPool jedisPool;
+    private final SandboxService sandboxService;
 
     public InProcessCommandHandler(InProcessCommandHandlerDependencies dependencies) {
         this.sessionManager = dependencies.sessionManager;
@@ -41,6 +43,7 @@ public class InProcessCommandHandler {
         this.agentDefinitionService = dependencies.agentDefinitionService;
         this.serverA2AService = dependencies.serverA2AService;
         this.jedisPool = dependencies.jedisPool;
+        this.sandboxService = dependencies.sandboxService;
     }
 
     /**
@@ -91,7 +94,8 @@ public class InProcessCommandHandler {
 
         LOGGER.info("handleSendMessage: looking up session sessionId={}", command.sessionId());
         var session = sessionManager.getSession(command.sessionId());
-        LOGGER.info("handleSendMessage: session found, writing user message");
+        LOGGER.info("handleSendMessage: session found, uploading pending files");
+        sandboxService.ensurePendingFilesUploaded(command.sessionId());
         chatMessageService.writeUserMessage(command.sessionId(), message);
         LOGGER.info("handleSendMessage: sending message to agent");
         session.sendMessage(message, variables);

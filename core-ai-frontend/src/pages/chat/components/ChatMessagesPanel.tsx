@@ -156,7 +156,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                         color: 'var(--color-text-secondary)',
                       }}>
                       <Paperclip size={12} />
-                      <span className="max-w-[120px] truncate">PDF</span>
+                      <span className="max-w-[120px] truncate">{att.file_name || att.type}</span>
                     </a>
                   )
                 ))}

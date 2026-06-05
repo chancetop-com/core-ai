@@ -26,7 +26,10 @@ import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.auth.AuthService;
 import ai.core.server.blob.AzureBlobSasService;
+import ai.core.server.blob.AzureObjectStorageService;
 import ai.core.server.blob.BlobUploadCredentialController;
+import ai.core.server.blob.MinioObjectStorageService;
+import ai.core.server.blob.ObjectStorageService;
 import ai.core.api.server.blob.BlobUploadCredentialView;
 import ai.core.server.agentbuilder.AgentBuilderTools;
 import ai.core.server.llmcall.LLMCallBuilderTools;
@@ -66,6 +69,7 @@ import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
 import ai.core.server.schedule.IdleSessionCleanupJob;
 import ai.core.server.schedule.ToolRegistrySyncJob;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -127,6 +131,7 @@ import java.time.Duration;
  */
 public class ServerModule extends Module {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerModule.class);
+    private SandboxService sandboxService;
 
     @Override
     protected void initialize() {
@@ -142,7 +147,9 @@ public class ServerModule extends Module {
         registerSkill();
         site().session().timeout(Duration.ofHours(24));
         site().session().cookie("CoreAIServerSessionId", null);
-        load(new SandboxModule());
+        SandboxModule sandboxModule = new SandboxModule();
+        load(sandboxModule);
+        this.sandboxService = sandboxModule.sandboxService;
         bindService();
         bindAuthService();
         bindGitHubService();
@@ -264,19 +271,57 @@ public class ServerModule extends Module {
         speechController.speechEndpoint = property("azure.speech.endpoint").orElse(null);
         http().route(HTTPMethod.GET, "/api/speech/token", speechController::getToken);
 
-        // Blob upload credential for direct browser-to-Azure uploads
+        // Object storage upload credential for direct browser-to-storage uploads.
+        // Set sys.storage.provider to "azure" or "minio" to force a provider,
+        // or leave empty to auto-detect from available credentials.
         var blobController = bind(BlobUploadCredentialController.class);
-        var accountName = property("azure.blob.account.name").orElse(null);
-        var accountKey = property("azure.blob.account.key").orElse(null);
-        blobController.container = property("azure.blob.container").orElse("uploads");
-        blobController.prefix = property("azure.blob.prefix").orElse(null);
-        blobController.publicBaseUrl = property("azure.blob.public.base.url").orElse(null);
-        blobController.sasService = AzureBlobSasService.tryCreate(accountName, accountKey);
-        if (blobController.sasService != null) {
-            LOGGER.info("Azure Blob upload credential endpoint configured (container={})", blobController.container);
-        } else {
-            LOGGER.info("Azure Blob Storage not configured (azure.blob.account.name/key missing or invalid), upload endpoint will return 500");
+
+        // Read all properties unconditionally to satisfy core-ng property validator.
+        // The provider-specific ones are only used when that provider is active.
+        var azureAccountName = property("azure.blob.account.name").orElse(null);
+        var azureAccountKey = property("azure.blob.account.key").orElse(null);
+        var azureMultimodalContainer = property("azure.blob.multimodal.container").orElse("uploads");
+        var azureSandboxContainer = property("azure.blob.sandbox.container").orElse("sandbox-uploads");
+        var azurePublicBaseUrl = property("azure.blob.public.base.url").orElse(null);
+
+        var minioEndpoint = property("storage.minio.endpoint").orElse(null);
+        var minioAccessKey = property("storage.minio.access.key").orElse(null);
+        var minioSecretKey = property("storage.minio.secret.key").orElse(null);
+        var minioRegion = property("storage.minio.region").orElse("us-east-1");
+        var minioMultimodalBucket = property("storage.minio.multimodal.bucket").orElse("uploads");
+        var minioSandboxBucket = property("storage.minio.sandbox.bucket").orElse("sandbox-uploads");
+        var minioPublicBaseUrl = property("storage.minio.public.base.url").orElse(null);
+
+        var provider = property("sys.storage.provider").orElse("");
+        ObjectStorageService objectStorage = null;
+
+        if (provider.isEmpty() || "azure".equals(provider)) {
+            var sasService = AzureBlobSasService.tryCreate(azureAccountName, azureAccountKey);
+            if (sasService != null) {
+                blobController.multimodalContainer = azureMultimodalContainer;
+                blobController.sandboxContainer = azureSandboxContainer;
+                objectStorage = new AzureObjectStorageService(sasService, azurePublicBaseUrl);
+                LOGGER.info("Object storage configured: provider=azure, multimodal={}, sandbox={}",
+                        azureMultimodalContainer, azureSandboxContainer);
+            }
         }
+        if (objectStorage == null && (provider.isEmpty() || "minio".equals(provider))) {
+            if (minioEndpoint != null && !minioEndpoint.isBlank() && minioAccessKey != null && !minioAccessKey.isBlank()) {
+                blobController.multimodalContainer = minioMultimodalBucket;
+                blobController.sandboxContainer = minioSandboxBucket;
+                objectStorage = new MinioObjectStorageService(minioEndpoint, minioRegion, minioAccessKey, minioSecretKey, minioPublicBaseUrl);
+                LOGGER.info("Object storage configured: provider=minio, endpoint={}, multimodal={}, sandbox={}",
+                        minioEndpoint, minioMultimodalBucket, minioSandboxBucket);
+            }
+        }
+
+        if (objectStorage != null) {
+            blobController.storageService = objectStorage;
+            if (sandboxService != null) {
+                sandboxService.setStorageService(objectStorage);
+            }
+        }
+
         http().bean(BlobUploadCredentialView.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
 

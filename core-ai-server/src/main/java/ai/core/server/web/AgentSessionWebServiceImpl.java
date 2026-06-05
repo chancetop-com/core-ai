@@ -28,6 +28,7 @@ import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
@@ -41,6 +42,9 @@ import core.framework.log.ActionLogContext;
 import core.framework.web.Session;
 import core.framework.web.WebContext;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -51,6 +55,7 @@ import java.util.Map;
  */
 
 public class AgentSessionWebServiceImpl implements AgentSessionWebService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionWebServiceImpl.class);
     private static final String SESSION_STATE_KEY = "agent-session-state";
 
     @Inject
@@ -77,6 +82,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     RpcClient rpcClient;
     @Inject
     SessionCreateHelper createHelper;
+    @Inject
+    SandboxService sandboxService;
 
     @Override
     public CreateSessionResponse create(CreateSessionRequest request) {
@@ -128,23 +135,94 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        enqueueSandboxFiles(sessionId, request);
         var message = buildMessageWithAttachments(request);
         var command = SessionCommand.sendMessage(sessionId, userId, message,
                 request.variables != null ? new HashMap<>(request.variables) : null);
         commandPublisher.publish(command);
     }
 
+    private void enqueueSandboxFiles(String sessionId, SendMessageRequest request) {
+        LOGGER.info("[ENQUEUE] enqueueSandboxFiles called, sessionId={}, hasAttachments={}, count={}",
+                sessionId, request.attachments != null, request.attachments != null ? request.attachments.size() : 0);
+        if (request.attachments == null || request.attachments.isEmpty()) return;
+        for (var att : request.attachments) {
+            LOGGER.info("[ENQUEUE] attachment: category={}, fileName={}, container={}, blobName={}, url={}",
+                    att.category, att.fileName, att.container, att.blobName, att.url);
+            if ("sandbox".equals(att.category)) {
+                if (att.container == null || att.blobName == null) {
+                    LOGGER.warn("[ENQUEUE] sandbox attachment missing container/blobName, sessionId={}, fileName={}",
+                            sessionId, att.fileName);
+                    continue;
+                }
+                sandboxService.addPendingFile(sessionId,
+                        att.fileName != null ? att.fileName : att.blobName,
+                        att.container, att.blobName);
+                continue;
+            }
+            // Handle attachments with blob storage URL (front-end sends url instead of container/blobName)
+            if (att.url != null) {
+                var blobInfo = parseBlobUrl(att.url);
+                if (blobInfo != null) {
+                    LOGGER.info("[ENQUEUE] parsed blob URL: container={}, blobName={}", blobInfo.container, blobInfo.blobName);
+                    sandboxService.addPendingFile(sessionId,
+                            att.fileName != null ? att.fileName : blobInfo.fileName(),
+                            blobInfo.container(), blobInfo.blobName());
+                    continue;
+                }
+                LOGGER.info("[ENQUEUE] url is not a blob storage URL, skipping sandbox upload, url={}", att.url);
+            }
+        }
+    }
+
+    private record BlobInfo(String container, String blobName) {
+        String fileName() {
+            var name = blobName;
+            var lastSlash = name.lastIndexOf('/');
+            if (lastSlash >= 0) name = name.substring(lastSlash + 1);
+            return name;
+        }
+    }
+
+    private BlobInfo parseBlobUrl(String url) {
+        // Match: https://{account}.blob.core.windows.net/{container}/{blobPath}
+        var prefix = "blob.core.windows.net/";
+        var idx = url.indexOf(prefix);
+        if (idx < 0) return null;
+        var path = url.substring(idx + prefix.length());
+        var firstSlash = path.indexOf('/');
+        if (firstSlash < 0) return null;
+        var container = path.substring(0, firstSlash);
+        var blobName = path.substring(firstSlash + 1);
+        if (container.isEmpty() || blobName.isEmpty()) return null;
+        return new BlobInfo(container, blobName);
+    }
+
     private String buildMessageWithAttachments(SendMessageRequest request) {
         if (request.attachments == null || request.attachments.isEmpty()) {
             return request.message;
         }
-        var urls = request.attachments.stream()
-                .map(a -> a.url)
-                .toList();
-        var attachmentText = String.join("\n", urls);
-        if (request.message == null || request.message.isBlank()) {
-            return attachmentText;
+        var sandboxPaths = new ArrayList<String>();
+        var urlParts = new ArrayList<String>();
+        for (var att : request.attachments) {
+            if ("sandbox".equals(att.category)) {
+                var name = att.fileName != null ? att.fileName : att.blobName;
+                sandboxPaths.add("/tmp/" + name);
+            } else if (att.url != null && parseBlobUrl(att.url) != null) {
+                var blobInfo = parseBlobUrl(att.url);
+                sandboxPaths.add("/tmp/" + (att.fileName != null ? att.fileName : blobInfo.fileName()));
+            } else if (att.url != null) {
+                urlParts.add(att.url);
+            }
         }
+        var parts = new ArrayList<String>();
+        urlParts.forEach(parts::add);
+        for (var path : sandboxPaths) {
+            parts.add("[File uploaded to sandbox: " + path + "]");
+        }
+        if (parts.isEmpty()) return request.message;
+        var attachmentText = String.join("\n", parts);
+        if (request.message == null || request.message.isBlank()) return attachmentText;
         return request.message + "\n\n" + attachmentText;
     }
 

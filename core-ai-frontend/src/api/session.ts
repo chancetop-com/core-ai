@@ -216,7 +216,7 @@ export const sessionApi = {
     });
   },
 
-  sendMessage: (sessionId: string, message: string, variables?: Record<string, string>, attachments?: { url: string; type: string }[]) =>
+  sendMessage: (sessionId: string, message: string, variables?: Record<string, string>, attachments?: { url: string; type: string; file_name?: string; category?: string; container?: string; blob_name?: string }[]) =>
     request<void>(`/api/sessions/${sessionId}/messages`, {
       method: 'POST',
       body: JSON.stringify({ message, variables, attachments }),

@@ -19,7 +19,9 @@ public class LLMCallRequest {
         @Property(name = "IMAGE")
         IMAGE,
         @Property(name = "PDF")
-        PDF
+        PDF,
+        @Property(name = "FILE")
+        FILE
     }
 
     public static class Attachment {
