@@ -286,7 +286,7 @@ Graph 是发布快照的一部分，使用 JSON 结构存储。
 
 - v1 节点 ID 必须匹配 `[A-Za-z_][A-Za-z0-9_]*`。
 - 不允许 `-`、`.`、空格或其他需要转义的字符。
-- 这样变量路径可以稳定使用 `{{nodes.agent_classify.output.priority}}`，不需要 bracket path。
+- 这样变量路径可以稳定使用 <code v-pre>{{nodes.agent_classify.output.priority}}</code>，不需要 bracket path。
 - UI 可以显示任意 `name`，但执行和变量引用只使用稳定 `id`。
 
 Node 字段：
@@ -612,10 +612,10 @@ Workflow 上下文是一个 JSON object：
 
 | 语法 | 含义 |
 |------|------|
-| `{{input.field}}` | Workflow 输入字段 |
-| `{{vars.name}}` | Workflow 变量 |
-| `{{nodes.node_id.output.field}}` | 某节点输出字段 |
-| `{{run.id}}` | 当前 run id |
+| <code v-pre>{{input.field}}</code> | Workflow 输入字段 |
+| <code v-pre>{{vars.name}}</code> | Workflow 变量 |
+| <code v-pre>{{nodes.node_id.output.field}}</code> | 某节点输出字段 |
+| <code v-pre>{{run.id}}</code> | 当前 run id |
 
 v1 只支持简单 JSON path 和字符串模板。禁止执行用户提供脚本。
 
@@ -623,7 +623,7 @@ v1 只支持简单 JSON path 和字符串模板。禁止执行用户提供脚本
 
 - 节点 ID 必须是 dot path 友好的 identifier。
 - 推荐使用 `agent_classify`，不允许 `agent-classify`。
-- v1 不支持 `{{nodes["agent-classify"].output.priority}}` 这类 bracket path。
+- v1 不支持 <code v-pre>{{nodes["agent-classify"].output.priority}}</code> 这类 bracket path。
 - 字符串模板如果整体只有一个变量引用，返回原始 JSON 值；如果还包含其他文本，则返回字符串。
 
 Schema 规则：
@@ -806,11 +806,11 @@ TriggerActionResult execute(Trigger trigger, TriggerRequestContext context)
 
 | 占位符 | 含义 |
 |--------|------|
-| `{{payload}}` | 完整请求体 |
-| `{{headers.name}}` | 指定 header |
-| `{{query.name}}` | 指定 query 参数 |
+| <code v-pre>{{payload}}</code> | 完整请求体 |
+| <code v-pre>{{headers.name}}</code> | 指定 header |
+| <code v-pre>{{query.name}}</code> | 指定 query 参数 |
 
-如果 v1 不升级 Trigger action contract，则输入模板只允许 `{{payload}}`，不能在文档或 UI 暴露 `headers/query` 占位符。
+如果 v1 不升级 Trigger action contract，则输入模板只允许 <code v-pre>{{payload}}</code>，不能在文档或 UI 暴露 `headers/query` 占位符。
 
 Webhook 必须校验 secret，触发结果必须记录 `trigger_ref`。
 
@@ -1047,9 +1047,9 @@ Graph preview
   - 引用未发布 Agent。
   - 引用无权限 Tool。
 - Variable resolver：
-  - `{{input.field}}`。
-  - `{{nodes.node.output.field}}`。
-  - `{{nodes.agent-classify.output.field}}` 应拒绝。
+  - <code v-pre>{{input.field}}</code>。
+  - <code v-pre>{{nodes.node.output.field}}</code>。
+  - <code v-pre>{{nodes.agent-classify.output.field}}</code> 应拒绝。
   - 缺失字段。
   - schema mismatch。
 - If expression：
