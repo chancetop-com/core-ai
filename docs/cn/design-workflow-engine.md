@@ -541,6 +541,7 @@ P0 即交付**可持久化、并发、可容器**的引擎，只点亮 START/END
 2. **流式 ANSWER 尽力幂等。** 中途崩溃 + 重放会重发已发出的 token；编排仍纯，但"发字节到客户端"这个副作用不完美幂等。与 human-input 一同列为后续项（ANSWER 偏移检查点），现在不做。
 3. **whole-run 认领 = 仅 pod 内并行（已知约束 L1）。** 1000 项 ITERATION × 每项一个 AGENT，全跑在一个 pod 的 `Semaphore` 池里，不跨副本摊开。这是锁定的 claim 简化换来的（恢复只有 4 步、零 node 级 claim 竞争），代价是单 run 吞吐上限 = 一个 pod，且租约必须活过最慢的在飞节点（由独立 heartbeat 保证，永不挂在节点完成上）。**将来真顶到天花板时，这里是唯一要回头改的地方。**
 4. **观测沿 `scope_path` 与跨 run 分散。** 进程内容器靠结构化 `scopePath` 保持干净；但 **AGENT/LLM 节点各起一条独立 `AgentRun`**（用 `child_run_id` 串），Agent→Workflow-as-tool（#10）又另起独立 `WorkflowRun`。所以"看这次 run"对纯进程内节点是一次查询，对子运行边界则要按 `traceId`（非 `runId`）做 trace 走查。这是"AGENT 节点解耦子运行"换来隔离/复用的代价——两层 run（`WorkflowNodeRun.child_run_id → AgentRun`）必须靠 trace 关联。
+5. **P0 暂把 `FAILED_RETRYABLE` 当终态 FAIL。** 上面第 1 点承诺"隔离 + 人工 retry"，但 P0 的 `WorkflowAdvancer.classify` 目前把任何 `FAILED_RETRYABLE` 节点直接判 run 为终态 `FAILED`（盖 `completed_at`），claim filter 只认 `PENDING/RUNNING`，所以 spec 承诺的可恢复 retry 路径**暂不可达**。可恢复 retry 需要一个 `PAUSED` run 状态 + claim 接纳它 + retry 机制，耦合到 P5；在那之前，节点失败=run 终态 FAILED 是**有意的临时行为**，不是无意的。`drive` 不内联 agent 循环，故此约束只影响"失败后重试"语义，不影响正确性。
 
 ### 12.3 开放决策点（留给你拍）
 

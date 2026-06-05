@@ -4,8 +4,8 @@ import core.framework.mongo.MongoEnumValue;
 
 /**
  * Persisted node-run status. Distinct from the engine's framework-free NodeFactStatus: FAILED_RETRYABLE here
- * projects to the engine's FAILED (halt-and-wait, out-edges stay PENDING), and WAITING is reserved for the
- * deferred human-input feature (the checkpoint infra already supports it).
+ * projects to the engine's FAILED (halts the branch, out-edges stay PENDING; resumable retry is a deferred
+ * feature), and WAITING is reserved for the deferred human-input feature (the checkpoint infra already supports it).
  *
  * @author Xander
  */

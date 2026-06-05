@@ -81,7 +81,8 @@ public final class Planner {
             case SKIPPED -> EdgeVerdict.SKIPPED;
             // RUNNING (still executing) and FAILED (incl. the persisted FAILED_RETRYABLE projected here) both leave
             // out-edges PENDING: the planner neither advances past nor skips the node, so a failure halts the branch
-            // and waits for retry. Do NOT make FAILED propagate SKIPPED — that would let a join fire past a failure.
+            // (resumable retry is a deferred feature). Do NOT make FAILED propagate SKIPPED — that would let a join
+            // fire past a failure.
             case RUNNING, FAILED -> EdgeVerdict.PENDING;
         };
     }
