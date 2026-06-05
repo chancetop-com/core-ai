@@ -29,14 +29,15 @@ public final class Planner {
 
         Set<String> ready = new LinkedHashSet<>();
         Set<String> skip = new LinkedHashSet<>();
-        boolean terminal = false;
+        boolean outputReached = false;
 
         for (WorkflowNode node : graph.nodes()) {
             NodeFact fact = state.factOf(node.id());
             if (fact != null) {
-                // A node with a node-run is never re-dispatched; an END (no out-edges) completing ends the run.
+                // A node with a node-run is never re-dispatched. A completed END (no out-edges) is recorded as
+                // an output reached: a success signal, NOT a stop condition (the run ends on frontier exhaustion).
                 if (fact.status() == NodeFactStatus.COMPLETED && graph.outEdges(node.id()).isEmpty()) {
-                    terminal = true;
+                    outputReached = true;
                 }
                 continue;
             }
@@ -66,7 +67,7 @@ public final class Planner {
                 skip.add(node.id());    // all in-edges terminal and none ACTIVE -> skip-propagate
             }
         }
-        return new Frontier(ready, skip, verdicts, terminal);
+        return new Frontier(ready, skip, verdicts, outputReached);
     }
 
     private static EdgeVerdict deriveVerdict(NodeFact source, WorkflowEdge edge) {
@@ -78,6 +79,9 @@ public final class Planner {
                 ? (source.chosenEdgeIds().contains(edge.id()) ? EdgeVerdict.ACTIVE : EdgeVerdict.SKIPPED)
                 : EdgeVerdict.ACTIVE;
             case SKIPPED -> EdgeVerdict.SKIPPED;
+            // RUNNING (still executing) and FAILED (incl. the persisted FAILED_RETRYABLE projected here) both leave
+            // out-edges PENDING: the planner neither advances past nor skips the node, so a failure halts the branch
+            // and waits for retry. Do NOT make FAILED propagate SKIPPED — that would let a join fire past a failure.
             case RUNNING, FAILED -> EdgeVerdict.PENDING;
         };
     }

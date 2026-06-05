@@ -87,7 +87,10 @@ void advance(WorkflowRun run) {
     while (true) {
         if (isCancelled(run.id)) { stopInflight(inflight); return; }   // cancel via Mongo status, not the futures map
         Frontier f = planner.plan(graph, RunState.of(run, nodeRuns.byRun(run.id)));   // PURE
-        if (f.isTerminal() && inflight.isEmpty()) { finish(run, f); return; }
+        // Completion = frontier EXHAUSTED (no ready, no skip) AND nothing in flight. NOT "a sink completed":
+        // under parallel fan-out an early END can complete while sibling branches still have ready work, so
+        // gating on outputReached would drop that work. f.outputReached() then classifies success vs stuck/failed.
+        if (!f.hasProgress() && inflight.isEmpty()) { finish(run, f); return; }
         for (NodeRef nr : f.skipSet())  appendSkip(run, nr);          // write SKIPPED node-run; next plan propagates it
         for (NodeRef nr : f.readySet()) {
             appendRunning(run, nr);                                   // RUNNING node-run; unique index makes it idempotent

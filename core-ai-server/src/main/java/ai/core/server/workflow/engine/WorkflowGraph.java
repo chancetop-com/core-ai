@@ -31,6 +31,9 @@ public final class WorkflowGraph {
             outEdges.put(node.id(), new ArrayList<>());
         }
         for (WorkflowEdge edge : this.edges) {
+            // computeIfAbsent is defensive, not validating: a dangling endpoint creates a phantom adjacency entry
+            // rather than failing. Rejecting edges to unknown nodes is the publish-time structural validator's job
+            // (a later phase); this constructor assumes that precondition already holds.
             outEdges.computeIfAbsent(edge.source(), key -> new ArrayList<>()).add(edge);
             inEdges.computeIfAbsent(edge.target(), key -> new ArrayList<>()).add(edge);
         }

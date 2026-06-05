@@ -23,7 +23,7 @@ class PlannerTest {
 
         assertEquals(Set.of("start"), f.readyNodeIds());
         assertTrue(f.skipNodeIds().isEmpty());
-        assertFalse(f.terminal());
+        assertFalse(f.outputReached());
     }
 
     @Test
@@ -111,7 +111,7 @@ class PlannerTest {
     }
 
     @Test
-    void terminalWhenEndCompletes() {
+    void outputReachedWhenEndCompletes() {
         WorkflowGraph graph = graph(
             List.of(node("start"), node("end")),
             List.of(edge("e0", "start", "end")));
@@ -120,7 +120,35 @@ class PlannerTest {
             NodeFact.completedNormal("start"),
             NodeFact.completedNormal("end")));
 
-        assertTrue(f.terminal());
+        assertTrue(f.outputReached());
+    }
+
+    @Test
+    void parallelSinksBothExecuteWhenOneCompletesEarly() {
+        // start fans out to an early sink (endA) and to work -> endB; the run must not stop when endA completes
+        // first while endB is still pending. Guards the "completion = frontier exhausted" contract.
+        WorkflowGraph graph = graph(
+            List.of(node("start"), node("endA"), node("work"), node("endB")),
+            List.of(edge("e1", "start", "endA"), edge("e2", "start", "work"), edge("e3", "work", "endB")));
+
+        List<String> order = simulate(graph, Map.of());
+
+        assertTrue(order.contains("endA"));
+        assertTrue(order.contains("endB"));   // sibling sink not dropped when the other completes first
+    }
+
+    @Test
+    void failedSourceKeepsSuccessorNeitherReadyNorSkipped() {
+        // The FAILED -> PENDING out-edge path (recovery-critical): a failed node halts its branch and waits.
+        WorkflowGraph graph = graph(
+            List.of(node("a"), node("b")),
+            List.of(edge("e1", "a", "b")));
+
+        Frontier f = Planner.plan(graph, facts(NodeFact.failed("a")));
+
+        assertEquals(EdgeVerdict.PENDING, f.edgeVerdicts().get("e1"));
+        assertFalse(f.readyNodeIds().contains("b"));
+        assertFalse(f.skipNodeIds().contains("b"));
     }
 
     @Test
@@ -151,11 +179,8 @@ class PlannerTest {
         List<String> order = new ArrayList<>();
         while (true) {
             Frontier f = Planner.plan(graph, new RunState(state));
-            if (f.terminal()) {
-                break;
-            }
             if (!f.hasProgress()) {
-                break;
+                break;   // frontier exhausted; the run is done (outputReached() would classify success vs stuck)
             }
             for (String skipped : f.skipNodeIds()) {
                 state.put(skipped, NodeFact.skipped(skipped));

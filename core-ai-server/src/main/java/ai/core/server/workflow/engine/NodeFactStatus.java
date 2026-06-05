@@ -11,5 +11,6 @@ public enum NodeFactStatus {
     RUNNING,
     COMPLETED,
     SKIPPED,
+    /** Union of the persisted FAILED and FAILED_RETRYABLE: a non-terminal "pause" that keeps out-edges PENDING (halt and wait), never a skip. */
     FAILED
 }
