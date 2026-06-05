@@ -36,6 +36,7 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
             case NodeOutcome.Normal normal -> {
                 nodeRun.status = NodeRunStatus.COMPLETED;
                 nodeRun.output = normal.output();
+                nodeRun.childRunId = normal.childRunId();
             }
             case NodeOutcome.Branch branch -> {
                 nodeRun.status = NodeRunStatus.COMPLETED;
@@ -45,6 +46,7 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
             case NodeOutcome.Fail fail -> {
                 nodeRun.status = NodeRunStatus.FAILED_RETRYABLE;
                 nodeRun.error = fail.error();
+                nodeRun.childRunId = fail.childRunId();
             }
         }
     }
@@ -61,6 +63,11 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
     NodeRunStatus status(String runId, String nodeId) {
         WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
         return nodeRun == null ? null : nodeRun.status;
+    }
+
+    String childRunId(String runId, String nodeId) {
+        WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
+        return nodeRun == null ? null : nodeRun.childRunId;
     }
 
     private static String key(String runId, String nodeId) {

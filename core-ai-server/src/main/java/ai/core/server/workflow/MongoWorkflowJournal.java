@@ -54,6 +54,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
             case NodeOutcome.Normal normal -> {
                 nodeRun.status = NodeRunStatus.COMPLETED;
                 nodeRun.output = normal.output();
+                nodeRun.childRunId = normal.childRunId();
             }
             case NodeOutcome.Branch branch -> {
                 nodeRun.status = NodeRunStatus.COMPLETED;
@@ -65,6 +66,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
                 // today the engine treats both identically (out-edges PENDING), so this is only a metadata gap.
                 nodeRun.status = NodeRunStatus.FAILED_RETRYABLE;
                 nodeRun.error = fail.error();
+                nodeRun.childRunId = fail.childRunId();
             }
         }
         nodeRun.completedAt = ZonedDateTime.now();
