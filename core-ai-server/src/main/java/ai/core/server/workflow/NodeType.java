@@ -1,0 +1,31 @@
+package ai.core.server.workflow;
+
+/**
+ * The node taxonomy (Dify-aligned). The engine is type-agnostic — it keeps the type only as a label on
+ * WorkflowNode; only {@link NodeExecutorRegistry} interprets it to pick an executor. NOTE is canvas-only and
+ * excluded from the executable graph at parse time.
+ *
+ * @author Xander
+ */
+public enum NodeType {
+    START,
+    END,
+    ANSWER,
+    AGENT,
+    LLM,
+    CODE,
+    HTTP,
+    IF_ELSE,
+    AGGREGATOR,
+    ITERATION,
+    LOOP,
+    NOTE;
+
+    public static NodeType of(String type) {
+        try {
+            return NodeType.valueOf(type);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new IllegalStateException("unknown workflow node type: " + type);
+        }
+    }
+}

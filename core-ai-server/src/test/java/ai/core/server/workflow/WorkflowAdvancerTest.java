@@ -3,19 +3,16 @@ package ai.core.server.workflow;
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.ScopeFrame;
-import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.WorkflowEdge;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -37,14 +34,14 @@ class WorkflowAdvancerTest {
         WorkflowGraph graph = graph(
             List.of(node("start"), node("a"), node("end")),
             List.of(edge("e0", "start", "a"), edge("e1", "a", "end")));
-        var journal = new FakeJournal();
+        var journal = new InMemoryWorkflowJournal();
         var executor = new ScriptedExecutor();
 
         RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
 
         assertEquals(RunStatus.COMPLETED, status);
         assertEquals(List.of("start", "a", "end"), executor.executed);
-        assertEquals(NodeRunStatus.COMPLETED, journal.status("end"));
+        assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "end"));
     }
 
     @Test
@@ -55,7 +52,7 @@ class WorkflowAdvancerTest {
                 edge("eL", "if", "left"), edge("eR", "if", "right"),
                 edge("mL", "left", "merge"), edge("mR", "right", "merge"),
                 edge("eEnd", "merge", "end")));
-        var journal = new FakeJournal();
+        var journal = new InMemoryWorkflowJournal();
         var executor = new ScriptedExecutor();
         executor.branch("if", "eL");
 
@@ -64,8 +61,8 @@ class WorkflowAdvancerTest {
         assertEquals(RunStatus.COMPLETED, status);
         assertTrue(executor.executed.contains("left"));
         assertFalse(executor.executed.contains("right"));
-        assertEquals(NodeRunStatus.SKIPPED, journal.status("right"));
-        assertEquals(NodeRunStatus.COMPLETED, journal.status("merge"));
+        assertEquals(NodeRunStatus.SKIPPED, journal.status("run-1", "right"));
+        assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "merge"));
     }
 
     @Test
@@ -73,14 +70,14 @@ class WorkflowAdvancerTest {
         WorkflowGraph graph = graph(
             List.of(node("start"), node("a"), node("b"), node("end")),
             List.of(edge("e0", "start", "a"), edge("e1", "a", "b"), edge("e2", "b", "end")));
-        var journal = new FakeJournal();
+        var journal = new InMemoryWorkflowJournal();
         var executor = new ScriptedExecutor();
         executor.fail("a");
 
         RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
 
-        assertEquals(RunStatus.FAILED, status);   // provisional: retryable failure terminalizes the run (retry is P5)
-        assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("a"));
+        assertEquals(RunStatus.FAILED, status);   // provisional: a retryable failure terminalizes the run (retry is P5)
+        assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("run-1", "a"));
         assertFalse(executor.executed.contains("b"));
     }
 
@@ -89,9 +86,9 @@ class WorkflowAdvancerTest {
         WorkflowGraph graph = graph(
             List.of(node("start"), node("a"), node("end")),
             List.of(edge("e0", "start", "a"), edge("e1", "a", "end")));
-        var journal = new FakeJournal();
-        journal.seedCompleted("start");
-        journal.seedCompleted("a");
+        var journal = new InMemoryWorkflowJournal();
+        journal.seedCompleted("run-1", "start");
+        journal.seedCompleted("run-1", "a");
         var executor = new ScriptedExecutor();
 
         RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
@@ -102,21 +99,21 @@ class WorkflowAdvancerTest {
 
     @Test
     void stuckRunWithNoOutputReachedIsFailed() {
-        // start branches to a single sink that is skipped -> no output reached, no failure -> FAILED (intentional)
+        // start branches choosing no real edge -> its only out-edge skips -> the sink is never reached
         WorkflowGraph graph = graph(
             List.of(node("start"), node("only"), node("end")),
             List.of(edge("eOnly", "start", "only"), edge("eEnd", "only", "end")));
-        var journal = new FakeJournal();
+        var journal = new InMemoryWorkflowJournal();
         var executor = new ScriptedExecutor();
-        executor.branch("start", "noSuchEdge");   // start chooses no real edge -> eOnly skipped -> only/end skipped
+        executor.branch("start", "noSuchEdge");
 
         RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
 
         assertEquals(RunStatus.FAILED, status);
-        assertEquals(NodeRunStatus.SKIPPED, journal.status("end"));
+        assertEquals(NodeRunStatus.SKIPPED, journal.status("run-1", "end"));
     }
 
-    // ---- concurrency: real thread pool exercises the awaitAny/awaitAll blocking paths ----
+    // ---- concurrency: a real thread pool exercises the awaitAny/awaitAll blocking paths ----
 
     @Test
     void parallelFanOutOnRealPoolCompletes() {
@@ -126,7 +123,7 @@ class WorkflowAdvancerTest {
                 List.of(node("start"), node("a"), node("b"), node("c"), node("end")),
                 List.of(edge("e1", "start", "a"), edge("e2", "start", "b"), edge("e3", "start", "c"),
                     edge("ea", "a", "end"), edge("eb", "b", "end"), edge("ec", "c", "end")));
-            var journal = new FakeJournal();
+            var journal = new InMemoryWorkflowJournal();
             var executor = new ScriptedExecutor();
 
             RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, pool, () -> false);
@@ -146,14 +143,14 @@ class WorkflowAdvancerTest {
                 List.of(node("start"), node("ok"), node("bad"), node("end")),
                 List.of(edge("e1", "start", "ok"), edge("e2", "start", "bad"),
                     edge("e3", "ok", "end"), edge("e4", "bad", "end")));
-            var journal = new FakeJournal();
+            var journal = new InMemoryWorkflowJournal();
             var executor = new ScriptedExecutor();
             executor.fail("bad");
 
             RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, pool, () -> false);
 
             assertEquals(RunStatus.FAILED, status);
-            assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("bad"));
+            assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("run-1", "bad"));
         } finally {
             pool.shutdownNow();
         }
@@ -169,7 +166,7 @@ class WorkflowAdvancerTest {
             WorkflowGraph graph = graph(
                 List.of(node("start"), node("slow"), node("end")),
                 List.of(edge("e0", "start", "slow"), edge("e1", "slow", "end")));
-            var journal = new FakeJournal();
+            var journal = new InMemoryWorkflowJournal();
             NodeExecutor executor = (g, r, node, scope) -> {
                 if (node.id().equals("slow")) {
                     started.countDown();
@@ -185,8 +182,8 @@ class WorkflowAdvancerTest {
             release.countDown();                               // let the in-flight node finish
 
             assertEquals(RunStatus.CANCELLED, driving.get(3, TimeUnit.SECONDS));
-            assertEquals(NodeRunStatus.COMPLETED, journal.status("slow"));   // awaitAll drained the in-flight node
-            assertNull(journal.status("end"));                               // cancel returned before planning end
+            assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "slow"));   // awaitAll drained the in-flight node
+            assertNull(journal.status("run-1", "end"));                               // cancel returned before planning end
         } finally {
             pool.shutdownNow();
         }
@@ -237,67 +234,6 @@ class WorkflowAdvancerTest {
         public NodeOutcome execute(WorkflowGraph graph, WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
             executed.add(node.id());
             return scripted.getOrDefault(node.id(), new NodeOutcome.Normal("{}"));
-        }
-    }
-
-    static final class FakeJournal implements WorkflowJournal {
-        private final Map<String, WorkflowNodeRun> byId = new ConcurrentHashMap<>();
-
-        @Override
-        public List<WorkflowNodeRun> nodeRuns(String runId) {
-            return new ArrayList<>(byId.values());
-        }
-
-        @Override
-        public boolean appendRunning(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
-            return byId.putIfAbsent(key(run.id, node.id()), make(run.id, node.id(), NodeRunStatus.RUNNING)) == null;
-        }
-
-        @Override
-        public void recordOutcome(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, NodeOutcome outcome) {
-            WorkflowNodeRun nodeRun = byId.get(key(run.id, node.id()));
-            switch (outcome) {
-                case NodeOutcome.Normal normal -> {
-                    nodeRun.status = NodeRunStatus.COMPLETED;
-                    nodeRun.output = normal.output();
-                }
-                case NodeOutcome.Branch branch -> {
-                    nodeRun.status = NodeRunStatus.COMPLETED;
-                    nodeRun.output = branch.output();
-                    nodeRun.chosenEdgeIds = branch.chosenEdgeIds();
-                }
-                case NodeOutcome.Fail fail -> {
-                    nodeRun.status = NodeRunStatus.FAILED_RETRYABLE;
-                    nodeRun.error = fail.error();
-                }
-            }
-        }
-
-        @Override
-        public void appendSkipped(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
-            byId.put(key(run.id, node.id()), make(run.id, node.id(), NodeRunStatus.SKIPPED));
-        }
-
-        void seedCompleted(String nodeId) {
-            byId.put(key("run-1", nodeId), make("run-1", nodeId, NodeRunStatus.COMPLETED));
-        }
-
-        NodeRunStatus status(String nodeId) {
-            WorkflowNodeRun nodeRun = byId.get(key("run-1", nodeId));
-            return nodeRun == null ? null : nodeRun.status;
-        }
-
-        private static String key(String runId, String nodeId) {
-            return runId + "|" + nodeId;
-        }
-
-        private static WorkflowNodeRun make(String runId, String nodeId, NodeRunStatus status) {
-            var nodeRun = new WorkflowNodeRun();
-            nodeRun.runId = runId;
-            nodeRun.nodeId = nodeId;
-            nodeRun.scopePathKey = "";
-            nodeRun.status = status;
-            return nodeRun;
         }
     }
 }
