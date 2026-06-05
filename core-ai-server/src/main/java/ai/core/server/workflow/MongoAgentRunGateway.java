@@ -15,6 +15,7 @@ import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.mongo.MongoCollection;
 
+import java.time.ZonedDateTime;
 import java.util.Set;
 
 /**
@@ -28,7 +29,10 @@ import java.util.Set;
 public class MongoAgentRunGateway implements AgentRunGateway {
     private static final Set<RunStatus> TERMINAL = Set.of(RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.TIMEOUT, RunStatus.CANCELLED);
     private static final long POLL_INTERVAL_MS = 500;
-    private static final long MAX_WAIT_MS = 2 * 60 * 60 * 1000L;   // backstop; the child run has its own timeout
+    private static final long MAX_WAIT_MS = 2 * 60 * 60 * 1000L;   // hard backstop; the child run has its own timeout
+    // A non-terminal child older than this is a ghost row (AgentRunner has no reaper that flips a stale run terminal),
+    // so we stop holding a node-pool thread for it. Mirrors AgentRunner.STALE_RUN_THRESHOLD_SECONDS.
+    private static final long STALE_SECONDS = 1800;
 
     @Inject
     AgentRunner agentRunner;
@@ -51,10 +55,15 @@ public class MongoAgentRunGateway implements AgentRunGateway {
         long deadline = System.currentTimeMillis() + MAX_WAIT_MS;
         while (System.currentTimeMillis() < deadline) {
             AgentRun child = agentRunCollection.get(childRunId).orElse(null);
-            if (child != null && TERMINAL.contains(child.status)) {
-                return child.status == RunStatus.COMPLETED
-                    ? AgentRunResult.completed(child.output)
-                    : AgentRunResult.failed(child.error != null ? child.error : "child run " + child.status);
+            if (child != null) {
+                if (TERMINAL.contains(child.status)) {
+                    return child.status == RunStatus.COMPLETED
+                        ? AgentRunResult.completed(child.output)
+                        : AgentRunResult.failed(child.error != null ? child.error : "child run " + child.status);
+                }
+                if (child.startedAt != null && child.startedAt.isBefore(ZonedDateTime.now().minusSeconds(STALE_SECONDS))) {
+                    return AgentRunResult.failed("child agent run " + childRunId + " is stalled (no terminal status after " + STALE_SECONDS + "s)");
+                }
             }
             sleep();
         }

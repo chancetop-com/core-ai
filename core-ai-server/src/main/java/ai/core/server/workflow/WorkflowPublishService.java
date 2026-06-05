@@ -41,7 +41,7 @@ public class WorkflowPublishService {
         WorkflowGraph graph = WorkflowGraphParser.parse(definition.draftGraph);
         List<String> errors = new ArrayList<>(WorkflowValidator.validate(graph));
         Map<String, String> agentSnapshots = new LinkedHashMap<>();
-        captureAgentSnapshots(graph, errors, agentSnapshots);
+        captureAgentSnapshots(graph, definition.userId, errors, agentSnapshots);
         if (!errors.isEmpty()) {
             throw new WorkflowValidationException(errors);
         }
@@ -68,9 +68,10 @@ public class WorkflowPublishService {
         return published;
     }
 
-    // Embed each AGENT/LLM node's referenced Agent published config; referencing an unknown or unpublished agent
-    // is a publish error (the workflow version must be self-contained and reproducible).
-    private void captureAgentSnapshots(WorkflowGraph graph, List<String> errors, Map<String, String> snapshots) {
+    // Embed each AGENT/LLM node's referenced Agent published config; referencing an unknown, inaccessible or
+    // unpublished definition is a publish error (the workflow version must be self-contained, reproducible, and
+    // must not leak another tenant's config).
+    private void captureAgentSnapshots(WorkflowGraph graph, String ownerUserId, List<String> errors, Map<String, String> snapshots) {
         for (WorkflowNode node : graph.nodes()) {
             if (!"AGENT".equals(node.type()) && !"LLM".equals(node.type())) {
                 continue;
@@ -82,13 +83,20 @@ public class WorkflowPublishService {
             }
             AgentDefinition agent = agentDefinitionCollection.get(String.valueOf(agentId)).orElse(null);
             if (agent == null) {
-                errors.add("node " + node.id() + " references unknown agent " + agentId);
+                errors.add("node " + node.id() + " references an unknown agent/LLM definition: " + agentId);
+            } else if (!isAccessible(agent, ownerUserId)) {
+                errors.add("node " + node.id() + " references an agent/LLM definition you do not own: " + agentId);
             } else if (agent.publishedConfig == null) {
-                errors.add("node " + node.id() + " references unpublished agent " + agentId);
+                errors.add("node " + node.id() + " references an unpublished agent/LLM definition: " + agentId);
             } else {
                 snapshots.put(node.id(), JSON.toJSON(agent.publishedConfig));
             }
         }
+    }
+
+    // Mirror AgentDefinitionService's own-OR-system_default access rule.
+    private static boolean isAccessible(AgentDefinition agent, String ownerUserId) {
+        return Boolean.TRUE.equals(agent.systemDefault) || (agent.userId != null && agent.userId.equals(ownerUserId));
     }
 
     private int nextVersion(String workflowId) {
