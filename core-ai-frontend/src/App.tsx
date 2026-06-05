@@ -36,6 +36,7 @@ const DatasetEditor = lazy(() => import('./pages/datasets/DatasetEditor'));
 const DatasetRecords = lazy(() => import('./pages/datasets/DatasetRecords'));
 const TriggersWebhook = lazy(() => import('./pages/triggers/TriggersWebhook'));
 const ForYou = lazy(() => import('./pages/for-you/ForYou'));
+const ArtifactList = lazy(() => import('./pages/artifacts/ArtifactList'));
 const SharedArtifact = lazy(() => import('./pages/shared/SharedArtifact'));
 
 function PageFallback() {
@@ -102,6 +103,7 @@ export default function App() {
                 ) : (
                   <Route element={<Layout />}>
                     <Route path="/for-you" element={<ForYou />} />
+                    <Route path="/for-you/artifacts" element={<ArtifactList />} />
                     {caps.chat && <Route path="/chat" element={<Chat />} />}
                     {caps.traces && <Route path="/traces" element={<TraceList />} />}
                     {caps.traces && <Route path="/traces/:id" element={<TraceDetail />} />}

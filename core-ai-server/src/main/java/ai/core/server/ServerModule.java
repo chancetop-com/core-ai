@@ -1,6 +1,7 @@
 package ai.core.server;
 
 import ai.core.api.server.AgentDefinitionWebService;
+import ai.core.api.server.ArtifactWebService;
 import ai.core.api.server.auth.AuthWebService;
 import ai.core.api.server.DatasetWebService;
 import ai.core.api.server.FileWebService;
@@ -59,6 +60,7 @@ import ai.core.server.trigger.TriggerController;
 import ai.core.server.trigger.TriggerService;
 import ai.core.server.trigger.action.RunAgentAction;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
+import ai.core.server.web.ArtifactWebServiceImpl;
 import ai.core.server.web.ChatSessionController;
 import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.DatasetWebServiceImpl;
@@ -202,6 +204,7 @@ public class ServerModule extends Module {
         triggerService.publicUrl = publicUrl;
         bind(RunAgentAction.class);
         bind(ForYouService.class);
+        bind(ai.core.server.artifact.ArtifactService.class);
         bind(SessionCreateHelper.class);
     }
 
@@ -243,6 +246,7 @@ public class ServerModule extends Module {
         api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
         api().service(TriggerWebService.class, bind(TriggerWebServiceImpl.class));
         api().service(DatasetWebService.class, bind(DatasetWebServiceImpl.class));
+        api().service(ArtifactWebService.class, bind(ArtifactWebServiceImpl.class));
         registerA2A();
     }
 
@@ -277,7 +281,7 @@ public class ServerModule extends Module {
             "/", "/login", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
             "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools",
-            "/triggers", "/datasets", "/for-you"
+            "/triggers", "/datasets", "/for-you", "/for-you/artifacts"
         };
         for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);

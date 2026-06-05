@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Database, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Zap } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Database, Files, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Zap } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -69,11 +69,14 @@ export default function Layout() {
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
     if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
     if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule';
+    if (to === '/for-you') return pathname === '/for-you' || pathname.startsWith('/for-you/');
     return pathname === to;
   };
 
   const navItems: NavItem[] = [
-    { to: '/for-you', icon: Star, label: 'For You', show: true },
+    { to: '/for-you', icon: Star, label: 'For You', show: true, children: [
+      { to: '/for-you/artifacts', icon: Files, label: 'Artifacts', show: true },
+    ]},
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
     { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces },
     { to: '/agents', icon: Bot, label: 'Agents', show: true },

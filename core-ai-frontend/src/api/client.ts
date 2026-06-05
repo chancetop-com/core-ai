@@ -862,6 +862,18 @@ export const api = {
         return request<ForYouTokenUsage>(`/api/for-you/token-usage?${params.toString()}`);
       },
   },
+  artifacts: {
+    listMy: (offset = 0, limit = 20) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      return request<ListMyArtifactsResponse>(`/api/artifacts/my?${params}`);
+    },
+    listShared: (offset = 0, limit = 20, name?: string, userId?: string) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (name) params.set('name', name);
+      if (userId) params.set('user_id', userId);
+      return request<ListSharedArtifactsResponse>(`/api/artifacts/shared?${params}`);
+    },
+  },
 };
 
 export interface TriggerView {
@@ -1034,4 +1046,36 @@ export interface DailyTokenUsage {
   total_tokens: number;
   cached_tokens: number;
   cost_usd: number;
+}
+
+// --- Artifacts ---
+
+export interface MyArtifactView {
+  id: string;
+  file_name: string;
+  content_type: string;
+  size: number;
+  created_at: string;
+  session_id?: string;
+  session_title?: string;
+}
+
+export interface ListMyArtifactsResponse {
+  total: number;
+  artifacts: MyArtifactView[];
+}
+
+export interface SharedArtifactView {
+  id: string;
+  file_name: string;
+  content_type: string;
+  size: number;
+  user_id: string;
+  created_at: string;
+  shared_at: string;
+}
+
+export interface ListSharedArtifactsResponse {
+  total: number;
+  artifacts: SharedArtifactView[];
 }

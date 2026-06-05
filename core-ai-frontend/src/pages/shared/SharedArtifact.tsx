@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Download, FileText, Loader2, Moon, Sun } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Download, FileText, Loader2, Moon, Sun, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -10,6 +10,7 @@ import { publicArtifactApi, type SharedArtifactResponse } from '../../api/files'
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
 import JsonTreeView from '../../components/JsonTreeView';
 import { useTheme } from '../../hooks/useTheme';
+import { useAuth } from '../../api/auth';
 import { chatSanitizeSchema } from '../chat/markdownSanitizeSchema';
 
 const REHYPE_PLUGINS: PluggableList = [rehypeRaw, [rehypeSanitize, chatSanitizeSchema]];
@@ -98,6 +99,8 @@ function renderPreview(file: SharedArtifactResponse, state: FileState) {
 
 export default function SharedArtifact() {
   const { token = '' } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { dark, toggle } = useTheme();
   const [artifact, setArtifact] = useState<SharedArtifactResponse | null>(null);
   const [metadataLoading, setMetadataLoading] = useState(true);
@@ -182,6 +185,14 @@ export default function SharedArtifact() {
     }
   };
 
+  const handleClose = () => {
+    if (user) {
+      navigate('/for-you/artifacts');
+    } else {
+      window.close();
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <header className="h-16 px-4 md:px-6 flex items-center justify-between border-b"
@@ -189,12 +200,20 @@ export default function SharedArtifact() {
         <a href="/" className="flex items-center" aria-label="core-ai">
           <img src={dark ? '/logo-lockup-dark.svg' : '/logo-lockup.svg'} alt="core-ai" className="h-9" />
         </a>
-        <button onClick={toggle}
+        <div className="flex items-center gap-2">
+          <button onClick={handleClose}
+            className="w-9 h-9 inline-flex items-center justify-center rounded-lg cursor-pointer transition-colors"
+            style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}
+            title="Close">
+            <X size={16} />
+          </button>
+          <button onClick={toggle}
           className="w-9 h-9 inline-flex items-center justify-center rounded-lg cursor-pointer transition-colors"
           style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }}
           title={dark ? 'Light Mode' : 'Dark Mode'}>
           {dark ? <Sun size={16} /> : <Moon size={16} />}
         </button>
+        </div>
       </header>
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-4 min-h-0 overflow-hidden">
