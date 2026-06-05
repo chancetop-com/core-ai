@@ -6,6 +6,7 @@ import ai.core.api.server.auth.AuthWebService;
 import ai.core.api.server.DatasetWebService;
 import ai.core.api.server.FileWebService;
 import ai.core.api.server.AgentRunWebService;
+import ai.core.api.server.workflow.WorkflowWebService;
 import ai.core.api.server.AgentScheduleWebService;
 import ai.core.api.server.AgentSessionWebService;
 import ai.core.api.server.SkillWebService;
@@ -49,9 +50,12 @@ import ai.core.server.workflow.MongoWorkflowGraphLoader;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeExecutorRegistry;
 import ai.core.server.workflow.NodeType;
+import ai.core.server.workflow.WorkflowDefinitionService;
 import ai.core.server.workflow.WorkflowGraphLoader;
 import ai.core.server.workflow.WorkflowPublishService;
+import ai.core.server.workflow.WorkflowRunService;
 import ai.core.server.workflow.WorkflowRunner;
+import ai.core.server.workflow.WorkflowRunnerJob;
 import ai.core.server.workflow.executor.AgentExecutor;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
@@ -80,6 +84,7 @@ import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.DatasetWebServiceImpl;
 import ai.core.server.web.SkillWebServiceImpl;
 import ai.core.server.web.AgentRunWebServiceImpl;
+import ai.core.server.web.WorkflowWebServiceImpl;
 import ai.core.server.web.AgentScheduleWebServiceImpl;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.ChannelService;
@@ -241,6 +246,9 @@ public class ServerModule extends Module {
 
         bind(WorkflowPublishService.class);
         bind(WorkflowRunner.class);
+        bind(WorkflowDefinitionService.class);
+        bind(WorkflowRunService.class);
+        schedule().fixedRate("workflow-runner", bind(WorkflowRunnerJob.class), Duration.ofSeconds(5));
     }
 
     private void bindWebService() {
@@ -278,6 +286,7 @@ public class ServerModule extends Module {
         api().service(ToolRegistryWebService.class, bind(ToolRegistryWebServiceImpl.class));
         api().service(AgentDefinitionWebService.class, bind(AgentDefinitionWebServiceImpl.class));
         api().service(AgentRunWebService.class, bind(AgentRunWebServiceImpl.class));
+        api().service(WorkflowWebService.class, bind(WorkflowWebServiceImpl.class));
         api().service(AgentScheduleWebService.class, bind(AgentScheduleWebServiceImpl.class));
         api().service(TriggerWebService.class, bind(TriggerWebServiceImpl.class));
         api().service(DatasetWebService.class, bind(DatasetWebServiceImpl.class));

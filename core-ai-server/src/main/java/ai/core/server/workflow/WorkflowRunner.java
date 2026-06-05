@@ -30,10 +30,12 @@ import java.util.concurrent.TimeUnit;
 public class WorkflowRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkflowRunner.class);
     private static final int MAX_CONCURRENT_NODES = 8;
+    private static final int MAX_CONCURRENT_RUNS = 16;
     private static final int LEASE_SECONDS = 60;
     private static final int HEARTBEAT_PERIOD_SECONDS = LEASE_SECONDS / 3;
 
     private final ExecutorService nodePool = Executors.newFixedThreadPool(MAX_CONCURRENT_NODES);
+    private final ExecutorService driverPool = Executors.newFixedThreadPool(MAX_CONCURRENT_RUNS);
     private final ScheduledExecutorService heartbeatScheduler = Executors.newScheduledThreadPool(1);
     private final String workerId = UUID.randomUUID().toString();
 
@@ -48,6 +50,17 @@ public class WorkflowRunner {
 
     @Inject
     WorkflowGraphLoader graphLoader;
+
+    /** Drive a run on a background thread. The claim is idempotent — a concurrent claim elsewhere just no-ops. */
+    public void submit(String runId) {
+        driverPool.execute(() -> {
+            try {
+                advance(runId);
+            } catch (RuntimeException e) {
+                LOGGER.error("workflow run drive failed, runId={}", runId, e);
+            }
+        });
+    }
 
     /** Claim the run and drive it to completion. Returns false if another replica already owns it. */
     public boolean advance(String runId) {
