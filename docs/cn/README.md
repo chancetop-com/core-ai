@@ -65,6 +65,7 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
   - [流程编排](tutorial-flow.md)
 - **设计文档**
   - [Server 架构设计](design-server-architecture.md) - 设计原则、领域模型、执行流程、追踪
+  - [Workflow 机制设计](design-workflow-server.md) - server 级固定业务流程、发布快照、运行状态机、节点执行和触发入口
   - [Sandbox Snapshot 机制设计](design-sandbox-snapshot.md) - sandbox release 后的文件系统状态保存、Azure Blob 存储与自动恢复
   - [Agent 平台架构](../en/design-agent-platform-architecture.md) - 企业 Agent 平台设计
   - [客户端/服务端架构](../en/design-client-server-architecture.md) - C/S 架构、会话模型、SSE 事件
@@ -83,7 +84,8 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | **RAG 与向量搜索** | 实现检索增强生成 | [RAG 教程](tutorial-rag.md) |
 | **工具集成** | 使用自定义工具扩展代理 | [工具教程](tutorial-tool-calling.md) |
 | **Skills 系统** | 模块化领域知识包 | [Skills 教程](tutorial-skills.md) |
-| **工作流设计** | 构建复杂的执行流程 | [流程教程](tutorial-flow.md) |
+| **SDK Flow 编排** | 使用 core-ai 库构建嵌入式执行流程 | [流程教程](tutorial-flow.md) |
+| **Server Workflow 机制** | 在 core-ai-server 上搭建可发布、可恢复的固定业务流程 | [Workflow 机制设计](design-workflow-server.md) |
 
 ---
 
@@ -101,6 +103,7 @@ Welcome to Core-AI documentation! Core-AI is a powerful Java framework for build
 | English | 中文 | Focus Area |
 |---------|------|------------|
 | [Server Architecture](../en/design-server-architecture.md) | [Server 架构设计](design-server-architecture.md) | Design principles, domain model, execution flows, tracing |
+| — | [Workflow 机制设计](design-workflow-server.md) | Server-level fixed business workflows, published snapshots, durable node execution |
 | — | [Sandbox Snapshot 机制设计](design-sandbox-snapshot.md) | Preserve and restore sandbox filesystem state across release |
 | [Agent Platform](../en/design-agent-platform-architecture.md) | — | Enterprise agent platform design |
 | [Client/Server](../en/design-client-server-architecture.md) | — | C/S architecture, session model, SSE events |
