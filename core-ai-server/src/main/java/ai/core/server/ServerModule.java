@@ -43,6 +43,20 @@ import ai.core.server.domain.migration.SchemaMigrationManager;
 import ai.core.server.run.AgentRunService;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.run.AgentRunner;
+import ai.core.server.workflow.AgentRunGateway;
+import ai.core.server.workflow.MongoAgentRunGateway;
+import ai.core.server.workflow.MongoWorkflowGraphLoader;
+import ai.core.server.workflow.NodeExecutor;
+import ai.core.server.workflow.NodeExecutorRegistry;
+import ai.core.server.workflow.NodeType;
+import ai.core.server.workflow.WorkflowGraphLoader;
+import ai.core.server.workflow.WorkflowPublishService;
+import ai.core.server.workflow.WorkflowRunner;
+import ai.core.server.workflow.executor.AgentExecutor;
+import ai.core.server.workflow.executor.EndExecutor;
+import ai.core.server.workflow.executor.StartExecutor;
+
+import java.util.Map;
 import ai.core.server.schedule.AgentScheduleService;
 import ai.core.server.schedule.AgentScheduler;
 import ai.core.server.schedule.AgentSchedulerJob;
@@ -206,6 +220,27 @@ public class ServerModule extends Module {
         bind(ForYouService.class);
         bind(ai.core.server.artifact.ArtifactService.class);
         bind(SessionCreateHelper.class);
+
+        bindWorkflow();
+    }
+
+    private void bindWorkflow() {
+        // AGENT/LLM nodes run as decoupled child AgentRuns through this gateway (depends on AgentRunner above).
+        var agentRunGateway = bind(MongoAgentRunGateway.class);
+        bind(AgentRunGateway.class, agentRunGateway);
+        var graphLoader = bind(MongoWorkflowGraphLoader.class);
+        bind(WorkflowGraphLoader.class, graphLoader);
+
+        var agentExecutor = new AgentExecutor(agentRunGateway);
+        var registry = new NodeExecutorRegistry(Map.of(
+            NodeType.START, new StartExecutor(),
+            NodeType.END, new EndExecutor(),
+            NodeType.AGENT, agentExecutor,
+            NodeType.LLM, agentExecutor));
+        bind(NodeExecutor.class, registry);
+
+        bind(WorkflowPublishService.class);
+        bind(WorkflowRunner.class);
     }
 
     private void bindWebService() {

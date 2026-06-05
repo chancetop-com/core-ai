@@ -13,5 +13,7 @@ public enum TriggerType {
     @MongoEnumValue("API")
     API,
     @MongoEnumValue("WEBHOOK")
-    WEBHOOK
+    WEBHOOK,
+    @MongoEnumValue("WORKFLOW")
+    WORKFLOW
 }
