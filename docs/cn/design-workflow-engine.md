@@ -90,7 +90,14 @@ void advance(WorkflowRun run) {
         // Completion = frontier EXHAUSTED (no ready, no skip) AND nothing in flight. NOT "a sink completed":
         // under parallel fan-out an early END can complete while sibling branches still have ready work, so
         // gating on outputReached would drop that work. f.outputReached() then classifies success vs stuck/failed.
-        if (!f.hasProgress() && inflight.isEmpty()) { finish(run, f); return; }
+        // RACE NOTE: a node may complete between this plan and the inflight check. When inflight is empty the
+        // journal is stable (recordOutcome happens-before each inflight remove), so RE-PLAN from a fresh read
+        // before classifying — classifying from the stale `f` could wrongly report FAILED.
+        if (!f.hasProgress() && inflight.isEmpty()) {
+            Frontier fresh = planner.plan(graph, RunState.of(run, nodeRuns.byRun(run.id)));
+            if (fresh.hasProgress()) continue;
+            finish(run, fresh); return;
+        }
         for (NodeRef nr : f.skipSet())  appendSkip(run, nr);          // write SKIPPED node-run; next plan propagates it
         for (NodeRef nr : f.readySet()) {
             appendRunning(run, nr);                                   // RUNNING node-run; unique index makes it idempotent

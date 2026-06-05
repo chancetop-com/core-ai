@@ -30,7 +30,9 @@ public final class WorkflowGraphParser {
             if (NodeType.NOTE.name().equals(type)) {
                 continue;   // canvas-only, never executed
             }
-            nodes.add(new WorkflowNode(string(node.get("id")), type));
+            // referenced node ids feed the publish-time dominator check; scan the node's config/mapping selectors
+            List<String> refs = SelectorScanner.referencedNodeIds(JSON.toJSON(node));
+            nodes.add(new WorkflowNode(string(node.get("id")), type, refs));
         }
         List<WorkflowEdge> edges = new ArrayList<>();
         for (Object raw : list(root.get("edges"))) {

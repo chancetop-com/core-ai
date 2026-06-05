@@ -61,10 +61,19 @@ public final class WorkflowAdvancer {
                 if (progressed) {
                     continue;   // re-plan immediately on any new ready/skip
                 }
-                if (inflight.isEmpty()) {
-                    return classify(state, frontier);
+                if (!inflight.isEmpty()) {
+                    awaitAny(inflight);   // block until an in-flight node completes, then re-plan
+                    continue;
                 }
-                awaitAny(inflight);   // block until an in-flight node completes, then re-plan
+                // inflight is empty -> the journal is now stable (recordOutcome happens-before each inflight
+                // remove). Re-plan from a fresh read: a node may have completed between the plan above and this
+                // check, so classifying from the stale frontier could wrongly report FAILED.
+                RunState finalState = RunStateAssembler.toRunState(journal.nodeRuns(run.id), ROOT_SCOPE_KEY);
+                Frontier finalFrontier = Planner.plan(graph, finalState);
+                if (finalFrontier.hasProgress()) {
+                    continue;   // a just-missed completion opened new work
+                }
+                return classify(finalState, finalFrontier);
             }
         } finally {
             awaitAll(inflight);   // drain in-flight tasks on cancel / exception / normal exit before returning

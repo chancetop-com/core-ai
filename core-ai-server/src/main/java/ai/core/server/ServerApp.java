@@ -19,7 +19,9 @@ import ai.core.server.domain.ToolRegistry;
 import ai.core.server.domain.User;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
+import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
+import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.migration.SchemaVersion;
 import ai.core.server.trace.domain.PromptTemplate;
@@ -87,6 +89,8 @@ public class ServerApp extends App {
         mongo.collection(UserTodo.class);
 
         // workflow collections
+        mongo.collection(WorkflowDefinition.class);
+        mongo.collection(WorkflowPublishedVersion.class);
         mongo.collection(WorkflowRun.class);
         mongo.collection(WorkflowNodeRun.class);
     }

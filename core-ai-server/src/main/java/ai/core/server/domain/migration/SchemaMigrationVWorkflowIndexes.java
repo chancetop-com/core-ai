@@ -21,6 +21,17 @@ public class SchemaMigrationVWorkflowIndexes implements SchemaMigration {
 
     @Override
     public void migrate(Mongo mongo) {
+        // workflow definitions: list by user; name unique per user
+        mongo.createIndex("workflow_definitions", Indexes.ascending("user_id"));
+        mongo.createIndex("workflow_definitions",
+            Indexes.compoundIndex(Indexes.ascending("user_id"), Indexes.ascending("name")),
+            new IndexOptions().unique(true));
+
+        // published versions: load by id (default); list by workflow; version unique per workflow
+        mongo.createIndex("workflow_published_versions",
+            Indexes.compoundIndex(Indexes.ascending("workflow_id"), Indexes.ascending("version")),
+            new IndexOptions().unique(true));
+
         // claim/sweep query: find PENDING/RUNNING runs whose lease has expired
         mongo.createIndex("workflow_runs", Indexes.compoundIndex(Indexes.ascending("status"), Indexes.ascending("lease_until")));
         mongo.createIndex("workflow_runs", Indexes.ascending("workflow_id"));
