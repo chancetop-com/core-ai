@@ -13,12 +13,15 @@ import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
 import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
+import ai.core.server.file.FileDownloadUrlResolver;
+import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
@@ -27,6 +30,7 @@ import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.ToolCall;
+import ai.core.tool.tools.InternalUrlResolver;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +56,7 @@ public class SessionRebuildManager {
     private final SystemPromptService systemPromptService;
     private final DatasetService datasetService;
     private final DatasetRecordService datasetRecordService;
+    private final FileService fileService;
     private final EventPublisher eventPublisher;
     private final SessionOwnershipRegistry ownershipRegistry;
 
@@ -66,6 +71,7 @@ public class SessionRebuildManager {
         this.systemPromptService = deps.systemPromptService;
         this.datasetService = deps.datasetService;
         this.datasetRecordService = deps.datasetRecordService;
+        this.fileService = deps.fileService;
         this.eventPublisher = deps.eventPublisher;
         this.ownershipRegistry = deps.ownershipRegistry;
     }
@@ -188,7 +194,9 @@ public class SessionRebuildManager {
         var dynamicToolCount = state != null && state.tools != null ? state.tools.size() : 0;
         logger.info("doRebuild start, sessionId={}, fromAgent={}, baseTools={}, dynamicTools={}, skills={}, subAgents={}",
                 sessionId, state != null && state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
-        var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId).build() : null;
+        var context = userId != null ? ExecutionContext.builder().sessionId(sessionId).userId(userId)
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .build() : null;
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(null);
         var agent = subAgentManager.buildAgent(artifactSetup.appendArtifactInstructions(effectiveConfig, sandboxOn),
                 sandboxOn ? artifactSetup.withSubmitArtifactsTool(tools, sessionId, userId, true) : tools,
@@ -359,6 +367,7 @@ public class SessionRebuildManager {
                         SystemPromptService systemPromptService,
                         DatasetService datasetService,
                         DatasetRecordService datasetRecordService,
+                        FileService fileService,
                         EventPublisher eventPublisher,
                         SessionOwnershipRegistry ownershipRegistry) { }
 }

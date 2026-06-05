@@ -1,5 +1,6 @@
 package ai.core.tool.tools;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -120,6 +121,40 @@ public class WebFetchTool extends ToolCall {
             var error = "Failed to parse web fetch arguments: " + e.getMessage();
             return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
+        }
+    }
+
+    @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
+        if (context != null) {
+            var resolver = context.getCustomVariable(InternalUrlResolver.CONTEXT_KEY);
+            if (resolver instanceof InternalUrlResolver r) {
+                var result = tryInternalResolve(arguments, r);
+                if (result != null) return result;
+            }
+        }
+        return execute(arguments);
+    }
+
+    private ToolCallResult tryInternalResolve(String arguments, InternalUrlResolver resolver) {
+        try {
+            var argsMap = parseArguments(arguments);
+            var url = getStringValue(argsMap, "url");
+            var method = getStringValue(argsMap, "method");
+            if (url == null || method == null) return null;
+
+            var resolved = resolver.resolve(url, method.toUpperCase(Locale.ROOT));
+            if (resolved == null) return null;
+
+            String body = new String(resolved.body(), StandardCharsets.UTF_8);
+            LOGGER.debug("internal resolve, url={}, status={}, size={}", url, resolved.statusCode(), resolved.body().length);
+            return ToolCallResult.completed(body)
+                    .withStats("url", url)
+                    .withStats("method", method)
+                    .withStats("internal", "true");
+        } catch (Exception e) {
+            LOGGER.debug("internal resolve failed, falling back to HTTP: {}", e.getMessage());
+            return null;
         }
     }
 

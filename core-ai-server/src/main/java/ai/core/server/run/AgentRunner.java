@@ -24,6 +24,7 @@ import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
 import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
+import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -37,6 +38,7 @@ import ai.core.prompt.SystemVariables;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.skill.SkillRegistry;
 import ai.core.tool.tools.ReadSkillResourceTool;
+import ai.core.tool.tools.InternalUrlResolver;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -299,6 +301,7 @@ public class AgentRunner {
             .sessionId("run:" + definition.id)
             .userId(definition.userId)
             .customVariables(variables)
+            .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
             .build();
         if (sandbox != null) context.sandbox(sandbox);
         var systemPrompt = appendArtifactInstructions(resolveSystemPrompt(config, definition), sandbox != null);

@@ -12,6 +12,8 @@ import ai.core.server.dataset.tool.DeleteDatasetRecordTool;
 import ai.core.server.dataset.tool.InsertDatasetRecordTool;
 import ai.core.server.dataset.tool.QueryDatasetRecordsTool;
 import ai.core.server.dataset.tool.UpdateDatasetRecordTool;
+import ai.core.server.file.FileDownloadUrlResolver;
+import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
@@ -19,6 +21,7 @@ import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
@@ -27,6 +30,7 @@ import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SessionChannelService;
+import ai.core.tool.tools.InternalUrlResolver;
 import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.web.sse.SseEventBridge;
@@ -85,6 +89,8 @@ public class AgentSessionManager {
     DatasetService datasetService;
     @Inject
     DatasetRecordService datasetRecordService;
+    @Inject
+    FileService fileService;
 
     EventPublisher eventPublisher;
     SessionOwnershipRegistry ownershipRegistry;
@@ -120,7 +126,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection,
                     skillManager(), subAgentManager(), sandboxService, artifactSetup,
-                    toolRegistryService, systemPromptService, datasetService, datasetRecordService, eventPublisher, ownershipRegistry));
+                    toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, eventPublisher, ownershipRegistry));
         }
         return rebuildManager;
     }
@@ -142,7 +148,9 @@ public class AgentSessionManager {
     public String createSession(SessionConfig config, String userId, String source) {
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
-        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
+        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .build();
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var tools = buildDefaultSessionTools(effectiveConfig, sessionId);
         Map<String, Object> extraVars = null;
@@ -208,7 +216,9 @@ public class AgentSessionManager {
             config.systemPrompt = appendDatasetInstructions(config.systemPrompt, datasetConfig);
             extraVars = buildDatasetSystemVars(datasetConfig);
         }
-        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).build();
+        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId)
+                .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
+                .build();
         var sandboxConfig = sandboxService.getEffectiveConfig(definition);
         var sandboxOn = sandboxService.isSandboxEnabled(sandboxConfig);
         var agent = subAgentManager().buildAgent(artifactSetup.appendArtifactInstructions(config, sandboxOn),
