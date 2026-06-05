@@ -21,6 +21,8 @@ public class Prompts {
             Use this tool for complex objectives to ensure that you are tracking each necessary step and giving the user visibility into your progress.
             This tool is very helpful for planning complex objectives, and for breaking down these larger complex objectives into smaller steps.
             
+            **Plan the full lifecycle, not just the implementation.** A complete plan covers exploration → implementation → validation → finalization. Every implementation step should be followed by a corresponding verification step. The task is only complete when it has been validated, not just when it has been written.
+            
             It is critical that you mark todos as completed as soon as you are done with a step. Do not batch up multiple steps before marking them as completed.
             For simple objectives that only require a few steps, it is better to just complete the objective directly and NOT use this tool.
             Writing todos takes time and tokens, use it when it is helpful for managing complex many-step problems! But not for simple few-step requests.

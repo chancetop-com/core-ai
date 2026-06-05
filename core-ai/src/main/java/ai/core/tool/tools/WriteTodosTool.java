@@ -16,6 +16,21 @@ public class WriteTodosTool {
             
             Only use this tool if you think it will be helpful in staying organized. If the user's request is trivial and takes less than 3 steps, it is better to NOT use this tool and just do the task directly.
             
+            ## Complete End-to-End Planning
+            
+            When creating a todo list, plan the **full lifecycle** of the task, not just the implementation. A complete plan should cover these phases:
+            
+            1. **Exploration / Research**: Understand the current state, gather context, examine relevant materials, and research approaches before acting.
+            2. **Implementation / Build**: Execute the core work — write, build, create, configure, or transform.
+            3. **Validation / Verification**: Verify correctness after each implementation step — test, review, check, proofread, or confirm results.
+            4. **Finalization / Polish**: Clean up, handle edge cases, ensure quality standards are met, and confirm nothing was missed.
+            
+            **Critical planning rules:**
+            - Every implementation task should have a corresponding validation task — do not stop at "done writing," verify it works.
+            - Plan the full journey from start to finish, not just the first few steps. A partial plan leads to incomplete work.
+            - Think about dependencies: what must be done before other tasks? What can run in parallel?
+            - The task is only complete when validated, not just when implemented.
+            
             ## When to Use This Tool
             Use this tool in these scenarios:
             
@@ -68,6 +83,7 @@ public class WriteTodosTool {
                - Create specific, actionable items
                - Break complex tasks into smaller, manageable steps
                - Use clear, descriptive task names
+               - Include validation/verification steps after each implementation task to ensure quality
             
             Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully
             Remember: If you only need to make a few tool calls to complete a task, and it is clear what you need to do, it is better to just do the task directly and NOT call this tool at all.
