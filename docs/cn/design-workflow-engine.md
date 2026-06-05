@@ -35,7 +35,7 @@
 
 ### 1.1 这些"不是概念"（优雅的真正来源）
 
-- **边三态（PENDING/ACTIVE/SKIPPED）不是存储状态**——由 planner 从每个源 node-run 的 `out_edge_decision` **推导**。
+- **边三态（PENDING/ACTIVE/SKIPPED）不是存储状态**——由 planner 从每个源 node-run 的 `status` + `chosen_edge_ids` **推导**（`chosen_edge_ids` 为空=NORMAL 全 ACTIVE；非空=BRANCH 选中 ACTIVE 其余 SKIPPED）。
 - **并行 / 分支 / join / fan-out / skip 不是概念**——是 `plan` 计算出的边裁决转移。**不存在 coordinator / scheduler / join 对象**。
 - **IF/ELSE / LOOP / ITERATION / HTTP / CODE / AGENT 不是引擎概念**——是 `NodeExecutor` 实现。引擎从不 `instanceof` 节点。
 - **容器（loop/iteration）不是第二个引擎**——是 C3 带着 `scopePath` 重新进入 C2 跑子图。
@@ -194,10 +194,9 @@ public class WorkflowNodeRun {
     @Field(name = "scope_path") public List<ScopeFrame> scopePath;   // STRUCTURED: [] | [{ITER,3}] | [{LOOP,2},{ITER,0}]
     @Field(name = "scope_path_key") public String scopePathKey;     // canonical string for the unique index
     @Field(name = "status") public NodeRunStatus status;            // NEW enum (see below)
-    @Field(name = "input_json") public Document inputJson;          // resolved selectors snapshotted at dispatch -> deterministic replay
-    @Field(name = "output") public Document output;                // the memoized, reusable result
-    @Field(name = "out_edge_decision") public Map<String, EdgeVerdict> outEdgeDecision;  // ACTIVE/SKIPPED per out-edge — carries control-flow
-    @Field(name = "kind") public OutcomeKind kind;                 // NORMAL | BRANCH (on COMPLETED)
+    @Field(name = "input_json") public String inputJson;           // resolved selectors snapshotted at dispatch (JSON) -> deterministic replay
+    @Field(name = "output") public String output;                  // the memoized, reusable result (JSON)
+    @Field(name = "chosen_edge_ids") public List<String> chosenEdgeIds;  // null = NORMAL (all out-edges active); non-null = BRANCH. Edge verdicts DERIVED from this, never stored.
     @Field(name = "child_run_id") public String childRunId;        // AGENT/LLM node: the decoupled child AgentRun id (agent_runs)
     @Field(name = "external_call_ref") public String externalCallRef;  // HTTP/TOOL/MCP external call ref, optional
     @Field(name = "span_id") public String spanId;                 // links Span(SpanType.FLOW)
@@ -220,7 +219,7 @@ public enum NodeRunStatus {                       // distinct from RunStatus, wh
 }
 ```
 
-> **检查点 = 一条 `WorkflowNodeRun` 写入**，同时携带可复用的 `output` 与 `out_edge_decision`——一条记录在恢复时同时重放"值复用"和"控制流"。
+> **检查点 = 一条 `WorkflowNodeRun` 写入**，同时携带可复用的 `output` 与 `chosen_edge_ids`——一条记录在恢复时同时重放"值复用"和"控制流"（边裁决由 planner 从 `chosen_edge_ids` 重新推导）。
 > 输出 > 16MB 或 `FILE` 类型的值，外溢到现有 `FileRecord` artifact 存储，node-run 只存指针。
 
 ### 3.5 run 级 CAS 认领（逐字照搬 AgentScheduler.processSchedule 习惯）

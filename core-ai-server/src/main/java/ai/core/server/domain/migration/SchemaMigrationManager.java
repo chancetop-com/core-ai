@@ -75,6 +75,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVTraceAccountScopeIndexes(),
             new SchemaMigrationVFileShareTokenIndex(),
             new SchemaMigrationVFixShareTokenIndex(),
+            new SchemaMigrationVWorkflowIndexes()
+            new SchemaMigrationVFixShareTokenIndex(),
             new SchemaMigrationVBumpDefaultMaxTurns()
         );
     }
