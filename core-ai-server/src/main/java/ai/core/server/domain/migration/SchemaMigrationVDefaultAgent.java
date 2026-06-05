@@ -153,7 +153,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         var publishedConfig = new Document()
             .append("system_prompt", "You are a helpful AI assistant.")
             .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
-            .append("max_turns", 100)
+            .append("max_turns", 200)
             .append("timeout_seconds", 600);
 
         var agent = new Document()
@@ -163,7 +163,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             .append("description", "Default assistant with all builtin tools")
             .append("system_prompt", "You are a helpful AI assistant.")
             .append("tools", List.of(new Document("id", "builtin-all").append("type", "BUILTIN")))
-            .append("max_turns", 100)
+            .append("max_turns", 200)
             .append("timeout_seconds", 600)
             .append("system_default", true)
             .append("type", "AGENT")

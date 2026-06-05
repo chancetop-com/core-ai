@@ -74,7 +74,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVDatasetRecordUserIndex(),
             new SchemaMigrationVTraceAccountScopeIndexes(),
             new SchemaMigrationVFileShareTokenIndex(),
-            new SchemaMigrationVFixShareTokenIndex()
+            new SchemaMigrationVFixShareTokenIndex(),
+            new SchemaMigrationVBumpDefaultMaxTurns()
         );
     }
 }
