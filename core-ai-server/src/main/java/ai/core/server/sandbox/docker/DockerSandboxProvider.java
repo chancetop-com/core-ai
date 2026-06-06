@@ -46,6 +46,8 @@ public class DockerSandboxProvider implements SandboxProvider {
 
         LOGGER.info("creating docker sandbox: name={}, image={}, sessionId={}", containerName, effectiveConfig.image, sessionId);
 
+        dockerClient.ensureNetworkExists(networkName);
+
         containerId = null;
         try {
             // Create container

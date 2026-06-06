@@ -132,6 +132,10 @@ public class LazySandbox implements Sandbox {
 
             var startTime = System.currentTimeMillis();
             delegate = manager.acquire(config, sessionId, userId);
+            if (delegate == null) {
+                dispatchEvent(SandboxEventType.ERROR);
+                throw new IllegalStateException("sandbox acquire returned null");
+            }
             var acquireDuration = System.currentTimeMillis() - startTime;
             LOGGER.info("sandbox acquired: id={}, duration={}ms", delegate.getId(), acquireDuration);
 

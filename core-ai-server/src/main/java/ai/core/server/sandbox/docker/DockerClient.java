@@ -9,6 +9,7 @@ import core.framework.http.HTTPResponse;
 import core.framework.json.JSON;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -180,6 +181,21 @@ public class DockerClient {
 
     public Path workspaceBase() {
         return workspaceBase;
+    }
+
+    public void ensureNetworkExists(String networkName) {
+        var response = get("/networks/" + networkName);
+        if (response.statusCode == 200) return;
+        if (response.statusCode != 404) {
+            throw new RuntimeException("Failed to check network: " + response.statusCode + " " + response.text());
+        }
+        var body = new HashMap<String, Object>();
+        body.put("Name", networkName);
+        body.put("Driver", "bridge");
+        var createResponse = post("/networks/create", body);
+        if (createResponse.statusCode != 200 && createResponse.statusCode != 201) {
+            throw new RuntimeException("Failed to create network: " + createResponse.statusCode + " " + createResponse.text());
+        }
     }
 
     public static class ContainerCreateResponse {

@@ -96,9 +96,8 @@ public class KubernetesSandboxProvider implements SandboxProvider {
         LOGGER.info("sandbox pod ready: name={}, ip={}", podName, podIp);
 
         if (podIp == null || podIp.isBlank()) {
-            LOGGER.error("pod has no IP address: name={}", podName);
             cleanupPod(podName);
-            return null;
+            throw new RuntimeException("Pod has no IP address: " + podName);
         }
 
         var timeoutSeconds = effectiveConfig.timeoutSeconds != null
