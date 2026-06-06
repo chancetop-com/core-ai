@@ -11,7 +11,7 @@ import java.util.List;
 public class SchemaMigrationVBumpDefaultMaxTurns implements SchemaMigration {
     @Override
     public String version() {
-        return "20260605001";
+        return "20260605003";
     }
 
     @Override

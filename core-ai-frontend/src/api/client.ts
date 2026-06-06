@@ -271,6 +271,20 @@ export interface AgentDefinition {
   dataset_config?: AgentDatasetConfig[];
 }
 
+export interface AgentMemoryView {
+  id: string;
+  agent_id: string;
+  type: string;
+  content: string;
+  source_trace_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListAgentMemoriesResponse {
+  memories: AgentMemoryView[];
+}
+
 export interface AgentDatasetConfig {
   dataset_id: string;
   permission: 'READ' | 'WRITE' | 'FULL';
@@ -664,6 +678,8 @@ export const api = {
       request<LLMCallResponse>(`/api/llm/${id}/call`, { method: 'POST', body: JSON.stringify({ input, attachments }) }),
     javaToSchema: (javaCode: string) =>
       request<ConvertJavaToSchemaResponse>('/api/utils/java-to-schema', { method: 'POST', body: JSON.stringify({ java_code: javaCode }) }),
+    memories: (agentId: string) =>
+      request<ListAgentMemoriesResponse>(`/api/agents/${agentId}/memories`),
   },
   utils: {
     generate: (data: { system_prompt: string; user_prompt: string }) =>

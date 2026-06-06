@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star, Sparkles, Pencil } from 'lucide-react';
+import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star, Sparkles, Pencil, Brain } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -306,9 +306,17 @@ export default function AgentList() {
                   {a.type}
                 </span>
               </div>
-              <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                {formatTime(a.updated_at)}
-              </span>
+              <div className="flex items-center gap-2">
+                <button onClick={e => { e.stopPropagation(); navigate(`/agents/${a.id}/memories`); }}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs border cursor-pointer"
+                  style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                  title="Agent Memory">
+                  <Brain size={13} /> Memory
+                </button>
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {formatTime(a.updated_at)}
+                </span>
+              </div>
             </div>
             {a.description && (
               <p className="text-sm mt-1 ml-8" style={{ color: 'var(--color-text-secondary)' }}>{a.description}</p>

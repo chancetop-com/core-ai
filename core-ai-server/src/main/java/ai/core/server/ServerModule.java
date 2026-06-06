@@ -44,6 +44,11 @@ import ai.core.server.github.GitHubInstallationTokenService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.migration.SchemaMigrationManager;
+import ai.core.server.memory.AgentMemoryConsolidationJob;
+import ai.core.server.memory.AgentMemoryController;
+import ai.core.server.memory.AgentMemoryService;
+import ai.core.server.memory.AgentMemoryView;
+import ai.core.server.memory.ListAgentMemoriesResponse;
 import ai.core.server.run.AgentRunService;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.run.AgentRunner;
@@ -166,6 +171,7 @@ public class ServerModule extends Module {
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
         schedule().fixedRate("tool-registry-sync", bind(ToolRegistrySyncJob.class), Duration.ofSeconds(30));
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
+        schedule().fixedRate("agent-memory-consolidation", bind(AgentMemoryConsolidationJob.class), Duration.ofHours(1));
         registerTrace();
         registerSystemPrompt();
         registerCapabilities();
@@ -208,6 +214,7 @@ public class ServerModule extends Module {
         ai.core.server.agentbuilder.CreateAgentDraftTool.publicUrl = publicUrl;
         ai.core.server.agentbuilder.PublishAgentDraftTool.publicUrl = publicUrl;
         bind(SystemPromptService.class);
+        bind(AgentMemoryService.class);
         bind(LLMCallExecutor.class);
         bind(DatasetService.class);
         bind(DatasetRecordService.class);
@@ -229,6 +236,10 @@ public class ServerModule extends Module {
         var triggerService = bind(TriggerService.class);
         triggerService.publicUrl = publicUrl;
         bind(RunAgentAction.class);
+
+        var memoryController = bind(AgentMemoryController.class);
+        http().route(HTTPMethod.GET, "/api/agents/:id/memories", memoryController::list);
+
         bind(ForYouService.class);
         bind(ai.core.server.artifact.ArtifactService.class);
         bind(SessionCreateHelper.class);
@@ -323,6 +334,8 @@ public class ServerModule extends Module {
         }
 
         http().bean(BlobUploadCredentialView.class);
+        http().bean(AgentMemoryView.class);
+        http().bean(ListAgentMemoriesResponse.class);
         http().route(HTTPMethod.GET, "/api/blob/upload-credential", blobController::getCredential);
 
         api().service(AuthWebService.class, bind(AuthWebServiceImpl.class));

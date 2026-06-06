@@ -8,7 +8,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -28,9 +30,10 @@ public class SchemaMigrationManager {
             .stream()
             .map(v -> v.id)
             .collect(Collectors.toSet());
+        Set<String> runInThisSession = new HashSet<>();
 
         for (var migration : migrations()) {
-            if (applied.contains(migration.version())) {
+            if (applied.contains(migration.version()) || runInThisSession.contains(migration.version())) {
                 LOGGER.info("skip migration, version={}, description={}", migration.version(), migration.description());
                 continue;
             }
@@ -50,6 +53,7 @@ public class SchemaMigrationManager {
             version.description = migration.description();
             version.appliedAt = ZonedDateTime.now();
             schemaVersionCollection.insert(version);
+            runInThisSession.add(migration.version());
 
             LOGGER.info("migration completed, version={}", migration.version());
         }

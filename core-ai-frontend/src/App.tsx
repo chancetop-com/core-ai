@@ -14,6 +14,7 @@ const PromptEditor = lazy(() => import('./pages/prompts/PromptEditor'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
 const AgentList = lazy(() => import('./pages/agents/AgentList'));
 const AgentEditor = lazy(() => import('./pages/agents/AgentEditor'));
+const AgentMemory = lazy(() => import('./pages/agents/AgentMemory'));
 const RunDetail = lazy(() => import('./pages/agents/RunDetail'));
 const Chat = lazy(() => import('./pages/chat/Chat'));
 const SystemPromptList = lazy(() => import('./pages/system-prompts/SystemPromptList'));
@@ -112,6 +113,7 @@ export default function App() {
                     {caps.prompts && <Route path="/prompts/:id" element={<PromptEditor />} />}
                     <Route path="/agents" element={<AgentList />} />
                     <Route path="/agents/:id" element={<AgentEditor />} />
+                    <Route path="/agents/:id/memories" element={<AgentMemory />} />
                     <Route path="/runs/:id" element={<RunDetail />} />
                     {caps.systemPrompts && <Route path="/system-prompts" element={<SystemPromptList />} />}
                     {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<SystemPromptEditor />} />}

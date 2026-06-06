@@ -9,6 +9,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.AgentRunArtifactSink;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.memory.AgentMemoryService;
 import ai.core.tool.ToolCall;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
@@ -100,6 +101,9 @@ public class AgentRunner {
 
     @Inject
     SystemPromptService systemPromptService;
+
+    @Inject
+    AgentMemoryService agentMemoryService;
 
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
@@ -338,6 +342,8 @@ public class AgentRunner {
         if (maxTurns != null) builder.maxTurn(maxTurns);
         if (skillRegistry != null) builder.skillRegistry(skillRegistry);
         injectDatasetSystemVars(builder, config, definition);
+        var memoryInject = agentMemoryService.buildMemoryPromptInject(definition.id);
+        if (memoryInject != null) builder.systemPromptSection(memoryInject);
         var agent = builder.build();
         agent.setAuthenticated(true);
         return agent;

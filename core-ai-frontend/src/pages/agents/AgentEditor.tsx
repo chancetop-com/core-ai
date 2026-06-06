@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal, Brain } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo, AgentDatasetConfig } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -695,6 +695,14 @@ The system prompt should define how this agent behaves, its capabilities, and it
           </span>
         </div>
         <div className="flex gap-2">
+          {!isNew && (
+            <button onClick={() => navigate(`/agents/${agent.id}/memories`)}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+              style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+              title="Agent Memory">
+              <Brain size={14} /> Memory
+            </button>
+          )}
           <button onClick={handleDelete}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}>

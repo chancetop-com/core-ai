@@ -8,6 +8,8 @@ import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
+import ai.core.server.memory.AgentMemory;
+import ai.core.server.memory.AgentMemoryExtractionCursor;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.Dataset;
@@ -93,5 +95,9 @@ public class ServerApp extends App {
         mongo.collection(WorkflowPublishedVersion.class);
         mongo.collection(WorkflowRun.class);
         mongo.collection(WorkflowNodeRun.class);
+
+        // memory collections
+        mongo.collection(AgentMemory.class);
+        mongo.collection(AgentMemoryExtractionCursor.class);
     }
 }

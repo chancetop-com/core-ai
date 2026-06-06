@@ -11,7 +11,7 @@ import org.bson.Document;
 public class SchemaMigrationVFixShareTokenIndex implements SchemaMigration {
     @Override
     public String version() {
-        return "20260605001";
+        return "20260605002";
     }
 
     @Override
