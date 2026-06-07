@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Locale;
 import java.util.Set;
@@ -121,25 +120,28 @@ public class SystemUtil {
     private static File downloadHttpWithResume(String url, File tempFile, URL uri) throws IOException, URISyntaxException {
         long existingSize = tempFile.exists() ? tempFile.length() : 0;
 
-        if (existingSize > 0) {
-            var headConn = (HttpURLConnection) uri.openConnection();
-            headConn.setRequestMethod("HEAD");
-            int headCode = headConn.getResponseCode();
-            if (headCode == HttpURLConnection.HTTP_OK) {
-                long remoteSize = headConn.getContentLengthLong();
-                if (remoteSize > 0 && existingSize == remoteSize) {
-                    LOGGER.debug("File already downloaded, skipping.");
-                    return tempFile;
-                }
-                if (remoteSize > 0 && existingSize < remoteSize) {
-                    LOGGER.debug("Resuming download from byte {} (total {})", existingSize, remoteSize);
-                    return downloadHttp(url, tempFile, existingSize);
-                }
-                // existing file is larger than remote or remote size unknown, re-download
-                Files.delete(tempFile.toPath());
-                existingSize = 0;
-            }
+        if (existingSize <= 0) {
+            return downloadHttp(url, tempFile, 0);
         }
+
+        var headConn = (HttpURLConnection) uri.openConnection();
+        headConn.setRequestMethod("HEAD");
+        int headCode = headConn.getResponseCode();
+        if (headCode != HttpURLConnection.HTTP_OK) {
+            return downloadHttp(url, tempFile, 0);
+        }
+
+        long remoteSize = headConn.getContentLengthLong();
+        if (remoteSize > 0 && existingSize == remoteSize) {
+            LOGGER.debug("File already downloaded, skipping.");
+            return tempFile;
+        }
+        if (remoteSize > 0 && existingSize < remoteSize) {
+            LOGGER.debug("Resuming download from byte {} (total {})", existingSize, remoteSize);
+            return downloadHttp(url, tempFile, existingSize);
+        }
+        // existing file is larger than remote or remote size unknown, re-download
+        Files.delete(tempFile.toPath());
         return downloadHttp(url, tempFile, 0);
     }
 

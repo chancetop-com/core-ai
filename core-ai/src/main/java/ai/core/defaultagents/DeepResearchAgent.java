@@ -69,6 +69,52 @@ public class DeepResearchAgent {
     }
 
     private static String buildSystemPrompt() {
+        return (buildPromptIntroAndMethodology()
+                + buildPromptSearchStrategy()
+                + buildPromptQualityBar()
+                + buildPromptCommonMistakes()
+                + buildPromptEfficiency()
+                + buildPromptReportSynthesis())
+                .formatted(
+                        // Phase 1 example queries
+                        extractYear(),
+                        // Phase 1 — plan
+                        "write_todo_task",
+                        // Phase 2 — read
+                        "web_fetch",
+                        // Phase 2 example queries
+                        "AI radiology FDA approved systems " + extractYear(),
+                        "chest X-ray AI detection accuracy clinical results",
+                        "radiology AI clinical trials peer-reviewed",
+                        // Phase 3 matrix example queries
+                        "statistics", "market size", "data",
+                        "case study", "implementation example",
+                        "expert analysis", "research paper",
+                        "trends " + extractYear(), "forecast future of",
+                        "vs comparison", "alternatives to",
+                        "challenges", "limitations criticism",
+                        // Phase 4 — fetch
+                        "web_fetch",
+                        // Search strategy
+                        extractYear(),
+                        // web_fetch usage
+                        "web_fetch",
+                        // Efficiency
+                        "web_search", "task",
+                        // Stage B — write report
+                        "write_file"
+                );
+    }
+
+    private static String buildPromptIntroAndMethodology() {
+        return buildPromptIntroCore()
+                + buildPromptPhase1()
+                + buildPromptPhase2()
+                + buildPromptPhase3()
+                + buildPromptPhase4();
+    }
+
+    private static String buildPromptIntroCore() {
         return """
                 You are a Deep Research Agent. Your role is to conduct systematic multi-source web research
                 and produce comprehensive, citation-rich reports. You operate in two DISTINCT stages:
@@ -80,6 +126,11 @@ public class DeepResearchAgent {
                 STAGE A: RESEARCH METHODOLOGY (4 Phases)
                 ====================================================================
 
+                """;
+    }
+
+    private static String buildPromptPhase1() {
+        return """
                 ## Phase 1: Broad Exploration
 
                 Survey the landscape before diving deep:
@@ -103,6 +154,11 @@ public class DeepResearchAgent {
 
                 Use %s to create a research plan with these dimensions as subtasks.
 
+                """;
+    }
+
+    private static String buildPromptPhase2() {
+        return """
                 ## Phase 2: Deep Dive
 
                 For each important dimension, conduct targeted research:
@@ -118,6 +174,11 @@ public class DeepResearchAgent {
                   - "%s"
                   Then fetch and read the most relevant results in full.
 
+                """;
+    }
+
+    private static String buildPromptPhase3() {
+        return """
                 ## Phase 3: Diversity & Validation
 
                 Verify you have ALL information types before proceeding. Use this matrix:
@@ -134,6 +195,11 @@ public class DeepResearchAgent {
                 For EACH dimension, cover at least 4 of these 6 information types. This ensures a
                 multi-faceted, well-rounded analysis rather than a one-sided summary.
 
+                """;
+    }
+
+    private static String buildPromptPhase4() {
+        return """
                 ## Phase 4: Synthesis Check
 
                 Before you start writing the report, verify ALL of these:
@@ -146,7 +212,18 @@ public class DeepResearchAgent {
                 [ ] Have I cross-verified critical facts with at least 2 independent sources?
 
                 If ANY answer is NO → CONTINUE RESEARCHING before moving to Stage B.
+                """;
+    }
 
+    private static String buildPromptSearchStrategy() {
+        return buildPromptSearchQueryPatterns()
+                + buildPromptSearchTemporalAwareness()
+                + buildPromptSearchWebFetchUsage();
+    }
+
+    private static String buildPromptSearchQueryPatterns() {
+        return """
+                
                 ====================================================================
                 SEARCH STRATEGY TIPS
                 ====================================================================
@@ -167,6 +244,11 @@ public class DeepResearchAgent {
                   "[topic] statistics 2025"
                   "[topic] expert interview"
 
+                """;
+    }
+
+    private static String buildPromptSearchTemporalAwareness() {
+        return """
                 ## Temporal Awareness
 
                 ALWAYS check <current_date> in your context before forming ANY search query.
@@ -183,6 +265,11 @@ public class DeepResearchAgent {
                 TRY MULTIPLE DATE FORMATS across queries: numeric ("2026-02-28"), written ("February 28 2026"),
                 and relative ("today", "this week") to maximize result coverage.
 
+                """;
+    }
+
+    private static String buildPromptSearchWebFetchUsage() {
+        return """
                 ## When to Use %s
 
                 Read full content when:
@@ -195,7 +282,12 @@ public class DeepResearchAgent {
                 - The snippet already answers a simple factual question
                 - The source is clearly low-quality or SEO spam
                 - You already have 2+ good sources confirming the same point
+                """;
+    }
 
+    private static String buildPromptQualityBar() {
+        return """
+                
                 ====================================================================
                 QUALITY BAR — You can answer ALL of these before writing:
                 ====================================================================
@@ -206,7 +298,12 @@ public class DeepResearchAgent {
                 4. What are the current trends and future directions?
                 5. What are the challenges, limitations, or criticisms?
                 6. What makes this topic relevant or important right now?
+                """;
+    }
 
+    private static String buildPromptCommonMistakes() {
+        return """
+                
                 ====================================================================
                 COMMON MISTAKES TO AVOID
                 ====================================================================
@@ -217,7 +314,12 @@ public class DeepResearchAgent {
                 - Ignoring contradicting viewpoints or challenges
                 - Using outdated information when current data exists
                 - Starting to write the report before research is truly complete
+                """;
+    }
 
+    private static String buildPromptEfficiency() {
+        return """
+                
                 ====================================================================
                 EFFICIENCY & PARALLELISM
                 ====================================================================
@@ -229,7 +331,12 @@ public class DeepResearchAgent {
                 - Save intermediate findings to files to prevent context overflow on long research sessions
                 - If a search yields no new information, PIVOT to a different angle rather than re-searching
                 - After every 5 tool calls, re-read the original query to check you haven't drifted
+                """;
+    }
 
+    private static String buildPromptReportSynthesis() {
+        return """
+                
                 ====================================================================
                 STAGE B: REPORT SYNTHESIS (only after Phase 4 checklist passes)
                 ====================================================================
@@ -265,36 +372,7 @@ public class DeepResearchAgent {
 
                 You are not a chatbot — you are a research analyst. Your output should be worthy of
                 being shared as a professional research memo. Take the time needed to be thorough.
-                """
-                .formatted(
-                        // Phase 1 example queries
-                        extractYear(),
-                        // Phase 1 — plan
-                        "write_todo_task",
-                        // Phase 2 — read
-                        "web_fetch",
-                        // Phase 2 example queries
-                        "AI radiology FDA approved systems " + extractYear(),
-                        "chest X-ray AI detection accuracy clinical results",
-                        "radiology AI clinical trials peer-reviewed",
-                        // Phase 3 matrix example queries
-                        "statistics", "market size", "data",
-                        "case study", "implementation example",
-                        "expert analysis", "research paper",
-                        "trends " + extractYear(), "forecast future of",
-                        "vs comparison", "alternatives to",
-                        "challenges", "limitations criticism",
-                        // Phase 4 — fetch
-                        "web_fetch",
-                        // Search strategy
-                        extractYear(),
-                        // web_fetch usage
-                        "web_fetch",
-                        // Efficiency
-                        "web_search", "task",
-                        // Stage B — write report
-                        "write_file"
-                );
+                """;
     }
 
     private static String extractYear() {

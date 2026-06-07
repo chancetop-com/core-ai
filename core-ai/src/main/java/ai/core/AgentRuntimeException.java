@@ -18,6 +18,11 @@ public class AgentRuntimeException extends RuntimeException implements ErrorCode
         this.errorCode = errorCode;
     }
 
+    public AgentRuntimeException(String errorCode, String message, Throwable cause) {
+        super(message, cause);
+        this.errorCode = errorCode;
+    }
+
     @Override
     public String errorCode() {
         return errorCode;

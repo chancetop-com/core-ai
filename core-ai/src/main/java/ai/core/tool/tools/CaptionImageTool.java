@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -104,12 +105,12 @@ public class CaptionImageTool extends ToolCall {
             return Content.ImageUrl.of(dataUri, mimeType);
         } catch (IOException e) {
             throw new AgentRuntimeException("CAPTION_IMAGE_TOOL_FAILED",
-                    "Failed to read image file: " + url + " - " + e.getMessage());
+                    "Failed to read image file: " + url + " - " + e.getMessage(), e);
         }
     }
 
     private String detectMimeType(Path path) {
-        String fileName = path.getFileName().toString().toLowerCase();
+        String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
         int dotIndex = fileName.lastIndexOf('.');
         if (dotIndex > 0 && dotIndex < fileName.length() - 1) {
             String extension = fileName.substring(dotIndex + 1);

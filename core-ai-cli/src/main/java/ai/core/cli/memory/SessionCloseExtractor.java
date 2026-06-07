@@ -33,7 +33,7 @@ public class SessionCloseExtractor {
                pick them up on the next restart for deep knowledge extraction.
             
             All directories already exist.
-            """ + MemoryExtractionTool.EXTRACTION_SPEC + """
+            """ + MemoryExtractionSpecs.EXTRACTION_SPEC + """
             
             ## Today
             Date: %1$s

@@ -1,8 +1,7 @@
 package ai.core.cli.agent;
 
 import ai.core.cli.command.McpCommandHandler;
-import ai.core.cli.command.MemoryCommandHandler;
-import ai.core.cli.command.ReplCommandHandler;
+import ai.core.cli.command.HandlerContext;
 import ai.core.cli.command.SkillCommandHandler;
 import ai.core.cli.command.plugins.PluginCommandHandler;
 import ai.core.cli.remote.RemoteCommandHandler;
@@ -14,29 +13,27 @@ import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Dispatches slash commands to appropriate handlers.
- */
 public class CommandDispatcher {
 
     private static final String POISON_PILL = "\0__EXIT__";
 
     private final TerminalUI ui;
     private final AgentSessionRunner session;
+    private final ModelPicker modelPicker;
     private final AtomicReference<String> switchSessionId;
     private final AtomicReference<RemoteConfig> remoteConfig;
-    private final ReplCommandHandler commands;
-    private final MemoryCommandHandler memoryCommand;
-    private final boolean memoryEnabled;
+    private final HandlerContext handlers;
 
-    public CommandDispatcher(Config config) {
-        this.ui = config.ui;
-        this.session = config.session;
-        this.switchSessionId = config.switchSessionId;
-        this.remoteConfig = config.remoteConfig;
-        this.commands = config.commands;
-        this.memoryCommand = config.memoryCommand;
-        this.memoryEnabled = config.memoryEnabled;
+    CommandDispatcher(TerminalUI ui, ModelPicker modelPicker,
+                      AtomicReference<String> switchSessionId,
+                      AtomicReference<RemoteConfig> remoteConfig,
+                      HandlerContext handlers, AgentSessionRunner session) {
+        this.ui = ui;
+        this.session = session;
+        this.modelPicker = modelPicker;
+        this.switchSessionId = switchSessionId;
+        this.remoteConfig = remoteConfig;
+        this.handlers = handlers;
     }
 
     public void dispatch(String trimmed, BlockingQueue<String> queue) {
@@ -44,7 +41,7 @@ public class CommandDispatcher {
         if (dispatchSessionCommand(lower, queue)) return;
         if (dispatchConfigCommand(trimmed, lower, queue)) return;
         if (dispatchPluginCommand(trimmed, lower, queue)) return;
-        commands.handle(trimmed);
+        handlers.commands().handle(trimmed);
     }
 
     private boolean dispatchSessionCommand(String lower, BlockingQueue<String> queue) {
@@ -52,7 +49,7 @@ public class CommandDispatcher {
             return false;
         }
         if ("/model".equals(lower) || "/models".equals(lower)) {
-            session.showModelPicker();
+            modelPicker.showModelPicker();
             return true;
         }
         if ("/stats".equals(lower)) {
@@ -94,7 +91,7 @@ public class CommandDispatcher {
 
     private boolean dispatchConfigCommand(String trimmed, String lower, BlockingQueue<String> queue) {
         if (lower.startsWith("/model ")) {
-            session.switchModel(getCurrentModelName(), trimmed.split("\\s+", 2)[1].trim(), null);
+            modelPicker.switchModel(modelPicker.getCurrentModelName(), trimmed.split("\\s+", 2)[1].trim(), null);
             return true;
         }
         if (lower.startsWith("/export")) {
@@ -103,12 +100,12 @@ public class CommandDispatcher {
         }
         if (lower.startsWith("/memory")) {
             boolean isConfigCmd = "/memory enable".equals(lower) || "/memory disable".equals(lower);
-            if (memoryCommand == null) {
+            if (handlers.memoryCommand() == null) {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory not available.\n" + AnsiTheme.RESET);
-            } else if (!memoryEnabled && !isConfigCmd) {
+            } else if (!handlers.memoryEnabled() && !isConfigCmd) {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "  Memory is disabled. Set agent.memory.enabled=true in agent.properties to enable.\n" + AnsiTheme.RESET);
             } else {
-                memoryCommand.handle(trimmed);
+                handlers.memoryCommand().handle(trimmed);
             }
             return true;
         }
@@ -146,16 +143,5 @@ public class CommandDispatcher {
             return true;
         }
         return false;
-    }
-
-    private String getCurrentModelName() {
-        return session.getCurrentModelName();
-    }
-
-    public record Config(TerminalUI ui, AgentSessionRunner session,
-                         AtomicReference<String> switchSessionId,
-                         AtomicReference<RemoteConfig> remoteConfig,
-                         ReplCommandHandler commands, MemoryCommandHandler memoryCommand,
-                         boolean memoryEnabled) {
     }
 }

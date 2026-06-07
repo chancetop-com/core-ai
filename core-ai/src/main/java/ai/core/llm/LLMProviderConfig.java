@@ -103,19 +103,18 @@ public class LLMProviderConfig {
     }
 
     public Object resolveExtraBody(String modelName) {
-        if (modelName != null) {
-            if (modelExtraBodies.containsKey(modelName)) {
-                return modelExtraBodies.get(modelName);
-            }
-            int slash = modelName.lastIndexOf('/');
-            if (slash >= 0) {
-                var nameOnly = modelName.substring(slash + 1);
-                if (modelExtraBodies.containsKey(nameOnly)) {
-                    return modelExtraBodies.get(nameOnly);
-                }
-            }
+        if (modelName == null) {
+            return requestExtraBody;
         }
-        return requestExtraBody;
+        if (modelExtraBodies.containsKey(modelName)) {
+            return modelExtraBodies.get(modelName);
+        }
+        int slash = modelName.lastIndexOf('/');
+        if (slash < 0) {
+            return requestExtraBody;
+        }
+        var nameOnly = modelName.substring(slash + 1);
+        return modelExtraBodies.containsKey(nameOnly) ? modelExtraBodies.get(nameOnly) : requestExtraBody;
     }
 
     public int getStreamBufferSize() {

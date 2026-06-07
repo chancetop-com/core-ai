@@ -49,7 +49,7 @@ public class AgentTracer extends Tracer {
      * Trace agent execution with context
      * Follows OpenTelemetry semantic conventions for GenAI agent spans
      */
-    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    @SuppressWarnings("try")
     public <T> T traceAgentExecution(AgentTraceContext context, Supplier<T> operation) {
         return traceAgentExecution(context, operation, null);
     }
@@ -63,28 +63,8 @@ public class AgentTracer extends Tracer {
             return operation.get();
         }
 
-        var spanBuilder = tracer.spanBuilder("agent.turn")
-            .setSpanKind(SpanKind.CLIENT)  // CLIENT per OTel conventions for agent operations
-            .setAttribute(LANGFUSE_OBSERVATION_TYPE, "agent")
-            .setAttribute(GEN_AI_OPERATION_NAME, "agent")
-            .setAttribute(GEN_AI_AGENT_NAME, context.getName())
-            .setAttribute(GEN_AI_AGENT_ID, context.getId())
-            .setAttribute(AGENT_HAS_TOOLS, context.hasTools())
-            .setAttribute(AGENT_HAS_RAG, context.hasRag());
+        var span = createAgentSpan(context);
 
-        if (context.getType() != null) {
-            spanBuilder.setAttribute(GEN_AI_AGENT_DESCRIPTION, context.getType());
-        }
-        if (context.getSessionId() != null) {
-            spanBuilder.setAttribute(SESSION_ID, context.getSessionId());
-        }
-        if (context.getUserId() != null) {
-            spanBuilder.setAttribute(USER_ID, context.getUserId());
-        }
-
-        var span = spanBuilder.startSpan();
-
-        // Add input as attribute for Langfuse
         if (context.getInput() != null && !context.getInput().isEmpty()) {
             span.setAttribute(INPUT_VALUE, context.getInput());
         }
@@ -92,7 +72,6 @@ public class AgentTracer extends Tracer {
         try (var scope = span.makeCurrent()) {
             T result = operation.get();
 
-            // Record completion details after execution (context may be updated by operation)
             if (context.getOutput() != null) {
                 span.setAttribute(OUTPUT_VALUE, context.getOutput());
             }
@@ -120,6 +99,29 @@ public class AgentTracer extends Tracer {
         } finally {
             span.end();
         }
+    }
+
+    private Span createAgentSpan(AgentTraceContext context) {
+        var spanBuilder = tracer.spanBuilder("agent.turn")
+            .setSpanKind(SpanKind.CLIENT)
+            .setAttribute(LANGFUSE_OBSERVATION_TYPE, "agent")
+            .setAttribute(GEN_AI_OPERATION_NAME, "agent")
+            .setAttribute(GEN_AI_AGENT_NAME, context.getName())
+            .setAttribute(GEN_AI_AGENT_ID, context.getId())
+            .setAttribute(AGENT_HAS_TOOLS, context.hasTools())
+            .setAttribute(AGENT_HAS_RAG, context.hasRag());
+
+        if (context.getType() != null) {
+            spanBuilder.setAttribute(GEN_AI_AGENT_DESCRIPTION, context.getType());
+        }
+        if (context.getSessionId() != null) {
+            spanBuilder.setAttribute(SESSION_ID, context.getSessionId());
+        }
+        if (context.getUserId() != null) {
+            spanBuilder.setAttribute(USER_ID, context.getUserId());
+        }
+
+        return spanBuilder.startSpan();
     }
 
     /**

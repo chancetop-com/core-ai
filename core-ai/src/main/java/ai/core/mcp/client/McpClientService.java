@@ -45,13 +45,11 @@ public class McpClientService implements AutoCloseable {
         McpSyncClient createdClient = null;
         try {
             createdTransport = createTransport(config);
-            // extract subprocess handle right after transport creation so failure cleanup can kill it
             if (createdTransport instanceof StdioClientTransport stdioTransport) {
                 extractProcessFromTransport(stdioTransport);
             }
             createdClient = createClient(createdTransport, config);
         } catch (RuntimeException e) {
-            // initialize() failure (auth/network/protocol) must not leak HttpClient, SSE stream or stdio subprocess
             closeQuietly(createdClient, createdTransport);
             throw e;
         }
@@ -170,14 +168,8 @@ public class McpClientService implements AutoCloseable {
     @Override
     public void close() {
         LOGGER.debug("Closing MCP client: {}", serverName);
-
-        // Kill the subprocess tree first — on Windows with Ctrl+C, the cmd.exe
-        // wrapper may already be dead by the time shutdown hooks run, so we must
-        // try to clean up before that window closes.
         if (stdioProcess != null) {
             forceDestroyProcessTree(stdioProcess);
-        } else {
-            LOGGER.debug("No subprocess to destroy for: {}", serverName);
         }
 
         if (client != null) {
@@ -203,10 +195,6 @@ public class McpClientService implements AutoCloseable {
 
         if (!process.isAlive()) {
             LOGGER.debug("Process already terminated for: {}, attempting fallback cleanup", serverName);
-            // On Windows, when the parent process (cmd.exe wrapper) is killed by
-            // Ctrl+C before we get here, its descendants (npx, node) may still be
-            // running as orphans. process.descendants() won't work on a dead parent,
-            // so we find them by parent PID and kill them explicitly.
             if (SystemUtil.detectPlatform().isWindows()) {
                 killOrphanedChildrenOnWindows(pid);
             }

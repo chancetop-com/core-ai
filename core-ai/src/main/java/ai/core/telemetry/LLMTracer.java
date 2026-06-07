@@ -72,63 +72,66 @@ public class LLMTracer extends Tracer {
      */
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     public CompletionResponse traceLLMCompletion(String providerName, CompletionRequest request,
-                                                 Supplier<CompletionResponse> operation,
-                                                 Consumer<SpanContext> spanContextSink,
-                                                 BooleanSupplier cancellationSupplier) {
+                                                  Supplier<CompletionResponse> operation,
+                                                  Consumer<SpanContext> spanContextSink,
+                                                  BooleanSupplier cancellationSupplier) {
         if (!enabled) {
             return operation.get();
         }
-
-        var requestAttributes = buildRequestAttributes(providerName, request);
-        var span = tracer.spanBuilder(providerName)
-            .setSpanKind(SpanKind.CLIENT)
-            .setAllAttributes(requestAttributes)
-            .setAttribute(LANGFUSE_OBSERVATION_TYPE, "generation")
-            .startSpan();
-
-        if (spanContextSink != null) {
-            spanContextSink.accept(span.getSpanContext());
-        }
-
-        // Add input as attribute for Langfuse
-        // Use langfuse.observation.input for full request including tools (enables Playground integration)
-        span.setAttribute(LANGFUSE_INPUT, buildInputJson(request));
-
-        // Add model parameters for Langfuse (temperature, etc.)
-        span.setAttribute(LANGFUSE_MODEL_PARAMETERS, buildModelParametersJson(request));
-
+        var span = createLLMSpan(providerName, request, spanContextSink);
+        CompletionResponse response;
         try (var scope = span.makeCurrent()) {
-            var response = operation.get();
+            response = operation.get();
             if (response == null) {
                 span.setAttribute(CORE_AI_RESPONSE_NULL, true);
                 if (isCancelled(cancellationSupplier)) {
                     markCancelled(span);
                     return null;
                 }
-                throw new IllegalStateException("LLM provider returned null completion response");
+                span.setStatus(StatusCode.ERROR, "LLM provider returned null completion response");
+            } else {
+                recordSuccessResponse(span, request, response, cancellationSupplier);
             }
-            recordResponseAttributes(span, request, response);
-            if (isCancelled(cancellationSupplier)) {
-                markCancelled(span);
-            }
-
-            // Add output as attribute for Langfuse
-            var message = firstMessage(response);
-            if (message != null) {
-                span.setAttribute(LANGFUSE_OUTPUT, serializeMessageToJson(message));
-            }
-
-            return response;
         } catch (Exception e) {
             if (isCancelled(cancellationSupplier)) {
                 markCancelled(span);
-                throw e;
+            } else {
+                span.setStatus(StatusCode.ERROR, e.getMessage());
+                span.recordException(e);
             }
-            span.setStatus(StatusCode.ERROR, e.getMessage());
-            span.recordException(e);
             throw e;
         } finally {
             span.end();
+        }
+        if (response == null) {
+            throw new IllegalStateException("LLM provider returned null completion response");
+        }
+        return response;
+    }
+
+    private Span createLLMSpan(String providerName, CompletionRequest request, Consumer<SpanContext> sink) {
+        var span = tracer.spanBuilder(providerName)
+            .setSpanKind(SpanKind.CLIENT)
+            .setAllAttributes(buildRequestAttributes(providerName, request))
+            .setAttribute(LANGFUSE_OBSERVATION_TYPE, "generation")
+            .startSpan();
+        if (sink != null) {
+            sink.accept(span.getSpanContext());
+        }
+        span.setAttribute(LANGFUSE_INPUT, buildInputJson(request));
+        span.setAttribute(LANGFUSE_MODEL_PARAMETERS, buildModelParametersJson(request));
+        return span;
+    }
+
+    private void recordSuccessResponse(Span span, CompletionRequest request, CompletionResponse response,
+                                       BooleanSupplier cancellationSupplier) {
+        recordResponseAttributes(span, request, response);
+        if (isCancelled(cancellationSupplier)) {
+            markCancelled(span);
+        }
+        var message = firstMessage(response);
+        if (message != null) {
+            span.setAttribute(LANGFUSE_OUTPUT, serializeMessageToJson(message));
         }
     }
 

@@ -126,12 +126,9 @@ public class WebFetchTool extends ToolCall {
 
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
-        if (context != null) {
-            var resolver = context.getCustomVariable(InternalUrlResolver.CONTEXT_KEY);
-            if (resolver instanceof InternalUrlResolver r) {
-                var result = tryInternalResolve(arguments, r);
-                if (result != null) return result;
-            }
+        if (context != null && context.getCustomVariable(InternalUrlResolver.CONTEXT_KEY) instanceof InternalUrlResolver r) {
+            var result = tryInternalResolve(arguments, r);
+            if (result != null) return result;
         }
         return execute(arguments);
     }

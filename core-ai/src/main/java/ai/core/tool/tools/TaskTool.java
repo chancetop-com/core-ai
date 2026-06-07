@@ -102,10 +102,10 @@ public class TaskTool extends ToolCall {
             var taskManager = context.getTaskManager();
             var description = getStringValue(argsMap, "description");
             var taskId = String.valueOf(argsMap.get("task_id"));
-            var model = resolveModel(subagentType, context);
             var subContext = buildSubContext(subagentType, context, taskId, description);
             var subAgent = createAgent(subagentType, subContext);
             if (runInBackground && taskManager != null) {
+                var model = resolveModel(subagentType, context);
                 var handle = taskManager.submit(taskId, () -> {
                     subAgent.run(prompt, subContext);
                     var lastContent = subAgent.getMessages().getLast().content;

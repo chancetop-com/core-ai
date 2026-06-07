@@ -87,7 +87,7 @@ public class SummarizePdfTool extends ToolCall {
             return Content.ofFileBase64(base64, "application/pdf", filename);
         } catch (IOException e) {
             throw new AgentRuntimeException("SUMMARIZE_PDF_TOOL_FAILED",
-                    "Failed to read PDF file: " + url + " - " + e.getMessage());
+                    "Failed to read PDF file: " + url + " - " + e.getMessage(), e);
         }
     }
 

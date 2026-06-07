@@ -54,7 +54,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -62,14 +61,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
 public class CliApp {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliApp.class);
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final DateTimeFormatter SESSION_ID_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 
-    /**
-     * Loads workspace-local agent.properties and overlays its values onto the
-     * global config. Workspace-local values override global defaults.
-     */
     public static void mergeWorkspaceConfig(PropertiesFileSource global, Path workspace) {
         Path localConfig = workspace.resolve(".core-ai").resolve("agent.properties");
         if (!Files.exists(localConfig)) return;
@@ -108,6 +107,7 @@ public class CliApp {
         }
         return configs;
     }
+
     private static LLMProvider resolveProvider(String name, LLMProviders llmProviders) {
         try {
             var type = LLMProviderType.fromName(name);
@@ -116,6 +116,89 @@ public class CliApp {
             return null;
         }
     }
+
+    private static ToolPermissionStore whiteToolsPermissionStore(Path workspace) {
+        var permissionStore = new FileRuleBasedPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.json"));
+        permissionStore.allow(WriteTodosTool.WT_TOOL_NAME);
+        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_CREATE);
+        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_UPDATE);
+        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_LIST);
+        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_GET);
+        permissionStore.allow(TaskTool.TOOL_NAME);
+        permissionStore.allow(WebFetchTool.TOOL_NAME);
+        permissionStore.allow(WebSearchTool.TOOL_NAME);
+        permissionStore.allow(AskUserTool.TOOL_NAME);
+        permissionStore.allow(MemoryTool.TOOL_NAME);
+        permissionStore.allow(ReadFileTool.TOOL_NAME);
+        permissionStore.allow(GlobFileTool.TOOL_NAME);
+        permissionStore.allow(GrepFileTool.TOOL_NAME);
+        return permissionStore;
+    }
+    private static String defaultSessionId(String prefix) {
+        return prefix + LocalDateTime.now().format(SESSION_ID_FORMAT);
+    }
+    private static String pickSession(List<SessionInfo> sessions, SessionManager sessionManager,
+                                       Consumer<String> output, Supplier<String> input) {
+        output.accept("\nRecent sessions:\n\n");
+        int limit = Math.min(sessions.size(), 10);
+        for (int i = 0; i < limit; i++) {
+            var session = sessions.get(i);
+            String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
+            String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
+            output.accept(String.format("  %2d) %s (%s)%n", i + 1, title, timeStr));
+        }
+        output.accept("\n");
+        while (true) {
+            output.accept("Select session (1-" + limit + "), or 'n' for new: ");
+            var choice = input.get();
+            if (choice == null || "n".equalsIgnoreCase(choice.trim())) return null;
+            try {
+                int idx = Integer.parseInt(choice.trim());
+                if (idx >= 1 && idx <= limit) return sessions.get(idx - 1).id();
+            } catch (NumberFormatException ignored) {
+                // fall through to re-prompt
+            }
+            output.accept("Invalid selection.\n");
+        }
+    }
+    private static String truncate(String text, int maxLength) {
+        if (text == null || text.isBlank()) return "(empty)";
+        String cleaned = text.replaceAll("[\\r\\n]+", " ").strip();
+        if (cleaned.length() <= maxLength) return cleaned;
+        return cleaned.substring(0, maxLength) + "...";
+    }
+
+    private static void closeQuietly(TerminalUI ui) {
+        try {
+            ui.close();
+        } catch (Exception ignored) {
+            // terminal cleanup failure is non-critical
+        }
+    }
+    private static void registerMcpLoadingListener() {
+        McpClientManagerRegistry.addCreationListener(manager ->
+                manager.addListener((serverName, oldState, newState) -> {
+                    if (newState == McpClientManager.ConnectionState.CONNECTING) {
+                        ConsoleWriter.clearLineAndPrint(AnsiTheme.MUTED + "  Loading MCP server: " + serverName + "..." + AnsiTheme.RESET);
+                    } else if (newState == McpClientManager.ConnectionState.CONNECTED) {
+                        ConsoleWriter.clearLineAndPrint(AnsiTheme.MUTED + "  MCP server loaded: " + serverName + AnsiTheme.RESET);
+                    } else if (newState == McpClientManager.ConnectionState.FAILED) {
+                        ConsoleWriter.clearLineAndPrint(AnsiTheme.WARNING + "  MCP server failed: " + serverName + AnsiTheme.RESET);
+                    }
+                })
+        );
+    }
+
+    private static void closeShutdownResources(BootstrapResult result) {
+        for (var resource : result.shutdownResources()) {
+            try {
+                resource.close();
+            } catch (Exception ignored) {
+                // shutdown cleanup failure is non-critical
+            }
+        }
+    }
+
     private final Path configFile;
     private final String modelOverride;
     private final String prompt;
@@ -124,6 +207,7 @@ public class CliApp {
     private final boolean resume;
     private final Path workspace;
     private final Integer timeLimitSeconds;
+
     public CliApp(CliAppOptions options) {
         this.configFile = options.configFile() != null ? options.configFile() : PathUtils.DEFAULT_CONFIG;
         this.modelOverride = options.modelOverride();
@@ -134,11 +218,88 @@ public class CliApp {
         this.workspace = options.workspace() != null ? options.workspace().toAbsolutePath() : Paths.get("").toAbsolutePath();
         this.timeLimitSeconds = options.timeLimitSeconds();
     }
+
+    private BootstrapCore bootstrapCore() {
+        LOGGER.info("loading config from {}", configFile);
+        var props = PropertiesFileSource.fromFile(configFile);
+        mergeWorkspaceConfig(props, workspace);
+        var bootstrap = new AgentBootstrap(props);
+        registerMcpLoadingListener();
+        var result = bootstrap.initialize();
+        ConsoleWriter.clearLine();
+        LOGGER.info("bootstrap initialized");
+        props.property("active.provider").ifPresent(name -> {
+            var type = LLMProviderType.fromName(name);
+            if (type != null && result.llmProviders.getProvider(type) != null) {
+                result.llmProviders.setDefaultProvider(type);
+            }
+        });
+        int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
+        boolean memory = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false);
+        boolean dailyLogs = props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(false);
+        boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
+        boolean todoV2 = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);
+        props.property("agent.memory.timezone").map(ZoneId::of).ifPresent(MemoryTriggerService::setTimezone);
+        var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
+        var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
+        var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
+        var sessionManager = new SessionManager(sessionPersistence);
+        var permissionStore = whiteToolsPermissionStore(workspace);
+        var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
+        return new BootstrapCore(props, result, maxTurn, memory, dailyLogs, coding, todoV2,
+                remoteAgents, remoteServers, sessionPersistence, sessionManager, permissionStore, subAgentConfigs);
+    }
+
+    private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {
+        if (continueSession) {
+            var sessions = sessionManager.listSessions();
+            if (sessions.isEmpty()) {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "No previous sessions found. Starting new session." + AnsiTheme.RESET + "\n");
+                return null;
+            }
+            var sid = sessions.getFirst().id();
+            ui.printStreamingChunk(AnsiTheme.MUTED + "Resuming session: " + sid + AnsiTheme.RESET + "\n");
+            return sid;
+        }
+        if (resume) {
+            var sessions = sessionManager.listSessions();
+            if (sessions.isEmpty()) {
+                ui.printStreamingChunk(AnsiTheme.MUTED + "No previous sessions found. Starting new session." + AnsiTheme.RESET + "\n");
+                return null;
+            }
+            return pickSession(sessions, sessionManager, ui::printStreamingChunk, ui::readRawLine);
+        }
+        return null;
+    }
+
+    private String resolveSessionIdForServe(SessionManager sessionManager) {
+        if (continueSession) {
+            var sessions = sessionManager.listSessions();
+            if (sessions.isEmpty()) {
+                ConsoleWriter.println("No previous sessions found. Starting new session.");
+                return null;
+            }
+            var sid = sessions.getFirst().id();
+            ConsoleWriter.println("Resuming most recent session: " + sid);
+            return sid;
+        }
+        if (resume) {
+            var sessions = sessionManager.listSessions();
+            if (sessions.isEmpty()) {
+                ConsoleWriter.println("No previous sessions found. Starting new session.");
+                return null;
+            }
+            return pickSession(sessions, sessionManager, ConsoleWriter::println, () -> new java.util.Scanner(System.in, StandardCharsets.UTF_8).nextLine());
+        }
+        return null;
+    }
+
     public void startAcpAgent() {
         System.setProperty("core.appName", "core-ai-cli");
         var runner = new AcpAgentRunner(configFile, modelOverride, autoApproveAll, workspace);
         runner.run();
     }
+
     public void start() {
         System.setProperty("core.appName", "core-ai-cli");
         Path jarPath = PathUtils.getJarPath();
@@ -147,11 +308,6 @@ public class CliApp {
         var ui = new TerminalUI();
         InteractiveConfigSetup.setupIfNeeded(ui);
         var sessionContext = initializeSession(ui);
-
-        // Register shutdown hook to clean up MCP subprocesses and other resources
-        // on Ctrl+C (SIGINT). GraalVM native-image may not guarantee orderly shutdown
-        // hook execution for SIGINT, so this is a best-effort safety net combined with
-        // the hooks registered deeper in McpClientManager and McpClientService.
         var shutdownResources = sessionContext.result().shutdownResources();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             ScriptHookLifecycle.fireSessionStopHooks(workspace);
@@ -162,52 +318,31 @@ public class CliApp {
                     // shutdown cleanup failure is non-critical
                 }
             }
-            try {
-                ui.close();
-            } catch (Exception ignored) {
-                // terminal cleanup failure is non-critical
-            }
+            closeQuietly(ui);
         }, "cli-shutdown-hook"));
-
         if (prompt != null) {
             runSinglePrompt(ui, sessionContext, prompt);
         } else {
             runSessionLoop(ui, sessionContext);
         }
-        cleanup(ui, sessionContext);
+        closeQuietly(ui);
+        closeShutdownResources(sessionContext.result());
     }
+
     private SessionContext initializeSession(TerminalUI ui) {
-        LOGGER.info("loading config from {}", configFile);
-        var props = PropertiesFileSource.fromFile(configFile);
-        mergeWorkspaceConfig(props, workspace);
-        var bootstrap = new AgentBootstrap(props);
-        registerMcpLoadingListener();
-        var result = bootstrap.initialize();
-        clearLoading();
-        LOGGER.info("bootstrap initialized");
-        restoreActiveProvider(props, result.llmProviders);
-        int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
-        boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(false);
-        boolean dailyLogsEnabled = props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(false);
-        boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
-        boolean todoV2Enabled = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);
-        boolean promptExtractionEnabled = props.property("agent.memory.prompt.extraction").map(Boolean::parseBoolean).orElse(false);
-        props.property("agent.memory.timezone").map(ZoneId::of).ifPresent(MemoryTriggerService::setTimezone);
-        var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
-        var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
-        var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
-        var sessionManager = new SessionManager(sessionPersistence);
-        var modelName = modelOverride != null ? modelOverride : result.llmProviders.getDefaultProvider().config.getModel();
-        String currentSessionId = resolveOrCreateSessionId(sessionManager, ui);
+        var bc = bootstrapCore();
+        var modelName = modelOverride != null ? modelOverride : bc.result().llmProviders.getDefaultProvider().config.getModel();
+        String currentSessionId = resolveSessionId(bc.sessionManager(), ui);
+        if (currentSessionId == null) currentSessionId = defaultSessionId("cli-");
         CliLogger.initialize(workspace, currentSessionId);
-        var permissionStore = whiteToolsPermissionStore();
-        var noteMemory = memoryEnabled ? new MdMemoryProvider(workspace) : null;
-        var modelRegistry = new ModelRegistry(result.llmProviders, props);
-        var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
-        return new SessionContext(result, props, maxTurn, sessionPersistence, sessionManager, modelName,
-                currentSessionId, permissionStore, noteMemory, modelRegistry, memoryEnabled, dailyLogsEnabled, coding, todoV2Enabled,
-                remoteAgents, remoteServers, subAgentConfigs, promptExtractionEnabled, timeLimitSeconds);
+        var noteMemory = bc.memoryEnabled() ? new MdMemoryProvider(workspace) : null;
+        var modelRegistry = new ModelRegistry(bc.result().llmProviders, bc.props());
+        boolean promptExtraction = bc.props().property("agent.memory.prompt.extraction").map(Boolean::parseBoolean).orElse(false);
+        return new SessionContext(bc.result(), bc.props(), bc.maxTurn(), bc.sessionPersistence(), bc.sessionManager(), modelName,
+                currentSessionId, bc.permissionStore(), noteMemory, modelRegistry, bc.memoryEnabled(), bc.dailyLogsEnabled(),
+                bc.coding(), bc.todoV2Enabled(), bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), promptExtraction, timeLimitSeconds);
     }
+
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
         try {
             String currentSessionId = ctx.currentSessionId();
@@ -228,6 +363,7 @@ public class CliApp {
             CliLogger.close();
         }
     }
+
     private void runSinglePrompt(TerminalUI ui, SessionContext ctx, String promptText) {
         try {
             var runner = createLocalRunner(ui, ctx, ctx.currentSessionId());
@@ -236,6 +372,7 @@ public class CliApp {
             CliLogger.close();
         }
     }
+
     private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
         var agentConfig = new CliAgent.Config(ctx.result().llmProviders, modelOverride, ctx.maxTurn(), ctx.sessionPersistence(), workspace, question -> {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
@@ -244,98 +381,7 @@ public class CliApp {
         var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds());
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
     }
-    private void cleanup(TerminalUI ui, SessionContext ctx) {
-        closeQuietly(ui);
-        closeShutdownResources(ctx.result());
-    }
-    private ToolPermissionStore whiteToolsPermissionStore() {
-        var permissionStore = new FileRuleBasedPermissionStore(workspace.resolve(".core-ai").resolve("tool-permissions.json"));
-        permissionStore.allow(WriteTodosTool.WT_TOOL_NAME);
-        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_CREATE);
-        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_UPDATE);
-        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_LIST);
-        permissionStore.allow(WriteTodoTaskTool.TOOL_NAME_GET);
-        permissionStore.allow(TaskTool.TOOL_NAME);
-        permissionStore.allow(WebFetchTool.TOOL_NAME);
-        permissionStore.allow(WebSearchTool.TOOL_NAME);
-        permissionStore.allow(AskUserTool.TOOL_NAME);
-        permissionStore.allow(MemoryTool.TOOL_NAME);
-        permissionStore.allow(ReadFileTool.TOOL_NAME);
-        permissionStore.allow(GlobFileTool.TOOL_NAME);
-        permissionStore.allow(GrepFileTool.TOOL_NAME);
-        return permissionStore;
-    }
-    private void restoreActiveProvider(PropertiesFileSource props, LLMProviders providers) {
-        props.property("active.provider").ifPresent(name -> {
-            var type = LLMProviderType.fromName(name);
-            if (type != null && providers.getProvider(type) != null) {
-                providers.setDefaultProvider(type);
-            }
-        });
-    }
-    private String resolveOrCreateSessionId(SessionManager sessionManager, TerminalUI ui) {
-        String sessionId = resolveSessionId(sessionManager, ui);
-        return sessionId != null ? sessionId : "cli-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-    }
-    private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {
-        if (continueSession) {
-            var sessions = sessionManager.listSessions();
-            if (sessions.isEmpty()) {
-                ui.printStreamingChunk(AnsiTheme.MUTED + "No previous sessions found. Starting new session." + AnsiTheme.RESET + "\n");
-                return null;
-            }
-            var sessionId = sessions.getFirst().id();
-            ui.printStreamingChunk(AnsiTheme.MUTED + "Resuming session: " + sessionId + AnsiTheme.RESET + "\n");
-            return sessionId;
-        }
-        if (resume) {
-            var sessions = sessionManager.listSessions();
-            if (sessions.isEmpty()) {
-                ui.printStreamingChunk(AnsiTheme.MUTED + "No previous sessions found. Starting new session." + AnsiTheme.RESET + "\n");
-                return null;
-            }
-            return pickSession(sessions, sessionManager, ui);
-        }
-        return null;
-    }
-    private String pickSession(List<SessionInfo> sessions, SessionManager sessionManager, TerminalUI ui) {
-        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "Recent sessions:" + AnsiTheme.RESET + "\n\n");
-        int limit = Math.min(sessions.size(), 10);
-        for (int i = 0; i < limit; i++) {
-            var session = sessions.get(i);
-            String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
-            String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
-            ui.printStreamingChunk(String.format("  %s%2d)%s %s %s(%s)%s%n",
-                    AnsiTheme.PROMPT, i + 1, AnsiTheme.RESET,
-                    title,
-                    AnsiTheme.MUTED, timeStr, AnsiTheme.RESET));
-        }
-        ui.printStreamingChunk("\n");
-        while (true) {
-            ui.printStreamingChunk(AnsiTheme.PROMPT + "Select session (1-" + limit + "), or 'n' for new: " + AnsiTheme.RESET);
-            var input = ui.readRawLine();
-            if (input == null || "n".equalsIgnoreCase(input.trim())) {
-                return null;
-            }
-            try {
-                int choice = Integer.parseInt(input.trim());
-                if (choice >= 1 && choice <= limit) {
-                    var sessionId = sessions.get(choice - 1).id();
-                    ui.printStreamingChunk(AnsiTheme.MUTED + "Resuming session: " + sessionId + AnsiTheme.RESET + "\n");
-                    return sessionId;
-                }
-            } catch (NumberFormatException ignored) {
-                // fall through to re-prompt
-            }
-            ui.printStreamingChunk(AnsiTheme.WARNING + "Invalid selection." + AnsiTheme.RESET + "\n");
-        }
-    }
-    private String truncate(String text, int maxLength) {
-        if (text == null || text.isBlank()) return "(empty)";
-        String cleaned = text.replaceAll("[\\r\\n]+", " ").strip();
-        if (cleaned.length() <= maxLength) return cleaned;
-        return cleaned.substring(0, maxLength) + "...";
-    }
+
     public void startRemote(String serverUrl, String apiKey, String agentId) {
         var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant", null);
         var ui = new TerminalUI();
@@ -348,55 +394,28 @@ public class CliApp {
             closeQuietly(ui);
         }
     }
+
     public void startServe(int port, boolean openBrowser, Path webDir) {
         System.setProperty("core.appName", "core-ai-cli");
-        LOGGER.info("loading config from {}", configFile);
-        var props = PropertiesFileSource.fromFile(configFile);
-        mergeWorkspaceConfig(props, workspace);
-        var bootstrap = new AgentBootstrap(props);
-        registerMcpLoadingListener();
-        var result = bootstrap.initialize();
-        clearLoading();
-        restoreActiveProvider(props, result.llmProviders);
-        int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
-        boolean memoryEnabled = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(true);
-        boolean dailyLogsEnabled = props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(false);
-        boolean coding = props.property("agent.coding.enabled").map(Boolean::parseBoolean).orElse(false);
-        boolean todoV2Enabled = props.property("agent.todo.v2.enabled").map(Boolean::parseBoolean).orElse(false);
-        props.property("agent.memory.timezone").map(ZoneId::of).ifPresent(MemoryTriggerService::setTimezone);
-        var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
-        var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
-        var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
-        var sessionManager = new SessionManager(sessionPersistence);
-        var permissionStore = whiteToolsPermissionStore();
+        var bc = bootstrapCore();
+        var sessionManager = bc.sessionManager();
         var currentSessionId = resolveSessionIdForServe(sessionManager);
-        if (currentSessionId == null) {
-            currentSessionId = "serve-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-        }
+        if (currentSessionId == null) currentSessionId = defaultSessionId("serve-");
         CliLogger.initialize(workspace, currentSessionId);
-        var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
-        var agentConfig = new CliAgent.Config(result.llmProviders, modelOverride, maxTurn, sessionPersistence, workspace, question -> {
+        var agentConfig = new CliAgent.Config(bc.result().llmProviders, modelOverride, bc.maxTurn(), bc.sessionPersistence(), workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
-        }, memoryEnabled, dailyLogsEnabled, coding, todoV2Enabled, currentSessionId, remoteAgents, remoteServers, subAgentConfigs);
-        var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, currentSessionId);
-        var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, permissionStore, sessionManager, sessionPersistence, workspace);
-        var server = new A2AServer(port, runManager, chatSessionManager, sessionPersistence, webDir);
+        }, bc.memoryEnabled(), bc.dailyLogsEnabled(), bc.coding(), bc.todoV2Enabled(), currentSessionId, bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs());
+        var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, bc.permissionStore(), currentSessionId);
+        var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, bc.permissionStore(), sessionManager, bc.sessionPersistence(), workspace);
+        var server = new A2AServer(port, runManager, chatSessionManager, bc.sessionPersistence(), webDir);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             ScriptHookLifecycle.fireSessionStopHooks(workspace);
             server.stop();
-            closeShutdownResources(result);
+            closeShutdownResources(bc.result());
         }));
         server.start();
         var url = "http://localhost:" + port;
-        printServeStarted(url, currentSessionId, openBrowser);
-        try {
-            Thread.currentThread().join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-    private void printServeStarted(String url, String currentSessionId, boolean openBrowser) {
         ConsoleWriter.println("A2A server running at " + url);
         if (!currentSessionId.startsWith("serve-")) {
             ConsoleWriter.println("Session: " + currentSessionId);
@@ -406,55 +425,13 @@ public class CliApp {
         } else {
             ConsoleWriter.println("Headless mode - use any A2A client to connect");
         }
-    }
-    private String resolveSessionIdForServe(SessionManager sessionManager) {
-        if (continueSession) {
-            var sessions = sessionManager.listSessions();
-            if (sessions.isEmpty()) {
-                ConsoleWriter.println("No previous sessions found. Starting new session.");
-                return null;
-            }
-            var sessionId = sessions.getFirst().id();
-            ConsoleWriter.println("Resuming most recent session: " + sessionId);
-            return sessionId;
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
-        if (resume) {
-            var sessions = sessionManager.listSessions();
-            if (sessions.isEmpty()) {
-                ConsoleWriter.println("No previous sessions found. Starting new session.");
-                return null;
-            }
-            ConsoleWriter.println("\nRecent sessions:");
-            int limit = Math.min(sessions.size(), 10);
-            for (int i = 0; i < limit; i++) {
-                var session = sessions.get(i);
-                String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
-                String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
-                ConsoleWriter.printf("  %2d) %s (%s)%n", i + 1, title, timeStr);
-            }
-            ConsoleWriter.println();
-            ConsoleWriter.print("Select session (1-" + limit + "), or 'n' for new: ");
-            var scanner = new java.util.Scanner(System.in, StandardCharsets.UTF_8);
-            while (true) {
-                var input = scanner.nextLine();
-                if ("n".equalsIgnoreCase(input.trim())) {
-                    return null;
-                }
-                try {
-                    int choice = Integer.parseInt(input.trim());
-                    if (choice >= 1 && choice <= limit) {
-                        var sessionId = sessions.get(choice - 1).id();
-                        ConsoleWriter.println("Resuming session: " + sessionId);
-                        return sessionId;
-                    }
-                } catch (NumberFormatException ignored) {
-                    // fall through to re-prompt
-                }
-                ConsoleWriter.println("Invalid selection. Enter 1-" + limit + " or 'n' for new: ");
-            }
-        }
-        return null;
     }
+
     private void runRemoteSession(TerminalUI ui, RemoteConfig config, String promptText) {
         try {
             var connection = new A2ARemoteConnector().connect(config);
@@ -468,38 +445,6 @@ public class CliApp {
             }
         } catch (Exception e) {
             ui.showError(e.getMessage());
-        }
-    }
-    private void closeQuietly(TerminalUI ui) {
-        try {
-            ui.close();
-        } catch (Exception ignored) {
-            // terminal cleanup failure is non-critical
-        }
-    }
-    private void clearLoading() {
-        ConsoleWriter.clearLine();
-    }
-    private void registerMcpLoadingListener() {
-        McpClientManagerRegistry.addCreationListener(manager ->
-                manager.addListener((serverName, oldState, newState) -> {
-                    if (newState == McpClientManager.ConnectionState.CONNECTING) {
-                        ConsoleWriter.clearLineAndPrint(AnsiTheme.MUTED + "  Loading MCP server: " + serverName + "..." + AnsiTheme.RESET);
-                    } else if (newState == McpClientManager.ConnectionState.CONNECTED) {
-                        ConsoleWriter.clearLineAndPrint(AnsiTheme.MUTED + "  MCP server loaded: " + serverName + AnsiTheme.RESET);
-                    } else if (newState == McpClientManager.ConnectionState.FAILED) {
-                        ConsoleWriter.clearLineAndPrint(AnsiTheme.WARNING + "  MCP server failed: " + serverName + AnsiTheme.RESET);
-                    }
-                })
-        );
-    }
-    private void closeShutdownResources(BootstrapResult result) {
-        for (var resource : result.shutdownResources()) {
-            try {
-                resource.close();
-            } catch (Exception ignored) {
-                // shutdown cleanup failure is non-critical
-            }
         }
     }
 }
