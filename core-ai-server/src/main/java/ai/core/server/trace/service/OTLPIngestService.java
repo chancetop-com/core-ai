@@ -71,11 +71,46 @@ public class OTLPIngestService {
         var spanId = bytesToHex(protoSpan.getSpanId().toByteArray());
         var parentSpanId = protoSpan.getParentSpanId().isEmpty() ? null : bytesToHex(protoSpan.getParentSpanId().toByteArray());
         var attrs = extractAttributes(protoSpan.getAttributesList());
+        ensureTraceExists(traceId, protoSpan, attrs, resourceAttrs);
         saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs);
         if (parentSpanId == null) {
             upsertTrace(protoSpan, traceId, attrs, resourceAttrs);
             recalculateTraceTokens(traceId);
         }
+    }
+
+    private void ensureTraceExists(String traceId, io.opentelemetry.proto.trace.v1.Span protoSpan,
+                                   Map<String, String> attrs, Map<String, String> resourceAttrs) {
+        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
+        if (!existing.isEmpty()) return;
+
+        long startMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
+        var trace = new Trace();
+        trace.id = UUID.randomUUID().toString();
+        trace.traceId = traceId;
+        trace.name = protoSpan.getName();
+        trace.sessionId = attrs.get("session.id");
+        trace.userId = attrs.get("user.id");
+        trace.agentName = attrs.get("gen_ai.agent.name");
+        trace.model = attrs.get("gen_ai.request.model");
+        trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
+        trace.type = resolveType(trace.source, attrs, resourceAttrs);
+        trace.status = TraceStatus.RUNNING;
+        trace.input = resolveInput(attrs);
+        trace.metadata = Map.of(
+            "service", resourceAttrs.getOrDefault("service.name", "unknown"),
+            "version", resourceAttrs.getOrDefault("service.version", "unknown"),
+            "environment", resourceAttrs.getOrDefault("deployment.environment", "unknown"));
+        trace.durationMs = 0L;
+        trace.startedAt = toZonedDateTime(startMs);
+        trace.createdAt = ZonedDateTime.now();
+        trace.updatedAt = ZonedDateTime.now();
+        trace.inputTokens = 0L;
+        trace.outputTokens = 0L;
+        trace.totalTokens = 0L;
+        trace.cachedTokens = 0L;
+        trace.costUsd = 0.0;
+        traceCollection.insert(trace);
     }
 
     private void saveSpan(io.opentelemetry.proto.trace.v1.Span protoSpan,
