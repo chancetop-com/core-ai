@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Database, Files, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Zap } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Database, Files, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -80,6 +80,7 @@ export default function Layout() {
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat },
     { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces },
     { to: '/agents', icon: Bot, label: 'Agents', show: true },
+    { to: '/workflows', icon: Workflow, label: 'Workflows', show: true },
     { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts },
     { to: '/tasks', icon: ListChecks, label: 'Tasks', show: true },
     { to: '/triggers', icon: Zap, label: 'Triggers', show: true, children: [

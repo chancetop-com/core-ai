@@ -616,6 +616,60 @@ export interface UpdateScheduleRequest {
   concurrency_policy?: string;
 }
 
+export interface WorkflowView {
+  id: string;
+  name: string;
+  mode?: string;
+  status?: string;
+  published_version?: number;
+  published_version_id?: string;
+  draft_graph?: string;
+}
+
+export interface ListWorkflowsResponse {
+  workflows: WorkflowView[];
+}
+
+export interface WorkflowRunView {
+  id: string;
+  workflow_id?: string;
+  status?: string;
+  input?: string;
+  output?: string;
+  error?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface ListWorkflowRunsResponse {
+  runs: WorkflowRunView[];
+}
+
+export interface WorkflowNodeRunView {
+  node_id: string;
+  node_type?: string;
+  status?: string;
+  output?: string;
+  error?: string;
+  child_run_id?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface ListNodeRunsResponse {
+  node_runs: WorkflowNodeRunView[];
+}
+
+export interface CreateRunResponse {
+  run_id: string;
+  status: string;
+}
+
+export interface ValidateWorkflowResponse {
+  valid: boolean;
+  errors: string[];
+}
+
 export const api = {
   traces: {
     list: (offset = 0, limit = 20, filters?: TraceFilter) => {
@@ -680,6 +734,23 @@ export const api = {
       request<ConvertJavaToSchemaResponse>('/api/utils/java-to-schema', { method: 'POST', body: JSON.stringify({ java_code: javaCode }) }),
     memories: (agentId: string) =>
       request<ListAgentMemoriesResponse>(`/api/agents/${agentId}/memories`),
+  },
+  workflows: {
+    list: () => request<ListWorkflowsResponse>('/api/workflows'),
+    create: (data: { name: string; mode?: string; graph: string }) =>
+      request<WorkflowView>('/api/workflows', { method: 'POST', body: JSON.stringify(data) }),
+    get: (id: string) => request<WorkflowView>(`/api/workflows/${id}`),
+    update: (id: string, data: { name?: string; graph?: string }) =>
+      request<WorkflowView>(`/api/workflows/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    validate: (id: string) =>
+      request<ValidateWorkflowResponse>(`/api/workflows/${id}/validate`, { method: 'POST' }),
+    publish: (id: string) =>
+      request<WorkflowView>(`/api/workflows/${id}/publish`, { method: 'POST' }),
+    createRun: (id: string, input: string) =>
+      request<CreateRunResponse>(`/api/workflows/${id}/runs`, { method: 'POST', body: JSON.stringify({ input }) }),
+    runs: (id: string) => request<ListWorkflowRunsResponse>(`/api/workflows/${id}/runs`),
+    getRun: (runId: string) => request<WorkflowRunView>(`/api/workflow-runs/${runId}`),
+    nodeRuns: (runId: string) => request<ListNodeRunsResponse>(`/api/workflow-runs/${runId}/nodes`),
   },
   utils: {
     generate: (data: { system_prompt: string; user_prompt: string }) =>
