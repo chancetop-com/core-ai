@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Synchronous OpenAI-compatible endpoint for WeClaw.
@@ -38,6 +39,7 @@ public class WeClawSyncController implements Controller {
     private static final Logger LOGGER = LoggerFactory.getLogger(WeClawSyncController.class);
     private static final long POLL_TIMEOUT_MS = 120_000;
     private static final long POLL_INTERVAL_MS = 500;
+    private final ConcurrentHashMap<String, String> sessionCache = new ConcurrentHashMap<>();
 
     @Inject
     ChannelConfigStore channelConfigStore;
@@ -77,17 +79,35 @@ public class WeClawSyncController implements Controller {
 
         var userId = "weclaw:" + UUID.randomUUID().toString().substring(0, 8);
 
-        var config = new SessionConfig();
-        var result = sessionManager.createSessionFromAgent(agent, config, userId, "weclaw");
-        var sessionId = result.sessionId();
+        var userField = (String) payload.get("user");
+        var isNewConversation = countUserMessages(payload) == 1;
 
-        chatMessageService.registerSession(sessionId, userId, channel.agentId);
-        chatMessageService.writeUserMessage(sessionId, userText);
+        String sessionId;
+        if (userField != null && !isNewConversation && sessionCache.containsKey(userField)) {
+            sessionId = sessionCache.get(userField);
+            chatMessageService.writeUserMessage(sessionId, userText);
+            var command = SessionCommand.sendMessage(sessionId, userId, userText, null);
+            commandPublisher.publish(command);
+            LOGGER.info("weclaw sync dispatch (reused), sessionId={}, agentId={}, textLen={}", sessionId, channel.agentId, userText.length());
+        } else {
+            if (userField != null && isNewConversation) {
+                sessionCache.remove(userField);
+            }
+            var config = new SessionConfig();
+            var result = sessionManager.createSessionFromAgent(agent, config, userId, "weclaw");
+            sessionId = result.sessionId();
+            if (userField != null) {
+                sessionCache.put(userField, sessionId);
+            }
 
-        var command = SessionCommand.sendMessage(sessionId, userId, userText, null);
-        commandPublisher.publish(command);
+            chatMessageService.registerSession(sessionId, userId, channel.agentId);
+            chatMessageService.writeUserMessage(sessionId, userText);
 
-        LOGGER.info("weclaw sync dispatch, sessionId={}, agentId={}, textLen={}", sessionId, channel.agentId, userText.length());
+            var command = SessionCommand.sendMessage(sessionId, userId, userText, null);
+            commandPublisher.publish(command);
+
+            LOGGER.info("weclaw sync dispatch (new), sessionId={}, agentId={}, user={}, textLen={}", sessionId, channel.agentId, userField, userText.length());
+        }
 
         var response = pollForResponse(sessionId);
         if (response == null) {
@@ -135,8 +155,7 @@ public class WeClawSyncController implements Controller {
 
     private String pollForResponse(String sessionId) {
         int initialCount = chatMessageService.history(sessionId).size();
-        long deadline = System.currentTimeMillis() + POLL_TIMEOUT_MS;
-        while (System.currentTimeMillis() < deadline) {
+        while (true) {
             var messages = chatMessageService.history(sessionId);
             for (int i = initialCount; i < messages.size(); i++) {
                 var msg = messages.get(i);
@@ -151,6 +170,18 @@ public class WeClawSyncController implements Controller {
                 return null;
             }
         }
-        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private int countUserMessages(Map<String, Object> payload) {
+        var messages = payload.get("messages");
+        if (!(messages instanceof List<?> list)) return 0;
+        int count = 0;
+        for (var item : list) {
+            if (item instanceof Map<?, ?> msg && "user".equals(msg.get("role"))) {
+                count++;
+            }
+        }
+        return count;
     }
 }
