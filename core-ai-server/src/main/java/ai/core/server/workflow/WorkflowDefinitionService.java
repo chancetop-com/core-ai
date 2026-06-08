@@ -48,6 +48,11 @@ public class WorkflowDefinitionService {
         return definitionCollection.find(Filters.eq("user_id", userId));
     }
 
+    public void delete(String id, String userId) {
+        get(id, userId);   // ownership check; published versions and runs are left as harmless orphans
+        definitionCollection.delete(id);
+    }
+
     public WorkflowDefinition update(String id, String name, String graph, String userId) {
         var definition = get(id, userId);
         if (name != null) {
