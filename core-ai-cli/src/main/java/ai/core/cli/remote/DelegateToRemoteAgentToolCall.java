@@ -4,6 +4,7 @@ import ai.core.a2a.A2ARemoteAgentDescriptor;
 import ai.core.a2a.InMemoryRemoteAgentContextStore;
 import ai.core.a2a.RemoteAgentContextStore;
 import ai.core.agent.ExecutionContext;
+import ai.core.cli.auth.AuthConfig;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
@@ -42,7 +43,9 @@ public class DelegateToRemoteAgentToolCall extends ToolCall {
                                                           java.util.concurrent.atomic.AtomicReference<A2ARemoteConnector.Connection> connection) {
         var current = connection.get();
         if (current != null) return current;
-        var remoteConfig = new RemoteConfig(config.url, config.resolvedApiKey(), config.agentId, config.name);
+        var apiKey = config.resolvedApiKey();
+        if (apiKey != null) AuthConfig.login(config.url, apiKey).save();
+        var remoteConfig = new RemoteConfig(config.url, config.agentId, config.name);
         var connected = new A2ARemoteConnector().connect(remoteConfig);
         if (connection.compareAndSet(null, connected)) return connected;
         return connection.get();

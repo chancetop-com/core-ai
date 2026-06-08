@@ -1,5 +1,6 @@
 package ai.core.cli.remote;
 
+import ai.core.cli.auth.AuthConfig;
 import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
 import org.slf4j.Logger;
@@ -8,12 +9,17 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 /**
+ * Connection configuration for a remote server — which server, which agent,
+ * display name.  API credentials live separately in {@link AuthConfig}.
+ *
+ * <p>Stored at {@code ~/.core-ai/remote.json}.
+ *
  * @author stephen
  */
 public record RemoteConfig(@Property(name = "server_url") String serverUrl,
-                           @Property(name = "api_key") String apiKey,
                            @Property(name = "agent_id") String agentId,
                            @Property(name = "name") String name) {
     private static final Logger LOGGER = LoggerFactory.getLogger(RemoteConfig.class);
@@ -23,9 +29,30 @@ public record RemoteConfig(@Property(name = "server_url") String serverUrl,
         if (!Files.exists(CONFIG_PATH)) return null;
         try {
             var json = Files.readString(CONFIG_PATH);
+            // Migrate old format that had api_key embedded
+            migrateIfNeeded(json);
             return JsonUtil.fromJson(RemoteConfig.class, json);
         } catch (Exception e) {
+            LOGGER.warn("Failed to load remote config: {}", e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * One-time migration: if remote.json still contains an api_key field,
+     * extract it into auth.json so subsequent reads don't need it here.
+     */
+    @SuppressWarnings("unchecked")
+    private static void migrateIfNeeded(String json) {
+        Map<String, Object> map = JsonUtil.fromJson(Map.class, json);
+        var apiKey = (String) map.get("api_key");
+        var serverUrl = (String) map.get("server_url");
+        if (apiKey != null && serverUrl != null) {
+            var auth = AuthConfig.load(serverUrl);
+            if (auth == null) {
+                AuthConfig.login(serverUrl, apiKey).save();
+                LOGGER.info("Migrated api_key from remote.json to auth.json");
+            }
         }
     }
 

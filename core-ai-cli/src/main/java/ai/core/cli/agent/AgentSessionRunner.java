@@ -68,6 +68,7 @@ public class AgentSessionRunner {
     private final SessionUpgradeHandler upgradeHandler;
     private final ModelPicker modelPicker;
     private ReplCommandHandler commands;
+    private final String defaultServerUrl;
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
         this.ui = ui;
         this.agent = agent;
@@ -90,6 +91,7 @@ public class AgentSessionRunner {
         }
         this.upgradeHandler = new SessionUpgradeHandler(ui);
         this.modelPicker = new ModelPicker(ui, agent, llmProviders, modelRegistry);
+        this.defaultServerUrl = config.defaultServerUrl;
     }
     public String run() {
         if (agent.hasPersistenceProvider()) {
@@ -230,7 +232,7 @@ public class AgentSessionRunner {
     private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {
         var dispatcher = new CommandDispatcher(
                 ui, modelPicker, switchSessionId, remoteConfig,
-                new HandlerContext(commands, memoryCommand, memoryEnabled), this);
+                new HandlerContext(commands, memoryCommand, memoryEnabled), this, defaultServerUrl);
         boolean showFrame = true;
         while (true) {
             try {
@@ -412,6 +414,7 @@ public class AgentSessionRunner {
                          MdMemoryProvider memory, ModelRegistry modelRegistry,
                          SessionPersistence sessionPersistence,
                          boolean memoryEnabled, boolean dailyLogsEnabled,
-                         boolean promptExtractionEnabled, Integer timeLimitSeconds) {
+                         boolean promptExtractionEnabled, Integer timeLimitSeconds,
+                         String defaultServerUrl) {
     }
 }

@@ -1,6 +1,7 @@
 package ai.core.cli.remote;
 
 import ai.core.a2a.A2ARemoteAgentDescriptor;
+import ai.core.cli.auth.AuthService;
 
 import java.time.Duration;
 
@@ -31,8 +32,10 @@ public class A2ARemoteAgentConfig {
 
     public String resolvedApiKey() {
         if (apiKey != null && !apiKey.isBlank()) return apiKey;
-        if (apiKeyEnv == null || apiKeyEnv.isBlank()) return null;
-        return System.getenv(apiKeyEnv);
+        if (apiKeyEnv != null && !apiKeyEnv.isBlank()) return System.getenv(apiKeyEnv);
+        // Fallback: use auth.json if already logged into this server
+        if (url != null) return AuthService.loadApiKey(url);
+        return null;
     }
 
     public A2ARemoteAgentDescriptor toDescriptor() {

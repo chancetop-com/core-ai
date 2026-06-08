@@ -1,5 +1,6 @@
 package ai.core.cli.command;
 
+import ai.core.cli.auth.AuthService;
 import ai.core.cli.remote.RemoteApiClient;
 import ai.core.cli.remote.RemoteConfig;
 import ai.core.cli.ui.AnsiTheme;
@@ -96,7 +97,7 @@ public class SkillCommandHandler {
             return;
         }
 
-        var api = new RemoteApiClient(config.serverUrl(), config.apiKey());
+        var api = new RemoteApiClient(config.serverUrl(), AuthService.loadApiKey(config.serverUrl()));
         var files = new LinkedHashMap<String, Path>();
         files.put("skill_file", skillFile);
 
@@ -156,7 +157,7 @@ public class SkillCommandHandler {
         }
 
         ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Fetching skills from server..." + AnsiTheme.RESET + "\n");
-        var api = new RemoteApiClient(config.serverUrl(), config.apiKey());
+        var api = new RemoteApiClient(config.serverUrl(), AuthService.loadApiKey(config.serverUrl()));
 
         String json;
         try {

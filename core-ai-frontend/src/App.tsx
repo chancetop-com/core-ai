@@ -23,6 +23,7 @@ const SystemPromptList = lazy(() => import('./pages/system-prompts/SystemPromptL
 const SystemPromptEditor = lazy(() => import('./pages/system-prompts/SystemPromptEditor'));
 const Login = lazy(() => import('./pages/login/Login'));
 const Register = lazy(() => import('./pages/login/Register'));
+const Authorize = lazy(() => import('./pages/login/Authorize'));
 const UserManagement = lazy(() => import('./pages/users/UserManagement'));
 const SettingsPage = lazy(() => import('./pages/settings/Settings'));
 const Scheduler = lazy(() => import('./pages/scheduler/Scheduler'));
@@ -97,8 +98,18 @@ export default function App() {
                 <Route path="/shared/artifacts/:token" element={<SharedArtifact />} />
                 {authRequired && (
                   <>
-                    <Route path="/login" element={user ? <Navigate to={defaultPath} replace /> : <Login />} />
+                    <Route path="/login" element={
+                      user
+                        ? (() => {
+                            const cb = new URLSearchParams(window.location.search).get('callback');
+                            return cb
+                              ? <Navigate to={`/authorize?callback=${encodeURIComponent(cb)}`} replace />
+                              : <Navigate to={defaultPath} replace />;
+                          })()
+                        : <Login />
+                    } />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/authorize" element={user ? <Authorize /> : <Navigate to="/login" replace />} />
                   </>
                 )}
                 {!user && authRequired ? (

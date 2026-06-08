@@ -1,6 +1,7 @@
 package ai.core.cli.remote;
 
 import ai.core.a2a.A2ARemoteAgentDescriptor;
+import ai.core.cli.auth.AuthService;
 
 import java.time.Duration;
 import java.util.List;
@@ -30,7 +31,8 @@ public class A2ARemoteServerConfig {
 
     public String resolvedApiKey() {
         if (apiKey != null && !apiKey.isBlank()) return apiKey;
-        if (apiKeyEnv == null || apiKeyEnv.isBlank()) return null;
-        return System.getenv(apiKeyEnv);
+        if (apiKeyEnv != null && !apiKeyEnv.isBlank()) return System.getenv(apiKeyEnv);
+        if (url != null) return AuthService.loadApiKey(url);
+        return null;
     }
 }

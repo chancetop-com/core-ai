@@ -23,9 +23,11 @@ import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -207,6 +209,16 @@ public class SkillService {
 
     private boolean containsNormalized(String value, String normalizedQuery) {
         return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedQuery);
+    }
+
+    public Map<String, String> batchResolve(Set<String> skillIds) {
+        var cleanIds = IdLists.clean(new ArrayList<>(skillIds));
+        if (cleanIds.isEmpty()) return Map.of();
+        var result = new HashMap<String, String>();
+        for (var def : skillCollection.find(Filters.in("_id", cleanIds.toArray(new String[0])))) {
+            result.put(def.id, def.name);
+        }
+        return result;
     }
 
     public List<SkillMetadata> resolveSkills(List<String> skillIds) {

@@ -141,7 +141,8 @@ public class RemoteApiClient {
     }
 
     private HttpClient createHttpClient(Duration timeout) {
-        var builder = HttpClient.newBuilder();
+        var builder = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1);
         if (timeout != null) builder.connectTimeout(timeout);
         return builder.build();
     }

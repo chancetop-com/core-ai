@@ -61,7 +61,7 @@ public class Main implements Callable<Integer> {
     @Option(names = "--workspace", description = "Set the working directory for the agent session")
     Path workspace;
 
-    @Option(names = "--server", description = "Connect to a remote A2A agent or core-ai-server (e.g. http://localhost:8080)")
+    @Option(names = "--server", description = "Connect to a remote A2A agent or core-ai-server")
     String serverUrl;
 
     @Option(names = "--api-key", description = "Bearer token for remote server authentication")
@@ -73,7 +73,7 @@ public class Main implements Callable<Integer> {
     @Option(names = "--serve", description = "Start A2A web server mode")
     boolean serve;
 
-    @Option(names = "--port", description = "A2A server port (default: 9527)", defaultValue = "9527")
+    @Option(names = "--port", description = "A2A server port (default: 8080)", defaultValue = "8080")
     int port;
 
     @Option(names = "--headless", description = "A2A server without opening browser")

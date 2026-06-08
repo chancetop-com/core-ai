@@ -10,6 +10,8 @@ import ai.core.cli.a2a.A2AServer;
 import ai.core.cli.acp.AcpAgentRunner;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
+import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.auth.AuthManager;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.hook.ScriptHookLifecycle;
@@ -246,8 +248,9 @@ public class CliApp {
         var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = whiteToolsPermissionStore(workspace);
         var subAgentConfigs = parseSubAgentConfig(props, result.llmProviders);
+        boolean a2aAutoDiscover = props.property("a2a.autoDiscover").map(Boolean::parseBoolean).orElse(false);
         return new BootstrapCore(props, result, maxTurn, memory, dailyLogs, coding, todoV2,
-                remoteAgents, remoteServers, sessionPersistence, sessionManager, permissionStore, subAgentConfigs);
+                remoteAgents, remoteServers, sessionPersistence, sessionManager, permissionStore, subAgentConfigs, a2aAutoDiscover);
     }
 
     private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {
@@ -340,11 +343,12 @@ public class CliApp {
         boolean promptExtraction = bc.props().property("agent.memory.prompt.extraction").map(Boolean::parseBoolean).orElse(false);
         return new SessionContext(bc.result(), bc.props(), bc.maxTurn(), bc.sessionPersistence(), bc.sessionManager(), modelName,
                 currentSessionId, bc.permissionStore(), noteMemory, modelRegistry, bc.memoryEnabled(), bc.dailyLogsEnabled(),
-                bc.coding(), bc.todoV2Enabled(), bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), promptExtraction, timeLimitSeconds);
+                bc.coding(), bc.todoV2Enabled(), bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), promptExtraction, timeLimitSeconds, bc.a2aAutoDiscover());
     }
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
         try {
+            printAuthBanner(ui);
             String currentSessionId = ctx.currentSessionId();
             while (true) {
                 var runner = createLocalRunner(ui, ctx, currentSessionId);
@@ -376,14 +380,19 @@ public class CliApp {
     private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
         var agentConfig = new CliAgent.Config(ctx.result().llmProviders, modelOverride, ctx.maxTurn(), ctx.sessionPersistence(), workspace, question -> {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
-        }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs());
+        }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover());
         var agent = CliAgent.of(agentConfig);
-        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds());
+        var defaultServerUrl = ctx.props().property("core.server.url").orElse(null);
+        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl);
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
     }
 
     public void startRemote(String serverUrl, String apiKey, String agentId) {
-        var config = new RemoteConfig(serverUrl, apiKey, agentId != null ? agentId : "default-assistant", null);
+        // Save credentials so A2ARemoteConnector can resolve them via AuthService
+        if (apiKey != null) {
+            AuthConfig.login(serverUrl, apiKey).save();
+        }
+        var config = new RemoteConfig(serverUrl, agentId != null ? agentId : "default-assistant", null);
         var ui = new TerminalUI();
         try {
             runRemoteSession(ui, config, prompt);
@@ -405,7 +414,7 @@ public class CliApp {
         var agentConfig = new CliAgent.Config(bc.result().llmProviders, modelOverride, bc.maxTurn(), bc.sessionPersistence(), workspace, question -> {
             LOGGER.info("agent asks user (auto-approved in serve mode): {}", question);
             return "(user input not available in web mode)";
-        }, bc.memoryEnabled(), bc.dailyLogsEnabled(), bc.coding(), bc.todoV2Enabled(), currentSessionId, bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs());
+        }, bc.memoryEnabled(), bc.dailyLogsEnabled(), bc.coding(), bc.todoV2Enabled(), currentSessionId, bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), bc.a2aAutoDiscover());
         var runManager = new A2ARunManager(() -> CliAgent.of(agentConfig), autoApproveAll, bc.permissionStore(), currentSessionId);
         var chatSessionManager = new LocalChatSessionManager(() -> CliAgent.of(agentConfig), autoApproveAll, bc.permissionStore(), sessionManager, bc.sessionPersistence(), workspace);
         var server = new A2AServer(port, runManager, chatSessionManager, bc.sessionPersistence(), webDir);
@@ -415,6 +424,8 @@ public class CliApp {
             closeShutdownResources(bc.result());
         }));
         server.start();
+        var authStatus = AuthManager.status();
+        if (authStatus != null) ConsoleWriter.println("[" + authStatus + "]");
         var url = "http://localhost:" + port;
         ConsoleWriter.println("A2A server running at " + url);
         if (!currentSessionId.startsWith("serve-")) {
@@ -445,6 +456,13 @@ public class CliApp {
             }
         } catch (Exception e) {
             ui.showError(e.getMessage());
+        }
+    }
+
+    private void printAuthBanner(TerminalUI ui) {
+        if (AuthManager.isLoggedIn()) {
+            var status = AuthManager.status();
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  [" + status + "]" + AnsiTheme.RESET + "\n");
         }
     }
 }

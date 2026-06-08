@@ -1,35 +1,63 @@
 package ai.core.cli.remote;
 
+import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.auth.AuthManager;
+import ai.core.cli.auth.AuthService;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
-import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.Map;
-
 /**
+ * Handles the {@code /remote} slash command: connects to a remote
+ * core-ai-server.  Authentication is delegated to {@link AuthService},
+ * connection config is stored in {@link RemoteConfig}.
+ *
  * @author stephen
  */
 public class RemoteCommandHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(RemoteCommandHandler.class);
 
     private final TerminalUI ui;
+    private final String defaultServerUrl;
 
-    public RemoteCommandHandler(TerminalUI ui) {
+    public RemoteCommandHandler(TerminalUI ui, String defaultServerUrl) {
         this.ui = ui;
+        this.defaultServerUrl = defaultServerUrl;
     }
 
     public RemoteConfig handle() {
+        // 1. Saved remote.json exists and still authenticated
         var saved = RemoteConfig.load();
-        if (saved != null) {
+        if (saved != null && AuthService.isLoggedIn(saved.serverUrl())) {
             return handleSavedConfig(saved);
         }
+
+        // 2. Already logged in (via /login or /server) — use active config, just pick agent
+        if (AuthManager.isLoggedIn()) {
+            return handleActiveLogin();
+        }
+
+        // 3. Not logged in at all — full login flow
         return handleNewLogin();
+    }
+
+    private RemoteConfig handleActiveLogin() {
+        var active = AuthConfig.load();
+        var serverUrl = active.serverUrl();
+        var name = active.name() != null ? active.name() : (active.userId() != null ? active.userId() : "authenticated");
+
+        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote server: " + AnsiTheme.RESET + serverUrl + "\n");
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Using active login as " + name + AnsiTheme.RESET + "\n");
+
+        var agentId = ui.readRawLine("  Agent ID (default: default-assistant): ");
+        if (agentId == null) return null;
+        if (agentId.isBlank()) agentId = "default-assistant";
+
+        var config = new RemoteConfig(serverUrl, agentId.trim(), null);
+        config.save();
+        ui.printStreamingChunk(AnsiTheme.MUTED + "  Saved to ~/.core-ai/remote.json" + AnsiTheme.RESET + "\n");
+        return config;
     }
 
     private RemoteConfig handleSavedConfig(RemoteConfig saved) {
@@ -50,63 +78,23 @@ public class RemoteCommandHandler {
     private RemoteConfig handleNewLogin() {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Remote Server Setup" + AnsiTheme.RESET + "\n\n");
 
-        var serverUrl = ui.readRawLine("  Server URL [http://localhost:8080]: ");
+        var promptDefault = defaultServerUrl != null ? defaultServerUrl : "https://core-ai-server.connexup-dev.net";
+        var serverUrl = ui.readRawLine("  Server URL [" + promptDefault + "]: ");
         LOGGER.debug("serverUrl input: [{}] (null={})", serverUrl, serverUrl == null);
         if (serverUrl == null) return null;
         serverUrl = serverUrl.trim();
-        if (serverUrl.isEmpty()) serverUrl = "http://localhost:8080";
+        if (serverUrl.isEmpty()) serverUrl = promptDefault;
         if (serverUrl.endsWith("/")) serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
 
-        var email = ui.readRawLine("  Email: ");
-        LOGGER.debug("email input: [{}] (null={})", email, email == null);
-        if (email == null || email.isBlank()) return null;
-
-        var password = ui.readRawLine("  Password: ");
-        LOGGER.debug("password input: [{}] (null={})", password != null ? "***" : null, password == null);
-        if (password == null || password.isBlank()) return null;
-
-        ui.printStreamingChunk(AnsiTheme.MUTED + "  Logging in..." + AnsiTheme.RESET);
-
-        var loginResult = login(serverUrl, email.trim(), password.trim());
-        if (loginResult == null) return null;
-
-        ui.printStreamingChunk("\r" + AnsiTheme.SUCCESS + "  ✓ Login successful" + AnsiTheme.RESET + "                    \n");
+        var apiKey = AuthService.loginOrBrowser(ui, serverUrl);
+        if (apiKey == null) return null;
 
         var agentId = ui.readRawLine("  Agent ID (default: default-assistant): ");
         if (agentId == null || agentId.isBlank()) agentId = "default-assistant";
 
-        var config = new RemoteConfig(serverUrl, loginResult.apiKey, agentId.trim(), loginResult.name);
+        var config = new RemoteConfig(serverUrl, agentId.trim(), null);
         config.save();
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Config saved to ~/.core-ai/remote.json" + AnsiTheme.RESET + "\n");
         return config;
     }
-
-    @SuppressWarnings("unchecked")
-    private LoginResult login(String serverUrl, String email, String password) {
-        try {
-            var body = JsonUtil.toJson(Map.of("email", email, "password", password));
-            var uri = URI.create(serverUrl + "/api/auth/login");
-            LOGGER.debug("login request: uri={}, body={}", uri, body);
-            var request = HttpRequest.newBuilder()
-                    .uri(uri)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-            var httpClient = HttpClient.newBuilder().build();
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            LOGGER.debug("login response: status={}, body={}, uri={}",
-                    response.statusCode(), response.body(), response.uri());
-            if (response.statusCode() != 200) {
-                ui.printStreamingChunk("\n" + AnsiTheme.ERROR + "  ✗ Login failed: " + response.body() + AnsiTheme.RESET + "\n");
-                return null;
-            }
-            Map<String, Object> result = JsonUtil.fromJson(Map.class, response.body());
-            return new LoginResult((String) result.get("api_key"), (String) result.get("name"));
-        } catch (Exception e) {
-            ui.printStreamingChunk("\n" + AnsiTheme.ERROR + "  ✗ Connection failed: " + e.getMessage() + AnsiTheme.RESET + "\n");
-            return null;
-        }
-    }
-
-    record LoginResult(String apiKey, String name) { }
 }

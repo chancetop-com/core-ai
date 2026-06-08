@@ -24,5 +24,5 @@ record SessionContext(BootstrapResult result, PropertiesFileSource props, int ma
         boolean coding, boolean todoV2Enabled,
         List<A2ARemoteAgentConfig> remoteAgents, List<A2ARemoteServerConfig> remoteServers,
         Map<String, SubAgentConfig> subAgentConfigs,
-        boolean promptExtractionEnabled, Integer timeLimitSeconds) {
+        boolean promptExtractionEnabled, Integer timeLimitSeconds, boolean a2aAutoDiscover) {
 }

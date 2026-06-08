@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const API_TARGET = 'https://localhost:8443'
+const API_TARGET = 'http://localhost:8080'
 const ROUTE_ONLY_PRELOADS = [
   'react-markdown',
   'recharts',
@@ -22,6 +22,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 3000,
     proxy: {
       '/api': {

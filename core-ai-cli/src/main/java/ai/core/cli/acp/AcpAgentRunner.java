@@ -176,7 +176,7 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of());
+                   Map.of(), false);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -216,7 +216,7 @@ public class AcpAgentRunner {
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of());
+                Map.of(), false);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {

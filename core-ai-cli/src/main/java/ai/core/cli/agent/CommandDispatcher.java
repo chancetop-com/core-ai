@@ -1,5 +1,6 @@
 package ai.core.cli.agent;
 
+import ai.core.cli.auth.AuthCommandHandler;
 import ai.core.cli.command.McpCommandHandler;
 import ai.core.cli.command.HandlerContext;
 import ai.core.cli.command.SkillCommandHandler;
@@ -23,17 +24,20 @@ public class CommandDispatcher {
     private final AtomicReference<String> switchSessionId;
     private final AtomicReference<RemoteConfig> remoteConfig;
     private final HandlerContext handlers;
+    private final String defaultServerUrl;
 
     CommandDispatcher(TerminalUI ui, ModelPicker modelPicker,
                       AtomicReference<String> switchSessionId,
                       AtomicReference<RemoteConfig> remoteConfig,
-                      HandlerContext handlers, AgentSessionRunner session) {
+                      HandlerContext handlers, AgentSessionRunner session,
+                      String defaultServerUrl) {
         this.ui = ui;
         this.session = session;
         this.modelPicker = modelPicker;
         this.switchSessionId = switchSessionId;
         this.remoteConfig = remoteConfig;
         this.handlers = handlers;
+        this.defaultServerUrl = defaultServerUrl;
     }
 
     public void dispatch(String trimmed, BlockingQueue<String> queue) {
@@ -110,11 +114,17 @@ public class CommandDispatcher {
             return true;
         }
         if ("/remote".equals(lower)) {
-            var config = new RemoteCommandHandler(ui).handle();
+            var config = new RemoteCommandHandler(ui, defaultServerUrl).handle();
             if (config != null) {
                 remoteConfig.set(config);
                 queue.offer(POISON_PILL);
             }
+            return true;
+        }
+        if (lower.startsWith("/login") || "/logout".equals(lower)
+                || "/status".equals(lower)
+                || lower.startsWith("/server")) {
+            new AuthCommandHandler(ui, defaultServerUrl).handle(trimmed);
             return true;
         }
         return false;

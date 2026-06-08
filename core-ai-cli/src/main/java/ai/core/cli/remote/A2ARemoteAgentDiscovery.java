@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 public class A2ARemoteAgentDiscovery {
     private static final Logger LOGGER = LoggerFactory.getLogger(A2ARemoteAgentDiscovery.class);
     private static final int MAX_TOOL_NAME_LENGTH = 64;
-    private static final Duration DISCOVERY_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration DISCOVERY_TIMEOUT = Duration.ofSeconds(15);
     private static final long CACHE_TTL_NANOS = TimeUnit.MINUTES.toNanos(1);
     private static final ConcurrentMap<String, CacheEntry> CACHE = new ConcurrentHashMap<>();
 

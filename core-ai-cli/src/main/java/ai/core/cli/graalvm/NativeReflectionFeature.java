@@ -64,6 +64,8 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.vender.VendorException",
         "ai.core.vender.vendors.RipgrepVendor",
         "ai.core.cli.remote.RemoteConfig",
+        "ai.core.cli.auth.AuthConfig",
+        "ai.core.cli.auth.LocalCallbackServer",
         // MCP SDK stdio transport (for subprocess process extraction via reflection)
         "io.modelcontextprotocol.client.transport.StdioClientTransport",
         // MCP SDK service loader implementations

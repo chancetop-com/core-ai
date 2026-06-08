@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import { authApi } from '../../api/client';
 import { useAuth } from '../../api/auth';
@@ -15,6 +15,8 @@ export default function Login() {
   const { dark } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const callback = searchParams.get('callback');
 
   useEffect(() => {
     if (location.state?.registered) {
@@ -31,7 +33,11 @@ export default function Login() {
     try {
       const res = await authApi.login(email, password);
       login(res.api_key, res.user_id, res.name, res.role);
-      navigate('/');
+      if (callback) {
+        navigate(`/authorize?callback=${encodeURIComponent(callback)}`);
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

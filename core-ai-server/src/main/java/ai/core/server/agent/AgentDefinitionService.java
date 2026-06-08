@@ -1,5 +1,6 @@
 package ai.core.server.agent;
 
+import ai.core.api.server.agent.AgentDatasetConfigView;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.CreateAgentFromSessionRequest;
 import ai.core.api.server.agent.CreateAgentRequest;
@@ -8,7 +9,6 @@ import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.api.server.session.IdName;
 import ai.core.api.server.tool.ToolRefView;
-import ai.core.api.server.agent.AgentDatasetConfigView;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -28,7 +28,10 @@ import core.framework.mongo.MongoCollection;
 import core.framework.util.Strings;
 
 import java.time.ZonedDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -107,10 +110,54 @@ public class AgentDefinitionService {
         } else {
             entities = agentDefinitionCollection.find(Filters.empty());
         }
+        // Batch-resolve names to avoid N+1 queries over high-latency connections
+        var userNameMap = resolveUserNames(entities);
+        var subAgentNameMap = resolveSubAgentNames(entities);
+        var skillNameMap = resolveSkillNames(entities);
+
         var response = new ListAgentsResponse();
-        response.agents = entities.stream().map(this::toView).toList();
+        response.agents = entities.stream().map(e -> toView(e, userNameMap, subAgentNameMap, skillNameMap)).toList();
         response.total = (long) response.agents.size();
         return response;
+    }
+
+    private Map<String, String> resolveUserNames(List<AgentDefinition> entities) {
+        var userIds = new HashSet<String>();
+        for (var entity : entities) {
+            if (entity.userId != null) userIds.add(entity.userId);
+        }
+        if (userIds.isEmpty()) return Map.of();
+        var map = new HashMap<String, String>();
+        for (var u : userCollection.find(Filters.in("_id", userIds.toArray(new String[0])))) {
+            map.put(u.id, u.name);
+        }
+        return map;
+    }
+
+    private Map<String, String> resolveSubAgentNames(List<AgentDefinition> entities) {
+        var agentIds = new HashSet<String>();
+        for (var entity : entities) {
+            if (entity.subAgentIds != null) agentIds.addAll(entity.subAgentIds);
+        }
+        if (agentIds.isEmpty()) return Map.of();
+        var map = new HashMap<String, String>();
+        for (var a : agentDefinitionCollection.find(Filters.in("_id", agentIds.toArray(new String[0])))) {
+            map.put(a.id, a.name);
+        }
+        return map;
+    }
+
+    private Map<String, String> resolveSkillNames(List<AgentDefinition> entities) {
+        var skillIds = new HashSet<String>();
+        for (var entity : entities) {
+            if (entity.skillIds != null) skillIds.addAll(entity.skillIds);
+        }
+        if (skillIds.isEmpty()) return Map.of();
+        try {
+            return skillService.batchResolve(skillIds);
+        } catch (Exception e) {
+            return Map.of();
+        }
     }
 
     public AgentDefinitionView get(String id) {
@@ -226,6 +273,11 @@ public class AgentDefinitionService {
     }
 
     AgentDefinitionView toView(AgentDefinition entity) {
+        return toView(entity, Map.of(), Map.of(), Map.of());
+    }
+
+    AgentDefinitionView toView(AgentDefinition entity, Map<String, String> userNameMap,
+                               Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
         var view = new AgentDefinitionView();
         view.id = entity.id;
         view.name = entity.name;
@@ -241,7 +293,8 @@ public class AgentDefinitionService {
         view.inputTemplate = entity.inputTemplate;
         view.variables = entity.variables;
         view.systemDefault = entity.systemDefault;
-        view.createdBy = resolveUserName(entity.userId);
+        var userName = userNameMap.get(entity.userId);
+        view.createdBy = userName != null ? userName : resolveUserName(entity.userId);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
         view.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
@@ -250,7 +303,8 @@ public class AgentDefinitionService {
                 .map(id -> {
                     var v = new IdName();
                     v.id = id;
-                    v.name = resolveAgentName(id);
+                    var name = subAgentNameMap.get(id);
+                    v.name = name != null ? name : resolveAgentName(id);
                     return v;
                 })
                 .toList() : null;
@@ -258,7 +312,8 @@ public class AgentDefinitionService {
                 .map(id -> {
                     var v = new IdName();
                     v.id = id;
-                    v.name = resolveSkillName(id);
+                    var name = skillNameMap.get(id);
+                    v.name = name != null ? name : resolveSkillName(id);
                     return v;
                 })
                 .toList() : null;
@@ -393,5 +448,4 @@ public class AgentDefinitionService {
         }
         return null;
     }
-
 }

@@ -17,6 +17,8 @@ import ai.core.cli.remote.A2ARemoteAgentDiscovery;
 import ai.core.cli.remote.A2ARemoteServerConfig;
 import ai.core.cli.remote.DelegateToRemoteAgentToolCall;
 import ai.core.cli.remote.SearchRemoteAgentsToolCall;
+import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.auth.AuthManager;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.cli.task.FileTodoStoreFactory;
 import ai.core.llm.LLMProviders;
@@ -42,10 +44,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * @author stephen
  */
 public class CliAgent {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CliAgent.class);
 
     public static Agent of(Config config) {
         var pluginManager = PluginManager.getInstance(Path.of(System.getProperty("user.home"), ".core-ai"));
@@ -137,8 +143,21 @@ public class CliAgent {
     }
 
     private static List<ToolCall> remoteAgentTools(Config config) {
-        var catalog = new A2ARemoteAgentDiscovery().discoverCatalog(config.remoteAgents, config.remoteServers);
+        // Build server list: explicit config + auto-discover from active auth (if enabled)
+        var servers = new ArrayList<>(config.remoteServers);
+        if (servers.isEmpty() && config.a2aAutoDiscover && AuthManager.isLoggedIn()) {
+            var active = AuthConfig.load();
+            if (active != null) {
+                var auto = new A2ARemoteServerConfig();
+                auto.id = "default";
+                auto.url = active.serverUrl();
+                auto.enabled = true;
+                servers.add(auto);
+            }
+        }
+        var catalog = new A2ARemoteAgentDiscovery().discoverCatalog(config.remoteAgents, servers);
         if (catalog.isEmpty()) return List.of();
+        LOGGER.info("Discovered {} remote A2A agent(s) from {} server(s)", catalog.size(), servers.size());
         return List.of(SearchRemoteAgentsToolCall.builder().catalog(catalog).build(),
                 DelegateToRemoteAgentToolCall.builder().catalog(catalog).build());
     }
@@ -185,7 +204,8 @@ public class CliAgent {
                          String sessionId,
                          List<A2ARemoteAgentConfig> remoteAgents,
                          List<A2ARemoteServerConfig> remoteServers,
-                         Map<String, SubAgentConfig> subAgentConfigs) {
+                         Map<String, SubAgentConfig> subAgentConfigs,
+                         boolean a2aAutoDiscover) {
     }
 
     // ---- PromptInject implementations ----

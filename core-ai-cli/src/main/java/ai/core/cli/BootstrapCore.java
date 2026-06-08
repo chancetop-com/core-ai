@@ -17,5 +17,5 @@ record BootstrapCore(PropertiesFileSource props, BootstrapResult result, int max
                      boolean todoV2Enabled, List<A2ARemoteAgentConfig> remoteAgents,
                      List<A2ARemoteServerConfig> remoteServers, FileSessionPersistence sessionPersistence,
                      SessionManager sessionManager, ToolPermissionStore permissionStore,
-                     Map<String, SubAgentConfig> subAgentConfigs) {
+                     Map<String, SubAgentConfig> subAgentConfigs, boolean a2aAutoDiscover) {
 }
