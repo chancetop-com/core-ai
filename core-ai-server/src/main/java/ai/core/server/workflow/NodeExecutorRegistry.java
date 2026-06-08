@@ -1,11 +1,5 @@
 package ai.core.server.workflow;
 
-import ai.core.server.domain.ScopeFrame;
-import ai.core.server.domain.WorkflowRun;
-import ai.core.server.workflow.engine.WorkflowGraph;
-import ai.core.server.workflow.engine.WorkflowNode;
-
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -23,12 +17,12 @@ public class NodeExecutorRegistry implements NodeExecutor {
     }
 
     @Override
-    public NodeOutcome execute(WorkflowGraph graph, WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
-        NodeType type = NodeType.of(node.type());
+    public NodeOutcome execute(NodeContext ctx) {
+        NodeType type = NodeType.of(ctx.node().type());
         NodeExecutor executor = executors.get(type);
         if (executor == null) {
-            throw new IllegalStateException("no executor registered for node type " + type + " (node " + node.id() + ")");
+            throw new IllegalStateException("no executor registered for node type " + type + " (node " + ctx.node().id() + ")");
         }
-        return executor.execute(graph, run, node, scopePath);
+        return executor.execute(ctx);
     }
 }

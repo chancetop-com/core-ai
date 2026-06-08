@@ -22,7 +22,7 @@ class NodeExecutorRegistryTest {
         var graph = new WorkflowGraph(List.of(new WorkflowNode("e", "END")), List.of());
 
         assertThrows(IllegalStateException.class,
-            () -> registry.execute(graph, run(), graph.node("e"), List.of()));
+            () -> registry.execute(ctx(graph, run(), graph.node("e"))));
     }
 
     @Test
@@ -31,7 +31,7 @@ class NodeExecutorRegistryTest {
         var graph = new WorkflowGraph(List.of(new WorkflowNode("x", "BOGUS")), List.of());
 
         assertThrows(IllegalStateException.class,
-            () -> registry.execute(graph, run(), graph.node("x"), List.of()));
+            () -> registry.execute(ctx(graph, run(), graph.node("x"))));
     }
 
     @Test
@@ -58,5 +58,9 @@ class NodeExecutorRegistryTest {
         run.workflowId = "wf-1";
         run.input = "{\"q\": \"hi\"}";
         return run;
+    }
+
+    private static NodeContext ctx(WorkflowGraph graph, WorkflowRun run, WorkflowNode node) {
+        return new NodeContext(graph, run, node, List.of(), new VariablePool(Map.of(), run.input));
     }
 }

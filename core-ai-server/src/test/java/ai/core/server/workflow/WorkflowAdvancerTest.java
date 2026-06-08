@@ -2,7 +2,6 @@ package ai.core.server.workflow;
 
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
-import ai.core.server.domain.ScopeFrame;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.WorkflowEdge;
 import ai.core.server.workflow.engine.WorkflowGraph;
@@ -167,8 +166,8 @@ class WorkflowAdvancerTest {
                 List.of(node("start"), node("slow"), node("end")),
                 List.of(edge("e0", "start", "slow"), edge("e1", "slow", "end")));
             var journal = new InMemoryWorkflowJournal();
-            NodeExecutor executor = (g, r, node, scope) -> {
-                if (node.id().equals("slow")) {
+            NodeExecutor executor = ctx -> {
+                if (ctx.node().id().equals("slow")) {
                     started.countDown();
                     await(release);   // park the node so the drive thread parks in awaitAny
                 }
@@ -231,9 +230,9 @@ class WorkflowAdvancerTest {
         }
 
         @Override
-        public NodeOutcome execute(WorkflowGraph graph, WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
-            executed.add(node.id());
-            return scripted.getOrDefault(node.id(), new NodeOutcome.Normal("{}"));
+        public NodeOutcome execute(NodeContext ctx) {
+            executed.add(ctx.node().id());
+            return scripted.getOrDefault(ctx.node().id(), new NodeOutcome.Normal("{}"));
         }
     }
 }

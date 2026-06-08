@@ -1,15 +1,10 @@
 package ai.core.server.workflow.executor;
 
-import ai.core.server.domain.ScopeFrame;
-import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.AgentRunGateway;
 import ai.core.server.workflow.AgentRunResult;
+import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
-import ai.core.server.workflow.engine.WorkflowGraph;
-import ai.core.server.workflow.engine.WorkflowNode;
-
-import java.util.List;
 
 /**
  * AGENT / LLM node: a DECOUPLED child run, not the agent loop inlined. Per the design's submit/await/collect
@@ -17,9 +12,9 @@ import java.util.List;
  * maps the result to a node outcome — carrying the child run id so the two-layer run stays linked. The same
  * executor serves both AGENT and LLM nodes; the gateway picks the DefinitionType from the node type.
  *
- * <p>Input mapping over the variable pool lands in P2; for now the run input is passed through. Forwarding a
- * workflow cancel to the child run, and persisting the child link before awaiting, land with the agent-stack
- * wiring (the Mongo gateway) once the server module compiles.
+ * <p>The node's input is an optional {@code input} template in the config, rendered over the variable pool (e.g.
+ * {@code "{{ nodes.start.output }}"}) so a node can consume an upstream node's output; with no template the raw
+ * run input is passed through. Forwarding a workflow cancel to the child run lands with the agent-stack wiring.
  *
  * @author Xander
  */
@@ -31,9 +26,10 @@ public class AgentExecutor implements NodeExecutor {
     }
 
     @Override
-    public NodeOutcome execute(WorkflowGraph graph, WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
-        String input = run.input;   // P2: resolve the input_template over the variable pool
-        String childRunId = gateway.startChildRun(run, node, input);
+    public NodeOutcome execute(NodeContext ctx) {
+        Object template = ctx.node().config().get("input");
+        String input = template instanceof String s ? ctx.pool().render(s) : ctx.run().input;
+        String childRunId = gateway.startChildRun(ctx.run(), ctx.node(), input);
         AgentRunResult result = gateway.awaitResult(childRunId);
         return result.completed()
             ? new NodeOutcome.Normal(result.output(), childRunId)

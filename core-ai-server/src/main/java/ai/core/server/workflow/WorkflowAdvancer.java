@@ -86,7 +86,9 @@ public final class WorkflowAdvancer {
         inflight.put(node.id(), done);
         pool.execute(() -> {
             try {
-                NodeOutcome outcome = executor.execute(graph, run, node, List.of());
+                VariablePool vars = VariablePool.fromNodeRuns(journal.nodeRuns(run.id), ROOT_SCOPE_KEY, run.input);
+                NodeContext ctx = new NodeContext(graph, run, node, List.of(), vars);
+                NodeOutcome outcome = executor.execute(ctx);
                 journal.recordOutcome(run, node, List.of(), outcome);
             } catch (RuntimeException e) {
                 journal.recordOutcome(run, node, List.of(), new NodeOutcome.Fail(String.valueOf(e.getMessage()), false));

@@ -21,7 +21,7 @@ class AgentExecutorTest {
     void completedChildRunBecomesNormalWithChildLink() {
         var gateway = new FakeGateway();
         gateway.scriptComplete("{\"category\":\"auth\"}");
-        var outcome = new AgentExecutor(gateway).execute(emptyGraph(), run(), new WorkflowNode("classify", "AGENT"), List.of());
+        var outcome = new AgentExecutor(gateway).execute(ctx(emptyGraph(), run(), new WorkflowNode("classify", "AGENT")));
 
         var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
         assertEquals("{\"category\":\"auth\"}", normal.output());
@@ -32,7 +32,7 @@ class AgentExecutorTest {
     void failedChildRunBecomesFailWithChildLink() {
         var gateway = new FakeGateway();
         gateway.scriptFail("llm unavailable");
-        var outcome = new AgentExecutor(gateway).execute(emptyGraph(), run(), new WorkflowNode("a", "AGENT"), List.of());
+        var outcome = new AgentExecutor(gateway).execute(ctx(emptyGraph(), run(), new WorkflowNode("a", "AGENT")));
 
         var fail = assertInstanceOf(NodeOutcome.Fail.class, outcome);
         assertEquals("llm unavailable", fail.error());
@@ -65,6 +65,10 @@ class AgentExecutorTest {
 
     private static WorkflowGraph emptyGraph() {
         return new WorkflowGraph(List.of(), List.of());
+    }
+
+    private static NodeContext ctx(WorkflowGraph graph, WorkflowRun run, WorkflowNode node) {
+        return new NodeContext(graph, run, node, List.of(), new VariablePool(Map.of(), run.input));
     }
 
     private static WorkflowRun run() {

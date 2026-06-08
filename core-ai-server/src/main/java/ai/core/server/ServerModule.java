@@ -66,6 +66,7 @@ import ai.core.server.workflow.WorkflowRunner;
 import ai.core.server.workflow.WorkflowRunnerJob;
 import ai.core.server.workflow.executor.AgentExecutor;
 import ai.core.server.workflow.executor.EndExecutor;
+import ai.core.server.workflow.executor.IfElseExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
 
 import java.util.Map;
@@ -259,7 +260,8 @@ public class ServerModule extends Module {
             NodeType.START, new StartExecutor(),
             NodeType.END, new EndExecutor(),
             NodeType.AGENT, agentExecutor,
-            NodeType.LLM, agentExecutor));
+            NodeType.LLM, agentExecutor,
+            NodeType.IF_ELSE, new IfElseExecutor()));
         bind(NodeExecutor.class, registry);
 
         bind(WorkflowPublishService.class);
