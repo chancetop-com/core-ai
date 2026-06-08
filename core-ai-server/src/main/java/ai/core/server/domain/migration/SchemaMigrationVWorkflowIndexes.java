@@ -21,11 +21,9 @@ public class SchemaMigrationVWorkflowIndexes implements SchemaMigration {
 
     @Override
     public void migrate(Mongo mongo) {
-        // workflow definitions: list by user; name unique per user
+        // workflow definitions: list by user. Names are NOT unique (every workflow starts as "Untitled workflow",
+        // like Dify), so there is intentionally no unique (user_id, name) index.
         mongo.createIndex("workflow_definitions", Indexes.ascending("user_id"));
-        mongo.createIndex("workflow_definitions",
-            Indexes.compoundIndex(Indexes.ascending("user_id"), Indexes.ascending("name")),
-            new IndexOptions().unique(true));
 
         // published versions: load by id (default); list by workflow; version unique per workflow
         mongo.createIndex("workflow_published_versions",

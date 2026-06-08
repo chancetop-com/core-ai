@@ -387,12 +387,13 @@ public class ServerModule extends Module {
             "/", "/login", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
             "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools",
-            "/triggers", "/datasets", "/for-you", "/for-you/artifacts"
+            "/triggers", "/datasets", "/for-you", "/for-you/artifacts", "/workflows"
         };
         for (var path : spaRoutes) {
             http().route(HTTPMethod.GET, path, controller::serve);
         }
         http().route(HTTPMethod.GET, "/agents/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/workflows/:id", controller::serve);
         http().route(HTTPMethod.GET, "/runs/:id", controller::serve);
         http().route(HTTPMethod.GET, "/system-prompts/:id", controller::serve);
         http().route(HTTPMethod.GET, "/traces/:id", controller::serve);

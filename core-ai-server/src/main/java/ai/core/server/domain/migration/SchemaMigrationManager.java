@@ -80,6 +80,7 @@ public class SchemaMigrationManager {
             new SchemaMigrationVFileShareTokenIndex(),
             new SchemaMigrationVFixShareTokenIndex(),
             new SchemaMigrationVWorkflowIndexes(),
+            new SchemaMigrationVWorkflowDefinitionIndexes(),
             new SchemaMigrationVBumpDefaultMaxTurns()
         );
     }
