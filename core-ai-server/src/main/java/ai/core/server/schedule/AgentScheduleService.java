@@ -26,6 +26,8 @@ public class AgentScheduleService {
         entity.id = UUID.randomUUID().toString();
         entity.agentId = request.agentId;
         entity.userId = userId;
+        entity.name = request.name;
+        entity.remark = request.remark;
         entity.cronExpression = request.cronExpression;
         entity.timezone = request.timezone != null ? request.timezone : "UTC";
         entity.enabled = true;
@@ -63,6 +65,9 @@ public class AgentScheduleService {
         var entity = agentScheduleCollection.get(id)
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));
 
+        if (request.name != null) entity.name = request.name;
+        if (request.remark != null) entity.remark = request.remark;
+
         boolean scheduleChanged = false;
         if (request.cronExpression != null && !request.cronExpression.equals(entity.cronExpression)) {
             entity.cronExpression = request.cronExpression;
@@ -98,6 +103,8 @@ public class AgentScheduleService {
         var view = new AgentScheduleView();
         view.id = entity.id;
         view.agentId = entity.agentId;
+        view.name = entity.name;
+        view.remark = entity.remark;
         view.cronExpression = entity.cronExpression;
         view.timezone = entity.timezone;
         view.enabled = entity.enabled;

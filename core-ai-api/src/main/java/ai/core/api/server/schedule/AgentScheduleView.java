@@ -18,6 +18,12 @@ public class AgentScheduleView {
     @Property(name = "agent_id")
     public String agentId;
 
+    @Property(name = "name")
+    public String name;
+
+    @Property(name = "remark")
+    public String remark;
+
     @NotNull
     @Property(name = "cron_expression")
     public String cronExpression;

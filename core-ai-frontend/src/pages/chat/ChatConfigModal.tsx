@@ -166,10 +166,22 @@ function ToolsTab(props: ChatConfigModalProps) {
   const [mcpServerTools, setMcpServerTools] = useState<Record<string, McpToolInfo[]>>({});
   const [expandedMcpServer, setExpandedMcpServer] = useState<string | null>(null);
 
-  const builtinTools = props.availableTools.filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api');
-  const mcpTools = props.availableTools.filter(t => t.type === 'MCP');
-
   const isIdActive = (id: string) => props.selectedToolIds.has(id) || props.loadedToolIds.has(id) || props.preToolIds.has(id);
+
+  // A MCP server is active if itself or any of its sub-tools (mcp-tool:serverId:name) is active.
+  const isMcpServerActive = (serverId: string) =>
+    isIdActive(serverId)
+    || Array.from(props.selectedToolIds).some(id => id.startsWith(`mcp-tool:${serverId}:`))
+    || Array.from(props.loadedToolIds).some(id => id.startsWith(`mcp-tool:${serverId}:`))
+    || Array.from(props.preToolIds).some(id => id.startsWith(`mcp-tool:${serverId}:`));
+
+  // Prioritize active tools/servers so they show first; sort is stable.
+  const builtinTools = props.availableTools
+    .filter(t => t.type === 'BUILTIN' && t.id !== 'builtin-service-api')
+    .sort((a, b) => Number(isIdActive(b.id)) - Number(isIdActive(a.id)));
+  const mcpTools = props.availableTools
+    .filter(t => t.type === 'MCP')
+    .sort((a, b) => Number(isMcpServerActive(b.id)) - Number(isMcpServerActive(a.id)));
 
   const loadApiApps = useCallback(async () => {
     if (apiAppsLoaded) return;
@@ -385,10 +397,14 @@ function SkillsTab(props: ChatConfigModalProps) {
   const [showAll, setShowAll] = useState(false);
   const MAX_VISIBLE = 5;
 
+  const isSkillActive = (id: string) =>
+    props.loadedSkillIds.has(id) || props.preSkillIds.has(id) || props.selectedSkillIds.has(id);
+
+  // Prioritize active (selected/pending/loaded) skills so they show first; sort is stable.
   const filtered = props.availableSkills.filter(s =>
     s.qualified_name.toLowerCase().includes(search.toLowerCase()) ||
     s.description.toLowerCase().includes(search.toLowerCase())
-  );
+  ).sort((a, b) => Number(isSkillActive(b.id)) - Number(isSkillActive(a.id)));
   const visible = showAll ? filtered : filtered.slice(0, MAX_VISIBLE);
 
   useEffect(() => {
@@ -475,10 +491,14 @@ function SubAgentsTab(props: ChatConfigModalProps) {
     id: a.id, name: a.name, description: a.description || '', type: a.type,
   }));
 
+  const isAgentActive = (id: string) =>
+    props.loadedSubAgentIds.has(id) || props.preSubAgentIds.has(id) || props.selectedAgentIds.has(id);
+
+  // Prioritize active (selected/pending/loaded) agents so they show first; sort is stable.
   const filtered = items.filter(item =>
     item.name.toLowerCase().includes(search.toLowerCase()) ||
     item.description.toLowerCase().includes(search.toLowerCase())
-  );
+  ).sort((a, b) => Number(isAgentActive(b.id)) - Number(isAgentActive(a.id)));
   const visible = showAll ? filtered : filtered.slice(0, MAX_VISIBLE);
 
   return (

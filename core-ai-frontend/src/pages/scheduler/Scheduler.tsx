@@ -11,6 +11,8 @@ interface EditorState {
   open: boolean;
   editing: AgentScheduleView | null;
   agentId: string;
+  name: string;
+  remark: string;
   cronExpression: string;
   timezone: string;
   input: string;
@@ -26,6 +28,8 @@ function emptyEditor(): EditorState {
     open: false,
     editing: null,
     agentId: '',
+    name: '',
+    remark: '',
     cronExpression: '0 * * * *',
     timezone: 'Asia/Shanghai',
     input: '',
@@ -95,6 +99,8 @@ export default function Scheduler() {
     open: true,
     editing: s,
     agentId: s.agent_id,
+    name: s.name || '',
+    remark: s.remark || '',
     cronExpression: s.cron_expression,
     timezone: s.timezone || 'UTC',
     input: s.input || '',
@@ -115,6 +121,8 @@ export default function Scheduler() {
 
       if (editor.editing) {
         const payload: UpdateScheduleRequest = {
+          name: editor.name.trim(),
+          remark: editor.remark.trim(),
           cron_expression: editor.cronExpression,
           timezone: editor.timezone,
           input: editor.input.trim() ? editor.input : '',
@@ -126,6 +134,8 @@ export default function Scheduler() {
       } else {
         const payload: CreateScheduleRequest = {
           agent_id: editor.agentId,
+          name: editor.name.trim() || undefined,
+          remark: editor.remark.trim() || undefined,
           cron_expression: editor.cronExpression,
           timezone: editor.timezone,
           input: editor.input.trim() ? editor.input : '',
@@ -210,7 +220,19 @@ export default function Scheduler() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Calendar size={14} style={{ color: 'var(--color-primary)' }} />
-                      <span className="font-medium">{agentMap[s.agent_id]?.name ?? s.agent_id}</span>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{s.name?.trim() || (agentMap[s.agent_id]?.name ?? s.agent_id)}</div>
+                        {s.name?.trim() && (
+                          <div className="text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
+                            {agentMap[s.agent_id]?.name ?? s.agent_id}
+                          </div>
+                        )}
+                        {s.remark?.trim() && (
+                          <div className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }} title={s.remark}>
+                            {s.remark}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs">
@@ -272,6 +294,24 @@ export default function Scheduler() {
             </div>
 
             <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Name</label>
+                <input value={editor.name}
+                  onChange={e => setEditor({ ...editor, name: e.target.value })}
+                  placeholder="Optional: a name for this schedule"
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Remark</label>
+                <textarea value={editor.remark}
+                  onChange={e => setEditor({ ...editor, remark: e.target.value })}
+                  rows={2} placeholder="Optional: notes about this schedule"
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
+              </div>
+
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Agent</label>
                 <select value={editor.agentId} disabled={!!editor.editing}

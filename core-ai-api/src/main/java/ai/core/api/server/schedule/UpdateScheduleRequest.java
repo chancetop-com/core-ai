@@ -8,6 +8,12 @@ import java.util.Map;
  * @author stephen
  */
 public class UpdateScheduleRequest {
+    @Property(name = "name")
+    public String name;
+
+    @Property(name = "remark")
+    public String remark;
+
     @Property(name = "cron_expression")
     public String cronExpression;
 

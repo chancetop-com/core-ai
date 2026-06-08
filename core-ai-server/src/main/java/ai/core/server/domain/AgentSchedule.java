@@ -20,6 +20,12 @@ public class AgentSchedule {
     @Field(name = "agent_id")
     public String agentId;
 
+    @Field(name = "name")
+    public String name;
+
+    @Field(name = "remark")
+    public String remark;
+
     @NotNull
     @Field(name = "user_id")
     public String userId;

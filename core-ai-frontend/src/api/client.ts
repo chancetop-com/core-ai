@@ -583,6 +583,8 @@ export interface ListServiceApiResponse {
 export interface AgentScheduleView {
   id: string;
   agent_id: string;
+  name?: string;
+  remark?: string;
   cron_expression: string;
   timezone: string;
   enabled: boolean;
@@ -600,6 +602,8 @@ export interface ListSchedulesResponse {
 
 export interface CreateScheduleRequest {
   agent_id: string;
+  name?: string;
+  remark?: string;
   cron_expression: string;
   timezone?: string;
   input?: string;
@@ -608,6 +612,8 @@ export interface CreateScheduleRequest {
 }
 
 export interface UpdateScheduleRequest {
+  name?: string;
+  remark?: string;
   cron_expression?: string;
   timezone?: string;
   enabled?: boolean;
