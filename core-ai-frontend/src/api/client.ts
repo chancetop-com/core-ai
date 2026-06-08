@@ -649,6 +649,7 @@ export interface WorkflowNodeRunView {
   node_id: string;
   node_type?: string;
   status?: string;
+  input?: string;
   output?: string;
   error?: string;
   child_run_id?: string;

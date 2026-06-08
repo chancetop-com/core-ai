@@ -17,6 +17,9 @@ public class NodeRunView {
     @Property(name = "status")
     public String status;
 
+    @Property(name = "input")
+    public String input;
+
     @Property(name = "output")
     public String output;
 

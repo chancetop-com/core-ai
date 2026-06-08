@@ -61,8 +61,27 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   nodeType: string;
   name: string;
   config: Record<string, unknown>;
+  runStatus?: string; // display-only, injected during a run overlay; never persisted (fromReactFlow drops it)
 }
 export type WorkflowRFNode = Node<WorkflowNodeData>;
+
+// Status -> accent color. Covers BOTH backend enums: NodeRunStatus (node tint: RUNNING/COMPLETED/SKIPPED/
+// FAILED_RETRYABLE/WAITING) and RunStatus (run strip: PENDING/RUNNING/COMPLETED/FAILED/TIMEOUT/CANCELLED).
+export const RUN_STATUS_COLOR: Record<string, string> = {
+  PENDING: '#94a3b8',
+  RUNNING: '#2563eb',
+  WAITING: '#ca8a04',
+  COMPLETED: '#16a34a',
+  SKIPPED: '#94a3b8',
+  FAILED: '#dc2626',
+  FAILED_RETRYABLE: '#dc2626',
+  TIMEOUT: '#dc2626',
+  CANCELLED: '#6b7280',
+};
+// Terminal RUN statuses (RunStatus) — stop polling once reached.
+export const TERMINAL_RUN_STATUS = new Set(['COMPLETED', 'FAILED', 'TIMEOUT', 'CANCELLED']);
+// Terminal NODE statuses (NodeRunStatus) — count toward progress.
+export const TERMINAL_NODE_STATUS = new Set(['COMPLETED', 'SKIPPED', 'FAILED_RETRYABLE']);
 
 export function toReactFlow(graph: WorkflowGraph): { nodes: WorkflowRFNode[]; edges: Edge[] } {
   const nodes: WorkflowRFNode[] = graph.nodes.map((n, i) => ({

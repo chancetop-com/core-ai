@@ -149,6 +149,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.nodeId = nodeRun.nodeId;
         view.nodeType = nodeRun.nodeType;
         view.status = nodeRun.status != null ? nodeRun.status.name() : null;
+        view.input = nodeRun.inputJson;
         view.output = nodeRun.output;
         view.error = nodeRun.error;
         view.childRunId = nodeRun.childRunId;

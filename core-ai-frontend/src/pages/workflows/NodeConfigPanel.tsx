@@ -19,11 +19,13 @@ export default function NodeConfigPanel({ node, agents, onChange, onDelete, onCl
   const [configText, setConfigText] = useState('{}');
   const [configError, setConfigError] = useState('');
 
-  // reset the editable config text when the selected node changes
+  // reset the editable config text only when the SELECTED NODE changes — not on node.data.config, which this
+  // panel itself mutates on every keystroke (that would re-serialize and fight the user's cursor).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setConfigText(JSON.stringify(node.data.config ?? {}, null, 2));
     setConfigError('');
-  }, [node.id, node.data.config]);
+  }, [node.id]);
 
   const commitConfig = (text: string) => {
     setConfigText(text);
