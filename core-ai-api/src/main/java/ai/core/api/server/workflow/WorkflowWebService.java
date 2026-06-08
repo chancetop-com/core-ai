@@ -46,6 +46,12 @@ public interface WorkflowWebService {
     @ResponseStatus(HTTPStatus.ACCEPTED)
     CreateRunResponse createRun(@PathParam("id") String id, CreateRunRequest request);
 
+    // Synchronous run for external API callers: starts the run and blocks until it finishes (or times out),
+    // returning the final run with its output — one call instead of create + poll.
+    @POST
+    @Path("/api/workflows/:id/run-sync")
+    WorkflowRunView runSync(@PathParam("id") String id, CreateRunRequest request);
+
     // Run the current draft without publishing (editor preview).
     @POST
     @Path("/api/workflows/:id/preview-runs")

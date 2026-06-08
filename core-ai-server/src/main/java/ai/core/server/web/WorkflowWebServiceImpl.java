@@ -12,6 +12,7 @@ import ai.core.api.server.workflow.ValidateWorkflowResponse;
 import ai.core.api.server.workflow.WorkflowRunView;
 import ai.core.api.server.workflow.WorkflowView;
 import ai.core.api.server.workflow.WorkflowWebService;
+import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
@@ -20,6 +21,7 @@ import ai.core.server.web.auth.AuthContext;
 import ai.core.server.workflow.WorkflowDefinitionService;
 import ai.core.server.workflow.WorkflowPublishService;
 import ai.core.server.workflow.WorkflowRunService;
+import ai.core.server.workflow.WorkflowRunner;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.WebContext;
@@ -30,6 +32,9 @@ import java.util.List;
  * @author Xander
  */
 public class WorkflowWebServiceImpl implements WorkflowWebService {
+    private static final long SYNC_TIMEOUT_MS = 120_000;        // cap a synchronous external run at 2 minutes
+    private static final long SYNC_POLL_INTERVAL_MS = 400;
+
     @Inject
     WebContext webContext;
 
@@ -41,6 +46,9 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
 
     @Inject
     WorkflowRunService runService;
+
+    @Inject
+    WorkflowRunner runner;
 
     @Override
     public ListWorkflowsResponse list() {
@@ -102,6 +110,29 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         response.runId = run.id;
         response.status = run.status.name();
         return response;
+    }
+
+    @Override
+    public WorkflowRunView runSync(String id, CreateRunRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("workflow_id", id);
+        WorkflowRun run = runService.createRun(id, request.input, TriggerType.API, userId);
+        runner.submit(run.id);   // drive immediately instead of waiting for the runner job's next tick
+        long deadline = System.currentTimeMillis() + SYNC_TIMEOUT_MS;
+        WorkflowRun latest = run;
+        while (System.currentTimeMillis() < deadline) {
+            latest = runService.getRun(run.id, userId);
+            if (latest.status != RunStatus.PENDING && latest.status != RunStatus.RUNNING) {
+                break;   // terminal: COMPLETED / FAILED / TIMEOUT / CANCELLED
+            }
+            try {
+                Thread.sleep(SYNC_POLL_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return toRunView(latest);
     }
 
     @Override
