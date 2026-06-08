@@ -48,13 +48,16 @@ public class WorkflowDefinitionService {
         return definitionCollection.find(Filters.eq("user_id", userId));
     }
 
-    public WorkflowDefinition update(String id, String name, String graph, String userId) {
+    public WorkflowDefinition update(String id, String name, String graph, String mode, String userId) {
         var definition = get(id, userId);
         if (name != null) {
             definition.name = name;
         }
         if (graph != null) {
             definition.draftGraph = graph;
+        }
+        if (mode != null) {
+            definition.mode = WorkflowMode.valueOf(mode);
         }
         definition.updatedAt = ZonedDateTime.now();
         definitionCollection.replace(definition);
