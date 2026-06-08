@@ -28,6 +28,7 @@ import core.framework.mongo.MongoCollection;
 import core.framework.util.Strings;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -128,7 +129,7 @@ public class AgentDefinitionService {
         }
         if (userIds.isEmpty()) return Map.of();
         var map = new HashMap<String, String>();
-        for (var u : userCollection.find(Filters.in("_id", userIds.toArray(new String[0])))) {
+        for (var u : userCollection.find(new org.bson.Document("_id", new org.bson.Document("$in", new ArrayList<>(userIds))))) {
             map.put(u.id, u.name);
         }
         return map;
@@ -141,7 +142,7 @@ public class AgentDefinitionService {
         }
         if (agentIds.isEmpty()) return Map.of();
         var map = new HashMap<String, String>();
-        for (var a : agentDefinitionCollection.find(Filters.in("_id", agentIds.toArray(new String[0])))) {
+        for (var a : agentDefinitionCollection.find(new org.bson.Document("_id", new org.bson.Document("$in", new ArrayList<>(agentIds))))) {
             map.put(a.id, a.name);
         }
         return map;
@@ -273,11 +274,31 @@ public class AgentDefinitionService {
     }
 
     AgentDefinitionView toView(AgentDefinition entity) {
-        return toView(entity, Map.of(), Map.of(), Map.of());
+        var view = buildView(entity, Map.of(), Map.of(), Map.of());
+        // fallback for single-document fetch — individual resolve is OK here (not N+1)
+        view.createdBy = resolveUserName(entity.userId);
+        if (view.subAgents != null) {
+            view.subAgents = view.subAgents.stream().map(sa -> {
+                sa.name = resolveAgentName(sa.id);
+                return sa;
+            }).toList();
+        }
+        if (view.skills != null) {
+            view.skills = view.skills.stream().map(s -> {
+                s.name = resolveSkillName(s.id);
+                return s;
+            }).toList();
+        }
+        return view;
     }
 
-    AgentDefinitionView toView(AgentDefinition entity, Map<String, String> userNameMap,
-                               Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
+    AgentDefinitionView toView(AgentDefinition entity, Map<String, String> userNameMap, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
+        var view = buildView(entity, userNameMap, subAgentNameMap, skillNameMap);
+        view.createdBy = userNameMap.getOrDefault(entity.userId, entity.userId);
+        return view;
+    }
+
+    private AgentDefinitionView buildView(AgentDefinition entity, Map<String, String> userNameMap, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
         var view = new AgentDefinitionView();
         view.id = entity.id;
         view.name = entity.name;
@@ -293,8 +314,6 @@ public class AgentDefinitionService {
         view.inputTemplate = entity.inputTemplate;
         view.variables = entity.variables;
         view.systemDefault = entity.systemDefault;
-        var userName = userNameMap.get(entity.userId);
-        view.createdBy = userName != null ? userName : resolveUserName(entity.userId);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
         view.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
@@ -303,8 +322,7 @@ public class AgentDefinitionService {
                 .map(id -> {
                     var v = new IdName();
                     v.id = id;
-                    var name = subAgentNameMap.get(id);
-                    v.name = name != null ? name : resolveAgentName(id);
+                    v.name = subAgentNameMap.getOrDefault(id, id);
                     return v;
                 })
                 .toList() : null;
@@ -312,8 +330,7 @@ public class AgentDefinitionService {
                 .map(id -> {
                     var v = new IdName();
                     v.id = id;
-                    var name = skillNameMap.get(id);
-                    v.name = name != null ? name : resolveSkillName(id);
+                    v.name = skillNameMap.getOrDefault(id, id);
                     return v;
                 })
                 .toList() : null;
