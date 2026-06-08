@@ -9,7 +9,7 @@ import core.framework.mongo.Mongo;
 public class SchemaMigrationVMemoryIndexes implements SchemaMigration {
     @Override
     public String version() {
-        return "20260608001";
+        return "20260608004";
     }
 
     @Override
