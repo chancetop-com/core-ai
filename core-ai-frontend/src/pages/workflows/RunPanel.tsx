@@ -1,8 +1,8 @@
-import { useEffect, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
-import { Play, X, ChevronRight, ChevronDown, ExternalLink } from 'lucide-react';
-import { RUN_STATUS_COLOR, TERMINAL_RUN_STATUS, type WorkflowRFNode } from './graph';
+import { useState, type CSSProperties } from 'react';
+import { FlaskConical, X } from 'lucide-react';
+import { type WorkflowRFNode } from './graph';
 import { startInputVars, widgetInput } from './configWidgets';
+import RunTrace from './RunTrace';
 import type { WorkflowNodeRunView } from '../../api/client';
 
 interface Props {
@@ -11,29 +11,19 @@ interface Props {
   runStatus: string;
   nodeRuns: Record<string, WorkflowNodeRunView>;
   busy: boolean;
-  error: string;                     // save/validate/publish/run failure, shown before the run starts
+  error: string;                     // save/validate/run failure, shown before the run starts
   focusNodeId: string | null;        // a node clicked on the canvas auto-expands in the trace
   onRun: (input: string) => void;
   onClose: () => void;
 }
 
-/** The unified run/preview panel (Dify-style): enter input → Run → watch each node execute with status, timing
- *  and input/output → see the final result. Replaces the old input modal + status strip + per-node detail. */
+/** The test panel (Dify-style): enter input → Test → watch each node execute with status, timing and
+ *  input/output → see the final result. Runs the current draft, no publish required. */
 export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, error, focusNodeId, onRun, onClose }: Props) {
   const inputVars = startInputVars(nodes);
   const [input, setInput] = useState('');                                 // free-text/JSON fallback (no declared inputs)
   const [form, setForm] = useState<Record<string, string | boolean>>({}); // typed form values
   const [err, setErr] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (focusNodeId) setExpanded((s) => new Set(s).add(focusNodeId));
-  }, [focusNodeId]);
-
-  const nameOf = (id: string) => nodes.find((n) => n.id === id)?.data.name ?? id;
-  const typeOf = (id: string) => nodes.find((n) => n.id === id)?.data.nodeType ?? '';
-  const runs = Object.values(nodeRuns).sort((a, b) => (a.started_at ?? '').localeCompare(b.started_at ?? ''));
-  const result = runs.find((r) => (typeOf(r.node_id) === 'END' || typeOf(r.node_id) === 'ANSWER') && r.output)?.output;
 
   const submit = () => {
     setErr('');
@@ -56,16 +46,11 @@ export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, erro
   };
 
   const setField = (name: string, value: string | boolean) => setForm((f) => ({ ...f, [name]: value }));
-  const toggle = (id: string) => setExpanded((s) => {
-    const next = new Set(s);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
 
   return (
     <div style={panel}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text)' }}>Run</span>
+        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text)' }}>Test</span>
         <div style={{ flex: 1 }} />
         <button onClick={onClose} style={iconBtn} title="Close"><X size={15} /></button>
       </div>
@@ -107,79 +92,15 @@ export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, erro
       {err && <div style={errText}>{err}</div>}
       {!runId && (
         <>
-          <button onClick={submit} disabled={busy} style={runBtn}><Play size={15} /> Run draft</button>
+          <button onClick={submit} disabled={busy} style={runBtn}><FlaskConical size={15} /> Test draft</button>
           <div style={{ ...dim, marginTop: 6 }}>Runs the current draft — no need to publish.</div>
           {error && <div style={errText}>{error}</div>}
         </>
       )}
 
-      {runId && (
-        <>
-          <div style={statusRow}>
-            <span style={{ width: 9, height: 9, borderRadius: '50%', background: RUN_STATUS_COLOR[runStatus] ?? 'var(--color-text-secondary)' }} />
-            <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{runStatus || 'PENDING'}</span>
-            {!TERMINAL_RUN_STATUS.has(runStatus) && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>running…</span>}
-          </div>
-
-          <label style={label}>Trace</label>
-          {runs.length === 0 && <div style={dim}>Waiting for the first node…</div>}
-          {runs.map((r) => {
-            const open = expanded.has(r.node_id);
-            const color = r.status ? RUN_STATUS_COLOR[r.status] : 'var(--color-text-secondary)';
-            return (
-              <div key={r.node_id} style={nodeCard}>
-                <div style={nodeHead} onClick={() => toggle(r.node_id)}>
-                  {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />
-                  <span style={{ fontWeight: 500, color: 'var(--color-text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(r.node_id)}</span>
-                  <span style={dim}>{r.status === 'SKIPPED' ? 'skipped' : elapsed(r)}</span>
-                </div>
-                {open && (
-                  <div style={nodeBody}>
-                    {r.error && <Field title="Error" body={r.error} danger />}
-                    <Field title="Input" body={r.input} />
-                    <Field title="Output" body={r.output} />
-                    {r.child_run_id && (
-                      <Link to={`/runs/${r.child_run_id}`} style={childLink}><ExternalLink size={12} /> open child run</Link>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {result && (
-            <>
-              <label style={label}>Result</label>
-              <pre style={pre}>{fmt(result)}</pre>
-            </>
-          )}
-        </>
-      )}
+      {runId && <RunTrace nodes={nodes} runStatus={runStatus} nodeRuns={nodeRuns} focusNodeId={focusNodeId} />}
     </div>
   );
-}
-
-function Field({ title, body, danger }: { title: string; body?: string; danger?: boolean }) {
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 3 }}>{title}</div>
-      <pre style={{ ...pre, color: danger ? '#dc2626' : 'var(--color-text)' }}>{fmt(body)}</pre>
-    </div>
-  );
-}
-
-function elapsed(r: WorkflowNodeRunView): string {
-  if (!r.started_at) return '';
-  const end = r.completed_at ? new Date(r.completed_at).getTime() : Date.now();
-  const ms = end - new Date(r.started_at).getTime();
-  if (Number.isNaN(ms) || ms < 0) return '';
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
-}
-
-function fmt(body?: string): string {
-  if (!body) return '—';
-  try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
 }
 
 const panel: CSSProperties = {
@@ -199,21 +120,9 @@ const runBtn: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, padding: '8px 14px', width: '100%',
   border: 'none', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', cursor: 'pointer', fontWeight: 500,
 };
-const statusRow: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, padding: '8px 10px',
-  border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-bg-tertiary)',
-};
-const nodeCard: CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 7, marginBottom: 6, background: 'var(--color-bg)' };
-const nodeHead: CSSProperties = { display: 'flex', alignItems: 'center', gap: 7, padding: '7px 9px', cursor: 'pointer', color: 'var(--color-text-secondary)' };
-const nodeBody: CSSProperties = { padding: '4px 9px 9px 26px' };
-const pre: CSSProperties = {
-  margin: 0, padding: '7px 9px', fontFamily: 'monospace', fontSize: 11.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-  border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-bg-secondary)', maxHeight: 200, overflowY: 'auto', color: 'var(--color-text)',
-};
 const dim: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)' };
 const errText: CSSProperties = { color: '#dc2626', fontSize: 12, marginTop: 4 };
 const iconBtn: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28,
   border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg)', color: 'var(--color-text)', cursor: 'pointer',
 };
-const childLink: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none' };

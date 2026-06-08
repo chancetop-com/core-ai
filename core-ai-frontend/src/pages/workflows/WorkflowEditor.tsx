@@ -6,13 +6,14 @@ import {
   type Connection, type Edge, type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Rocket, Play } from 'lucide-react';
+import { ArrowLeft, Rocket, FlaskConical, History } from 'lucide-react';
 import { api, type WorkflowNodeRunView } from '../../api/client';
 import { useTheme } from '../../hooks/useTheme';
 import WorkflowNode from './WorkflowNode';
 import NodePalette from './NodePalette';
 import NodeConfigPanel from './NodeConfigPanel';
 import RunPanel from './RunPanel';
+import RunHistoryPanel from './RunHistoryPanel';
 import ResizablePanel from './ResizablePanel';
 import {
   toReactFlow, fromReactFlow, newGraph, nodeMeta, defaultNodeConfig, ensureStart, TERMINAL_RUN_STATUS,
@@ -47,7 +48,8 @@ export default function WorkflowEditor() {
   const [runId, setRunId] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState('');
   const [nodeRuns, setNodeRuns] = useState<Record<string, WorkflowNodeRunView>>({});
-  const [showRun, setShowRun] = useState(false);   // run/preview panel open
+  const [showRun, setShowRun] = useState(false);   // test panel open
+  const [showHistory, setShowHistory] = useState(false);   // run-history panel open
   const [runError, setRunError] = useState('');
   const [panelWidth, setPanelWidth] = useState(320);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'dirty'>('saved');
@@ -249,8 +251,9 @@ export default function WorkflowEditor() {
         </span>
         <div style={{ flex: 1 }} />
         {msg && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginRight: 8 }}>{msg}</span>}
+        <button onClick={() => { setSelectedId(null); setShowHistory((v) => !v); }} disabled={busy || preview} style={showHistory ? btnActive : btn}><History size={15} /> History</button>
         <button onClick={publish} disabled={busy || preview} style={btn}><Rocket size={15} /> Publish</button>
-        <button onClick={() => setShowRun(true)} disabled={busy || preview} style={btnPrimary}><Play size={15} /> Run</button>
+        <button onClick={() => setShowRun(true)} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -275,7 +278,7 @@ export default function WorkflowEditor() {
             <Controls />
           </ReactFlow>
         </div>
-        {(preview || selectedNode) && (
+        {(preview || selectedNode || showHistory) && (
           <ResizablePanel width={panelWidth} onWidthChange={setPanelWidth}>
             {preview ? (
               <RunPanel
@@ -300,6 +303,8 @@ export default function WorkflowEditor() {
                 onDelete={() => deleteNode(selectedNode.id)}
                 onClose={() => setSelectedId(null)}
               />
+            ) : showHistory ? (
+              <RunHistoryPanel workflowId={id || ''} nodes={nodes} onClose={() => setShowHistory(false)} />
             ) : null}
           </ResizablePanel>
         )}
@@ -333,6 +338,11 @@ const btn: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
   border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-bg-secondary)',
   color: 'var(--color-text)', cursor: 'pointer', fontWeight: 500,
+};
+const btnActive: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+  border: '1px solid var(--color-primary)', borderRadius: 8, background: 'var(--color-bg-tertiary)',
+  color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 500,
 };
 const btnPrimary: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
