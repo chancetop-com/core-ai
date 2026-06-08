@@ -3,7 +3,7 @@ import type { Edge } from '@xyflow/react';
 import { Plus, X } from 'lucide-react';
 import type { WorkflowNodeData, WorkflowRFNode } from './graph';
 import {
-  OPERATORS, isUnary, availableVariables, splitSelector, composeSelector, outEdges,
+  OPERATORS, isUnary, availableVariables, outEdges,
   EdgeSelect, widgetInput, smallBtn, iconBtnSmall,
 } from './configWidgets';
 
@@ -18,7 +18,7 @@ interface Props {
   onChange: (partial: Partial<WorkflowNodeData>) => void;
 }
 
-const emptyCondition: Condition = { selector: 'sys.input', operator: 'eq', value: '' };
+const emptyCondition: Condition = { selector: '', operator: 'eq', value: '' };
 
 /** Form-based IF_ELSE editor: cases of conditions, each routed to a real out-edge picked by target name. The
  *  config JSON the backend reads is rebuilt on every edit; the user never sees it. */
@@ -48,19 +48,17 @@ export default function IfElseConfig({ node, nodes, edges, onChange }: Props) {
           </div>
 
           {c.conditions.map((cond, ki) => {
-            const { base, field } = splitSelector(cond.selector);
             return (
               <div key={ki} style={condRow}>
-                <select value={base} onChange={(e) => patchCondition(ci, ki, { selector: composeSelector(e.target.value, field) })} style={{ ...widgetInput, flex: 1, minWidth: 0 }}>
-                  <option value="">— select variable —</option>
+                <select value={cond.selector} onChange={(e) => patchCondition(ci, ki, { selector: e.target.value })} style={{ ...widgetInput, flex: 1, minWidth: 0 }}>
+                  <option value="">— variable —</option>
                   {vars.map((v) => <option key={v.selector} value={v.selector}>{v.label}</option>)}
                 </select>
-                <input placeholder="field" value={field} onChange={(e) => patchCondition(ci, ki, { selector: composeSelector(base, e.target.value) })} style={{ ...widgetInput, width: 64 }} />
                 <select value={cond.operator} onChange={(e) => patchCondition(ci, ki, { operator: e.target.value })} style={{ ...widgetInput, width: 96 }}>
                   {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 {!isUnary(cond.operator) && (
-                  <input placeholder="value" value={cond.value} onChange={(e) => patchCondition(ci, ki, { value: e.target.value })} style={{ ...widgetInput, width: 72 }} />
+                  <input placeholder="value" value={cond.value} onChange={(e) => patchCondition(ci, ki, { value: e.target.value })} style={{ ...widgetInput, width: 80 }} />
                 )}
                 <button onClick={() => patchCase(ci, { conditions: c.conditions.filter((_, i) => i !== ki) })} style={iconBtnSmall} title="Remove condition"><X size={12} /></button>
               </div>

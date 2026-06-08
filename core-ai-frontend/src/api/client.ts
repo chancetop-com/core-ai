@@ -741,7 +741,7 @@ export const api = {
     create: (data: { name: string; mode?: string; graph: string }) =>
       request<WorkflowView>('/api/workflows', { method: 'POST', body: JSON.stringify(data) }),
     get: (id: string) => request<WorkflowView>(`/api/workflows/${id}`),
-    update: (id: string, data: { name?: string; graph?: string }) =>
+    update: (id: string, data: { name?: string; graph?: string; mode?: string }) =>
       request<WorkflowView>(`/api/workflows/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     validate: (id: string) =>
       request<ValidateWorkflowResponse>(`/api/workflows/${id}/validate`, { method: 'POST' }),
