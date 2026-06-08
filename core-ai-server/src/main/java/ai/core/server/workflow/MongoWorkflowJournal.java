@@ -13,8 +13,9 @@ import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
- * Mongo-backed journal. Race-safe append relies on the deterministic _id (run|node|scope) plus the unique
- * index (run_id, node_id, scope_path_key) — the same duplicate-key idiom as IngestService.saveSpan.
+ * Mongo-backed journal. Race-safe append relies on the deterministic _id (run|node|scope): a concurrent insert
+ * of the same node-run hits the implicit _id unique constraint (duplicate-key 11000), the same idiom as
+ * IngestService.saveSpan. The (run_id, node_id, scope_path_key) secondary index serves the run_id fold query only.
  *
  * @author Xander
  */

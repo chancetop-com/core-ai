@@ -4,6 +4,7 @@ import { Trash2, X } from 'lucide-react';
 import { nodeMeta, type WorkflowNodeData, type WorkflowRFNode } from './graph';
 import IfElseConfig from './IfElseConfig';
 import CodeConfig from './CodeConfig';
+import StartConfig from './StartConfig';
 import { TemplateField } from './configWidgets';
 
 interface AgentOption { id: string; name: string; }
@@ -24,6 +25,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   const isIfElse = node.data.nodeType === 'IF_ELSE';
   const isCode = node.data.nodeType === 'CODE';
   const isEnd = node.data.nodeType === 'END';
+  const isStart = node.data.nodeType === 'START';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
   // The panel is keyed by node.id at the call site, so it remounts per node and these initialize once per node —
   // no effect, no stale-render window, and no feedback loop with the config this panel itself mutates.
@@ -42,7 +44,8 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   };
 
   const setAgentId = (agentId: string) => {
-    onChange({ config: { ...config, agent_id: agentId } });
+    const agentName = agents.find((a) => a.id === agentId)?.name;
+    onChange({ config: { ...config, agent_id: agentId, agent_name: agentName } });
   };
 
   return (
@@ -79,6 +82,8 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
         </>
       ) : isCode ? (
         <CodeConfig node={node} nodes={nodes} onChange={onChange} />
+      ) : isStart ? (
+        <StartConfig node={node} onChange={onChange} />
       ) : isEnd ? (
         <>
           <label style={label}>Output</label>

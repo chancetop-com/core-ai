@@ -749,6 +749,8 @@ export const api = {
       request<WorkflowView>(`/api/workflows/${id}/publish`, { method: 'POST' }),
     createRun: (id: string, input: string) =>
       request<CreateRunResponse>(`/api/workflows/${id}/runs`, { method: 'POST', body: JSON.stringify({ input }) }),
+    previewRun: (id: string, input: string) =>
+      request<CreateRunResponse>(`/api/workflows/${id}/preview-runs`, { method: 'POST', body: JSON.stringify({ input }) }),
     runs: (id: string) => request<ListWorkflowRunsResponse>(`/api/workflows/${id}/runs`),
     getRun: (runId: string) => request<WorkflowRunView>(`/api/workflow-runs/${runId}`),
     nodeRuns: (runId: string) => request<ListNodeRunsResponse>(`/api/workflow-runs/${runId}/nodes`),

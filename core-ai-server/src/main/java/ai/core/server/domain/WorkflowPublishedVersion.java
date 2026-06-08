@@ -28,6 +28,10 @@ public class WorkflowPublishedVersion {
     @Field(name = "version")
     public Integer version;
 
+    // a throwaway snapshot created to run the draft (preview); not promoted to the definition's published version
+    @Field(name = "preview")
+    public Boolean preview;
+
     @Field(name = "sha256")
     public String sha256;
 

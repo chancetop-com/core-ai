@@ -9,12 +9,15 @@ import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.mongo.MongoCollection;
+import core.framework.web.exception.ForbiddenException;
+import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Publishes a workflow draft into an immutable {@link WorkflowPublishedVersion}: parse the draft graph, validate
@@ -37,32 +40,54 @@ public class WorkflowPublishService {
     public WorkflowPublishedVersion publish(String definitionId, String publishedBy) {
         WorkflowDefinition definition = definitionCollection.get(definitionId)
             .orElseThrow(() -> new IllegalStateException("workflow not found: " + definitionId));
+        WorkflowPublishedVersion published = createVersion(definition, publishedBy, false);
 
+        definition.publishedVersionId = published.id;
+        definition.publishedVersion = published.version;
+        definition.updatedAt = ZonedDateTime.now();
+        definitionCollection.replace(definition);
+        return published;
+    }
+
+    /** Snapshot the draft into an immutable version WITHOUT promoting it — used to run the draft (preview). */
+    public WorkflowPublishedVersion createPreviewVersion(String definitionId, String userId) {
+        WorkflowDefinition definition = definitionCollection.get(definitionId)
+            .orElseThrow(() -> new NotFoundException("workflow not found: " + definitionId));
+        if (!definition.userId.equals(userId)) {
+            throw new ForbiddenException("workflow does not belong to the current user: " + definitionId);
+        }
+        return createVersion(definition, userId, true);
+    }
+
+    // Validate the draft, capture agent snapshots, freeze with a sha256 and insert an immutable version. Preview
+    // versions get version=0 + preview=true and a uuid id, so they never inflate the real version counter.
+    private WorkflowPublishedVersion createVersion(WorkflowDefinition definition, String publishedBy, boolean preview) {
         Map<String, String> agentSnapshots = new LinkedHashMap<>();
         List<String> errors = collectErrors(definition, agentSnapshots);
         if (!errors.isEmpty()) {
             throw new WorkflowValidationException(errors);
         }
 
-        var now = ZonedDateTime.now();
-        int version = nextVersion(definition.id);
         var published = new WorkflowPublishedVersion();
-        published.id = definition.id + ":v" + version;
+        if (preview) {
+            published.id = definition.id + ":preview:" + UUID.randomUUID();
+            published.version = 0;
+            published.preview = true;
+        } else {
+            int version = nextVersion(definition.id);
+            published.id = definition.id + ":v" + version;
+            published.version = version;
+            published.preview = false;
+        }
         published.workflowId = definition.id;
-        published.version = version;
         published.graph = definition.draftGraph;
         published.sha256 = WorkflowSha.hex(definition.draftGraph);
         published.envVars = Map.of();         // typed env vars land with the variable model (P2)
         published.agentSnapshots = agentSnapshots;
         published.toolDigests = Map.of();
         published.publishedBy = publishedBy;
-        published.publishedAt = now;
+        published.publishedAt = ZonedDateTime.now();
         versionCollection.insert(published);
-
-        definition.publishedVersionId = published.id;
-        definition.publishedVersion = version;
-        definition.updatedAt = now;
-        definitionCollection.replace(definition);
         return published;
     }
 
@@ -113,7 +138,7 @@ public class WorkflowPublishService {
     private int nextVersion(String workflowId) {
         int max = 0;
         for (WorkflowPublishedVersion existing : versionCollection.find(Filters.eq("workflow_id", workflowId))) {
-            if (existing.version != null) {
+            if (existing.version != null && !Boolean.TRUE.equals(existing.preview)) {
                 max = Math.max(max, existing.version);
             }
         }

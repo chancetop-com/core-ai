@@ -41,6 +41,12 @@ public interface WorkflowWebService {
     @ResponseStatus(HTTPStatus.ACCEPTED)
     CreateRunResponse createRun(@PathParam("id") String id, CreateRunRequest request);
 
+    // Run the current draft without publishing (editor preview).
+    @POST
+    @Path("/api/workflows/:id/preview-runs")
+    @ResponseStatus(HTTPStatus.ACCEPTED)
+    CreateRunResponse createPreviewRun(@PathParam("id") String id, CreateRunRequest request);
+
     @GET
     @Path("/api/workflows/:id/runs")
     ListWorkflowRunsResponse listRuns(@PathParam("id") String id);

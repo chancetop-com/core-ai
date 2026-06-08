@@ -20,11 +20,32 @@ export function isUnary(operator: string): boolean {
   return operator === 'is_empty' || operator === 'is_not_empty';
 }
 
-// Base variable selectors a node can read: the run input plus every other node's output.
+// A run-input variable declared on the START node — drives the typed run form (P2 variable model).
+export interface InputVar { name: string; type: string; label?: string; required?: boolean; options?: string }
+
+export const INPUT_VAR_TYPES = [
+  { value: 'text', label: 'Text' },
+  { value: 'paragraph', label: 'Paragraph' },
+  { value: 'number', label: 'Number' },
+  { value: 'boolean', label: 'Boolean' },
+  { value: 'select', label: 'Select' },
+];
+
+export function startInputVars(nodes: WorkflowRFNode[]): InputVar[] {
+  const start = nodes.find((n) => n.data.nodeType === 'START');
+  const inputs = start?.data.config?.inputs;
+  return Array.isArray(inputs) ? (inputs as InputVar[]) : [];
+}
+
+// Base variable selectors a node can read: the run input (and each declared input field) plus every other
+// node's output.
 export function availableVariables(nodes: WorkflowRFNode[], selfId: string): { selector: string; label: string }[] {
   const vars = [{ selector: 'sys.input', label: 'Run input' }];
+  for (const iv of startInputVars(nodes)) {
+    if (iv.name) vars.push({ selector: `sys.input.${iv.name}`, label: `Input · ${iv.label || iv.name}` });
+  }
   for (const n of nodes) {
-    if (n.id === selfId || n.data.nodeType === 'END' || n.data.nodeType === 'NOTE') continue;
+    if (n.id === selfId || n.data.nodeType === 'END' || n.data.nodeType === 'NOTE' || n.data.nodeType === 'START') continue;
     vars.push({ selector: `nodes.${n.id}.output`, label: `${n.data.name} · output` });
   }
   return vars;

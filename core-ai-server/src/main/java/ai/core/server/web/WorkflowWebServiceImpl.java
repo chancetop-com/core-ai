@@ -98,6 +98,17 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    public CreateRunResponse createPreviewRun(String id, CreateRunRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("workflow_id", id);
+        WorkflowRun run = runService.createPreviewRun(id, request.input, TriggerType.API, userId);
+        var response = new CreateRunResponse();
+        response.runId = run.id;
+        response.status = run.status.name();
+        return response;
+    }
+
+    @Override
     public ListWorkflowRunsResponse listRuns(String id) {
         var userId = AuthContext.userId(webContext);
         var response = new ListWorkflowRunsResponse();

@@ -62,8 +62,38 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   name: string;
   config: Record<string, unknown>;
   runStatus?: string; // display-only, injected during a run overlay; never persisted (fromReactFlow drops it)
+  runMs?: number;     // display-only run elapsed (ms), injected during a run overlay
 }
 export type WorkflowRFNode = Node<WorkflowNodeData>;
+
+// A one-line summary of a node's config, shown on its canvas card (the "develop" glance).
+export function nodeSummary(nodeType: string, config: Record<string, unknown>): string {
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  switch (nodeType) {
+    case 'START': {
+      const n = Array.isArray(config.inputs) ? config.inputs.length : 0;
+      return n ? `${n} input${n > 1 ? 's' : ''}` : 'no inputs';
+    }
+    case 'AGENT':
+    case 'LLM':
+      return str(config.agent_name) || str(config.agent_id) || 'no agent selected';
+    case 'CODE': {
+      const lines = str(config.code).split('\n').filter((l) => l.trim()).length;
+      return lines ? `Python · ${lines} line${lines > 1 ? 's' : ''}` : 'empty';
+    }
+    case 'IF_ELSE': {
+      const n = Array.isArray(config.cases) ? config.cases.length : 0;
+      return `${n} branch${n === 1 ? '' : 'es'}`;
+    }
+    case 'HTTP':
+      return str(config.url) ? `${str(config.method) || 'GET'} ${str(config.url).slice(0, 22)}` : 'no url';
+    case 'END':
+    case 'ANSWER':
+      return str(config.output) ? 'mapped output' : '';
+    default:
+      return '';
+  }
+}
 
 // Status -> accent color. Covers BOTH backend enums: NodeRunStatus (node tint: RUNNING/COMPLETED/SKIPPED/
 // FAILED_RETRYABLE/WAITING) and RunStatus (run strip: PENDING/RUNNING/COMPLETED/FAILED/TIMEOUT/CANCELLED).

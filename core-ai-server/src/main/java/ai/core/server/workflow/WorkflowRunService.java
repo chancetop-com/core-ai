@@ -36,6 +36,9 @@ public class WorkflowRunService {
     @Inject
     MongoCollection<WorkflowNodeRun> nodeRunCollection;
 
+    @Inject
+    WorkflowPublishService publishService;
+
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
         WorkflowDefinition definition = definitionCollection.get(workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + workflowId));
@@ -47,11 +50,26 @@ public class WorkflowRunService {
         }
         WorkflowPublishedVersion version = versionCollection.get(definition.publishedVersionId)
             .orElseThrow(() -> new IllegalStateException("published version missing: " + definition.publishedVersionId));
+        return insertRun(definition, version, input, triggeredBy, userId);
+    }
 
+    /** Run the current DRAFT without publishing: snapshot it into a throwaway preview version and run that. */
+    public WorkflowRun createPreviewRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
+        WorkflowDefinition definition = definitionCollection.get(workflowId)
+            .orElseThrow(() -> new NotFoundException("workflow not found: " + workflowId));
+        if (!definition.userId.equals(userId)) {
+            throw new ForbiddenException("workflow does not belong to the current user: " + workflowId);
+        }
+        WorkflowPublishedVersion version = publishService.createPreviewVersion(workflowId, userId);
+        return insertRun(definition, version, input, triggeredBy, userId);
+    }
+
+    private WorkflowRun insertRun(WorkflowDefinition definition, WorkflowPublishedVersion version, String input,
+                                  TriggerType triggeredBy, String userId) {
         var now = ZonedDateTime.now();
         var run = new WorkflowRun();
         run.id = UUID.randomUUID().toString();
-        run.workflowId = workflowId;
+        run.workflowId = definition.id;
         run.versionId = version.id;
         run.versionSha256 = version.sha256;
         run.userId = userId;
