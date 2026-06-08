@@ -10,6 +10,7 @@ import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -74,10 +75,33 @@ public class CodeExecutor implements NodeExecutor {
         var resolved = new LinkedHashMap<String, Object>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             if (entry.getValue() instanceof String selector) {
-                ctx.pool().resolve(selector).ifPresent(value -> resolved.put(String.valueOf(entry.getKey()), value));
+                Object value = ctx.pool().resolve(selector).orElse(null);
+                if (value != null) {
+                    resolved.put(String.valueOf(entry.getKey()), coerce(value));
+                }
             }
         }
         return resolved;
+    }
+
+    // A whole-output selector resolves to a raw JSON string; parse it so the script reads a real object/array
+    // instead of a quoted string. Field selectors already resolve to typed values and pass through unchanged.
+    static Object coerce(Object value) {
+        if (!(value instanceof String string)) {
+            return value;
+        }
+        String trimmed = string.strip();
+        try {
+            if (trimmed.startsWith("{")) {
+                return JSON.fromJSON(Map.class, trimmed);
+            }
+            if (trimmed.startsWith("[")) {
+                return JSON.fromJSON(List.class, trimmed);
+            }
+        } catch (RuntimeException e) {
+            // not valid JSON after all — fall through to the raw string
+        }
+        return value;
     }
 
     private static void close(Sandbox sandbox) {

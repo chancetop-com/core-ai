@@ -44,6 +44,17 @@ class CodeExecutorTest {
     }
 
     @Test
+    void coerceParsesWholeOutputJsonObjectIntoAMap() {
+        assertEquals(Map.of("k", "v"), CodeExecutor.coerce("{\"k\": \"v\"}"));
+    }
+
+    @Test
+    void coerceLeavesPlainStringsAndNonStringsUnchanged() {
+        assertEquals("hello", CodeExecutor.coerce("hello"));
+        assertEquals(42, CodeExecutor.coerce(42));
+    }
+
+    @Test
     void missingCodeFailsBeforeTouchingSandbox() {
         var node = new WorkflowNode("c", "CODE");   // no config
         var outcome = new CodeExecutor(null).execute(ctx(node));

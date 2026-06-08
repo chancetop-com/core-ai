@@ -40,6 +40,7 @@ export function splitSelector(selector: string): { base: string; field: string }
 
 export function composeSelector(base: string, field: string): string {
   const f = field.trim();
+  if (!base) return f;   // no recognized base variable -> don't compose a leading-dot garbage selector
   return f ? `${base}.${f}` : base;
 }
 
@@ -60,6 +61,36 @@ export function EdgeSelect({ edges, nodes, value, onChange }: {
       <option value="">— select branch —</option>
       {edges.map((e) => <option key={e.id} value={e.id}>{nodeName(nodes, e.target)}</option>)}
     </select>
+  );
+}
+
+// A text template field with an "insert variable" dropdown — the user picks an upstream variable and a
+// {{ selector }} token is appended, so the template syntax never has to be typed or memorized.
+export function TemplateField({ value, onChange, nodes, selfId, placeholder, rows }: {
+  value: string; onChange: (next: string) => void; nodes: WorkflowRFNode[]; selfId: string; placeholder?: string; rows?: number;
+}) {
+  const vars = availableVariables(nodes, selfId);
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) onChange(`${value ?? ''}{{ ${e.target.value} }}`); }}
+          style={{ ...widgetInput, fontSize: 11 }}
+        >
+          <option value="">+ insert variable</option>
+          {vars.map((v) => <option key={v.selector} value={v.selector}>{v.label}</option>)}
+        </select>
+      </div>
+      <textarea
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={rows ?? 3}
+        spellCheck={false}
+        style={{ ...widgetInput, width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', resize: 'vertical' }}
+      />
+    </div>
   );
 }
 

@@ -1,8 +1,10 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { Edge } from '@xyflow/react';
 import { Trash2, X } from 'lucide-react';
 import { nodeMeta, type WorkflowNodeData, type WorkflowRFNode } from './graph';
 import IfElseConfig from './IfElseConfig';
+import CodeConfig from './CodeConfig';
+import { TemplateField } from './configWidgets';
 
 interface AgentOption { id: string; name: string; }
 
@@ -20,17 +22,13 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   const meta = nodeMeta(node.data.nodeType);
   const isAgentNode = node.data.nodeType === 'AGENT' || node.data.nodeType === 'LLM';
   const isIfElse = node.data.nodeType === 'IF_ELSE';
+  const isCode = node.data.nodeType === 'CODE';
+  const isEnd = node.data.nodeType === 'END';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
-  const [configText, setConfigText] = useState('{}');
+  // The panel is keyed by node.id at the call site, so it remounts per node and these initialize once per node —
+  // no effect, no stale-render window, and no feedback loop with the config this panel itself mutates.
+  const [configText, setConfigText] = useState(() => JSON.stringify(node.data.config ?? {}, null, 2));
   const [configError, setConfigError] = useState('');
-
-  // reset the editable config text only when the SELECTED NODE changes — not on node.data.config, which this
-  // panel itself mutates on every keystroke (that would re-serialize and fight the user's cursor).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    setConfigText(JSON.stringify(node.data.config ?? {}, null, 2));
-    setConfigError('');
-  }, [node.id]);
 
   const commitConfig = (text: string) => {
     setConfigText(text);
@@ -58,20 +56,39 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
       <label style={label}>Name</label>
       <input value={node.data.name} onChange={(e) => onChange({ name: e.target.value })} style={input} />
 
-      {isAgentNode && (
+      {isAgentNode ? (
         <>
           <label style={label}>Agent</label>
           <select value={String(config.agent_id ?? '')} onChange={(e) => setAgentId(e.target.value)} style={input}>
             <option value="">— select a published agent —</option>
             {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
+          <label style={label}>Input</label>
+          <TemplateField
+            value={String(config.input ?? '')}
+            onChange={(v) => onChange({ config: { ...config, input: v } })}
+            nodes={nodes}
+            selfId={node.id}
+            placeholder="defaults to the run input"
+          />
         </>
-      )}
-
-      {isIfElse ? (
+      ) : isIfElse ? (
         <>
           <label style={label}>Branches</label>
           <IfElseConfig node={node} nodes={nodes} edges={edges} onChange={onChange} />
+        </>
+      ) : isCode ? (
+        <CodeConfig node={node} nodes={nodes} onChange={onChange} />
+      ) : isEnd ? (
+        <>
+          <label style={label}>Output</label>
+          <TemplateField
+            value={String(config.output ?? '')}
+            onChange={(v) => onChange({ config: { ...config, output: v } })}
+            nodes={nodes}
+            selfId={node.id}
+            placeholder="defaults to {}"
+          />
         </>
       ) : (
         <>

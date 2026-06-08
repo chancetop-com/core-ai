@@ -248,6 +248,7 @@ export default function WorkflowEditor() {
         </div>
         {!running && selectedNode && (
           <NodeConfigPanel
+            key={selectedNode.id}
             node={selectedNode}
             nodes={nodes}
             edges={edges}

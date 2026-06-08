@@ -27,7 +27,7 @@ export default function IfElseConfig({ node, nodes, edges, onChange }: Props) {
   const vars = availableVariables(nodes, node.id);
   const branches = outEdges(edges, node.id);
 
-  const commit = (next: IfElseCfg) => onChange({ config: next as unknown as Record<string, unknown> });
+  const commit = (next: IfElseCfg) => onChange({ config: { ...node.data.config, ...(next as unknown as Record<string, unknown>) } });
   const patchCase = (ci: number, patch: Partial<Case>) =>
     commit({ ...cfg, cases: cfg.cases.map((c, i) => (i === ci ? { ...c, ...patch } : c)) });
   const patchCondition = (ci: number, ki: number, patch: Partial<Condition>) =>
@@ -52,6 +52,7 @@ export default function IfElseConfig({ node, nodes, edges, onChange }: Props) {
             return (
               <div key={ki} style={condRow}>
                 <select value={base} onChange={(e) => patchCondition(ci, ki, { selector: composeSelector(e.target.value, field) })} style={{ ...widgetInput, flex: 1, minWidth: 0 }}>
+                  <option value="">— select variable —</option>
                   {vars.map((v) => <option key={v.selector} value={v.selector}>{v.label}</option>)}
                 </select>
                 <input placeholder="field" value={field} onChange={(e) => patchCondition(ci, ki, { selector: composeSelector(base, e.target.value) })} style={{ ...widgetInput, width: 64 }} />
@@ -100,7 +101,11 @@ function normalize(config: Record<string, unknown>): IfElseCfg {
   return {
     cases: rawCases.map((c) => ({
       logic: c.logic === 'or' ? 'or' : 'and',
-      conditions: Array.isArray(c.conditions) ? (c.conditions as Condition[]) : [],
+      conditions: (Array.isArray(c.conditions) ? c.conditions : []).map((cond: Partial<Condition>) => ({
+        selector: typeof cond.selector === 'string' ? cond.selector : 'sys.input',
+        operator: typeof cond.operator === 'string' ? cond.operator : 'eq',
+        value: cond.value == null ? '' : String(cond.value),
+      })),
       edge_id: typeof c.edge_id === 'string' ? c.edge_id : '',
     })),
     else_edge_id: typeof config.else_edge_id === 'string' ? config.else_edge_id : '',
