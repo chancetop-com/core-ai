@@ -5,6 +5,7 @@ import ai.core.api.jsonschema.JsonSchema;
 import ai.core.llm.domain.Function;
 import ai.core.llm.domain.Tool;
 import ai.core.llm.domain.ToolType;
+import ai.core.tool.registry.ToolExposure;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.utils.JsonSchemaUtil;
 import ai.core.utils.JsonUtil;
@@ -45,6 +46,7 @@ public abstract class ToolCall {
     String concurrencyGroup;
     String sourceType;
     protected Long timeoutMs;
+    ToolExposure exposure;
 
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         return execute(arguments);
@@ -115,6 +117,14 @@ public abstract class ToolCall {
 
     public void setLlmVisible(Boolean llmVisible) {
         this.llmVisible = llmVisible;
+    }
+
+    public ToolExposure getExposure() {
+        return exposure != null ? exposure : ToolExposure.DIRECT;
+    }
+
+    public void setExposure(ToolExposure exposure) {
+        this.exposure = exposure;
     }
 
     public boolean isDiscoverable() {
@@ -247,6 +257,7 @@ public abstract class ToolCall {
         String concurrencyGroup;
         String sourceType;
         Long timeoutMs;
+        ToolExposure exposure;
 
         protected abstract B self();
 
@@ -305,6 +316,11 @@ public abstract class ToolCall {
             return self();
         }
 
+        public B exposure(ToolExposure exposure) {
+            this.exposure = exposure;
+            return self();
+        }
+
         public B timeoutMs(Long timeoutMs) {
             this.timeoutMs = timeoutMs;
             return self();
@@ -341,6 +357,7 @@ public abstract class ToolCall {
             toolCall.concurrencyGroup = concurrencyGroup;
             toolCall.sourceType = sourceType;
             toolCall.timeoutMs = timeoutMs;
+            toolCall.exposure = exposure;
         }
     }
 }

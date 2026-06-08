@@ -5,6 +5,7 @@ import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterUtil;
+import ai.core.tool.registry.ToolExposure;
 
 import java.io.Serial;
 import java.lang.reflect.Method;
@@ -62,6 +63,7 @@ public class Functions extends ArrayList<Function> {
                 .needAuth(functionDef.needAuth())
                 .directReturn(functionDef.directReturn())
                 .llmVisible(functionDef.llmVisible())
+                .exposure(functionDef.llmVisible() ? ToolExposure.DIRECT : ToolExposure.HIDDEN)
                 .parameters(buildParameters(method));
 
         // Set timeout if specified
