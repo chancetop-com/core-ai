@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { Plus, X } from 'lucide-react';
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
-import type { WorkflowNodeData, WorkflowRFNode } from './graph';
+import { DEFAULT_CODE, type WorkflowNodeData, type WorkflowRFNode } from './graph';
 import { availableVariables, widgetInput, smallBtn, iconBtnSmall } from './configWidgets';
 
 interface Row { name: string; selector: string; }
@@ -41,7 +41,10 @@ export default function CodeConfig({ node, nodes, onChange }: Props) {
 
   return (
     <div>
-      <label style={label}>Code (Python)</label>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <label style={{ ...label, flex: 1 }}>Code (Python)</label>
+        {!code.trim() && <button onClick={() => sync(DEFAULT_CODE, rows)} style={smallBtn}>Insert example</button>}
+      </div>
       <div style={editorWrap}>
         <CodeMirrorEditor value={code} filename="script.py" onChange={(v: string) => sync(v, rows)} />
       </div>

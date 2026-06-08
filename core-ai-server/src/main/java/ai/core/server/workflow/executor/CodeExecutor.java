@@ -59,11 +59,9 @@ public class CodeExecutor implements NodeExecutor {
         return result.isCompleted() ? new NodeOutcome.Normal(output) : new NodeOutcome.Fail(output, false);
     }
 
-    /** Prepend an {@code inputs} dict the script can read; no inputs means the code runs unchanged. */
+    /** Always prepend an {@code inputs} dict the script can read (empty -> {}), so user code can safely reference
+     *  {@code inputs} even when no inputs are mapped. */
     static String buildScript(String code, Map<String, Object> inputs) {
-        if (inputs.isEmpty()) {
-            return code;
-        }
         return "import json\ninputs = json.loads(r'''" + JSON.toJSON(inputs) + "''')\n" + code;
     }
 

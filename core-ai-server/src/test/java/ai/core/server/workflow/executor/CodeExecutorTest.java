@@ -39,8 +39,10 @@ class CodeExecutorTest {
     }
 
     @Test
-    void buildScriptWithoutInputsIsUnchanged() {
-        assertEquals("print(1)", CodeExecutor.buildScript("print(1)", Map.of()));
+    void buildScriptAlwaysDefinesInputs() {
+        String script = CodeExecutor.buildScript("print(1)", Map.of());
+        assertTrue(script.contains("inputs = json.loads"));
+        assertTrue(script.contains("print(1)"));
     }
 
     @Test

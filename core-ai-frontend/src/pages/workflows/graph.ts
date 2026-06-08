@@ -46,6 +46,20 @@ export function nodeMeta(type: string): NodeTypeMeta {
   return NODE_TYPE_META[type] ?? { label: type, color: '#64748b' };
 }
 
+// A runnable starter for CODE nodes so users see the contract: read `inputs`, print to stdout.
+export const DEFAULT_CODE = `# 'inputs' holds the variables you map below, e.g. inputs.get("name").
+# Whatever you print to stdout becomes this node's output.
+import json
+
+result = {"message": "hello, " + str(inputs.get("name", "world"))}
+print(json.dumps(result))
+`;
+
+// Seed config when a node is dropped on the canvas (CODE gets a starter script).
+export function defaultNodeConfig(nodeType: string): Record<string, unknown> {
+  return nodeType === 'CODE' ? { code: DEFAULT_CODE } : {};
+}
+
 export function newGraph(): WorkflowGraph {
   return {
     format: 'core-ai-workflow/v1',
