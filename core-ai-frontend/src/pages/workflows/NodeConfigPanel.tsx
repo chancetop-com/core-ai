@@ -1,20 +1,25 @@
 import { useEffect, useState, type CSSProperties } from 'react';
+import type { Edge } from '@xyflow/react';
 import { Trash2, X } from 'lucide-react';
 import { nodeMeta, type WorkflowNodeData, type WorkflowRFNode } from './graph';
+import IfElseConfig from './IfElseConfig';
 
 interface AgentOption { id: string; name: string; }
 
 interface Props {
   node: WorkflowRFNode;
+  nodes: WorkflowRFNode[];
+  edges: Edge[];
   agents: AgentOption[];
   onChange: (partial: Partial<WorkflowNodeData>) => void;
   onDelete: () => void;
   onClose: () => void;
 }
 
-export default function NodeConfigPanel({ node, agents, onChange, onDelete, onClose }: Props) {
+export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, onDelete, onClose }: Props) {
   const meta = nodeMeta(node.data.nodeType);
   const isAgentNode = node.data.nodeType === 'AGENT' || node.data.nodeType === 'LLM';
+  const isIfElse = node.data.nodeType === 'IF_ELSE';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
   const [configText, setConfigText] = useState('{}');
   const [configError, setConfigError] = useState('');
@@ -63,14 +68,23 @@ export default function NodeConfigPanel({ node, agents, onChange, onDelete, onCl
         </>
       )}
 
-      <label style={label}>Config (JSON)</label>
-      <textarea
-        value={configText}
-        onChange={(e) => commitConfig(e.target.value)}
-        spellCheck={false}
-        style={{ ...input, fontFamily: 'monospace', fontSize: 12, minHeight: 160, resize: 'vertical' }}
-      />
-      {configError && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>{configError}</div>}
+      {isIfElse ? (
+        <>
+          <label style={label}>Branches</label>
+          <IfElseConfig node={node} nodes={nodes} edges={edges} onChange={onChange} />
+        </>
+      ) : (
+        <>
+          <label style={label}>Config (JSON)</label>
+          <textarea
+            value={configText}
+            onChange={(e) => commitConfig(e.target.value)}
+            spellCheck={false}
+            style={{ ...input, fontFamily: 'monospace', fontSize: 12, minHeight: 160, resize: 'vertical' }}
+          />
+          {configError && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>{configError}</div>}
+        </>
+      )}
 
       <button onClick={onDelete} style={deleteBtn}><Trash2 size={15} /> Delete node</button>
     </div>

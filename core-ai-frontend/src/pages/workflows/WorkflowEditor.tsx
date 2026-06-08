@@ -249,6 +249,8 @@ export default function WorkflowEditor() {
         {!running && selectedNode && (
           <NodeConfigPanel
             node={selectedNode}
+            nodes={nodes}
+            edges={edges}
             agents={agents}
             onChange={(partial) => updateNodeData(selectedNode.id, partial)}
             onDelete={() => deleteNode(selectedNode.id)}
