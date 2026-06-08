@@ -1,6 +1,7 @@
 package ai.core.api.server.workflow;
 
 import core.framework.api.http.HTTPStatus;
+import core.framework.api.web.service.DELETE;
 import core.framework.api.web.service.GET;
 import core.framework.api.web.service.POST;
 import core.framework.api.web.service.PUT;
@@ -27,6 +28,10 @@ public interface WorkflowWebService {
     @PUT
     @Path("/api/workflows/:id")
     WorkflowView update(@PathParam("id") String id, UpdateWorkflowRequest request);
+
+    @DELETE
+    @Path("/api/workflows/:id")
+    void delete(@PathParam("id") String id);
 
     @POST
     @Path("/api/workflows/:id/validate")

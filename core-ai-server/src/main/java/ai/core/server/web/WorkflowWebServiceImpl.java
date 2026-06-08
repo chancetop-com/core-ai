@@ -69,6 +69,13 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     }
 
     @Override
+    public void delete(String id) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("workflow_id", id);
+        definitionService.delete(id, userId);
+    }
+
+    @Override
     public ValidateWorkflowResponse validate(String id) {
         var userId = AuthContext.userId(webContext);
         List<String> errors = publishService.validate(definitionService.get(id, userId));
