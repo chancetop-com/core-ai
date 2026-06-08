@@ -384,7 +384,7 @@ public class ServerModule extends Module {
         // iOS Safari legacy probe; reuse favicon.svg to silence 404 noise.
         http().route(HTTPMethod.GET, "/apple-touch-icon-precomposed.png", controller::serveAppleTouchIcon);
         var spaRoutes = new String[]{
-            "/", "/login", "/chat", "/agents", "/sessions",
+            "/", "/login", "/authorize", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
             "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools",
             "/triggers", "/datasets", "/for-you", "/for-you/artifacts", "/workflows"
