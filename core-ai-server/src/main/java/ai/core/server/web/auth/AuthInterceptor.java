@@ -1,5 +1,6 @@
 package ai.core.server.web.auth;
 
+import ai.core.server.channel.ChannelConfigStore;
 import core.framework.inject.Inject;
 import core.framework.web.Interceptor;
 import core.framework.web.Invocation;
@@ -11,6 +12,9 @@ import core.framework.web.Response;
 public class AuthInterceptor implements Interceptor {
     @Inject
     RequestAuthenticator requestAuthenticator;
+
+    @Inject
+    ChannelConfigStore channelConfigStore;
 
     @Override
     public Response intercept(Invocation invocation) throws Exception {
@@ -26,12 +30,32 @@ public class AuthInterceptor implements Interceptor {
                 || path.startsWith("/api/public/artifacts/")
                 || path.startsWith("/api/ingest/")
                 || path.startsWith("/api/capabilities")
-                || path.startsWith("/api/webhook-triggers/")) {
+                || path.startsWith("/api/webhook-triggers/")
+                || path.startsWith("/api/weclaw/")) {
             return invocation.proceed();
+        }
+
+        // Per-channel auth control: channels with requireAuth=false skip authentication
+        if (path.startsWith("/api/channels/")) {
+            var channelId = extractChannelId(path);
+            if (channelId != null) {
+                var channel = channelConfigStore.load(channelId);
+                if (channel != null && Boolean.FALSE.equals(channel.requireAuth)) {
+                    return invocation.proceed();
+                }
+            }
         }
 
         var userId = requestAuthenticator.authenticate(request);
         invocation.context().put(AuthContext.USER_ID_KEY, userId);
         return invocation.proceed();
+    }
+
+    private String extractChannelId(String path) {
+        // path format: /api/channels/:channelId
+        int start = "/api/channels/".length();
+        if (start >= path.length()) return null;
+        int end = path.indexOf('/', start);
+        return end < 0 ? path.substring(start) : path.substring(start, end);
     }
 }

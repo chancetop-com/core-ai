@@ -1,9 +1,15 @@
 package ai.core.llm.domain;
 
 import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -60,6 +66,7 @@ public class Message {
     public RoleType role;
     @NotNull
     @Property(name = "content")
+    @JsonDeserialize(using = ContentListDeserializer.class)
     public List<Content> content;
     @Property(name = "reasoning_content")
     public String reasoningContent;
@@ -90,5 +97,16 @@ public class Message {
                                 String name,
                                 String toolCallId,
                                 List<FunctionCall> toolCalls) {
+    }
+
+    public static class ContentListDeserializer extends JsonDeserializer<List<Content>> {
+        @Override
+        public List<Content> deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            if (p.currentToken() == JsonToken.VALUE_STRING) {
+                return List.of(Content.of(p.getText()));
+            }
+            var listType = ctxt.getTypeFactory().constructCollectionType(List.class, Content.class);
+            return ctxt.readValue(p, listType);
+        }
     }
 }

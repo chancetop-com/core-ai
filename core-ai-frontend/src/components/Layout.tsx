@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bot, Calendar, ChevronRight, Database, Files, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap } from 'lucide-react';
+import { Activity, Bot, Calendar, ChevronRight, Database, Files, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Sparkles, Star, Sun, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -41,6 +41,7 @@ export default function Layout() {
       '/settings': 'Settings',
       '/triggers': 'Triggers',
       '/triggers/webhook': 'Webhook Triggers',
+      '/triggers/channels': 'Channels',
       '/triggers/schedule': 'Scheduler',
     };
     const path = location.pathname;
@@ -68,7 +69,7 @@ export default function Layout() {
     if (to === '/datasets') return pathname === '/datasets' || pathname.startsWith('/datasets/');
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
     if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
-    if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule';
+    if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule' || pathname === '/triggers/channels';
     if (to === '/for-you') return pathname === '/for-you' || pathname.startsWith('/for-you/');
     return pathname === to;
   };
@@ -85,6 +86,7 @@ export default function Layout() {
     { to: '/tasks', icon: ListChecks, label: 'Tasks', show: true },
     { to: '/triggers', icon: Zap, label: 'Triggers', show: true, children: [
       { to: '/triggers/webhook', icon: Webhook, label: 'Webhook', show: true },
+      { to: '/triggers/channels', icon: Radio, label: 'Channels', show: true },
       { to: '/triggers/schedule', icon: Calendar, label: 'Schedule', show: true },
     ]},
     { to: '/tools', icon: Wrench, label: 'Tools', show: true, children: [

@@ -29,6 +29,7 @@ import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
+import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.tool.tools.InternalUrlResolver;
 import ai.core.prompt.Prompts;
@@ -94,6 +95,8 @@ public class AgentSessionManager {
 
     EventPublisher eventPublisher;
     SessionOwnershipRegistry ownershipRegistry;
+    @Inject
+    ChannelRegistry channelRegistry;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -309,6 +312,9 @@ public class AgentSessionManager {
         sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
         sessionChannelService.close(sessionId);
+        if (channelRegistry != null) {
+            channelRegistry.removeSessionBridge(sessionId);
+        }
         if (ownershipRegistry != null) {
             ownershipRegistry.release(sessionId);
         }

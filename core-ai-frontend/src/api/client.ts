@@ -907,6 +907,20 @@ export const api = {
     rotateSecret: (id: string) =>
       request<TriggerView>(`/api/triggers/${id}/rotate-secret`, { method: 'POST' }),
   },
+  channels: {
+    list: () =>
+      request<ListChannelsResponse>('/api/admin/channels'),
+    get: (id: string) =>
+      request<ChannelResponse>(`/api/admin/channels/${id}`),
+    create: (data: Record<string, unknown>) =>
+      request<ChannelResponse>('/api/admin/channels', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Record<string, unknown>) =>
+      request<ChannelResponse>(`/api/admin/channels/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/api/admin/channels/${id}`, { method: 'DELETE' }),
+    types: () =>
+      request<ChannelTypesResponse>('/api/admin/channel-types'),
+  },
   datasets: {
     list: () =>
       request<ListDatasetsResponse>('/api/datasets'),
@@ -1177,4 +1191,34 @@ export interface SharedArtifactView {
 export interface ListSharedArtifactsResponse {
   total: number;
   artifacts: SharedArtifactView[];
+}
+
+// Channel types
+
+export interface ChannelView {
+  channelId: string;
+  channelType: string;
+  enabled: boolean;
+  requireAuth: boolean;
+  agentId: string;
+  sessionTtlMinutes: number;
+  config: Record<string, string>;
+  filterConfig: Record<string, string> | null;
+}
+
+export interface ChannelResponse {
+  channel: ChannelView;
+}
+
+export interface ListChannelsResponse {
+  channels: ChannelView[];
+}
+
+export interface ChannelTypeInfo {
+  type: string;
+  label: string;
+}
+
+export interface ChannelTypesResponse {
+  types: ChannelTypeInfo[];
 }

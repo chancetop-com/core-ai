@@ -88,6 +88,18 @@ import ai.core.server.user.UserService;
 import ai.core.server.trigger.TriggerController;
 import ai.core.server.trigger.TriggerService;
 import ai.core.server.trigger.action.RunAgentAction;
+import ai.core.server.channel.ChannelAdminController;
+import ai.core.server.channel.ChannelConfigStore;
+import ai.core.server.channel.ChannelController;
+import ai.core.server.channel.ChannelDispatcher;
+import ai.core.server.channel.ChannelRegistry;
+import ai.core.server.channel.slack.SlackInboundAdapter;
+import ai.core.server.channel.slack.SlackOutboundAdapter;
+import ai.core.server.channel.telegram.TelegramInboundAdapter;
+import ai.core.server.channel.telegram.TelegramOutboundAdapter;
+import ai.core.server.channel.weclaw.WeClawInboundAdapter;
+import ai.core.server.channel.weclaw.WeClawOutboundAdapter;
+import ai.core.server.channel.weclaw.WeClawSyncController;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
 import ai.core.server.web.ArtifactWebServiceImpl;
 import ai.core.server.web.ChatSessionController;
@@ -145,6 +157,8 @@ public class ServerModule extends Module {
         var migrationManager = bind(SchemaMigrationManager.class);
         onStartup(migrationManager::migrate);
         bind(RequestAuthenticator.class);
+        var store = bind(ChannelConfigStore.class);         // must be before AuthInterceptor — AuthInterceptor checks per-channel auth
+        onStartup(store::loadAllFromDb);
         http().intercept(bind(AuthInterceptor.class));
         var corsInterceptor = bind(CorsInterceptor.class);
         http().intercept(corsInterceptor);
@@ -157,6 +171,11 @@ public class ServerModule extends Module {
         SandboxModule sandboxModule = new SandboxModule();
         load(sandboxModule);
         this.sandboxService = sandboxModule.sandboxService;
+
+        // ChannelRegistry and adapters must be bound before bindService() because
+        // AgentSessionManager injects ChannelRegistry for bridge cleanup.
+        bindChannelRegistry();
+
         bindService();
         bindAuthService();
         bindGitHubService();
@@ -168,6 +187,11 @@ public class ServerModule extends Module {
         onStartup(builderTools::initialize);
         onStartup(agentBuilderTools::initialize);
         load(new MessagingModule());
+
+        // ChannelDispatcher and ChannelController must be bound after MessagingModule
+        // because ChannelDispatcher injects CommandPublisher.
+        bindChannels();
+
         bind(PodLocalExecutor.class);
         bindWebService();
         schedule().fixedRate("agent-scheduler", bind(AgentSchedulerJob.class), Duration.ofMinutes(1));
@@ -441,6 +465,46 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.POST, "/api/webhook-triggers/:id", controller);
         // GET for Slack URL verification challenge
         http().route(HTTPMethod.GET, "/api/webhook-triggers/:id", controller);
+    }
+
+    private void bindChannelRegistry() {
+        var registry = bind(ChannelRegistry.class);
+
+        // Register channel adapters — each pair handles inbound verification/parsing
+        // and outbound message delivery for a specific platform.
+        var slackInbound = new SlackInboundAdapter();
+        var slackOutbound = new SlackOutboundAdapter();
+        registry.register(slackInbound, slackOutbound);
+
+        var telegramInbound = new TelegramInboundAdapter();
+        var telegramOutbound = new TelegramOutboundAdapter();
+        registry.register(telegramInbound, telegramOutbound);
+
+        var weclawInbound = new WeClawInboundAdapter();
+        var weclawOutbound = new WeClawOutboundAdapter();
+        registry.register(weclawInbound, weclawOutbound);
+    }
+
+    private void bindChannels() {
+        bind(ChannelDispatcher.class);
+
+        // Unified webhook endpoint for all channels
+        var channelController = bind(ChannelController.class);
+        http().route(HTTPMethod.POST, "/api/channels/:channelId", channelController);
+        http().route(HTTPMethod.GET, "/api/channels/:channelId", channelController);
+
+        // Channel admin CRUD endpoints
+        var channelAdmin = bind(ChannelAdminController.class);
+
+        // WeClaw sync endpoint — OpenAI-compatible API for WeClaw's HTTP agent
+        var weclawSync = bind(WeClawSyncController.class);
+        http().route(HTTPMethod.POST, "/api/weclaw/v1/chat/completions", weclawSync);
+        http().route(HTTPMethod.GET, "/api/admin/channels", channelAdmin::list);
+        http().route(HTTPMethod.POST, "/api/admin/channels", channelAdmin::create);
+        http().route(HTTPMethod.GET, "/api/admin/channels/:channelId", channelAdmin::get);
+        http().route(HTTPMethod.PUT, "/api/admin/channels/:channelId", channelAdmin::update);
+        http().route(HTTPMethod.DELETE, "/api/admin/channels/:channelId", channelAdmin::delete);
+        http().route(HTTPMethod.GET, "/api/admin/channel-types", channelAdmin::types);
     }
     private void registerCapabilities() {
         var controller = bind(CapabilitiesController.class);
