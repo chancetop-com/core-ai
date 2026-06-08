@@ -108,7 +108,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
         </>
       )}
 
-      <button onClick={onDelete} style={deleteBtn}><Trash2 size={15} /> Delete node</button>
+      {!isStart && <button onClick={onDelete} style={deleteBtn}><Trash2 size={15} /> Delete node</button>}
     </div>
   );
 }

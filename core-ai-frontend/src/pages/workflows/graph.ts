@@ -133,6 +133,7 @@ export function toReactFlow(graph: WorkflowGraph): { nodes: WorkflowRFNode[]; ed
     type: 'workflowNode',
     position: n.position ?? { x: 120 + (i % 4) * 220, y: 120 + Math.floor(i / 4) * 150 },
     data: { nodeType: n.type, name: n.name ?? n.id, config: n.config ?? {} },
+    deletable: n.type !== 'START',   // START is the required entry — can't be deleted from the canvas
   }));
   const edges: Edge[] = graph.edges.map((e) => ({
     id: e.id,
@@ -141,6 +142,16 @@ export function toReactFlow(graph: WorkflowGraph): { nodes: WorkflowRFNode[]; ed
     sourceHandle: e.sourceHandle ?? undefined,
   }));
   return { nodes, edges };
+}
+
+// Recovery: a workflow must have a START. If one was lost, re-add a (disconnected) START so the canvas is usable.
+export function ensureStart(nodes: WorkflowRFNode[]): WorkflowRFNode[] {
+  if (nodes.some((n) => n.data.nodeType === 'START')) return nodes;
+  const start: WorkflowRFNode = {
+    id: 'start', type: 'workflowNode', position: { x: 80, y: 80 },
+    data: { nodeType: 'START', name: 'Start', config: {} }, deletable: false,
+  };
+  return [start, ...nodes];
 }
 
 export function fromReactFlow(nodes: WorkflowRFNode[], edges: Edge[]): WorkflowGraph {

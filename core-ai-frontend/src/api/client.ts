@@ -743,6 +743,7 @@ export const api = {
     get: (id: string) => request<WorkflowView>(`/api/workflows/${id}`),
     update: (id: string, data: { name?: string; graph?: string }) =>
       request<WorkflowView>(`/api/workflows/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => request<void>(`/api/workflows/${id}`, { method: 'DELETE' }),
     validate: (id: string) =>
       request<ValidateWorkflowResponse>(`/api/workflows/${id}/validate`, { method: 'POST' }),
     publish: (id: string) =>

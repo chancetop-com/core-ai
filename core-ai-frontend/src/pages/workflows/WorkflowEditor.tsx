@@ -15,7 +15,7 @@ import NodeConfigPanel from './NodeConfigPanel';
 import RunPanel from './RunPanel';
 import ResizablePanel from './ResizablePanel';
 import {
-  toReactFlow, fromReactFlow, newGraph, nodeMeta, defaultNodeConfig, TERMINAL_RUN_STATUS,
+  toReactFlow, fromReactFlow, newGraph, nodeMeta, defaultNodeConfig, ensureStart, TERMINAL_RUN_STATUS,
   type WorkflowGraph, type WorkflowNodeData, type WorkflowRFNode,
 } from './graph';
 
@@ -69,7 +69,7 @@ export default function WorkflowEditor() {
         setMsg('Draft graph was invalid; loaded an empty workflow.');
       }
       const { nodes: rfNodes, edges: rfEdges } = toReactFlow(graph);
-      setNodes(rfNodes);
+      setNodes(ensureStart(rfNodes));
       setEdges(rfEdges);
     }).catch((e) => {
       setMsg(`Failed to load workflow: ${(e as Error).message}`);
@@ -135,10 +135,11 @@ export default function WorkflowEditor() {
   }, [setNodes]);
 
   const deleteNode = useCallback((nodeId: string) => {
+    if (nodes.find((n) => n.id === nodeId)?.data.nodeType === 'START') return;   // START is protected
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
     setSelectedId(null);
-  }, [setNodes, setEdges]);
+  }, [nodes, setNodes, setEdges]);
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
 
