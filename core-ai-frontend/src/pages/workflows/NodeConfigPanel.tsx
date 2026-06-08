@@ -114,8 +114,8 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
 }
 
 const panel: CSSProperties = {
-  width: 300, flexShrink: 0, padding: 16, overflowY: 'auto',
-  borderLeft: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)',
+  width: '100%', height: '100%', boxSizing: 'border-box', padding: 16, overflowY: 'auto',
+  background: 'var(--color-bg-secondary)',
 };
 const label: CSSProperties = {
   display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '12px 0 4px',

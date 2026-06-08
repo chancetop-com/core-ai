@@ -65,7 +65,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     @Override
     public WorkflowView update(String id, UpdateWorkflowRequest request) {
         var userId = AuthContext.userId(webContext);
-        return toView(definitionService.update(id, request.name, request.graph, request.mode, userId));
+        return toView(definitionService.update(id, request.name, request.graph, userId));
     }
 
     @Override

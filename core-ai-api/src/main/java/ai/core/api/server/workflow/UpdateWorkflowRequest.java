@@ -11,7 +11,4 @@ public class UpdateWorkflowRequest {
 
     @Property(name = "graph")
     public String graph;   // updated canvas graph JSON
-
-    @Property(name = "mode")
-    public String mode;    // WORKFLOW or CHATFLOW
 }

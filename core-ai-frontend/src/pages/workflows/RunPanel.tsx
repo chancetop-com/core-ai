@@ -183,8 +183,8 @@ function fmt(body?: string): string {
 }
 
 const panel: CSSProperties = {
-  width: 320, flexShrink: 0, padding: 16, overflowY: 'auto',
-  borderLeft: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)',
+  width: '100%', height: '100%', boxSizing: 'border-box', padding: 16, overflowY: 'auto',
+  background: 'var(--color-bg-secondary)',
 };
 const label: CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '14px 0 4px' };
 const fieldLabel: CSSProperties = { fontSize: 12, color: 'var(--color-text)', marginBottom: 3 };
