@@ -29,11 +29,15 @@ public class Function extends ToolCall {
     ResponseConverter responseConverter = new DefaultJsonResponseConverter();
     Logger logger = LoggerFactory.getLogger(Function.class);
 
-    @SuppressWarnings("unchecked")
     private String executeSupport(String text, ExecutionContext context) throws InvocationTargetException, IllegalAccessException {
         var argsMap = parseArguments(text);
         if (context != null && context.getCustomVariables() != null) {
-            argsMap.putAll(context.getCustomVariables());
+            // skip internal runtime objects (e.g. the URL resolver); they are not serializable tool arguments
+            context.getCustomVariables().forEach((key, value_) -> {
+                if (!key.startsWith(ExecutionContext.INTERNAL_VARIABLE_PREFIX)) {
+                    argsMap.put(key, value_);
+                }
+            });
         }
         if (dynamicArguments != null && dynamicArguments) {
             // args convert by method itself

@@ -23,6 +23,11 @@ import java.util.function.Consumer;
  * @author stephen
  */
 public final class ExecutionContext {
+    // Custom variables whose key starts with this prefix carry internal runtime objects (e.g. the URL resolver),
+    // not user-facing tool arguments. They are injected for in-process consumption only and must never be
+    // serialized into tool argument payloads.
+    public static final String INTERNAL_VARIABLE_PREFIX = "__";
+
     public static Builder builder() {
         return new Builder();
     }

@@ -118,6 +118,31 @@ class ExecutionContextInjectionTest {
     }
 
     @Test
+    void testInternalCustomVariableNotSerializedIntoDynamicArguments() throws Exception {
+        // dynamic-arguments tools serialize the whole argsMap; internal "__"-prefixed objects must be excluded
+        var method = ContextAwareService.class.getMethod("echoDynamicArgs", String.class, String.class);
+        var function = Function.builder()
+                .name("echoDynamicArgs")
+                .description("echo dynamic args json")
+                .object(service)
+                .method(method)
+                .dynamicArguments(true)
+                .build();
+
+        var context = ExecutionContext.builder()
+                .customVariable("filename", "hello.html")
+                .customVariable(ExecutionContext.INTERNAL_VARIABLE_PREFIX + "internal_url_resolver", new NonSerializableResolver())
+                .build();
+
+        var result = function.execute("{\"filename\":\"hello.html\"}", context);
+
+        assertTrue(result.isCompleted());
+        assertTrue(result.getResult().contains("hello.html"));
+        // the internal object must not leak into the serialized arguments
+        assertTrue(!result.getResult().contains("internal_url_resolver"));
+    }
+
+    @Test
     void testExecutionContextCustomVariables() {
         var functions = Functions.from(service, "useCustomVariable");
         var function = functions.getFirst();
@@ -190,5 +215,16 @@ class ExecutionContextInjectionTest {
             var env = (String) context.getCustomVariable("env");
             return "action=" + action + ", key=" + key + ", env=" + env;
         }
+
+        // dynamic-arguments method: receives the tool name and the serialized argsMap json
+        public String echoDynamicArgs(String name, String json) {
+            return "name=" + name + ", json=" + json;
+        }
+    }
+
+    // mimics FileDownloadUrlResolver: no public getters, so Jackson cannot serialize it
+    @SuppressWarnings("unused")
+    private static class NonSerializableResolver {
+        private final String secret = "internal-only";
     }
 }
