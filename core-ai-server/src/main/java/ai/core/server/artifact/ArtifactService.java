@@ -93,9 +93,7 @@ public class ArtifactService {
         int take = limit != null && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT;
 
         var filterList = new java.util.ArrayList<org.bson.conversions.Bson>();
-        filterList.add(Filters.exists("share_token", true));
-        filterList.add(Filters.ne("share_token", null));
-        filterList.add(Filters.ne("share_token", ""));
+        filterList.add(Filters.type("share_token", "string"));
 
         if (name != null && !name.isBlank()) {
             filterList.add(Filters.regex("file_name", Pattern.quote(name), "i"));

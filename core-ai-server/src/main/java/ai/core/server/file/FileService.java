@@ -109,7 +109,9 @@ public class FileService {
         if (token == null || token.isBlank()) {
             throw new NotFoundException("shared file not found");
         }
-        return fileRecordCollection.findOne(Filters.eq("share_token", token))
+        return fileRecordCollection.findOne(Filters.and(
+                Filters.eq("share_token", token),
+                Filters.type("share_token", "string")))
             .orElseThrow(() -> new NotFoundException("shared file not found"));
     }
 
