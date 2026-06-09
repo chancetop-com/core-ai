@@ -306,10 +306,15 @@ public class ServerModule extends Module {
         bind(NodeExecutor.class, registry);
 
         bind(WorkflowPublishService.class);
-        bind(WorkflowRunner.class);
+        var workflowRunner = bind(WorkflowRunner.class);
         bind(WorkflowDefinitionService.class);
         bind(WorkflowRunService.class);
-        schedule().fixedRate("workflow-runner", bind(WorkflowRunnerJob.class), Duration.ofSeconds(5));
+        // On graceful shutdown (rollout/scale-down) hand off this worker's in-flight runs so a live replica resumes
+        // them at once, instead of waiting for the lease to expire.
+        onShutdown(workflowRunner::releaseClaimedRuns);
+        // Pure recovery/fallback now that every creation path submits immediately and shutdown hands off — only
+        // hard crashes (OOM/SIGKILL/node loss) leave a stale lease, so a slow tick is enough.
+        schedule().fixedRate("workflow-runner", bind(WorkflowRunnerJob.class), Duration.ofSeconds(60));
     }
 
     private void bindWebService() {
