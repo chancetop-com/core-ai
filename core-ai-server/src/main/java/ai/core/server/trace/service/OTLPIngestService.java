@@ -92,6 +92,7 @@ public class OTLPIngestService {
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
+        trace.agentId = attrs.get("gen_ai.agent.id");
         trace.model = attrs.get("gen_ai.request.model");
         trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
@@ -202,6 +203,7 @@ public class OTLPIngestService {
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
+        trace.agentId = attrs.get("gen_ai.agent.id");
         trace.source = resolveSource(attrs, Map.of(), trace.sessionId);
         trace.type = resolveType(trace.source, attrs, Map.of());
         if (trace.input == null || trace.input.isEmpty()) trace.input = resolveInput(attrs);
@@ -217,6 +219,7 @@ public class OTLPIngestService {
         trace.sessionId = attrs.get("session.id");
         trace.userId = attrs.get("user.id");
         trace.agentName = attrs.get("gen_ai.agent.name");
+        trace.agentId = attrs.get("gen_ai.agent.id");
         trace.model = attrs.get("gen_ai.request.model");
         trace.source = resolveSource(attrs, resourceAttrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);

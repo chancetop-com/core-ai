@@ -78,6 +78,8 @@ public class AgentMemoryConsolidationJob implements Job {
             }
             """;
 
+    private static final String EXCLUDED_AGENT_NAME = "assistant";
+
     @Inject
     LLMProviders llmProviders;
 
@@ -95,38 +97,41 @@ public class AgentMemoryConsolidationJob implements Job {
 
     @Override
     public void execute(JobContext context) {
-        var agentNames = collectAgentNames();
-        if (agentNames.isEmpty()) {
+        var agentIds = collectAgentIds();
+        if (agentIds.isEmpty()) {
             LOGGER.debug("no agents with traces found");
             return;
         }
 
-        for (var agentName : agentNames) {
+        for (var agentId : agentIds) {
             try {
-                processAgent(agentName);
+                processAgent(agentId);
             } catch (Exception e) {
-                LOGGER.error("failed to consolidate memory for agent={}", agentName, e);
+                LOGGER.error("failed to consolidate memory for agent={}", agentId, e);
             }
         }
     }
 
-    private Set<String> collectAgentNames() {
+    private Set<String> collectAgentIds() {
         var cutoff = ZonedDateTime.now().minusHours(IDLE_THRESHOLD_HOURS);
         var query = new Query();
         query.filter = Filters.and(
                 Filters.eq("status", TraceStatus.COMPLETED),
-                Filters.exists("agent_name", true),
+                Filters.exists("agent_id", true),
+                Filters.ne("agent_id", null),
+                Filters.ne("agent_id", ""),
                 Filters.lte("started_at", cutoff)
         );
         query.limit = 500;
         var traces = traceCollection.find(query);
-        var names = new HashSet<String>();
+        var ids = new HashSet<String>();
         for (var trace : traces) {
-            if (trace.agentName != null && !trace.agentName.isBlank()) {
-                names.add(trace.agentName);
+            if (trace.agentId != null && !trace.agentId.isBlank()
+                    && !EXCLUDED_AGENT_NAME.equals(trace.agentName)) {
+                ids.add(trace.agentId);
             }
         }
-        return names;
+        return ids;
     }
 
     private void processAgent(String agentId) {
@@ -136,7 +141,7 @@ public class AgentMemoryConsolidationJob implements Job {
         var cutoff = ZonedDateTime.now().minusHours(IDLE_THRESHOLD_HOURS);
         var query = new Query();
         query.filter = Filters.and(
-                Filters.eq("agent_name", agentId),
+                Filters.eq("agent_id", agentId),
                 Filters.eq("status", TraceStatus.COMPLETED),
                 Filters.gt("started_at", since),
                 Filters.lte("started_at", cutoff)

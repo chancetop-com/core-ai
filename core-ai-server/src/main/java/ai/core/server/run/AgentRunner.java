@@ -327,6 +327,9 @@ public class AgentRunner {
             tools.add(ReadSkillResourceTool.builder().registry(skillRegistry).build());
         }
         var builder = Agent.builder()
+            .name(definition.name)
+            .id(definition.id)
+            .description(definition.description != null ? definition.description : definition.name)
             .llmProvider(llmProviders.getProvider())
             .toolCalls(tools)
             .executionContext(context);

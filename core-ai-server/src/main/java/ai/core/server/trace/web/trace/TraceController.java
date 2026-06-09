@@ -183,6 +183,7 @@ public class TraceController {
         view.type = trace.type;
         view.source = trace.source;
         view.agentName = trace.agentName;
+        view.agentId = trace.agentId;
         view.sessionId = trace.sessionId;
         view.userId = trace.userId;
         view.status = trace.status;

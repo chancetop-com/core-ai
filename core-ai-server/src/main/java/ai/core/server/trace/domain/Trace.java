@@ -33,6 +33,9 @@ public class Trace {
     @Field(name = "agent_name")
     public String agentName;
 
+    @Field(name = "agent_id")
+    public String agentId;
+
     @Field(name = "session_id")
     public String sessionId;
 
