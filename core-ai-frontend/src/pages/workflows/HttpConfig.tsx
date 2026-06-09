@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { Plus, X } from 'lucide-react';
-import { TemplateField } from './configWidgets';
+import VariableChipField from './VariableChipField';
 import type { WorkflowRFNode } from './graph';
 
 interface Props {
@@ -39,12 +39,12 @@ export default function HttpConfig({ config, onConfig, nodes, selfId }: Props) {
       </select>
 
       <label style={label}>URL</label>
-      <TemplateField
+      <VariableChipField
         value={String(config.url ?? '')}
         onChange={(v) => onConfig({ url: v })}
         nodes={nodes}
         selfId={selfId}
-        placeholder="https://api.example.com/v1/{{ nodes.start.output }}"
+        placeholder="https://api.example.com/v1/…"
       />
 
       <label style={label}>Headers</label>
@@ -60,13 +60,13 @@ export default function HttpConfig({ config, onConfig, nodes, selfId }: Props) {
       {sendsBody && (
         <>
           <label style={label}>Body (JSON)</label>
-          <TemplateField
+          <VariableChipField
             value={String(config.body ?? '')}
             onChange={(v) => onConfig({ body: v })}
             nodes={nodes}
             selfId={selfId}
-            placeholder='{"q": "{{ nodes.start.output }}"}'
-            rows={4}
+            placeholder='{"q": "…"}'
+            multiline
           />
         </>
       )}

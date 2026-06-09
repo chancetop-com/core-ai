@@ -9,7 +9,7 @@ import McpToolConfig from './McpToolConfig';
 import ApiToolConfig from './ApiToolConfig';
 import HttpConfig from './HttpConfig';
 import RetryFields from './RetryFields';
-import { TemplateField } from './configWidgets';
+import VariableChipField from './VariableChipField';
 
 interface AgentOption { id: string; name: string; }
 
@@ -77,12 +77,13 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
             {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
           <label style={label}>Input</label>
-          <TemplateField
+          <VariableChipField
             value={String(config.input ?? '')}
-            onChange={(v) => onChange({ config: { ...config, input: v } })}
+            onChange={(v) => onConfig({ input: v })}
             nodes={nodes}
             selfId={node.id}
             placeholder="defaults to the run input"
+            multiline
           />
         </>
       ) : isMcpTool ? (
@@ -103,24 +104,26 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
       ) : isEnd ? (
         <>
           <label style={label}>Output</label>
-          <TemplateField
+          <VariableChipField
             value={String(config.output ?? '')}
-            onChange={(v) => onChange({ config: { ...config, output: v } })}
+            onChange={(v) => onConfig({ output: v })}
             nodes={nodes}
             selfId={node.id}
             placeholder="leave empty to auto-pass the branch / merge parallel inputs"
+            multiline
           />
           <div style={hint}>Empty = pass through the single completed input, or merge multiple parallel inputs into an object.</div>
         </>
       ) : isAggregator ? (
         <>
           <label style={label}>Output</label>
-          <TemplateField
+          <VariableChipField
             value={String(config.output ?? '')}
-            onChange={(v) => onChange({ config: { ...config, output: v } })}
+            onChange={(v) => onConfig({ output: v })}
             nodes={nodes}
             selfId={node.id}
-            placeholder='e.g. "A: {{ nodes.a.output }}\nB: {{ nodes.b.output }}"'
+            placeholder="combine inputs, e.g. A: {{a}} B: {{b}}"
+            multiline
           />
           <div style={hint}>Combine its inputs into one value for downstream. Empty = auto-merge; a template is preferred for parallel inputs.</div>
         </>

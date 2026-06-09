@@ -3,9 +3,11 @@ import type { Edge } from '@xyflow/react';
 import { Plus, X } from 'lucide-react';
 import type { WorkflowNodeData, WorkflowRFNode } from './graph';
 import {
-  OPERATORS, isUnary, availableVariables, outEdges,
+  OPERATORS, isUnary, outEdges,
   EdgeSelect, widgetInput, smallBtn, iconBtnSmall,
 } from './configWidgets';
+import VariablePicker from './VariablePicker';
+import { selectorMeta } from './variables';
 
 interface Condition { selector: string; operator: string; value: string; }
 interface Case { logic: string; conditions: Condition[]; edge_id: string; }
@@ -24,7 +26,6 @@ const emptyCondition: Condition = { selector: '', operator: 'eq', value: '' };
  *  config JSON the backend reads is rebuilt on every edit; the user never sees it. */
 export default function IfElseConfig({ node, nodes, edges, onChange }: Props) {
   const cfg = normalize(node.data.config);
-  const vars = availableVariables(nodes, node.id);
   const branches = outEdges(edges, node.id);
 
   const commit = (next: IfElseCfg) => onChange({ config: { ...node.data.config, ...(next as unknown as Record<string, unknown>) } });
@@ -50,10 +51,14 @@ export default function IfElseConfig({ node, nodes, edges, onChange }: Props) {
           {c.conditions.map((cond, ki) => {
             return (
               <div key={ki} style={condRow}>
-                <select value={cond.selector} onChange={(e) => patchCondition(ci, ki, { selector: e.target.value })} style={{ ...widgetInput, flex: 1, minWidth: 0 }}>
-                  <option value="">— variable —</option>
-                  {vars.map((v) => <option key={v.selector} value={v.selector}>{v.label}</option>)}
-                </select>
+                {cond.selector ? (
+                  <span style={condChip(selectorMeta(nodes, cond.selector).color)} title={cond.selector}>
+                    {selectorMeta(nodes, cond.selector).label}
+                    <button onClick={() => patchCondition(ci, ki, { selector: '' })} style={chipX} title="Clear">×</button>
+                  </span>
+                ) : (
+                  <VariablePicker nodes={nodes} selfId={node.id} label="— variable —" onPick={(sel) => patchCondition(ci, ki, { selector: sel })} style={{ flex: 1, minWidth: 0 }} />
+                )}
                 <select value={cond.operator} onChange={(e) => patchCondition(ci, ki, { operator: e.target.value })} style={{ ...widgetInput, width: 96 }}>
                   {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -112,5 +117,13 @@ function normalize(config: Record<string, unknown>): IfElseCfg {
 
 const caseCard: CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 8, padding: 10, marginBottom: 10 };
 const condRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 };
+function condChip(color: string): CSSProperties {
+  return {
+    flex: 1, minWidth: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 4,
+    padding: '0 4px 0 8px', height: 28, fontSize: 12, borderRadius: 6, overflow: 'hidden', whiteSpace: 'nowrap',
+    background: `${color}22`, color, border: `1px solid ${color}55`,
+  };
+}
+const chipX: CSSProperties = { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' };
 const thenRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8 };
 const hint: CSSProperties = { fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5, padding: '8px 0' };

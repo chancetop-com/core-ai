@@ -2,7 +2,9 @@ import { useState, type CSSProperties } from 'react';
 import { Plus, X } from 'lucide-react';
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
 import { DEFAULT_CODE, type WorkflowNodeData, type WorkflowRFNode } from './graph';
-import { availableVariables, widgetInput, smallBtn, iconBtnSmall } from './configWidgets';
+import { widgetInput, smallBtn, iconBtnSmall } from './configWidgets';
+import VariablePicker from './VariablePicker';
+import { selectorMeta } from './variables';
 
 interface Row { name: string; selector: string; }
 
@@ -27,8 +29,6 @@ export default function CodeConfig({ node, nodes, onChange }: Props) {
     const map = inputs && typeof inputs === 'object' ? inputs as Record<string, unknown> : {};
     return Object.entries(map).map(([name, selector]) => ({ name, selector: String(selector) }));
   });
-  const vars = availableVariables(nodes, node.id);
-
   const sync = (nextCode: string, nextRows: Row[]) => {
     setCode(nextCode);
     setRows(nextRows);
@@ -59,14 +59,15 @@ export default function CodeConfig({ node, nodes, onChange }: Props) {
             style={{ ...widgetInput, width: 80 }}
           />
           <span style={{ color: 'var(--color-text-secondary)' }}>=</span>
-          <select
-            value={row.selector}
-            onChange={(e) => sync(code, rows.map((r, j) => (j === i ? { ...r, selector: e.target.value } : r)))}
-            style={{ ...widgetInput, flex: 1, minWidth: 0 }}
-          >
-            <option value="">— select variable —</option>
-            {vars.map((v) => <option key={v.selector} value={v.selector}>{v.label}</option>)}
-          </select>
+          {row.selector ? (
+            <span style={varChip(selectorMeta(nodes, row.selector).color)} title={row.selector}>
+              {selectorMeta(nodes, row.selector).label}
+              <button onClick={() => sync(code, rows.map((r, j) => (j === i ? { ...r, selector: '' } : r)))} style={chipX} title="Clear">×</button>
+            </span>
+          ) : (
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--color-text-secondary)' }}>no variable</span>
+          )}
+          <VariablePicker nodes={nodes} selfId={node.id} label="var" onPick={(sel) => sync(code, rows.map((r, j) => (j === i ? { ...r, selector: sel } : r)))} />
           <button onClick={() => sync(code, rows.filter((_, j) => j !== i))} style={iconBtnSmall} title="Remove input"><X size={12} /></button>
         </div>
       ))}
@@ -80,3 +81,11 @@ const label: CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, 
 const editorWrap: CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 7, overflow: 'hidden' };
 const inputRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 };
 const hint: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 8, lineHeight: 1.5 };
+function varChip(color: string): CSSProperties {
+  return {
+    flex: 1, minWidth: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 4,
+    padding: '0 4px 0 8px', height: 28, fontSize: 12, borderRadius: 6, overflow: 'hidden', whiteSpace: 'nowrap',
+    background: `${color}22`, color, border: `1px solid ${color}55`,
+  };
+}
+const chipX: CSSProperties = { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' };

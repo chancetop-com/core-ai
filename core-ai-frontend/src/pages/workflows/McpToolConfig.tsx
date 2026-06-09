@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { api, type ToolRegistryView, type McpToolInfo } from '../../api/client';
-import { TemplateField } from './configWidgets';
+import VariableMapEditor from './VariableMapEditor';
 import type { WorkflowRFNode } from './graph';
 
 interface Props {
@@ -50,15 +50,8 @@ export default function McpToolConfig({ config, onConfig, nodes, selfId }: Props
         {tools.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
       </select>
 
-      <label style={label}>Arguments (JSON)</label>
-      <TemplateField
-        value={String(config.arguments ?? '')}
-        onChange={(v) => onConfig({ arguments: v })}
-        nodes={nodes}
-        selfId={selfId}
-        placeholder='{"query": "{{ nodes.start.output }}"}'
-        rows={4}
-      />
+      <label style={label}>Arguments</label>
+      <VariableMapEditor value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} />
     </>
   );
 }

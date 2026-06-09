@@ -107,6 +107,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
         WorkflowRun run = runService.createRun(id, request.input, TriggerType.API, userId);
+        runner.submit(run.id);   // start immediately; the runner job is the durability/recovery fallback, not the starter
         var response = new CreateRunResponse();
         response.runId = run.id;
         response.status = run.status.name();
@@ -141,6 +142,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("workflow_id", id);
         WorkflowRun run = runService.createPreviewRun(id, request.input, TriggerType.API, userId);
+        runner.submit(run.id);   // start immediately so Test runs don't wait for the runner job's next tick
         var response = new CreateRunResponse();
         response.runId = run.id;
         response.status = run.status.name();

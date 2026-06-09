@@ -74,3 +74,11 @@ body {
 .dark * {
   scrollbar-color: #475569 transparent;
 }
+
+/* Variable chip field placeholder (contentEditable has no native placeholder) */
+.var-chip-field:empty:before {
+  content: attr(data-placeholder);
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+  pointer-events: none;
+}
