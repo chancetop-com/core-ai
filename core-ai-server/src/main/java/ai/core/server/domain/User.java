@@ -28,6 +28,9 @@ public class User {
     @Field(name = "api_key")
     public String apiKey;
 
+    @Field(name = "api_key_created_at")
+    public ZonedDateTime apiKeyCreatedAt;
+
     @NotNull
     @Field(name = "role")
     public String role = "user";

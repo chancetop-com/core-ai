@@ -1,4 +1,4 @@
-import { Activity, User } from 'lucide-react';
+import { Activity, Key, User } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 
@@ -13,6 +13,18 @@ export default function Settings() {
           <h2 className="font-semibold text-lg">Settings</h2>
         </div>
         <nav className="flex-1 p-2 flex flex-col gap-1">
+          <NavLink to="/settings/api-keys"
+            className={() =>
+              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
+            }
+            style={({ isActive }) => ({
+              background: isActive ? 'var(--color-primary-bg)' : 'transparent',
+              color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              fontWeight: isActive ? 500 : 400,
+            })}>
+            <Key size={16} />
+            API Keys
+          </NavLink>
           {user?.role === 'admin' && (
             <>
               <NavLink to="/settings"

@@ -152,7 +152,7 @@ public class AuthCommandHandler {
         for (int i = 0; i < servers.size(); i++) {
             var s = servers.get(i);
             var marker = s.serverUrl().equals(activeUrl) ? "*" : " ";
-            var name = s.name() != null ? s.name() : (s.userId() != null ? s.userId() : "(pending)");
+            var name = s.name() != null ? s.name() : s.userId() != null ? s.userId() : "(pending)";
             sb.append(String.format("  %s [%d] %s @ %s%n", marker, i + 1, name, s.serverUrl()));
         }
         ui.printStreamingChunk(sb.toString());

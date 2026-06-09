@@ -443,6 +443,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/triggers/schedule", controller::serve);
         http().route(HTTPMethod.GET, "/tools/builtin", controller::serve);
         http().route(HTTPMethod.GET, "/settings/users", controller::serve);
+        http().route(HTTPMethod.GET, "/settings/api-keys", controller::serve);
     }
     private void registerFile() {
         bind(FileService.class);

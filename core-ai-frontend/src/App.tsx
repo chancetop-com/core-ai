@@ -27,6 +27,7 @@ const Register = lazy(() => import('./pages/login/Register'));
 const Authorize = lazy(() => import('./pages/login/Authorize'));
 const UserManagement = lazy(() => import('./pages/users/UserManagement'));
 const SettingsPage = lazy(() => import('./pages/settings/Settings'));
+const ApiKeysPage = lazy(() => import('./pages/settings/ApiKeys'));
 const Scheduler = lazy(() => import('./pages/scheduler/Scheduler'));
 const Tasks = lazy(() => import('./pages/tasks/Tasks'));
 const Mcp = lazy(() => import('./pages/mcp/Mcp'));
@@ -154,8 +155,10 @@ export default function App() {
                     <Route path="/datasets/:id" element={<DatasetEditor />} />
                     <Route path="/datasets/:id/records" element={<DatasetRecords />} />
                     <Route path="/settings" element={<SettingsPage />}>
+                      <Route path="api-keys" element={<ApiKeysPage />} />
                       {user?.role === 'admin' && <Route index element={<Dashboard />} />}
                       {user?.role === 'admin' && <Route path="users" element={<UserManagement />} />}
+                      {user?.role !== 'admin' && <Route index element={<Navigate to="/settings/api-keys" replace />} />}
                     </Route>
                     <Route path="*" element={<Navigate to={defaultPath} replace />} />
                   </Route>

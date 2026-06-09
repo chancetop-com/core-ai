@@ -41,6 +41,22 @@ export const authApi = {
     request<{ api_key: string; user_id: string }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
 };
 
+export interface ApiKeyInfo {
+  api_key: string;
+  created_at: string;
+}
+
+export interface GenerateApiKeyResponse {
+  api_key: string;
+}
+
+export const userApi = {
+  getApiKey: () =>
+    requestWithAuth<ApiKeyInfo>('/api/user/api-key'),
+  generateApiKey: () =>
+    requestWithAuth<GenerateApiKeyResponse>('/api/user/api-key', { method: 'POST' }),
+};
+
 export interface UserStatus {
   email: string;
   name: string;

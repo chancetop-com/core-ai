@@ -84,8 +84,7 @@ public final class AuthService {
     }
 
     private static String loginViaBrowser(TerminalUI ui, String serverUrl) {
-        LocalCallbackServer callback = new LocalCallbackServer();
-        try {
+        try (LocalCallbackServer callback = new LocalCallbackServer()) {
             var authUrl = serverUrl + "/login?callback="
                     + URLEncoder.encode("http://127.0.0.1:" + callback.port() + "/callback", StandardCharsets.UTF_8);
             ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Browser Login" + AnsiTheme.RESET + "\n\n");
@@ -128,8 +127,6 @@ public final class AuthService {
             ui.printStreamingChunk(AnsiTheme.MUTED
                     + "  Browser login failed, switching to terminal login..." + AnsiTheme.RESET + "\n");
             return loginViaTerminal(ui, serverUrl);
-        } finally {
-            closeQuietly(callback);
         }
     }
 

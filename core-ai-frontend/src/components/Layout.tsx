@@ -201,14 +201,12 @@ export default function Layout() {
               {user.name || user.userId}
             </div>
           )}
-          {user?.role === 'admin' && (
-            <button onClick={() => navigate('/settings')}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
-              style={{ color: 'var(--color-text-secondary)' }}>
-              <Settings size={16} />
-              {!collapsed && 'Settings'}
-            </button>
-          )}
+          <button onClick={() => navigate('/settings')}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
+            style={{ color: 'var(--color-text-secondary)' }}>
+            <Settings size={16} />
+            {!collapsed && 'Settings'}
+          </button>
           <button onClick={toggle}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
             style={{ color: 'var(--color-text-secondary)' }}>

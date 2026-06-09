@@ -62,7 +62,7 @@ public record AuthConfig(@Property(name = "server_url") String serverUrl,
                 Files.writeString(CONFIG_PATH, JsonUtil.toJson(list));
                 return list;
             }
-            return JsonUtil.fromJson(new TypeReference<List<AuthConfig>>() { }, json);
+            return JsonUtil.fromJson(new TypeReference<>() { }, json);
         } catch (Exception e) {
             LOGGER.warn("Failed to load auth config: {}", e.getMessage());
             return new ArrayList<>();

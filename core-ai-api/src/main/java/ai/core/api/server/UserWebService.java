@@ -1,5 +1,6 @@
 package ai.core.api.server;
 
+import ai.core.api.server.user.ApiKeyView;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.api.server.user.UserView;
 import core.framework.api.http.HTTPStatus;
@@ -15,6 +16,10 @@ public interface UserWebService {
     @GET
     @Path("/api/user/me")
     UserView me();
+
+    @GET
+    @Path("/api/user/api-key")
+    ApiKeyView getApiKey();
 
     @POST
     @Path("/api/user/api-key")

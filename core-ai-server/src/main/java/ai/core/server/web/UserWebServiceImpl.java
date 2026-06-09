@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.api.server.UserWebService;
+import ai.core.api.server.user.ApiKeyView;
 import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.api.server.user.UserView;
 import ai.core.server.web.auth.AuthContext;
@@ -22,6 +23,12 @@ public class UserWebServiceImpl implements UserWebService {
     public UserView me() {
         var userId = AuthContext.userId(webContext);
         return userService.me(userId);
+    }
+
+    @Override
+    public ApiKeyView getApiKey() {
+        var userId = AuthContext.userId(webContext);
+        return userService.getApiKey(userId);
     }
 
     @Override

@@ -66,6 +66,7 @@ public class AuthService {
             user.passwordHash = hashPassword(password);
             if (name != null) user.name = name;
             user.apiKey = generateApiKey();
+            user.apiKeyCreatedAt = ZonedDateTime.now();
             userCollection.replace(user);
 
             var response = new RegisterResponse();
@@ -81,6 +82,7 @@ public class AuthService {
         user.passwordHash = hashPassword(password);
         user.status = STATUS_PENDING;
         user.apiKey = generateApiKey();
+        user.apiKeyCreatedAt = ZonedDateTime.now();
         user.createdAt = ZonedDateTime.now();
         userCollection.insert(user);
 
@@ -105,6 +107,7 @@ public class AuthService {
 
         if (user.apiKey == null) {
             user.apiKey = generateApiKey();
+            user.apiKeyCreatedAt = ZonedDateTime.now();
         }
         user.lastLoginAt = ZonedDateTime.now();
         userCollection.replace(user);
