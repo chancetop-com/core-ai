@@ -21,9 +21,9 @@ export interface WorkflowGraph {
 }
 
 export const NODE_TYPES = [
-  'START', 'END', 'AGENT', 'LLM', 'CODE', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'NOTE',
+  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'NOTE',
 ] as const;
-// todo: HTTP node type is deferred to the next round (needs HttpExecutor); ANSWER removed (workflow-only, single END).
+// ANSWER removed (workflow-only, single END).
 export type NodeType = typeof NODE_TYPES[number];
 
 export interface NodeTypeMeta { label: string; color: string; }

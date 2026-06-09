@@ -7,6 +7,7 @@ import CodeConfig from './CodeConfig';
 import StartConfig from './StartConfig';
 import McpToolConfig from './McpToolConfig';
 import ApiToolConfig from './ApiToolConfig';
+import HttpConfig from './HttpConfig';
 import RetryFields from './RetryFields';
 import { TemplateField } from './configWidgets';
 
@@ -27,6 +28,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   const isAgentNode = node.data.nodeType === 'AGENT' || node.data.nodeType === 'LLM';
   const isMcpTool = node.data.nodeType === 'MCP_TOOL';
   const isApiTool = node.data.nodeType === 'API_TOOL';
+  const isHttp = node.data.nodeType === 'HTTP';
   const isIfElse = node.data.nodeType === 'IF_ELSE';
   const isCode = node.data.nodeType === 'CODE';
   const isEnd = node.data.nodeType === 'END';
@@ -34,7 +36,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   const isStart = node.data.nodeType === 'START';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
   const onConfig = (partial: Record<string, unknown>) => onChange({ config: { ...config, ...partial } });
-  const hasRetry = isAgentNode || isMcpTool || isApiTool;
+  const hasRetry = isAgentNode || isMcpTool || isApiTool || isHttp;
   // The panel is keyed by node.id at the call site, so it remounts per node and these initialize once per node —
   // no effect, no stale-render window, and no feedback loop with the config this panel itself mutates.
   const [configText, setConfigText] = useState(() => JSON.stringify(node.data.config ?? {}, null, 2));
@@ -87,6 +89,8 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
         <McpToolConfig config={config} onConfig={onConfig} nodes={nodes} selfId={node.id} />
       ) : isApiTool ? (
         <ApiToolConfig config={config} onConfig={onConfig} nodes={nodes} selfId={node.id} />
+      ) : isHttp ? (
+        <HttpConfig config={config} onConfig={onConfig} nodes={nodes} selfId={node.id} />
       ) : isIfElse ? (
         <>
           <label style={label}>Branches</label>

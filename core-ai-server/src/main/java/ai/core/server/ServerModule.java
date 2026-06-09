@@ -69,6 +69,7 @@ import ai.core.server.workflow.executor.AggregatorExecutor;
 import ai.core.server.workflow.executor.ApiToolExecutor;
 import ai.core.server.workflow.executor.CodeExecutor;
 import ai.core.server.workflow.executor.EndExecutor;
+import ai.core.server.workflow.executor.HttpExecutor;
 import ai.core.server.workflow.executor.IfElseExecutor;
 import ai.core.server.workflow.executor.McpToolExecutor;
 import ai.core.server.workflow.executor.RetryingNodeExecutor;
@@ -286,20 +287,22 @@ public class ServerModule extends Module {
         var graphLoader = bind(MongoWorkflowGraphLoader.class);
         bind(WorkflowGraphLoader.class, graphLoader);
 
-        // AGENT/LLM and the two tool nodes get synchronous retry-on-transient-failure; START/END/IF_ELSE/CODE don't.
+        // AGENT/LLM, the two tool nodes and HTTP get synchronous retry-on-transient-failure; START/END/IF_ELSE/CODE don't.
         var agentExecutor = new RetryingNodeExecutor(new AgentExecutor(agentRunGateway));
         var mcpToolExecutor = new RetryingNodeExecutor(new McpToolExecutor(toolRegistryService));
         var apiToolExecutor = new RetryingNodeExecutor(new ApiToolExecutor(toolRegistryService));
-        var registry = new NodeExecutorRegistry(Map.of(
-            NodeType.START, new StartExecutor(),
-            NodeType.END, new EndExecutor(),
-            NodeType.AGENT, agentExecutor,
-            NodeType.LLM, agentExecutor,
-            NodeType.MCP_TOOL, mcpToolExecutor,
-            NodeType.API_TOOL, apiToolExecutor,
-            NodeType.IF_ELSE, new IfElseExecutor(),
-            NodeType.AGGREGATOR, new AggregatorExecutor(),
-            NodeType.CODE, new CodeExecutor(sandboxService)));
+        var httpExecutor = new RetryingNodeExecutor(new HttpExecutor());
+        var registry = new NodeExecutorRegistry(Map.ofEntries(
+            Map.entry(NodeType.START, new StartExecutor()),
+            Map.entry(NodeType.END, new EndExecutor()),
+            Map.entry(NodeType.AGENT, agentExecutor),
+            Map.entry(NodeType.LLM, agentExecutor),
+            Map.entry(NodeType.MCP_TOOL, mcpToolExecutor),
+            Map.entry(NodeType.API_TOOL, apiToolExecutor),
+            Map.entry(NodeType.HTTP, httpExecutor),
+            Map.entry(NodeType.IF_ELSE, new IfElseExecutor()),
+            Map.entry(NodeType.AGGREGATOR, new AggregatorExecutor()),
+            Map.entry(NodeType.CODE, new CodeExecutor(sandboxService))));
         bind(NodeExecutor.class, registry);
 
         bind(WorkflowPublishService.class);
