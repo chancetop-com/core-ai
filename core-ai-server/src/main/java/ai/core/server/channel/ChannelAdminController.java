@@ -1,9 +1,11 @@
 package ai.core.server.channel;
 
+import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.web.Request;
 import core.framework.web.Response;
+import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
@@ -27,6 +29,9 @@ public class ChannelAdminController {
     @Inject
     ChannelRegistry channelRegistry;
 
+    @Inject
+    WebContext webContext;
+
     public Response list(Request request) {
         var baseUrl = baseUrl(request);
         var channels = new ArrayList<Map<String, Object>>();
@@ -48,8 +53,9 @@ public class ChannelAdminController {
         if (configStore.load(channelId) != null) throw new BadRequestException("channel already exists: " + channelId);
 
         var view = fromPayload(payload, channelId);
+        view.userId = AuthContext.userId(webContext);
         configStore.store(view);
-        LOGGER.info("channel created, channelId={}, type={}", channelId, view.channelType);
+        LOGGER.info("channel created, channelId={}, type={}, userId={}", channelId, view.channelType, view.userId);
         var baseUrl = baseUrl(request);
         var resp = JSON.toJSON(Map.of("channel", toChannelMap(view, baseUrl)));
         return Response.text(resp);
@@ -75,8 +81,9 @@ public class ChannelAdminController {
         var payload = (Map<String, Object>) JSON.fromJSON(Map.class, new String(body.get(), StandardCharsets.UTF_8));
 
         view = fromPayload(payload, channelId);
+        if (view.userId == null) view.userId = AuthContext.userId(webContext);
         configStore.store(view);
-        LOGGER.info("channel updated, channelId={}, type={}", channelId, view.channelType);
+        LOGGER.info("channel updated, channelId={}, type={}, userId={}", channelId, view.channelType, view.userId);
         var baseUrl = baseUrl(request);
         var resp = JSON.toJSON(Map.of("channel", toChannelMap(view, baseUrl)));
         return Response.text(resp);
@@ -108,6 +115,7 @@ public class ChannelAdminController {
         view.channelType = (String) payload.getOrDefault("channelType", "slack");
         view.enabled = payload.containsKey("enabled") ? Boolean.TRUE.equals(payload.get("enabled")) : true;
         view.agentId = (String) payload.get("agentId");
+        view.userId = (String) payload.get("userId");
         view.sessionTtlMinutes = payload.get("sessionTtlMinutes") instanceof Number n ? n.intValue() : 60;
         if (payload.containsKey("requireAuth")) {
             view.requireAuth = Boolean.TRUE.equals(payload.get("requireAuth"));
@@ -138,6 +146,7 @@ public class ChannelAdminController {
         map.put("enabled", ch.enabled);
         map.put("requireAuth", ch.requireAuth);
         map.put("agentId", ch.agentId);
+        map.put("userId", ch.userId);
         map.put("sessionTtlMinutes", ch.sessionTtlMinutes);
         map.put("config", ch.config);
         map.put("filterConfig", ch.filterConfig);

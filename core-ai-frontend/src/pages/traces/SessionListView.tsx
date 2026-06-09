@@ -9,8 +9,6 @@ import StatusBadge from '../../components/StatusBadge';
 import { typeColors, sourceColors } from './colors';
 import { formatCostUsd, formatTokenCount } from './traceViewModel';
 
-const ALL_SOURCES = ['chat', 'test', 'api', 'a2a', 'scheduled'];
-
 const SOURCE_OPTIONS: { key: string; label: string }[] = [
   { key: '', label: 'All sources' },
   { key: 'chat', label: 'Chat' },
@@ -54,7 +52,7 @@ export default function SessionListView({ onSelectTrace }: Props) {
 
   const fetchSessions = useCallback(() => {
     setLoading(true);
-    const sources = source ? [source] : ALL_SOURCES;
+    const sources = source ? [source] : undefined;
     sessionApi.listChatSessions(offset, limit, sources)
       .then(res => setSessions(res.sessions || []))
       .finally(() => setLoading(false));

@@ -1234,6 +1234,7 @@ export interface ChannelView {
   enabled: boolean;
   requireAuth: boolean;
   agentId: string;
+  userId: string | null;
   sessionTtlMinutes: number;
   webhookUrl: string;
   config: Record<string, string>;

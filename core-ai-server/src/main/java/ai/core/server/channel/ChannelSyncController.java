@@ -75,7 +75,7 @@ public class ChannelSyncController implements Controller {
         var agent = agentDefinitionService.getEntity(channel.agentId);
         if (agent == null) throw new NotFoundException("agent not found: " + channel.agentId);
 
-        var userId = channelId + ":" + UUID.randomUUID().toString().substring(0, 8);
+        var userId = channel.userId != null ? channel.userId : channelId + ":" + UUID.randomUUID().toString().substring(0, 8);
 
         var userField = (String) payload.get("user");
         var isNewConversation = countUserMessages(payload) == 1;
@@ -98,7 +98,6 @@ public class ChannelSyncController implements Controller {
                 sessionCache.put(userField, sessionId);
             }
 
-            chatMessageService.registerSession(sessionId, userId, channel.agentId);
             chatMessageService.writeUserMessage(sessionId, userText);
 
             var command = SessionCommand.sendMessage(sessionId, userId, userText, null);

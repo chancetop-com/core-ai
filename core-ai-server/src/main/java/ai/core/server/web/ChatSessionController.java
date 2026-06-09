@@ -14,7 +14,6 @@ import core.framework.web.WebContext;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,7 +36,7 @@ public class ChatSessionController {
         var sourcesParam = params.get("sources");
         var sources = sourcesParam != null && !sourcesParam.isEmpty()
             ? Arrays.asList(sourcesParam.split(","))
-            : List.of("chat", "a2a");
+            : null;
         var sessions = chatMessageService.listSessions(userId, sources, offset, limit).stream()
             .map(this::toSummary)
             .toList();

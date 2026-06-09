@@ -51,7 +51,7 @@ public class ChannelDispatcher {
             sessionId = createChannelSession(channel, event, conversationKey);
         }
 
-        var userId = "channel:" + channel.channelType + ":" + event.channelUserId;
+        var userId = resolveUserId(channel, event);
 
         if (isToolDecision(event)) {
             var decision = parseDecision(event);
@@ -114,7 +114,7 @@ public class ChannelDispatcher {
     }
 
     private String createChannelSession(ChannelConfigView channel, InboundEvent event, String conversationKey) {
-        var userId = "channel:" + channel.channelType + ":" + event.channelUserId;
+        var userId = resolveUserId(channel, event);
         var config = new SessionConfig();
 
         if (channel.agentId != null && !channel.agentId.isBlank()) {
@@ -146,5 +146,10 @@ public class ChannelDispatcher {
         } catch (Exception e) {
             LOGGER.warn("failed to attach channel bridge, sessionId={}", sessionId, e);
         }
+    }
+
+    private String resolveUserId(ChannelConfigView channel, InboundEvent event) {
+        if (channel.userId != null) return channel.userId;
+        return "channel:" + channel.channelType + ":" + event.channelUserId;
     }
 }
