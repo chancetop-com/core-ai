@@ -344,7 +344,7 @@ public class NativeReflectionFeature implements Feature {
 
     private void registerDowncall(FunctionDescriptor desc, Linker.Option... options) {
         try {
-            RuntimeForeignAccess.registerForDowncall(desc, options);
+            RuntimeForeignAccess.registerForDowncall(desc, (Object[]) options);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "failed to register FFM downcall: {0}", desc);
         }
