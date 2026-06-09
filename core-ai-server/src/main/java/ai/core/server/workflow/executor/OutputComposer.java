@@ -35,7 +35,7 @@ public final class OutputComposer {
         // gather the raw output of each COMPLETED immediate predecessor (resolve() returns empty for skipped ones)
         var completed = new LinkedHashMap<String, String>();
         for (String predId : predecessorIds(ctx)) {
-            ctx.pool().resolve("nodes." + predId + ".output").ifPresent(value -> completed.put(predId, String.valueOf(value)));
+            ctx.pool().resolve("nodes." + predId + ".output").ifPresent(value_ -> completed.put(predId, String.valueOf(value_)));
         }
         if (completed.isEmpty()) {
             return "{}";   // a fired node always has >=1 completed predecessor; defensive only
