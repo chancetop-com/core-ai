@@ -7,11 +7,9 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
-import ai.core.utils.Platform;
 import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
 import core.framework.util.Strings;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,12 +34,12 @@ import java.util.function.Consumer;
 public class ShellCommandTool extends ToolCall {
     public static final String TOOL_NAME = "run_bash_command";
 
-    private static final int DEFAULT_TIMEOUT_MILLISECONDS = 2 * 60 * 1000;
+    protected static final int DEFAULT_TIMEOUT_MILLISECONDS = 2 * 60 * 1000;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
     private static final String TOOL_DESC_TEMPLATE = """
             Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
             
-            Be aware: OS: ${os}${shell_specific}
+            Be aware: OS: ${os}
             
             All commands run in the current working directory by default. Use the `workspace` parameter if you need to run a command in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workspace` instead.
             
@@ -172,10 +170,6 @@ public class ShellCommandTool extends ToolCall {
     private static final String TOOL_DESC = buildToolDescription();
 
     private static String buildToolDescription() {
-        var platform = SystemUtil.detectPlatform();
-        var shell = ShellUtil.getPreferredShell(platform);
-        String shellSpecific = getShellSpecific(platform, shell);
-
         return TOOL_DESC_TEMPLATE
                 .replace("${tool_read_file}", ReadFileTool.TOOL_NAME)
                 .replace("${tool_edit_file}", EditFileTool.TOOL_NAME)
@@ -187,27 +181,7 @@ public class ShellCommandTool extends ToolCall {
                 .replace("${default_timeout_minutes}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS / 60000))
                 .replace("${tool_todo}", WriteTodosTool.WT_TOOL_NAME)
                 .replace("${os}", System.getProperty("os.name"))
-                .replace("${shell_specific}", shellSpecific)
                 .replace("${tool_task}", TaskTool.TOOL_NAME);
-    }
-
-    @NotNull
-    private static String getShellSpecific(Platform platform, String shell) {
-        var isPowerShell = platform.isWindows() && (shell.contains("pwsh") || shell.contains("powershell"));
-        String shellSpecific = "";
-        if (isPowerShell) {
-            shellSpecific = """
-                    PowerShell-specific notes:
-                    - Pipeline chain operators && and || are NOT available — they cause a parser error. To run B only if A succeeds: A; if ($?) { B }. To chain unconditionally: A; B.
-                    - Ternary (?:), null-coalescing (??), and null-conditional (?.) operators are NOT available. Use if/else and explicit $null -eq checks instead.
-                    - Avoid 2>&1 on native executables. In PowerShell, redirecting a native command's stderr inside PowerShell wraps each line in an ErrorRecord (NativeCommandError) and sets $? to $false even when the exe returned exit code 0. stderr is already captured for you — don't redirect it.
-                    - Default file encoding is UTF-16 LE (with BOM). When writing files other tools will read, pass -Encoding utf8 to Out-File/Set-Content.
-                    - ConvertFrom-Json returns a PSCustomObject, not a hashtable. -AsHashtable is not available.
-                    - To read any file, always prefer the dedicated %s tool instead of `Get-Content`, `cat`, or `type`. The %s tool handles all file types (text, images, PDFs) and automatically limits output size, preventing issues with large or growing files.
-                    - If you absolutely must use `Get-Content` to read a file (e.g., for piping or filtering the content), ALWAYS append `-Last N` (e.g., `-Last 500`) to limit the number of lines read. Without `-Last`, Get-Content will attempt to read the entire file — on log files that agents are actively appending to, this causes an infinite read that never completes.
-                    """.formatted(ReadFileTool.TOOL_NAME, ReadFileTool.TOOL_NAME);
-        }
-        return shellSpecific;
     }
 
     public static Builder builder() {
@@ -321,7 +295,7 @@ public class ShellCommandTool extends ToolCall {
         throw new AgentRuntimeException("SHELL_TOOL_FAILED", "run bash  requires ExecutionContext");
     }
 
-    private ToolCallResult doExecute(String text, ExecutionContext context) {
+    protected ToolCallResult doExecute(String text, ExecutionContext context) {
         Consumer<String> onChunk = getOnOutPutConsumer(context);
         long startTime = System.currentTimeMillis();
         try {
