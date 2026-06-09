@@ -4,6 +4,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.registry.ToolExposure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,6 +128,7 @@ public class ToolActivationTool extends ToolCall {
             for (var tool : allToolCalls) {
                 if (tool.isDiscoverable() && tool.getName().equalsIgnoreCase(requestedName)) {
                     tool.setLlmVisible(true);
+                    tool.setExposure(ToolExposure.DIRECT);
                     activated.add(tool.getName());
                     found = true;
                     break;

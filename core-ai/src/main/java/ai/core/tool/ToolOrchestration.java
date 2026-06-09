@@ -10,6 +10,7 @@ import ai.core.tool.async.AsyncToolTaskExecutor;
 import io.opentelemetry.context.Context;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,22 +34,22 @@ public class ToolOrchestration {
     private final ToolExecutor toolExecutor;
     private final ExecutionContext context;
     private final Map<String, String> groupIndex;
+    private final Map<String, ToolCall> toolIndex;
 
-    public ToolOrchestration(List<ToolCall> toolCalls, List<AbstractLifecycle> lifecycles, ToolExecutor toolExecutor, ExecutionContext context) {
-        this(toolCalls, lifecycles, toolExecutor, context, DEFAULT_MAX_CONCURRENCY);
-    }
 
-    public ToolOrchestration(List<ToolCall> toolCalls, List<AbstractLifecycle> lifecycles, ToolExecutor toolExecutor, ExecutionContext context, int maxConcurrency) {
+
+    public ToolOrchestration(Map<String, ToolCall> dispatchMap, List<AbstractLifecycle> lifecycles, ToolExecutor toolExecutor, ExecutionContext context) {
         this.toolExecutor = toolExecutor;
         this.lifecycles = lifecycles;
         this.context = context;
-        this.maxConcurrency = maxConcurrency;
-        this.groupIndex = getGroupIndex(toolCalls);
+        this.maxConcurrency = DEFAULT_MAX_CONCURRENCY;
+        this.toolIndex = dispatchMap;
+        this.groupIndex = getGroupIndexFromMap(dispatchMap.values());
     }
 
-    private Map<String, String> getGroupIndex(List<ToolCall> toolCalls) {
+    private Map<String, String> getGroupIndexFromMap(Collection<ToolCall> tools) {
         Map<String, String> groupIndex = new LinkedHashMap<>();
-        for (var tc : toolCalls) {
+        for (var tc : tools) {
             if (tc.getConcurrencyGroup() != null) {
                 groupIndex.put(tc.getName(), tc.getConcurrencyGroup());
             }
@@ -148,7 +149,12 @@ public class ToolOrchestration {
                 if (errored.get()) {
                     return ToolCallResult.failed("Skipped: previous tool in group '" + group + "' failed");
                 }
-                var result = toolExecutor.executeWithoutLifecycle(tc, context);
+                var tool = resolveTool(tc);
+                if (tool == null) {
+                    errored.set(true);
+                    return ToolCallResult.failed("tool not found: " + tc.function.name);
+                }
+                var result = toolExecutor.executeWithoutLifecycle(tool, tc, context);
                 if (result.isFailed()) {
                     errored.set(true);
                 }
@@ -173,9 +179,23 @@ public class ToolOrchestration {
         }
     }
 
+    private ToolCall resolveTool(FunctionCall tc) {
+        var tool = toolIndex.get(tc.function.name);
+        if (tool != null) return tool;
+        for (var entry : toolIndex.entrySet()) {
+            if (entry.getKey().endsWith(tc.function.name)) return entry.getValue();
+        }
+        return null;
+    }
+
     private List<Message> executeOne(FunctionCall tc) {
         var msgs = new ArrayList<Message>();
-        var result = toolExecutor.execute(tc, context);
+        var tool = resolveTool(tc);
+        if (tool == null) {
+            msgs.add(buildToolNotFoundMessage(tc));
+            return msgs;
+        }
+        var result = toolExecutor.execute(tool, tc, context);
         if (result.isDirectReturn()) {
             msgs.add(AgentHelper.buildToolMessage(tc, result, true));
             msgs.add(Message.of(RoleType.ASSISTANT, result.toResultForLLM()));
@@ -198,5 +218,9 @@ public class ToolOrchestration {
 
     private String resolveGroup(FunctionCall tc) {
         return groupIndex.get(tc.function.name);
+    }
+
+    private Message buildToolNotFoundMessage(FunctionCall tc) {
+        return AgentHelper.buildToolMessage(tc, ToolCallResult.failed("tool not found: " + tc.function.name));
     }
 }

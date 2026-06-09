@@ -25,7 +25,7 @@ public class ToolMaterialization {
         return definitions;
     }
 
-    Map<String, ToolCall> getDispatchMap() {
+    public Map<String, ToolCall> getDispatchMap() {
         return dispatchMap;
     }
 }

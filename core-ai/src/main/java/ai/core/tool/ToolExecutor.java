@@ -26,14 +26,12 @@ import java.util.function.Consumer;
 public class ToolExecutor {
     private static final Logger LOGGER = LoggerFactory.getLogger(ToolExecutor.class);
 
-    private final List<ToolCall> toolCalls;
     private final List<AbstractLifecycle> lifecycles;
     private final AgentTracer tracer;
     private final Consumer<NodeStatus> statusUpdater;
     private boolean authenticated = false;
 
-    public ToolExecutor(List<ToolCall> toolCalls, List<AbstractLifecycle> lifecycles, AgentTracer tracer, Consumer<NodeStatus> statusUpdater) {
-        this.toolCalls = toolCalls;
+    public ToolExecutor(List<AbstractLifecycle> lifecycles, AgentTracer tracer, Consumer<NodeStatus> statusUpdater) {
         this.lifecycles = lifecycles;
         this.tracer = tracer;
         this.statusUpdater = statusUpdater;
@@ -43,37 +41,29 @@ public class ToolExecutor {
         this.authenticated = authenticated;
     }
 
-    public ToolCallResult execute(FunctionCall functionCall, ExecutionContext context) {
+    public ToolCallResult execute(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
         lifecycles.forEach(lc -> lc.beforeTool(functionCall, context));
-        var result = executeWithoutLifecycle(functionCall, context);
+        var result = executeWithoutLifecycle(tool, functionCall, context);
         lifecycles.forEach(lc -> lc.afterTool(functionCall, context, result));
         return result;
     }
 
-    public ToolCallResult executeWithoutLifecycle(FunctionCall functionCall, ExecutionContext context) {
-        return doExecute(functionCall, context);
+    public ToolCallResult executeWithoutLifecycle(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
+        return doExecute(tool, functionCall, context);
     }
 
-    private ToolCallResult doExecute(FunctionCall functionCall, ExecutionContext context) {
-        var tool = findTool(functionCall);
-        if (tool == null) {
-            return ToolCallResult.failed("tool not found: " + functionCall.function.name);
-        }
-
+    private ToolCallResult doExecute(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
         var sandbox = context.getSandbox();
         var useSandbox = sandbox != null && sandbox.shouldIntercept(tool.getName());
 
-        // Common validation for both sandbox and non-sandbox paths
         var validationResult = validate(tool, functionCall, useSandbox);
         if (validationResult != null) {
             return validationResult;
         }
 
-        // Log start
         LOGGER.debug("tool {}: {}", functionCall.function.name, functionCall.function.arguments);
         var startTime = System.currentTimeMillis();
 
-        // Execute - sandbox or direct
         ToolCallResult result;
         if (useSandbox) {
             LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
@@ -84,7 +74,6 @@ public class ToolExecutor {
             result = executeWithTimeout(tool, functionCall, context);
         }
 
-        // Common post-processing
         result.withToolName(tool.getName()).withDuration(System.currentTimeMillis() - startTime);
         handleAsyncResult(result, tool, functionCall, context);
 
@@ -92,25 +81,12 @@ public class ToolExecutor {
         return result;
     }
 
-    private ToolCall findTool(FunctionCall functionCall) {
-        var optional = toolCalls.stream()
-                .filter(v -> v.getName().equalsIgnoreCase(functionCall.function.name))
-                .findFirst();
-
-        if (optional.isEmpty())
-            optional = toolCalls.stream().filter(v -> v.getName().endsWith(functionCall.function.name)).findFirst();
-
-        return optional.orElse(null);
-    }
-
     private ToolCallResult validate(ToolCall tool, FunctionCall functionCall, boolean useSandbox) {
-        // Sandbox path skips auth check (sandbox has its own isolation)
         if (!useSandbox && Boolean.TRUE.equals(tool.isNeedAuth()) && !authenticated) {
             statusUpdater.accept(NodeStatus.WAITING_FOR_USER_INPUT);
             return ToolCallResult.failed("This tool call requires user authentication, please ask user to confirm it.");
         }
 
-        // Missing params check applies to both paths
         var missingParams = tool.findMissingRequiredParams(functionCall.function.arguments);
         if (!missingParams.isEmpty()) {
             LOGGER.warn("tool [{}] call rejected: missing required parameters: {}", tool.getName(), missingParams);
@@ -118,18 +94,14 @@ public class ToolExecutor {
                     tool.getName(), String.join(", ", missingParams)));
         }
 
-        return null; // validation passed
+        return null;
     }
 
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult executeWithTimeout(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
         var timeoutMs = tool.getTimeoutMs();
 
-        // Capture OpenTelemetry context on the caller thread so the tool span is nested
-        // under the current agent.turn span instead of becoming a detached root span.
         var otelContext = Context.current();
-        // If the current ExecutionContext remembers the LLM span that produced this tool call,
-        // use it as the explicit parent so the trace tree shows LLM -> tool causal chain.
         var llmSpanContext = context.getLastLLMSpanContext();
 
         var threadRef = new AtomicReference<Thread>();

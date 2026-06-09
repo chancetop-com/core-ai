@@ -1,7 +1,6 @@
 package ai.core.tool.registry;
 
 import ai.core.agent.ExecutionContext;
-import ai.core.llm.domain.FunctionCall;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameterType;
@@ -14,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -87,7 +88,6 @@ class ToolRegistryTest {
             registry.unregisterProvider("temp");
             assertEquals(0, registry.materialize().definitions().size());
         }
-
     }
 
     @Nested
@@ -121,9 +121,9 @@ class ToolRegistryTest {
             var mat = registry.materialize();
             assertEquals(List.of("visible"), mat.definitions().stream().map(t -> t.function.name).toList());
 
-            // hidden tool is still dispatchable
-            var call = FunctionCall.of("call", "function", "hidden", "{\"msg\":\"test\"}");
-            var result = registry.dispatch(mat, call, ctx);
+            var hidden = mat.getDispatchMap().get("hidden");
+            assertNotNull(hidden);
+            var result = hidden.execute("{\"msg\":\"test\"}", ctx);
             assertTrue(result.isCompleted());
         }
 
@@ -137,9 +137,9 @@ class ToolRegistryTest {
             var mat = registry.materialize();
             assertEquals(List.of("direct"), mat.definitions().stream().map(t -> t.function.name).toList());
 
-            // deferred is still dispatchable (LLM can call after tool_search)
-            var call = FunctionCall.of("call", "function", "deferred", "{\"msg\":\"test\"}");
-            var result = registry.dispatch(mat, call, ctx);
+            var deferred = mat.getDispatchMap().get("deferred");
+            assertNotNull(deferred);
+            var result = deferred.execute("{\"msg\":\"test\"}", ctx);
             assertTrue(result.isCompleted());
         }
 
@@ -151,41 +151,35 @@ class ToolRegistryTest {
     }
 
     @Nested
-    class Dispatch {
+    class DispatchMap {
         @Test
-        void shouldExecuteToolSuccessfully() {
+        void shouldFindAndExecuteToolByName() {
             registry.registerProvider(createProvider("test", 10,
                     Map.of("echo", newEchoTool("echo", "echo", ToolExposure.DIRECT))));
 
             var mat = registry.materialize();
-            var call = FunctionCall.of("call_1", "function", "echo", "{\"msg\":\"hello\"}");
-
-            var result = registry.dispatch(mat, call, ctx);
+            var tool = mat.getDispatchMap().get("echo");
+            assertNotNull(tool);
+            var result = tool.execute("{\"msg\":\"hello\"}", ctx);
             assertTrue(result.isCompleted());
             assertTrue(result.getResult().contains("hello"));
         }
 
         @Test
-        void shouldReturnErrorForUnknownTool() {
+        void shouldReturnNullForUnknownTool() {
             registry.registerProvider(createProvider("test", 10,
                     Map.of("echo", newEchoTool("echo", "echo", ToolExposure.DIRECT))));
 
             var mat = registry.materialize();
-            var call = FunctionCall.of("call_1", "function", "nonexistent", "{}");
-
-            var result = registry.dispatch(mat, call, ctx);
-            assertTrue(result.isFailed());
-            assertTrue(result.getResult().contains("Unknown tool"));
+            assertNull(mat.getDispatchMap().get("nonexistent"));
         }
-
     }
 
     @Nested
     class Factory {
         @Test
         void shouldCreateRegistryWithBuiltinTools() {
-            var factory = new ToolRegistryFactory();
-            var factoryRegistry = factory.create(FactoryContext.DEFAULT);
+            var factoryRegistry = ToolRegistryFactory.create(new FactoryContext(null, null));
             var mat = factoryRegistry.materialize();
             var names = mat.definitions().stream().map(t -> t.function.name).toList();
 

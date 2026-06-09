@@ -5,14 +5,11 @@ package ai.core.tool.registry;
  * Declares the environment dimensions that influence provider selection.
  * New dimensions can be added without changing the factory method signature.
  *
- * @param os             operating system identifier (e.g. "macos", "windows")
- * @param modelProvider  LLM provider name (e.g. "anthropic", "openai")
- *
+ * @param os            operating system identifier (e.g. "macos", "windows")
+ * @param modelProvider LLM provider name (e.g. "anthropic", "openai")
  * @author Lim Chen
  */
 public record FactoryContext(String os, String modelProvider) {
-
-    public static final FactoryContext DEFAULT = new FactoryContext(null, null);
 
     public FactoryContext {
         os = os != null ? os.toLowerCase() : null;

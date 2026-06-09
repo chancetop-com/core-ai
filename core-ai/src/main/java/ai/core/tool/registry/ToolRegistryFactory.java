@@ -1,21 +1,19 @@
 package ai.core.tool.registry;
 
 /**
- * Factory for assembling a {@link ToolRegistry} from a {@link FactoryContext}.
+ * Static factory for assembling a {@link ToolRegistry} from a {@link FactoryContext}.
  * <p>
- * Always registers {@link BuiltinToolProvider}. Platform and model-specific
- * providers are resolved via {@link #resolveOsProvider} and
- * {@link #resolveModelProvider} — override these in subclasses to
- * add concrete platform tools.
+ * For list-backed registries (used by {@code AgentBuilder}), create a
+ * {@link ToolRegistry} directly and call {@link ToolRegistry#registerTools}.
  *
  * @author Lim Chen
  */
-public class ToolRegistryFactory {
+public final class ToolRegistryFactory {
 
-    public ToolRegistryFactory() {
+    private ToolRegistryFactory() {
     }
 
-    public ToolRegistry create(FactoryContext context) {
+    public static ToolRegistry create(FactoryContext context) {
         var registry = new ToolRegistry();
         registry.registerProvider(new BuiltinToolProvider());
 
@@ -31,12 +29,15 @@ public class ToolRegistryFactory {
 
         return registry;
     }
+    public static ToolRegistry createEmpty() {
+        return new ToolRegistry();
+    }
 
-    public ToolProvider resolveOsProvider(String os) {
+    public static ToolProvider resolveOsProvider(String os) {
         return null;
     }
 
-    public ToolProvider resolveModelProvider(String modelProvider) {
+    public static ToolProvider resolveModelProvider(String modelProvider) {
         return null;
     }
 }

@@ -1,18 +1,18 @@
 package ai.core.tool.registry;
 
-import ai.core.agent.ExecutionContext;
-import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Tool;
 import ai.core.tool.ToolCall;
-import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Central tool registry — the single source of truth for which tools exist
@@ -37,6 +37,37 @@ public class ToolRegistry {
         }
     }
 
+    public void registerTools(List<ToolCall> toolCalls) {
+        registerTools(toolCalls, "user-provided");
+    }
+
+    public void registerTools(List<ToolCall> toolCalls, String providerId) {
+        registerProvider(new ToolProvider() {
+            @Override
+            public String id() {
+                return providerId;
+            }
+
+            @Override
+            public int priority() {
+                return 5;
+            }
+
+            @Override
+            public Map<String, ToolCall> provide() {
+                return toolCalls.stream().collect(Collectors.toMap(
+                        ToolCall::getName,
+                        Function.identity(),
+                        (existing, _) -> existing
+                ));
+            }
+        });
+    }
+
+    public List<ToolCall> getToolCalls() {
+        return List.copyOf(materialize().getDispatchMap().values());
+    }
+
     public void unregisterProvider(String providerId) {
         providers.remove(providerId);
         LOGGER.info("unregistered provider, id={}", providerId);
@@ -58,22 +89,16 @@ public class ToolRegistry {
         return new ToolMaterialization(definitions, dispatchMap);
     }
 
-    public ToolCallResult dispatch(ToolMaterialization materialization, FunctionCall call, ExecutionContext context) {
-        var tool = materialization.getDispatchMap().get(call.function.name);
-        if (tool == null) {
-            return ToolCallResult.failed("Unknown tool: " + call.function.name);
-        }
-        return tool.execute(call.function.arguments, context);
-    }
-
     private Map<String, ToolCall> collectTools() {
         var sorted = providers.values().stream()
-            .sorted(Comparator.comparingInt(ToolProvider::priority).reversed())
-            .toList();
+                .sorted(Comparator.comparingInt(ToolProvider::priority))
+                .toList();
         var result = new LinkedHashMap<String, ToolCall>();
         for (var provider : sorted) {
             try {
-                result.putAll(provider.provide());
+                for (var entry : provider.provide().entrySet()) {
+                    result.putIfAbsent(entry.getKey(), entry.getValue());
+                }
             } catch (Exception e) {
                 LOGGER.warn("provider {} failed, skipping, id={}", provider.getClass().getSimpleName(), provider.id(), e);
             }

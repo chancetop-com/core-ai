@@ -13,6 +13,7 @@ import ai.core.context.ToolCallPruning;
 import ai.core.context.ToolCallPruningLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.ReasoningEffort;
+import ai.core.llm.domain.Tool;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.memory.Memory;
 import ai.core.memory.MemoryConfig;
@@ -29,7 +30,12 @@ import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
+import ai.core.tool.registry.FactoryContext;
+import ai.core.tool.registry.ToolExposure;
+import ai.core.tool.registry.ToolProvider;
+import ai.core.tool.registry.ToolRegistry;
 import ai.core.skill.SkillRegistry;
+import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
 import ai.core.tool.tools.ToolActivationTool;
@@ -54,6 +60,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private String promptTemplate;
     private LLMProvider llmProvider;
     private final List<ToolCall> toolCalls = Lists.newArrayList();
+    private ToolRegistry toolRegistry;
     private RagConfig ragConfig;
     private Double temperature;
     private String model;
@@ -85,91 +92,113 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.promptTemplate = promptTemplate;
         return this;
     }
+
     public AgentBuilder maxTurn(Integer maxTurnNumber) {
         this.maxTurnNumber = maxTurnNumber;
         return this;
     }
+
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, LLMProvider llmProvider, String summaryModel) {
         this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, llmProvider, this.model, summaryModel);
         return this;
     }
+
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens, LLMProvider llmProvider, String summaryModel) {
         this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, llmProvider, this.model, summaryModel);
         return this;
     }
+
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns) {
         this.compression = new Compression(triggerThreshold, keepRecentTurns, 10000, this.llmProvider, this.model, this.model);
         return this;
     }
+
     public AgentBuilder compression(double triggerThreshold, int keepRecentTurns, int keepMinTokens) {
         this.compression = new Compression(triggerThreshold, keepRecentTurns, keepMinTokens, this.llmProvider, this.model, this.model);
         return this;
     }
+
     public AgentBuilder compression(boolean enabled) {
         this.compressionEnabled = enabled;
         return this;
     }
+
     public AgentBuilder toolCallPruning(boolean enabled) {
         this.toolCallPruningEnabled = enabled;
         return this;
     }
+
     public AgentBuilder toolCallPruning(int keepRecentSegments, Set<String> excludeToolNames) {
         this.toolCallPruningConfig = new ToolCallPruning.Config(keepRecentSegments, excludeToolNames);
         this.toolCallPruningEnabled = true;
         return this;
     }
+
     public AgentBuilder unifiedMemory(Memory memory) {
         this.memory = memory;
         return this;
     }
+
     public AgentBuilder unifiedMemory(Memory memory, MemoryConfig config) {
         this.memory = memory;
         this.memoryConfig = config;
         return this;
     }
+
     public AgentBuilder systemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
         return this;
     }
+
     public AgentBuilder systemPromptSection(PromptInject section) {
         this.systemPromptSections.add(section);
         return this;
     }
+
     public AgentBuilder systemPromptSections(List<PromptInject> sections) {
         this.systemPromptSections.clear();
         this.systemPromptSections.addAll(sections);
         return this;
     }
+
     public AgentBuilder extraSystemVariable(String key, Object value) {
         this.extraSystemVariables.put(key, value);
         return this;
     }
+
     public AgentBuilder temperature(Double temperature) {
         this.temperature = temperature;
         return this;
     }
+
     public AgentBuilder model(String model) {
         this.model = model;
         return this;
     }
+
     public AgentBuilder multiModalModel(String multiModalModel) {
         this.multiModalModel = multiModalModel;
         return this;
     }
+
     public AgentBuilder llmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
         return this;
     }
+
     public AgentBuilder toolCalls(List<? extends ToolCall> toolCalls) {
         this.toolCalls.addAll(0, toolCalls);
         return this;
     }
+
     public AgentBuilder mcpServers(List<String> serverNames) {
         return mcpServers(serverNames, null, null);
     }
+
     public AgentBuilder mcpServers(List<String> serverNames, List<String> includes) {
         return mcpServers(serverNames, includes, null);
     }
+
     public AgentBuilder mcpServers(List<String> serverNames, List<String> includes, List<String> excludes) {
         var manager = McpClientManagerRegistry.getManager();
         if (manager == null) {
@@ -179,12 +208,15 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.toolCalls.addAll(McpToolCalls.from(manager, serverNames, includes, excludes));
         return this;
     }
+
     public AgentBuilder mcpServersDiscoverable(List<String> serverNames) {
         return mcpServersDiscoverable(serverNames, null, null);
     }
+
     public AgentBuilder mcpServersDiscoverable(List<String> serverNames, List<String> includes) {
         return mcpServersDiscoverable(serverNames, includes, null);
     }
+
     public AgentBuilder mcpServersDiscoverable(List<String> serverNames, List<String> includes, List<String> excludes) {
         var manager = McpClientManagerRegistry.getManager();
         if (manager == null) {
@@ -196,78 +228,102 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         this.toolCalls.addAll(tools);
         return this;
     }
+
     public AgentBuilder skillRegistry(SkillRegistry skillRegistry) {
         this.skillRegistry = skillRegistry;
         return this;
     }
+
     public AgentBuilder ragConfig(RagConfig ragConfig) {
         this.ragConfig = ragConfig;
         return this;
     }
+
     public AgentBuilder reflectionConfig(ReflectionConfig config) {
         this.reflectionConfig = config;
         return this;
     }
+
     public AgentBuilder reflectionListener(ReflectionListener listener) {
         this.reflectionListener = listener;
         return this;
     }
+
     public AgentBuilder useGroupContext(Boolean useGroupContext) {
         this.useGroupContext = useGroupContext;
         return this;
     }
+
     public AgentBuilder enableReflection(Boolean enableReflection) {
         this.enableReflection = enableReflection;
         return this;
     }
+
     public AgentBuilder reflectionEvaluationCriteria(String evaluationCriteria) {
         this.reflectionConfig = ReflectionConfig.withEvaluationCriteria(evaluationCriteria);
         return this;
     }
+
     public AgentBuilder langfuseSystemPrompt(String promptName) {
         this.langfuseSystemPromptName = promptName;
         return this;
     }
+
     public AgentBuilder langfusePromptTemplate(String promptName) {
         this.langfusePromptTemplateName = promptName;
         return this;
     }
+
     public AgentBuilder langfusePromptVersion(Integer version) {
         this.langfusePromptVersion = version;
         return this;
     }
+
     public AgentBuilder langfusePromptLabel(String label) {
         this.langfusePromptLabel = label;
         return this;
     }
+
     public AgentBuilder agentLifecycle(List<AbstractLifecycle> agentLifecycles) {
         this.agentLifecycles.addAll(agentLifecycles);
         return this;
     }
+
     public AgentBuilder addAgentLifecycle(AbstractLifecycle lifecycle) {
         this.agentLifecycles.add(lifecycle);
         return this;
     }
+
     public AgentBuilder subAgents(List<SubAgentToolCall> subAgents) {
         this.subAgents = new ArrayList<>(subAgents);
         return this;
     }
+
     public AgentBuilder reasoningEffort(ReasoningEffort reasoningEffort) {
         this.reasoningEffort = reasoningEffort;
         return this;
     }
+
     public AgentBuilder doomLoopDetection(boolean enabled) {
         this.doomLoopEnabled = enabled;
         return this;
     }
+
     public AgentBuilder doomLoopWindowSize(int size) {
         this.doomLoopWindowSize = size;
         return this;
     }
+
     public AgentBuilder doomLoopThreshold(int threshold) {
         this.doomLoopThreshold = threshold;
         return this;
     }
+
+    public AgentBuilder toolRegistry(ToolRegistry toolRegistry) {
+        this.toolRegistry = toolRegistry;
+        return this;
+    }
+
 
     public Agent build() {
         beforeAgentBuildLifecycle();
@@ -292,25 +348,35 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         configureSkills();
         configureToolDiscovery();
         configureSystemPrompt();
+        configureToolRegistry();
+
         copyValue(agent);
 
-        var systemVariables = agent.getSystemVariables();
-        systemVariables.put(SystemVariables.AGENT_TOOLS, toolCalls.stream().map(ToolCall::toString).collect(Collectors.joining(";")));
-        systemVariables.putAll(extraSystemVariables);
         afterAgentBuildLifecycle(agent);
         return agent;
     }
+
+    private void configureToolRegistry() {
+        if (toolRegistry == null) {
+            toolRegistry = ToolRegistryFactory.createEmpty();
+        }
+        toolRegistry.registerTools(toolCalls);
+    }
+
     private void beforeAgentBuildLifecycle() {
         agentLifecycles.forEach(alc -> alc.beforeAgentBuild(this));
     }
+
     private void afterAgentBuildLifecycle(Agent agent) {
         agentLifecycles.forEach(alc -> alc.afterAgentBuild(agent));
     }
+
     private void configureSubAgents() {
         if (this.subAgents != null && !this.subAgents.isEmpty()) {
             toolCalls.addAll(this.subAgents);
         }
     }
+
     private void configureSystemPrompt() {
         var sb = new StringBuilder(this.systemPrompt != null ? this.systemPrompt : "");
         for (var section : systemPromptSections) {
@@ -322,6 +388,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
         this.systemPrompt = !sb.isEmpty() ? sb.toString() : "you are a helpful assistant";
     }
+
     private void copyValue(Agent agent) {
         agent.systemPrompt = this.systemPrompt;
         agent.promptTemplate = this.promptTemplate == null ? "" : this.promptTemplate;
@@ -333,7 +400,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.llmProvider == null) {
             throw new Error("llmProvider is required for agent, please set it with llmProvider() method");
         }
-        agent.toolCalls = new CopyOnWriteArrayList<>(this.toolCalls);
+        agent.toolRegistry = this.toolRegistry;
         agent.subAgents = this.subAgents;
         agent.ragConfig = this.ragConfig;
         agent.reflectionConfig = this.reflectionConfig;
@@ -354,13 +421,16 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (agent.ragConfig == null) {
             agent.ragConfig = new RagConfig();
         }
+        agent.getSystemVariables().putAll(extraSystemVariables);
     }
+
     private void configureToolCallPruning() {
         if (this.toolCallPruningEnabled) {
             var pruningCfg = this.toolCallPruningConfig != null ? this.toolCallPruningConfig : ToolCallPruning.Config.defaultConfig();
             agentLifecycles.addFirst(new ToolCallPruningLifecycle(new ToolCallPruning(pruningCfg.keepRecentSegments(), pruningCfg.excludeToolNames())));
         }
     }
+
     private void configureDoomLoop() {
         var strategies = new ArrayList<DoomLoopStrategy>();
         if (doomLoopEnabled) {
@@ -380,9 +450,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agentLifecycles.add(new DoomLoopLifecycle(strategies));
         }
     }
+
     private void configureResponseValidation() {
         agentLifecycles.add(new ResponseValidationLifecycle());
     }
+
     private void configureCompression() {
         if (compressionEnabled) {
             if (compression == null) {
@@ -391,6 +463,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             agentLifecycles.add(new CompressionLifecycle(compression));
         }
     }
+
     private void configureSkills() {
         if (skillRegistry == null) return;
         if (skillRegistry.listAll().isEmpty()) return;
@@ -398,13 +471,18 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             toolCalls.add(SkillTool.builder().registry(skillRegistry).build());
         }
     }
+
     private void configureToolDiscovery() {
         var discoverableTools = toolCalls.stream().filter(ToolCall::isDiscoverable).toList();
         if (!discoverableTools.isEmpty()) {
-            for (var tool : discoverableTools) tool.setLlmVisible(false);
+            for (var tool : discoverableTools) {
+                tool.setLlmVisible(false);
+                tool.setExposure(ToolExposure.DEFERRED);
+            }
             toolCalls.add(ToolActivationTool.builder().allToolCalls(toolCalls).build());
         }
     }
+
     private void configureMemory() {
         if (this.memory == null) return;
         var config = this.memoryConfig != null ? this.memoryConfig : MemoryConfig.defaultConfig();
@@ -414,6 +492,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             toolCalls.add(lifecycle.getMemoryRecallTool());
         }
     }
+
     private void fetchLangfusePromptsIfConfigured() {
         if (langfuseSystemPromptName == null && langfusePromptTemplateName == null) return;
         var provider = LangfusePromptProviderRegistry.getProvider();
@@ -432,11 +511,13 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
             throw new RuntimeException("Failed to fetch prompts from Langfuse", e);
         }
     }
+
     private LangfusePrompt fetchLangfusePrompt(LangfusePromptProvider provider, String name) throws LangfusePromptProvider.LangfusePromptException {
         if (langfusePromptVersion != null) return provider.getPrompt(name, langfusePromptVersion);
         if (langfusePromptLabel != null) return provider.getPromptByLabel(name, langfusePromptLabel);
         return provider.getPrompt(name);
     }
+
     @Override
     protected AgentBuilder self() {
         return this;

@@ -32,6 +32,8 @@ import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolExecutor;
 import ai.core.tool.ToolOrchestration;
+import ai.core.tool.registry.ToolMaterialization;
+import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.crypto.Hash;
 import core.framework.json.JSON;
@@ -61,7 +63,7 @@ public class Agent extends Node<Agent> {
     String systemPrompt;
     String promptTemplate;
     LLMProvider llmProvider;
-    List<ToolCall> toolCalls;
+    ToolRegistry toolRegistry;
     RagConfig ragConfig;
     Double temperature;
     String model;
@@ -84,7 +86,7 @@ public class Agent extends Node<Agent> {
                     .name(getName())
                     .id(getId())
                     .input(query)
-                    .withTools(toolCalls != null && !toolCalls.isEmpty())
+                    .withTools(toolRegistry != null && !toolRegistry.getToolCalls().isEmpty())
                     .withRag(ragConfig != null && ragConfig.useRag())
                     .sessionId(execContext.getSessionId())
                     .userId(execContext.getUserId())
@@ -205,11 +207,12 @@ public class Agent extends Node<Agent> {
         runTurnsLoop(constructionAssistantMsg);
     }
     private String runTurnsLoop(BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
+        var mat = toolRegistry.materialize();
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
             if (cancelled) break;
-            var turnMsgList = turn(getMessages(), AgentHelper.toReqTools(toolCalls), constructionAssistantMsg);
+            var turnMsgList = turn(getMessages(), mat, constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
             agentOut.append(turnMsgList.stream().filter(m -> RoleType.ASSISTANT.equals(m.role)).map(Message::getTextContent).collect(Collectors.joining("")));
@@ -236,12 +239,12 @@ public class Agent extends Node<Agent> {
             return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall)));
         }
     }
-    public List<Message> turn(List<Message> messages, List<Tool> tools, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
+    public List<Message> turn(List<Message> messages, ToolMaterialization toolMaterialization, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         var resultMsg = new ArrayList<Message>();
-        var choice = constructionAssistantMsg.apply(messages, tools);
+        var choice = constructionAssistantMsg.apply(messages, toolMaterialization.definitions());
         resultMsg.add(choice.message.toMessage());
         if (choice.finishReason == FinishReason.TOOL_CALLS) {
-            var funcMsg = handleFunc(choice.message.toMessage());
+            var funcMsg = handleFunc(choice.message.toMessage(), toolMaterialization.getDispatchMap());
             resultMsg.addAll(funcMsg);
         }
         return resultMsg;
@@ -287,14 +290,14 @@ public class Agent extends Node<Agent> {
         agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
         return resp;
     }
-    public List<Message> handleFunc(Message funcMsg) {
+    public List<Message> handleFunc(Message funcMsg, Map<String, ToolCall> dispatchMap) {
         if (cancelled) return List.of();
-        var orchestration = new ToolOrchestration(toolCalls, agentLifecycles, getToolExecutor(), getExecutionContext());
+        var orchestration = new ToolOrchestration(dispatchMap, agentLifecycles, getToolExecutor(), getExecutionContext());
         return orchestration.execute(funcMsg.toolCalls);
     }
     private ToolExecutor getToolExecutor() {
         if (toolExecutor == null) {
-            toolExecutor = new ToolExecutor(toolCalls, agentLifecycles, getTracer(), this::updateNodeStatus);
+            toolExecutor = new ToolExecutor(agentLifecycles, getTracer(), this::updateNodeStatus);
         }
         toolExecutor.setAuthenticated(authenticated);
         return toolExecutor;
@@ -354,7 +357,7 @@ public class Agent extends Node<Agent> {
         return this.useGroupContext;
     }
     public List<ToolCall> getToolCalls() {
-        return this.toolCalls;
+        return toolRegistry.getToolCalls();
     }
     public void setModel(String model) {
         this.model = model;
@@ -406,9 +409,10 @@ public class Agent extends Node<Agent> {
     }
     public void addTools(List<ToolCall> tools) {
         if (tools == null) return;
+        var list = toolRegistry.getToolCalls();
         for (var tool : tools) {
-            if (toolCalls.stream().noneMatch(t -> t.getName().equals(tool.getName()))) {
-                toolCalls.add(tool);
+            if (list.stream().noneMatch(t -> t.getName().equals(tool.getName()))) {
+                list.add(tool);
             }
         }
     }
