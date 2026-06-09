@@ -54,21 +54,6 @@ public class WorkflowRunner {
     @Inject
     WorkflowGraphLoader graphLoader;
 
-    /**
-     * Graceful-shutdown hand-off: make this worker's in-flight runs immediately claimable (lease_until=now) so a
-     * live replica resumes them at once instead of waiting out the lease. Safe because ownership is re-established
-     * by the CAS in {@link #claim} and per-node dispatch is deduped by the journal's unique index. A hard crash
-     * skips this; the runner job then recovers those once their lease naturally expires.
-     */
-    public void releaseClaimedRuns() {
-        long released = runCollection.update(
-            Filters.and(Filters.eq("claimed_by", workerId), Filters.eq("status", RunStatus.RUNNING)),
-            Updates.set("lease_until", ZonedDateTime.now()));
-        if (released > 0) {
-            LOGGER.info("released {} in-flight workflow runs for hand-off on shutdown, worker={}", released, workerId);
-        }
-    }
-
     /** Drive a run on a background thread. The claim is idempotent — a concurrent claim elsewhere just no-ops. */
     public void submit(String runId) {
         driverPool.execute(() -> {

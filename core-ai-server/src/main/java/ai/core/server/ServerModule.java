@@ -306,14 +306,12 @@ public class ServerModule extends Module {
         bind(NodeExecutor.class, registry);
 
         bind(WorkflowPublishService.class);
-        var workflowRunner = bind(WorkflowRunner.class);
+        bind(WorkflowRunner.class);
         bind(WorkflowDefinitionService.class);
         bind(WorkflowRunService.class);
-        // On graceful shutdown (rollout/scale-down) hand off this worker's in-flight runs so a live replica resumes
-        // them at once, instead of waiting for the lease to expire.
-        onShutdown(workflowRunner::releaseClaimedRuns);
-        // Pure recovery/fallback now that every creation path submits immediately and shutdown hands off — only
-        // hard crashes (OOM/SIGKILL/node loss) leave a stale lease, so a slow tick is enough.
+        // Pure recovery/fallback: every creation path submits immediately, so this only catches hard crashes
+        // (OOM/SIGKILL/node loss) that leave a stale lease — a slow tick is enough. (No shutdown-time DB hand-off:
+        // a Mongo write that late in teardown fails when the codec registry is already gone.)
         schedule().fixedRate("workflow-runner", bind(WorkflowRunnerJob.class), Duration.ofSeconds(60));
     }
 
@@ -428,7 +426,7 @@ public class ServerModule extends Module {
         // iOS Safari legacy probe; reuse favicon.svg to silence 404 noise.
         http().route(HTTPMethod.GET, "/apple-touch-icon-precomposed.png", controller::serveAppleTouchIcon);
         var spaRoutes = new String[]{
-            "/", "/login", "/authorize", "/chat", "/agents", "/sessions",
+            "/", "/login", "/register", "/authorize", "/chat", "/agents", "/sessions",
             "/system-prompts", "/dashboard", "/traces", "/skills",
             "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools",
             "/triggers", "/datasets", "/for-you", "/for-you/artifacts", "/workflows"
@@ -437,8 +435,12 @@ public class ServerModule extends Module {
             http().route(HTTPMethod.GET, path, controller::serve);
         }
         http().route(HTTPMethod.GET, "/agents/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/agents/:id/memories", controller::serve);
         http().route(HTTPMethod.GET, "/workflows/:id", controller::serve);
+        http().route(HTTPMethod.GET, "/workflows/:id/runs", controller::serve);
         http().route(HTTPMethod.GET, "/runs/:id", controller::serve);
+        // note: /mcp is NOT an SPA route — core-ai's own MCP server (McpServerModule) owns GET /mcp. The frontend
+        // MCP page only works via in-app navigation; serving it on refresh needs a non-clashing path (e.g. /mcp-servers).
         http().route(HTTPMethod.GET, "/system-prompts/:id", controller::serve);
         http().route(HTTPMethod.GET, "/traces/:id", controller::serve);
         http().route(HTTPMethod.GET, "/skills/:id", controller::serve);
@@ -451,7 +453,9 @@ public class ServerModule extends Module {
         // nested SPA routes (multi-segment paths that need direct URL access / refresh support)
         http().route(HTTPMethod.GET, "/triggers/webhook", controller::serve);
         http().route(HTTPMethod.GET, "/triggers/schedule", controller::serve);
+        http().route(HTTPMethod.GET, "/triggers/channels", controller::serve);
         http().route(HTTPMethod.GET, "/tools/builtin", controller::serve);
+        http().route(HTTPMethod.GET, "/settings", controller::serve);
         http().route(HTTPMethod.GET, "/settings/users", controller::serve);
         http().route(HTTPMethod.GET, "/settings/api-keys", controller::serve);
     }
