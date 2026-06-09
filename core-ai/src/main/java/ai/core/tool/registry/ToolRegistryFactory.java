@@ -1,10 +1,16 @@
 package ai.core.tool.registry;
 
+import ai.core.tool.BuiltinTools;
+import ai.core.tool.ToolCall;
+import ai.core.utils.Platform;
+
+import java.util.List;
+
 /**
  * Static factory for assembling a {@link ToolRegistry} from a {@link FactoryContext}.
  * <p>
- * For list-backed registries (used by {@code AgentBuilder}), create a
- * {@link ToolRegistry} directly and call {@link ToolRegistry#registerTools}.
+ * Tool groups are registered as separate providers so that platform-specific or
+ * model-specific providers can override or supplement individual groups.
  *
  * @author Lim Chen
  */
@@ -15,29 +21,27 @@ public final class ToolRegistryFactory {
 
     public static ToolRegistry create(FactoryContext context) {
         var registry = new ToolRegistry();
-        registry.registerProvider(new BuiltinToolProvider());
 
-        var osProvider = resolveOsProvider(context.os());
-        if (osProvider != null) {
-            registry.registerProvider(osProvider);
-        }
+        registry.registerProvider(new BuiltinToolProvider("builtin-planning", planningTools(context)));
+        registry.registerProvider(new BuiltinToolProvider("builtin-files", BuiltinTools.FILE_OPERATIONS));
 
-        var modelP = resolveModelProvider(context.modelProvider());
-        if (modelP != null) {
-            registry.registerProvider(modelP);
-        }
+        registry.registerProvider(new BuiltinToolProvider("builtin-multimodal", BuiltinTools.MULTIMODAL));
+        registry.registerProvider(new BuiltinToolProvider("builtin-web", BuiltinTools.WEB));
+        registry.registerProvider(new BuiltinToolProvider("builtin-code", BuiltinTools.CODE_EXECUTION));
 
         return registry;
     }
+
     public static ToolRegistry createEmpty() {
         return new ToolRegistry();
     }
 
-    public static ToolProvider resolveOsProvider(String os) {
-        return null;
-    }
 
-    public static ToolProvider resolveModelProvider(String modelProvider) {
-        return null;
+
+    private static List<ToolCall> planningTools(FactoryContext context) {
+        if (context.todoV2Enabled()) {
+            return BuiltinTools.PLANNING_V2;
+        }
+        return BuiltinTools.PLANNING;
     }
 }

@@ -1,22 +1,24 @@
 package ai.core.tool.registry;
 
+import ai.core.utils.Platform;
+
 /**
  * Input to {@link ToolRegistryFactory#create(FactoryContext)}.
  * Declares the environment dimensions that influence provider selection.
- * New dimensions can be added without changing the factory method signature.
  *
- * @param os            operating system identifier (e.g. "macos", "windows")
- * @param modelProvider LLM provider name (e.g. "anthropic", "openai")
  * @author Lim Chen
  */
-public record FactoryContext(String os, String modelProvider) {
+public record FactoryContext(Platform platform, String modelProvider, boolean todoV2Enabled) {
 
     public FactoryContext {
-        os = os != null ? os.toLowerCase() : null;
         modelProvider = modelProvider != null ? modelProvider.toLowerCase() : null;
     }
 
-    public static FactoryContext of(String os, String modelProvider) {
-        return new FactoryContext(os, modelProvider);
+    public static FactoryContext of(Platform platform, String modelProvider) {
+        return new FactoryContext(platform, modelProvider, false);
+    }
+
+    public static FactoryContext of(Platform platform, String modelProvider, boolean todoV2Enabled) {
+        return new FactoryContext(platform, modelProvider, todoV2Enabled);
     }
 }

@@ -5,12 +5,13 @@ import ai.core.tool.ToolCall;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Wraps a {@link List}&lt;{@link ToolCall}&gt; as a {@link ToolProvider}.
  * <p>
- * Priority is 5 (lower than {@link BuiltinToolProvider}'s 10) so that
- * user-registered tools override builtin tools of the same name.
+ * When no explicit {@code id} is given, one is derived from the tool names so that
+ * different tool sets map to different ids and won't silently overwrite each other.
  *
  * @author Lim Chen
  */
@@ -19,7 +20,7 @@ public class ListToolProvider implements ToolProvider {
     private final List<ToolCall> tools;
 
     public ListToolProvider(List<ToolCall> tools) {
-        this(ToolProvider.USER, tools);
+        this(tools.stream().map(ToolCall::getName).sorted().collect(Collectors.joining(",")), tools);
     }
 
     public ListToolProvider(String id, List<ToolCall> tools) {

@@ -15,13 +15,19 @@ import java.util.Map;
  * @author Lim Chen
  */
 public class BuiltinToolProvider implements ToolProvider {
+    private final String id;
     private final Map<String, ToolCall> tools;
 
     public BuiltinToolProvider() {
-        this(BuiltinTools.ALL);
+        this(BUILTIN, BuiltinTools.ALL);
     }
 
     public BuiltinToolProvider(List<ToolCall> toolList) {
+        this(BUILTIN, toolList);
+    }
+
+    public BuiltinToolProvider(String id, List<ToolCall> toolList) {
+        this.id = id;
         var map = new LinkedHashMap<String, ToolCall>();
         for (var tc : toolList) {
             map.put(tc.getName(), tc);
@@ -31,7 +37,7 @@ public class BuiltinToolProvider implements ToolProvider {
 
     @Override
     public String id() {
-        return ToolProvider.BUILTIN;
+        return id;
     }
 
     @Override

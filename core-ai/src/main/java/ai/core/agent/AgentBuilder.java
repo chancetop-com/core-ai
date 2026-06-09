@@ -431,19 +431,24 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (doomLoopEnabled) {
             strategies.add(new RepetitiveCallStrategy(doomLoopWindowSize, doomLoopThreshold));
         }
-        boolean hasTaskV2 = toolCalls.stream()
-                .anyMatch(t -> WriteTodoTaskTool.TOOL_NAME_CREATE.equals(t.getName()));
+        boolean hasTaskV2 = hasTool(WriteTodoTaskTool.TOOL_NAME_CREATE);
         if (hasTaskV2) {
             strategies.add(new TaskReminderStrategy());
         }
-        boolean hasWriteTodos = toolCalls.stream()
-                .anyMatch(t -> WriteTodosTool.WT_TOOL_NAME.equals(t.getName()));
+        boolean hasWriteTodos = hasTool(WriteTodosTool.WT_TOOL_NAME);
         if (hasWriteTodos) {
             strategies.add(new TodoReminderStrategy());
         }
         if (!strategies.isEmpty()) {
             agentLifecycles.add(new DoomLoopLifecycle(strategies));
         }
+    }
+
+    private boolean hasTool(String toolName) {
+        if (toolRegistry != null) {
+            return toolRegistry.getToolCalls().stream().anyMatch(t -> toolName.equals(t.getName()));
+        }
+        return toolCalls.stream().anyMatch(t -> toolName.equals(t.getName()));
     }
 
     private void configureResponseValidation() {

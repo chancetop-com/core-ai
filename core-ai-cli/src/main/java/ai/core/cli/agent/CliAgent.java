@@ -13,25 +13,23 @@ import ai.core.cli.memory.MemorySystemPrompt;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.remote.A2ARemoteAgentConfig;
-import ai.core.cli.remote.A2ARemoteAgentDiscovery;
 import ai.core.cli.remote.A2ARemoteServerConfig;
-import ai.core.cli.remote.DelegateToRemoteAgentToolCall;
-import ai.core.cli.remote.SearchRemoteAgentsToolCall;
-import ai.core.cli.auth.AuthConfig;
-import ai.core.cli.auth.AuthManager;
+import ai.core.cli.remote.RemoteAgentToolProvider;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.cli.task.FileTodoStoreFactory;
 import ai.core.llm.LLMProviders;
-import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.PromptInject;
 import ai.core.skill.SkillConfig;
-import ai.core.tool.BuiltinTools;
+import ai.core.skill.SkillToolProvider;
 import ai.core.tool.ToolCall;
-import ai.core.tool.mcp.McpToolCalls;
+import ai.core.tool.mcp.McpToolProvider;
+import ai.core.tool.registry.FactoryContext;
+import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.AddMcpServerTool;
+import ai.core.utils.Platform;
 import ai.core.tool.tools.AskUserTool;
-import ai.core.tool.tools.SkillTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -44,6 +42,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 
+import ai.core.utils.SystemUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,10 +54,11 @@ public class CliAgent {
 
     public static Agent of(Config config) {
         var pluginManager = PluginManager.getInstance(Path.of(System.getProperty("user.home"), ".core-ai"));
-        var skillConfig = buildSkillConfig(config, pluginManager);
-        var tools = buildTools(config, skillConfig);
-        tools.addAll(0, mcpTools());
-        tools.addAll(remoteAgentTools(config));
+        var toolRegistry = ToolRegistryFactory.create(buildFactoryContext(config));
+        toolRegistry.registerProvider(new McpToolProvider());
+        toolRegistry.registerProvider(new SkillToolProvider(buildSkillConfig(config, pluginManager), config.workspace.toAbsolutePath().toString()));
+        toolRegistry.registerProvider(ListToolProvider.of(cliUserTools(config)));
+        toolRegistry.registerProvider(buildRemoteAgentProvider(config));
 
         var hookConfig = HookConfig.load(config.workspace, pluginManager);
         var hookLifecycle = hookConfig.isEmpty() ? null
@@ -71,7 +71,7 @@ public class CliAgent {
         var builder = Agent.builder()
                 .llmProvider(config.providers.getDefaultProvider())
                 .maxTurn(config.maxTurn)
-                .toolCalls(tools)
+                .toolRegistry(toolRegistry)
                 .temperature(0.8);
         configureSystemPrompt(builder, config, hookOutput);
 
@@ -120,46 +120,22 @@ public class CliAgent {
         return builder.build();
     }
 
-    private static List<ToolCall> buildTools(Config config, SkillConfig skillConfig) {
-        List<ToolCall> tools = new ArrayList<>();
-        if (config.todoV2Enabled) {
-            tools.addAll(BuiltinTools.PLANNING_V2);
-        } else {
-            tools.addAll(BuiltinTools.PLANNING);
-        }
-        // Add remaining builtin tools (skip PLANNING which is already added)
-        tools.addAll(BuiltinTools.FILE_OPERATIONS);
-        tools.addAll(BuiltinTools.MULTIMODAL);
-        tools.addAll(BuiltinTools.WEB);
-        tools.addAll(BuiltinTools.CODE_EXECUTION);
-        tools.add(AskUserTool.builder().questionHandler(config.askUserHandler).build());
-        tools.add(AddMcpServerTool.builder().toolRegistrar(tools::addAll).build());
-        tools.add(SkillTool.builder()
-                .sources(skillConfig.getSources())
-                .maxFileSize(skillConfig.getMaxSkillFileSize())
-                .workspaceDir(config.workspace.toAbsolutePath().toString())
-                .build());
-        return tools;
+    private static FactoryContext buildFactoryContext(Config config) {
+        var platform = SystemUtil.detectPlatform();
+        var defaultProvider = config.providers().getDefaultProvider();
+        var providerType = config.providers().getProviderType(defaultProvider);
+        var modelProvider = providerType != null ? providerType.name() : null;
+        return FactoryContext.of(platform, modelProvider, config.todoV2Enabled());
     }
 
-    private static List<ToolCall> remoteAgentTools(Config config) {
-        // Build server list: explicit config + auto-discover from active auth (if enabled)
-        var servers = new ArrayList<>(config.remoteServers);
-        if (servers.isEmpty() && config.a2aAutoDiscover && AuthManager.isLoggedIn()) {
-            var active = AuthConfig.load();
-            if (active != null) {
-                var auto = new A2ARemoteServerConfig();
-                auto.id = "default";
-                auto.url = active.serverUrl();
-                auto.enabled = true;
-                servers.add(auto);
-            }
-        }
-        var catalog = new A2ARemoteAgentDiscovery().discoverCatalog(config.remoteAgents, servers);
-        if (catalog.isEmpty()) return List.of();
-        LOGGER.info("Discovered {} remote A2A agent(s) from {} server(s)", catalog.size(), servers.size());
-        return List.of(SearchRemoteAgentsToolCall.builder().catalog(catalog).build(),
-                DelegateToRemoteAgentToolCall.builder().catalog(catalog).build());
+    private static List<ToolCall> cliUserTools(Config config) {
+        return List.of(
+                AskUserTool.builder().questionHandler(config.askUserHandler()).build(),
+                AddMcpServerTool.builder().build());
+    }
+
+    private static RemoteAgentToolProvider buildRemoteAgentProvider(Config config) {
+        return RemoteAgentToolProvider.discover(config.remoteAgents(), config.remoteServers(), config.a2aAutoDiscover());
     }
 
     private static Path userSkillsDir() {
@@ -182,17 +158,6 @@ public class CliAgent {
         sections.add(new HookPrompt(hookOutput));
         return sections;
     }
-
-    private static List<ToolCall> mcpTools() {
-        var manager = McpClientManagerRegistry.getManager();
-        if (manager == null) return List.of();
-        var serverNames = manager.getServerNames();
-        if (serverNames != null && !serverNames.isEmpty()) {
-            return new ArrayList<>(McpToolCalls.from(manager, new ArrayList<>(serverNames), null));
-        }
-        return List.of();
-    }
-
 
     public record Config(LLMProviders providers, String modelOverride, int maxTurn,
                          PersistenceProvider persistenceProvider, Path workspace,

@@ -27,6 +27,10 @@ public class ToolRegistry {
     }
 
     public void registerProvider(ToolProvider provider) {
+        if (provider == null) {
+            LOGGER.debug("null provider");
+            return;
+        }
         var previous = providers.put(provider.id(), provider);
         if (previous != null) {
             LOGGER.info("replaced provider, id={}", provider.id());

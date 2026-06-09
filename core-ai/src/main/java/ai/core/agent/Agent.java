@@ -32,6 +32,7 @@ import ai.core.telemetry.context.AgentTraceContext;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolExecutor;
 import ai.core.tool.ToolOrchestration;
+import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolMaterialization;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.SubAgentToolCall;
@@ -47,6 +48,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -58,6 +60,7 @@ public class Agent extends Node<Agent> {
     public static AgentBuilder builder() {
         return new AgentBuilder();
     }
+
     private final Logger logger = LoggerFactory.getLogger(Agent.class);
     private volatile boolean cancelled = false;
     String systemPrompt;
@@ -77,6 +80,7 @@ public class Agent extends Node<Agent> {
     Compression compression;
     ReasoningEffort reasoningEffort;
     List<SubAgentToolCall> subAgents = new ArrayList<>();
+
     @Override
     String execute(String query, Map<String, Object> variables) {
         var activeTracer = (AgentTracer) getTracer();
@@ -102,9 +106,11 @@ public class Agent extends Node<Agent> {
         }
         return doExecute(query, variables, false);
     }
+
     private void chatCommand(String query, Map<String, Object> variables) {
         chatTurns(query, variables, this::constructionFakeSlashCommandAssistantMsg);
     }
+
     private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
         var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
@@ -121,6 +127,7 @@ public class Agent extends Node<Agent> {
             reflectionLoop(variables);
         }
     }
+
     private String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
         boolean isFirstExecution = getInput() == null;
         if (isFirstExecution) {
@@ -136,6 +143,7 @@ public class Agent extends Node<Agent> {
         }
         return getOutput();
     }
+
     private void commandOrLoops(String query, Map<String, Object> variables, boolean skipReflection) {
         if (SlashCommandParser.isSlashCommand(query)) {
             chatCommand(query, variables);
@@ -143,6 +151,7 @@ public class Agent extends Node<Agent> {
             chatLoops(query, variables, skipReflection);
         }
     }
+
     private void reflectionLoop(Map<String, Object> variables) {
         ReflectionHistory history = new ReflectionHistory(getId(), getName(), getInput(), reflectionConfig.evaluationCriteria());
         int currentRound = 1;
@@ -190,11 +199,13 @@ public class Agent extends Node<Agent> {
         history.complete(determineCompletionStatus(history));
         if (reflectionListener != null) reflectionListener.onReflectionComplete(this, history);
     }
+
     private void notifyTerminationReason(ReflectionEvaluation eval, int round) {
         if (reflectionListener == null) return;
         if (eval.isPass() && eval.getScore() >= 8) reflectionListener.onScoreAchieved(this, eval.getScore(), round);
         else if (!eval.isShouldContinue()) reflectionListener.onNoImprovement(this, eval.getScore(), round);
     }
+
     private ReflectionStatus determineCompletionStatus(ReflectionHistory history) {
         if (history.getRounds().size() >= reflectionConfig.maxRound()) return ReflectionStatus.COMPLETED_MAX_ROUNDS;
         if (history.getRounds().isEmpty()) return ReflectionStatus.COMPLETED_SUCCESS;
@@ -202,16 +213,18 @@ public class Agent extends Node<Agent> {
         if (lastEval.isPass() && lastEval.getScore() >= 8) return ReflectionStatus.COMPLETED_SUCCESS;
         return lastEval.isShouldContinue() ? ReflectionStatus.COMPLETED_SUCCESS : ReflectionStatus.COMPLETED_NO_IMPROVEMENT;
     }
+
     protected void chatTurns(String query, Map<String, Object> variables, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         buildUserQueryToMessage(query, variables);
         runTurnsLoop(constructionAssistantMsg);
     }
+
     private String runTurnsLoop(BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
-        var mat = toolRegistry.materialize();
         var currentIteCount = 0;
         var agentOut = new StringBuilder();
         do {
             if (cancelled) break;
+            var mat = toolRegistry.materialize();
             var turnMsgList = turn(getMessages(), mat, constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
             turnMsgList.forEach(this::addMessage);
@@ -228,6 +241,7 @@ public class Agent extends Node<Agent> {
         }
         return agentOut.toString();
     }
+
     private Choice constructionFakeSlashCommandAssistantMsg(List<Message> messages, List<Tool> tools) {
         logger.debug("all tools size is {}", tools.size());
         String query = messages.getLast().getTextContent();
@@ -239,6 +253,7 @@ public class Agent extends Node<Agent> {
             return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall)));
         }
     }
+
     public List<Message> turn(List<Message> messages, ToolMaterialization toolMaterialization, BiFunction<List<Message>, List<Tool>, Choice> constructionAssistantMsg) {
         var resultMsg = new ArrayList<Message>();
         var choice = constructionAssistantMsg.apply(messages, toolMaterialization.definitions());
@@ -249,6 +264,7 @@ public class Agent extends Node<Agent> {
         }
         return resultMsg;
     }
+
     private Choice handLLM(List<Message> messages, List<Tool> tools) {
         var effectiveModel = resolveEffectiveModel(messages);
         var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, tools, llmProvider.config == null ? 0 : llmProvider.config.getTemperature(), effectiveModel, this.getName(), null, null, reasoningEffort));
@@ -257,6 +273,7 @@ public class Agent extends Node<Agent> {
         ctx.setLastLLMSpanContext(null);
         return aroundLLM(r -> llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(getStreamingCallback()), ctx::setLastLLMSpanContext), req);
     }
+
     private String resolveEffectiveModel(List<Message> messages) {
         if (multiModalModel == null) return model;
         for (var message : messages) {
@@ -269,6 +286,7 @@ public class Agent extends Node<Agent> {
         }
         return model;
     }
+
     private Choice aroundLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         agentLifecycles.forEach(alc -> alc.beforeModel(request, getExecutionContext()));
         var resp = callLLM(func, request);
@@ -284,17 +302,20 @@ public class Agent extends Node<Agent> {
 
         return resp.choices.getFirst();
     }
+
     private CompletionResponse callLLM(Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         var resp = func.apply(request);
         addTokenCost(resp.usage);
         agentLifecycles.forEach(alc -> alc.afterModel(request, resp, getExecutionContext()));
         return resp;
     }
+
     public List<Message> handleFunc(Message funcMsg, Map<String, ToolCall> dispatchMap) {
         if (cancelled) return List.of();
         var orchestration = new ToolOrchestration(dispatchMap, agentLifecycles, getToolExecutor(), getExecutionContext());
         return orchestration.execute(funcMsg.toolCalls);
     }
+
     private ToolExecutor getToolExecutor() {
         if (toolExecutor == null) {
             toolExecutor = new ToolExecutor(agentLifecycles, getTracer(), this::updateNodeStatus);
@@ -302,6 +323,7 @@ public class Agent extends Node<Agent> {
         toolExecutor.setAuthenticated(authenticated);
         return toolExecutor;
     }
+
     private void buildUserQueryToMessage(String query, Map<String, Object> variables) {
         if (getMessages().isEmpty()) {
             addMessage(buildSystemMessage(variables));
@@ -315,6 +337,7 @@ public class Agent extends Node<Agent> {
         removeLastAssistantToolCallMessageIfNotToolResult(reqMsg);
         addMessage(reqMsg);
     }
+
     private void removeLastAssistantToolCallMessageIfNotToolResult(Message reqMsg) {
         var lastMsg = getMessages().getLast();
         if (lastMsg.role == RoleType.ASSISTANT && lastMsg.toolCalls != null
@@ -322,9 +345,11 @@ public class Agent extends Node<Agent> {
             removeMessage(lastMsg);
         }
     }
+
     @Override
     void setChildrenParentNode() {
     }
+
     private Message buildSystemMessage(Map<String, Object> variables) {
         var prompt = systemPrompt;
         if (getParentNode() != null && isUseGroupContext()) {
@@ -336,6 +361,7 @@ public class Agent extends Node<Agent> {
         prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
         return Message.of(RoleType.SYSTEM, prompt);
     }
+
     private void rag(String query, Map<String, Object> variables) {
         if (ragConfig.vectorStore() == null || ragConfig.llmProvider() == null)
             throw new RuntimeException("vectorStore/llmProvider cannot be null if useRag flag is enabled");
@@ -353,69 +379,87 @@ public class Agent extends Node<Agent> {
         var context = ragConfig.llmProvider().rerankings(RerankingRequest.of(ragQuery, docs.stream().map(v -> v.content).toList())).rerankedDocuments.getFirst();
         variables.put(RagConfig.AGENT_RAG_CONTEXT_PLACEHOLDER, context);
     }
+
     public Boolean isUseGroupContext() {
         return this.useGroupContext;
     }
+
     public List<ToolCall> getToolCalls() {
         return toolRegistry.getToolCalls();
     }
+
     public void setModel(String model) {
         this.model = model;
     }
+
     public String getSystemPrompt() {
         return systemPrompt;
     }
+
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
     }
+
     public Double getTemperature() {
         return temperature;
     }
+
     public String getModel() {
         return model;
     }
+
     public String getMultiModalModel() {
         return multiModalModel;
     }
+
     public void setMultiModalModel(String multiModalModel) {
         this.multiModalModel = multiModalModel;
     }
+
     public LLMProvider getLLMProvider() {
         return llmProvider;
     }
+
     public Compression getCompression() {
         return compression;
     }
+
     public void setAuthenticated(boolean authenticated) {
         this.authenticated = authenticated;
     }
+
     public void setLlmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
     }
+
     public List<SubAgentToolCall> getSubAgents() {
         return subAgents;
     }
+
     void setSubAgents(List<SubAgentToolCall> subAgents) {
         this.subAgents = subAgents;
     }
+
     public boolean hasSubAgents() {
         return subAgents != null && !subAgents.isEmpty();
     }
+
     public SubAgentToolCall toSubAgentToolCall() {
         return SubAgentToolCall.builder().subAgent(this).build();
     }
+
     public SubAgentToolCall toSubAgentToolCall(Class<?>... classes) {
         return SubAgentToolCall.builder().subAgent(this, classes).build();
     }
+
     public void addTools(List<ToolCall> tools) {
-        if (tools == null) return;
-        var list = toolRegistry.getToolCalls();
-        for (var tool : tools) {
-            if (list.stream().noneMatch(t -> t.getName().equals(tool.getName()))) {
-                list.add(tool);
-            }
+        if (tools == null || tools.isEmpty() || toolRegistry == null) {
+            logger.warn("No tools to register");
+            return;
         }
+        toolRegistry.registerProvider(ListToolProvider.of("add-tools-" + UUID.randomUUID().toString().substring(0, 8), tools));
     }
+
     public void injectUserMessage(String content) {
         addMessage(Message.of(RoleType.USER, content));
     }
@@ -425,22 +469,27 @@ public class Agent extends Node<Agent> {
         if (messages == null || messages.isEmpty()) return;
         addMessages(messages);
     }
+
     public String continueWithInjectedMessage() {
         return runTurnsLoop(this::handLLM);
     }
+
     public void cancel() {
         this.cancelled = true;
         var cb = getStreamingCallback();
         if (cb != null) cb.cancelConnection();
     }
+
     public void resetCancellation() {
         this.cancelled = false;
         var cb = getStreamingCallback();
         if (cb != null) cb.reset();
     }
+
     public boolean isCancelled() {
         return cancelled;
     }
+
     @Override
     public ExecutionContext getExecutionContext() {
         var context = super.getExecutionContext();

@@ -179,7 +179,8 @@ class ToolRegistryTest {
     class Factory {
         @Test
         void shouldCreateRegistryWithBuiltinTools() {
-            var factoryRegistry = ToolRegistryFactory.create(new FactoryContext(null, null));
+            var factoryRegistry = ToolRegistryFactory.create(new FactoryContext(null, null, false));
+
             var mat = factoryRegistry.materialize();
             var names = mat.definitions().stream().map(t -> t.function.name).toList();
 
