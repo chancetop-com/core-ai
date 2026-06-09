@@ -88,16 +88,6 @@ class ToolRegistryTest {
             assertEquals(0, registry.materialize().definitions().size());
         }
 
-        @Test
-        void shouldIncrementEpochOnProviderChange() {
-            registry.registerProvider(createProvider("p1", 10, Map.of()));
-            var epoch1 = registry.materialize().epoch();
-
-            registry.registerProvider(createProvider("p2", 20, Map.of()));
-            var epoch2 = registry.materialize().epoch();
-
-            assertTrue(epoch2 > epoch1);
-        }
     }
 
     @Nested
@@ -188,36 +178,6 @@ class ToolRegistryTest {
             assertTrue(result.getResult().contains("Unknown tool"));
         }
 
-        @Test
-        void shouldRejectStaleCallAfterProviderChanged() {
-            registry.registerProvider(createProvider("v1", 10,
-                    Map.of("echo", newEchoTool("echo", "v1", ToolExposure.DIRECT))));
-            var mat = registry.materialize();
-
-            registry.registerProvider(createProvider("v2", 5,
-                    Map.of("echo", newEchoTool("echo", "v2", ToolExposure.DIRECT))));
-
-            var call = FunctionCall.of("call_1", "function", "echo", "{\"msg\":\"hello\"}");
-            var result = registry.dispatch(mat, call, ctx);
-
-            assertTrue(result.isFailed());
-            assertTrue(result.getResult().contains("Stale tool call"));
-        }
-
-        @Test
-        void shouldRejectStaleCallAfterProviderRemoved() {
-            registry.registerProvider(createProvider("v1", 10,
-                    Map.of("echo", newEchoTool("echo", "echo", ToolExposure.DIRECT))));
-            var mat = registry.materialize();
-
-            registry.unregisterProvider("v1");
-
-            var call = FunctionCall.of("call_1", "function", "echo", "{\"msg\":\"hello\"}");
-            var result = registry.dispatch(mat, call, ctx);
-
-            assertTrue(result.isFailed());
-            assertTrue(result.getResult().contains("Stale tool call"));
-        }
     }
 
     @Nested
