@@ -65,6 +65,7 @@ import ai.core.server.workflow.WorkflowRunService;
 import ai.core.server.workflow.WorkflowRunner;
 import ai.core.server.workflow.WorkflowRunnerJob;
 import ai.core.server.workflow.executor.AgentExecutor;
+import ai.core.server.workflow.executor.AggregatorExecutor;
 import ai.core.server.workflow.executor.ApiToolExecutor;
 import ai.core.server.workflow.executor.CodeExecutor;
 import ai.core.server.workflow.executor.EndExecutor;
@@ -297,6 +298,7 @@ public class ServerModule extends Module {
             NodeType.MCP_TOOL, mcpToolExecutor,
             NodeType.API_TOOL, apiToolExecutor,
             NodeType.IF_ELSE, new IfElseExecutor(),
+            NodeType.AGGREGATOR, new AggregatorExecutor(),
             NodeType.CODE, new CodeExecutor(sandboxService)));
         bind(NodeExecutor.class, registry);
 

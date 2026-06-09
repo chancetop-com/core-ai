@@ -30,6 +30,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   const isIfElse = node.data.nodeType === 'IF_ELSE';
   const isCode = node.data.nodeType === 'CODE';
   const isEnd = node.data.nodeType === 'END';
+  const isAggregator = node.data.nodeType === 'AGGREGATOR';
   const isStart = node.data.nodeType === 'START';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
   const onConfig = (partial: Record<string, unknown>) => onChange({ config: { ...config, ...partial } });
@@ -103,8 +104,21 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
             onChange={(v) => onChange({ config: { ...config, output: v } })}
             nodes={nodes}
             selfId={node.id}
-            placeholder="defaults to {}"
+            placeholder="leave empty to auto-pass the branch / merge parallel inputs"
           />
+          <div style={hint}>Empty = pass through the single completed input, or merge multiple parallel inputs into an object.</div>
+        </>
+      ) : isAggregator ? (
+        <>
+          <label style={label}>Output</label>
+          <TemplateField
+            value={String(config.output ?? '')}
+            onChange={(v) => onChange({ config: { ...config, output: v } })}
+            nodes={nodes}
+            selfId={node.id}
+            placeholder='e.g. "A: {{ nodes.a.output }}\nB: {{ nodes.b.output }}"'
+          />
+          <div style={hint}>Combine its inputs into one value for downstream. Empty = auto-merge; a template is preferred for parallel inputs.</div>
         </>
       ) : (
         <>
@@ -121,7 +135,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
 
       {hasRetry && <RetryFields config={config} onConfig={onConfig} />}
 
-      {!isStart && <button onClick={onDelete} style={deleteBtn}><Trash2 size={15} /> Delete node</button>}
+      {!isStart && !isEnd && <button onClick={onDelete} style={deleteBtn}><Trash2 size={15} /> Delete node</button>}
     </div>
   );
 }
@@ -133,6 +147,7 @@ const panel: CSSProperties = {
 const label: CSSProperties = {
   display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '12px 0 4px',
 };
+const hint: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.4 };
 const input: CSSProperties = {
   width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 13,
   border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',

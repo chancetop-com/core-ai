@@ -1,8 +1,8 @@
 import { type CSSProperties } from 'react';
 import { NODE_TYPES, nodeMeta } from './graph';
 
-// START is unique and seeded into every new workflow, so it is not offered for dragging.
-const PALETTE_TYPES = NODE_TYPES.filter((t) => t !== 'START');
+// START and END are the unique, fixed entry/exit seeded into every workflow, so they aren't offered for dragging.
+const PALETTE_TYPES = NODE_TYPES.filter((t) => t !== 'START' && t !== 'END');
 
 export default function NodePalette() {
   return (

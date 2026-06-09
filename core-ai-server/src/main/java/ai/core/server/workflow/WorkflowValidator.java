@@ -22,6 +22,7 @@ public final class WorkflowValidator {
     public static List<String> validate(WorkflowGraph graph) {
         List<String> errors = new ArrayList<>(GraphValidator.validate(graph));
         errors.addAll(typeErrors(graph));
+        errors.addAll(terminalErrors(graph));
         errors.addAll(DominatorValidator.validateReferences(graph));
         return errors;
     }
@@ -39,10 +40,24 @@ public final class WorkflowValidator {
             if (graph.inEdges(node.id()).isEmpty() && type != NodeType.START) {
                 errors.add("entry node " + node.id() + " must be START, was " + type);
             }
-            if (graph.outEdges(node.id()).isEmpty() && type != NodeType.END && type != NodeType.ANSWER) {
-                errors.add("sink node " + node.id() + " must be END or ANSWER, was " + type);
+            if (graph.outEdges(node.id()).isEmpty() && type != NodeType.END) {
+                errors.add("sink node " + node.id() + " must be END, was " + type);
             }
             configErrors(node, type, errors);
+        }
+        return errors;
+    }
+
+    // A workflow is a function input -> output: exactly one START (entry) and exactly one END (the single output).
+    private static List<String> terminalErrors(WorkflowGraph graph) {
+        List<String> errors = new ArrayList<>();
+        long starts = graph.nodes().stream().filter(node -> "START".equals(node.type())).count();
+        long ends = graph.nodes().stream().filter(node -> "END".equals(node.type())).count();
+        if (starts != 1) {
+            errors.add("workflow must have exactly one START node, found " + starts);
+        }
+        if (ends != 1) {
+            errors.add("workflow must have exactly one END node, found " + ends);
         }
         return errors;
     }

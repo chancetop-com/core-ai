@@ -1,5 +1,6 @@
 package ai.core.server.workflow;
 
+import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
@@ -7,10 +8,12 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -75,11 +78,11 @@ public class WorkflowRunner {
             var graph = graphLoader.load(run.versionId);
             var journal = new MongoWorkflowJournal(nodeRunCollection);
             RunStatus status = WorkflowAdvancer.drive(graph, run, journal, nodeExecutor, nodePool, () -> isCancelled(runId));
-            terminate(runId, status, null);
+            terminate(runId, status, null, status == RunStatus.COMPLETED ? endOutput(runId) : null);
             return true;
         } catch (RuntimeException e) {
             LOGGER.error("workflow run failed to advance, runId={}", runId, e);
-            terminate(runId, RunStatus.FAILED, e.getMessage());
+            terminate(runId, RunStatus.FAILED, e.getMessage(), null);
             return true;
         } finally {
             if (heartbeat != null) {
@@ -128,22 +131,40 @@ public class WorkflowRunner {
     }
 
     // Status-guarded terminal transition: only the owning worker on a still-RUNNING run may settle it, so a
-    // concurrent CANCELLED (or a stolen lease) is never blindly overwritten.
-    private void terminate(String runId, RunStatus status, String error) {
+    // concurrent CANCELLED (or a stolen lease) is never blindly overwritten. On success the run's single END
+    // output is bubbled up to run.output (what run-sync and the history view return).
+    private void terminate(String runId, RunStatus status, String error, String output) {
         var now = ZonedDateTime.now();
-        var update = error == null
-            ? Updates.combine(Updates.set("status", status), Updates.set("completed_at", now))
-            : Updates.combine(Updates.set("status", status), Updates.set("error", error), Updates.set("completed_at", now));
+        var sets = new ArrayList<Bson>();
+        sets.add(Updates.set("status", status));
+        sets.add(Updates.set("completed_at", now));
+        if (error != null) {
+            sets.add(Updates.set("error", error));
+        }
+        if (output != null) {
+            sets.add(Updates.set("output", output));
+        }
         long updated = runCollection.update(
             Filters.and(
                 Filters.eq("_id", runId),
                 Filters.eq("claimed_by", workerId),
                 Filters.eq("status", RunStatus.RUNNING)),
-            update);
+            Updates.combine(sets));
         if (updated == 0) {
             LOGGER.warn("workflow run not finalized (lost claim or already terminal), runId={}, status={}", runId, status);
         } else {
             LOGGER.info("workflow run finished, runId={}, status={}", runId, status);
         }
+    }
+
+    // The run's output = the single COMPLETED END node-run's output (single-END is enforced at publish).
+    private String endOutput(String runId) {
+        for (WorkflowNodeRun nodeRun : nodeRunCollection.find(Filters.and(
+            Filters.eq("run_id", runId),
+            Filters.eq("node_type", "END"),
+            Filters.eq("status", NodeRunStatus.COMPLETED)))) {
+            return nodeRun.output;
+        }
+        return null;
     }
 }

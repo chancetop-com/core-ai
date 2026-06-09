@@ -5,17 +5,15 @@ import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
 
 /**
- * END node: the run's terminal output. It renders an optional {@code output} template from the node config over
- * the variable pool (e.g. {@code "{{ nodes.agent1.output }}"}) so the run can surface a mapped result; with no
- * template it completes with an empty output. A completed END is what the runner classifies as a successful run.
+ * END node: the run's single terminal output. Composes its output via {@link OutputComposer} — an explicit
+ * {@code output} template, or (with no template) a pass-through of the one completed branch / a merge of parallel
+ * branches. A completed END is what the runner classifies as a successful run and bubbles up to run.output.
  *
  * @author Xander
  */
 public class EndExecutor implements NodeExecutor {
     @Override
     public NodeOutcome execute(NodeContext ctx) {
-        Object template = ctx.node().config().get("output");
-        String output = template instanceof String s ? ctx.pool().render(s) : "{}";
-        return new NodeOutcome.Normal(output);
+        return new NodeOutcome.Normal(OutputComposer.compose(ctx));
     }
 }

@@ -16,7 +16,7 @@ import RunPanel from './RunPanel';
 import ApiAccessPanel from './ApiAccessPanel';
 import ResizablePanel from './ResizablePanel';
 import {
-  toReactFlow, fromReactFlow, newGraph, nodeMeta, defaultNodeConfig, ensureStart, TERMINAL_RUN_STATUS,
+  toReactFlow, fromReactFlow, newGraph, nodeMeta, defaultNodeConfig, ensureStart, ensureEnd, TERMINAL_RUN_STATUS,
   type WorkflowGraph, type WorkflowNodeData, type WorkflowRFNode,
 } from './graph';
 
@@ -71,7 +71,7 @@ export default function WorkflowEditor() {
         setMsg('Draft graph was invalid; loaded an empty workflow.');
       }
       const { nodes: rfNodes, edges: rfEdges } = toReactFlow(graph);
-      setNodes(ensureStart(rfNodes));
+      setNodes(ensureEnd(ensureStart(rfNodes)));
       setEdges(rfEdges);
     }).catch((e) => {
       setMsg(`Failed to load workflow: ${(e as Error).message}`);
@@ -137,7 +137,8 @@ export default function WorkflowEditor() {
   }, [setNodes]);
 
   const deleteNode = useCallback((nodeId: string) => {
-    if (nodes.find((n) => n.id === nodeId)?.data.nodeType === 'START') return;   // START is protected
+    const t = nodes.find((n) => n.id === nodeId)?.data.nodeType;
+    if (t === 'START' || t === 'END') return;   // START/END are the fixed entry/exit — protected
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
     setSelectedId(null);

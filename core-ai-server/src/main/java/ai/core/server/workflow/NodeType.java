@@ -10,7 +10,6 @@ package ai.core.server.workflow;
 public enum NodeType {
     START,
     END,
-    ANSWER,
     AGENT,
     LLM,
     CODE,

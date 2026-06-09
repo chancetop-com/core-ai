@@ -21,8 +21,9 @@ export interface WorkflowGraph {
 }
 
 export const NODE_TYPES = [
-  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'ANSWER', 'NOTE',
+  'START', 'END', 'AGENT', 'LLM', 'CODE', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'NOTE',
 ] as const;
+// todo: HTTP node type is deferred to the next round (needs HttpExecutor); ANSWER removed (workflow-only, single END).
 export type NodeType = typeof NODE_TYPES[number];
 
 export interface NodeTypeMeta { label: string; color: string; }
@@ -39,7 +40,6 @@ export const NODE_TYPE_META: Record<string, NodeTypeMeta> = {
   API_TOOL: { label: 'API Tool', color: '#d97706' },
   IF_ELSE: { label: 'If / Else', color: '#ea580c' },
   AGGREGATOR: { label: 'Aggregator', color: '#0d9488' },
-  ANSWER: { label: 'Answer', color: '#059669' },
   NOTE: { label: 'Note', color: '#64748b' },
 };
 export function nodeMeta(type: string): NodeTypeMeta {
@@ -106,8 +106,9 @@ export function nodeSummary(nodeType: string, config: Record<string, unknown>): 
     case 'API_TOOL':
       return str(config.tool_name) ? `${str(config.app_name)} · ${str(config.operation_name) || str(config.tool_name)}` : 'no tool selected';
     case 'END':
-    case 'ANSWER':
-      return str(config.output) ? 'mapped output' : '';
+      return str(config.output) ? 'mapped output' : 'auto from inputs';
+    case 'AGGREGATOR':
+      return str(config.output) ? 'mapped output' : 'auto-merge inputs';
     default:
       return '';
   }
@@ -137,7 +138,7 @@ export function toReactFlow(graph: WorkflowGraph): { nodes: WorkflowRFNode[]; ed
     type: 'workflowNode',
     position: n.position ?? { x: 120 + (i % 4) * 220, y: 120 + Math.floor(i / 4) * 150 },
     data: { nodeType: n.type, name: n.name ?? n.id, config: n.config ?? {} },
-    deletable: n.type !== 'START',   // START is the required entry — can't be deleted from the canvas
+    deletable: n.type !== 'START' && n.type !== 'END',   // START/END are the fixed entry/exit — can't be deleted
   }));
   const edges: Edge[] = graph.edges.map((e) => ({
     id: e.id,
@@ -156,6 +157,16 @@ export function ensureStart(nodes: WorkflowRFNode[]): WorkflowRFNode[] {
     data: { nodeType: 'START', name: 'Start', config: {} }, deletable: false,
   };
   return [start, ...nodes];
+}
+
+// Recovery: a workflow must have a single END (its only output). If missing, re-add a (disconnected) END.
+export function ensureEnd(nodes: WorkflowRFNode[]): WorkflowRFNode[] {
+  if (nodes.some((n) => n.data.nodeType === 'END')) return nodes;
+  const end: WorkflowRFNode = {
+    id: 'end', type: 'workflowNode', position: { x: 520, y: 80 },
+    data: { nodeType: 'END', name: 'End', config: {} }, deletable: false,
+  };
+  return [...nodes, end];
 }
 
 export function fromReactFlow(nodes: WorkflowRFNode[], edges: Edge[]): WorkflowGraph {
