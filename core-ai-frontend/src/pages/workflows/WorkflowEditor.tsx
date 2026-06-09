@@ -16,7 +16,8 @@ import RunPanel from './RunPanel';
 import ApiAccessPanel from './ApiAccessPanel';
 import ResizablePanel from './ResizablePanel';
 import {
-  toReactFlow, fromReactFlow, newGraph, nodeMeta, defaultNodeConfig, ensureStart, ensureEnd, TERMINAL_RUN_STATUS,
+  toReactFlow, fromReactFlow, newGraph, nodeMeta, defaultNodeConfig, ensureStart, ensureEnd,
+  branchLabel, edgeArrow, RUN_STATUS_COLOR, TERMINAL_RUN_STATUS,
   type WorkflowGraph, type WorkflowNodeData, type WorkflowRFNode,
 } from './graph';
 
@@ -158,6 +159,28 @@ export default function WorkflowEditor() {
     });
   }, [nodes, nodeRuns, runId]);
 
+  // Decorate edges for display only (never persisted — fromReactFlow drops these props): an arrow marker, an
+  // IF_ELSE branch label, and — during a run — a traversed/skipped tint so the executed path is readable.
+  const displayEdges = useMemo(() => {
+    const byId = new Map(nodes.map((n) => [n.id, n] as const));
+    return edges.map((e) => {
+      const label = branchLabel(byId.get(e.source), e.id);
+      const base: Edge = label
+        ? { ...e, type: 'smoothstep', markerEnd: edgeArrow(), label, labelStyle: BRANCH_LABEL, labelBgStyle: BRANCH_LABEL_BG, labelBgPadding: [5, 3], labelBgBorderRadius: 4 }
+        : { ...e, type: 'smoothstep', markerEnd: edgeArrow() };
+      if (!runId) return base;
+      const src = nodeRuns[e.source]?.status;
+      const tgt = nodeRuns[e.target]?.status;
+      if (src === 'SKIPPED' || tgt === 'SKIPPED') {
+        return { ...base, animated: false, markerEnd: edgeArrow(RUN_STATUS_COLOR.SKIPPED), style: { stroke: RUN_STATUS_COLOR.SKIPPED, strokeDasharray: '5 4', opacity: 0.4 } };
+      }
+      if (src === 'COMPLETED' && tgt && tgt !== 'PENDING') {
+        return { ...base, animated: tgt === 'RUNNING', markerEnd: edgeArrow(RUN_STATUS_COLOR.COMPLETED), style: { stroke: RUN_STATUS_COLOR.COMPLETED, strokeWidth: 2 } };
+      }
+      return base;
+    });
+  }, [edges, nodes, nodeRuns, runId]);
+
   const saveDraft = useCallback(async (): Promise<boolean> => {
     if (!id) return false;
     try {
@@ -263,7 +286,7 @@ export default function WorkflowEditor() {
           <ReactFlow
             colorMode={dark ? 'dark' : 'light'}
             nodes={displayNodes}
-            edges={edges}
+            edges={displayEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
@@ -313,6 +336,10 @@ export default function WorkflowEditor() {
     </div>
   );
 }
+
+// Edge label styling targets the SVG <text>/<rect> React Flow renders, so colors use `fill`, not `color`.
+const BRANCH_LABEL: CSSProperties = { fontSize: 10, fontWeight: 700, fill: 'var(--color-text-secondary)' };
+const BRANCH_LABEL_BG: CSSProperties = { fill: 'var(--color-bg-secondary)' };
 
 const toolbar: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',

@@ -1,4 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
+import { MarkerType } from '@xyflow/react';
 
 /** The persisted graph JSON shape (matches the backend WorkflowGraphParser). */
 export interface GraphNode {
@@ -127,6 +128,23 @@ export const RUN_STATUS_COLOR: Record<string, string> = {
   TIMEOUT: '#dc2626',
   CANCELLED: '#6b7280',
 };
+// A closed-arrow edge marker; pass a color to tint it (defaults to inheriting the edge stroke).
+export function edgeArrow(color?: string) {
+  return { type: MarkerType.ArrowClosed, width: 16, height: 16, color };
+}
+
+// The branch label for an edge leaving an IF_ELSE node ("IF 1" / "IF 2" / "ELSE"), or undefined for a plain edge.
+// Derived from the source node's IF_ELSE config, which routes each case (and the else fallthrough) to an edge id.
+export function branchLabel(source: WorkflowRFNode | undefined, edgeId: string): string | undefined {
+  if (!source || source.data.nodeType !== 'IF_ELSE') return undefined;
+  const cfg = source.data.config ?? {};
+  const cases = Array.isArray(cfg.cases) ? (cfg.cases as { edge_id?: string }[]) : [];
+  const idx = cases.findIndex((c) => c?.edge_id === edgeId);
+  if (idx >= 0) return `IF ${idx + 1}`;
+  if ((cfg as { else_edge_id?: string }).else_edge_id === edgeId) return 'ELSE';
+  return undefined;
+}
+
 // Terminal RUN statuses (RunStatus) — stop polling once reached.
 export const TERMINAL_RUN_STATUS = new Set(['COMPLETED', 'FAILED', 'TIMEOUT', 'CANCELLED']);
 // Terminal NODE statuses (NodeRunStatus) — count toward progress.
