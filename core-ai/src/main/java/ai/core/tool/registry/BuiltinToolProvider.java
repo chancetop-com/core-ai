@@ -31,7 +31,7 @@ public class BuiltinToolProvider implements ToolProvider {
 
     @Override
     public String id() {
-        return "builtin";
+        return ToolProvider.BUILTIN;
     }
 
     @Override

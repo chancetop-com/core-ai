@@ -1,40 +1,37 @@
 package ai.core.agent;
 
 import ai.core.agent.doomloop.DoomLoopLifecycle;
-import ai.core.agent.lifecycle.ResponseValidationLifecycle;
 import ai.core.agent.doomloop.DoomLoopStrategy;
 import ai.core.agent.doomloop.RepetitiveCallStrategy;
 import ai.core.agent.doomloop.TaskReminderStrategy;
 import ai.core.agent.doomloop.TodoReminderStrategy;
 import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.lifecycle.ResponseValidationLifecycle;
 import ai.core.context.Compression;
 import ai.core.context.CompressionLifecycle;
 import ai.core.context.ToolCallPruning;
 import ai.core.context.ToolCallPruningLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.ReasoningEffort;
-import ai.core.llm.domain.Tool;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.memory.Memory;
 import ai.core.memory.MemoryConfig;
 import ai.core.memory.MemoryLifecycle;
 import ai.core.prompt.PromptInject;
-import ai.core.prompt.SystemVariables;
 import ai.core.prompt.langfuse.LangfusePrompt;
 import ai.core.prompt.langfuse.LangfusePromptProvider;
 import ai.core.prompt.langfuse.LangfusePromptProviderRegistry;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionListener;
+import ai.core.skill.SkillRegistry;
 import ai.core.termination.terminations.MaxRoundTermination;
 import ai.core.termination.terminations.StopMessageTermination;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCalls;
-import ai.core.tool.registry.FactoryContext;
+import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolExposure;
-import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
-import ai.core.skill.SkillRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.SkillTool;
 import ai.core.tool.tools.SubAgentToolCall;
@@ -48,8 +45,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.stream.Collectors;
 
 /**
  * @author stephen
@@ -360,7 +355,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         if (toolRegistry == null) {
             toolRegistry = ToolRegistryFactory.createEmpty();
         }
-        toolRegistry.registerTools(toolCalls);
+        toolRegistry.registerProvider(ListToolProvider.of(toolCalls));
     }
 
     private void beforeAgentBuildLifecycle() {

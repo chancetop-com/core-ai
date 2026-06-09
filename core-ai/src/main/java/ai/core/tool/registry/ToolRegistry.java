@@ -11,8 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Central tool registry — the single source of truth for which tools exist
@@ -35,33 +33,6 @@ public class ToolRegistry {
         } else {
             LOGGER.info("registered provider, id={}", provider.id());
         }
-    }
-
-    public void registerTools(List<ToolCall> toolCalls) {
-        registerTools(toolCalls, "user-provided");
-    }
-
-    public void registerTools(List<ToolCall> toolCalls, String providerId) {
-        registerProvider(new ToolProvider() {
-            @Override
-            public String id() {
-                return providerId;
-            }
-
-            @Override
-            public int priority() {
-                return 5;
-            }
-
-            @Override
-            public Map<String, ToolCall> provide() {
-                return toolCalls.stream().collect(Collectors.toMap(
-                        ToolCall::getName,
-                        Function.identity(),
-                        (existing, _) -> existing
-                ));
-            }
-        });
     }
 
     public List<ToolCall> getToolCalls() {

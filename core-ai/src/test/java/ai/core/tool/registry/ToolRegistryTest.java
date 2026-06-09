@@ -37,7 +37,7 @@ class ToolRegistryTest {
         @Test
         void shouldProvideBuiltinTools() {
             var provider = new BuiltinToolProvider();
-            assertEquals("builtin", provider.id());
+            assertEquals(ToolProvider.BUILTIN, provider.id());
             assertEquals(10, provider.priority());
         }
 

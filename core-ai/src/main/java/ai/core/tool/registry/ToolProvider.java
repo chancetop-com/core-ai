@@ -15,6 +15,9 @@ import java.util.Map;
  * @author Lim Chen
  */
 public interface ToolProvider {
+    String BUILTIN = "builtin";
+    String USER = "user-provided";
+
     String id();
 
     default int priority() {
