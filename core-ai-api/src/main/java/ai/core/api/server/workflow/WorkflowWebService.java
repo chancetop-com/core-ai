@@ -69,4 +69,9 @@ public interface WorkflowWebService {
     @GET
     @Path("/api/workflow-runs/:runId/nodes")
     ListNodeRunsResponse listNodeRuns(@PathParam("runId") String runId);
+
+    // The graph snapshot the run executed (its pinned version), so history renders against what actually ran.
+    @GET
+    @Path("/api/workflow-runs/:runId/graph")
+    WorkflowRunGraphResponse runGraph(@PathParam("runId") String runId);
 }

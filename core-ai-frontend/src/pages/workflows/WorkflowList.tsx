@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
+import { Plus, Trash2, History, Workflow as WorkflowIcon } from 'lucide-react';
 import { api, type WorkflowView } from '../../api/client';
 import { newGraph } from './graph';
 
@@ -29,6 +29,11 @@ export default function WorkflowList() {
     } finally {
       setCreating(false);
     }
+  };
+
+  const openRuns = (e: ReactMouseEvent, wf: WorkflowView) => {
+    e.stopPropagation();
+    navigate(`/workflows/${wf.id}/runs`);
   };
 
   const del = async (e: ReactMouseEvent, wf: WorkflowView) => {
@@ -61,8 +66,9 @@ export default function WorkflowList() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
           {workflows.map((wf) => (
             <div key={wf.id} onClick={() => navigate(`/workflows/${wf.id}`)} style={card}>
+              <button onClick={(e) => openRuns(e, wf)} style={histBtn} title="Run history"><History size={14} /></button>
               <button onClick={(e) => del(e, wf)} style={delBtn} title="Delete workflow"><Trash2 size={14} /></button>
-              <div style={{ fontWeight: 600, color: 'var(--color-text)', paddingRight: 22 }}>{wf.name}</div>
+              <div style={{ fontWeight: 600, color: 'var(--color-text)', paddingRight: 64 }}>{wf.name}</div>
               <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
                 {wf.mode} · {wf.status}
                 {wf.published_version ? ` · v${wf.published_version}` : ''}
@@ -84,5 +90,9 @@ const card: CSSProperties = {
 };
 const delBtn: CSSProperties = {
   position: 'absolute', top: 10, right: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  width: 26, height: 26, border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer',
+};
+const histBtn: CSSProperties = {
+  position: 'absolute', top: 10, right: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
   width: 26, height: 26, border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer',
 };

@@ -9,6 +9,7 @@ import ai.core.api.server.workflow.ListWorkflowsResponse;
 import ai.core.api.server.workflow.NodeRunView;
 import ai.core.api.server.workflow.UpdateWorkflowRequest;
 import ai.core.api.server.workflow.ValidateWorkflowResponse;
+import ai.core.api.server.workflow.WorkflowRunGraphResponse;
 import ai.core.api.server.workflow.WorkflowRunView;
 import ai.core.api.server.workflow.WorkflowView;
 import ai.core.api.server.workflow.WorkflowWebService;
@@ -165,6 +166,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var userId = AuthContext.userId(webContext);
         var response = new ListNodeRunsResponse();
         response.nodeRuns = runService.listNodeRuns(runId, userId).stream().map(WorkflowWebServiceImpl::toNodeRunView).toList();
+        return response;
+    }
+
+    @Override
+    public WorkflowRunGraphResponse runGraph(String runId) {
+        var userId = AuthContext.userId(webContext);
+        var response = new WorkflowRunGraphResponse();
+        response.graph = runService.getRunGraph(runId, userId);
         return response;
     }
 

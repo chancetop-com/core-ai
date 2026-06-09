@@ -667,6 +667,10 @@ export interface ListNodeRunsResponse {
   node_runs: WorkflowNodeRunView[];
 }
 
+export interface WorkflowRunGraphResponse {
+  graph: string;
+}
+
 export interface CreateRunResponse {
   run_id: string;
   status: string;
@@ -763,6 +767,7 @@ export const api = {
     runs: (id: string) => request<ListWorkflowRunsResponse>(`/api/workflows/${id}/runs`),
     getRun: (runId: string) => request<WorkflowRunView>(`/api/workflow-runs/${runId}`),
     nodeRuns: (runId: string) => request<ListNodeRunsResponse>(`/api/workflow-runs/${runId}/nodes`),
+    runGraph: (runId: string) => request<WorkflowRunGraphResponse>(`/api/workflow-runs/${runId}/graph`),
   },
   utils: {
     generate: (data: { system_prompt: string; user_prompt: string }) =>

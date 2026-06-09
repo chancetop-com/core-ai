@@ -6,14 +6,13 @@ import {
   type Connection, type Edge, type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Rocket, FlaskConical, History, Code2 } from 'lucide-react';
+import { ArrowLeft, Rocket, FlaskConical, Code2 } from 'lucide-react';
 import { api, type WorkflowNodeRunView } from '../../api/client';
 import { useTheme } from '../../hooks/useTheme';
 import WorkflowNode from './WorkflowNode';
 import NodePalette from './NodePalette';
 import NodeConfigPanel from './NodeConfigPanel';
 import RunPanel from './RunPanel';
-import RunHistoryPanel from './RunHistoryPanel';
 import ApiAccessPanel from './ApiAccessPanel';
 import ResizablePanel from './ResizablePanel';
 import {
@@ -50,7 +49,6 @@ export default function WorkflowEditor() {
   const [runStatus, setRunStatus] = useState('');
   const [nodeRuns, setNodeRuns] = useState<Record<string, WorkflowNodeRunView>>({});
   const [showRun, setShowRun] = useState(false);   // test panel open
-  const [showHistory, setShowHistory] = useState(false);   // run-history panel open
   const [showApi, setShowApi] = useState(false);           // API-access panel open
   const [runError, setRunError] = useState('');
   const [panelWidth, setPanelWidth] = useState(320);
@@ -253,8 +251,7 @@ export default function WorkflowEditor() {
         </span>
         <div style={{ flex: 1 }} />
         {msg && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginRight: 8 }}>{msg}</span>}
-        <button onClick={() => { setSelectedId(null); setShowApi(false); setShowHistory((v) => !v); }} disabled={busy || preview} style={showHistory ? btnActive : btn}><History size={15} /> History</button>
-        <button onClick={() => { setSelectedId(null); setShowHistory(false); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
+        <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
         <button onClick={publish} disabled={busy || preview} style={btn}><Rocket size={15} /> Publish</button>
         <button onClick={() => setShowRun(true)} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
       </div>
@@ -281,7 +278,7 @@ export default function WorkflowEditor() {
             <Controls />
           </ReactFlow>
         </div>
-        {(preview || selectedNode || showHistory || showApi) && (
+        {(preview || selectedNode || showApi) && (
           <ResizablePanel width={panelWidth} onWidthChange={setPanelWidth}>
             {preview ? (
               <RunPanel
@@ -306,8 +303,6 @@ export default function WorkflowEditor() {
                 onDelete={() => deleteNode(selectedNode.id)}
                 onClose={() => setSelectedId(null)}
               />
-            ) : showHistory ? (
-              <RunHistoryPanel workflowId={id || ''} nodes={nodes} onClose={() => setShowHistory(false)} />
             ) : showApi ? (
               <ApiAccessPanel workflowId={id || ''} status={status} nodes={nodes} onClose={() => setShowApi(false)} />
             ) : null}

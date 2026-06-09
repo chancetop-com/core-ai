@@ -102,4 +102,12 @@ public class WorkflowRunService {
         getRun(runId, userId);   // ownership check
         return nodeRunCollection.find(Filters.eq("run_id", runId));
     }
+
+    /** The frozen graph the run executed: the run pins a version, the version holds the immutable graph snapshot. */
+    public String getRunGraph(String runId, String userId) {
+        WorkflowRun run = getRun(runId, userId);
+        WorkflowPublishedVersion version = versionCollection.get(run.versionId)
+            .orElseThrow(() -> new NotFoundException("workflow version not found for run: " + runId));
+        return version.graph;
+    }
 }

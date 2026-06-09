@@ -16,6 +16,7 @@ const AgentList = lazy(() => import('./pages/agents/AgentList'));
 const AgentEditor = lazy(() => import('./pages/agents/AgentEditor'));
 const WorkflowList = lazy(() => import('./pages/workflows/WorkflowList'));
 const WorkflowEditor = lazy(() => import('./pages/workflows/WorkflowEditor'));
+const WorkflowRuns = lazy(() => import('./pages/workflows/WorkflowRuns'));
 const AgentMemory = lazy(() => import('./pages/agents/AgentMemory'));
 const RunDetail = lazy(() => import('./pages/agents/RunDetail'));
 const Chat = lazy(() => import('./pages/chat/Chat'));
@@ -130,6 +131,7 @@ export default function App() {
                     <Route path="/agents/:id/memories" element={<AgentMemory />} />
                     <Route path="/runs/:id" element={<RunDetail />} />
                     <Route path="/workflows" element={<WorkflowList />} />
+                    <Route path="/workflows/:id/runs" element={<WorkflowRuns />} />
                     <Route path="/workflows/:id" element={<WorkflowEditor />} />
                     {caps.systemPrompts && <Route path="/system-prompts" element={<SystemPromptList />} />}
                     {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<SystemPromptEditor />} />}
