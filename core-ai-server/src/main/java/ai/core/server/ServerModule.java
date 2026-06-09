@@ -104,7 +104,7 @@ import ai.core.server.channel.telegram.TelegramInboundAdapter;
 import ai.core.server.channel.telegram.TelegramOutboundAdapter;
 import ai.core.server.channel.weclaw.WeClawInboundAdapter;
 import ai.core.server.channel.weclaw.WeClawOutboundAdapter;
-import ai.core.server.channel.weclaw.WeClawSyncController;
+import ai.core.server.channel.ChannelSyncController;
 import ai.core.server.web.AgentDefinitionWebServiceImpl;
 import ai.core.server.web.ArtifactWebServiceImpl;
 import ai.core.server.web.ChatSessionController;
@@ -521,9 +521,9 @@ public class ServerModule extends Module {
         // Channel admin CRUD endpoints
         var channelAdmin = bind(ChannelAdminController.class);
 
-        // WeClaw sync endpoint — OpenAI-compatible API for WeClaw's HTTP agent
-        var weclawSync = bind(WeClawSyncController.class);
-        http().route(HTTPMethod.POST, "/api/weclaw/v1/chat/completions", weclawSync);
+        // OpenAI-compatible sync endpoint for all channels
+        var channelSync = bind(ChannelSyncController.class);
+        http().route(HTTPMethod.POST, "/api/channels/:channelId/v1/chat/completions", channelSync);
         http().route(HTTPMethod.GET, "/api/admin/channels", channelAdmin::list);
         http().route(HTTPMethod.POST, "/api/admin/channels", channelAdmin::create);
         http().route(HTTPMethod.GET, "/api/admin/channels/:channelId", channelAdmin::get);

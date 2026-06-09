@@ -1,8 +1,7 @@
-package ai.core.server.channel.weclaw;
+package ai.core.server.channel;
 
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.agent.AgentDefinitionService;
-import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.session.AgentSessionManager;
@@ -26,17 +25,15 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Synchronous OpenAI-compatible endpoint for WeClaw.
+ * OpenAI-compatible synchronous endpoint for channel gateways (WeClaw, OpenClaw, etc.).
  * <p>
- * WeClaw's HTTP agent sends an OpenAI chat completions request and expects
- * the response inline. Since the agent system is async (pub/sub via Redis),
- * this controller polls {@link ChatMessageService#history(String)} until the
- * agent responds, then returns the result in OpenAI format.
+ * Receives an OpenAI chat completions request, dispatches to the agent system,
+ * polls for the agent response, and returns it inline in OpenAI format.
  *
  * @author stephen
  */
-public class WeClawSyncController implements Controller {
-    private static final Logger LOGGER = LoggerFactory.getLogger(WeClawSyncController.class);
+public class ChannelSyncController implements Controller {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ChannelSyncController.class);
     private static final long POLL_TIMEOUT_MS = 120_000;
     private static final long POLL_INTERVAL_MS = 500;
     private final ConcurrentHashMap<String, String> sessionCache = new ConcurrentHashMap<>();
@@ -69,15 +66,16 @@ public class WeClawSyncController implements Controller {
         var userText = extractUserText(payload);
         if (userText == null) throw new BadRequestException("no user message found in request");
 
-        var channel = channelConfigStore.load("weclaw");
-        if (channel == null) throw new NotFoundException("weclaw channel not configured, create it in Triggers > Channels");
+        var channelId = request.pathParam("channelId");
+        var channel = channelConfigStore.load(channelId);
+        if (channel == null) throw new NotFoundException("channel not configured: " + channelId + ", create it in Channels page");
         if (channel.agentId == null || channel.agentId.isBlank())
-            throw new BadRequestException("weclaw channel has no agent configured");
+            throw new BadRequestException("channel " + channelId + " has no agent configured");
 
         var agent = agentDefinitionService.getEntity(channel.agentId);
         if (agent == null) throw new NotFoundException("agent not found: " + channel.agentId);
 
-        var userId = "weclaw:" + UUID.randomUUID().toString().substring(0, 8);
+        var userId = channelId + ":" + UUID.randomUUID().toString().substring(0, 8);
 
         var userField = (String) payload.get("user");
         var isNewConversation = countUserMessages(payload) == 1;
@@ -88,13 +86,13 @@ public class WeClawSyncController implements Controller {
             chatMessageService.writeUserMessage(sessionId, userText);
             var command = SessionCommand.sendMessage(sessionId, userId, userText, null);
             commandPublisher.publish(command);
-            LOGGER.info("weclaw sync dispatch (reused), sessionId={}, agentId={}, textLen={}", sessionId, channel.agentId, userText.length());
+            LOGGER.info("sync dispatch (reused), channelId={}, sessionId={}, agentId={}, textLen={}", channelId, sessionId, channel.agentId, userText.length());
         } else {
             if (userField != null && isNewConversation) {
                 sessionCache.remove(userField);
             }
             var config = new SessionConfig();
-            var result = sessionManager.createSessionFromAgent(agent, config, userId, "weclaw");
+            var result = sessionManager.createSessionFromAgent(agent, config, userId, "channel-" + channelId);
             sessionId = result.sessionId();
             if (userField != null) {
                 sessionCache.put(userField, sessionId);
@@ -106,7 +104,7 @@ public class WeClawSyncController implements Controller {
             var command = SessionCommand.sendMessage(sessionId, userId, userText, null);
             commandPublisher.publish(command);
 
-            LOGGER.info("weclaw sync dispatch (new), sessionId={}, agentId={}, user={}, textLen={}", sessionId, channel.agentId, userField, userText.length());
+            LOGGER.info("sync dispatch (new), channelId={}, sessionId={}, agentId={}, user={}, textLen={}", channelId, sessionId, channel.agentId, userField, userText.length());
         }
 
         var response = pollForResponse(sessionId);
@@ -155,7 +153,8 @@ public class WeClawSyncController implements Controller {
 
     private String pollForResponse(String sessionId) {
         int initialCount = chatMessageService.history(sessionId).size();
-        while (true) {
+        long deadline = System.currentTimeMillis() + POLL_TIMEOUT_MS;
+        while (System.currentTimeMillis() < deadline) {
             var messages = chatMessageService.history(sessionId);
             for (int i = initialCount; i < messages.size(); i++) {
                 var msg = messages.get(i);
@@ -170,6 +169,7 @@ public class WeClawSyncController implements Controller {
                 return null;
             }
         }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, X, Radio, MessageCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Radio, MessageCircle, Copy, Check } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ChannelView, ChannelTypeInfo } from '../../api/client';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
@@ -39,6 +39,7 @@ export default function Channels() {
   const [channelTypes, setChannelTypes] = useState<ChannelTypeInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState<EditorState>(emptyEditor());
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -168,6 +169,7 @@ export default function Channels() {
             <thead>
               <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                 <th className="text-left px-4 py-3 font-medium">Channel</th>
+                <th className="text-left px-4 py-3 font-medium">Webhook URL</th>
                 <th className="text-left px-4 py-3 font-medium">Type</th>
                 <th className="text-left px-4 py-3 font-medium">Agent</th>
                 <th className="text-left px-4 py-3 font-medium">Session TTL</th>
@@ -183,6 +185,21 @@ export default function Channels() {
                     <div className="flex items-center gap-2">
                       <Radio size={14} style={{ color: 'var(--color-primary)' }} />
                       <span className="font-medium">{c.channelId}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3" style={{ maxWidth: '280px' }}>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <code className="text-xs px-1.5 py-0.5 rounded block truncate"
+                        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)', fontSize: '11px' }}>
+                        {c.webhookUrl}
+                      </code>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(c.webhookUrl); setCopiedId(c.channelId); setTimeout(() => setCopiedId(null), 2000); }}
+                        className="inline-flex items-center justify-center w-6 h-6 rounded cursor-pointer shrink-0"
+                        style={{ color: copiedId === c.channelId ? '#16a34a' : 'var(--color-text-secondary)' }}
+                        title="Copy URL">
+                        {copiedId === c.channelId ? <Check size={12} /> : <Copy size={12} />}
+                      </button>
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -254,7 +271,7 @@ export default function Channels() {
                   className="w-full px-3 py-2 rounded-lg border text-sm disabled:opacity-50"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
                 <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Unique identifier. Used in webhook URL: /api/channels/{'{id}'}
+                  Unique identifier. Webhook URL is auto-generated based on channel type.
                 </p>
               </div>
 

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -27,9 +28,10 @@ public class ChannelAdminController {
     ChannelRegistry channelRegistry;
 
     public Response list(Request request) {
-        var channels = new ArrayList<ChannelConfigView>();
+        var baseUrl = baseUrl(request);
+        var channels = new ArrayList<Map<String, Object>>();
         for (var entry : configStore.all().entrySet()) {
-            channels.add(entry.getValue());
+            channels.add(toChannelMap(entry.getValue(), baseUrl));
         }
         var body = JSON.toJSON(Map.of("channels", channels));
         return Response.text(body);
@@ -48,7 +50,8 @@ public class ChannelAdminController {
         var view = fromPayload(payload, channelId);
         configStore.store(view);
         LOGGER.info("channel created, channelId={}, type={}", channelId, view.channelType);
-        var resp = JSON.toJSON(Map.of("channel", view));
+        var baseUrl = baseUrl(request);
+        var resp = JSON.toJSON(Map.of("channel", toChannelMap(view, baseUrl)));
         return Response.text(resp);
     }
 
@@ -56,7 +59,8 @@ public class ChannelAdminController {
         var channelId = request.pathParam("channelId");
         var view = configStore.load(channelId);
         if (view == null) throw new NotFoundException("channel not found: " + channelId);
-        var resp = JSON.toJSON(Map.of("channel", view));
+        var baseUrl = baseUrl(request);
+        var resp = JSON.toJSON(Map.of("channel", toChannelMap(view, baseUrl)));
         return Response.text(resp);
     }
 
@@ -73,7 +77,8 @@ public class ChannelAdminController {
         view = fromPayload(payload, channelId);
         configStore.store(view);
         LOGGER.info("channel updated, channelId={}, type={}", channelId, view.channelType);
-        var resp = JSON.toJSON(Map.of("channel", view));
+        var baseUrl = baseUrl(request);
+        var resp = JSON.toJSON(Map.of("channel", toChannelMap(view, baseUrl)));
         return Response.text(resp);
     }
 
@@ -83,6 +88,17 @@ public class ChannelAdminController {
         configStore.remove(channelId);
         LOGGER.info("channel deleted, channelId={}", channelId);
         return Response.text("{\"ok\":true}");
+    }
+
+    /** Returns available channel types that have registered adapters. */
+    public Response types(Request request) {
+        var types = List.of(
+            Map.of("type", "slack", "label", "Slack"),
+            Map.of("type", "telegram", "label", "Telegram"),
+            Map.of("type", "weclaw", "label", "WeClaw (WeChat)")
+        );
+        var resp = JSON.toJSON(Map.of("types", types));
+        return Response.text(resp);
     }
 
     @SuppressWarnings("unchecked")
@@ -105,14 +121,27 @@ public class ChannelAdminController {
         return view;
     }
 
-    /** Returns available channel types that have registered adapters. */
-    public Response types(Request request) {
-        var types = List.of(
-            Map.of("type", "slack", "label", "Slack"),
-            Map.of("type", "telegram", "label", "Telegram"),
-            Map.of("type", "weclaw", "label", "WeClaw (WeChat)")
-        );
-        var resp = JSON.toJSON(Map.of("types", types));
-        return Response.text(resp);
+    private String baseUrl(Request request) {
+        var scheme = request.scheme();
+        var hostHeader = request.header("Host").orElse(request.hostname());
+        return scheme + "://" + hostHeader;
+    }
+
+    private String webhookUrl(ChannelConfigView ch, String baseUrl) {
+        return baseUrl + "/api/channels/" + ch.channelId + "/v1/chat/completions";
+    }
+
+    private Map<String, Object> toChannelMap(ChannelConfigView ch, String baseUrl) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("channelId", ch.channelId);
+        map.put("channelType", ch.channelType);
+        map.put("enabled", ch.enabled);
+        map.put("requireAuth", ch.requireAuth);
+        map.put("agentId", ch.agentId);
+        map.put("sessionTtlMinutes", ch.sessionTtlMinutes);
+        map.put("config", ch.config);
+        map.put("filterConfig", ch.filterConfig);
+        map.put("webhookUrl", webhookUrl(ch, baseUrl));
+        return map;
     }
 }

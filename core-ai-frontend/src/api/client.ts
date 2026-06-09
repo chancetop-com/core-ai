@@ -1223,6 +1223,7 @@ export interface ChannelView {
   requireAuth: boolean;
   agentId: string;
   sessionTtlMinutes: number;
+  webhookUrl: string;
   config: Record<string, string>;
   filterConfig: Record<string, string> | null;
 }
