@@ -3,6 +3,7 @@ package ai.core.api.server.workflow;
 import core.framework.api.json.Property;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * @author Xander
@@ -22,6 +23,9 @@ public class WorkflowRunView {
 
     @Property(name = "output")
     public String output;
+
+    @Property(name = "artifacts")
+    public List<ArtifactView> artifacts;
 
     @Property(name = "error")
     public String error;

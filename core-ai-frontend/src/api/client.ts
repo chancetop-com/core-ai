@@ -652,12 +652,23 @@ export interface ListWorkflowsResponse {
   workflows: WorkflowView[];
 }
 
+export interface WorkflowArtifactView {
+  file_id?: string;
+  file_name?: string;
+  content_type?: string;
+  size?: number;
+  url?: string;
+  title?: string;
+  description?: string;
+}
+
 export interface WorkflowRunView {
   id: string;
   workflow_id?: string;
   status?: string;
   input?: string;
   output?: string;
+  artifacts?: WorkflowArtifactView[];
   error?: string;
   started_at?: string;
   completed_at?: string;
@@ -673,6 +684,7 @@ export interface WorkflowNodeRunView {
   status?: string;
   input?: string;
   output?: string;
+  artifacts?: WorkflowArtifactView[];
   error?: string;
   child_run_id?: string;
   started_at?: string;

@@ -8,6 +8,7 @@ import org.graalvm.nativeimage.hosted.RuntimeReflection;
 import java.io.File;
 import java.io.IOException;
 import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.ValueLayout;
 import java.lang.reflect.Method;
@@ -101,6 +102,7 @@ public class NativeReflectionFeature implements Feature {
     @Override
     public void duringSetup(DuringSetupAccess access) {
         registerJLineKernel32Downcalls();
+        registerJLinePosixDowncalls();
     }
 
     @Override
@@ -317,12 +319,34 @@ public class NativeReflectionFeature implements Feature {
             FunctionDescriptor.of(intLayout, ptrLayout, ptrLayout, ptrLayout, coord, ptrLayout)                            // ScrollConsoleScreenBufferW
         };
         for (FunctionDescriptor desc : descriptors) {
-            try {
-                RuntimeForeignAccess.registerForDowncall(desc);
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "failed to register FFM downcall: {0}", desc);
-            }
+            registerDowncall(desc);
         }
         LOGGER.log(Level.INFO, "registered {0} JLine Kernel32 FFM downcall descriptors", descriptors.length);
+    }
+
+    // register FFM downcall descriptors for JLine's POSIX CLibrary (macOS/Linux terminal support)
+    private void registerJLinePosixDowncalls() {
+        var intLayout = ValueLayout.JAVA_INT;
+        var longLayout = ValueLayout.JAVA_LONG;
+        var ptrLayout = ValueLayout.ADDRESS;
+
+        // ioctl is variadic (firstVariadicArg index 2); macOS aarch64 lays out variadic args differently
+        registerDowncall(
+            FunctionDescriptor.of(intLayout, intLayout, longLayout, ptrLayout),
+            Linker.Option.firstVariadicArg(2));                                       // ioctl
+        registerDowncall(FunctionDescriptor.of(intLayout, intLayout));                // isatty
+        registerDowncall(FunctionDescriptor.of(intLayout, intLayout, intLayout, ptrLayout)); // tcsetattr
+        registerDowncall(FunctionDescriptor.of(intLayout, intLayout, ptrLayout));     // tcgetattr
+        registerDowncall(FunctionDescriptor.of(intLayout, intLayout, ptrLayout, longLayout)); // ttyname_r
+        registerDowncall(FunctionDescriptor.of(intLayout, ptrLayout, ptrLayout, ptrLayout, ptrLayout, ptrLayout)); // openpty
+        LOGGER.log(Level.INFO, "registered JLine POSIX FFM downcall descriptors");
+    }
+
+    private void registerDowncall(FunctionDescriptor desc, Linker.Option... options) {
+        try {
+            RuntimeForeignAccess.registerForDowncall(desc, options);
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "failed to register FFM downcall: {0}", desc);
+        }
     }
 }

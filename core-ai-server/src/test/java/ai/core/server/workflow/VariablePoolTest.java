@@ -1,7 +1,9 @@
 package ai.core.server.workflow;
 
+import ai.core.server.domain.ArtifactRef;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,5 +53,37 @@ class VariablePoolTest {
     void rendersWholeObjectSelectorAsRawJson() {
         var pool = new VariablePool(Map.of("a", "{\"x\":1}"), "{}");
         assertEquals("v={\"x\":1}", pool.render("v={{ nodes.a.output }}"));
+    }
+
+    @Test
+    void resolvesNodeArtifactsWholeAndByIndex() {
+        var pool = new VariablePool(Map.of(), Map.of("agent1", List.of(ref("f1", "report.pdf", "https://h/api/files/f1/content"))), "{}");
+        // index path into the array reaches a single field
+        assertEquals("https://h/api/files/f1/content", pool.resolve("nodes.agent1.artifacts.0.url").orElseThrow());
+        assertEquals("report.pdf", pool.resolve("nodes.agent1.artifacts.0.file_name").orElseThrow());
+        // whole-list selector renders as the raw JSON array
+        assertTrue(pool.resolve("nodes.agent1.artifacts").orElseThrow().toString().contains("\"file_id\":\"f1\""));
+    }
+
+    @Test
+    void missingArtifactsAndOutOfRangeIndexResolveEmpty() {
+        var pool = new VariablePool(Map.of(), Map.of("agent1", List.of(ref("f1", "a.pdf", "u"))), "{}");
+        assertTrue(pool.resolve("nodes.none.artifacts").isEmpty());
+        assertTrue(pool.resolve("nodes.agent1.artifacts.9.url").isEmpty());
+    }
+
+    @Test
+    void exposesArtifactsForOutputComposition() {
+        var refs = List.of(ref("f1", "a.pdf", "u1"));
+        var pool = new VariablePool(Map.of(), Map.of("agent1", refs), "{}");
+        assertEquals(1, pool.artifactsOf("agent1").size());
+        assertTrue(pool.artifactsOf("missing").isEmpty());
+    }
+
+    private static ArtifactRef ref(String fileId, String fileName, String url) {
+        var artifact = new ai.core.server.domain.AgentRunArtifact();
+        artifact.fileId = fileId;
+        artifact.fileName = fileName;
+        return ArtifactRef.of(artifact, url);
     }
 }

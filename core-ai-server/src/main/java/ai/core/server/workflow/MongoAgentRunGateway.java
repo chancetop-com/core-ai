@@ -3,19 +3,24 @@ package ai.core.server.workflow;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
+import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.run.AgentRunner;
+import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.workflow.engine.WorkflowNode;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.mongo.MongoCollection;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -58,7 +63,7 @@ public class MongoAgentRunGateway implements AgentRunGateway {
             if (child != null) {
                 if (TERMINAL.contains(child.status)) {
                     return child.status == RunStatus.COMPLETED
-                        ? AgentRunResult.completed(child.output)
+                        ? AgentRunResult.completed(child.output, artifactRefs(child))
                         : AgentRunResult.failed(child.error != null ? child.error : "child run " + child.status);
                 }
                 if (child.startedAt != null && child.startedAt.isBefore(ZonedDateTime.now().minusSeconds(STALE_SECONDS))) {
@@ -73,6 +78,19 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     @Override
     public void cancel(String childRunId) {
         agentRunner.cancel(childRunId);
+    }
+
+    // Lift the child run's submitted artifacts to downstream references (file_id + absolute url + metadata,
+    // never bytes), reusing the platform's single download-URL source of truth.
+    private static List<ArtifactRef> artifactRefs(AgentRun child) {
+        if (child.artifacts == null || child.artifacts.isEmpty()) {
+            return List.of();
+        }
+        var refs = new ArrayList<ArtifactRef>(child.artifacts.size());
+        for (AgentRunArtifact artifact : child.artifacts) {
+            refs.add(ArtifactRef.of(artifact, SubmitArtifactsTool.downloadUrl(artifact.fileId)));
+        }
+        return refs;
     }
 
     private AgentPublishedConfig loadSnapshot(String versionId, String nodeId) {

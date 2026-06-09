@@ -6,6 +6,7 @@ import core.framework.mongo.Field;
 import core.framework.mongo.Id;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * One execution of a published workflow version: the durable cursor plus the single cross-replica claim
@@ -52,6 +53,10 @@ public class WorkflowRun {
 
     @Field(name = "output")
     public String output;
+
+    // Files the run delivers to the caller: the union (by file_id) of every COMPLETED node-run's artifacts.
+    @Field(name = "artifacts")
+    public List<ArtifactRef> artifacts;
 
     @Field(name = "token_usage")
     public TokenUsage tokenUsage;

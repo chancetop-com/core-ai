@@ -1,18 +1,31 @@
 package ai.core.server.workflow;
 
+import ai.core.server.domain.ArtifactRef;
+
+import java.util.List;
+
 /**
- * The terminal result of a child AgentRun, as the workflow node needs it: completed (with output) or failed
- * (with an error). Token usage / transcript / artifacts stay on the child AgentRun and are linked via
- * child_run_id, not copied here.
+ * The terminal result of a child AgentRun, as the workflow node needs it: completed (with output and any
+ * artifact references) or failed (with an error). Token usage / transcript stay on the child AgentRun and are
+ * linked via child_run_id; artifacts are lifted here as lean {@link ArtifactRef}s (references, never bytes) so
+ * the node can expose them downstream via {@code nodes.<id>.artifacts}.
  *
  * @author Xander
  */
-public record AgentRunResult(boolean completed, String output, String error) {
+public record AgentRunResult(boolean completed, String output, String error, List<ArtifactRef> artifacts) {
+    public AgentRunResult {
+        artifacts = artifacts == null ? List.of() : List.copyOf(artifacts);
+    }
+
     public static AgentRunResult completed(String output) {
-        return new AgentRunResult(true, output, null);
+        return new AgentRunResult(true, output, null, List.of());
+    }
+
+    public static AgentRunResult completed(String output, List<ArtifactRef> artifacts) {
+        return new AgentRunResult(true, output, null, artifacts);
     }
 
     public static AgentRunResult failed(String error) {
-        return new AgentRunResult(false, null, error);
+        return new AgentRunResult(false, null, error, List.of());
     }
 }

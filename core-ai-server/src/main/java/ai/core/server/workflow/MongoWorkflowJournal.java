@@ -56,6 +56,7 @@ public class MongoWorkflowJournal implements WorkflowJournal {
                 nodeRun.status = NodeRunStatus.COMPLETED;
                 nodeRun.output = normal.output();
                 nodeRun.childRunId = normal.childRunId();
+                nodeRun.artifacts = normal.artifacts().isEmpty() ? null : List.copyOf(normal.artifacts());
             }
             case NodeOutcome.Branch branch -> {
                 nodeRun.status = NodeRunStatus.COMPLETED;

@@ -1,9 +1,11 @@
 package ai.core.server.workflow.executor;
 
+import ai.core.server.domain.ArtifactRef;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.engine.WorkflowEdge;
 import core.framework.json.JSON;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +48,19 @@ public final class OutputComposer {
         var merged = new LinkedHashMap<String, Object>();
         completed.forEach((id, output) -> merged.put(id, parse(output)));
         return JSON.toJSON(merged);
+    }
+
+    /**
+     * Union the artifact references of this node's COMPLETED immediate predecessors, de-duplicated by file_id.
+     * Lets an AGGREGATOR coalesce parallel branches' files into one {@code nodes.<id>.artifacts} a downstream
+     * node can reference (mirrors how {@link #compose} coalesces their outputs).
+     */
+    public static List<ArtifactRef> composeArtifacts(NodeContext ctx) {
+        var lists = new ArrayList<List<ArtifactRef>>();
+        for (String predId : predecessorIds(ctx)) {
+            lists.add(ctx.pool().artifactsOf(predId));
+        }
+        return ArtifactRef.union(lists);
     }
 
     private static List<String> predecessorIds(NodeContext ctx) {

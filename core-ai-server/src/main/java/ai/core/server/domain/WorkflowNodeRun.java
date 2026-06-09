@@ -56,6 +56,11 @@ public class WorkflowNodeRun {
     @Field(name = "output")
     public String output;
 
+    // Downstream file references this node produced (AGENT lifts them from its child run; AGGREGATOR unions its
+    // inputs'). Exposed as nodes.<id>.artifacts in the variable pool. Empty/absent for nodes that produce no file.
+    @Field(name = "artifacts")
+    public List<ArtifactRef> artifacts;
+
     @Field(name = "chosen_edge_ids")
     public List<String> chosenEdgeIds;
 

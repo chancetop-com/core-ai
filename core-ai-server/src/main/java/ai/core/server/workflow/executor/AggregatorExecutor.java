@@ -16,6 +16,6 @@ import ai.core.server.workflow.NodeOutcome;
 public class AggregatorExecutor implements NodeExecutor {
     @Override
     public NodeOutcome execute(NodeContext ctx) {
-        return new NodeOutcome.Normal(OutputComposer.compose(ctx));
+        return new NodeOutcome.Normal(OutputComposer.compose(ctx), null, OutputComposer.composeArtifacts(ctx));
     }
 }

@@ -91,6 +91,11 @@ public final class SubmitArtifactsTool extends ToolCall {
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
+    /** The caller-resolvable download URL for a stored file — the single source of truth for this URL shape. */
+    public static String downloadUrl(String fileId) {
+        return baseUrl() + "/api/files/" + fileId + "/content";
+    }
+
     static String normalizeArguments(String arguments) {
         if (Strings.isBlank(arguments)) return arguments;
         try {
@@ -194,7 +199,7 @@ public final class SubmitArtifactsTool extends ToolCall {
                 "path", item.path,
                 "file_id", record.id,
                 "file_name", record.fileName,
-                "download_url", baseUrl() + "/api/files/" + record.id + "/content"
+                "download_url", downloadUrl(record.id)
             ));
         } catch (Exception e) {
             failed.add(Map.of("path", item.path, "error", errorMessage(e)));

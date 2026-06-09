@@ -395,6 +395,80 @@ return s == RunStatus.COMPLETED ? new Normal(collect(child)) : new Fail(child.er
 > **结论**：workflow 引擎**直接**负责的沙箱只有 **CODE 节点（无状态）**；AGENT/LLM 的沙箱全权交给子运行；HTTP 是网络策略；TOOL 复用现有拦截。
 > **effective config**：`WorkflowPublishedConfig.sandboxConfig`（workflow 级，给 CODE）+ CODE 节点可选 `sandbox_override`，复用 `AgentSandboxConfig`（`memoryLimitMb/cpuLimitMillicores/timeoutSeconds/networkEnabled/environmentVariables/…`）和 `getEffectiveConfig` 范式；`env.*` 可注入成沙箱 env vars。
 
+### 5.3 Agent 产物（artifact）交给下游
+
+**断点（现状）**：artifact 产出链已完整——agent 在沙箱生成文件 → `submit_artifacts` → `FileService.upload` 得 `file_id` → 组 `AgentRunArtifact`(file_id/file_name/content_type/size/source_path/title/description) → append 到**子 `AgentRun.artifacts`**。但 workflow 层断了：`MongoAgentRunGateway.awaitResult` 手握整个 `child` 却只 `return child.output`；`AgentRunResult` 只带 (completed/output/error)；于是 `NodeOutcome.Normal(output)` → `WorkflowNodeRun.output`（String）→ 池只有 `nodes.<id>.output`。**artifact 从未被抬到节点层，下游不可见。** 要交给下游，本质是补这条「抬升 + 暴露」链路。
+
+**模型决策（对齐 §4 / §5.2）**：文件以**引用**进池、不进沙箱 FS——这正是 §4 `VarType.FILE` 走 `FileRecord`、§5.2「数据含文件只走池」的落地。给 AGENT 输出开**独立 `nodes.<id>.artifacts` 通道**，而非把 output 改成 `{text,artifacts}` 信封：保 `{{ nodes.x.output }}` = 文本回复的现有契约不破，且与 agent 自身 (reply 文本 / artifact list) 的天然二分对称，并能泛化给将来产文件的 HTTP/CODE。绝不把字节塞进池。
+
+池中引用形态（JSON 数组）：
+```json
+[{ "file_id":"…","file_name":"report.pdf","content_type":"application/pdf",
+   "size":12345,"url":"https://…/api/files/<id>/content","title":"…","description":"…" }]
+```
+
+**L1 收集 + 通道**（精确改动）：
+```java
+// 1) lean 引用 record：由 AgentRunArtifact + publicUrl 映射；url 复用 SubmitArtifactsTool 的绝对 download_url 规则
+record ArtifactRef(String fileId, String fileName, String contentType, Long size, String url, String title, String description) {}
+record AgentRunResult(boolean completed, String output, String error, List<ArtifactRef> artifacts) { … }
+
+// 2) gateway 零额外查询——child 已在手
+return child.status == COMPLETED
+    ? AgentRunResult.completed(child.output, ArtifactRef.from(child.artifacts))   // child.artifacts 直接读
+    : AgentRunResult.failed(…);
+
+// 3) outcome 携带（runner 持久化 node-run 时落库；泛化为「节点产物」，将来 HTTP/CODE 同走）
+record Normal(String output, String childRunId, List<ArtifactRef> artifacts) implements NodeOutcome { … }
+
+// 4) 日志层新增字段（紧挨 output；display-only，不参与边裁决）
+class WorkflowNodeRun { … public List<ArtifactRef> artifacts; }
+
+// 5) 池新增命名空间 + 数组下标解析
+class VariablePool {
+    private final Map<String, String> nodeArtifacts;   // nodeId -> JSON array string，与 nodeOutputs 并列
+    // resolve: "nodes.<id>.artifacts(.<index>.<field>)?" -> 走 nodeArtifacts；navigate 补 List 下标（artifacts.0.url）
+}
+```
+> 子任务：`VariablePool.navigate` 目前只走 `Map`，要补 `List` 下标（`parts[i]` 为整数时索引 list），否则 `artifacts.0.url` 取不到，只能整取数组。
+>
+> 特判（L1 必须同时补）：`AggregatorExecutor` 在合并 output 的同时，对各 input 的 artifacts 做 `file_id` 去重**并集**，作为聚合节点自己的 `artifacts` 产出——否则并行多 agent 产文件在 fan-in 处静默丢失。
+
+**L2 传到 workflow 输出**（用户可见价值最高）：END / `OutputComposer` 汇总时把沿活路径 COMPLETED 节点的 artifacts **并集**挂到 run 结果（新增 `WorkflowRun.artifacts`，形态同 `ArtifactRef`），API/chat/A2A 调用方才真正拿到下载链接。去重键 = `file_id`（同一文件被多节点引用只交付一份），顺序按节点完成序。
+
+**L3 沙箱落地——已决定不做**：三个开放问题（见 §5.3.1）已拍板全走引用/URL，不引入「预拉文件进消费方沙箱按 path 读」。理由：与 §5.2「CODE 无状态、文件走引用」的北极星一致，且引用通道已覆盖全部下游类型。`stage_artifacts` 之类的预拉配置作为已知逃生舱**记录在案但不实现**，仅当将来出现引用通道确实解不了的文件加工流水线再回头评估。
+
+### 5.3.1 下游消费矩阵（三决策已定）
+
+前提：变量池按 **node id 全局可读**（同作用域所有 COMPLETED node-run），**不沿边携带**——下游在控制流上决定活性，在数据访问上任何被 agent **支配**的节点都能读 `nodes.agent.artifacts`。问题实质是「每种消费方拿什么、什么形态」：
+
+| 下游节点 | 要 agent 的什么 | 形态 | L1+L2 后 | 缺口 / 特判 |
+|---|---|---|---|---|
+| **END** | 文本 + 把文件交付调用方 | `output` 文本 + `artifacts` 引用 | ✅ `{{nodes.a.output}}` + `WorkflowRun.artifacts` 并集 | 无——L2 即为它 |
+| **AGGREGATOR** | 多并行分支（含 agent）合并 | 输出合并 + **artifacts 并集** | ⚠️ 现仅合并 output | **L1 同步补**：`file_id` 去重并集（见上） |
+| **IF_ELSE** | 读 agent 文本/字段判路由 | 条件读 `nodes.a.output.<field>` | ✅ 文本条件可用 | 不消费文件；跨分支读 `artifacts` 同受**支配校验**——artifact 选择器要纳入 `referencedNodeSelectors` 扫描 |
+| **HTTP** | 转发/投递文件 | url/file_id 模板进 url\|header\|body | ✅ 引用模板（VariableChipField 已支持） | **决策②：只投递链接**，不做「从 url 取流再 multipart 上传字节」（如需另列独立特性） |
+| **MCP_TOOL / API_TOOL** | 工具消费文件 | 参数 = url 或 file_id（VariableMapEditor 映射） | ✅ 工具接 url/id 即可 | 工具若要 path/bytes 看工具契约；多数接 url/id |
+| **CODE** | 脚本处理文件 | map url → 脚本内 `urllib` fetch | ✅ **决策③：靠沙箱出网取 url** | 要求 CODE 沙箱 `networkEnabled` 且可达 FileService 域；落到 §5.2 SSRF 出口边界 |
+| **AGENT / LLM** | 下游 agent 读/再加工文件 | **决策①：prompt 内嵌 url**（`处理文件：{{ nodes.a.artifacts.0.url }}`），下游 agent 用自带 fetch/browse 工具去取 | ✅ url-in-prompt | 前提下游 agent 具备取文件能力；agent 入参仍是纯 string prompt，不新增「文件入口」 |
+
+**三决策（已拍）**：
+1. **Agent 收文件 = URL-in-prompt**：把取文件交给下游 agent 的工具能力，agent 入参维持纯 prompt，不做沙箱预拉。
+2. **HTTP = 投递链接**：模板传 url/file_id；「multipart 上传文件本体」不属 artifact 模型，单列为后续 HTTP 节点增强。
+3. **CODE/agent 取文件 = 沙箱出网**：消费方沙箱开 `networkEnabled` 用 url 取，统一落到 §5.2 的 SSRF 出口策略，而非 L3 落地。
+
+**共同含义**：三决策一致把文件流压成「引用 + 消费方自取」，于是 **L3 整体不需要**；artifact 模型边界清晰——平台只负责把**引用**抬进池/输出，**取字节是消费方（agent 工具 / CODE urllib / 第三方）的事**。唯一新增的平台侧前提是消费方沙箱出网（决策③）需要 §5.2 SSRF 边界覆盖到 FileService 域。
+
+**前端联动（小，接变量选择器）**：`variables.ts` 的 `nodeOutputFields` 给 AGENT/LLM 增 `{ selector: nodes.<id>.artifacts, label:'artifacts', type:'array' }`，选择器/芯片即可直接选到。
+
+**推演**：`reportAgent(AGENT)` 产 `report.pdf` → node-run.artifacts=[{file_id,…,url}] → END `output` 模板可写 `报告：{{ nodes.reportAgent.artifacts.0.url }}`，或 workflow 输出直接带 artifacts 数组；HTTP 节点 body 模板 `{ "file": "{{ nodes.reportAgent.artifacts.0.url }}" }` 转发。
+
+**测试要点**：(a) gateway 把 `child.artifacts` 映射进 result；(b) 池解析 `nodes.x.artifacts` 整取与 `.0.url` 下标；(c) 多 artifact 顺序与 `file_id` 去重；(d) L2 并集到 `WorkflowRun`；(e) 无 artifact 时 `.artifacts`=`[]`、`.output` 不变（兼容回归）。
+
+**已定决策**：① `WorkflowNodeRun.artifacts` 独立字段 vs 复用 output JSON 嵌字段 → 独立（兼容、对称）；② `ArtifactRef` 新建 lean record vs 直接复用 `AgentRunArtifact`（缺 url 需补算）→ lean record + 映射；③ L2 去重键 `file_id` vs `(node_id,file_id)` → `file_id`；④ Agent 收文件 → URL-in-prompt；⑤ HTTP → 投递链接（不做 multipart 字节上传）；⑥ CODE/agent 取文件 → 沙箱出网（§5.2 SSRF 边界覆盖 FileService 域），不做 L3 沙箱落地。
+
+**唯一未决**：决策⑥意味着 CODE 沙箱默认是否 `networkEnabled`、以及 SSRF allowlist 是否需放行 FileService 内网域名——留到实现 CODE/HTTP 出口策略时一并定。
+
 ---
 
 ## 6. 15 特性 → 每个用到的那一个概念/executor

@@ -1,5 +1,6 @@
 package ai.core.server.web;
 
+import ai.core.api.server.workflow.ArtifactView;
 import ai.core.api.server.workflow.CreateRunRequest;
 import ai.core.api.server.workflow.CreateRunResponse;
 import ai.core.api.server.workflow.CreateWorkflowRequest;
@@ -13,6 +14,7 @@ import ai.core.api.server.workflow.WorkflowRunGraphResponse;
 import ai.core.api.server.workflow.WorkflowRunView;
 import ai.core.api.server.workflow.WorkflowView;
 import ai.core.api.server.workflow.WorkflowWebService;
+import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowDefinition;
@@ -198,6 +200,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.status = run.status != null ? run.status.name() : null;
         view.input = run.input;
         view.output = run.output;
+        view.artifacts = toArtifactViews(run.artifacts);
         view.error = run.error;
         view.startedAt = run.startedAt;
         view.completedAt = run.completedAt;
@@ -211,10 +214,30 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         view.status = nodeRun.status != null ? nodeRun.status.name() : null;
         view.input = nodeRun.inputJson;
         view.output = nodeRun.output;
+        view.artifacts = toArtifactViews(nodeRun.artifacts);
         view.error = nodeRun.error;
         view.childRunId = nodeRun.childRunId;
         view.startedAt = nodeRun.startedAt;
         view.completedAt = nodeRun.completedAt;
+        return view;
+    }
+
+    private static List<ArtifactView> toArtifactViews(List<ArtifactRef> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return List.of();
+        }
+        return refs.stream().map(WorkflowWebServiceImpl::toArtifactView).toList();
+    }
+
+    private static ArtifactView toArtifactView(ArtifactRef ref) {
+        var view = new ArtifactView();
+        view.fileId = ref.fileId;
+        view.fileName = ref.fileName;
+        view.contentType = ref.contentType;
+        view.size = ref.size;
+        view.url = ref.url;
+        view.title = ref.title;
+        view.description = ref.description;
         return view;
     }
 }

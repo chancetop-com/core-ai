@@ -1,5 +1,6 @@
 package ai.core.server.workflow;
 
+import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.WorkflowNodeRun;
@@ -14,6 +15,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -78,11 +81,12 @@ public class WorkflowRunner {
             var graph = graphLoader.load(run.versionId);
             var journal = new MongoWorkflowJournal(nodeRunCollection);
             RunStatus status = WorkflowAdvancer.drive(graph, run, journal, nodeExecutor, nodePool, () -> isCancelled(runId));
-            terminate(runId, status, null, status == RunStatus.COMPLETED ? endOutput(runId) : null);
+            boolean completed = status == RunStatus.COMPLETED;
+            terminate(runId, status, null, completed ? endOutput(runId) : null, completed ? collectArtifacts(runId) : List.of());
             return true;
         } catch (RuntimeException e) {
             LOGGER.error("workflow run failed to advance, runId={}", runId, e);
-            terminate(runId, RunStatus.FAILED, e.getMessage(), null);
+            terminate(runId, RunStatus.FAILED, e.getMessage(), null, List.of());
             return true;
         } finally {
             if (heartbeat != null) {
@@ -133,7 +137,7 @@ public class WorkflowRunner {
     // Status-guarded terminal transition: only the owning worker on a still-RUNNING run may settle it, so a
     // concurrent CANCELLED (or a stolen lease) is never blindly overwritten. On success the run's single END
     // output is bubbled up to run.output (what run-sync and the history view return).
-    private void terminate(String runId, RunStatus status, String error, String output) {
+    private void terminate(String runId, RunStatus status, String error, String output, List<ArtifactRef> artifacts) {
         var now = ZonedDateTime.now();
         var sets = new ArrayList<Bson>();
         sets.add(Updates.set("status", status));
@@ -143,6 +147,9 @@ public class WorkflowRunner {
         }
         if (output != null) {
             sets.add(Updates.set("output", output));
+        }
+        if (artifacts != null && !artifacts.isEmpty()) {
+            sets.add(Updates.set("artifacts", artifacts));
         }
         long updated = runCollection.update(
             Filters.and(
@@ -166,5 +173,25 @@ public class WorkflowRunner {
             return nodeRun.output;
         }
         return null;
+    }
+
+    // The run's delivered files = union (by file_id) of every COMPLETED node-run's artifacts. Skipped-branch
+    // nodes have no COMPLETED node-run, so they are naturally excluded — only files on the live path are delivered.
+    private List<ArtifactRef> collectArtifacts(String runId) {
+        var seen = new LinkedHashSet<String>();
+        var merged = new ArrayList<ArtifactRef>();
+        for (WorkflowNodeRun nodeRun : nodeRunCollection.find(Filters.and(
+            Filters.eq("run_id", runId),
+            Filters.eq("status", NodeRunStatus.COMPLETED)))) {
+            if (nodeRun.artifacts == null) {
+                continue;
+            }
+            for (ArtifactRef ref : nodeRun.artifacts) {
+                if (ref.fileId == null || seen.add(ref.fileId)) {
+                    merged.add(ref);
+                }
+            }
+        }
+        return merged;
     }
 }

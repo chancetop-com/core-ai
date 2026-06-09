@@ -32,7 +32,7 @@ public class AgentExecutor implements NodeExecutor {
         String childRunId = gateway.startChildRun(ctx.run(), ctx.node(), input);
         AgentRunResult result = gateway.awaitResult(childRunId);
         return result.completed()
-            ? new NodeOutcome.Normal(result.output(), childRunId)
+            ? new NodeOutcome.Normal(result.output(), childRunId, result.artifacts())
             // retryable: a child-run failure is treated as transient so RetryingNodeExecutor can start a fresh
             // child run; an exhausted retry budget then surfaces this as the terminal node failure.
             : new NodeOutcome.Fail(result.error(), true, childRunId);

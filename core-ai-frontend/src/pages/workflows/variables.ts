@@ -8,6 +8,7 @@ export interface VarGroup { key: string; nodeName: string; color: string; fields
 // This is the lean, frontend-only output model (no backend type model yet); whole-output nodes expose one field.
 export function nodeOutputFields(node: WorkflowRFNode): OutputField[] {
   const base = `nodes.${node.id}.output`;
+  const artifacts = `nodes.${node.id}.artifacts`;
   switch (node.data.nodeType) {
     case 'HTTP':
       return [
@@ -17,7 +18,15 @@ export function nodeOutputFields(node: WorkflowRFNode): OutputField[] {
       ];
     case 'AGENT':
     case 'LLM':
-      return [{ selector: base, label: 'output', type: 'text' }];
+      return [
+        { selector: base, label: 'output', type: 'text' },
+        { selector: artifacts, label: 'artifacts', type: 'array' },
+      ];
+    case 'AGGREGATOR':
+      return [
+        { selector: base, label: 'output', type: 'any' },
+        { selector: artifacts, label: 'artifacts', type: 'array' },
+      ];
     default:
       return [{ selector: base, label: 'output', type: 'any' }];
   }
@@ -47,12 +56,15 @@ export function variableGroups(nodes: WorkflowRFNode[], selfId: string): VarGrou
 // Resolve a stored selector to a display label + color, live — so a node rename reflects immediately while
 // storage stays id-based (rename-safe). Unknown/dangling selectors fall back to the raw selector in grey.
 export function selectorMeta(nodes: WorkflowRFNode[], selector: string): { label: string; color: string } {
-  const node = selector.match(/^nodes\.([^.]+)\.output(?:\.(.+))?$/);
+  const node = selector.match(/^nodes\.([^.]+)\.(output|artifacts)(?:\.(.+))?$/);
   if (node) {
     const found = nodes.find((n) => n.id === node[1]);
     const name = found?.data.name ?? node[1];
     const color = found ? nodeMeta(found.data.nodeType).color : '#64748b';
-    return { label: node[2] ? `${name}.${node[2]}` : name, color };
+    // output is the node's main value (shown as just the name); artifacts is a distinct file channel.
+    const path = node[3];
+    const suffix = node[2] === 'artifacts' ? (path ? `artifacts.${path}` : 'artifacts') : (path ?? '');
+    return { label: suffix ? `${name}.${suffix}` : name, color };
   }
   if (selector === 'sys.input' || selector === 'input') return { label: 'input', color: '#16a34a' };
   const input = selector.match(/^sys\.input\.(.+)$/);

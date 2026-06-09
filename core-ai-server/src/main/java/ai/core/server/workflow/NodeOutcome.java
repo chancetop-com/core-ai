@@ -1,5 +1,7 @@
 package ai.core.server.workflow;
 
+import ai.core.server.domain.ArtifactRef;
+
 import java.util.List;
 
 /**
@@ -10,10 +12,19 @@ import java.util.List;
  * @author Xander
  */
 public sealed interface NodeOutcome {
-    /** Plain completion: every out-edge becomes ACTIVE (parallel fan-out). */
-    record Normal(String output, String childRunId) implements NodeOutcome {
+    /** Plain completion: every out-edge becomes ACTIVE (parallel fan-out). artifacts are downstream file
+     *  references this node produced (empty for most nodes; AGENT/AGGREGATOR populate them). */
+    record Normal(String output, String childRunId, List<ArtifactRef> artifacts) implements NodeOutcome {
+        public Normal {
+            artifacts = artifacts == null ? List.of() : List.copyOf(artifacts);
+        }
+
         public Normal(String output) {
-            this(output, null);
+            this(output, null, List.of());
+        }
+
+        public Normal(String output, String childRunId) {
+            this(output, childRunId, List.of());
         }
     }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, ChevronDown, ExternalLink } from 'lucide-react';
+import { ChevronRight, ChevronDown, ExternalLink, FileDown } from 'lucide-react';
 import { RUN_STATUS_COLOR, TERMINAL_RUN_STATUS, type WorkflowRFNode } from './graph';
 import type { WorkflowNodeRunView } from '../../api/client';
 
@@ -53,6 +53,16 @@ export default function RunTrace({ nodes, runStatus, nodeRuns, focusNodeId }: Pr
                 {r.error && <Field title="Error" body={r.error} danger />}
                 <Field title="Input" body={r.input} />
                 <Field title="Output" body={r.output} />
+                {r.artifacts && r.artifacts.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 3 }}>Artifacts</div>
+                    {r.artifacts.map((a, i) => (
+                      <a key={a.file_id ?? i} href={a.url} target="_blank" rel="noopener noreferrer" style={artifactLink} title={a.description || a.title || a.file_name}>
+                        <FileDown size={12} /> {a.file_name || a.title || a.file_id}
+                      </a>
+                    ))}
+                  </div>
+                )}
                 {r.child_run_id && (
                   <Link to={`/runs/${r.child_run_id}`} style={childLink}><ExternalLink size={12} /> open child run</Link>
                 )}
@@ -108,3 +118,4 @@ const pre: CSSProperties = {
 };
 const dim: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)' };
 const childLink: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none' };
+const artifactLink: CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none', marginBottom: 3, wordBreak: 'break-all' };
