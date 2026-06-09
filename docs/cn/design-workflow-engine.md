@@ -397,6 +397,8 @@ return s == RunStatus.COMPLETED ? new Normal(collect(child)) : new Fail(child.er
 
 ### 5.3 Agent 产物（artifact）交给下游
 
+> **实现状态：L1 + L2 已落地。** `ArtifactRef`（domain）/ `AgentRunResult.artifacts` / `MongoAgentRunGateway` 映射 / `NodeOutcome.Normal.artifacts` / `WorkflowNodeRun.artifacts` / `VariablePool` 的 `nodes.<id>.artifacts` 通道 + List 下标 / `OutputComposer.composeArtifacts` + AGGREGATOR 并集 / `WorkflowRunner.collectArtifacts` → `WorkflowRun.artifacts` / 前端 `ArtifactView` + 变量选择器 + RunTrace 下载链接，均已实现并有测试。L3 不做（见下三决策）。
+
 **断点（现状）**：artifact 产出链已完整——agent 在沙箱生成文件 → `submit_artifacts` → `FileService.upload` 得 `file_id` → 组 `AgentRunArtifact`(file_id/file_name/content_type/size/source_path/title/description) → append 到**子 `AgentRun.artifacts`**。但 workflow 层断了：`MongoAgentRunGateway.awaitResult` 手握整个 `child` 却只 `return child.output`；`AgentRunResult` 只带 (completed/output/error)；于是 `NodeOutcome.Normal(output)` → `WorkflowNodeRun.output`（String）→ 池只有 `nodes.<id>.output`。**artifact 从未被抬到节点层，下游不可见。** 要交给下游，本质是补这条「抬升 + 暴露」链路。
 
 **模型决策（对齐 §4 / §5.2）**：文件以**引用**进池、不进沙箱 FS——这正是 §4 `VarType.FILE` 走 `FileRecord`、§5.2「数据含文件只走池」的落地。给 AGENT 输出开**独立 `nodes.<id>.artifacts` 通道**，而非把 output 改成 `{text,artifacts}` 信封：保 `{{ nodes.x.output }}` = 文本回复的现有契约不破，且与 agent 自身 (reply 文本 / artifact list) 的天然二分对称，并能泛化给将来产文件的 HTTP/CODE。绝不把字节塞进池。

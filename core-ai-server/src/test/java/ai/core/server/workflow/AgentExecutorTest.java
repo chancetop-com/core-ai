@@ -1,5 +1,7 @@
 package ai.core.server.workflow;
 
+import ai.core.server.domain.AgentRunArtifact;
+import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.WorkflowRun;
@@ -26,6 +28,21 @@ class AgentExecutorTest {
         var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
         assertEquals("{\"category\":\"auth\"}", normal.output());
         assertEquals("agentrun-1", normal.childRunId());
+    }
+
+    @Test
+    void completedChildRunCarriesArtifactsToNormal() {
+        var artifact = new AgentRunArtifact();
+        artifact.fileId = "f1";
+        artifact.fileName = "report.pdf";
+        var gateway = new FakeGateway();
+        gateway.scriptComplete("{}", List.of(ArtifactRef.of(artifact, "https://h/api/files/f1/content")));
+        var outcome = new AgentExecutor(gateway).execute(ctx(emptyGraph(), run(), new WorkflowNode("a", "AGENT")));
+
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, outcome);
+        assertEquals(1, normal.artifacts().size());
+        assertEquals("report.pdf", normal.artifacts().get(0).fileName);
+        assertEquals("https://h/api/files/f1/content", normal.artifacts().get(0).url);
     }
 
     @Test
@@ -84,6 +101,10 @@ class AgentExecutorTest {
 
         void scriptComplete(String output) {
             scripted = AgentRunResult.completed(output);
+        }
+
+        void scriptComplete(String output, List<ArtifactRef> artifacts) {
+            scripted = AgentRunResult.completed(output, artifacts);
         }
 
         void scriptFail(String error) {

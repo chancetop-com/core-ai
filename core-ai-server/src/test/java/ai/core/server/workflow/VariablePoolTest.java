@@ -73,6 +73,14 @@ class VariablePoolTest {
     }
 
     @Test
+    void nodeWithoutArtifactsKeepsOutputAndResolvesArtifactsEmpty() {
+        var pool = new VariablePool(Map.of("a", "{\"x\":1}"), "{}");   // no artifacts channel
+        assertEquals("{\"x\":1}", pool.resolve("nodes.a.output").orElseThrow());
+        assertTrue(pool.resolve("nodes.a.artifacts").isEmpty());
+        assertTrue(pool.artifactsOf("a").isEmpty());
+    }
+
+    @Test
     void exposesArtifactsForOutputComposition() {
         var refs = List.of(ref("f1", "a.pdf", "u1"));
         var pool = new VariablePool(Map.of(), Map.of("agent1", refs), "{}");
