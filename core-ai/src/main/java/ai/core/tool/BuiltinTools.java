@@ -4,6 +4,7 @@ import ai.core.tool.tools.CaptionImageTool;
 import ai.core.tool.tools.EditFileTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
+import ai.core.tool.tools.PowershellCommandTool;
 import ai.core.tool.tools.PythonScriptTool;
 import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.RequireGithubInstallationTokenTool;
@@ -81,11 +82,17 @@ public final class BuiltinTools {
             ShellCommandTool.builder().build(),
             PythonScriptTool.builder().build()
     );
+    public static final List<ToolCall> BASH_EXECUTION = List.of(
+            ShellCommandTool.builder().build()
+    );
+    public static final List<ToolCall> POWERSHELL_EXECUTION = List.of(
+            PowershellCommandTool.builder().build()
+    );
 
     public static final List<ToolCall> GITHUB = List.of(
             RequireGithubInstallationTokenTool.builder().build()
     );
-    
+
 
     @SafeVarargs
     @SuppressWarnings("varargs")

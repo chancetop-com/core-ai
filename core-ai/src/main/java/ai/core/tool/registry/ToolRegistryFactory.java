@@ -27,8 +27,7 @@ public final class ToolRegistryFactory {
 
         registry.registerProvider(new BuiltinToolProvider("builtin-multimodal", BuiltinTools.MULTIMODAL));
         registry.registerProvider(new BuiltinToolProvider("builtin-web", BuiltinTools.WEB));
-        registry.registerProvider(new BuiltinToolProvider("builtin-code", BuiltinTools.CODE_EXECUTION));
-
+        registry.registerProvider(new BuiltinToolProvider("builtin-bash", executableTools(context)));
         return registry;
     }
 
@@ -37,11 +36,18 @@ public final class ToolRegistryFactory {
     }
 
 
-
     private static List<ToolCall> planningTools(FactoryContext context) {
         if (context.todoV2Enabled()) {
             return BuiltinTools.PLANNING_V2;
         }
         return BuiltinTools.PLANNING;
+    }
+
+    private static List<ToolCall> executableTools(FactoryContext context) {
+        if (context.platform().isWindows()) {
+            return BuiltinTools.POWERSHELL_EXECUTION;
+        } else {
+            return BuiltinTools.BASH_EXECUTION;
+        }
     }
 }
