@@ -28,14 +28,16 @@ export default function WorkflowNode({ data, selected }: NodeProps<WorkflowRFNod
           {meta.label}
         </span>
         <div style={{ flex: 1 }} />
-        {runColor && (
+        {runColor ? (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             {data.runMs != null && data.runStatus !== 'RUNNING' && (
               <span style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>{fmtMs(data.runMs)}</span>
             )}
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: runColor }} title={data.runStatus} />
           </span>
-        )}
+        ) : data.hasIssue ? (
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#f59e0b' }} title="Needs configuration" />
+        ) : null}
       </div>
       <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text)' }}>{data.name}</div>
       {summary && (

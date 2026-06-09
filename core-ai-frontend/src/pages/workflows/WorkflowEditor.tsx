@@ -20,6 +20,7 @@ import {
   branchLabel, edgeArrow, RUN_STATUS_COLOR, TERMINAL_RUN_STATUS,
   type WorkflowGraph, type WorkflowNodeData, type WorkflowRFNode,
 } from './graph';
+import { nodeIssues } from './validation';
 
 const nodeTypes = { workflowNode: WorkflowNode };
 
@@ -150,14 +151,20 @@ export default function WorkflowEditor() {
   // during a run, tint each node with its run status (display-only, never persisted). Preserve object identity
   // for nodes whose status is unchanged so React Flow doesn't re-diff every node each poll.
   const displayNodes = useMemo(() => {
-    if (!runId) return nodes;
+    if (runId) {
+      return nodes.map((n) => {
+        const nr = nodeRuns[n.id];
+        const runStatus = nr?.status;
+        const runMs = nr ? elapsedMs(nr) : undefined;
+        return runStatus === n.data.runStatus && runMs === n.data.runMs ? n : { ...n, data: { ...n.data, runStatus, runMs } };
+      });
+    }
+    // editing: flag nodes that still need configuration (advisory; the backend validates at publish)
     return nodes.map((n) => {
-      const nr = nodeRuns[n.id];
-      const runStatus = nr?.status;
-      const runMs = nr ? elapsedMs(nr) : undefined;
-      return runStatus === n.data.runStatus && runMs === n.data.runMs ? n : { ...n, data: { ...n.data, runStatus, runMs } };
+      const hasIssue = nodeIssues(n, edges).length > 0;
+      return hasIssue === !!n.data.hasIssue ? n : { ...n, data: { ...n.data, hasIssue } };
     });
-  }, [nodes, nodeRuns, runId]);
+  }, [nodes, edges, nodeRuns, runId]);
 
   // Decorate edges for display only (never persisted — fromReactFlow drops these props): an arrow marker, an
   // IF_ELSE branch label, and — during a run — a traversed/skipped tint so the executed path is readable.

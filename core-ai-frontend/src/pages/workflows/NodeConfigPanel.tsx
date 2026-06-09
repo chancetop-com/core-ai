@@ -1,7 +1,8 @@
 import { useState, type CSSProperties } from 'react';
 import type { Edge } from '@xyflow/react';
-import { Trash2, X } from 'lucide-react';
+import { AlertTriangle, Trash2, X } from 'lucide-react';
 import { nodeMeta, type WorkflowNodeData, type WorkflowRFNode } from './graph';
+import { nodeIssues } from './validation';
 import IfElseConfig from './IfElseConfig';
 import CodeConfig from './CodeConfig';
 import StartConfig from './StartConfig';
@@ -58,13 +59,24 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
     onChange({ config: { ...config, agent_id: agentId, agent_name: agentName } });
   };
 
+  const issues = nodeIssues(node, edges);
+
   return (
     <div style={panel}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 11, color: meta.color, fontWeight: 700, textTransform: 'uppercase' }}>{meta.label}</span>
         <div style={{ flex: 1 }} />
         <button onClick={onClose} style={iconBtn} title="Close"><X size={15} /></button>
       </div>
+
+      {meta.description && <div style={desc}>{meta.description}</div>}
+      {meta.outputHint && <div style={outHint}>↳ Outputs: {meta.outputHint}</div>}
+      {issues.length > 0 && (
+        <div style={issueBox}>
+          <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div>{issues.map((m, i) => <div key={i}>{m}</div>)}</div>
+        </div>
+      )}
 
       <label style={label}>Name</label>
       <input value={node.data.name} onChange={(e) => onChange({ name: e.target.value })} style={input} />
@@ -155,6 +167,12 @@ const label: CSSProperties = {
   display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '12px 0 4px',
 };
 const hint: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.4 };
+const desc: CSSProperties = { fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5 };
+const outHint: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4, opacity: 0.85 };
+const issueBox: CSSProperties = {
+  display: 'flex', gap: 6, marginTop: 10, padding: '8px 10px', fontSize: 12, lineHeight: 1.5, borderRadius: 7,
+  color: '#b45309', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)',
+};
 const input: CSSProperties = {
   width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 13,
   border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',

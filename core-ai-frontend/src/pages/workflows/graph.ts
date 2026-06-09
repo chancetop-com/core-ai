@@ -22,29 +22,30 @@ export interface WorkflowGraph {
 }
 
 export const NODE_TYPES = [
-  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'NOTE',
+  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR',
 ] as const;
-// ANSWER removed (workflow-only, single END).
+// ANSWER removed (workflow-only, single END). NOTE removed (not needed yet).
 export type NodeType = typeof NODE_TYPES[number];
 
-export interface NodeTypeMeta { label: string; color: string; }
+// description: one line shown atop the config panel. outputHint: what this node exposes downstream (omitted for
+// nodes that produce no value — END is terminal, IF_ELSE only routes).
+export interface NodeTypeMeta { label: string; color: string; description: string; outputHint?: string; }
 
 // The registry: one entry per node type. Adding a node type = one entry here (mirrors the backend executor registry).
 export const NODE_TYPE_META: Record<string, NodeTypeMeta> = {
-  START: { label: 'Start', color: '#16a34a' },
-  END: { label: 'End', color: '#dc2626' },
-  AGENT: { label: 'Agent', color: '#7c3aed' },
-  LLM: { label: 'LLM', color: '#2563eb' },
-  CODE: { label: 'Code', color: '#0891b2' },
-  HTTP: { label: 'HTTP', color: '#ca8a04' },
-  MCP_TOOL: { label: 'MCP Tool', color: '#0ea5e9' },
-  API_TOOL: { label: 'API Tool', color: '#d97706' },
-  IF_ELSE: { label: 'If / Else', color: '#ea580c' },
-  AGGREGATOR: { label: 'Aggregator', color: '#0d9488' },
-  NOTE: { label: 'Note', color: '#64748b' },
+  START: { label: 'Start', color: '#16a34a', description: 'The entry point — declares the inputs the workflow runs on.', outputHint: 'sys.input and each declared input field' },
+  END: { label: 'End', color: '#dc2626', description: 'The single exit — produces the workflow result.' },
+  AGENT: { label: 'Agent', color: '#7c3aed', description: 'Runs a published agent on the input.', outputHint: 'the agent reply (text)' },
+  LLM: { label: 'LLM', color: '#2563eb', description: 'Calls a model directly with the input.', outputHint: 'the model reply (text)' },
+  CODE: { label: 'Code', color: '#0891b2', description: 'Runs a Python snippet over the inputs you map.', outputHint: 'whatever the script prints to stdout' },
+  HTTP: { label: 'HTTP', color: '#ca8a04', description: 'Calls an HTTP endpoint with a templated request.', outputHint: '{ status, headers, body }' },
+  MCP_TOOL: { label: 'MCP Tool', color: '#0ea5e9', description: 'Invokes a tool on an MCP server.', outputHint: 'the tool result' },
+  API_TOOL: { label: 'API Tool', color: '#d97706', description: 'Calls a Service-API operation.', outputHint: 'the operation result' },
+  IF_ELSE: { label: 'If / Else', color: '#ea580c', description: 'Routes the flow to a branch by matching conditions.' },
+  AGGREGATOR: { label: 'Aggregator', color: '#0d9488', description: 'Merges parallel branches into one value.', outputHint: 'the merged object / template' },
 };
 export function nodeMeta(type: string): NodeTypeMeta {
-  return NODE_TYPE_META[type] ?? { label: type, color: '#64748b' };
+  return NODE_TYPE_META[type] ?? { label: type, color: '#64748b', description: '' };
 }
 
 // A runnable starter for CODE nodes so users see the contract: read `inputs`, print to stdout.
@@ -78,6 +79,7 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   config: Record<string, unknown>;
   runStatus?: string; // display-only, injected during a run overlay; never persisted (fromReactFlow drops it)
   runMs?: number;     // display-only run elapsed (ms), injected during a run overlay
+  hasIssue?: boolean; // display-only, set while editing when the node still needs configuration
 }
 export type WorkflowRFNode = Node<WorkflowNodeData>;
 

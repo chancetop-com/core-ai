@@ -1,8 +1,34 @@
-import { useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Plus, X } from 'lucide-react';
 import VariablePicker from './VariablePicker';
 import { selectorMeta } from './variables';
 import type { WorkflowRFNode } from './graph';
+
+// A declared parameter from a tool's input schema — drives auto-filled rows so users don't type param names.
+export interface ParamSpec { name: string; type: string; required: boolean; description?: string }
+
+// Parse an MCP tool's JSON-schema string into its declared params. Tolerant: returns [] on anything unexpected.
+export function parseMcpSchema(schema?: string): ParamSpec[] {
+  if (!schema || !schema.trim()) return [];
+  try {
+    const o = JSON.parse(schema) as { properties?: Record<string, { type?: unknown; description?: unknown }>; required?: unknown };
+    if (!o.properties || typeof o.properties !== 'object') return [];
+    const required = new Set(Array.isArray(o.required) ? o.required.map(String) : []);
+    return Object.entries(o.properties).map(([name, def]) => ({
+      name,
+      type: schemaType(def?.type),
+      required: required.has(name),
+      description: typeof def?.description === 'string' ? def.description : undefined,
+    }));
+  } catch {
+    return [];
+  }
+}
+function schemaType(t: unknown): string {
+  if (typeof t === 'string') return t;
+  if (Array.isArray(t) && typeof t[0] === 'string') return t[0];
+  return 'any';
+}
 
 interface Props {
   // The stored value is a JSON-object template string, e.g. {"q":"{{ nodes.x.output }}","limit":10}.
@@ -10,43 +36,65 @@ interface Props {
   onChange: (next: string) => void;
   nodes: WorkflowRFNode[];
   selfId: string;
+  params?: ParamSpec[];   // when set, every declared param shows as a row (locked key, required marker, type hint)
 }
 
 interface Row { key: string; value: string; } // value is either a {{ selector }} token or a raw literal
 
-/** Structured argument editor: each named param is bound to a variable (chip) or a typed literal. Generates a
- *  flat JSON-object template string. Falls back to no rows if the stored value isn't a flat object. */
-export default function VariableMapEditor({ value, onChange, nodes, selfId }: Props) {
+/** Structured argument editor: each named param is bound to a variable (chip) or a typed literal, producing a
+ *  flat JSON-object template string. With `params`, declared tool params are pre-listed so the user only fills
+ *  values; extra params can still be added free-form. Falls back to no rows if the stored value isn't a flat object. */
+export default function VariableMapEditor({ value, onChange, nodes, selfId, params }: Props) {
   const [rows, setRows] = useState<Row[]>(() => parse(value));
+  const specByName = useMemo(() => new Map((params ?? []).map((p) => [p.name, p])), [params]);
+
+  // Show every declared param as a row even before it's filled (phantom rows), so param names never have to be
+  // known. Phantoms are not stored until the user fills them (build() drops empty values).
+  const displayRows = useMemo(() => {
+    const have = new Set(rows.map((r) => r.key.trim()));
+    const phantoms = (params ?? []).filter((p) => !have.has(p.name)).map((p) => ({ key: p.name, value: '' }));
+    return [...rows, ...phantoms];
+  }, [rows, params]);
 
   const sync = (next: Row[]) => {
     setRows(next);
     onChange(build(next));
   };
-  const setRow = (i: number, patch: Partial<Row>) => sync(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const setRow = (i: number, patch: Partial<Row>) => sync(displayRows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
   return (
     <>
-      {rows.map((row, i) => {
+      {displayRows.map((row, i) => {
+        const spec = specByName.get(row.key.trim());
         const token = row.value.match(/^\{\{\s*(.+?)\s*\}\}$/);
         const chip = token ? selectorMeta(nodes, token[1]) : null;
         return (
           <div key={i} style={rowBox}>
-            <input value={row.key} placeholder="param" onChange={(e) => setRow(i, { key: e.target.value })} style={{ ...input, flex: 1 }} />
+            {spec ? (
+              <span style={paramLabel} title={spec.description || spec.name}>
+                {spec.name}{spec.required && <span style={{ color: '#dc2626' }}> *</span>}
+              </span>
+            ) : (
+              <input value={row.key} placeholder="param" onChange={(e) => setRow(i, { key: e.target.value })} style={{ ...input, flex: 1 }} />
+            )}
             {chip ? (
               <span style={{ ...chipStyle(chip.color), flex: 1.4 }} title={token![1]}>
                 {chip.label}
                 <button onClick={() => setRow(i, { value: '' })} style={chipX} title="Clear">×</button>
               </span>
             ) : (
-              <input value={row.value} placeholder="value or pick a variable →" onChange={(e) => setRow(i, { value: e.target.value })} style={{ ...input, flex: 1.4 }} />
+              <input value={row.value} placeholder={spec ? spec.type : 'value or pick a variable →'} onChange={(e) => setRow(i, { value: e.target.value })} style={{ ...input, flex: 1.4 }} />
             )}
             <VariablePicker nodes={nodes} selfId={selfId} label="var" onPick={(sel) => setRow(i, { value: `{{ ${sel} }}` })} style={{ flexShrink: 0 }} />
-            <button onClick={() => sync(rows.filter((_, j) => j !== i))} style={delBtn} title="Remove"><X size={14} /></button>
+            {spec ? <span style={{ width: 30, flexShrink: 0 }} /> : (
+              <button onClick={() => sync(displayRows.filter((_, j) => j !== i))} style={delBtn} title="Remove"><X size={14} /></button>
+            )}
           </div>
         );
       })}
-      <button onClick={() => setRows([...rows, { key: '', value: '' }])} style={addBtn}><Plus size={14} /> Add argument</button>
+      <button onClick={() => setRows([...displayRows, { key: '', value: '' }])} style={addBtn}>
+        <Plus size={14} /> {params?.length ? 'Add extra argument' : 'Add argument'}
+      </button>
     </>
   );
 }
@@ -70,8 +118,8 @@ function build(rows: Row[]): string {
   const parts: string[] = [];
   for (const r of rows) {
     const key = r.key.trim();
-    if (!key) continue;
     const v = r.value.trim();
+    if (!key || !v) continue;   // skip empty: declared-but-unfilled params stay out of the template
     const isVar = /^\{\{\s*.+?\s*\}\}$/.test(v);
     parts.push(`${JSON.stringify(key)}: ${isVar ? JSON.stringify(v) : literal(v)}`);
   }
@@ -89,6 +137,10 @@ function literal(v: string): string {
 }
 
 const rowBox: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 };
+const paramLabel: CSSProperties = {
+  flex: 1, minWidth: 0, display: 'inline-flex', alignItems: 'center', height: 30, padding: '0 4px',
+  fontSize: 12, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', whiteSpace: 'nowrap',
+};
 const input: CSSProperties = {
   boxSizing: 'border-box', padding: '6px 9px', fontSize: 12, minWidth: 0,
   border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',

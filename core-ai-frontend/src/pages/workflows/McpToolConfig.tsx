@@ -1,6 +1,6 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { api, type ToolRegistryView, type McpToolInfo } from '../../api/client';
-import VariableMapEditor from './VariableMapEditor';
+import VariableMapEditor, { parseMcpSchema } from './VariableMapEditor';
 import type { WorkflowRFNode } from './graph';
 
 interface Props {
@@ -17,6 +17,8 @@ export default function McpToolConfig({ config, onConfig, nodes, selfId }: Props
   const [loadingTools, setLoadingTools] = useState(false);
   const serverId = String(config.server_id ?? '');
   const toolName = String(config.tool_name ?? '');
+  // Declared params of the selected tool, parsed from its JSON schema — drives auto-filled argument rows.
+  const params = useMemo(() => parseMcpSchema(tools.find((t) => t.name === toolName)?.input_schema), [tools, toolName]);
 
   useEffect(() => {
     api.tools.list().then((res) => setServers((res.tools || []).filter((t) => t.type === 'MCP'))).catch(() => { /* optional */ });
@@ -51,7 +53,7 @@ export default function McpToolConfig({ config, onConfig, nodes, selfId }: Props
       </select>
 
       <label style={label}>Arguments</label>
-      <VariableMapEditor value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} />
+      <VariableMapEditor value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} params={params} />
     </>
   );
 }
