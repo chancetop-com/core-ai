@@ -42,7 +42,30 @@ public final class WorkflowValidator {
             if (graph.outEdges(node.id()).isEmpty() && type != NodeType.END && type != NodeType.ANSWER) {
                 errors.add("sink node " + node.id() + " must be END or ANSWER, was " + type);
             }
+            configErrors(node, type, errors);
         }
         return errors;
+    }
+
+    // Per-type required-config checks: a tool node with no target selected cannot run, so catch it at publish time.
+    private static void configErrors(WorkflowNode node, NodeType type, List<String> errors) {
+        switch (type) {
+            case MCP_TOOL -> {
+                requireConfig(node, "server_id", errors);
+                requireConfig(node, "tool_name", errors);
+            }
+            case API_TOOL -> {
+                requireConfig(node, "app_name", errors);
+                requireConfig(node, "tool_name", errors);
+            }
+            default -> { /* other types carry no publish-time required config here */ }
+        }
+    }
+
+    private static void requireConfig(WorkflowNode node, String key, List<String> errors) {
+        Object value = node.config().get(key);
+        if (value == null || String.valueOf(value).isBlank()) {
+            errors.add("node " + node.id() + " (" + node.type() + ") is missing required config: " + key);
+        }
     }
 }

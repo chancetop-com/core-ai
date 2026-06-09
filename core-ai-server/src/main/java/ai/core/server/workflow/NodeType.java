@@ -17,9 +17,10 @@ public enum NodeType {
     HTTP,
     IF_ELSE,
     AGGREGATOR,
-    ITERATION,
-    LOOP,
+    MCP_TOOL,
+    API_TOOL,
     NOTE;
+    // todo: ITERATION / LOOP container node types are deferred (P3) — re-add with the container-scope engine work.
 
     public static NodeType of(String type) {
         try {

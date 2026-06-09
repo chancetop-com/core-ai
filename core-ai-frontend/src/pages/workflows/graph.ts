@@ -21,7 +21,7 @@ export interface WorkflowGraph {
 }
 
 export const NODE_TYPES = [
-  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'IF_ELSE', 'AGGREGATOR', 'ITERATION', 'LOOP', 'ANSWER', 'NOTE',
+  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'ANSWER', 'NOTE',
 ] as const;
 export type NodeType = typeof NODE_TYPES[number];
 
@@ -35,10 +35,10 @@ export const NODE_TYPE_META: Record<string, NodeTypeMeta> = {
   LLM: { label: 'LLM', color: '#2563eb' },
   CODE: { label: 'Code', color: '#0891b2' },
   HTTP: { label: 'HTTP', color: '#ca8a04' },
+  MCP_TOOL: { label: 'MCP Tool', color: '#0ea5e9' },
+  API_TOOL: { label: 'API Tool', color: '#d97706' },
   IF_ELSE: { label: 'If / Else', color: '#ea580c' },
   AGGREGATOR: { label: 'Aggregator', color: '#0d9488' },
-  ITERATION: { label: 'Iteration', color: '#9333ea' },
-  LOOP: { label: 'Loop', color: '#c026d3' },
   ANSWER: { label: 'Answer', color: '#059669' },
   NOTE: { label: 'Note', color: '#64748b' },
 };
@@ -101,6 +101,10 @@ export function nodeSummary(nodeType: string, config: Record<string, unknown>): 
     }
     case 'HTTP':
       return str(config.url) ? `${str(config.method) || 'GET'} ${str(config.url).slice(0, 22)}` : 'no url';
+    case 'MCP_TOOL':
+      return str(config.tool_name) ? `${str(config.server_name) || str(config.server_id)} · ${str(config.tool_name)}` : 'no tool selected';
+    case 'API_TOOL':
+      return str(config.tool_name) ? `${str(config.app_name)} · ${str(config.operation_name) || str(config.tool_name)}` : 'no tool selected';
     case 'END':
     case 'ANSWER':
       return str(config.output) ? 'mapped output' : '';

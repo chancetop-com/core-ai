@@ -65,9 +65,12 @@ import ai.core.server.workflow.WorkflowRunService;
 import ai.core.server.workflow.WorkflowRunner;
 import ai.core.server.workflow.WorkflowRunnerJob;
 import ai.core.server.workflow.executor.AgentExecutor;
+import ai.core.server.workflow.executor.ApiToolExecutor;
 import ai.core.server.workflow.executor.CodeExecutor;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.IfElseExecutor;
+import ai.core.server.workflow.executor.McpToolExecutor;
+import ai.core.server.workflow.executor.RetryingNodeExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
 
 import java.util.Map;
@@ -151,6 +154,7 @@ import java.time.Duration;
 public class ServerModule extends Module {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerModule.class);
     private SandboxService sandboxService;
+    private ToolRegistryService toolRegistryService;   // shared with bindWorkflow() for the tool node executors
 
     @Override
     protected void initialize() {
@@ -164,6 +168,7 @@ public class ServerModule extends Module {
         http().intercept(corsInterceptor);
         http().errorHandler(corsInterceptor);
         var toolRegistry = bind(ToolRegistryService.class);
+        this.toolRegistryService = toolRegistry;
         registerFile();
         registerSkill();
         site().session().timeout(Duration.ofHours(24));
@@ -280,12 +285,17 @@ public class ServerModule extends Module {
         var graphLoader = bind(MongoWorkflowGraphLoader.class);
         bind(WorkflowGraphLoader.class, graphLoader);
 
-        var agentExecutor = new AgentExecutor(agentRunGateway);
+        // AGENT/LLM and the two tool nodes get synchronous retry-on-transient-failure; START/END/IF_ELSE/CODE don't.
+        var agentExecutor = new RetryingNodeExecutor(new AgentExecutor(agentRunGateway));
+        var mcpToolExecutor = new RetryingNodeExecutor(new McpToolExecutor(toolRegistryService));
+        var apiToolExecutor = new RetryingNodeExecutor(new ApiToolExecutor(toolRegistryService));
         var registry = new NodeExecutorRegistry(Map.of(
             NodeType.START, new StartExecutor(),
             NodeType.END, new EndExecutor(),
             NodeType.AGENT, agentExecutor,
             NodeType.LLM, agentExecutor,
+            NodeType.MCP_TOOL, mcpToolExecutor,
+            NodeType.API_TOOL, apiToolExecutor,
             NodeType.IF_ELSE, new IfElseExecutor(),
             NodeType.CODE, new CodeExecutor(sandboxService)));
         bind(NodeExecutor.class, registry);

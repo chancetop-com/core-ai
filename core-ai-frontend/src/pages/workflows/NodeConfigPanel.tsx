@@ -5,6 +5,9 @@ import { nodeMeta, type WorkflowNodeData, type WorkflowRFNode } from './graph';
 import IfElseConfig from './IfElseConfig';
 import CodeConfig from './CodeConfig';
 import StartConfig from './StartConfig';
+import McpToolConfig from './McpToolConfig';
+import ApiToolConfig from './ApiToolConfig';
+import RetryFields from './RetryFields';
 import { TemplateField } from './configWidgets';
 
 interface AgentOption { id: string; name: string; }
@@ -22,11 +25,15 @@ interface Props {
 export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, onDelete, onClose }: Props) {
   const meta = nodeMeta(node.data.nodeType);
   const isAgentNode = node.data.nodeType === 'AGENT' || node.data.nodeType === 'LLM';
+  const isMcpTool = node.data.nodeType === 'MCP_TOOL';
+  const isApiTool = node.data.nodeType === 'API_TOOL';
   const isIfElse = node.data.nodeType === 'IF_ELSE';
   const isCode = node.data.nodeType === 'CODE';
   const isEnd = node.data.nodeType === 'END';
   const isStart = node.data.nodeType === 'START';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
+  const onConfig = (partial: Record<string, unknown>) => onChange({ config: { ...config, ...partial } });
+  const hasRetry = isAgentNode || isMcpTool || isApiTool;
   // The panel is keyed by node.id at the call site, so it remounts per node and these initialize once per node —
   // no effect, no stale-render window, and no feedback loop with the config this panel itself mutates.
   const [configText, setConfigText] = useState(() => JSON.stringify(node.data.config ?? {}, null, 2));
@@ -75,6 +82,10 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
             placeholder="defaults to the run input"
           />
         </>
+      ) : isMcpTool ? (
+        <McpToolConfig config={config} onConfig={onConfig} nodes={nodes} selfId={node.id} />
+      ) : isApiTool ? (
+        <ApiToolConfig config={config} onConfig={onConfig} nodes={nodes} selfId={node.id} />
       ) : isIfElse ? (
         <>
           <label style={label}>Branches</label>
@@ -107,6 +118,8 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
           {configError && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>{configError}</div>}
         </>
       )}
+
+      {hasRetry && <RetryFields config={config} onConfig={onConfig} />}
 
       {!isStart && <button onClick={onDelete} style={deleteBtn}><Trash2 size={15} /> Delete node</button>}
     </div>
