@@ -34,23 +34,17 @@ class ToolRegistryTest {
     @Nested
     class BuiltinProvider {
         @Test
-        void shouldProvideAllBuiltinTools() {
+        void shouldProvideBuiltinTools() {
             var provider = new BuiltinToolProvider();
-            var tools = provider.provide();
-
             assertEquals("builtin", provider.id());
             assertEquals(10, provider.priority());
-            assertTrue(tools.size() > 0, "should provide builtin tools");
-            assertTrue(tools.containsKey("read_file"));
-            assertTrue(tools.containsKey("write_file"));
-            assertTrue(tools.containsKey("shell_command"));
         }
 
         @Test
         void shouldRegisterAndMaterializeBuiltinTools() {
             registry.registerProvider(new BuiltinToolProvider());
 
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             var names = mat.definitions().stream().map(t -> t.function.name).toList();
 
             assertTrue(names.contains("read_file"));
@@ -67,7 +61,7 @@ class ToolRegistryTest {
             registry.registerProvider(createProvider("low", 100,
                     Map.of("shared", newEchoTool("shared", "low prio", ToolExposure.DIRECT))));
 
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             assertEquals(1, mat.definitions().size());
             assertEquals("high prio", mat.definitions().getFirst().function.description);
         }
@@ -79,7 +73,7 @@ class ToolRegistryTest {
             registry.registerProvider(createProvider("p2", 20,
                     Map.of("write_file", newEchoTool("write_file", "writes", ToolExposure.DIRECT))));
 
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             var names = mat.definitions().stream().map(t -> t.function.name).sorted().toList();
             assertEquals(List.of("read_file", "write_file"), names);
         }
@@ -88,19 +82,19 @@ class ToolRegistryTest {
         void shouldRemoveToolsOnProviderUnregistration() {
             registry.registerProvider(createProvider("temp", 10,
                     Map.of("echo", newEchoTool("echo", "echo", ToolExposure.DIRECT))));
-            assertEquals(1, registry.materialize(ContextSnapshot.builder().build()).definitions().size());
+            assertEquals(1, registry.materialize().definitions().size());
 
             registry.unregisterProvider("temp");
-            assertEquals(0, registry.materialize(ContextSnapshot.builder().build()).definitions().size());
+            assertEquals(0, registry.materialize().definitions().size());
         }
 
         @Test
         void shouldIncrementEpochOnProviderChange() {
             registry.registerProvider(createProvider("p1", 10, Map.of()));
-            var epoch1 = registry.materialize(ContextSnapshot.builder().build()).epoch();
+            var epoch1 = registry.materialize().epoch();
 
             registry.registerProvider(createProvider("p2", 20, Map.of()));
-            var epoch2 = registry.materialize(ContextSnapshot.builder().build()).epoch();
+            var epoch2 = registry.materialize().epoch();
 
             assertTrue(epoch2 > epoch1);
         }
@@ -110,7 +104,7 @@ class ToolRegistryTest {
     class Materialize {
         @Test
         void shouldReturnEmptyWhenNoProviders() {
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             assertTrue(mat.definitions().isEmpty());
         }
 
@@ -121,7 +115,7 @@ class ToolRegistryTest {
                     "beta", newEchoTool("beta", "beta", ToolExposure.DIRECT)
             )));
 
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             var names = mat.definitions().stream().map(t -> t.function.name).sorted().toList();
 
             assertEquals(List.of("alpha", "beta"), names);
@@ -134,7 +128,7 @@ class ToolRegistryTest {
                     "hidden", newEchoTool("hidden", "hidden", ToolExposure.HIDDEN)
             )));
 
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             assertEquals(List.of("visible"), mat.definitions().stream().map(t -> t.function.name).toList());
 
             // hidden tool is still dispatchable
@@ -150,7 +144,7 @@ class ToolRegistryTest {
                     "deferred", newEchoTool("deferred", "deferred", ToolExposure.DEFERRED)
             )));
 
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             assertEquals(List.of("direct"), mat.definitions().stream().map(t -> t.function.name).toList());
 
             // deferred is still dispatchable (LLM can call after tool_search)
@@ -173,7 +167,7 @@ class ToolRegistryTest {
             registry.registerProvider(createProvider("test", 10,
                     Map.of("echo", newEchoTool("echo", "echo", ToolExposure.DIRECT))));
 
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             var call = FunctionCall.of("call_1", "function", "echo", "{\"msg\":\"hello\"}");
 
             var result = registry.dispatch(mat, call, ctx);
@@ -186,7 +180,7 @@ class ToolRegistryTest {
             registry.registerProvider(createProvider("test", 10,
                     Map.of("echo", newEchoTool("echo", "echo", ToolExposure.DIRECT))));
 
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
             var call = FunctionCall.of("call_1", "function", "nonexistent", "{}");
 
             var result = registry.dispatch(mat, call, ctx);
@@ -198,7 +192,7 @@ class ToolRegistryTest {
         void shouldRejectStaleCallAfterProviderChanged() {
             registry.registerProvider(createProvider("v1", 10,
                     Map.of("echo", newEchoTool("echo", "v1", ToolExposure.DIRECT))));
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
 
             registry.registerProvider(createProvider("v2", 5,
                     Map.of("echo", newEchoTool("echo", "v2", ToolExposure.DIRECT))));
@@ -214,7 +208,7 @@ class ToolRegistryTest {
         void shouldRejectStaleCallAfterProviderRemoved() {
             registry.registerProvider(createProvider("v1", 10,
                     Map.of("echo", newEchoTool("echo", "echo", ToolExposure.DIRECT))));
-            var mat = registry.materialize(ContextSnapshot.builder().build());
+            var mat = registry.materialize();
 
             registry.unregisterProvider("v1");
 
@@ -227,41 +221,16 @@ class ToolRegistryTest {
     }
 
     @Nested
-    class ContextSnapshotBuilder {
+    class Factory {
         @Test
-        void shouldSetDefaults() {
-            var snapshot = ContextSnapshot.builder().build();
+        void shouldCreateRegistryWithBuiltinTools() {
+            var factory = new ToolRegistryFactory();
+            var factoryRegistry = factory.create(FactoryContext.DEFAULT);
+            var mat = factoryRegistry.materialize();
+            var names = mat.definitions().stream().map(t -> t.function.name).toList();
 
-            assertEquals(ContextSnapshot.OperatingSystem.UNKNOWN, snapshot.os());
-            assertTrue(snapshot.permissions().isEmpty());
-            assertTrue(snapshot.featureFlags().isEmpty());
-            assertTrue(snapshot.isOnline());
-        }
-
-        @Test
-        void shouldBuildWithModelAndOs() {
-            var snapshot = ContextSnapshot.builder()
-                    .modelProvider("anthropic")
-                    .modelName("claude-sonnet-4-6")
-                    .os(ContextSnapshot.OperatingSystem.MACOS)
-                    .build();
-
-            assertEquals("anthropic", snapshot.modelProvider());
-            assertEquals("claude-sonnet-4-6", snapshot.modelName());
-            assertEquals(ContextSnapshot.OperatingSystem.MACOS, snapshot.os());
-        }
-
-        @Test
-        void shouldBuildWithPermissionsAndFlags() {
-            var snapshot = ContextSnapshot.builder()
-                    .addPermission("admin")
-                    .addFeatureFlag("standalone_web_search")
-                    .isOnline(false)
-                    .build();
-
-            assertTrue(snapshot.permissions().contains("admin"));
-            assertTrue(snapshot.featureFlags().contains("standalone_web_search"));
-            assertTrue(!snapshot.isOnline());
+            assertTrue(names.contains("read_file"));
+            assertTrue(names.contains("write_file"));
         }
     }
 

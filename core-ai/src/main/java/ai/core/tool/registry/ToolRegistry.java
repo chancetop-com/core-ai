@@ -76,7 +76,7 @@ public class ToolRegistry {
         return epoch.get();
     }
 
-    public ToolMaterialization materialize(ContextSnapshot context) {
+    public ToolMaterialization materialize() {
         var allTools = collectTools();
         var epochSnapshot = currentEpoch();
         var definitions = new ArrayList<Tool>();
@@ -84,8 +84,7 @@ public class ToolRegistry {
 
         for (var entry : allTools.entrySet()) {
             var tool = entry.getValue();
-            var exposure = tool.getExposure();
-            if (exposure == ToolExposure.DIRECT) {
+            if (tool.getExposure() == ToolExposure.DIRECT) {
                 definitions.add(tool.toTool());
             }
             dispatchMap.put(entry.getKey(), tool);
