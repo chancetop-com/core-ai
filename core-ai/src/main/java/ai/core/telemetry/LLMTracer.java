@@ -110,7 +110,8 @@ public class LLMTracer extends Tracer {
     }
 
     private Span createLLMSpan(String providerName, CompletionRequest request, Consumer<SpanContext> sink) {
-        var span = tracer.spanBuilder(providerName)
+        var spanName = request.getName() != null ? request.getName() : providerName;
+        var span = tracer.spanBuilder(spanName)
             .setSpanKind(SpanKind.CLIENT)
             .setAllAttributes(buildRequestAttributes(providerName, request))
             .setAttribute(LANGFUSE_OBSERVATION_TYPE, "generation")
@@ -139,8 +140,9 @@ public class LLMTracer extends Tracer {
      * Build request attributes from completion request
      */
     private Attributes buildRequestAttributes(String providerName, CompletionRequest request) {
+        var operationName = request.getName() != null ? request.getName() : "chat";
         var builder = Attributes.builder()
-            .put(GEN_AI_OPERATION_NAME, "chat")
+            .put(GEN_AI_OPERATION_NAME, operationName)
             .put(GEN_AI_SYSTEM, providerName)
             .put(GEN_AI_REQUEST_MODEL, request.model != null ? request.model : "default");
 
