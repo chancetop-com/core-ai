@@ -172,6 +172,7 @@ public class TaskTool extends ToolCall {
         subContext.setLifecycles(context.getLifecycle());
         subContext.setTokenCostCallback(context.getTokenCostCallback());
         subContext.setSubAgentConfigs(context.getSubAgentConfigs());
+        subContext.setToolRegistry(context.getToolRegistry());
         return subContext;
     }
 
@@ -179,17 +180,18 @@ public class TaskTool extends ToolCall {
         var llmProvider = resolveLlmProvider(subagentType, context);
         var model = resolveModel(subagentType, context);
         var maxTurnNumber = resolveMaxTurnNumber(subagentType, context);
+        var toolRegistry = context.getToolRegistry();
         if (DeepResearchAgent.AGENT_NAME.equals(subagentType)) {
-            return DeepResearchAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
+            return DeepResearchAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultExploreAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
+            return DefaultExploreAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         if (DefaultCodeSimplifierAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultCodeSimplifierAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
+            return DefaultCodeSimplifierAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         if (DefaultGeneralAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultGeneralAgent.of(llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
+            return DefaultGeneralAgent.of(toolRegistry, llmProvider, model, context.getStreamingCallback(), context.getLifecycle(), context.getPromptSections(), maxTurnNumber);
         }
         throw new RuntimeException("Unknown subagent type: " + subagentType);
     }
