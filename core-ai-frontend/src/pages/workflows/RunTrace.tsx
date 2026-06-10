@@ -2,18 +2,23 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, ChevronDown, ExternalLink, FileDown } from 'lucide-react';
 import { RUN_STATUS_COLOR, TERMINAL_RUN_STATUS, type WorkflowRFNode } from './graph';
+import { type InputVar } from './configWidgets';
 import type { WorkflowNodeRunView } from '../../api/client';
+
+export interface ResumeBody { approve?: boolean; input?: string }
 
 interface Props {
   nodes: WorkflowRFNode[];
   runStatus: string;
   nodeRuns: Record<string, WorkflowNodeRunView>;
   focusNodeId?: string | null;     // a node clicked on the canvas auto-expands in the trace
+  onResume?: (nodeId: string, body: ResumeBody) => void;   // live test panel only; absent in read-only history
+  busy?: boolean;
 }
 
 /** Shared run trace: an overall status row, each node's execution (status, timing, input/output), and the final
  *  result. Used by the live test panel (RunPanel) and the run-history panel so both render runs identically. */
-export default function RunTrace({ nodes, runStatus, nodeRuns, focusNodeId }: Props) {
+export default function RunTrace({ nodes, runStatus, nodeRuns, focusNodeId, onResume, busy }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   useEffect(() => { if (focusNodeId) setExpanded((s) => new Set(s).add(focusNodeId)); }, [focusNodeId]);
 
@@ -50,6 +55,9 @@ export default function RunTrace({ nodes, runStatus, nodeRuns, focusNodeId }: Pr
             </div>
             {open && (
               <div style={nodeBody}>
+                {r.status === 'WAITING' && onResume && (
+                  <ResumeForm node={nodes.find((n) => n.id === r.node_id)} ask={r.input} busy={!!busy} onSubmit={(body) => onResume(r.node_id, body)} />
+                )}
                 {r.error && <Field title="Error" body={r.error} danger />}
                 <Field title="Input" body={r.input} />
                 <Field title="Output" body={r.output} />
@@ -91,6 +99,71 @@ function Field({ title, body, danger }: { title: string; body?: string; danger?:
   );
 }
 
+/** The human-action form for a WAITING HUMAN_INPUT node: approve/reject buttons (approval mode) or a typed form
+ *  whose object is submitted as the node output (input mode). Prompt comes from the node-run ask snapshot. */
+function ResumeForm({ node, ask, busy, onSubmit }: {
+  node?: WorkflowRFNode; ask?: string; busy: boolean; onSubmit: (body: ResumeBody) => void;
+}) {
+  const config = (node?.data.config ?? {}) as Record<string, unknown>;
+  const mode = config.mode === 'input' ? 'input' : 'approval';
+  const fields: InputVar[] = Array.isArray(config.fields) ? (config.fields as InputVar[]) : [];
+  const [form, setForm] = useState<Record<string, string | boolean>>({});
+  const prompt = parsePrompt(ask);
+
+  const submitInput = () => {
+    const payload: Record<string, unknown> = {};
+    for (const f of fields) {
+      if (!f.name) continue;
+      const raw = form[f.name];
+      if (f.type === 'boolean') payload[f.name] = !!raw;
+      else if (f.type === 'number') { if (raw !== undefined && raw !== '') payload[f.name] = Number(raw); }
+      else if (raw !== undefined && raw !== '') payload[f.name] = raw;
+    }
+    onSubmit({ input: JSON.stringify(payload) });
+  };
+
+  return (
+    <div style={resumeBox}>
+      {prompt && <div style={{ fontSize: 12, color: 'var(--color-text)', marginBottom: 8, lineHeight: 1.5 }}>{prompt}</div>}
+      {mode === 'approval' ? (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button disabled={busy} onClick={() => onSubmit({ approve: true })} style={approveBtn}>Approve</button>
+          <button disabled={busy} onClick={() => onSubmit({ approve: false })} style={rejectBtn}>Reject</button>
+        </div>
+      ) : (
+        <>
+          {fields.map((f, i) => (
+            <div key={f.name || i} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--color-text)', marginBottom: 3 }}>{f.label || f.name}{f.required && <span style={{ color: '#dc2626' }}> *</span>}</div>
+              {f.type === 'boolean' ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text)' }}>
+                  <input type="checkbox" checked={!!form[f.name]} disabled={busy} onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.checked }))} /> {f.name}
+                </label>
+              ) : f.type === 'paragraph' ? (
+                <textarea value={String(form[f.name] ?? '')} disabled={busy} onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))} rows={3} style={{ ...resumeInput, resize: 'vertical' }} />
+              ) : (
+                <input type={f.type === 'number' ? 'number' : 'text'} value={String(form[f.name] ?? '')} disabled={busy} onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))} style={resumeInput} />
+              )}
+            </div>
+          ))}
+          <button disabled={busy} onClick={submitInput} style={approveBtn}>Submit</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// The node-run ask snapshot is {"mode":..,"prompt":..} — show the rendered prompt; fall back to nothing.
+function parsePrompt(ask?: string): string {
+  if (!ask) return '';
+  try {
+    const o = JSON.parse(ask) as { prompt?: unknown };
+    return typeof o.prompt === 'string' ? o.prompt : '';
+  } catch {
+    return '';
+  }
+}
+
 function elapsed(r: WorkflowNodeRunView): string {
   if (!r.started_at) return '';
   const end = r.completed_at ? new Date(r.completed_at).getTime() : Date.now();
@@ -118,4 +191,20 @@ const pre: CSSProperties = {
 };
 const dim: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)' };
 const childLink: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none' };
+const resumeBox: CSSProperties = {
+  marginBottom: 10, padding: 10, borderRadius: 8,
+  background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.35)',
+};
+const resumeInput: CSSProperties = {
+  width: '100%', boxSizing: 'border-box', padding: '6px 9px', fontSize: 12,
+  border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',
+};
+const approveBtn: CSSProperties = {
+  padding: '6px 14px', fontSize: 13, fontWeight: 500, border: 'none', borderRadius: 7,
+  background: 'var(--color-primary)', color: '#fff', cursor: 'pointer',
+};
+const rejectBtn: CSSProperties = {
+  padding: '6px 14px', fontSize: 13, fontWeight: 500, borderRadius: 7,
+  border: '1px solid #fecaca', background: 'transparent', color: '#dc2626', cursor: 'pointer',
+};
 const artifactLink: CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none', marginBottom: 3, wordBreak: 'break-all' };

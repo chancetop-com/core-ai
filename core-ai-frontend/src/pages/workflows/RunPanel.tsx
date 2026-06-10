@@ -14,12 +14,13 @@ interface Props {
   error: string;                     // save/validate/run failure, shown before the run starts
   focusNodeId: string | null;        // a node clicked on the canvas auto-expands in the trace
   onRun: (input: string) => void;
+  onResume: (nodeId: string, body: { approve?: boolean; input?: string }) => void;
   onClose: () => void;
 }
 
 /** The test panel (Dify-style): enter input → Test → watch each node execute with status, timing and
  *  input/output → see the final result. Runs the current draft, no publish required. */
-export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, error, focusNodeId, onRun, onClose }: Props) {
+export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, error, focusNodeId, onRun, onResume, onClose }: Props) {
   const inputVars = startInputVars(nodes);
   const [input, setInput] = useState('');                                 // free-text/JSON fallback (no declared inputs)
   const [form, setForm] = useState<Record<string, string | boolean>>({}); // typed form values
@@ -98,7 +99,7 @@ export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, erro
         </>
       )}
 
-      {runId && <RunTrace nodes={nodes} runStatus={runStatus} nodeRuns={nodeRuns} focusNodeId={focusNodeId} />}
+      {runId && <RunTrace nodes={nodes} runStatus={runStatus} nodeRuns={nodeRuns} focusNodeId={focusNodeId} onResume={onResume} busy={busy} />}
     </div>
   );
 }

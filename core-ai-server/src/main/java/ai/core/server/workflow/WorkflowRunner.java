@@ -97,6 +97,10 @@ public class WorkflowRunner {
                 LOGGER.warn("lease lost mid-drive, leaving finalization to the new owner, runId={}", runId);
                 return true;
             }
+            if (status == RunStatus.PAUSED) {
+                pause(runId);   // parked on human input — not terminal, resume endpoint will wake it
+                return true;
+            }
             boolean completed = status == RunStatus.COMPLETED;
             terminate(runId, status, null, completed ? endOutput(runId) : null, completed ? collectArtifacts(runId) : List.of());
             return true;
@@ -153,6 +157,20 @@ public class WorkflowRunner {
             }
         } catch (RuntimeException e) {
             LOGGER.warn("lease renew failed, will retry next tick, runId={}", runId, e);
+        }
+    }
+
+    // Park a run on human input: PAUSED, no completed_at (not terminal). Guarded by claimed_by + still-RUNNING so
+    // a stolen lease can't park someone else's run. PAUSED is excluded from the claim filter, so the job won't
+    // pick it up — only the resume endpoint flips it back to PENDING.
+    private void pause(String runId) {
+        long updated = runCollection.update(
+            Filters.and(Filters.eq("_id", runId), Filters.eq("claimed_by", workerId), Filters.eq("status", RunStatus.RUNNING)),
+            Updates.set("status", RunStatus.PAUSED));
+        if (updated == 0) {
+            LOGGER.warn("workflow run not paused (lost claim or already terminal), runId={}", runId);
+        } else {
+            LOGGER.info("workflow run paused on human input, runId={}", runId);
         }
     }
 

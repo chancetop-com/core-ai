@@ -48,6 +48,10 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
                 nodeRun.error = fail.error();
                 nodeRun.childRunId = fail.childRunId();
             }
+            case NodeOutcome.Waiting waiting -> {
+                nodeRun.status = NodeRunStatus.WAITING;
+                nodeRun.inputJson = waiting.ask();
+            }
         }
     }
 

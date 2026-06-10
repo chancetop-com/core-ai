@@ -74,4 +74,10 @@ public interface WorkflowWebService {
     @GET
     @Path("/api/workflow-runs/:runId/graph")
     WorkflowRunGraphResponse runGraph(@PathParam("runId") String runId);
+
+    // Resume a paused run by providing a human decision/input for the HUMAN_INPUT node it is waiting on.
+    @POST
+    @Path("/api/workflow-runs/:runId/resume")
+    @ResponseStatus(HTTPStatus.ACCEPTED)
+    CreateRunResponse resumeRun(@PathParam("runId") String runId, ResumeRunRequest request);
 }

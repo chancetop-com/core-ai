@@ -817,6 +817,8 @@ export const api = {
     getRun: (runId: string) => request<WorkflowRunView>(`/api/workflow-runs/${runId}`),
     nodeRuns: (runId: string) => request<ListNodeRunsResponse>(`/api/workflow-runs/${runId}/nodes`),
     runGraph: (runId: string) => request<WorkflowRunGraphResponse>(`/api/workflow-runs/${runId}/graph`),
+    resume: (runId: string, body: { node_id: string; approve?: boolean; input?: string }) =>
+      request<CreateRunResponse>(`/api/workflow-runs/${runId}/resume`, { method: 'POST', body: JSON.stringify(body) }),
   },
   utils: {
     generate: (data: { system_prompt: string; user_prompt: string }) =>

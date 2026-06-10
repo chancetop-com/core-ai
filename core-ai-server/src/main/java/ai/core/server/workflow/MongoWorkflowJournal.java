@@ -70,6 +70,12 @@ public class MongoWorkflowJournal implements WorkflowJournal {
                 nodeRun.error = fail.error();
                 nodeRun.childRunId = fail.childRunId();
             }
+            case NodeOutcome.Waiting waiting -> {
+                // park: out-edges stay PENDING (WAITING -> running fact). The resume endpoint later flips this to
+                // COMPLETED with the human's output/decision. input_json holds the rendered ask for the UI.
+                nodeRun.status = NodeRunStatus.WAITING;
+                nodeRun.inputJson = waiting.ask();
+            }
         }
         nodeRun.completedAt = ZonedDateTime.now();
         collection.replace(nodeRun);

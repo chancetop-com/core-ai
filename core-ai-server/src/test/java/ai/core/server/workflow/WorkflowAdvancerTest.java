@@ -241,6 +241,29 @@ class WorkflowAdvancerTest {
         }
     }
 
+    @Test
+    void humanInputNodePausesRunThenResumesToCompletion() {
+        WorkflowGraph graph = graph(
+            List.of(node("start"), node("ask"), node("end")),
+            List.of(edge("e0", "start", "ask"), edge("e1", "ask", "end")));
+        var journal = new InMemoryWorkflowJournal();
+        NodeExecutor executor = ctx -> ctx.node().id().equals("ask")
+            ? new NodeOutcome.Waiting("{\"mode\":\"input\"}")
+            : new NodeOutcome.Normal("{}");
+
+        // first drive parks the run on the human-input node — out-edges stay PENDING, downstream not reached
+        RunStatus paused = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        assertEquals(RunStatus.PAUSED, paused);
+        assertEquals(NodeRunStatus.WAITING, journal.status("run-1", "ask"));
+        assertNull(journal.status("run-1", "end"));
+
+        // the resume endpoint settles the waiting node to COMPLETED; re-driving (re-fold) continues to the end
+        journal.seedCompleted("run-1", "ask");
+        RunStatus completed = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+        assertEquals(RunStatus.COMPLETED, completed);
+        assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "end"));
+    }
+
     // ---- helpers ----
 
     private static void await(CountDownLatch latch) {

@@ -71,6 +71,7 @@ import ai.core.server.workflow.executor.ApiToolExecutor;
 import ai.core.server.workflow.executor.CodeExecutor;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HttpExecutor;
+import ai.core.server.workflow.executor.HumanInputExecutor;
 import ai.core.server.workflow.executor.IfElseExecutor;
 import ai.core.server.workflow.executor.McpToolExecutor;
 import ai.core.server.workflow.executor.RetryingNodeExecutor;
@@ -304,6 +305,7 @@ public class ServerModule extends Module {
             Map.entry(NodeType.HTTP, httpExecutor),
             Map.entry(NodeType.IF_ELSE, new IfElseExecutor()),
             Map.entry(NodeType.AGGREGATOR, new AggregatorExecutor()),
+            Map.entry(NodeType.HUMAN_INPUT, new HumanInputExecutor()),
             Map.entry(NodeType.CODE, new CodeExecutor(sandboxService))));
         bind(NodeExecutor.class, registry);
 

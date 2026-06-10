@@ -4,6 +4,7 @@ import { AlertTriangle, Trash2, X } from 'lucide-react';
 import { nodeMeta, type WorkflowNodeData, type WorkflowRFNode } from './graph';
 import { nodeIssues } from './validation';
 import IfElseConfig from './IfElseConfig';
+import HumanInputConfig from './HumanInputConfig';
 import CodeConfig from './CodeConfig';
 import StartConfig from './StartConfig';
 import McpToolConfig from './McpToolConfig';
@@ -35,6 +36,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   const isEnd = node.data.nodeType === 'END';
   const isAggregator = node.data.nodeType === 'AGGREGATOR';
   const isStart = node.data.nodeType === 'START';
+  const isHumanInput = node.data.nodeType === 'HUMAN_INPUT';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
   const onConfig = (partial: Record<string, unknown>) => onChange({ config: { ...config, ...partial } });
   const hasRetry = isAgentNode || isMcpTool || isApiTool || isHttp;
@@ -111,6 +113,8 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
         </>
       ) : isCode ? (
         <CodeConfig node={node} nodes={nodes} onChange={onChange} />
+      ) : isHumanInput ? (
+        <HumanInputConfig node={node} nodes={nodes} edges={edges} onChange={onChange} />
       ) : isStart ? (
         <StartConfig node={node} onChange={onChange} />
       ) : isEnd ? (

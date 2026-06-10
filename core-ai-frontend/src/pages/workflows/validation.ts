@@ -38,6 +38,9 @@ export function nodeIssues(node: WorkflowRFNode, edges: Edge[]): string[] {
     case 'IF_ELSE':
       ifElseIssues(cfg, node.id, edges, issues);
       break;
+    case 'HUMAN_INPUT':
+      humanInputIssues(cfg, node.id, edges, issues);
+      break;
     default:
       break;
   }
@@ -49,6 +52,20 @@ function startIssues(cfg: Record<string, unknown>, issues: string[]): void {
   if (inputs.some((v) => !String(v.name ?? '').trim())) issues.push('Every input variable needs a name.');
   const names = inputs.map((v) => String(v.name ?? '').trim()).filter(Boolean);
   if (new Set(names).size !== names.length) issues.push('Input variable names must be unique.');
+}
+
+function humanInputIssues(cfg: Record<string, unknown>, nodeId: string, edges: Edge[], issues: string[]): void {
+  const outs = edges.filter((e) => e.source === nodeId).map((e) => e.id);
+  if (cfg.mode === 'input') {
+    const fields = Array.isArray(cfg.fields) ? (cfg.fields as InputVar[]) : [];
+    if (fields.length === 0) issues.push('Add at least one form field.');
+    if (fields.some((f) => !String(f.name ?? '').trim())) issues.push('Every form field needs a name.');
+  } else {
+    const approve = String(cfg.approve_edge_id ?? '');
+    const reject = String(cfg.reject_edge_id ?? '');
+    if (!approve || !outs.includes(approve)) issues.push('Pick the approve target edge.');
+    if (!reject || !outs.includes(reject)) issues.push('Pick the reject target edge.');
+  }
 }
 
 function ifElseIssues(cfg: Record<string, unknown>, nodeId: string, edges: Edge[], issues: string[]): void {

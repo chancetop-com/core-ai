@@ -1,6 +1,8 @@
 package ai.core.server.workflow;
 
+import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
+import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.Frontier;
 import ai.core.server.workflow.engine.NodeFactStatus;
@@ -92,7 +94,7 @@ public final class WorkflowAdvancer {
                 if (finalFrontier.hasProgress()) {
                     continue;   // a just-missed completion opened new work
                 }
-                return classify(finalState, finalFrontier);
+                return classify(finalState, finalFrontier, hasWaitingNode(journal, run));
             }
         } finally {
             awaitAll(inflight);   // drain in-flight tasks on cancel / exception / normal exit before returning
@@ -152,15 +154,28 @@ public final class WorkflowAdvancer {
         }
     }
 
-    // A retryable node failure currently terminalizes the run as FAILED; resumable manual retry (a PAUSED run
-    // status) is a deferred feature — see design-workflow-engine.md section 12. A genuinely stuck run (no
-    // failure, no output reached) also collapses to FAILED, intentionally.
-    private static RunStatus classify(RunState state, Frontier frontier) {
+    // Terminal classification. Order: a real failure -> FAILED; else output reached -> COMPLETED; else parked on a
+    // HUMAN_INPUT node -> PAUSED (the run resumes when the human responds); else genuinely stuck -> FAILED.
+    private static RunStatus classify(RunState state, Frontier frontier, boolean hasWaiting) {
         boolean anyFailed = state.facts().values().stream().anyMatch(fact -> fact.status() == NodeFactStatus.FAILED);
         if (anyFailed) {
             return RunStatus.FAILED;
         }
-        return frontier.outputReached() ? RunStatus.COMPLETED : RunStatus.FAILED;
+        if (frontier.outputReached()) {
+            return RunStatus.COMPLETED;
+        }
+        return hasWaiting ? RunStatus.PAUSED : RunStatus.FAILED;
+    }
+
+    // A WAITING node-run at the root scope means the run is parked on human input, not stuck. Read straight from
+    // the journal: WAITING projects to a RUNNING fact for edge purposes, so the planner can't distinguish it.
+    private static boolean hasWaitingNode(WorkflowJournal journal, WorkflowRun run) {
+        for (WorkflowNodeRun nodeRun : journal.nodeRuns(run.id)) {
+            if (nodeRun.status == NodeRunStatus.WAITING && ROOT_SCOPE_KEY.equals(nodeRun.scopePathKey)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void awaitAny(Map<String, CompletableFuture<Void>> inflight) {

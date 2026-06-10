@@ -18,6 +18,7 @@ public enum NodeType {
     AGGREGATOR,
     MCP_TOOL,
     API_TOOL,
+    HUMAN_INPUT,
     NOTE;
     // todo: ITERATION / LOOP container node types are deferred (P3) — re-add with the container-scope engine work.
 

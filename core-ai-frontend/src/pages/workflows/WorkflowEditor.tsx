@@ -266,6 +266,18 @@ export default function WorkflowEditor() {
     } finally { setBusy(false); }
   };
 
+  // Resume a paused run by settling the human-input node. Polling keeps running (PAUSED isn't terminal), so the
+  // trace picks up the run going RUNNING again on the next tick.
+  const startResume = async (nodeId: string, body: { approve?: boolean; input?: string }) => {
+    if (!runId) return;
+    setBusy(true); setRunError('');
+    try {
+      await api.workflows.resume(runId, { node_id: nodeId, ...body });
+    } catch (e) {
+      setRunError(`Resume failed: ${(e as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
   const exitRun = () => {
     // setting runId to null triggers the polling effect's cleanup, which owns and stops the interval
     setRunId(null);
@@ -329,6 +341,7 @@ export default function WorkflowEditor() {
                 error={runError}
                 focusNodeId={selectedId}
                 onRun={startRun}
+                onResume={startResume}
                 onClose={exitRun}
               />
             ) : selectedNode ? (

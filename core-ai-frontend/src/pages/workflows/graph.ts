@@ -22,7 +22,7 @@ export interface WorkflowGraph {
 }
 
 export const NODE_TYPES = [
-  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR',
+  'START', 'END', 'AGENT', 'LLM', 'CODE', 'HTTP', 'MCP_TOOL', 'API_TOOL', 'IF_ELSE', 'AGGREGATOR', 'HUMAN_INPUT',
 ] as const;
 // ANSWER removed (workflow-only, single END). NOTE removed (not needed yet).
 export type NodeType = typeof NODE_TYPES[number];
@@ -43,6 +43,7 @@ export const NODE_TYPE_META: Record<string, NodeTypeMeta> = {
   API_TOOL: { label: 'API Tool', color: '#d97706', description: 'Calls a Service-API operation.', outputHint: 'the operation result' },
   IF_ELSE: { label: 'If / Else', color: '#ea580c', description: 'Routes the flow to a branch by matching conditions.' },
   AGGREGATOR: { label: 'Aggregator', color: '#0d9488', description: 'Merges parallel branches into one value.', outputHint: 'the merged object / template' },
+  HUMAN_INPUT: { label: 'Human Input', color: '#ca8a04', description: 'Pauses the run for human approval or input.', outputHint: 'the collected input (input mode)' },
 };
 export function nodeMeta(type: string): NodeTypeMeta {
   return NODE_TYPE_META[type] ?? { label: type, color: '#64748b', description: '' };
@@ -54,9 +55,11 @@ export const DEFAULT_CODE = `# 'inputs' holds the variables you map below, e.g. 
 result = {"message": "hello, " + str(inputs.get("name", "world"))}
 `;
 
-// Seed config when a node is dropped on the canvas (CODE gets a starter script).
+// Seed config when a node is dropped on the canvas (CODE gets a starter script; HUMAN_INPUT defaults to approval).
 export function defaultNodeConfig(nodeType: string): Record<string, unknown> {
-  return nodeType === 'CODE' ? { code: DEFAULT_CODE } : {};
+  if (nodeType === 'CODE') return { code: DEFAULT_CODE };
+  if (nodeType === 'HUMAN_INPUT') return { mode: 'approval' };
+  return {};
 }
 
 export function newGraph(): WorkflowGraph {
@@ -109,6 +112,8 @@ export function nodeSummary(nodeType: string, config: Record<string, unknown>): 
       return str(config.output) ? 'mapped output' : 'auto from inputs';
     case 'AGGREGATOR':
       return str(config.output) ? 'mapped output' : 'auto-merge inputs';
+    case 'HUMAN_INPUT':
+      return str(config.mode) === 'input' ? 'human input' : 'human approval';
     default:
       return '';
   }
@@ -120,6 +125,7 @@ export const RUN_STATUS_COLOR: Record<string, string> = {
   PENDING: '#94a3b8',
   RUNNING: '#2563eb',
   WAITING: '#ca8a04',
+  PAUSED: '#ca8a04',
   COMPLETED: '#16a34a',
   SKIPPED: '#94a3b8',
   FAILED: '#dc2626',

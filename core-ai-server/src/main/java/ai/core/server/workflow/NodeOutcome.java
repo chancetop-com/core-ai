@@ -41,4 +41,9 @@ public sealed interface NodeOutcome {
             this(error, retryable, null);
         }
     }
+
+    /** The node is parked waiting for human input — the run pauses (out-edges stay PENDING) until a resume call
+     *  settles this node. {@code ask} is a rendered JSON snapshot (mode + prompt) the UI shows the human. */
+    record Waiting(String ask) implements NodeOutcome {
+    }
 }
