@@ -23,7 +23,7 @@ public final class ToolRegistryFactory {
         var registry = new ToolRegistry();
 
         registry.registerProvider(new BuiltinToolProvider("builtin-planning", planningTools(context)));
-        registry.registerProvider(new BuiltinToolProvider("builtin-files", BuiltinTools.FILE_OPERATIONS));
+        registry.registerProvider(new BuiltinToolProvider("builtin-files", fileTools(context)));
 
         registry.registerProvider(new BuiltinToolProvider("builtin-multimodal", BuiltinTools.MULTIMODAL));
         registry.registerProvider(new BuiltinToolProvider("builtin-web", BuiltinTools.WEB));
@@ -48,6 +48,14 @@ public final class ToolRegistryFactory {
             return BuiltinTools.POWERSHELL_EXECUTION;
         } else {
             return BuiltinTools.BASH_EXECUTION;
+        }
+    }
+
+    private static List<ToolCall> fileTools(FactoryContext context) {
+        if (context.platform().isWindows()) {
+            return BuiltinTools.FILE_OPERATIONS;
+        } else {
+            return BuiltinTools.FILE_RW;
         }
     }
 }

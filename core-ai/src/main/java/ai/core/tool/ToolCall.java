@@ -232,7 +232,8 @@ public abstract class ToolCall {
 
     public enum ConcurrencyGroupType {
         FILE_SEARCH("FileSearch"),
-        WEB_QUERY("WebQuery");
+        WEB_QUERY("WebQuery"),
+        SHELL_COMMAND("SafeBash");
         private final String typeName;
 
         ConcurrencyGroupType(String name) {
@@ -242,6 +243,15 @@ public abstract class ToolCall {
         public String getTypeName() {
             return typeName;
         }
+    }
+
+    /**
+     * Whether this specific tool call (identified by its arguments) is safe to run
+     * concurrently with other tools. Default is true — most tools are designed to be
+     * concurrency-safe. Override to provide dynamic checking based on arguments.
+     */
+    public boolean isConcurrencySafe(String arguments) {
+        return true;
     }
 
     public abstract static class Builder<B extends Builder<B, T>, T extends ToolCall> {

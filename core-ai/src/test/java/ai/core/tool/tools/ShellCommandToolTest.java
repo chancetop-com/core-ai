@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -125,5 +126,32 @@ class ShellCommandToolTest {
 
     private boolean isWindows() {
         return System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("win");
+    }
+
+    @Test
+    void shouldBeConcurrencySafeForReadOnlyCommands() {
+        assertTrue(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "ls -la"))));
+        assertTrue(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "cat file.txt | grep foo"))));
+        assertTrue(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "git status && git log"))));
+        assertTrue(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "echo hello"))));
+        assertTrue(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "pwd"))));
+        assertTrue(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "find . -name '*.java'"))));
+    }
+
+    @Test
+    void shouldNotBeConcurrencySafeForWriteCommands() {
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "rm -rf /"))));
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "echo hello > /tmp/x"))));
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "sed -i 's/a/b/' file"))));
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "rm file.txt"))));
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "git push"))));
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "mkdir newdir"))));
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", "echo $(rm -rf /)"))));
+    }
+
+    @Test
+    void shouldNotBeConcurrencySafeForBlankOrMissingCommand() {
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of("command", ""))));
+        assertFalse(tool.isConcurrencySafe(JSON.toJSON(Map.of())));
     }
 }

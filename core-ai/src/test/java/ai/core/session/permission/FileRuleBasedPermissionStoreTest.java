@@ -128,6 +128,6 @@ class FileRuleBasedPermissionStoreTest {
         assertTrue(store.checkPermission("read_file", Map.of("file_path", "/home/user/project/a.txt")).orElse(false));
         assertTrue(store.checkPermission("write_file", Map.of("file_path", "/home/user/project/b.txt")).orElse(false));
         assertTrue(store.checkPermission("edit_file", Map.of("file_path", "/home/user/project/c.txt")).orElse(false));
-        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "ls /home/user/project")).isEmpty());
+        assertTrue(store.checkPermission("run_bash_command", Map.of("command", "ls /home/user/project")).orElse(false));
     }
 }

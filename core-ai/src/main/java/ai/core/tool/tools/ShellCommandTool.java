@@ -7,6 +7,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.utils.BashReadOnlyChecker;
 import ai.core.utils.ShellUtil;
 import ai.core.utils.SystemUtil;
 import core.framework.util.Strings;
@@ -43,12 +44,9 @@ public class ShellCommandTool extends ToolCall {
             
             All commands run in the current working directory by default. Use the `workspace` parameter if you need to run a command in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workspace` instead.
             
-            IMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:
-            
-             - Read files: Use ${tool_read_file} (NOT cat/head/tail)
+            IMPORTANT: Avoid using this tool to run  `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:
+         
              - Edit files: Use ${tool_edit_file} (NOT sed/awk)
-             - File search: Use ${tool_glob} (NOT find or ls)
-             - Content search: Use ${tool_grep} (NOT grep or rg)
              - Write files: Use ${tool_write_file} (NOT echo >/cat <<EOF)
              - Communication: Output text directly (NOT echo/printf)
             While the ${tool_shell} tool can do similar things, it's better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.
@@ -58,9 +56,6 @@ public class ShellCommandTool extends ToolCall {
              - Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")
              - Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `cd`. You may use `cd` if the User explicitly requests it. In particular, never prepend `cd <current-directory>` to a `git` command — `git` already operates on the current working tree, and the compound triggers a permission prompt.
              - You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). By default, your command will timeout after ${default_timeout_ms}ms (${default_timeout_minutes} minutes).
-             - you can use the `mode` parameter indicates whether this is a read or write operation.
-                - "read": Only reads data, no modifications (e.g., ls, cat, grep, find without -delete). Permission may be auto-approved.
-                - "write": Modifies files or system state (e.g., rm, mkdir, echo >, sed -i). Requires explicit approval.
              - You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away - you'll be notified when it finishes. You do not need to use '&' at the end of the command when using this parameter.
              - When issuing multiple commands:
               - If the commands are independent and can run in parallel, make multiple Bash tool calls in a single message. Example: if you need to run "git status" and "git diff", send a single message with two Bash tool calls in parallel.
@@ -171,10 +166,7 @@ public class ShellCommandTool extends ToolCall {
 
     private static String buildToolDescription() {
         return TOOL_DESC_TEMPLATE
-                .replace("${tool_read_file}", ReadFileTool.TOOL_NAME)
                 .replace("${tool_edit_file}", EditFileTool.TOOL_NAME)
-                .replace("${tool_glob}", GlobFileTool.TOOL_NAME)
-                .replace("${tool_grep}", GrepFileTool.TOOL_NAME)
                 .replace("${tool_write_file}", WriteFileTool.TOOL_NAME)
                 .replace("${tool_shell}", TOOL_NAME)
                 .replace("${default_timeout_ms}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS))
@@ -362,6 +354,18 @@ public class ShellCommandTool extends ToolCall {
         return AsyncToolTaskExecutor.getInstance().cancel(taskId);
     }
 
+    @Override
+    public boolean isConcurrencySafe(String arguments) {
+        try {
+            var argsMap = parseArguments(arguments);
+            var command = getStringValue(argsMap, "command");
+            if (command == null || command.isBlank()) return false;
+            return BashReadOnlyChecker.isReadOnly(command);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static class Builder extends ToolCall.Builder<Builder, ShellCommandTool> {
         @Override
         protected Builder self() {
@@ -371,12 +375,12 @@ public class ShellCommandTool extends ToolCall {
         public ShellCommandTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
+            this.concurrencyGroup(ConcurrencyGroupType.SHELL_COMMAND.getTypeName());
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "workspace", "Working directory for command execution"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "timeout", "Optional timeout in milliseconds (max 600000)"),
                     ToolCallParameters.ParamSpec.of(String.class, "command", "The command to execute").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "description", "Clear, concise description of what this command does in active voice. Never use words like \\\"complex\\\" or \\\"risk\\\" in the description - just describe what it does.\\n\\nFor simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):\\n- ls \\u2192 \\\"List files in current directory\\\"\\n- git status \\u2192 \\\"Show working tree status\\\"\\n- npm install \\u2192 \\\"Install package dependencies\\\"\\n\\nFor commands that are harder to parse at a glance (piped commands, obscure flags, etc.), add enough context to clarify what it does:\\n- find . -name \\\"*.tmp\\\" -exec rm {} \\\\; \\u2192 \\\"Find and delete all .tmp files recursively\\\"\\n- git reset --hard origin/main \\u2192 \\\"Discard all local changes and match remote main\\\"\\n- curl -s url | jq '.data[]' \\u2192 \\\"Fetch JSON from URL and extract data array elements\\"),
-                    ToolCallParameters.ParamSpec.of(String.class, "mode", "Operation mode: 'read' for read-only operations, 'write' for operations that modify files or system state. This helps with permission control.").required(),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background", "Set to true to run this command in the background. Use Read to read the output later.")
             ));
             var tool = new ShellCommandTool();

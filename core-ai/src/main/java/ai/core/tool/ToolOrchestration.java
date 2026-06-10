@@ -73,6 +73,9 @@ public class ToolOrchestration {
 
         for (var tc : toolCalls) {
             var group = resolveGroup(tc);
+            if (!isCallConcurrencySafe(tc)) {
+                group = null;
+            }
             boolean sameGroup = group != null && group.equals(currentGroup);
 
             if (!sameGroup) {
@@ -218,6 +221,12 @@ public class ToolOrchestration {
 
     private String resolveGroup(FunctionCall tc) {
         return groupIndex.get(tc.function.name);
+    }
+
+    private boolean isCallConcurrencySafe(FunctionCall tc) {
+        var tool = toolIndex.get(tc.function.name);
+        if (tool == null) return false;
+        return tool.isConcurrencySafe(tc.function.arguments);
     }
 
     private Message buildToolNotFoundMessage(FunctionCall tc) {

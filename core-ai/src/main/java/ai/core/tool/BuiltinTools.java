@@ -88,6 +88,10 @@ public final class BuiltinTools {
     public static final List<ToolCall> POWERSHELL_EXECUTION = List.of(
             PowershellCommandTool.builder().build()
     );
+    public static final List<ToolCall> FILE_RW = List.of(
+            WriteFileTool.builder().build(),
+            EditFileTool.builder().build()
+    );
 
     public static final List<ToolCall> GITHUB = List.of(
             RequireGithubInstallationTokenTool.builder().build()

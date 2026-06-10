@@ -1,6 +1,7 @@
 package ai.core.tool.tools;
 
 import ai.core.tool.ToolCallParameters;
+import ai.core.utils.PowershellReadOnlyChecker;
 
 /**
  * PowerShell-specific command tool for Windows environments.
@@ -34,9 +35,6 @@ public class PowershellCommandTool extends ShellCommandTool {
              - Always quote file paths that contain spaces with double quotes (e.g., Set-Location "path with spaces/file.txt")
              - Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `Set-Location` / `cd`. You may use `cd` if the User explicitly requests it. In particular, never prepend `cd <current-directory>` to a `git` command — `git` already operates on the current working tree, and the compound triggers a permission prompt.
              - You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). By default, your command will timeout after ${default_timeout_ms}ms (${default_timeout_minutes} minutes).
-             - you can use the `mode` parameter indicates whether this is a read or write operation.
-                - "read": Only reads data, no modifications (e.g., Get-ChildItem, Get-Content, Select-String). Permission may be auto-approved.
-                - "write": Modifies files or system state (e.g., Remove-Item, New-Item, Set-Content). Requires explicit approval.
              - You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away — you'll be notified when it finishes. You do not need to use `&` at the end of the command when using this parameter.
              - When issuing multiple commands:
               - If the commands are independent and can run in parallel, make multiple PowerShell tool calls in a single message. Example: if you need to run "git status" and "git diff", send a single message with two PowerShell tool calls in parallel.
@@ -164,6 +162,19 @@ public class PowershellCommandTool extends ShellCommandTool {
     public static PowershellBuilder builder() {
         return new PowershellBuilder();
     }
+
+    @Override
+    public boolean isConcurrencySafe(String arguments) {
+        try {
+            var argsMap = parseArguments(arguments);
+            var command = getStringValue(argsMap, "command");
+            if (command == null || command.isBlank()) return false;
+            return PowershellReadOnlyChecker.isReadOnly(command);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static class PowershellBuilder extends Builder {
         @Override
         protected PowershellBuilder self() {
@@ -174,12 +185,12 @@ public class PowershellCommandTool extends ShellCommandTool {
         public PowershellCommandTool build() {
             this.name(POWERSHELL_TOOL_NAME);
             this.description(TOOL_DESC);
+            this.concurrencyGroup(ConcurrencyGroupType.SHELL_COMMAND.getTypeName());
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "workspace", "Working directory for command execution"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "timeout", "Optional timeout in milliseconds (max 600000)"),
                     ToolCallParameters.ParamSpec.of(String.class, "command", "The PowerShell command to execute").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "description", "Clear, concise description of what this command does in active voice."),
-                    ToolCallParameters.ParamSpec.of(String.class, "mode", "Operation mode: 'read' for read-only operations, 'write' for modifications.").required(),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background", "Set to true to run this command in the background.")
             ));
             var tool = new PowershellCommandTool();
