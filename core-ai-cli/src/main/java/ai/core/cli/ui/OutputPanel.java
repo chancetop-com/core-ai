@@ -2,8 +2,15 @@ package ai.core.cli.ui;
 
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.tool.DiffGenerator;
+import ai.core.tool.tools.EditFileTool;
+import ai.core.tool.tools.GlobFileTool;
+import ai.core.tool.tools.GrepFileTool;
+import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.ShellCommandTool;
 import ai.core.tool.tools.TaskTool;
+import ai.core.tool.tools.WebFetchTool;
+import ai.core.tool.tools.WebSearchTool;
+import ai.core.tool.tools.WriteFileTool;
 import ai.core.utils.JsonUtil;
 
 import java.io.PrintWriter;
@@ -26,17 +33,32 @@ public class OutputPanel {
     @SuppressWarnings("unchecked")
     public static String formatToolSummary(String toolName, String arguments, String model) {
         if (arguments == null || arguments.isBlank() || "{}".equals(arguments.trim())) {
-            return toolName;
+            return convertToolName(toolName);
         }
         try {
             Map<String, Object> argsMap = JsonUtil.fromJson(Map.class, arguments);
             String summary = specialTaskSummary(toolName, argsMap, model);
-            if (summary == null) return toolName;
+            if (summary == null) return convertToolName(toolName);
             if (summary.length() > 100) summary = summary.substring(0, 100) + "...";
-            return toolName + "(" + summary + ")";
+            return convertToolName(toolName) + "(" + summary + ")";
         } catch (Exception e) {
-            return toolName;
+            return convertToolName(toolName);
         }
+    }
+
+    public static String convertToolName(String sourceName) {
+        return switch (sourceName) {
+            case TaskTool.TOOL_NAME -> "Task";
+            case EditFileTool.TOOL_NAME -> "Update";
+            case WriteFileTool.TOOL_NAME -> "Write";
+            case ReadFileTool.TOOL_NAME -> "Read";
+            case GrepFileTool.TOOL_NAME -> "Grep";
+            case GlobFileTool.TOOL_NAME -> "Glob";
+            case ShellCommandTool.TOOL_NAME -> "Bash";
+            case WebFetchTool.TOOL_NAME -> "WebFetch";
+            case WebSearchTool.TOOL_NAME -> "WebSearch";
+            default -> sourceName;
+        };
     }
 
     static String specialTaskSummary(String toolName, Map<String, Object> argsMap, String model) {

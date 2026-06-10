@@ -97,7 +97,7 @@ public class BaseEventListener implements AgentEventListener {
     private String compactSummary(BatchToolStartEvent event) {
         var counts = new LinkedHashMap<String, Integer>();
         for (var ti : event.tools()) {
-            counts.merge(ti.toolName(), 1, Integer::sum);
+            counts.merge(OutputPanel.convertToolName(ti.toolName()), 1, Integer::sum);
         }
         return counts.entrySet().stream()
                 .map(e -> e.getKey() + "×" + e.getValue())

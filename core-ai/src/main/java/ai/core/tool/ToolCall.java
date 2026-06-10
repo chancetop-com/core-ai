@@ -233,7 +233,7 @@ public abstract class ToolCall {
     public enum ConcurrencyGroupType {
         FILE_SEARCH("FileSearch"),
         WEB_QUERY("WebQuery"),
-        SHELL_COMMAND("SafeBash");
+        SHELL_COMMAND("BatchBash");
         private final String typeName;
 
         ConcurrencyGroupType(String name) {
