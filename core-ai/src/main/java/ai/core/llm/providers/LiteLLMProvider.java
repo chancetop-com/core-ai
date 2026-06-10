@@ -1,7 +1,7 @@
 package ai.core.llm.providers;
 
-import ai.core.agent.streaming.DefaultStreamingCallback;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.DefaultStreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.document.Embedding;
 import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.llm.LLMProvider;

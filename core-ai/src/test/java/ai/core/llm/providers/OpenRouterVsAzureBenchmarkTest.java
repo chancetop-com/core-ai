@@ -1,7 +1,7 @@
 package ai.core.llm.providers;
 
 import ai.core.agent.Agent;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Message;

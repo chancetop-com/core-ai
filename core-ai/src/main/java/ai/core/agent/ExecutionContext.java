@@ -1,7 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Usage;
 import ai.core.persistence.PersistenceProvider;

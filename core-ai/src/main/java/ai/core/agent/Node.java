@@ -3,7 +3,7 @@ package ai.core.agent;
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.listener.MessageUpdatedEventListener;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.document.Tokenizer;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;

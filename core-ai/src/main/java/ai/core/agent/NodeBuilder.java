@@ -3,7 +3,7 @@ package ai.core.agent;
 import ai.core.agent.formatter.Formatter;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.listener.MessageUpdatedEventListener;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.persistence.Persistence;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.Prompts;

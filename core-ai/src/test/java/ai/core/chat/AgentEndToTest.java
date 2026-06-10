@@ -4,7 +4,7 @@ import ai.core.IntegrationTest;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.function.WeatherService;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;

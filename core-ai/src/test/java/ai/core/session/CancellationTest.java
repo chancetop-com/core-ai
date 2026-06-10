@@ -1,7 +1,7 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
 import ai.core.api.server.session.TurnCompleteEvent;

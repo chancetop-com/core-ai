@@ -3,7 +3,7 @@ package ai.core.end2endagenttest;
 import ai.core.IntegrationTest;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProviders;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.tool.tools.EditFileTool;

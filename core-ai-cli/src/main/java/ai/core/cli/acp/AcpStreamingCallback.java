@@ -1,6 +1,6 @@
 package ai.core.cli.acp;
 
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.domain.FunctionCall;
 import com.agentclientprotocol.sdk.agent.SyncPromptContext;
 import com.agentclientprotocol.sdk.spec.AcpSchema;

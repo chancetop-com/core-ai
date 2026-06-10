@@ -1,6 +1,6 @@
 package ai.core.context;
 
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.CaptionImageRequest;

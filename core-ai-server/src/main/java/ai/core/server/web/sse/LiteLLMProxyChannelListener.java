@@ -1,6 +1,6 @@
 package ai.core.server.web.sse;
 
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.server.web.auth.RequestAuthenticator;

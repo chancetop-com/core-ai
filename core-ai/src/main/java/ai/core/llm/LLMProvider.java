@@ -2,10 +2,10 @@ package ai.core.llm;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.internal.AgentHelper;
-import ai.core.agent.streaming.AsyncStreamingCallback;
-import ai.core.agent.streaming.BufferedStreamingCallback;
-import ai.core.agent.streaming.DefaultStreamingCallback;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.AsyncStreamingCallback;
+import ai.core.llm.streaming.BufferedStreamingCallback;
+import ai.core.llm.streaming.DefaultStreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.CompletionRequest;

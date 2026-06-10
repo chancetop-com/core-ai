@@ -2,7 +2,7 @@ package ai.core.defaultagents;
 
 import ai.core.agent.Agent;
 import ai.core.agent.lifecycle.AbstractLifecycle;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.prompt.PromptInject;
 import ai.core.tool.tools.GlobFileTool;

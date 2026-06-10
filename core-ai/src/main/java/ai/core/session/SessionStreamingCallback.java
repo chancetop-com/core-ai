@@ -1,6 +1,6 @@
 package ai.core.session;
 
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ErrorEvent;

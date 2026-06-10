@@ -1,4 +1,4 @@
-package ai.core.agent.streaming;
+package ai.core.llm.streaming;
 
 import ai.core.llm.domain.FunctionCall;
 import org.slf4j.Logger;

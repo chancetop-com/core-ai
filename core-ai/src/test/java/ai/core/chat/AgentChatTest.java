@@ -2,7 +2,7 @@ package ai.core.chat;
 
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;

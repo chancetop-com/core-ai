@@ -10,7 +10,7 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.domain.Usage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -1,8 +1,8 @@
 package ai.core.agent.internal;
 
 import ai.core.agent.ExecutionContext;
-import ai.core.agent.streaming.DefaultStreamingCallback;
-import ai.core.agent.streaming.StreamingCallback;
+import ai.core.llm.streaming.DefaultStreamingCallback;
+import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.domain.Content;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;

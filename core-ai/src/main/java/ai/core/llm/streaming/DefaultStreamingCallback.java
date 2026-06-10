@@ -1,4 +1,4 @@
-package ai.core.agent.streaming;
+package ai.core.llm.streaming;
 
 /**
  * @author stephen
