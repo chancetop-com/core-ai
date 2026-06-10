@@ -2,9 +2,10 @@ package ai.core.tool.registry;
 
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
-import ai.core.utils.Platform;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Static factory for assembling a {@link ToolRegistry} from a {@link FactoryContext}.
@@ -35,6 +36,30 @@ public final class ToolRegistryFactory {
         return new ToolRegistry();
     }
 
+    public static ToolRegistry derive(ToolRegistry source, Set<String> names) {
+        var derived = new ToolRegistry();
+        var mat = source.materialize();
+        var dispatchMap = mat.getDispatchMap();
+        var individualTools = new ArrayList<ToolCall>();
+
+        for (var name : names) {
+            var provider = source.getProvider(name);
+            if (provider != null) {
+                derived.registerProvider(provider);
+            } else {
+                var tool = dispatchMap.get(name);
+                if (tool != null) {
+                    individualTools.add(tool);
+                }
+            }
+        }
+
+        if (!individualTools.isEmpty()) {
+            derived.registerProvider(ListToolProvider.of(individualTools));
+        }
+
+        return derived;
+    }
 
     private static List<ToolCall> planningTools(FactoryContext context) {
         if (context.todoV2Enabled()) {
