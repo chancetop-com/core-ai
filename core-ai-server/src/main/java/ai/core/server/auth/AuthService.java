@@ -3,6 +3,7 @@ package ai.core.server.auth;
 import ai.core.api.server.auth.ListUsersResponse;
 import ai.core.api.server.auth.LoginResponse;
 import ai.core.api.server.auth.RegisterResponse;
+import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
@@ -163,6 +164,40 @@ public class AuthService {
         LOGGER.info("user deleted, email={}", normalizedEmail);
     }
 
+    public GenerateApiKeyResponse generateApiKeyForUser(String adminUserId, String targetEmail) {
+        requireAdmin(adminUserId);
+
+        var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
+        var user = userCollection.get(normalizedEmail)
+            .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
+
+        user.apiKey = generateApiKey();
+        user.apiKeyCreatedAt = ZonedDateTime.now();
+        userCollection.replace(user);
+        LOGGER.info("api key generated for user, email={}", normalizedEmail);
+
+        var response = new GenerateApiKeyResponse();
+        response.apiKey = user.apiKey;
+        return response;
+    }
+
+    public void revokeApiKey(String adminUserId, String targetEmail) {
+        requireAdmin(adminUserId);
+
+        var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
+        var user = userCollection.get(normalizedEmail)
+            .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
+
+        if (user.apiKey == null) {
+            throw new BadRequestException("user does not have an api key");
+        }
+
+        user.apiKey = null;
+        user.apiKeyCreatedAt = null;
+        userCollection.replace(user);
+        LOGGER.info("api key revoked for user, email={}", normalizedEmail);
+    }
+
     public void invite(String adminUserId, String email) {
         requireAdmin(adminUserId);
 
@@ -201,6 +236,9 @@ public class AuthService {
             view.role = user.role;
             view.status = user.status;
             view.createdAt = user.createdAt;
+            view.hasApiKey = user.apiKey != null;
+            view.apiKeyCreatedAt = user.apiKeyCreatedAt;
+            view.apiKey = user.apiKey;
             response.users.add(view);
         }
         return response;

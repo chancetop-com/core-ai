@@ -44,6 +44,9 @@ public interface StreamingCallback {
         return false;
     }
 
+    default void onRawData(String sseData) {
+    }
+
     default void onOutput(String source, String callId, String chunk) {
     }
 

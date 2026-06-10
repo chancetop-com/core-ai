@@ -63,6 +63,9 @@ export interface UserStatus {
   role: string;
   status: string;
   created_at: string;
+  has_api_key: boolean;
+  api_key_created_at: string;
+  api_key: string;
 }
 
 export interface TraceAccount {
@@ -75,6 +78,10 @@ export interface TraceAccount {
 
 export interface ListUsersResponse {
   users: UserStatus[];
+}
+
+export interface GenerateApiKeyForUserResponse {
+  api_key: string;
 }
 
 async function requestWithAuth<T>(url: string, options?: RequestInit): Promise<T> {
@@ -105,6 +112,12 @@ export const adminApi = {
     requestWithAuth<void>('/api/auth/users/reset-admin-password', { method: 'POST' }),
   deleteUser: (email: string) =>
     requestWithAuth<void>('/api/auth/users/delete', { method: 'POST', body: JSON.stringify({ email }) }),
+  generateApiKeyForUser: (email: string) =>
+    requestWithAuth<GenerateApiKeyForUserResponse>('/api/auth/users/generate-api-key',
+      { method: 'POST', body: JSON.stringify({ email }) }),
+  revokeApiKey: (email: string) =>
+    requestWithAuth<void>('/api/auth/users/revoke-api-key',
+      { method: 'POST', body: JSON.stringify({ email }) }),
 };
 
 export interface Trace {

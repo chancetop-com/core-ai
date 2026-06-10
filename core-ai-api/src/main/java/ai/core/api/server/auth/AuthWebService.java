@@ -1,5 +1,6 @@
 package ai.core.api.server.auth;
 
+import ai.core.api.server.user.GenerateApiKeyResponse;
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.GET;
 import core.framework.api.web.service.POST;
@@ -38,4 +39,12 @@ public interface AuthWebService {
     @POST
     @Path("/api/auth/users/delete")
     void deleteUser(DeleteUserRequest request);
+
+    @POST
+    @Path("/api/auth/users/generate-api-key")
+    GenerateApiKeyResponse generateApiKeyForUser(GenerateApiKeyForUserRequest request);
+
+    @POST
+    @Path("/api/auth/users/revoke-api-key")
+    void revokeApiKey(RevokeApiKeyRequest request);
 }

@@ -1,5 +1,6 @@
 package ai.core.sse.internal;
 
+import ai.core.sse.RawSseChannel;
 import core.framework.internal.log.filter.BytesLogParam;
 import core.framework.internal.web.request.RequestImpl;
 import core.framework.log.ActionLogContext;
@@ -25,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.locks.ReentrantLock;
 
-class PatchedChannelImpl<T> implements java.nio.channels.Channel, Channel<T>, Channel.Context {
+class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<T>, Channel.Context {
     private static final Logger LOGGER = LoggerFactory.getLogger(PatchedChannelImpl.class);
 
     final String id = UUID.randomUUID().toString();
@@ -92,6 +93,11 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, Channel<T>, Ch
             ActionLogContext.track("sse", elapsed, 0, 1, 0, event.length);
             LOGGER.debug("send sse message, channel={}, message={}, elapsed={}", id, new BytesLogParam(event), elapsed); // message is not in json format, not masked, assume sse won't send any sensitive event
         }
+    }
+
+    @Override
+    public boolean sendRawData(String data) {
+        return sendBytes(Strings.bytes("data: " + data + "\n\n"));
     }
 
     @Override

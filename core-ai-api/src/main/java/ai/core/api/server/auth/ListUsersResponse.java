@@ -27,5 +27,14 @@ public class ListUsersResponse {
 
         @Property(name = "created_at")
         public ZonedDateTime createdAt;
+
+        @Property(name = "has_api_key")
+        public Boolean hasApiKey;
+
+        @Property(name = "api_key_created_at")
+        public ZonedDateTime apiKeyCreatedAt;
+
+        @Property(name = "api_key")
+        public String apiKey;
     }
 }

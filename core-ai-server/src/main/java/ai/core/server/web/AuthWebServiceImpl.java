@@ -2,13 +2,16 @@ package ai.core.server.web;
 
 import ai.core.api.server.auth.AuthWebService;
 import ai.core.api.server.auth.DeleteUserRequest;
+import ai.core.api.server.auth.GenerateApiKeyForUserRequest;
 import ai.core.api.server.auth.InviteRequest;
 import ai.core.api.server.auth.ListUsersResponse;
 import ai.core.api.server.auth.LoginRequest;
 import ai.core.api.server.auth.LoginResponse;
 import ai.core.api.server.auth.RegisterRequest;
 import ai.core.api.server.auth.RegisterResponse;
+import ai.core.api.server.auth.RevokeApiKeyRequest;
 import ai.core.api.server.auth.UpdateUserStatusRequest;
+import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.server.auth.AuthService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
@@ -65,5 +68,17 @@ public class AuthWebServiceImpl implements AuthWebService {
     public void deleteUser(DeleteUserRequest request) {
         var userId = AuthContext.userId(webContext);
         authService.deleteUser(userId, request.email);
+    }
+
+    @Override
+    public GenerateApiKeyResponse generateApiKeyForUser(GenerateApiKeyForUserRequest request) {
+        var userId = AuthContext.userId(webContext);
+        return authService.generateApiKeyForUser(userId, request.email);
+    }
+
+    @Override
+    public void revokeApiKey(RevokeApiKeyRequest request) {
+        var userId = AuthContext.userId(webContext);
+        authService.revokeApiKey(userId, request.email);
     }
 }

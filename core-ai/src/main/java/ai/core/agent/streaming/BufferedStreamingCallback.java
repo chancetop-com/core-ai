@@ -19,6 +19,11 @@ public class BufferedStreamingCallback implements StreamingCallback {
     }
 
     @Override
+    public void onRawData(String sseData) {
+        delegate.onRawData(sseData);
+    }
+
+    @Override
     public void onChunk(String chunk) {
         flushReasoningBuffer();
         chunkBuffer.append(chunk);

@@ -193,6 +193,7 @@ public class LiteLLMProvider extends LLMProvider {
             for (var event : eventSource) {
                 if (callback.isCancelled()) break;
                 var data = event.data();
+                callback.onRawData(data);
                 if ("[DONE]".equals(data)) {
                     break;
                 }

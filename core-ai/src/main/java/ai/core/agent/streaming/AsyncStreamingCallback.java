@@ -25,6 +25,11 @@ public class AsyncStreamingCallback implements StreamingCallback {
     }
 
     @Override
+    public void onRawData(String sseData) {
+        executor.execute(() -> delegate.onRawData(sseData));
+    }
+
+    @Override
     public void onChunk(String chunk) {
         executor.execute(() -> delegate.onChunk(chunk));
     }
