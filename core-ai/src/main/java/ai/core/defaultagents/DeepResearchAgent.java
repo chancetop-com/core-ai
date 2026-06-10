@@ -6,9 +6,11 @@ import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.prompt.PromptInject;
-import ai.core.tool.BuiltinTools;
+import ai.core.tool.registry.ToolProvider;
+import ai.core.tool.registry.ToolRegistry;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author stephen
@@ -27,17 +29,13 @@ public class DeepResearchAgent {
             sources", "prioritize recent data from 2024-2025").
             """;
 
-    public static Agent of(LLMProvider llmProvider) {
-        return of(llmProvider, null, null, List.of(), List.of(), null);
-    }
+    private static final List<String> TOOL_NAMES = List.of(
+            ToolProvider.BUILTIN_PLANNING, ToolProvider.BUILTIN_FILES, ToolProvider.BUILTIN_WEB
+    );
 
-    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback,
-                           List<AbstractLifecycle> lifecycles) {
-        return of(llmProvider, model, streamingCallback, lifecycles, List.of(), null);
-    }
-
-    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback,
+    public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, StreamingCallback streamingCallback,
                            List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {
+        Objects.requireNonNull(toolRegistry, "toolRegistry is required");
         return Agent.builder()
                 .name(AGENT_NAME)
                 .streamingCallback(streamingCallback)
@@ -46,12 +44,8 @@ public class DeepResearchAgent {
                 .description(AGENT_DESCRIPTION)
                 .systemPrompt(buildSystemPrompt())
                 .systemPromptSections(resolvePromptInjects(promptInjects))
-                .toolCalls(BuiltinTools.combine(
-                        BuiltinTools.PLANNING_V2,
-                        BuiltinTools.FILE_OPERATIONS,
-                        BuiltinTools.WEB,
-                        List.of()
-                ))
+                .toolRegistry(toolRegistry)
+                .toolNames(TOOL_NAMES)
                 .maxTurn(maxTurnNumber)
                 .llmProvider(llmProvider)
                 .reasoningEffort(ReasoningEffort.HIGH)

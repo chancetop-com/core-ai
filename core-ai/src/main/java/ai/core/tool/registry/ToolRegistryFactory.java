@@ -22,12 +22,12 @@ public final class ToolRegistryFactory {
     public static ToolRegistry create(FactoryContext context) {
         var registry = new ToolRegistry();
 
-        registry.registerProvider(new BuiltinToolProvider("builtin-planning", planningTools(context)));
-        registry.registerProvider(new BuiltinToolProvider("builtin-files", fileTools(context)));
+        registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_PLANNING, planningTools(context)));
+        registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_FILES, fileTools(context)));
 
-        registry.registerProvider(new BuiltinToolProvider("builtin-multimodal", BuiltinTools.MULTIMODAL));
-        registry.registerProvider(new BuiltinToolProvider("builtin-web", BuiltinTools.WEB));
-        registry.registerProvider(new BuiltinToolProvider("builtin-bash", executableTools(context)));
+        registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_MULTIMODAL, BuiltinTools.MULTIMODAL));
+        registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_WEB, BuiltinTools.WEB));
+        registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_BASH, executableTools(context)));
         return registry;
     }
 

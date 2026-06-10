@@ -5,6 +5,10 @@ import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.defaultagents.DefaultExploreAgent;
 import ai.core.llm.LLMProviders;
+import ai.core.tool.BuiltinTools;
+import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolRegistry;
+import ai.core.utils.SystemUtil;
 import core.framework.inject.Inject;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -25,7 +29,15 @@ class SubAgentTest extends IntegrationTest {
 
     @Test
     void test() {
-        var exploreAgent = DefaultExploreAgent.of(llmProviders.getProvider());
+        var toolRegistry = new ToolRegistry();
+        if (SystemUtil.detectPlatform().isWindows()) {
+            toolRegistry.registerProvider(ListToolProvider.of(BuiltinTools.POWERSHELL_EXECUTION));
+        } else {
+            toolRegistry.registerProvider(ListToolProvider.of(BuiltinTools.BASH_EXECUTION));
+        }
+        toolRegistry.registerProvider(ListToolProvider.of(BuiltinTools.FILE_READ_ONLY));
+
+        var exploreAgent = DefaultExploreAgent.of(toolRegistry, llmProviders.getProvider(), null, null, List.of(), List.of(), null);
 
         var agent = Agent.builder()
                 .name("sub-agent-test-agent")

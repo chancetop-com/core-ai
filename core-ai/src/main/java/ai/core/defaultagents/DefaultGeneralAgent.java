@@ -5,15 +5,13 @@ import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.prompt.PromptInject;
-import ai.core.tool.BuiltinTools;
+import ai.core.tool.registry.ToolProvider;
+import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.tools.PythonScriptTool;
 
 import java.util.List;
+import java.util.Objects;
 
-/**
- * author: lim chen
- * date: 2026/5/7
- * description:
- */
 public class DefaultGeneralAgent {
     public static final String AGENT_NAME = "general-purpose-agent";
     public static final String AGENT_DESCRIPTION = """
@@ -22,7 +20,12 @@ public class DefaultGeneralAgent {
                 General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you.
             """;
 
-    public static Agent of(LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {
+    private static final List<String> TOOL_NAMES = List.of(
+            ToolProvider.BUILTIN_FILES, ToolProvider.BUILTIN_BASH, ToolProvider.BUILTIN_WEB
+    );
+
+    public static Agent of(ToolRegistry toolRegistry, LLMProvider llmProvider, String model, StreamingCallback streamingCallback, List<AbstractLifecycle> lifecycles, List<PromptInject> promptInjects, Integer maxTurnNumber) {
+        Objects.requireNonNull(toolRegistry, "toolRegistry is required");
         return Agent.builder()
                 .name(AGENT_NAME)
                 .streamingCallback(streamingCallback)
@@ -31,7 +34,8 @@ public class DefaultGeneralAgent {
                 .description(AGENT_DESCRIPTION)
                 .systemPrompt(buildSystemPrompt())
                 .systemPromptSections(resolvePromptInjects(promptInjects))
-                .toolCalls(BuiltinTools.combine(BuiltinTools.FILE_OPERATIONS, BuiltinTools.CODE_EXECUTION, BuiltinTools.WEB))
+                .toolRegistry(toolRegistry)
+                .toolNames(TOOL_NAMES)
                 .llmProvider(llmProvider)
                 .maxTurn(maxTurnNumber)
                 .build();
@@ -43,6 +47,7 @@ public class DefaultGeneralAgent {
                 PromptInject.SectionType.INSTRUCTIONS,
                 PromptInject.SectionType.MEMORY).contains(promptInject.type())).toList();
     }
+
     private static String buildSystemPrompt() {
         return """
                 You are an agent for core-ai-cli. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done.
@@ -59,6 +64,5 @@ public class DefaultGeneralAgent {
                     - NEVER create files unless they're absolutely necessary for achieving your goal. ALWAYS prefer editing an existing file to creating a new one.
                     - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested.
                 """;
-
     }
 }

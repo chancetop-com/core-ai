@@ -237,4 +237,22 @@ class ToolRegistryTest {
             return ToolCallResult.completed("echo: " + arguments);
         }
     }
+
+    @Test
+    void shouldResolveToolByName() {
+        var tool = new EchoTool("test_echo", "test tool");
+        registry.registerProvider(ListToolProvider.of(List.of(tool)));
+
+        var resolved = registry.materialize().getDispatchMap().get("test_echo");
+        assertNotNull(resolved);
+        assertEquals("test_echo", resolved.getName());
+    }
+
+    @Test
+    void shouldReturnNullForUnknownName() {
+        registry.registerProvider(ListToolProvider.of(List.of()));
+
+        var resolved = registry.materialize().getDispatchMap().get("nonexistent");
+        assertNull(resolved);
+    }
 }
