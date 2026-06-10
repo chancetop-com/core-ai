@@ -121,15 +121,15 @@ public class AgentRunner {
     DatasetRecordService datasetRecordService;
 
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
-        return run(definition, input, trigger, null);
+        return run(definition, input, trigger, null, null);
     }
 
-    public String run(AgentDefinition definition, String input, TriggerType trigger, Map<String, String> runtimeVariables) {
+    public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId, Map<String, String> runtimeVariables) {
         var resolvedVariables = new HashMap<String, Object>();
         if (runtimeVariables != null) {
             resolvedVariables.putAll(runtimeVariables);
         }
-        var runEntity = createRunRecord(definition, input, trigger);
+        var runEntity = createRunRecord(definition, input, trigger, scheduleId);
         agentRunCollection.insert(runEntity);
 
         var runId = runEntity.id;
@@ -180,6 +180,18 @@ public class AgentRunner {
         return agentRunCollection.findOne(
             Filters.and(
                 Filters.eq("agent_id", agentId),
+                Filters.eq("status", RunStatus.RUNNING),
+                Filters.gte("started_at", threshold)
+            )
+        ).isPresent();
+    }
+
+    public boolean isRunning(String agentId, String scheduleId) {
+        var threshold = ZonedDateTime.now().minusSeconds(STALE_RUN_THRESHOLD_SECONDS);
+        return agentRunCollection.findOne(
+            Filters.and(
+                Filters.eq("agent_id", agentId),
+                Filters.eq("schedule_id", scheduleId),
                 Filters.eq("status", RunStatus.RUNNING),
                 Filters.gte("started_at", threshold)
             )
@@ -404,7 +416,7 @@ public class AgentRunner {
         return transcript;
     }
 
-    private AgentRun createRunRecord(AgentDefinition definition, String input, TriggerType trigger) {
+    private AgentRun createRunRecord(AgentDefinition definition, String input, TriggerType trigger, String scheduleId) {
         var entity = new AgentRun();
         entity.id = UUID.randomUUID().toString();
         entity.agentId = definition.id;
@@ -412,6 +424,7 @@ public class AgentRunner {
         entity.triggeredBy = trigger;
         entity.status = RunStatus.RUNNING;
         entity.input = input;
+        entity.scheduleId = scheduleId;
         entity.startedAt = ZonedDateTime.now();
         return entity;
     }

@@ -69,7 +69,7 @@ public class RunAgentAction implements TriggerAction {
             runtimeVariables = new HashMap<>();
         }
 
-        var runId = agentRunner.run(definition, input, TriggerType.WEBHOOK, runtimeVariables);
+        var runId = agentRunner.run(definition, input, TriggerType.WEBHOOK, null, runtimeVariables);
         LOGGER.info("trigger {} triggered agent run, agentId={}, runId={}", trigger.id, agentId, runId);
         return TriggerActionResult.running(runId);
     }

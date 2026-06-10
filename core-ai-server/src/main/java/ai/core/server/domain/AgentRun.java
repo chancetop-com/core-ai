@@ -50,6 +50,9 @@ public class AgentRun {
     @Field(name = "error")
     public String error;
 
+    @Field(name = "schedule_id")
+    public String scheduleId;
+
     @NotNull
     @Field(name = "started_at")
     public ZonedDateTime startedAt;

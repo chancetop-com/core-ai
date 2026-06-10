@@ -56,6 +56,12 @@ public class AgentScheduler {
     }
 
     private void processSchedule(AgentSchedule schedule, ZonedDateTime now) {
+        // Check concurrency policy first — before any side effects (atomic update of next_run_at)
+        if (schedule.concurrencyPolicy == ConcurrencyPolicy.SKIP && agentRunner.isRunning(schedule.agentId, schedule.id)) {
+            LOGGER.info("skipping schedule, previous run of this schedule still running, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
+            return;
+        }
+
         // Atomic lock: try to claim this schedule by updating next_run_at
         var zone = schedule.timezone != null ? ZoneId.of(schedule.timezone) : ZoneId.of("UTC");
         var cron = new CronExpression(schedule.cronExpression);
@@ -72,12 +78,6 @@ public class AgentScheduler {
         // If updated == 0, another replica already claimed this schedule
         if (updated == 0) return;
 
-        // Check concurrency policy
-        if (schedule.concurrencyPolicy == ConcurrencyPolicy.SKIP && agentRunner.isRunning(schedule.agentId)) {
-            LOGGER.info("skipping schedule, agent already running, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
-            return;
-        }
-
         var definition = agentDefinitionCollection.get(schedule.agentId);
         if (definition.isEmpty()) {
             LOGGER.warn("agent not found for schedule, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
@@ -91,7 +91,7 @@ public class AgentScheduler {
 
         var publishedConfig = definition.get().publishedConfig;
         var input = schedule.input != null && !schedule.input.isBlank() ? schedule.input : publishedConfig.inputTemplate;
-        agentRunner.run(definition.get(), input, TriggerType.SCHEDULE, schedule.variables);
+        agentRunner.run(definition.get(), input, TriggerType.SCHEDULE, schedule.id, schedule.variables);
         LOGGER.info("triggered scheduled run, scheduleId={}, agentId={}", schedule.id, schedule.agentId);
     }
 }
