@@ -49,35 +49,46 @@ public class ToolRegistry {
     }
 
     public ToolMaterialization materialize() {
-        var allTools = collectTools();
+        var collected = collectTools();
         var definitions = new ArrayList<Tool>();
         var dispatchMap = new LinkedHashMap<String, ToolCall>();
 
-        for (var entry : allTools.entrySet()) {
+        for (var entry : collected.tools.entrySet()) {
             var tool = entry.getValue();
             if (tool.getExposure() == ToolExposure.DIRECT) {
                 definitions.add(tool.toTool());
             }
             dispatchMap.put(entry.getKey(), tool);
         }
-        LOGGER.debug("materialized {} definitions from {} tools", definitions.size(), allTools.size());
-        return new ToolMaterialization(definitions, dispatchMap);
+        LOGGER.debug("materialized {} definitions from {} tools", definitions.size(), collected.tools.size());
+        return new ToolMaterialization(definitions, dispatchMap, collected.toolProviderIndex);
     }
 
-    private Map<String, ToolCall> collectTools() {
+    private CollectResult collectTools() {
         var sorted = providers.values().stream()
                 .sorted(Comparator.comparingInt(ToolProvider::priority))
                 .toList();
-        var result = new LinkedHashMap<String, ToolCall>();
+        var tools = new LinkedHashMap<String, ToolCall>();
+        var toolProviderIndex = new LinkedHashMap<String, String>();
         for (var provider : sorted) {
             try {
-                for (var entry : provider.provide().entrySet()) {
-                    result.putIfAbsent(entry.getKey(), entry.getValue());
+                var toolMap = provider.provide();
+                for (var entry : toolMap.entrySet()) {
+                    var name = entry.getKey();
+                    if (tools.putIfAbsent(name, entry.getValue()) == null) {
+                        toolProviderIndex.put(name, provider.id());
+                    }
                 }
             } catch (Exception e) {
                 LOGGER.warn("provider {} failed, skipping, id={}", provider.getClass().getSimpleName(), provider.id(), e);
             }
         }
-        return result;
+        return new CollectResult(tools, toolProviderIndex);
+    }
+
+    private record CollectResult(Map<String, ToolCall> tools, Map<String, String> toolProviderIndex) {}
+
+    public ToolProvider getProvider(String providerId) {
+        return providers.get(providerId);
     }
 }

@@ -55,6 +55,7 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     private String promptTemplate;
     private LLMProvider llmProvider;
     private final List<ToolCall> toolCalls = Lists.newArrayList();
+    private List<String> toolNames;
     private ToolRegistry toolRegistry;
     private RagConfig ragConfig;
     private Double temperature;
@@ -183,6 +184,11 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
 
     public AgentBuilder toolCalls(List<? extends ToolCall> toolCalls) {
         this.toolCalls.addAll(0, toolCalls);
+        return this;
+    }
+
+    public AgentBuilder toolNames(List<String> toolNames) {
+        this.toolNames = toolNames;
         return this;
     }
 
@@ -352,6 +358,26 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     private void configureToolRegistry() {
+        if (toolNames != null && !toolNames.isEmpty()) {
+            if (toolRegistry == null) {
+                throw new IllegalStateException("toolNames is set but no ToolRegistry provided — pass a ToolRegistry via toolRegistry()");
+            }
+            var mat = toolRegistry.materialize();
+            var dispatchMap = mat.getDispatchMap();
+            var providerIndex = mat.getToolProviderIndex();
+            for (var name : toolNames) {
+                if (toolRegistry.getProvider(name) != null) {
+                    providerIndex.entrySet().stream()
+                            .filter(e -> name.equals(e.getValue()))
+                            .map(e -> dispatchMap.get(e.getKey()))
+                            .filter(java.util.Objects::nonNull)
+                            .forEach(toolCalls::add);
+                } else {
+                    var tool = dispatchMap.get(name);
+                    if (tool != null) toolCalls.add(tool);
+                }
+            }
+        }
         if (toolRegistry == null) {
             toolRegistry = ToolRegistryFactory.createEmpty();
         }

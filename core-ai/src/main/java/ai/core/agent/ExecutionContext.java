@@ -9,6 +9,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.prompt.PromptInject;
+import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import ai.core.tool.tools.TodoStoreFactory;
 import core.framework.util.Maps;
@@ -56,6 +57,7 @@ public final class ExecutionContext {
     private List<AbstractLifecycle> lifecycles;
     private Consumer<Usage> tokenCostCallback;
     private Map<String, SubAgentConfig> subAgentConfigs;
+    private ToolRegistry toolRegistry;
     // Span context of the LLM call whose response triggered the current tool execution.
     // Allows tool spans to be nested under their triggering LLM span (Langfuse-style causal chain).
     //
@@ -214,6 +216,14 @@ public final class ExecutionContext {
 
     public void setSubAgentConfigs(Map<String, SubAgentConfig> subAgentConfigs) {
         this.subAgentConfigs = subAgentConfigs;
+    }
+
+    public ToolRegistry getToolRegistry() {
+        return toolRegistry;
+    }
+
+    public void setToolRegistry(ToolRegistry toolRegistry) {
+        this.toolRegistry = toolRegistry;
     }
 
     public SpanContext getLastLLMSpanContext() {

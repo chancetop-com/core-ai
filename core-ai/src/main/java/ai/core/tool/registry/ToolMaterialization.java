@@ -8,17 +8,18 @@ import java.util.Map;
 
 /**
  * Immutable snapshot produced by {@link ToolRegistry#materialize()}.
- * Binds together the model-visible definitions and the runtime dispatch map.
  *
  * @author Lim Chen
  */
 public class ToolMaterialization {
     private final List<Tool> definitions;
     private final Map<String, ToolCall> dispatchMap;
+    private final Map<String, String> toolProviderIndex;
 
-    ToolMaterialization(List<Tool> definitions, Map<String, ToolCall> dispatchMap) {
+    ToolMaterialization(List<Tool> definitions, Map<String, ToolCall> dispatchMap, Map<String, String> toolProviderIndex) {
         this.definitions = List.copyOf(definitions);
         this.dispatchMap = Map.copyOf(dispatchMap);
+        this.toolProviderIndex = Map.copyOf(toolProviderIndex);
     }
 
     public List<Tool> definitions() {
@@ -27,5 +28,10 @@ public class ToolMaterialization {
 
     public Map<String, ToolCall> getDispatchMap() {
         return dispatchMap;
+    }
+
+    /** toolName → providerId (first registration wins due to priority). */
+    public Map<String, String> getToolProviderIndex() {
+        return toolProviderIndex;
     }
 }

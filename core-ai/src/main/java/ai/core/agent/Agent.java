@@ -498,6 +498,7 @@ public class Agent extends Node<Agent> {
         context.setMultiModalModel(multiModalModel);
         context.setStreamingCallback(getStreamingCallback());
         context.setLifecycles(agentLifecycles);
+        context.setToolRegistry(toolRegistry);
         return context;
     }
 }

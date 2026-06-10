@@ -15,6 +15,12 @@ import java.util.Map;
  * @author Lim Chen
  */
 public interface ToolProvider {
+    String BUILTIN_PLANNING = "builtin-planning";
+    String BUILTIN_FILES = "builtin-files";
+    String BUILTIN_MULTIMODAL = "builtin-multimodal";
+    String BUILTIN_WEB = "builtin-web";
+    String BUILTIN_BASH = "builtin-bash";
+
     String BUILTIN = "builtin";
     String USER = "user-provided";
 
