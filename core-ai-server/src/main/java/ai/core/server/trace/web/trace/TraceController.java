@@ -144,15 +144,14 @@ public class TraceController {
         return jsonResponse(spans);
     }
 
-    public Response sessions(Request request) {
+    public Response sessionSummary(Request request) {
         var scope = traceScope();
         if (scope.userId() == null) return unauthorized();
-        var params = request.queryParams();
-        int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
-        int limit = Integer.parseInt(params.getOrDefault("limit", "20"));
-        var sessions = traceService.sessions(offset, limit, scope.admin() ? null : scope.userId());
-        addAccounts(sessions);
-        return jsonResponse(sessions);
+        var sessionId = request.pathParam("sessionId");
+        var summary = traceService.sessionSummary(sessionId, scope.admin() ? null : scope.userId());
+        if (summary == null) return Response.text("not found").status(HTTPStatus.NOT_FOUND);
+        addAccounts(List.of(summary));
+        return jsonResponse(summary);
     }
 
     private ZonedDateTime parseDateTime(String value) {

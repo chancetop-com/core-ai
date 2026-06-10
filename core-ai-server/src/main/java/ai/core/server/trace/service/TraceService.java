@@ -40,6 +40,7 @@ public class TraceService {
     private static final Pattern HEX_PREFIX_PATTERN = Pattern.compile("^[0-9a-fA-F]{6,}$");
     private static final int SCOPED_TRACE_ID_LOOKUP_LIMIT = 10_000;
     private static final int FACET_LIMIT = 50;
+    private static final int SESSION_SUMMARY_TRACE_LIMIT = 1000;
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -316,51 +317,36 @@ public class TraceService {
             .toList();
     }
 
-    public List<Map<String, Object>> sessions(int offset, int limit, String userId) {
+    // Aggregates one session's traces for the trace-page summary bar; walks the session_id index only
+    public Map<String, Object> sessionSummary(String sessionId, String userId) {
         var query = new Query();
         var filters = new ArrayList<Bson>();
-        filters.add(Filters.exists("session_id"));
-        filters.add(Filters.ne("session_id", null));
+        filters.add(Filters.eq("session_id", sessionId));
         if (userId != null && !userId.isEmpty()) {
             filters.add(Filters.eq("user_id", userId));
         }
-        query.filter = Filters.and(filters);
+        query.filter = filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
         query.sort = Sorts.descending("created_at");
-        var allTraces = traceCollection.find(query);
-        var groupedSessions = new ArrayList<>(allTraces.stream()
-            .collect(Collectors.groupingBy(t -> t.sessionId))
-            .entrySet());
-        groupedSessions.forEach(entry -> entry.getValue().sort((a, b) -> b.createdAt.compareTo(a.createdAt)));
+        query.limit = SESSION_SUMMARY_TRACE_LIMIT;
+        var traces = traceCollection.find(query);
+        if (traces.isEmpty()) return null;
+        enrichMetricsInBatch(traces);
 
-        return groupedSessions.stream()
-            .sorted((a, b) -> b.getValue().getFirst().createdAt.compareTo(a.getValue().getFirst().createdAt))
-            .skip(offset)
-            .limit(limit)
-            .map(entry -> {
-                var traces = entry.getValue();
-                traces.forEach(this::enrichMetricsFromSpans);
-                long totalTokens = traces.stream().mapToLong(t -> t.totalTokens != null ? t.totalTokens : 0).sum();
-                long totalCachedTokens = traces.stream().mapToLong(t -> t.cachedTokens != null ? t.cachedTokens : 0).sum();
-                double totalCostUsd = traces.stream().mapToDouble(t -> t.costUsd != null ? t.costUsd : 0.0).sum();
-                long totalDuration = traces.stream().mapToLong(t -> t.durationMs != null ? t.durationMs : 0).sum();
-                long errorCount = traces.stream().filter(t -> t.status == TraceStatus.ERROR).count();
-                var latestTrace = traces.getFirst();
-                var firstTrace = traces.getLast();
-                Map<String, Object> session = new LinkedHashMap<>();
-                session.put("session_id", entry.getKey());
-                session.put("trace_count", traces.size());
-                session.put("total_tokens", totalTokens);
-                session.put("total_cached_tokens", totalCachedTokens);
-                session.put("total_cost_usd", totalCostUsd);
-                session.put("total_duration_ms", totalDuration);
-                session.put("error_count", errorCount);
-                session.put("user_id", latestTrace.userId);
-                session.put("last_trace_at", latestTrace.createdAt);
-                session.put("first_trace_at", firstTrace.createdAt);
-                session.put("first_request", firstTrace.input);
-                return session;
-            })
-            .collect(Collectors.toList());
+        var latestTrace = traces.getFirst();
+        var firstTrace = traces.getLast();
+        Map<String, Object> session = new LinkedHashMap<>();
+        session.put("session_id", sessionId);
+        session.put("trace_count", traces.size());
+        session.put("total_tokens", traces.stream().mapToLong(t -> t.totalTokens != null ? t.totalTokens : 0).sum());
+        session.put("total_cached_tokens", traces.stream().mapToLong(t -> t.cachedTokens != null ? t.cachedTokens : 0).sum());
+        session.put("total_cost_usd", traces.stream().mapToDouble(t -> t.costUsd != null ? t.costUsd : 0.0).sum());
+        session.put("total_duration_ms", traces.stream().mapToLong(t -> t.durationMs != null ? t.durationMs : 0).sum());
+        session.put("error_count", traces.stream().filter(t -> t.status == TraceStatus.ERROR).count());
+        session.put("user_id", latestTrace.userId);
+        session.put("last_trace_at", latestTrace.createdAt);
+        session.put("first_trace_at", firstTrace.createdAt);
+        session.put("first_request", TracePreviewExtractor.extract(firstTrace.input));
+        return session;
     }
 
     public void saveTrace(Trace trace) {

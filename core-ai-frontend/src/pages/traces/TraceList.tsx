@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, MessageCircle, Search, UserCircle, X, Zap } from 'lucide-react';
 import { api } from '../../api/client';
-import type { Trace, TraceFacet, TraceFilter } from '../../api/client';
+import type { SessionSummary, Trace, TraceFacet, TraceFilter } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
 import TraceDetailPanel from './TraceDetailPanel';
@@ -104,6 +104,7 @@ export default function TraceList() {
   const lastPushedQ = useRef(filters.q || '');
   const [modelFacets, setModelFacets] = useState<TraceFacet[]>([]);
   const [agentFacets, setAgentFacets] = useState<TraceFacet[]>([]);
+  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
 
   const activeFilterCount = countActiveFilters(filters);
   const advancedFilterCount = countAdvancedFilters(filters, isAdmin);
@@ -124,6 +125,20 @@ export default function TraceList() {
       cancelled = true;
     };
   }, [offset, limit, filters, requestKey]);
+
+  // When the list is pinned to one session, show an aggregate summary bar — the page doubles as a session detail view
+  const sessionFilterId = filters.sessionId || '';
+  useEffect(() => {
+    if (!sessionFilterId) {
+      setSessionSummary(null);
+      return undefined;
+    }
+    let cancelled = false;
+    api.traces.sessionSummary(sessionFilterId)
+      .then(summary => { if (!cancelled) setSessionSummary(summary); })
+      .catch(() => { if (!cancelled) setSessionSummary(null); });
+    return () => { cancelled = true; };
+  }, [sessionFilterId]);
 
   // Facet contexts deliberately drop the field being queried, so the dropdown shows all options under the current peer filters
   const facetContext = useMemo(() => cleanFilters(filters) || {}, [filters]);
@@ -355,6 +370,14 @@ export default function TraceList() {
           </div>
         )}
 
+        {sessionFilterId && sessionSummary && (
+          <SessionSummaryBar
+            summary={sessionSummary}
+            onOpenChat={() => navigate(`/chat?sessionId=${encodeURIComponent(sessionFilterId)}`)}
+            onClear={() => updateFilter({ sessionId: '' })}
+          />
+        )}
+
         <div className="rounded-lg border overflow-hidden"
           style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
           {loading ? (
@@ -393,6 +416,62 @@ export default function TraceList() {
 
       {selectedTraceId && (
         <TraceDetailPanel traceId={selectedTraceId} onClose={() => setSelectedTraceId(null)} />
+      )}
+    </div>
+  );
+}
+
+function SessionSummaryBar({ summary, onOpenChat, onClear }: {
+  summary: SessionSummary;
+  onOpenChat: () => void;
+  onClear: () => void;
+}) {
+  const metricStyle = { color: 'var(--color-text-secondary)' };
+  return (
+    <div className="mb-3 rounded-lg border px-4 py-3"
+      style={{ borderColor: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold" title={summary.session_id}>
+          <MessageCircle size={14} style={{ color: 'var(--color-primary)' }} />
+          Session {summary.session_id.slice(0, 8)}
+        </span>
+        <span className="text-sm" style={metricStyle}>{summary.trace_count} {summary.trace_count === 1 ? 'turn' : 'turns'}</span>
+        <span className="inline-flex items-center gap-1 text-sm" style={metricStyle}>
+          <Zap size={12} /> {formatTokenCount(summary.total_tokens)} tokens
+        </span>
+        <span className="inline-flex items-center gap-1 text-sm" style={metricStyle}>
+          <Database size={12} /> {formatTokenCount(summary.total_cached_tokens)} cached
+        </span>
+        <span className="inline-flex items-center gap-1 text-sm" style={metricStyle}>
+          <DollarSign size={12} /> {formatCostUsd(summary.total_cost_usd)}
+        </span>
+        <span className="inline-flex items-center gap-1 text-sm" style={metricStyle}>
+          <Clock size={12} /> {formatDuration(summary.total_duration_ms)}
+        </span>
+        {summary.error_count > 0 && (
+          <span className="text-sm font-medium" style={{ color: 'var(--color-danger, #dc2626)' }}>
+            {summary.error_count} {summary.error_count === 1 ? 'error' : 'errors'}
+          </span>
+        )}
+        <span className="text-sm" style={metricStyle}>
+          {formatRelativeTime(summary.first_trace_at)} → {formatRelativeTime(summary.last_trace_at)}
+        </span>
+        <div className="flex-1" />
+        <button onClick={onOpenChat}
+          className="px-3 py-1 rounded-md text-sm font-medium cursor-pointer"
+          style={{ background: 'var(--color-primary)', color: 'white' }}>
+          Open Chat
+        </button>
+        <button onClick={onClear} title="Clear session filter"
+          className="p-1 rounded-md cursor-pointer"
+          style={{ color: 'var(--color-text-secondary)' }}>
+          <X size={16} />
+        </button>
+      </div>
+      {summary.first_request && (
+        <div className="text-xs mt-1.5 truncate" style={metricStyle} title={summary.first_request}>
+          {summary.first_request}
+        </div>
       )}
     </div>
   );

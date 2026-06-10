@@ -196,7 +196,7 @@ export interface SessionSummary {
   account?: TraceAccount;
   last_trace_at: string;
   first_trace_at: string;
-  first_request: string;
+  first_request?: string;
 }
 
 export interface PromptTemplate {
@@ -732,8 +732,8 @@ export const api = {
       if (model) params.set('model', model);
       return request<Span[]>(`/api/traces/generations?${params}`);
     },
-    sessions: (offset = 0, limit = 20) =>
-      request<SessionSummary[]>(`/api/traces/sessions?offset=${offset}&limit=${limit}`),
+    sessionSummary: (sessionId: string) =>
+      request<SessionSummary>(`/api/traces/sessions/${encodeURIComponent(sessionId)}/summary`),
     facets: (field: 'model' | 'agentName' | 'source', filters?: TraceFilter) => {
       const params = new URLSearchParams({ field });
       if (filters) {
