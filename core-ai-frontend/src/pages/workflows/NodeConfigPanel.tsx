@@ -37,6 +37,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
   const isAggregator = node.data.nodeType === 'AGGREGATOR';
   const isStart = node.data.nodeType === 'START';
   const isHumanInput = node.data.nodeType === 'HUMAN_INPUT';
+  const isTemplate = node.data.nodeType === 'TEMPLATE';
   const config = (node.data.config ?? {}) as Record<string, unknown>;
   const onConfig = (partial: Record<string, unknown>) => onChange({ config: { ...config, ...partial } });
   const hasRetry = isAgentNode || isMcpTool || isApiTool || isHttp;
@@ -115,6 +116,19 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
         <CodeConfig node={node} nodes={nodes} onChange={onChange} />
       ) : isHumanInput ? (
         <HumanInputConfig node={node} nodes={nodes} edges={edges} onChange={onChange} />
+      ) : isTemplate ? (
+        <>
+          <label style={label}>Text</label>
+          <VariableChipField
+            value={String(config.template ?? '')}
+            onChange={(v) => onConfig({ template: v })}
+            nodes={nodes}
+            selfId={node.id}
+            placeholder="fixed text, or mix in {{ variables }}"
+            multiline
+          />
+          <div style={hint}>Outputs this text (variables rendered). Empty branches render empty.</div>
+        </>
       ) : isStart ? (
         <StartConfig node={node} onChange={onChange} />
       ) : isEnd ? (

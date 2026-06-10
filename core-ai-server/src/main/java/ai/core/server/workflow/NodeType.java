@@ -16,6 +16,7 @@ public enum NodeType {
     HTTP,
     IF_ELSE,
     AGGREGATOR,
+    TEMPLATE,
     MCP_TOOL,
     API_TOOL,
     HUMAN_INPUT,

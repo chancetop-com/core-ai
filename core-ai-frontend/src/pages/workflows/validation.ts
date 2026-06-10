@@ -36,6 +36,9 @@ export function nodeIssues(node: WorkflowRFNode, nodes: WorkflowRFNode[], edges:
     case 'CODE':
       if (!str('code')) issues.push('Add the Python code to run.');
       break;
+    case 'TEMPLATE':
+      if (!str('template')) issues.push('Add the text to output.');
+      break;
     case 'START':
       startIssues(cfg, issues);
       break;

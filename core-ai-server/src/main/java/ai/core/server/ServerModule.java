@@ -76,6 +76,7 @@ import ai.core.server.workflow.executor.IfElseExecutor;
 import ai.core.server.workflow.executor.McpToolExecutor;
 import ai.core.server.workflow.executor.RetryingNodeExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
+import ai.core.server.workflow.executor.TemplateExecutor;
 
 import java.util.Map;
 import ai.core.server.schedule.AgentScheduleService;
@@ -305,6 +306,7 @@ public class ServerModule extends Module {
             Map.entry(NodeType.HTTP, httpExecutor),
             Map.entry(NodeType.IF_ELSE, new IfElseExecutor()),
             Map.entry(NodeType.AGGREGATOR, new AggregatorExecutor()),
+            Map.entry(NodeType.TEMPLATE, new TemplateExecutor()),
             Map.entry(NodeType.HUMAN_INPUT, new HumanInputExecutor()),
             Map.entry(NodeType.CODE, new CodeExecutor(sandboxService))));
         bind(NodeExecutor.class, registry);
