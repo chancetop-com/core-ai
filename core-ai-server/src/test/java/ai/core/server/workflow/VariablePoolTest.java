@@ -1,6 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.ArtifactRef;
+import core.framework.json.JSON;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -41,6 +42,23 @@ class VariablePoolTest {
     void rendersTemplateSubstitutingSelectors() {
         var pool = new VariablePool(Map.of("a", "{\"name\": \"bob\"}"), "{\"id\": \"7\"}");
         assertEquals("hello bob (7)", pool.render("hello {{ nodes.a.output.name }} ({{ input.id }})"));
+    }
+
+    @Test
+    void renderJsonEscapesValueSoUpstreamDataCannotBreakJson() {
+        // upstream value contains a quote, a newline and a JSON-injection attempt
+        var pool = new VariablePool(Map.of("a", "{\"v\":\"he said \\\"hi\\\"\\n\\\",\\\"admin\\\":true\"}"), "{}");
+        String rendered = pool.renderJson("{\"q\":\"{{ nodes.a.output.v }}\"}");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> parsed = JSON.fromJSON(Map.class, rendered);   // must still be valid JSON, no injected key
+        assertEquals("he said \"hi\"\n\",\"admin\":true", parsed.get("q"));
+        assertTrue(!parsed.containsKey("admin"));
+    }
+
+    @Test
+    void plainRenderDoesNotEscape() {
+        var pool = new VariablePool(Map.of("a", "{\"v\":\"a\\\"b\"}"), "{}");
+        assertEquals("x=a\"b", pool.render("x={{ nodes.a.output.v }}"));   // render stays raw (non-JSON contexts)
     }
 
     @Test

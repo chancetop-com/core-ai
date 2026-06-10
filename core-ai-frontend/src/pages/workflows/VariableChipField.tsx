@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, type CSSProperties, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import VariablePicker from './VariablePicker';
 import { parseSegments, selectorMeta } from './variables';
 import type { WorkflowRFNode } from './graph';
@@ -64,6 +64,26 @@ export default function VariableChipField({ value, onChange, nodes, selfId, plac
     onChange(serialize());
   };
 
+  // Paste as plain text into the flat text-node/chip structure. The browser's default paste inserts <div>/<br>
+  // wrappers that serialize() flattens — silently dropping newlines and gluing lines together; this avoids that.
+  const onPaste = (e: ReactClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const raw = e.clipboardData.getData('text/plain');
+    const text = multiline ? raw : raw.replace(/\r?\n/g, ' ');   // single-line fields collapse newlines
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    r.deleteContents();
+    const node = document.createTextNode(text);
+    r.insertNode(node);
+    r.setStartAfter(node);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    range.current = r.cloneRange();
+    onChange(serialize());
+  };
+
   const insert = (selector: string) => {
     const el = ref.current;
     if (!el) return;
@@ -96,6 +116,7 @@ export default function VariableChipField({ value, onChange, nodes, selfId, plac
         aria-multiline={multiline ? 'true' : 'false'}
         data-placeholder={placeholder ?? ''}
         onInput={() => onChange(serialize())}
+        onPaste={onPaste}
         onKeyDown={onKeyDown}
         onKeyUp={saveRange}
         onMouseUp={saveRange}

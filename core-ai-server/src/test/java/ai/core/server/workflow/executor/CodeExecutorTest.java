@@ -32,10 +32,26 @@ class CodeExecutorTest {
     }
 
     @Test
+    void sentinelResultBecomesTheOutputAndStdoutBeforeItIsDebugOnly() {
+        String stdout = "debug line\n\n" + CodeExecutor.RESULT_SENTINEL + "\n{\"total\": 3}\n";
+        var normal = assertInstanceOf(NodeOutcome.Normal.class, CodeExecutor.toOutcome(ToolCallResult.completed(stdout)));
+        assertEquals("{\"total\": 3}", normal.output());
+    }
+
+    @Test
     void buildScriptPrependsResolvedInputs() {
         String script = CodeExecutor.buildScript("print(inputs['x'])", Map.of("x", "hi"));
         assertTrue(script.contains("inputs = json.loads"));
         assertTrue(script.contains("print(inputs['x'])"));
+    }
+
+    @Test
+    void buildScriptAppendsResultEpilogueAfterUserCode() {
+        String script = CodeExecutor.buildScript("result = {'a': 1}", Map.of());
+        int code = script.indexOf("result = {'a': 1}");
+        int epilogue = script.indexOf("if 'result' in globals():");
+        assertTrue(code >= 0 && epilogue > code);
+        assertTrue(script.contains(CodeExecutor.RESULT_SENTINEL));
     }
 
     @Test

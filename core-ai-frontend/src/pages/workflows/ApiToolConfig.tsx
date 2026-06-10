@@ -38,12 +38,13 @@ export default function ApiToolConfig({ config, onConfig, nodes, selfId }: Props
       .finally(() => setLoadingOps(false));
   }, [appName]);
 
-  const selectApp = (name: string) => onConfig({ app_name: name, tool_name: undefined, service_name: undefined, operation_name: undefined });
+  // changing app or operation resets arguments — a different operation has different params, so stale args must not leak
+  const selectApp = (name: string) => onConfig({ app_name: name, tool_name: undefined, service_name: undefined, operation_name: undefined, arguments: undefined });
 
   const selectOp = (value: string) => {
     const op = ops.find((o) => toolCallName(appName, o.service, o.operation) === value);
-    if (!op) { onConfig({ tool_name: undefined, service_name: undefined, operation_name: undefined }); return; }
-    onConfig({ tool_name: value, service_name: op.service, operation_name: op.operation });
+    if (!op) { onConfig({ tool_name: undefined, service_name: undefined, operation_name: undefined, arguments: undefined }); return; }
+    onConfig({ tool_name: value, service_name: op.service, operation_name: op.operation, arguments: undefined });
   };
 
   return (
@@ -64,7 +65,8 @@ export default function ApiToolConfig({ config, onConfig, nodes, selfId }: Props
       </select>
 
       <label style={label}>Arguments</label>
-      <VariableMapEditor value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} />
+      {/* key forces a fresh editor per operation so rows reseed cleanly when the operation changes */}
+      <VariableMapEditor key={appName + ':' + toolName} value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} />
     </>
   );
 }

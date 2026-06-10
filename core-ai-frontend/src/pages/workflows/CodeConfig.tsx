@@ -1,7 +1,9 @@
 import { useState, type CSSProperties } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Maximize2, Plus, X } from 'lucide-react';
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
-import { DEFAULT_CODE, type WorkflowNodeData, type WorkflowRFNode } from './graph';
+import CodeEditorModal from './CodeEditorModal';
+import { CODE_TEMPLATES, applyTemplate } from './codeTemplates';
+import type { WorkflowNodeData, WorkflowRFNode } from './graph';
 import { widgetInput, smallBtn, iconBtnSmall } from './configWidgets';
 import VariablePicker from './VariablePicker';
 import { selectorMeta } from './variables';
@@ -29,6 +31,7 @@ export default function CodeConfig({ node, nodes, onChange }: Props) {
     const map = inputs && typeof inputs === 'object' ? inputs as Record<string, unknown> : {};
     return Object.entries(map).map(([name, selector]) => ({ name, selector: String(selector) }));
   });
+  const [expanded, setExpanded] = useState(false);
   const sync = (nextCode: string, nextRows: Row[]) => {
     setCode(nextCode);
     setRows(nextRows);
@@ -41,13 +44,32 @@ export default function CodeConfig({ node, nodes, onChange }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <label style={{ ...label, flex: 1 }}>Code (Python)</label>
-        {!code.trim() && <button onClick={() => sync(DEFAULT_CODE, rows)} style={smallBtn}>Insert example</button>}
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) sync(applyTemplate(code, CODE_TEMPLATES.find((t) => t.key === e.target.value)?.code ?? ''), rows); }}
+          style={{ ...widgetInput, fontSize: 11 }}
+        >
+          <option value="">+ template</option>
+          {CODE_TEMPLATES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
+        <button onClick={() => setExpanded(true)} style={iconBtnSmall} title="Expand editor"><Maximize2 size={13} /></button>
       </div>
-      <div style={editorWrap}>
-        <CodeMirrorEditor value={code} filename="script.py" onChange={(v: string) => sync(v, rows)} />
-      </div>
+      {/* the panel editor and the modal never mount together — one CodeMirror instance owns the doc at a time */}
+      {!expanded && (
+        <div style={editorWrap}>
+          <CodeMirrorEditor value={code} filename="script.py" onChange={(v: string) => sync(v, rows)} />
+        </div>
+      )}
+      {expanded && (
+        <>
+          <div style={{ ...editorWrap, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-secondary)', fontSize: 12 }}>
+            Editing in fullscreen…
+          </div>
+          <CodeEditorModal title={node.data.name} code={code} onChange={(v) => sync(v, rows)} onClose={() => setExpanded(false)} />
+        </>
+      )}
 
       <label style={label}>Inputs</label>
       {rows.map((row, i) => (
@@ -72,13 +94,14 @@ export default function CodeConfig({ node, nodes, onChange }: Props) {
         </div>
       ))}
       <button onClick={() => sync(code, [...rows, { name: '', selector: 'sys.input' }])} style={smallBtn}><Plus size={12} /> input</button>
-      <div style={hint}>The script reads inputs via <code>inputs['name']</code>; its stdout becomes the node output.</div>
+      <div style={hint}>Read mapped variables via <code>inputs['name']</code>; assign <code>result</code> to set the node output — <code>print()</code> is debug-only.</div>
     </div>
   );
 }
 
 const label: CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '12px 0 4px' };
-const editorWrap: CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 7, overflow: 'hidden' };
+// Fixed height: real scripts need stable editor space (CodeMirror scrolls inside); the modal is the big surface.
+const editorWrap: CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 7, overflow: 'hidden', height: 280 };
 const inputRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 };
 const hint: CSSProperties = { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 8, lineHeight: 1.5 };
 function varChip(color: string): CSSProperties {

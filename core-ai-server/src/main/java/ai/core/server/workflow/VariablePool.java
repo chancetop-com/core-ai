@@ -159,6 +159,19 @@ public final class VariablePool {
 
     /** Substitute every {@code {{ selector }}} in the template with the resolved value's string form. */
     public String render(String template) {
+        return render(template, false);
+    }
+
+    /**
+     * Render for a JSON-string context: each substituted value is JSON-string-escaped, so a resolved value
+     * containing {@code "}, {@code \} or control chars cannot break out of the surrounding JSON string literal
+     * or inject structure. Used for tool arguments / HTTP body templates the editor emits as {@code "{{ … }}"}.
+     */
+    public String renderJson(String template) {
+        return render(template, true);
+    }
+
+    private String render(String template, boolean jsonEscape) {
         if (template == null) {
             return null;
         }
@@ -166,6 +179,9 @@ public final class VariablePool {
         StringBuilder out = new StringBuilder();
         while (matcher.find()) {
             String value = resolve(matcher.group(1)).map(VariablePool::stringify).orElse("");
+            if (jsonEscape) {
+                value = jsonEscape(value);
+            }
             matcher.appendReplacement(out, Matcher.quoteReplacement(value));
         }
         matcher.appendTail(out);
@@ -180,5 +196,29 @@ public final class VariablePool {
             return String.valueOf(value);
         }
         return JSON.toJSON(value);
+    }
+
+    // Escape the content of a JSON string literal (no surrounding quotes): a value placed inside "{{ … }}" can
+    // never terminate the string or inject keys, regardless of upstream content.
+    private static String jsonEscape(String value) {
+        var out = new StringBuilder(value.length() + 8);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        out.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        return out.toString();
     }
 }

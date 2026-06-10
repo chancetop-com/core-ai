@@ -9,22 +9,37 @@ import ai.core.server.workflow.NodeOutcome;
 import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * CODE node: run the node's Python in a stateless sandbox and surface stdout as the node output. Inputs are
- * declared as {@code name -> selector} in the config, resolved over the variable pool and injected as an
- * {@code inputs} dict the script reads; data only flows through the pool, never the sandbox FS (per the Dify
- * model). A fresh sandbox is created and closed per run; provider (k8s/docker) is chosen by the platform.
+ * CODE node: run the node's Python in a stateless sandbox. Inputs are declared as {@code name -> selector} in
+ * the config, resolved over the variable pool and injected as an {@code inputs} dict the script reads; data only
+ * flows through the pool, never the sandbox FS (per the Dify model). A fresh sandbox is created and closed per
+ * run; provider (k8s/docker) is chosen by the platform.
  *
- * <p>Config shape (authored on the canvas): {@code {"code": "print(inputs['x'])", "inputs": {"x": "nodes.start.output.v"}}}.
+ * <p>Output contract: if the script assigns a {@code result} variable, its JSON form is the node output and any
+ * stdout before it is debug-only (the appended epilogue prints it behind a sentinel line this executor splits
+ * on). With no {@code result}, the whole stdout is the output — the original contract, fully backward compatible.
+ *
+ * <p>Config shape (authored on the canvas): {@code {"code": "result = inputs['x']", "inputs": {"x": "nodes.start.output.v"}}}.
  *
  * @author Xander
  */
 public class CodeExecutor implements NodeExecutor {
     private static final String PYTHON_TOOL = "run_python_script";
+    static final String RESULT_SENTINEL = "__WORKFLOW_CODE_NODE_RESULT__";
+    // The \\n inside the text block reaches Python as the two-char escape, so print emits a real leading
+    // newline — the sentinel stays on its own line even after unterminated sys.stdout.write output.
+    private static final String RESULT_EPILOGUE = """
+
+        if 'result' in globals():
+            print('\\n%s')
+            print(json.dumps(result, ensure_ascii=False, default=str))
+        """.formatted(RESULT_SENTINEL);
 
     private final SandboxService sandboxService;
 
@@ -53,16 +68,27 @@ public class CodeExecutor implements NodeExecutor {
         }
     }
 
-    /** A completed run's stdout is the node output; anything else is a deterministic failure. */
+    /** A completed run's output: the {@code result} JSON after the sentinel when the script assigned one,
+     *  otherwise the whole stdout. Anything else is a deterministic failure. */
     static NodeOutcome toOutcome(ToolCallResult result) {
-        String output = result.getResult() == null ? "" : result.getResult().strip();
-        return result.isCompleted() ? new NodeOutcome.Normal(output) : new NodeOutcome.Fail(output, false);
+        String raw = result.getResult() == null ? "" : result.getResult();
+        if (!result.isCompleted()) {
+            return new NodeOutcome.Fail(raw.strip(), false);
+        }
+        int sentinel = raw.lastIndexOf(RESULT_SENTINEL);
+        String output = sentinel >= 0 ? raw.substring(sentinel + RESULT_SENTINEL.length()) : raw;
+        return new NodeOutcome.Normal(output.strip());
     }
 
     /** Always prepend an {@code inputs} dict the script can read (empty -> {}), so user code can safely reference
-     *  {@code inputs} even when no inputs are mapped. */
+     *  {@code inputs} even when no inputs are mapped; append the {@code result} epilogue (see class doc).
+     *  The inputs JSON is base64-encoded before embedding: its alphabet ([A-Za-z0-9+/=]) cannot contain a quote
+     *  or backslash, so an upstream value with {@code '''} or a trailing {@code \} can never break out of the
+     *  string literal and be executed as Python (data-to-code injection). */
     static String buildScript(String code, Map<String, Object> inputs) {
-        return "import json\ninputs = json.loads(r'''" + JSON.toJSON(inputs) + "''')\n" + code;
+        String encoded = Base64.getEncoder().encodeToString(JSON.toJSON(inputs).getBytes(StandardCharsets.UTF_8));
+        return "import json, base64\ninputs = json.loads(base64.b64decode('" + encoded + "').decode('utf-8'))\n"
+            + code + RESULT_EPILOGUE;
     }
 
     private static Map<String, Object> resolveInputs(NodeContext ctx) {

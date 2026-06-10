@@ -58,6 +58,8 @@ export default function WorkflowEditor() {
   const [savedAt, setSavedAt] = useState('');
   const lastSavedRef = useRef('');
   const initSaveRef = useRef(false);
+  const saveGenRef = useRef(0);                       // generation of the latest intended save
+  const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());   // serializes writes so they can't land out of order
 
   useEffect(() => {
     if (!id) return;
@@ -188,20 +190,35 @@ export default function WorkflowEditor() {
     });
   }, [edges, nodes, nodeRuns, runId]);
 
-  const saveDraft = useCallback(async (): Promise<boolean> => {
-    if (!id) return false;
-    try {
-      const graph = JSON.stringify(fromReactFlow(nodes, edges));
-      await api.workflows.update(id, { name, graph });
-      lastSavedRef.current = name + '\n' + graph;
-      setSaveState('saved');
-      setSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      return true;
-    } catch (e) {
-      setMsg(`Save failed: ${(e as Error).message}`);
-      return false;
-    }
-  }, [id, name, nodes, edges]);
+  // Single serialized writer for the draft. Writes are chained (never overlap → never land out of order on the
+  // server) and generation-guarded (only the latest intended save updates lastSavedRef / the UI), so a slow
+  // in-flight save completing after a newer edit can't falsely flip the indicator to "Saved" or persist stale.
+  const persistDraft = useCallback((nameSnapshot: string, graph: string, snapshot: string): Promise<boolean> => {
+    if (!id) return Promise.resolve(false);
+    const gen = ++saveGenRef.current;
+    setSaveState('saving');
+    const run = saveChainRef.current.then(async (): Promise<boolean> => {
+      try {
+        await api.workflows.update(id, { name: nameSnapshot, graph });
+        if (gen === saveGenRef.current) {
+          lastSavedRef.current = snapshot;
+          setSaveState('saved');
+          setSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        }
+        return true;
+      } catch (e) {
+        if (gen === saveGenRef.current) { setSaveState('dirty'); setMsg(`Save failed: ${(e as Error).message}`); }
+        return false;
+      }
+    });
+    saveChainRef.current = run.catch(() => undefined);
+    return run;
+  }, [id]);
+
+  const saveDraft = useCallback((): Promise<boolean> => {
+    const graph = JSON.stringify(fromReactFlow(nodes, edges));
+    return persistDraft(name, graph, name + '\n' + graph);
+  }, [name, nodes, edges, persistDraft]);
 
   // debounced auto-save of the draft on any content change — Dify-style, no manual Save button
   useEffect(() => {
@@ -211,19 +228,9 @@ export default function WorkflowEditor() {
     if (!initSaveRef.current) { initSaveRef.current = true; lastSavedRef.current = snapshot; return; }
     if (snapshot === lastSavedRef.current) return;
     setSaveState('dirty');
-    const timer = setTimeout(async () => {
-      setSaveState('saving');
-      try {
-        await api.workflows.update(id, { name, graph });
-        lastSavedRef.current = snapshot;
-        setSaveState('saved');
-        setSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      } catch {
-        setSaveState('dirty');
-      }
-    }, 1200);
+    const timer = setTimeout(() => { void persistDraft(name, graph, snapshot); }, 1200);
     return () => clearTimeout(timer);
-  }, [nodes, edges, name, loading, showRun, id]);
+  }, [nodes, edges, name, loading, showRun, id, persistDraft]);
 
   const publish = async () => {
     if (!id || busy) return;
@@ -302,6 +309,7 @@ export default function WorkflowEditor() {
             onPaneClick={() => { if (!preview) setSelectedId(null); }}
             nodesDraggable={!preview}
             nodesConnectable={!preview}
+            deleteKeyCode={preview ? null : 'Backspace'}
             nodeTypes={nodeTypes}
             fitView
           >

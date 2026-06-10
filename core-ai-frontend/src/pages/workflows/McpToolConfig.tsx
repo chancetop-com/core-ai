@@ -33,10 +33,12 @@ export default function McpToolConfig({ config, onConfig, nodes, selfId }: Props
       .finally(() => setLoadingTools(false));
   }, [serverId]);
 
+  // changing server or tool resets arguments — a different tool has different params, so stale args must not leak
   const selectServer = (id: string) => {
     const name = servers.find((s) => s.id === id)?.name;
-    onConfig({ server_id: id, server_name: name, tool_name: undefined });   // reset tool when server changes
+    onConfig({ server_id: id, server_name: name, tool_name: undefined, arguments: undefined });
   };
+  const selectTool = (name: string) => onConfig({ tool_name: name, arguments: undefined });
 
   return (
     <>
@@ -47,13 +49,14 @@ export default function McpToolConfig({ config, onConfig, nodes, selfId }: Props
       </select>
 
       <label style={label}>Tool</label>
-      <select value={toolName} onChange={(e) => onConfig({ tool_name: e.target.value })} style={input} disabled={!serverId || loadingTools}>
+      <select value={toolName} onChange={(e) => selectTool(e.target.value)} style={input} disabled={!serverId || loadingTools}>
         <option value="">{loadingTools ? 'Loading…' : '— select a tool —'}</option>
         {tools.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
       </select>
 
       <label style={label}>Arguments</label>
-      <VariableMapEditor value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} params={params} />
+      {/* key forces a fresh editor per tool so rows reseed from the new tool's params, not the previous tool's */}
+      <VariableMapEditor key={serverId + ':' + toolName} value={String(config.arguments ?? '')} onChange={(v) => onConfig({ arguments: v })} nodes={nodes} selfId={selfId} params={params} />
     </>
   );
 }
