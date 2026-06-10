@@ -52,6 +52,26 @@ services:
       timeout: 3s
       retries: 5
 
+  # ============================================================
+  # Core-ai Server
+  # ============================================================
+  server:
+    image: chancetop/core-ai-server:latest
+    container_name: core-ai-server
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      SYS_MONGO_URI: mongodb://mongo:27017/core-ai?
+      SYS_JEDIS_HOST: redis
+      APP_ENV: local
+      DEEPSEEK_API_KEY: *
+
+
 volumes:
   mongo-data:
   redis-data:
