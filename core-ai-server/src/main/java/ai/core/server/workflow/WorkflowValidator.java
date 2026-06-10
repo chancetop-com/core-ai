@@ -6,7 +6,9 @@ import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The publish-time validation pipeline: structural rules ({@link GraphValidator}), node-type rules (entry is
@@ -23,8 +25,20 @@ public final class WorkflowValidator {
         List<String> errors = new ArrayList<>(GraphValidator.validate(graph));
         errors.addAll(typeErrors(graph));
         errors.addAll(terminalErrors(graph));
-        errors.addAll(DominatorValidator.validateReferences(graph));
+        // AGGREGATOR is the designated join — exempt it from the dominance requirement so it can read conditional
+        // branch outputs (its whole purpose); a skipped branch renders empty at runtime.
+        errors.addAll(DominatorValidator.validateReferences(graph, aggregatorNodeIds(graph)));
         return errors;
+    }
+
+    private static Set<String> aggregatorNodeIds(WorkflowGraph graph) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (WorkflowNode node : graph.nodes()) {
+            if (NodeType.AGGREGATOR.name().equals(node.type())) {
+                ids.add(node.id());
+            }
+        }
+        return ids;
     }
 
     private static List<String> typeErrors(WorkflowGraph graph) {

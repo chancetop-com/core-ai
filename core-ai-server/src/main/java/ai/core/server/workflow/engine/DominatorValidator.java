@@ -69,6 +69,16 @@ public final class DominatorValidator {
 
     /** Returns publish-time errors (empty = valid). */
     public static List<String> validateReferences(WorkflowGraph graph) {
+        return validateReferences(graph, Set.of());
+    }
+
+    /**
+     * @param dominanceExempt node ids excused from the dominance requirement (but not the unknown-node check) —
+     *        the join nodes (AGGREGATOR) whose whole purpose is to read conditional branch outputs. A missing
+     *        branch renders empty at runtime (VariablePool returns empty for a skipped node), so this is safe;
+     *        it's what makes the "insert an Aggregator" remedy actually usable.
+     */
+    public static List<String> validateReferences(WorkflowGraph graph, Set<String> dominanceExempt) {
         Map<String, Set<String>> dom = computeDominators(graph);
         List<String> errors = new ArrayList<>();
         for (WorkflowNode y : graph.nodes()) {
@@ -79,6 +89,9 @@ public final class DominatorValidator {
                 if (graph.node(x) == null) {
                     errors.add("node %s references unknown node %s".formatted(y.id(), x));
                     continue;
+                }
+                if (dominanceExempt.contains(y.id())) {
+                    continue;   // a join node may read a conditional branch output (renders empty if skipped)
                 }
                 if (!dom.getOrDefault(y.id(), Set.of()).contains(x)) {
                     errors.add(("node %s reads %s but %s is not on every path to %s (a branch can skip it) — "

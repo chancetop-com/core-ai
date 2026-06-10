@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkflowValidatorTest {
@@ -50,14 +51,37 @@ class WorkflowValidatorTest {
 
     @Test
     void crossBranchReferenceRejectedAtPublish() {
-        // merge reads {{nodes.left.output}} but left is on only one IF/ELSE arm -> left does not dominate merge
+        // a non-join node (AGENT) reads {{nodes.left.output}} but left is on only one IF/ELSE arm -> rejected
         WorkflowGraph graph = WorkflowGraphParser.parse("""
             {"nodes": [
                {"id": "start", "type": "START"},
                {"id": "split", "type": "IF_ELSE"},
                {"id": "left", "type": "AGENT"},
                {"id": "right", "type": "AGENT"},
-               {"id": "merge", "type": "AGGREGATOR", "config": {"in": "{{nodes.left.output.x}}"}},
+               {"id": "reader", "type": "AGENT", "config": {"input": "{{nodes.left.output.x}}"}},
+               {"id": "end", "type": "END"}],
+             "edges": [
+               {"id": "e0", "source": "start", "target": "split"},
+               {"id": "eL", "source": "split", "target": "left"},
+               {"id": "eR", "source": "split", "target": "right"},
+               {"id": "mL", "source": "left", "target": "reader"},
+               {"id": "mR", "source": "right", "target": "reader"},
+               {"id": "eEnd", "source": "reader", "target": "end"}]}
+            """);
+
+        assertTrue(has(WorkflowValidator.validate(graph), "Aggregator"));
+    }
+
+    @Test
+    void aggregatorMayReadConditionalBranchOutput() {
+        // the designated join (AGGREGATOR) reads a branch output that doesn't dominate it — allowed (renders empty if skipped)
+        WorkflowGraph graph = WorkflowGraphParser.parse("""
+            {"nodes": [
+               {"id": "start", "type": "START"},
+               {"id": "split", "type": "IF_ELSE"},
+               {"id": "left", "type": "AGENT"},
+               {"id": "right", "type": "AGENT"},
+               {"id": "merge", "type": "AGGREGATOR", "config": {"output": "{{nodes.left.output.x}}"}},
                {"id": "end", "type": "END"}],
              "edges": [
                {"id": "e0", "source": "start", "target": "split"},
@@ -68,7 +92,7 @@ class WorkflowValidatorTest {
                {"id": "eEnd", "source": "merge", "target": "end"}]}
             """);
 
-        assertTrue(has(WorkflowValidator.validate(graph), "Aggregator"));
+        assertFalse(has(WorkflowValidator.validate(graph), "every path"));
     }
 
     @Test
