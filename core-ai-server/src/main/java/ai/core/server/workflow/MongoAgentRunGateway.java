@@ -32,7 +32,7 @@ import java.util.Set;
  * @author Xander
  */
 public class MongoAgentRunGateway implements AgentRunGateway {
-    private static final Set<RunStatus> TERMINAL = Set.of(RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.TIMEOUT, RunStatus.CANCELLED);
+    private static final Set<RunStatus> TERMINAL = Set.of(RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.TIMEOUT, RunStatus.CANCELLED, RunStatus.SKIPPED);
     private static final long POLL_INTERVAL_MS = 500;
     private static final long MAX_WAIT_MS = 2 * 60 * 60 * 1000L;   // hard backstop; the child run has its own timeout
     // A non-terminal child older than this is a ghost row (AgentRunner has no reaper that flips a stale run terminal),

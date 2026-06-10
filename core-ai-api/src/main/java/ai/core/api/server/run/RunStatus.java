@@ -17,5 +17,7 @@ public enum RunStatus {
     @Property(name = "TIMEOUT")
     TIMEOUT,
     @Property(name = "CANCELLED")
-    CANCELLED
+    CANCELLED,
+    @Property(name = "SKIPPED")
+    SKIPPED
 }

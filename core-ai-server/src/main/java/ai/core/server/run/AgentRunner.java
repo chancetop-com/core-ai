@@ -175,17 +175,6 @@ public class AgentRunner {
         });
     }
 
-    public boolean isRunning(String agentId) {
-        var threshold = ZonedDateTime.now().minusSeconds(STALE_RUN_THRESHOLD_SECONDS);
-        return agentRunCollection.findOne(
-            Filters.and(
-                Filters.eq("agent_id", agentId),
-                Filters.eq("status", RunStatus.RUNNING),
-                Filters.gte("started_at", threshold)
-            )
-        ).isPresent();
-    }
-
     public boolean isRunning(String agentId, String scheduleId) {
         var threshold = ZonedDateTime.now().minusSeconds(STALE_RUN_THRESHOLD_SECONDS);
         return agentRunCollection.findOne(
