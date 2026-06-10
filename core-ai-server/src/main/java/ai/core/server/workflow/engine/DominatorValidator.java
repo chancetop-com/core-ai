@@ -81,7 +81,8 @@ public final class DominatorValidator {
                     continue;
                 }
                 if (!dom.getOrDefault(y.id(), Set.of()).contains(x)) {
-                    errors.add("node %s reads %s but %s does not dominate %s — insert a VARIABLE_AGGREGATOR"
+                    errors.add(("node %s reads %s but %s is not on every path to %s (a branch can skip it) — "
+                        + "join the branches with an Aggregator node and read that, or clear the reference")
                         .formatted(y.id(), x, x, y.id()));
                 }
             }

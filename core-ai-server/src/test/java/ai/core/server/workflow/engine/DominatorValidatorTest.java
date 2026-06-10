@@ -43,7 +43,7 @@ class DominatorValidatorTest {
         List<String> errors = DominatorValidator.validateReferences(graph);
 
         assertEquals(1, errors.size());
-        assertTrue(errors.get(0).contains("VARIABLE_AGGREGATOR"));
+        assertTrue(errors.get(0).contains("Aggregator"));
     }
 
     @Test

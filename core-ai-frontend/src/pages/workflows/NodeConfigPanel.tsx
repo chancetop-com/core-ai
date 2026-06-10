@@ -61,7 +61,7 @@ export default function NodeConfigPanel({ node, nodes, edges, agents, onChange, 
     onChange({ config: { ...config, agent_id: agentId, agent_name: agentName } });
   };
 
-  const issues = nodeIssues(node, edges);
+  const issues = nodeIssues(node, nodes, edges);
 
   return (
     <div style={panel}>

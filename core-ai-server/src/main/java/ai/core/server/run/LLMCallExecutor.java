@@ -55,7 +55,7 @@ public class LLMCallExecutor {
         var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
 
         ResponseFormat responseFormat = null;
-        if (responseSchemaJson != null) {
+        if (ResponseSchemaConverter.isObjectSchema(responseSchemaJson)) {
             responseFormat = ResponseSchemaConverter.fromJsonSchema(responseSchemaJson);
         }
 
@@ -142,7 +142,7 @@ public class LLMCallExecutor {
         var config = definition.publishedConfig;
         var responseSchemaJson = config != null ? config.responseSchema : definition.responseSchema;
 
-        if (responseSchemaJson != null) {
+        if (ResponseSchemaConverter.isObjectSchema(responseSchemaJson)) {
             return extractStrategyA(output, dataset);
         }
         return extractStrategyB(output, dataset, definition);

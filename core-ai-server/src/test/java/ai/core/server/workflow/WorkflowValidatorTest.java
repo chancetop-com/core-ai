@@ -68,7 +68,7 @@ class WorkflowValidatorTest {
                {"id": "eEnd", "source": "merge", "target": "end"}]}
             """);
 
-        assertTrue(has(WorkflowValidator.validate(graph), "VARIABLE_AGGREGATOR"));
+        assertTrue(has(WorkflowValidator.validate(graph), "Aggregator"));
     }
 
     @Test

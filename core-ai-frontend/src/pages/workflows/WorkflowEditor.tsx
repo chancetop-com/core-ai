@@ -163,7 +163,7 @@ export default function WorkflowEditor() {
     }
     // editing: flag nodes that still need configuration (advisory; the backend validates at publish)
     return nodes.map((n) => {
-      const hasIssue = nodeIssues(n, edges).length > 0;
+      const hasIssue = nodeIssues(n, nodes, edges).length > 0;
       return hasIssue === !!n.data.hasIssue ? n : { ...n, data: { ...n.data, hasIssue } };
     });
   }, [nodes, edges, nodeRuns, runId]);

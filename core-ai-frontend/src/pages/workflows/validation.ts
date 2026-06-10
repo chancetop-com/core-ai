@@ -9,10 +9,14 @@ interface Case { edge_id?: string; conditions?: { selector?: string }[] }
  * A superset of the backend's publish-time required-config rules (WorkflowValidator); the backend stays the
  * source of truth at publish, this just catches problems earlier while the user is still editing.
  */
-export function nodeIssues(node: WorkflowRFNode, edges: Edge[]): string[] {
+// Mirrors the backend SelectorScanner: the node ids a node's templates reference via {{ nodes.<id>... }}.
+const NODE_SELECTOR = /\{\{\s*nodes\.([A-Za-z_][A-Za-z0-9_]*)/g;
+
+export function nodeIssues(node: WorkflowRFNode, nodes: WorkflowRFNode[], edges: Edge[]): string[] {
   const cfg = node.data.config ?? {};
   const str = (key: string) => String(cfg[key] ?? '').trim();
   const issues: string[] = [];
+  danglingReferenceIssues(node, nodes, issues);
   switch (node.data.nodeType) {
     case 'AGENT':
     case 'LLM':
@@ -52,6 +56,23 @@ function startIssues(cfg: Record<string, unknown>, issues: string[]): void {
   if (inputs.some((v) => !String(v.name ?? '').trim())) issues.push('Every input variable needs a name.');
   const names = inputs.map((v) => String(v.name ?? '').trim()).filter(Boolean);
   if (new Set(names).size !== names.length) issues.push('Input variable names must be unique.');
+}
+
+// Flag templates referencing a node that no longer exists (deleted/replaced) — the backend rejects these at
+// publish/run with a cryptic "references unknown node X"; surfacing them on the canvas catches them early.
+function danglingReferenceIssues(node: WorkflowRFNode, nodes: WorkflowRFNode[], issues: string[]): void {
+  const text = JSON.stringify({ name: node.data.name, config: node.data.config ?? {} });
+  const known = new Set(nodes.map((n) => n.id));
+  const seen = new Set<string>();
+  let match: RegExpExecArray | null;
+  NODE_SELECTOR.lastIndex = 0;
+  while ((match = NODE_SELECTOR.exec(text)) !== null) {
+    const ref = match[1];
+    if (ref !== node.id && !known.has(ref) && !seen.has(ref)) {
+      seen.add(ref);
+      issues.push(`References a deleted node (${ref}) — clear that variable.`);
+    }
+  }
 }
 
 function humanInputIssues(cfg: Record<string, unknown>, nodeId: string, edges: Edge[], issues: string[]): void {
