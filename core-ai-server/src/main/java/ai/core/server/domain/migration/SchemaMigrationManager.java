@@ -85,7 +85,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVWorkflowPreviewIndexFix(),
             new SchemaMigrationVBumpDefaultMaxTurns(),
             new SchemaMigrationVMemoryIndexes(),
-            new SchemaMigrationVTraceAgentIdIndex()
+            new SchemaMigrationVTraceAgentIdIndex(),
+            new SchemaMigrationVTraceListFilterIndexes()
         );
     }
 }

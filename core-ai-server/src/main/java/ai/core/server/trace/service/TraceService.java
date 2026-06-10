@@ -1,9 +1,12 @@
 package ai.core.server.trace.service;
 
+import com.mongodb.client.model.Accumulators;
+import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 
 import core.framework.inject.Inject;
+import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
@@ -11,15 +14,16 @@ import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trace.domain.TraceStatus;
 
 import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -35,6 +39,7 @@ public class TraceService {
     // Partial hex prefix: enough chars to be specific (UI shows 8-char session prefix) but shorter than full IDs
     private static final Pattern HEX_PREFIX_PATTERN = Pattern.compile("^[0-9a-fA-F]{6,}$");
     private static final int SCOPED_TRACE_ID_LOOKUP_LIMIT = 10_000;
+    private static final int FACET_LIMIT = 50;
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -52,34 +57,46 @@ public class TraceService {
             query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
         }
         var traces = traceCollection.find(query);
-        traces.forEach(this::enrichMetricsFromSpans);
+        enrichMetricsInBatch(traces);
         return traces;
+    }
+
+    public long count(TraceListFilter filter) {
+        var bsonFilters = buildFilters(filter);
+        if (bsonFilters.isEmpty()) return traceCollection.count(Filters.empty());
+        return traceCollection.count(bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters));
     }
 
     @SuppressWarnings("checkstyle:MethodLength")
     private List<Bson> buildFilters(TraceListFilter filter) {
         List<Bson> bsonFilters = new ArrayList<>();
         // q is the user-friendly search. Strategy:
-        //   - Full UUID / 32-char trace ID → exact match on id fields
-        //   - 6+ hex chars (e.g. an 8-char session prefix shown in the UI) → anchored prefix match on id fields
+        //   - Full UUID / 32-char trace ID → exact match on id fields only, so the OR stays on indexes
+        //   - 6+ hex chars (e.g. an 8-char session prefix shown in the UI) → anchored prefix match on id fields,
+        //     OR-ed with name/agent_name so a name that happens to look like hex still resolves
         //   - Plain text → literal substring on name + agent_name
-        // Hex matches are OR-ed with name/agent_name so a name that happens to look like hex still resolves.
+        // Ids are stored as lowercase hex, so prefix regexes are lowercased without the "i" flag to stay on the index.
         if (filter.q != null && !filter.q.isEmpty()) {
             var q = filter.q.trim();
             var literal = Pattern.quote(q);
-            List<Bson> orClauses = new ArrayList<>();
-            orClauses.add(Filters.regex("name", literal, "i"));
-            orClauses.add(Filters.regex("agent_name", literal, "i"));
             if (UUID_PATTERN.matcher(q).matches() || LONG_HEX_PATTERN.matcher(q).matches()) {
-                orClauses.add(Filters.eq("session_id", q));
-                orClauses.add(Filters.eq("user_id", q));
-                orClauses.add(Filters.eq("trace_id", q));
+                var id = q.toLowerCase(Locale.ROOT);
+                bsonFilters.add(Filters.or(
+                    Filters.eq("session_id", id),
+                    Filters.eq("user_id", id),
+                    Filters.eq("trace_id", id)));
             } else if (HEX_PREFIX_PATTERN.matcher(q).matches()) {
-                var prefix = "^" + literal;
-                orClauses.add(Filters.regex("session_id", prefix, "i"));
-                orClauses.add(Filters.regex("trace_id", prefix, "i"));
+                var prefix = "^" + Pattern.quote(q.toLowerCase(Locale.ROOT));
+                bsonFilters.add(Filters.or(
+                    Filters.regex("session_id", prefix),
+                    Filters.regex("trace_id", prefix),
+                    Filters.regex("name", literal, "i"),
+                    Filters.regex("agent_name", literal, "i")));
+            } else {
+                bsonFilters.add(Filters.or(
+                    Filters.regex("name", literal, "i"),
+                    Filters.regex("agent_name", literal, "i")));
             }
-            bsonFilters.add(Filters.or(orClauses));
         }
         // name is the advanced raw regex, kept for power users
         if (filter.name != null && !filter.name.isEmpty()) {
@@ -127,27 +144,22 @@ public class TraceService {
     public List<Map<String, Object>> facets(String field, TraceListFilter filter) {
         var mongoField = mongoFieldName(field);
         if (mongoField == null) return List.of();
-        var query = new Query();
-        query.sort = Sorts.descending("created_at");
-        // Cap the scan to avoid full-collection sweeps for distinct values
-        query.limit = 5000;
         var bsonFilters = buildFilters(filter);
-        if (!bsonFilters.isEmpty()) {
-            query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
-        }
-        var traces = traceCollection.find(query);
-        Map<String, Long> counts = new HashMap<>();
-        for (var trace : traces) {
-            var value = extractField(field, trace);
-            if (value == null || value.isEmpty()) continue;
-            counts.merge(value, 1L, Long::sum);
-        }
-        return counts.entrySet().stream()
-            .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
-            .map(entry -> {
+        // ne(null) also excludes missing fields and keeps clean index bounds (notablescan-safe on dev)
+        bsonFilters.add(Filters.ne(mongoField, null));
+        bsonFilters.add(Filters.ne(mongoField, ""));
+        var aggregate = new Aggregate<TraceFacetRow>();
+        aggregate.resultClass = TraceFacetRow.class;
+        aggregate.pipeline = List.of(
+            Aggregates.match(Filters.and(bsonFilters)),
+            Aggregates.group("$" + mongoField, Accumulators.sum("count", 1)),
+            Aggregates.sort(Sorts.descending("count")),
+            Aggregates.limit(FACET_LIMIT));
+        return traceCollection.aggregate(aggregate).stream()
+            .map(facetRow -> {
                 Map<String, Object> row = new LinkedHashMap<>();
-                row.put("value", entry.getKey());
-                row.put("count", entry.getValue());
+                row.put("value", facetRow.value);
+                row.put("count", facetRow.count);
                 return row;
             })
             .collect(Collectors.toList());
@@ -159,15 +171,6 @@ public class TraceService {
             case "model" -> "model";
             case "agentName", "agent_name" -> "agent_name";
             case "source" -> "source";
-            default -> null;
-        };
-    }
-
-    private String extractField(String field, Trace trace) {
-        return switch (field) {
-            case "model" -> trace.model;
-            case "agentName", "agent_name" -> trace.agentName;
-            case "source" -> trace.source;
             default -> null;
         };
     }
@@ -187,13 +190,38 @@ public class TraceService {
         return trace;
     }
 
+    // Resolve spans for all traces missing metrics in one query instead of one span query per trace
+    private void enrichMetricsInBatch(List<Trace> traces) {
+        var pending = traces.stream()
+            .filter(trace -> trace.traceId != null && !trace.traceId.isEmpty())
+            .filter(this::needsEnrichment)
+            .toList();
+        if (pending.isEmpty()) return;
+
+        var query = new Query();
+        query.filter = Filters.in("trace_id", pending.stream().map(trace -> trace.traceId).toList());
+        var spansByTrace = spanCollection.find(query).stream()
+            .filter(span -> span.traceId != null)
+            .collect(Collectors.groupingBy(span -> span.traceId));
+        pending.forEach(trace -> enrichMetrics(trace, spansByTrace.getOrDefault(trace.traceId, List.of())));
+    }
+
+    private boolean needsEnrichment(Trace trace) {
+        var needsTokens = trace.totalTokens == null || trace.totalTokens == 0;
+        return needsTokens || trace.cachedTokens == null || trace.costUsd == null;
+    }
+
     private void enrichMetricsFromSpans(Trace trace) {
+        if (!needsEnrichment(trace)) return;
+        enrichMetrics(trace, spans(trace.traceId));
+    }
+
+    private void enrichMetrics(Trace trace, List<Span> spans) {
         var needsTokens = trace.totalTokens == null || trace.totalTokens == 0;
         var needsCachedTokens = trace.cachedTokens == null || needsTokens;
         var needsCost = trace.costUsd == null || needsTokens;
         if (!needsTokens && !needsCachedTokens && !needsCost) return;
 
-        var spans = spans(trace.traceId);
         long inputTokens = 0;
         long outputTokens = 0;
         long cachedTokens = 0;

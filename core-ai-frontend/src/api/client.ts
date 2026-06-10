@@ -120,8 +120,10 @@ export interface Trace {
   account?: TraceAccount;
   status: 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'ERROR';
   errorMessage?: string;
-  input: string;
-  output: string;
+  // input/output are omitted in list responses; the server sends a short preview instead
+  input?: string;
+  output?: string;
+  preview?: string;
   metadata: Record<string, string>;
   inputTokens: number;
   outputTokens: number;
@@ -175,6 +177,11 @@ export interface TraceFilter {
 export interface TraceFacet {
   value: string;
   count: number;
+}
+
+export interface TraceListResponse {
+  traces: Trace[];
+  total: number;
 }
 
 export interface SessionSummary {
@@ -716,7 +723,7 @@ export const api = {
       if (filters) {
         Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
       }
-      return request<Trace[]>(`/api/traces?${params}`);
+      return request<TraceListResponse>(`/api/traces?${params}`);
     },
     get: (id: string) => request<Trace>(`/api/traces/${id}`),
     spans: (id: string) => request<Span[]>(`/api/traces/${id}/spans`),

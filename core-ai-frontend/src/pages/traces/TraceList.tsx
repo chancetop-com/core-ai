@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, MessageCircle, Search, UserCircle, X, Zap } from 'lucide-react';
 import { api } from '../../api/client';
@@ -18,7 +18,8 @@ import {
   resolveTraceType,
 } from './traceViewModel';
 
-const LIMIT = 20;
+const PAGE_SIZES = [20, 50, 100];
+const SEARCH_DEBOUNCE_MS = 300;
 const DEFAULT_RANGE = '1h';
 
 const TRACE_TYPE_TABS: { key: string; label: string }[] = [
@@ -85,6 +86,7 @@ function idMatchKind(value: string): 'full' | 'prefix' | 'none' {
 interface TraceListState {
   requestKey: string;
   traces: Trace[];
+  total: number;
 }
 
 export default function TraceList() {
@@ -92,33 +94,36 @@ export default function TraceList() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [result, setResult] = useState<TraceListState>({ requestKey: '', traces: [] });
+  const [result, setResult] = useState<TraceListState>({ requestKey: '', traces: [], total: 0 });
   const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(PAGE_SIZES[0]);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(() => hasAdvancedFilters(scopeFiltersForRole(readFilters(searchParams), isAdmin), isAdmin));
   const [filters, setFilters] = useState<TraceFilter>(() => scopeFiltersForRole(readFilters(searchParams), isAdmin));
+  const [searchInput, setSearchInput] = useState(() => filters.q || '');
+  const lastPushedQ = useRef(filters.q || '');
   const [modelFacets, setModelFacets] = useState<TraceFacet[]>([]);
   const [agentFacets, setAgentFacets] = useState<TraceFacet[]>([]);
 
   const activeFilterCount = countActiveFilters(filters);
   const advancedFilterCount = countAdvancedFilters(filters, isAdmin);
-  const requestKey = JSON.stringify({ offset, filters: normalizeFilters(filters) });
+  const requestKey = JSON.stringify({ offset, limit, filters: normalizeFilters(filters) });
 
   useEffect(() => {
     let cancelled = false;
-    api.traces.list(offset, LIMIT, cleanFilters(filters))
-      .then(nextTraces => {
-        if (!cancelled) setResult({ requestKey, traces: nextTraces });
+    api.traces.list(offset, limit, cleanFilters(filters))
+      .then(response => {
+        if (!cancelled) setResult({ requestKey, traces: response.traces, total: response.total });
       })
       .catch(error => {
         console.warn('load traces failed', error);
-        if (!cancelled) setResult({ requestKey, traces: [] });
+        if (!cancelled) setResult({ requestKey, traces: [], total: 0 });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [offset, filters, requestKey]);
+  }, [offset, limit, filters, requestKey]);
 
   // Facet contexts deliberately drop the field being queried, so the dropdown shows all options under the current peer filters
   const facetContext = useMemo(() => cleanFilters(filters) || {}, [filters]);
@@ -139,6 +144,8 @@ export default function TraceList() {
 
   const loading = result.requestKey !== requestKey;
   const traces = loading ? [] : result.traces;
+  // Keep the last known total while a page loads so the pagination bar doesn't collapse between pages
+  const total = result.total;
 
   const updateFilter = (patch: Partial<TraceFilter>) => {
     const next = normalizeFilters(scopeFiltersForRole({ ...filters, ...patch }, isAdmin));
@@ -151,15 +158,34 @@ export default function TraceList() {
     // Reset wipes defaults too — leaves time range as "All time" so the user sees everything
     const next = { ...EMPTY_FILTERS, range: '' };
     setFilters(next);
+    setSearchInput('');
     setOffset(0);
     setSearchParams({});
   };
 
+  // Keep the input responsive and only push the query into filters after a short pause
+  useEffect(() => {
+    if (searchInput === (filters.q || '')) return undefined;
+    const timer = setTimeout(() => {
+      lastPushedQ.current = searchInput;
+      updateFilter({ q: searchInput });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  // Sync the input only when q changes from outside the box (chip clear, reset) — not from our own debounce push
+  useEffect(() => {
+    if ((filters.q || '') === lastPushedQ.current) return;
+    lastPushedQ.current = filters.q || '';
+    setSearchInput(filters.q || '');
+  }, [filters.q]);
+
   const selectedKey = selectedTraceId || '';
-  const searchKind = filters.q ? idMatchKind(filters.q.trim()) : 'none';
-  const searchHint = filters.q
-    ? (searchKind === 'full' ? `Detected ID → ${isAdmin ? 'session/user/trace' : 'session/trace'}`
-      : searchKind === 'prefix' ? 'Detected ID prefix → session/trace'
+  const searchKind = searchInput ? idMatchKind(searchInput.trim()) : 'none';
+  const searchHint = searchInput
+    ? (searchKind === 'full' ? `Detected ID → ${isAdmin ? 'session/user/trace' : 'session/trace'} · all time`
+      : searchKind === 'prefix' ? 'Detected ID prefix → session/trace · all time'
       : 'name / agent')
     : '';
 
@@ -221,8 +247,8 @@ export default function TraceList() {
           <div className="mt-3 relative">
             <Search size={14} className="absolute left-3 top-2.5" style={{ color: 'var(--color-text-secondary)' }} />
             <input
-              value={filters.q || ''}
-              onChange={event => updateFilter({ q: event.target.value })}
+              value={searchInput}
+              onChange={event => setSearchInput(event.target.value)}
               placeholder={isAdmin ? 'Search trace name, agent, or paste a session/user ID...' : 'Search trace name, agent, or paste a session/trace ID...'}
               className="w-full pl-9 pr-32 py-2 rounded-md border text-sm"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
@@ -346,6 +372,7 @@ export default function TraceList() {
                     selected={selectedKey === traceId}
                     onSelect={() => setSelectedTraceId(traceId)}
                     onOpenSession={() => navigate(`/chat?sessionId=${encodeURIComponent(trace.sessionId)}`)}
+                    onFilterSession={() => updateFilter({ sessionId: trace.sessionId, q: '' })}
                   />
                 );
               })}
@@ -353,23 +380,15 @@ export default function TraceList() {
           )}
         </div>
 
-        <div className="flex items-center justify-between mt-4">
-          <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            Showing {traces.length > 0 ? offset + 1 : 0}-{offset + traces.length}
-          </span>
-          <div className="flex gap-2">
-            <button onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0}
-              className="px-3 py-1.5 rounded-md border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
-              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-              <ChevronLeft size={14} /> Prev
-            </button>
-            <button onClick={() => setOffset(offset + LIMIT)} disabled={traces.length < LIMIT}
-              className="px-3 py-1.5 rounded-md border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
-              style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-              Next <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
+        <Pagination
+          offset={offset}
+          limit={limit}
+          total={total}
+          shown={traces.length}
+          loading={loading}
+          onOffsetChange={setOffset}
+          onLimitChange={nextLimit => { setLimit(nextLimit); setOffset(0); }}
+        />
       </div>
 
       {selectedTraceId && (
@@ -379,15 +398,93 @@ export default function TraceList() {
   );
 }
 
-function TraceRow({ trace, selected, onSelect, onOpenSession }: {
+// Numbered pagination: first/last always visible, a sliding window around the current page, ellipsis between
+function pageItems(page: number, totalPages: number): (number | '...')[] {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const pages = new Set<number>([1, totalPages, page - 1, page, page + 1]);
+  const sorted = [...pages].filter(p => p >= 1 && p <= totalPages).sort((a, b) => a - b);
+  const items: (number | '...')[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (prev && p - prev > 1) items.push('...');
+    items.push(p);
+    prev = p;
+  }
+  return items;
+}
+
+function Pagination({ offset, limit, total, shown, loading, onOffsetChange, onLimitChange }: {
+  offset: number;
+  limit: number;
+  total: number;
+  shown: number;
+  loading: boolean;
+  onOffsetChange: (offset: number) => void;
+  onLimitChange: (limit: number) => void;
+}) {
+  const page = Math.floor(offset / limit) + 1;
+  // total < 0 means the server could not count this filter combination — fall back to prev/next paging
+  const hasTotal = total >= 0;
+  const totalPages = Math.max(1, Math.ceil(Math.max(total, 0) / limit));
+  const buttonStyle = { borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' };
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+      <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+        <span>
+          {loading ? 'Loading...'
+            : !hasTotal ? `Showing ${shown > 0 ? offset + 1 : 0}-${offset + shown}`
+            : total > 0 ? `Showing ${offset + 1}-${offset + shown} of ${total}`
+            : 'No results'}
+        </span>
+        <label className="flex items-center gap-1.5">
+          <select value={limit} onChange={event => onLimitChange(Number(event.target.value))}
+            className="px-2 py-1 rounded-md border text-sm cursor-pointer"
+            style={{ ...buttonStyle, background: 'var(--color-bg-tertiary)' }}>
+            {PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+          </select>
+          per page
+        </label>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <button onClick={() => onOffsetChange(Math.max(0, offset - limit))} disabled={offset === 0}
+          className="px-2.5 py-1.5 rounded-md border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+          style={buttonStyle}>
+          <ChevronLeft size={14} /> Prev
+        </button>
+        {hasTotal && pageItems(page, totalPages).map((item, index) => item === '...' ? (
+          <span key={`gap-${index}`} className="px-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>...</span>
+        ) : (
+          <button key={item} onClick={() => onOffsetChange((item - 1) * limit)} disabled={item === page}
+            className="min-w-[32px] px-2 py-1.5 rounded-md border text-sm cursor-pointer disabled:cursor-default"
+            style={item === page
+              ? { borderColor: 'var(--color-primary)', background: 'var(--color-primary)', color: 'white', fontWeight: 600 }
+              : buttonStyle}>
+            {item}
+          </button>
+        ))}
+        <button onClick={() => onOffsetChange(offset + limit)}
+          disabled={hasTotal ? page >= totalPages : shown < limit}
+          className="px-2.5 py-1.5 rounded-md border text-sm flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+          style={buttonStyle}>
+          Next <ChevronRight size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TraceRow({ trace, selected, onSelect, onOpenSession, onFilterSession }: {
   trace: Trace;
   selected: boolean;
   onSelect: () => void;
   onOpenSession: () => void;
+  onFilterSession: () => void;
 }) {
   const traceType = typeColors(resolveTraceType(trace));
   const source = sourceColors(resolveTraceSource(trace));
-  const preview = extractTracePreview(trace);
+  // List responses carry a server-computed preview; fall back to client extraction for older servers
+  const preview = trace.preview || extractTracePreview(trace);
   const model = trace.model || trace.metadata?.model || '';
 
   return (
@@ -417,15 +514,27 @@ function TraceRow({ trace, selected, onSelect, onOpenSession }: {
             {trace.agentName && <NeutralChip>{trace.agentName}</NeutralChip>}
             {trace.userId && <AccountChip trace={trace} />}
             {trace.sessionId && (
-              <button onClick={event => {
-                event.stopPropagation();
-                onOpenSession();
-              }}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs cursor-pointer"
-                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-primary)' }}
-                title={trace.sessionId}>
-                <MessageCircle size={11} /> {trace.sessionId.slice(0, 8)}
-              </button>
+              <span className="inline-flex items-center rounded-md overflow-hidden"
+                style={{ background: 'var(--color-bg-tertiary)' }}>
+                <button onClick={event => {
+                  event.stopPropagation();
+                  onOpenSession();
+                }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs cursor-pointer"
+                  style={{ color: 'var(--color-primary)' }}
+                  title={`Open chat session ${trace.sessionId}`}>
+                  <MessageCircle size={11} /> {trace.sessionId.slice(0, 8)}
+                </button>
+                <button onClick={event => {
+                  event.stopPropagation();
+                  onFilterSession();
+                }}
+                  className="px-1.5 py-0.5 cursor-pointer border-l"
+                  style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
+                  title="Filter traces by this session">
+                  <Filter size={11} />
+                </button>
+              </span>
             )}
           </div>
           {preview && (
@@ -560,11 +669,15 @@ function scopeFiltersForRole(filters: TraceFilter, isAdmin: boolean): TraceFilte
 }
 
 function cleanFilters(filters: TraceFilter): TraceFilter | undefined {
+  // Pasting an ID (or filtering by session) means "find this exact thing" —
+  // drop the time window so old sessions aren't silently filtered out
+  const idDetected = (filters.q ? idMatchKind(filters.q.trim()) !== 'none' : false) || Boolean(filters.sessionId);
   const cleaned: Record<string, string> = {};
   (Object.entries(filters) as [keyof TraceFilter, string | undefined][]).forEach(([key, value]) => {
     if (!value) return;
     // Custom range relies on startFrom/startTo; don't forward the synthetic "custom" marker to the backend
     if (key === 'range' && value === 'custom') return;
+    if (idDetected && (key === 'range' || key === 'startFrom' || key === 'startTo')) return;
     cleaned[key] = value;
   });
   return Object.keys(cleaned).length > 0 ? (cleaned as TraceFilter) : undefined;

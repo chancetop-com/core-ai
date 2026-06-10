@@ -30,6 +30,7 @@ import ai.core.server.domain.migration.SchemaVersion;
 import ai.core.server.trace.domain.PromptTemplate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trigger.domain.Trigger;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
@@ -77,6 +78,7 @@ public class ServerApp extends App {
         // trace collections
         mongo.collection(Trace.class);
         mongo.collection(Span.class);
+        mongo.view(TraceFacetRow.class);
         mongo.collection(PromptTemplate.class);
 
         // service api collection

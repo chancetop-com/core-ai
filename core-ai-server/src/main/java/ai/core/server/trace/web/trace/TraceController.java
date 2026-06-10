@@ -11,12 +11,14 @@ import core.framework.web.WebContext;
 
 import ai.core.server.domain.User;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.service.TracePreviewExtractor;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.utils.JsonUtil;
 
 import java.time.ZonedDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,9 +42,22 @@ public class TraceController {
         var filter = parseFilter(params);
         applyScope(filter, scope);
         filter.offset = Integer.parseInt(params.getOrDefault("offset", "0"));
-        filter.limit = Integer.parseInt(params.getOrDefault("limit", "20"));
+        filter.limit = Math.min(Integer.parseInt(params.getOrDefault("limit", "20")), 100);
         var traces = traceService.list(filter);
-        return jsonResponse(toTraceViews(traces));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("traces", toTraceViews(traces));
+        response.put("total", countTotal(filter));
+        return jsonResponse(response);
+    }
+
+    // total is best-effort: an unindexable filter combination (e.g. pure text search on dev with notablescan)
+    // must not break the list, so the frontend falls back to prev/next paging on -1
+    private long countTotal(TraceService.TraceListFilter filter) {
+        try {
+            return traceService.count(filter);
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     public Response facets(Request request) {
@@ -171,10 +186,15 @@ public class TraceController {
 
     private List<TraceView> toTraceViews(List<Trace> traces) {
         var accountCache = new HashMap<String, AccountView>();
-        return traces.stream().map(trace -> toTraceView(trace, accountCache)).toList();
+        return traces.stream().map(trace -> toTraceView(trace, accountCache, true)).toList();
     }
 
     private TraceView toTraceView(Trace trace, Map<String, AccountView> accountCache) {
+        return toTraceView(trace, accountCache, false);
+    }
+
+    // summary views replace the full input/output payload with a short preview to keep list responses small
+    private TraceView toTraceView(Trace trace, Map<String, AccountView> accountCache, boolean summary) {
         var view = new TraceView();
         view.id = trace.id;
         view.traceId = trace.traceId;
@@ -188,8 +208,12 @@ public class TraceController {
         view.userId = trace.userId;
         view.status = trace.status;
         view.errorMessage = trace.errorMessage;
-        view.input = trace.input;
-        view.output = trace.output;
+        if (summary) {
+            view.preview = TracePreviewExtractor.extract(trace.input);
+        } else {
+            view.input = trace.input;
+            view.output = trace.output;
+        }
         view.metadata = trace.metadata;
         view.inputTokens = trace.inputTokens;
         view.outputTokens = trace.outputTokens;
@@ -242,6 +266,7 @@ public class TraceController {
 
     public static class TraceView extends Trace {
         public AccountView account;
+        public String preview;
     }
 
     public static class AccountView {

@@ -92,11 +92,11 @@ export default function Dashboard() {
       api.traces.list(0, TRACE_LIMIT, { startFrom }),
       api.traces.generations(0, GENERATION_LIMIT),
     ])
-      .then(([nextTraces, nextSpans]) => {
+      .then(([traceList, nextSpans]) => {
         if (cancelled) return;
         setState({
           requestKey,
-          traces: nextTraces || [],
+          traces: traceList?.traces || [],
           llmSpans: (nextSpans || []).filter(span => isWithinRange(span.startedAt, timeRange)),
           error: null,
           loadedAt: new Date().toISOString(),
@@ -583,7 +583,7 @@ function RecentActivityRow({ trace, onClick }: { trace: Trace; onClick: () => vo
       <span className="justify-self-start px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: 'var(--color-bg-tertiary)', color: source.color }}>
         {source.label}
       </span>
-      <span className="min-w-0 truncate text-sm font-medium">{trace.agentName || trace.name || extractTracePreview(trace) || trace.traceId}</span>
+      <span className="min-w-0 truncate text-sm font-medium">{trace.agentName || trace.name || trace.preview || extractTracePreview(trace) || trace.traceId}</span>
       <StatusBadge status={trace.status} />
       <span className="text-xs sm:text-right" style={{ color: 'var(--color-text-secondary)' }}>{formatRelativeTime(trace.startedAt || trace.createdAt)}</span>
     </button>

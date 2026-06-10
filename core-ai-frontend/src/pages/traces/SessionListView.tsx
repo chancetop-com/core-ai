@@ -73,8 +73,8 @@ export default function SessionListView({ onSelectTrace }: Props) {
 
     setLoadingSession(prev => new Set(prev).add(sessionId));
     try {
-      const traces = await api.traces.list(0, 100, { sessionId });
-      setTracesBySession(prev => ({ ...prev, [sessionId]: traces }));
+      const response = await api.traces.list(0, 100, { sessionId });
+      setTracesBySession(prev => ({ ...prev, [sessionId]: response.traces }));
     } catch (e) {
       console.warn('failed to load traces for session', sessionId, e);
     } finally {
