@@ -23,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Mongo lifecycle around the pure {@link WorkflowAdvancer} drive loop: claim a run with a run-level CAS lease
@@ -39,10 +40,11 @@ public class WorkflowRunner {
     private static final int MAX_CONCURRENT_RUNS = 16;
     private static final int LEASE_SECONDS = 60;
     private static final int HEARTBEAT_PERIOD_SECONDS = LEASE_SECONDS / 3;
+    private static final int HEARTBEAT_THREADS = 4;   // a blocked renew on one run must not starve the others
 
     private final ExecutorService nodePool = Executors.newFixedThreadPool(MAX_CONCURRENT_NODES);
     private final ExecutorService driverPool = Executors.newFixedThreadPool(MAX_CONCURRENT_RUNS);
-    private final ScheduledExecutorService heartbeatScheduler = Executors.newScheduledThreadPool(1);
+    private final ScheduledExecutorService heartbeatScheduler = Executors.newScheduledThreadPool(HEARTBEAT_THREADS);
     private final String workerId = UUID.randomUUID().toString();
 
     @Inject
@@ -73,18 +75,32 @@ public class WorkflowRunner {
         if (!claim(runId)) {
             return false;
         }
+        // A node-run still RUNNING at claim time is an orphan from a previous owner that lost its lease or crashed.
+        // Settle it deterministically BEFORE driving, so recovery yields a clear FAILED instead of a race where the
+        // new owner instantly classifies a still-RUNNING node as a stuck run (null-error FAILED).
+        resetOrphanNodeRuns(runId);
+        var lostLease = new AtomicBoolean(false);
         ScheduledFuture<?> heartbeat = null;
         try {
             heartbeat = heartbeatScheduler.scheduleAtFixedRate(
-                () -> renewLease(runId), HEARTBEAT_PERIOD_SECONDS, HEARTBEAT_PERIOD_SECONDS, TimeUnit.SECONDS);
+                () -> renewLease(runId, lostLease), HEARTBEAT_PERIOD_SECONDS, HEARTBEAT_PERIOD_SECONDS, TimeUnit.SECONDS);
             WorkflowRun run = runCollection.get(runId).orElseThrow(() -> new IllegalStateException("run not found: " + runId));
             var graph = graphLoader.load(run.versionId);
             var journal = new MongoWorkflowJournal(nodeRunCollection);
-            RunStatus status = WorkflowAdvancer.drive(graph, run, journal, nodeExecutor, nodePool, () -> isCancelled(runId));
+            RunStatus status = WorkflowAdvancer.drive(graph, run, journal, nodeExecutor, nodePool,
+                () -> isCancelled(runId), () -> !lostLease.get());
+            if (lostLease.get()) {
+                LOGGER.warn("lease lost mid-drive, leaving finalization to the new owner, runId={}", runId);
+                return true;
+            }
             boolean completed = status == RunStatus.COMPLETED;
             terminate(runId, status, null, completed ? endOutput(runId) : null, completed ? collectArtifacts(runId) : List.of());
             return true;
         } catch (RuntimeException e) {
+            if (lostLease.get()) {
+                LOGGER.warn("lease lost mid-drive (after error), leaving finalization to the new owner, runId={}", runId, e);
+                return true;
+            }
             LOGGER.error("workflow run failed to advance, runId={}", runId, e);
             terminate(runId, RunStatus.FAILED, e.getMessage(), null, List.of());
             return true;
@@ -111,15 +127,38 @@ public class WorkflowRunner {
         return updated == 1;
     }
 
-    // Independent of node completion: a slow node must never let the lease expire. Tolerant of a transient
-    // failure — scheduleAtFixedRate cancels the task forever if it throws, so one blip must not silence it.
-    private void renewLease(String runId) {
+    // Independent of node completion: a slow node must never let the lease expire. Renew only while we still own
+    // the run (claimed_by == workerId); if the update matches 0 rows another replica has claimed it, so flag the
+    // lease lost — the drive loop then stops dispatching and the runner skips finalization (no phantom execution,
+    // no overwriting the new owner). A transient Mongo failure is NOT treated as lost (one blip is harmless; we
+    // retry next tick) — scheduleAtFixedRate would otherwise cancel the task forever if it threw.
+    private void renewLease(String runId, AtomicBoolean lostLease) {
+        if (lostLease.get()) {
+            return;
+        }
         try {
-            runCollection.update(
+            long updated = runCollection.update(
                 Filters.and(Filters.eq("_id", runId), Filters.eq("claimed_by", workerId)),
                 Updates.set("lease_until", ZonedDateTime.now().plusSeconds(LEASE_SECONDS)));
+            if (updated != 1) {
+                lostLease.set(true);
+                LOGGER.warn("lease lost (renew matched {} rows), runId={}", updated, runId);
+            }
         } catch (RuntimeException e) {
             LOGGER.warn("lease renew failed, will retry next tick, runId={}", runId, e);
+        }
+    }
+
+    // Settle node-runs left RUNNING by a previous owner (lease lost / crash). updateMany; 0 rows on a fresh claim.
+    private void resetOrphanNodeRuns(String runId) {
+        long reset = nodeRunCollection.update(
+            Filters.and(Filters.eq("run_id", runId), Filters.eq("status", NodeRunStatus.RUNNING)),
+            Updates.combine(
+                Updates.set("status", NodeRunStatus.FAILED_RETRYABLE),
+                Updates.set("error", "node interrupted: the previous run owner lost its lease or crashed"),
+                Updates.set("completed_at", ZonedDateTime.now())));
+        if (reset > 0) {
+            LOGGER.warn("reset {} orphaned RUNNING node-run(s) on claim, runId={}", reset, runId);
         }
     }
 
@@ -134,9 +173,9 @@ public class WorkflowRunner {
         }
     }
 
-    // Status-guarded terminal transition: only the owning worker on a still-RUNNING run may settle it, so a
-    // concurrent CANCELLED (or a stolen lease) is never blindly overwritten. On success the run's single END
-    // output is bubbled up to run.output (what run-sync and the history view return).
+    // Guarded terminal transition: only the owning worker may settle a not-yet-finalized run (completed_at == null).
+    // Guarding on completed_at (rather than status == RUNNING) also lets a CANCELLED run be finalized with a
+    // completed_at, while still no-op'ing on a stolen lease (claimed_by changed) or a double-finalize.
     private void terminate(String runId, RunStatus status, String error, String output, List<ArtifactRef> artifacts) {
         var now = ZonedDateTime.now();
         var sets = new ArrayList<Bson>();
@@ -155,7 +194,7 @@ public class WorkflowRunner {
             Filters.and(
                 Filters.eq("_id", runId),
                 Filters.eq("claimed_by", workerId),
-                Filters.eq("status", RunStatus.RUNNING)),
+                Filters.eq("completed_at", null)),
             Updates.combine(sets));
         if (updated == 0) {
             LOGGER.warn("workflow run not finalized (lost claim or already terminal), runId={}, status={}", runId, status);

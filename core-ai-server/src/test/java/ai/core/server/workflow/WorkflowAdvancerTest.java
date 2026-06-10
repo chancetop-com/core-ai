@@ -188,6 +188,59 @@ class WorkflowAdvancerTest {
         }
     }
 
+    @Test
+    void executorThrowingErrorIsRecordedAsFailNotStuckRunning() {
+        WorkflowGraph graph = graph(
+            List.of(node("start"), node("a"), node("b"), node("end")),
+            List.of(edge("e0", "start", "a"), edge("e1", "a", "b"), edge("e2", "b", "end")));
+        var journal = new InMemoryWorkflowJournal();
+        NodeExecutor executor = ctx -> {
+            if (ctx.node().id().equals("a")) {
+                throw new StackOverflowError("boom");   // an Error, not a RuntimeException (e.g. runaway user code)
+            }
+            return new NodeOutcome.Normal("{}");
+        };
+
+        RunStatus status = WorkflowAdvancer.drive(graph, run(), journal, executor, SAME_THREAD, () -> false);
+
+        assertEquals(RunStatus.FAILED, status);   // drive returns instead of leaving 'a' stuck RUNNING forever
+        assertEquals(NodeRunStatus.FAILED_RETRYABLE, journal.status("run-1", "a"));
+        assertNull(journal.status("run-1", "b"));
+    }
+
+    @Test
+    void lostLeaseStopsDriveAndSuppressesCommit() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        var started = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var held = new AtomicBoolean(true);
+        try {
+            WorkflowGraph graph = graph(
+                List.of(node("start"), node("slow"), node("end")),
+                List.of(edge("e0", "start", "slow"), edge("e1", "slow", "end")));
+            var journal = new InMemoryWorkflowJournal();
+            NodeExecutor executor = ctx -> {
+                if (ctx.node().id().equals("slow")) {
+                    started.countDown();
+                    await(release);
+                }
+                return new NodeOutcome.Normal("{}");
+            };
+
+            CompletableFuture<RunStatus> driving = CompletableFuture.supplyAsync(
+                () -> WorkflowAdvancer.drive(graph, run(), journal, executor, pool, () -> false, held::get));
+            assertTrue(started.await(2, TimeUnit.SECONDS));   // slow node in flight, drive parked in awaitAny
+            held.set(false);                                   // lease lost to another replica
+            release.countDown();                               // let the in-flight node finish
+
+            assertEquals(RunStatus.RUNNING, driving.get(3, TimeUnit.SECONDS));      // handoff sentinel, not finalized by us
+            assertEquals(NodeRunStatus.RUNNING, journal.status("run-1", "slow"));   // commit suppressed -> not clobbered
+            assertNull(journal.status("run-1", "end"));                             // no new dispatch after lease loss
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     // ---- helpers ----
 
     private static void await(CountDownLatch latch) {

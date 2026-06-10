@@ -8,6 +8,8 @@ import ai.core.server.workflow.engine.Planner;
 import ai.core.server.workflow.engine.RunState;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -29,16 +31,33 @@ import java.util.function.BooleanSupplier;
  * @author Xander
  */
 public final class WorkflowAdvancer {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WorkflowAdvancer.class);
     private static final String ROOT_SCOPE_KEY = "";
+    private static final int COMMIT_RETRIES = 3;
 
     private WorkflowAdvancer() {
     }
 
     public static RunStatus drive(WorkflowGraph graph, WorkflowRun run, WorkflowJournal journal,
                                   NodeExecutor executor, Executor pool, BooleanSupplier cancelled) {
+        return drive(graph, run, journal, executor, pool, cancelled, () -> true);
+    }
+
+    /**
+     * @param leaseHeld returns false once this worker has lost the run-level lease (a slow/dead heartbeat let
+     *                  another replica claim the run). When that happens the loop stops dispatching new nodes,
+     *                  in-flight commits are suppressed (the new owner owns the journal), and drive returns
+     *                  {@link RunStatus#RUNNING} as a "handed off, not finalized by me" sentinel — the runner
+     *                  checks the same flag and skips finalization so it can't overwrite the new owner.
+     */
+    public static RunStatus drive(WorkflowGraph graph, WorkflowRun run, WorkflowJournal journal,
+                                  NodeExecutor executor, Executor pool, BooleanSupplier cancelled, BooleanSupplier leaseHeld) {
         var inflight = new ConcurrentHashMap<String, CompletableFuture<Void>>();
         try {
             while (true) {
+                if (!leaseHeld.getAsBoolean()) {
+                    return RunStatus.RUNNING;   // lost the lease -> hand off; the runner will not finalize
+                }
                 if (cancelled.getAsBoolean()) {
                     return RunStatus.CANCELLED;
                 }
@@ -56,7 +75,7 @@ public final class WorkflowAdvancer {
                         continue;   // a concurrent dispatch already owns it (unique index)
                     }
                     progressed = true;
-                    dispatch(graph, run, node, journal, executor, pool, inflight);
+                    dispatch(graph, run, node, journal, executor, pool, inflight, leaseHeld);
                 }
                 if (progressed) {
                     continue;   // re-plan immediately on any new ready/skip
@@ -81,7 +100,8 @@ public final class WorkflowAdvancer {
     }
 
     private static void dispatch(WorkflowGraph graph, WorkflowRun run, WorkflowNode node, WorkflowJournal journal,
-                                 NodeExecutor executor, Executor pool, Map<String, CompletableFuture<Void>> inflight) {
+                                 NodeExecutor executor, Executor pool, Map<String, CompletableFuture<Void>> inflight,
+                                 BooleanSupplier leaseHeld) {
         var done = new CompletableFuture<Void>();
         inflight.put(node.id(), done);
         pool.execute(() -> {
@@ -89,9 +109,11 @@ public final class WorkflowAdvancer {
                 VariablePool vars = VariablePool.fromNodeRuns(journal.nodeRuns(run.id), ROOT_SCOPE_KEY, run.input);
                 NodeContext ctx = new NodeContext(graph, run, node, List.of(), vars);
                 NodeOutcome outcome = executor.execute(ctx);
-                journal.recordOutcome(run, node, List.of(), outcome);
-            } catch (RuntimeException e) {
-                journal.recordOutcome(run, node, List.of(), new NodeOutcome.Fail(String.valueOf(e.getMessage()), false));
+                commit(journal, run, node, outcome, leaseHeld);
+            } catch (Throwable e) {
+                // catch Throwable (not just RuntimeException): user code in a CODE node can throw Error
+                // (StackOverflow/OOM); without this the outcome is never recorded and the node stays RUNNING forever.
+                commit(journal, run, node, new NodeOutcome.Fail(String.valueOf(e.getMessage()), false), leaseHeld);
             } finally {
                 // Order matters: remove from inflight BEFORE completing the future, so a drive thread woken by
                 // awaitAny() re-reads an inflight map that no longer contains this node (else a transient spin).
@@ -99,6 +121,35 @@ public final class WorkflowAdvancer {
                 done.complete(null);
             }
         });
+    }
+
+    // Record the outcome, but only while this worker still holds the lease — once the lease is lost the new owner
+    // has reset our orphaned RUNNING node-run, so a late write here would clobber its view. A transient Mongo
+    // failure on the write is retried a few times so a successful node's COMPLETED result isn't silently lost.
+    private static void commit(WorkflowJournal journal, WorkflowRun run, WorkflowNode node, NodeOutcome outcome,
+                               BooleanSupplier leaseHeld) {
+        if (!leaseHeld.getAsBoolean()) {
+            return;
+        }
+        RuntimeException last = null;
+        for (int attempt = 0; attempt < COMMIT_RETRIES; attempt++) {
+            try {
+                journal.recordOutcome(run, node, List.of(), outcome);
+                return;
+            } catch (RuntimeException e) {
+                last = e;
+                sleepQuietly(50L * (attempt + 1));
+            }
+        }
+        LOGGER.error("failed to record node outcome after {} attempts, runId={}, nodeId={}", COMMIT_RETRIES, run.id, node.id(), last);
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // A retryable node failure currently terminalizes the run as FAILED; resumable manual retry (a PAUSED run
