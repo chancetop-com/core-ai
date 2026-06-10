@@ -25,16 +25,17 @@ public final class WorkflowValidator {
         List<String> errors = new ArrayList<>(GraphValidator.validate(graph));
         errors.addAll(typeErrors(graph));
         errors.addAll(terminalErrors(graph));
-        // AGGREGATOR is the designated join — exempt it from the dominance requirement so it can read conditional
-        // branch outputs (its whole purpose); a skipped branch renders empty at runtime.
-        errors.addAll(DominatorValidator.validateReferences(graph, aggregatorNodeIds(graph)));
+        // END and AGGREGATOR are the output-composer / join nodes — exempt them from the dominance requirement so
+        // they can read conditional branch outputs (their whole purpose); a skipped branch renders empty at
+        // runtime (same OutputComposer). Mid-graph consumers (AGENT/CODE/HTTP/IF) stay strict — empty there is a bug.
+        errors.addAll(DominatorValidator.validateReferences(graph, joinNodeIds(graph)));
         return errors;
     }
 
-    private static Set<String> aggregatorNodeIds(WorkflowGraph graph) {
+    private static Set<String> joinNodeIds(WorkflowGraph graph) {
         Set<String> ids = new LinkedHashSet<>();
         for (WorkflowNode node : graph.nodes()) {
-            if (NodeType.AGGREGATOR.name().equals(node.type())) {
+            if (NodeType.AGGREGATOR.name().equals(node.type()) || NodeType.END.name().equals(node.type())) {
                 ids.add(node.id());
             }
         }

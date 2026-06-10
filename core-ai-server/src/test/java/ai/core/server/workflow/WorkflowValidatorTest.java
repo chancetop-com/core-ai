@@ -96,6 +96,27 @@ class WorkflowValidatorTest {
     }
 
     @Test
+    void endMayReadOutputsFromDifferentBranches() {
+        // the single END output joins both arms: each ref is on only one arm, but END is the terminal join (renders empty if skipped)
+        WorkflowGraph graph = WorkflowGraphParser.parse("""
+            {"nodes": [
+               {"id": "start", "type": "START"},
+               {"id": "split", "type": "IF_ELSE"},
+               {"id": "left", "type": "AGENT"},
+               {"id": "right", "type": "AGENT"},
+               {"id": "end", "type": "END", "config": {"output": "{{nodes.left.output}} {{nodes.right.output}}"}}],
+             "edges": [
+               {"id": "e0", "source": "start", "target": "split"},
+               {"id": "eL", "source": "split", "target": "left"},
+               {"id": "eR", "source": "split", "target": "right"},
+               {"id": "lEnd", "source": "left", "target": "end"},
+               {"id": "rEnd", "source": "right", "target": "end"}]}
+            """);
+
+        assertFalse(has(WorkflowValidator.validate(graph), "every path"));
+    }
+
+    @Test
     void dominatedReferencePasses() {
         // merge reads {{nodes.split.output}}; split dominates merge (every path passes it) -> valid
         WorkflowGraph graph = WorkflowGraphParser.parse("""
