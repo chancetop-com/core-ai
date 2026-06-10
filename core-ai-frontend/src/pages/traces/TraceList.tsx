@@ -118,7 +118,8 @@ export default function TraceList() {
       })
       .catch(error => {
         console.warn('load traces failed', error);
-        if (!cancelled) setResult({ requestKey, traces: [], total: 0 });
+        // -1 = unknown total: keeps the pagination in prev/next mode instead of claiming "No results"
+        if (!cancelled) setResult({ requestKey, traces: [], total: -1 });
       });
 
     return () => {
@@ -162,8 +163,12 @@ export default function TraceList() {
   // Keep the last known total while a page loads so the pagination bar doesn't collapse between pages
   const total = result.total;
 
+  // Merge from a ref, not the render closure: the debounce timer may fire after other filters
+  // changed, and merging into a stale snapshot would silently revert those changes
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
   const updateFilter = (patch: Partial<TraceFilter>) => {
-    const next = normalizeFilters(scopeFiltersForRole({ ...filters, ...patch }, isAdmin));
+    const next = normalizeFilters(scopeFiltersForRole({ ...filtersRef.current, ...patch }, isAdmin));
     setFilters(next);
     setOffset(0);
     syncSearchParams(next, setSearchParams);

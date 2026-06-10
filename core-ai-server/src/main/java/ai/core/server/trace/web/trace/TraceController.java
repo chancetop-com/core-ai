@@ -41,8 +41,9 @@ public class TraceController {
         var params = request.queryParams();
         var filter = parseFilter(params);
         applyScope(filter, scope);
-        filter.offset = Integer.parseInt(params.getOrDefault("offset", "0"));
-        filter.limit = Math.min(Integer.parseInt(params.getOrDefault("limit", "20")), 100);
+        filter.offset = Math.max(Integer.parseInt(params.getOrDefault("offset", "0")), 0);
+        // lower bound matters: limit=0 means "no limit" at the Mongo driver and would bypass the cap
+        filter.limit = Math.clamp(Integer.parseInt(params.getOrDefault("limit", "20")), 1, 200);
         var traces = traceService.list(filter);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("traces", toTraceViews(traces));

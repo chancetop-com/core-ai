@@ -181,6 +181,7 @@ export interface TraceFacet {
 
 export interface TraceListResponse {
   traces: Trace[];
+  // -1 when the server could not count this filter combination; UI falls back to prev/next paging
   total: number;
 }
 

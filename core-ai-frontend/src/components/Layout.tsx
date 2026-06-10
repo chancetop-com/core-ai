@@ -26,7 +26,6 @@ export default function Layout() {
       '/chat': 'Chat',
       '/for-you': 'For You',
       '/traces': 'Traces',
-      '/sessions': 'Sessions',
       '/agents': 'Agents',
       '/system-prompts': 'System Prompts',
       '/login': 'Login',

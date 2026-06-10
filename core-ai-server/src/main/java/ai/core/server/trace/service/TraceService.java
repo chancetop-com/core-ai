@@ -81,11 +81,7 @@ public class TraceService {
             var q = filter.q.trim();
             var literal = Pattern.quote(q);
             if (UUID_PATTERN.matcher(q).matches() || LONG_HEX_PATTERN.matcher(q).matches()) {
-                var id = q.toLowerCase(Locale.ROOT);
-                bsonFilters.add(Filters.or(
-                    Filters.eq("session_id", id),
-                    Filters.eq("user_id", id),
-                    Filters.eq("trace_id", id)));
+                bsonFilters.add(Filters.or(fullIdClauses(q)));
             } else if (HEX_PREFIX_PATTERN.matcher(q).matches()) {
                 var prefix = "^" + Pattern.quote(q.toLowerCase(Locale.ROOT));
                 bsonFilters.add(Filters.or(
@@ -140,6 +136,22 @@ public class TraceService {
             bsonFilters.add(Filters.lte("started_at", filter.startTo));
         }
         return bsonFilters;
+    }
+
+    // Exact-match clauses for a pasted full ID. Server-generated ids are lowercase, but ingested ids
+    // (OTLP session.id attributes) are stored verbatim, so the pasted form is matched as well.
+    private List<Bson> fullIdClauses(String q) {
+        var id = q.toLowerCase(Locale.ROOT);
+        List<Bson> idClauses = new ArrayList<>();
+        idClauses.add(Filters.eq("session_id", id));
+        idClauses.add(Filters.eq("user_id", id));
+        idClauses.add(Filters.eq("trace_id", id));
+        if (!id.equals(q)) {
+            idClauses.add(Filters.eq("session_id", q));
+            idClauses.add(Filters.eq("user_id", q));
+            idClauses.add(Filters.eq("trace_id", q));
+        }
+        return idClauses;
     }
 
     public List<Map<String, Object>> facets(String field, TraceListFilter filter) {
@@ -319,24 +331,28 @@ public class TraceService {
 
     // Aggregates one session's traces for the trace-page summary bar; walks the session_id index only
     public Map<String, Object> sessionSummary(String sessionId, String userId) {
-        var query = new Query();
         var filters = new ArrayList<Bson>();
         filters.add(Filters.eq("session_id", sessionId));
         if (userId != null && !userId.isEmpty()) {
             filters.add(Filters.eq("user_id", userId));
         }
-        query.filter = filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
+        var sessionFilter = filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
+
+        var query = new Query();
+        query.filter = sessionFilter;
         query.sort = Sorts.descending("created_at");
         query.limit = SESSION_SUMMARY_TRACE_LIMIT;
         var traces = traceCollection.find(query);
         if (traces.isEmpty()) return null;
         enrichMetricsInBatch(traces);
 
+        // trace_count and first trace stay exact even when the aggregate window above is capped
+        var traceCount = traceCollection.count(sessionFilter);
         var latestTrace = traces.getFirst();
-        var firstTrace = traces.getLast();
+        var firstTrace = traceCount > traces.size() ? findFirstTrace(sessionFilter) : traces.getLast();
         Map<String, Object> session = new LinkedHashMap<>();
         session.put("session_id", sessionId);
-        session.put("trace_count", traces.size());
+        session.put("trace_count", traceCount);
         session.put("total_tokens", traces.stream().mapToLong(t -> t.totalTokens != null ? t.totalTokens : 0).sum());
         session.put("total_cached_tokens", traces.stream().mapToLong(t -> t.cachedTokens != null ? t.cachedTokens : 0).sum());
         session.put("total_cost_usd", traces.stream().mapToDouble(t -> t.costUsd != null ? t.costUsd : 0.0).sum());
@@ -347,6 +363,14 @@ public class TraceService {
         session.put("first_trace_at", firstTrace.createdAt);
         session.put("first_request", TracePreviewExtractor.extract(firstTrace.input));
         return session;
+    }
+
+    private Trace findFirstTrace(Bson sessionFilter) {
+        var query = new Query();
+        query.filter = sessionFilter;
+        query.sort = Sorts.ascending("created_at");
+        query.limit = 1;
+        return traceCollection.find(query).getFirst();
     }
 
     public void saveTrace(Trace trace) {
