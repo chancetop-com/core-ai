@@ -5,6 +5,7 @@ import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.sandbox.SandboxService;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
@@ -59,6 +60,9 @@ public class WorkflowRunner {
     @Inject
     WorkflowGraphLoader graphLoader;
 
+    @Inject
+    SandboxService sandboxService;
+
     /** Drive a run on a background thread. The claim is idempotent — a concurrent claim elsewhere just no-ops. */
     public void submit(String runId) {
         driverPool.execute(() -> {
@@ -108,6 +112,9 @@ public class WorkflowRunner {
             if (heartbeat != null) {
                 heartbeat.cancel(false);
             }
+            // release the per-run CODE sandbox (shared by all CODE nodes). drive() drained all node tasks before
+            // returning, so none is still executing. No-op if no CODE node ran or sandboxing is disabled.
+            sandboxService.releaseSandbox("wf-code:" + runId);
         }
     }
 

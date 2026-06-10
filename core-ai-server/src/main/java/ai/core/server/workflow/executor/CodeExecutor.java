@@ -57,15 +57,18 @@ public class CodeExecutor implements NodeExecutor {
             return new NodeOutcome.Fail("sandbox is not configured (set sys.sandbox.provider)", false);
         }
         String script = buildScript(code, resolveInputs(ctx));
-        String sessionId = "wf-code:" + ctx.run().id + ':' + ctx.node().id();
-        Sandbox sandbox = sandboxService.createSandbox(SandboxService.createDefaultConfig(), sessionId, ctx.run().userId);
-        try {
-            var exec = ExecutionContext.builder().sessionId(sessionId).userId(ctx.run().userId).sandbox(sandbox).build();
-            ToolCallResult result = sandbox.execute(PYTHON_TOOL, JSON.toJSON(Map.of("code", script)), exec);
-            return toOutcome(result);
-        } finally {
-            close(sandbox);
+        // One sandbox per workflow RUN, shared by every CODE node (created lazily on first use, reused thereafter,
+        // and released by WorkflowRunner when the run ends). Amortizes container cold-start. Each script still
+        // reads inputs / writes result via the variable pool — the shared container is a cost optimization, NOT a
+        // data channel: scripts must not rely on files persisting across nodes (recovery/handoff loses them).
+        String sessionId = "wf-code:" + ctx.run().id;
+        Sandbox sandbox = sandboxService.getOrCreateSandbox(SandboxService.createDefaultConfig(), sessionId, ctx.run().userId);
+        if (sandbox == null) {
+            return new NodeOutcome.Fail("sandbox is disabled", false);
         }
+        var exec = ExecutionContext.builder().sessionId(sessionId).userId(ctx.run().userId).sandbox(sandbox).build();
+        ToolCallResult result = sandbox.execute(PYTHON_TOOL, JSON.toJSON(Map.of("code", script)), exec);
+        return toOutcome(result);
     }
 
     /** A completed run's output: the {@code result} JSON after the sentinel when the script assigned one,
@@ -87,7 +90,10 @@ public class CodeExecutor implements NodeExecutor {
      *  string literal and be executed as Python (data-to-code injection). */
     static String buildScript(String code, Map<String, Object> inputs) {
         String encoded = Base64.getEncoder().encodeToString(JSON.toJSON(inputs).getBytes(StandardCharsets.UTF_8));
-        return "import json, base64\ninputs = json.loads(base64.b64decode('" + encoded + "').decode('utf-8'))\n"
+        // chdir into a fresh temp dir per execution: CODE nodes share one per-run container, so this keeps
+        // parallel nodes' relative-path file writes from clashing in a shared cwd.
+        return "import json, base64, os, tempfile\nos.chdir(tempfile.mkdtemp())\n"
+            + "inputs = json.loads(base64.b64decode('" + encoded + "').decode('utf-8'))\n"
             + code + RESULT_EPILOGUE;
     }
 
@@ -126,13 +132,5 @@ public class CodeExecutor implements NodeExecutor {
             // not valid JSON after all — fall through to the raw string
         }
         return value;
-    }
-
-    private static void close(Sandbox sandbox) {
-        try {
-            sandbox.close();
-        } catch (RuntimeException e) {
-            // best-effort release; the provider also reclaims the sandbox on its idle timeout
-        }
     }
 }

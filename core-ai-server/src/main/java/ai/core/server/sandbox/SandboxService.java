@@ -75,6 +75,22 @@ public class SandboxService {
         return createSandbox(config, sessionId, userId, null);
     }
 
+    // Reuse the session's sandbox if one already exists, else create it — atomically, so concurrent callers (e.g.
+    // parallel CODE nodes in one workflow run sharing a single per-run sandbox) don't race to create duplicates.
+    // The caller owns the lifecycle: it must releaseSandbox(sessionId) when done.
+    public Sandbox getOrCreateSandbox(SandboxConfig config, String sessionId, String userId) {
+        if (!enabled) return null;
+        var effectiveConfig = config != null ? config : defaultConfig;
+        if (Boolean.FALSE.equals(effectiveConfig.enabled)) {
+            LOGGER.debug("sandbox disabled for session: {}", sessionId);
+            return null;
+        }
+        return sessionSandboxes.computeIfAbsent(sessionId, sid -> {
+            LOGGER.info("sandbox created (shared) for session: {}, config={}", sid, effectiveConfig);
+            return new LazySandbox(effectiveConfig, sandboxManager, null, sid, userId, () -> uploadPendingFiles(sid));
+        });
+    }
+
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher) {
         if (!enabled) return null;
 
