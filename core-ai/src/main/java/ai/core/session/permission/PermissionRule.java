@@ -1,6 +1,5 @@
 package ai.core.session.permission;
 
-import ai.core.tool.tools.PowershellCommandTool;
 import ai.core.tool.tools.ShellCommandTool;
 import ai.core.utils.BashReadOnlyChecker;
 import ai.core.utils.PowershellReadOnlyChecker;
@@ -26,15 +25,10 @@ public class PermissionRule {
      * @return true if the operation is read-only, false otherwise
      */
     public static boolean isReadOnly(String toolName, Map<String, Object> arguments) {
+        if (!ShellCommandTool.TOOL_NAME.equals(toolName)) return false;
         var command = (String) arguments.get("command");
         if (command == null || command.isBlank()) return false;
-        if (PowershellCommandTool.POWERSHELL_TOOL_NAME.equals(toolName)) {
-            return PowershellReadOnlyChecker.isReadOnly(command);
-        }
-        if (ShellCommandTool.TOOL_NAME.equals(toolName)) {
-            return BashReadOnlyChecker.isReadOnly(command);
-        }
-        return false;
+        return BashReadOnlyChecker.isReadOnly(command) || PowershellReadOnlyChecker.isReadOnly(command);
     }
 
     private static Optional<String> extractPrimaryArgSupport(Map<String, Object> arguments) {

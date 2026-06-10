@@ -11,7 +11,7 @@ import ai.core.utils.PowershellReadOnlyChecker;
  * @author Lim Chen
  */
 public class PowershellCommandTool extends ShellCommandTool {
-    public static final String POWERSHELL_TOOL_NAME = "run_powershell_command";
+    public static final String TOOL_NAME = ShellCommandTool.TOOL_NAME;
 
     private static final String TOOL_DESC_TEMPLATE = """
             Executes a PowerShell command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
@@ -153,7 +153,7 @@ public class PowershellCommandTool extends ShellCommandTool {
                 .replace("${tool_glob}", GlobFileTool.TOOL_NAME)
                 .replace("${tool_grep}", GrepFileTool.TOOL_NAME)
                 .replace("${tool_write_file}", WriteFileTool.TOOL_NAME)
-                .replace("${tool_shell}", POWERSHELL_TOOL_NAME)
+                .replace("${tool_shell}", TOOL_NAME)
                 .replace("${default_timeout_ms}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS))
                 .replace("${default_timeout_minutes}", String.valueOf(DEFAULT_TIMEOUT_MILLISECONDS / 60000))
                 .replace("${os}", System.getProperty("os.name"));
@@ -183,7 +183,7 @@ public class PowershellCommandTool extends ShellCommandTool {
 
         @Override
         public PowershellCommandTool build() {
-            this.name(POWERSHELL_TOOL_NAME);
+            this.name(TOOL_NAME);
             this.description(TOOL_DESC);
             this.concurrencyGroup(ConcurrencyGroupType.SHELL_COMMAND.getTypeName());
             this.parameters(ToolCallParameters.of(
