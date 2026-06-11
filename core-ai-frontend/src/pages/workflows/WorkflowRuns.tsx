@@ -90,10 +90,11 @@ export default function WorkflowRuns() {
                   <span style={dim}>{duration(run)}</span>
                   <span style={{ ...dim, marginLeft: 10 }}>{when(run.started_at)}</span>
                 </div>
+                {run.error && <div style={runError}>{run.error}</div>}
                 {open && (
                   <div style={runBody}>
                     {loadingTrace && !data ? <div style={dim}>Loading trace…</div>
-                      : data ? <RunTrace nodes={data.nodes} runStatus={run.status || ''} nodeRuns={data.nodeRuns} />
+                      : data ? <RunTrace nodes={data.nodes} runStatus={run.status || ''} runError={run.error} nodeRuns={data.nodeRuns} />
                       : <div style={dim}>No trace.</div>}
                   </div>
                 )}
@@ -123,6 +124,13 @@ function when(iso?: string): string {
 const runCard: CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 8, marginBottom: 8, background: 'var(--color-bg-secondary)' };
 const runHead: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, padding: '11px 12px', cursor: 'pointer' };
 const runBody: CSSProperties = { padding: '0 12px 12px' };
+const runError: CSSProperties = {
+  margin: '0 12px 10px 34px',
+  fontSize: 12,
+  color: '#dc2626',
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+};
 const dim: CSSProperties = { fontSize: 12, color: 'var(--color-text-secondary)' };
 const errText: CSSProperties = { color: '#dc2626', fontSize: 12, marginBottom: 8 };
 const iconBtn: CSSProperties = {

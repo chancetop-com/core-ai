@@ -33,6 +33,7 @@ export function sourceColors(source?: string): SourcePalette {
     case 'api':      return { label: 'API',       color: '#f59e0b' };
     case 'a2a':      return { label: 'A2A',       color: '#ec4899' };
     case 'scheduled':return { label: 'Scheduled', color: '#eab308' };
+    case 'workflow': return { label: 'Workflow',  color: '#10b981' };
     case 'llm_test': return { label: 'LLM Test',  color: '#8b5cf6' };
     case 'llm_api':  return { label: 'LLM API',   color: '#f59e0b' };
     case 'external': return { label: 'External',  color: '#64748b' };

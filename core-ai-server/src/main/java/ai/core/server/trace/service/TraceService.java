@@ -387,7 +387,7 @@ public class TraceService {
         public String q;           // user-friendly search: UUID exact match across id fields, otherwise substring on name + agent_name
         public String name;        // advanced raw regex on name
         public String type;        // agent | llm_call | external
-        public String source;      // chat | a2a | api | scheduled
+        public String source;      // chat | a2a | api | scheduled | workflow
         public String agentName;
         public String model;
         public String status;

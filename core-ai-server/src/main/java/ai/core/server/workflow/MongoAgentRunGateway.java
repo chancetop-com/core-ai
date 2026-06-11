@@ -56,7 +56,8 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     public String startChildRun(WorkflowRun run, WorkflowNode node, String input) {
         AgentPublishedConfig snapshot = loadSnapshot(run.versionId, node.id());
         AgentDefinition definition = transientDefinition(node, run.userId, snapshot);
-        return agentRunner.run(definition, input, TriggerType.WORKFLOW, null, null);
+        var traceContext = new AgentRunner.WorkflowTraceContext(run.workflowId, run.id, node.id(), node.type());
+        return agentRunner.run(definition, input, TriggerType.WORKFLOW, null, null, traceContext);
     }
 
     @Override

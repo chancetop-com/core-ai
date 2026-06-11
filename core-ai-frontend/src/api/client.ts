@@ -125,7 +125,7 @@ export interface Trace {
   traceId: string;
   name: string;
   type?: string;     // agent | llm_call | external
-  source?: string;   // chat | test | api | a2a | scheduled | llm_test | llm_api | external
+  source?: string;   // chat | test | api | a2a | scheduled | workflow | llm_test | llm_api | external
   agentName?: string;
   model?: string;
   sessionId: string;
@@ -176,7 +176,7 @@ export interface TraceFilter {
   q?: string;           // smart search: UUID-like → id fields; otherwise substring on name + agent_name
   name?: string;        // advanced raw regex on name
   type?: string;        // agent | llm_call | external
-  source?: string;      // chat | a2a | api | scheduled
+  source?: string;      // chat | a2a | api | scheduled | workflow
   agentName?: string;
   model?: string;
   status?: string;

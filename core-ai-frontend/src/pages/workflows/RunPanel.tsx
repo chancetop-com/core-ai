@@ -99,7 +99,7 @@ export default function RunPanel({ nodes, runId, runStatus, nodeRuns, busy, erro
         </>
       )}
 
-      {runId && <RunTrace nodes={nodes} runStatus={runStatus} nodeRuns={nodeRuns} focusNodeId={focusNodeId} onResume={onResume} busy={busy} />}
+      {runId && <RunTrace nodes={nodes} runStatus={runStatus} runError={error} nodeRuns={nodeRuns} focusNodeId={focusNodeId} onResume={onResume} busy={busy} />}
     </div>
   );
 }

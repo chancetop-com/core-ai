@@ -28,7 +28,7 @@ public class Trace {
     public String type;       // agent | llm_call | external
 
     @Field(name = "source")
-    public String source;     // chat | test | api | a2a | scheduled | llm_test | llm_api | external
+    public String source;     // chat | test | api | a2a | scheduled | workflow | llm_test | llm_api | external
 
     @Field(name = "agent_name")
     public String agentName;

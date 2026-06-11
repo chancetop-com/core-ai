@@ -101,6 +101,7 @@ export default function WorkflowEditor() {
         if (stopped) return;
         consecutiveErrors = 0;
         setRunStatus(runView.status || 'RUNNING');
+        setRunError(runView.error || '');
         const map: Record<string, WorkflowNodeRunView> = {};
         (nodeList.node_runs || []).forEach((nr) => { map[nr.node_id] = nr; });
         setNodeRuns(map);

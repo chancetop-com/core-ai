@@ -47,6 +47,7 @@ import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import org.slf4j.Logger;
@@ -87,6 +88,10 @@ public class AgentRunner {
     private static final AttributeKey<String> CLIENT_TYPE = AttributeKey.stringKey("client.type");
     private static final AttributeKey<String> CORE_AI_RUN_ID = AttributeKey.stringKey("core_ai.run_id");
     private static final AttributeKey<String> CORE_AI_SCHEDULE_ID = AttributeKey.stringKey("core_ai.schedule_id");
+    private static final AttributeKey<String> CORE_AI_WORKFLOW_ID = AttributeKey.stringKey("core_ai.workflow_id");
+    private static final AttributeKey<String> CORE_AI_WORKFLOW_RUN_ID = AttributeKey.stringKey("core_ai.workflow_run_id");
+    private static final AttributeKey<String> CORE_AI_WORKFLOW_NODE_ID = AttributeKey.stringKey("core_ai.workflow_node_id");
+    private static final AttributeKey<String> CORE_AI_WORKFLOW_NODE_TYPE = AttributeKey.stringKey("core_ai.workflow_node_type");
     private static final int MAX_CONCURRENT_RUNS = 10;
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
     private static final int SANDBOX_RELEASE_DELAY_SECONDS = 60;
@@ -145,6 +150,11 @@ public class AgentRunner {
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId, Map<String, String> runtimeVariables) {
+        return run(definition, input, trigger, scheduleId, runtimeVariables, null);
+    }
+
+    public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
+                      Map<String, String> runtimeVariables, WorkflowTraceContext traceContext) {
         var resolvedVariables = new HashMap<String, Object>();
         if (runtimeVariables != null) {
             resolvedVariables.putAll(runtimeVariables);
@@ -160,7 +170,7 @@ public class AgentRunner {
         var sandbox = sandboxService.createSandbox(sandboxConfig, runId, definition.userId);
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             try {
-                execute(runEntity, definition, sandbox, resolvedVariables);
+                execute(runEntity, definition, sandbox, resolvedVariables, traceContext);
             } finally {
                 scheduleSandboxRelease(runId);
             }
@@ -207,15 +217,20 @@ public class AgentRunner {
         ).isPresent();
     }
 
-    private void execute(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
+    public record WorkflowTraceContext(String workflowId, String workflowRunId, String workflowNodeId, String workflowNodeType) {
+    }
+
+    private void execute(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
+                         WorkflowTraceContext traceContext) {
         if (definition.type == DefinitionType.LLM_CALL) {
-            executeLLMCall(runEntity, definition);
+            executeLLMCall(runEntity, definition, traceContext);
         } else {
-            executeAgent(runEntity, definition, sandbox, variables);
+            executeAgent(runEntity, definition, sandbox, variables, traceContext);
         }
     }
 
-    private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables) {
+    private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
+                              WorkflowTraceContext traceContext) {
         var runId = runEntity.id;
         var agent = buildAgent(runEntity, definition, sandbox, variables);
         var completed = new AtomicBoolean(false);
@@ -224,7 +239,7 @@ public class AgentRunner {
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
             var timeout = scheduleTimeout(runEntity, agent, timeoutSeconds, completed);
-            runWithTimeout(runEntity, agent, timeout, completed, definition);
+            runWithTimeout(runEntity, agent, timeout, completed, definition, traceContext);
         } catch (Exception e) {
             if (unwrapCause(e) instanceof MaxTurnsExceededException maxTurnsEx) {
                 LOGGER.warn("agent run exceeded max turns, runId={}, maxTurns={}", runId, maxTurnsEx.maxTurns);
@@ -240,10 +255,11 @@ public class AgentRunner {
         }
     }
 
-    private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed, AgentDefinition definition) {
+    private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed,
+                                AgentDefinition definition, WorkflowTraceContext traceContext) {
         try {
             if (completed.compareAndSet(false, true)) {
-                var output = runAgentWithTrace(runEntity, definition, agent);
+                var output = runAgentWithTrace(runEntity, definition, agent, traceContext);
                 updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
                 extractDatasetRecords(output, definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
             }
@@ -252,9 +268,9 @@ public class AgentRunner {
         }
     }
 
-    private void executeLLMCall(AgentRun runEntity, AgentDefinition definition) {
+    private void executeLLMCall(AgentRun runEntity, AgentDefinition definition, WorkflowTraceContext traceContext) {
         try {
-            var result = runLLMCallWithTrace(runEntity, definition);
+            var result = runLLMCallWithTrace(runEntity, definition, traceContext);
 
             var tokenUsage = new TokenUsage();
             tokenUsage.input = result.inputTokens();
@@ -374,8 +390,9 @@ public class AgentRunner {
     }
 
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
-    private String runAgentWithTrace(AgentRun runEntity, AgentDefinition definition, Agent agent) {
-        return runWithTrace(runEntity, definition, "agent.run", span -> {
+    private String runAgentWithTrace(AgentRun runEntity, AgentDefinition definition, Agent agent,
+                                     WorkflowTraceContext traceContext) {
+        return runWithTrace(runEntity, definition, traceContext, "agent.run", span -> {
             var output = agent.run(runEntity.input);
             if (output != null) span.setAttribute(OUTPUT_VALUE, output);
             if (agent.getNodeStatus() != null) span.setAttribute(AGENT_STATUS, agent.getNodeStatus().name());
@@ -383,8 +400,9 @@ public class AgentRunner {
         });
     }
 
-    private LLMCallExecutor.Result runLLMCallWithTrace(AgentRun runEntity, AgentDefinition definition) {
-        return runWithTrace(runEntity, definition, "llm_call.run", span -> {
+    private LLMCallExecutor.Result runLLMCallWithTrace(AgentRun runEntity, AgentDefinition definition,
+                                                       WorkflowTraceContext traceContext) {
+        return runWithTrace(runEntity, definition, traceContext, "llm_call.run", span -> {
             var result = llmCallExecutor.execute(definition, runEntity.input);
             if (result.output() != null) span.setAttribute(OUTPUT_VALUE, result.output());
             return result;
@@ -392,7 +410,8 @@ public class AgentRunner {
     }
 
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
-    private <T> T runWithTrace(AgentRun runEntity, AgentDefinition definition, String spanName, TraceCallable<T> callable) {
+    private <T> T runWithTrace(AgentRun runEntity, AgentDefinition definition, WorkflowTraceContext traceContext,
+                               String spanName, TraceCallable<T> callable) {
         var spanBuilder = telemetryConfig.getOpenTelemetry().getTracer("core-ai-server", "1.0.0")
             .spanBuilder(spanName)
             .setSpanKind(SpanKind.INTERNAL)
@@ -401,6 +420,7 @@ public class AgentRunner {
             .setAttribute(SESSION_ID, "run:" + runEntity.id)
             .setAttribute(CLIENT_TYPE, traceSource(triggerFor(runEntity)))
             .setAttribute(CORE_AI_RUN_ID, runEntity.id);
+        addWorkflowTraceAttributes(spanBuilder, traceContext);
         if (definition.id != null) spanBuilder.setAttribute(GEN_AI_AGENT_ID, definition.id);
         if (definition.name != null) spanBuilder.setAttribute(GEN_AI_AGENT_NAME, definition.name);
         if (definition.userId != null) spanBuilder.setAttribute(USER_ID, definition.userId);
@@ -420,6 +440,18 @@ public class AgentRunner {
         } finally {
             span.end();
         }
+    }
+
+    private void addWorkflowTraceAttributes(SpanBuilder spanBuilder, WorkflowTraceContext traceContext) {
+        if (traceContext == null) return;
+        setSpanAttribute(spanBuilder, CORE_AI_WORKFLOW_ID, traceContext.workflowId);
+        setSpanAttribute(spanBuilder, CORE_AI_WORKFLOW_RUN_ID, traceContext.workflowRunId);
+        setSpanAttribute(spanBuilder, CORE_AI_WORKFLOW_NODE_ID, traceContext.workflowNodeId);
+        setSpanAttribute(spanBuilder, CORE_AI_WORKFLOW_NODE_TYPE, traceContext.workflowNodeType);
+    }
+
+    private void setSpanAttribute(SpanBuilder spanBuilder, AttributeKey<String> key, String value) {
+        if (value != null && !value.isBlank()) spanBuilder.setAttribute(key, value);
     }
 
     private void setRunTraceId(AgentRun runEntity, String traceId) {

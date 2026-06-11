@@ -148,6 +148,8 @@ function TraceHeader({ trace, spans, mode, onClose }: {
   const traceType = typeColors(resolveTraceType(trace));
   const source = sourceColors(resolveTraceSource(trace));
   const traceId = trace.traceId || trace.id;
+  const workflowRunId = trace.metadata?.workflow_run_id;
+  const workflowNodeId = trace.metadata?.workflow_node_id;
 
   const copyTraceId = () => {
     navigator.clipboard?.writeText(traceId);
@@ -170,6 +172,8 @@ function TraceHeader({ trace, spans, mode, onClose }: {
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             {trace.agentName && <NeutralChip>{trace.agentName}</NeutralChip>}
             {trace.model && <NeutralChip mono>{trace.model}</NeutralChip>}
+            {workflowRunId && <NeutralChip mono>workflow run {workflowRunId.slice(0, 8)}</NeutralChip>}
+            {workflowNodeId && <NeutralChip mono>node {workflowNodeId}</NeutralChip>}
             {trace.userId && (
               <NeutralChip>
                 <UserCircle size={11} /> {accountLabel(trace)}

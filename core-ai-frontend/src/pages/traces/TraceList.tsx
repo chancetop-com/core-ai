@@ -29,13 +29,14 @@ const TRACE_TYPE_TABS: { key: string; label: string }[] = [
   { key: 'external', label: 'External' },
 ];
 
-// Source dropdown is intentionally trimmed to the 4 entry-point sources; llm_*/external are expressed via type tab
+// Source dropdown is intentionally trimmed to entry-point sources; llm_*/external are expressed via type tab
 const SOURCE_OPTIONS: { key: string; label: string }[] = [
   { key: '', label: 'All sources' },
   { key: 'chat', label: 'Chat' },
   { key: 'a2a', label: 'A2A' },
   { key: 'api', label: 'API' },
   { key: 'scheduled', label: 'Scheduled' },
+  { key: 'workflow', label: 'Workflow' },
 ];
 
 const STATUS_SEGMENTS: { key: string; label: string; dotColor?: string }[] = [

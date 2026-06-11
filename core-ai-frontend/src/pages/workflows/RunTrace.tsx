@@ -10,6 +10,7 @@ export interface ResumeBody { approve?: boolean; input?: string }
 interface Props {
   nodes: WorkflowRFNode[];
   runStatus: string;
+  runError?: string;
   nodeRuns: Record<string, WorkflowNodeRunView>;
   focusNodeId?: string | null;     // a node clicked on the canvas auto-expands in the trace
   onResume?: (nodeId: string, body: ResumeBody) => void;   // live test panel only; absent in read-only history
@@ -18,7 +19,7 @@ interface Props {
 
 /** Shared run trace: an overall status row, each node's execution (status, timing, input/output), and the final
  *  result. Used by the live test panel (RunPanel) and the run-history panel so both render runs identically. */
-export default function RunTrace({ nodes, runStatus, nodeRuns, focusNodeId, onResume, busy }: Props) {
+export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNodeId, onResume, busy }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   useEffect(() => { if (focusNodeId) setExpanded((s) => new Set(s).add(focusNodeId)); }, [focusNodeId]);
 
@@ -39,6 +40,7 @@ export default function RunTrace({ nodes, runStatus, nodeRuns, focusNodeId, onRe
         <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{runStatus || 'PENDING'}</span>
         {!TERMINAL_RUN_STATUS.has(runStatus) && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>running…</span>}
       </div>
+      {runError && <Field title="Error" body={runError} danger />}
 
       <label style={label}>Trace</label>
       {runs.length === 0 && <div style={dim}>No node runs.</div>}

@@ -41,6 +41,10 @@ public class OTLPIngestService {
     private static final Logger LOGGER = LoggerFactory.getLogger(OTLPIngestService.class);
     private static final String CORE_AI_CANCELLED = "core_ai.cancelled";
     private static final String CORE_AI_RUN_ID = "core_ai.run_id";
+    private static final String CORE_AI_WORKFLOW_ID = "core_ai.workflow_id";
+    private static final String CORE_AI_WORKFLOW_RUN_ID = "core_ai.workflow_run_id";
+    private static final String CORE_AI_WORKFLOW_NODE_ID = "core_ai.workflow_node_id";
+    private static final String CORE_AI_WORKFLOW_NODE_TYPE = "core_ai.workflow_node_type";
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -116,10 +120,7 @@ public class OTLPIngestService {
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = TraceStatus.RUNNING;
         trace.input = resolveInput(attrs);
-        trace.metadata = Map.of(
-            "service", resourceAttrs.getOrDefault("service.name", "unknown"),
-            "version", resourceAttrs.getOrDefault("service.version", "unknown"),
-            "environment", resourceAttrs.getOrDefault("deployment.environment", "unknown"));
+        trace.metadata = traceMetadata(attrs, resourceAttrs);
         trace.durationMs = 0L;
         trace.startedAt = toZonedDateTime(startMs);
         trace.createdAt = ZonedDateTime.now();
@@ -212,6 +213,7 @@ public class OTLPIngestService {
         if (hasRichContext) {
             upgradeTraceWithSpanInfo(trace, protoSpan, attrs);
         }
+        mergeTraceMetadata(trace, workflowMetadata(attrs));
         traceCollection.replace(trace);
     }
 
@@ -245,10 +247,7 @@ public class OTLPIngestService {
         trace.errorMessage = trace.status == TraceStatus.ERROR ? nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.input = resolveInput(attrs);
         trace.output = resolveOutput(attrs);
-        trace.metadata = Map.of(
-            "service", resourceAttrs.getOrDefault("service.name", "unknown"),
-            "version", resourceAttrs.getOrDefault("service.version", "unknown"),
-            "environment", resourceAttrs.getOrDefault("deployment.environment", "unknown"));
+        trace.metadata = traceMetadata(attrs, resourceAttrs);
         trace.durationMs = endMs - startMs;
         trace.startedAt = toZonedDateTime(startMs);
         trace.completedAt = toZonedDateTime(endMs);
@@ -271,6 +270,38 @@ public class OTLPIngestService {
             trace.updatedAt = ZonedDateTime.now();
             traceCollection.replace(trace);
         }
+    }
+
+    private Map<String, String> traceMetadata(Map<String, String> attrs, Map<String, String> resourceAttrs) {
+        var metadata = new LinkedHashMap<String, String>();
+        metadata.put("service", resourceAttrs.getOrDefault("service.name", "unknown"));
+        metadata.put("version", resourceAttrs.getOrDefault("service.version", "unknown"));
+        metadata.put("environment", resourceAttrs.getOrDefault("deployment.environment", "unknown"));
+        metadata.putAll(workflowMetadata(attrs));
+        return metadata;
+    }
+
+    private Map<String, String> workflowMetadata(Map<String, String> attrs) {
+        var metadata = new LinkedHashMap<String, String>();
+        putAttr(metadata, "agent_run_id", attrs, CORE_AI_RUN_ID);
+        putAttr(metadata, "workflow_id", attrs, CORE_AI_WORKFLOW_ID);
+        putAttr(metadata, "workflow_run_id", attrs, CORE_AI_WORKFLOW_RUN_ID);
+        putAttr(metadata, "workflow_node_id", attrs, CORE_AI_WORKFLOW_NODE_ID);
+        putAttr(metadata, "workflow_node_type", attrs, CORE_AI_WORKFLOW_NODE_TYPE);
+        return metadata;
+    }
+
+    private void putAttr(Map<String, String> target, String targetKey, Map<String, String> attrs, String attrKey) {
+        var value = attrs.get(attrKey);
+        if (value != null && !value.isBlank()) target.put(targetKey, value);
+    }
+
+    private void mergeTraceMetadata(Trace trace, Map<String, String> metadata) {
+        if (metadata.isEmpty()) return;
+        var merged = new LinkedHashMap<String, String>();
+        if (trace.metadata != null) merged.putAll(trace.metadata);
+        merged.putAll(metadata);
+        trace.metadata = merged;
     }
 
     private void recalculateTraceTokens(String traceId) {
@@ -357,7 +388,7 @@ public class OTLPIngestService {
         if (isLLMCall(attrs)) return "llm_call";
         var serviceName = resourceAttrs.get("service.name");
         if (serviceName != null && !isInternalService(serviceName)) return "external";
-        if (source != null) return "agent";  // chat/a2a/api/scheduled all imply agent context
+        if (source != null) return "agent";  // chat/a2a/api/scheduled/workflow all imply agent context
         return "external";
     }
 

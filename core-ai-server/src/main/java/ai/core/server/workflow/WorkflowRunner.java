@@ -102,7 +102,8 @@ public class WorkflowRunner {
                 return true;
             }
             boolean completed = status == RunStatus.COMPLETED;
-            terminate(runId, status, null, completed ? endOutput(runId) : null, completed ? collectArtifacts(runId) : List.of());
+            terminate(runId, status, status == RunStatus.FAILED ? failureSummary(runId) : null,
+                completed ? endOutput(runId) : null, completed ? collectArtifacts(runId) : List.of());
             return true;
         } catch (RuntimeException e) {
             if (lostLease.get()) {
@@ -226,6 +227,27 @@ public class WorkflowRunner {
         } else {
             LOGGER.info("workflow run finished, runId={}, status={}", runId, status);
         }
+    }
+
+    private String failureSummary(String runId) {
+        for (WorkflowNodeRun nodeRun : nodeRunCollection.find(Filters.and(
+            Filters.eq("run_id", runId),
+            Filters.eq("status", NodeRunStatus.FAILED_RETRYABLE)))) {
+            if (nodeRun.error != null && !nodeRun.error.isBlank()) {
+                return failedNodeLabel(nodeRun) + " failed: " + nodeRun.error;
+            }
+        }
+        return "workflow failed: no runnable path reached a terminal output";
+    }
+
+    private String failedNodeLabel(WorkflowNodeRun nodeRun) {
+        var nodeId = nodeRun.nodeId != null ? nodeRun.nodeId : "unknown";
+        var prefix = nodeRun.nodeType != null && !nodeRun.nodeType.isBlank()
+            ? nodeRun.nodeType + " node " + nodeId
+            : "node " + nodeId;
+        return nodeRun.childRunId != null && !nodeRun.childRunId.isBlank()
+            ? prefix + " (child run " + nodeRun.childRunId + ")"
+            : prefix;
     }
 
     // The run's output = the single COMPLETED END node-run's output (single-END is enforced at publish).
