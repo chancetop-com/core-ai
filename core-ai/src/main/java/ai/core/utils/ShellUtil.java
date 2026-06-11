@@ -1,7 +1,11 @@
 package ai.core.utils;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author stephen
@@ -28,6 +32,27 @@ public class ShellUtil {
             return process.waitFor();
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public static String execute(List<String> commands, Path workDir) {
+        try {
+            var process = new ProcessBuilder(commands)
+                    .directory(workDir.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                var sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!sb.isEmpty()) sb.append('\n');
+                    sb.append(line);
+                }
+                process.waitFor(5, TimeUnit.SECONDS);
+                return sb.toString().trim();
+            }
+        } catch (Exception e) {
+            return "";
         }
     }
 
