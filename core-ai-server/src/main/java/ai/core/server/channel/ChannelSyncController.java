@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ChannelSyncController implements Controller {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChannelSyncController.class);
-    private static final long POLL_TIMEOUT_MS = 120_000;
+    private static final long POLL_TIMEOUT_MS = 30 * 60 * 1000;
     private static final long POLL_INTERVAL_MS = 500;
     private final ConcurrentHashMap<String, String> sessionCache = new ConcurrentHashMap<>();
 
