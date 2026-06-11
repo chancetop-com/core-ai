@@ -136,7 +136,9 @@ public class WorkflowRunner {
             Updates.combine(
                 Updates.set("claimed_by", workerId),
                 Updates.set("status", RunStatus.RUNNING),
-                Updates.set("lease_until", now.plusSeconds(LEASE_SECONDS))));
+                Updates.set("lease_until", now.plusSeconds(LEASE_SECONDS)),
+                // $min: stamps the first claim and is a no-op on re-claims (resume / lease takeover keep the original)
+                Updates.min("started_at", now)));
         return updated == 1;
     }
 
