@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { X, Copy, Check, KeyRound, Info } from 'lucide-react';
+import { X, Copy, Check, ChevronRight, ChevronDown, KeyRound, Info } from 'lucide-react';
 import { type WorkflowRFNode } from './graph';
 import { startInputVars } from './configWidgets';
 
@@ -10,8 +10,8 @@ interface Props {
   onClose: () => void;
 }
 
-/** API access panel (Dify-style): a step-by-step walkthrough of calling the published workflow over HTTP,
- *  with curl + expected response per step derived from THIS graph (input schema, human-input nodes). */
+/** API access panel (Dify-style): one collapsible section per interface, each with a complete curl + response
+ *  example derived from THIS graph (input schema, human-input nodes). */
 export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: Props) {
   const origin = window.location.origin;
   const published = status === 'PUBLISHED';
@@ -21,7 +21,21 @@ export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: P
     ? Object.fromEntries(vars.map((v) => [v.name, sampleValue(v.type)]))
     : null;
   const inputStr = inputObj ? JSON.stringify(inputObj) : 'your input text';
+  const requestBody = JSON.stringify({ input: inputStr });
   const firstHuman = humanNodes[0];
+  const pausedLines = firstHuman
+    ? `\n  "pending_inputs": [ { "node_id": "${firstHuman.id}", "mode": "${modeOf(firstHuman)}", "prompt": "…" } ]`
+    : '';
+
+  const finalResponse = `{
+  "id": "<runId>",
+  "status": "COMPLETED",      ← or FAILED (read .error) / TIMEOUT${humanNodes.length > 0 ? ' / PAUSED (→ Human input)' : ''}
+  "output": "final result text",
+  "artifacts": [ {
+    "file_name": "report.html", "content_type": "text/html", "size": 5176,
+    "url": "…/api/public/artifacts/…"   ← public download link, no auth needed
+  } ]
+}`;
 
   return (
     <div style={panel}>
@@ -33,57 +47,72 @@ export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: P
 
       {!published && (
         <div style={notice}><Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-          Publish this workflow first — the API serves the latest published version.</div>
+          Publish this workflow first (toolbar → Publish) — the API serves the latest published version.</div>
       )}
 
-      <div style={card}>
-        <div style={cardTitle}><KeyRound size={13} /> Authentication</div>
+      <Section icon={<KeyRound size={13} />} title="Authentication" defaultOpen>
         <div style={dim}>Every request sends your account API key (Settings → API keys) as a bearer token:</div>
         <Code text="Authorization: Bearer YOUR_API_KEY" />
-      </div>
-
-      <div style={sectionHead}>Step by step</div>
-
-      <Step n={1} title="Start a run">
         {vars.length > 0 && (
           <>
-            <div style={dim}>This workflow's Start node declares the input variables below. Pass them as a
-              JSON-encoded <em>string</em> in the <code>input</code> field (note the double encoding):</div>
-            <div style={{ margin: '6px 0' }}>
-              {vars.map((v) => (
-                <div key={v.name} style={varRow}>
-                  <code style={varName}>{v.name}</code>
-                  <span style={dim}>{v.type}{v.required ? ' · required' : ''}</span>
-                </div>
-              ))}
-            </div>
+            <div style={{ ...dim, marginTop: 8 }}>The Start node declares these input variables — pass them
+              JSON-encoded as a <em>string</em> in the <code>input</code> field (note the double encoding):</div>
+            {vars.map((v) => (
+              <div key={v.name} style={varRow}>
+                <code style={varName}>{v.name}</code>
+                <span style={dim}>{v.type}{v.required ? ' · required' : ''}</span>
+              </div>
+            ))}
           </>
         )}
+      </Section>
+
+      <Section method="POST" path="/run-sync" title="Synchronous run" defaultOpen>
+        <div style={dim}>One call that blocks until the run finishes (up to 2 min) and returns the final run
+          {humanNodes.length > 0 ? ' — or returns immediately when it pauses on a human-input node' : ''}.
+          Best for short workflows and simple scripts.</div>
         <Code text={`curl -X POST ${origin}/api/workflows/${workflowId}/run-sync \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '${JSON.stringify({ input: inputStr })}'`} />
-        <div style={{ ...dim, margin: '8px 0 4px' }}>Response — <b><code>id</code> is the run id</b>; every follow-up call uses it:</div>
-        <Code text={`{
+  -d '${requestBody}'`} />
+        <div style={{ ...dim, margin: '8px 0 4px' }}>Response — <b><code>id</code> is the run id</b>, used by every follow-up call:</div>
+        <Code text={firstHuman
+          ? `{
   "id": "<runId>",            ← keep this
-  "status": ${firstHuman ? '"PAUSED",            ← waiting for human input (step 2)' : '"COMPLETED",'}
-  "output": ${firstHuman ? 'null' : '"final result text"'},
-  "artifacts": [],${firstHuman ? `
-  "pending_inputs": [ { "node_id": "${firstHuman.id}", "mode": "${modeOf(firstHuman)}", "prompt": "…" } ]` : ''}
-}`} />
-        <div style={{ ...dim, marginTop: 6 }}>
-          <code>run-sync</code> blocks up to 2 min and returns the final run{firstHuman ? ' — or immediately when it pauses on a human-input node' : ''}.
-          Prefer non-blocking? <code>POST …/workflows/{workflowId.slice(0, 8)}…/runs</code> returns
-          {' '}<code>{'{ "run_id": "…" }'}</code> right away (same id, different field name), then poll as in step {firstHuman ? 3 : 2}.
-        </div>
-      </Step>
+  "status": "PAUSED",         ← waiting for human input (→ Human input section)
+  "output": null,
+  "artifacts": [],${pausedLines}
+}`
+          : finalResponse} />
+        {humanNodes.length === 0 && (
+          <div style={{ ...dim, marginTop: 6 }}>If it returns while still <code>RUNNING</code> (hit the 2 min cap), keep polling as in the asynchronous flow.</div>
+        )}
+      </Section>
+
+      <Section method="POST" path="/runs" title="Asynchronous run (start + poll)">
+        <div style={dim}>Returns immediately; poll for the result. Best for long workflows, agent chains
+          {humanNodes.length > 0 ? ', and human-in-the-loop flows like this one' : ''}.</div>
+        <div style={stepLabel}>1 · Start</div>
+        <Code text={`curl -X POST ${origin}/api/workflows/${workflowId}/runs \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '${requestBody}'`} />
+        <div style={{ ...dim, margin: '6px 0 4px' }}>Returns <code>202</code> right away — <b><code>run_id</code> is the run id</b> (same id the sync call returns as <code>id</code>):</div>
+        <Code text={'{ "run_id": "<runId>", "status": "PENDING" }'} />
+        <div style={stepLabel}>2 · Poll until terminal</div>
+        <Code text={`curl ${origin}/api/workflow-runs/{runId} \\
+  -H "Authorization: Bearer YOUR_API_KEY"`} />
+        <div style={{ ...dim, margin: '6px 0 4px' }}>Repeat every few seconds while <code>status</code> is <code>PENDING</code> / <code>RUNNING</code>; the final response:</div>
+        <Code text={finalResponse} />
+        <div style={{ ...dim, marginTop: 6 }}><code>output</code> is the End node's text result; <code>artifacts</code> lists the files the End node delivers (empty if none).</div>
+      </Section>
 
       {humanNodes.length > 0 && (
-        <Step n={2} title="Answer the human-input node">
+        <Section method="POST" path="/resume" title="Human input" defaultOpen>
           <div style={dim}>
-            <code>status: "PAUSED"</code> is not an error — the run is parked until a human answers.
-            <code> pending_inputs</code> tells you which node (<code>node_id</code>), what it asks (<code>prompt</code>),
-            and how to answer (<code>mode</code>). Submit the answer to the resume endpoint:
+            This workflow contains human-input node(s). When a run reaches one it pauses — <code>status: "PAUSED"</code> is
+            not an error. <code>pending_inputs</code> in the run response tells you which node (<code>node_id</code>),
+            what it asks (<code>prompt</code>), and how to answer (<code>mode</code>):
           </div>
           {humanNodes.map((node) => {
             const mode = modeOf(node);
@@ -101,58 +130,34 @@ export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: P
               </div>
             );
           })}
-          <div style={{ ...dim, marginTop: 6 }}>Returns <code>202 {'{ "run_id": "…", "status": "PENDING" }'}</code> — the run resumes; continue to step 3.</div>
-        </Step>
+          <div style={{ ...dim, marginTop: 6 }}>Returns <code>202 {'{ "run_id": "…", "status": "PENDING" }'}</code> — the run resumes; keep polling until terminal (it pauses again if another human-input node is reached).</div>
+        </Section>
       )}
 
-      <Step n={humanNodes.length > 0 ? 3 : 2} title="Poll until it finishes">
-        <Code text={`curl ${origin}/api/workflow-runs/{runId} \\
+      <Section method="GET" path="/workflow-runs/{runId}/nodes" title="Per-node trace (debugging)">
+        <div style={dim}>The execution detail of every node — status, timing, input/output, per-node files. Useful when a run fails and <code>error</code> alone is not enough.</div>
+        <Code text={`curl ${origin}/api/workflow-runs/{runId}/nodes \\
   -H "Authorization: Bearer YOUR_API_KEY"`} />
-        <div style={{ ...dim, margin: '8px 0 4px' }}>Repeat every few seconds until <code>status</code> is terminal, then read the result:</div>
-        <Code text={`{
-  "id": "<runId>",
-  "status": "COMPLETED",      ← or FAILED (read .error) / TIMEOUT / CANCELLED${humanNodes.length > 0 ? ' / PAUSED (back to step 2)' : ''}
-  "output": "final result text",
-  "artifacts": [ {
-    "file_name": "report.html", "content_type": "text/html", "size": 5176,
-    "url": "…/api/public/artifacts/…"   ← public download link, no auth needed
-  } ]
-}`} />
-        <div style={{ ...dim, marginTop: 6 }}><code>output</code> is the End node's text result; <code>artifacts</code> lists the files the End node delivers (empty if none).</div>
-      </Step>
-
-      <div style={sectionHead}>Endpoints</div>
-      <div style={card}>
-        <Endpoint method="POST" path={`/api/workflows/${workflowId}/run-sync`} desc="run and wait (≤2 min); returns the run" />
-        <Endpoint method="POST" path={`/api/workflows/${workflowId}/runs`} desc="start async; returns { run_id }" />
-        <Endpoint method="GET" path="/api/workflow-runs/{runId}" desc="poll status / output / artifacts / pending_inputs" />
-        {humanNodes.length > 0 && <Endpoint method="POST" path="/api/workflow-runs/{runId}/resume" desc="answer a paused human-input node" />}
-        <Endpoint method="GET" path="/api/workflow-runs/{runId}/nodes" desc="per-node trace (debugging)" />
-      </div>
+      </Section>
     </div>
   );
 }
 
-function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+/** Collapsible interface section: chevron + optional method/path chips in the header, body folds away. */
+function Section({ icon, method, path, title, defaultOpen, children }: {
+  icon?: ReactNode; method?: string; path?: string; title: string; defaultOpen?: boolean; children: ReactNode;
+}) {
+  const [open, setOpen] = useState(!!defaultOpen);
   return (
     <div style={card}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={stepBadge}>{n}</span>
+      <div style={sectionHead} onClick={() => setOpen((v) => !v)}>
+        {open ? <ChevronDown size={14} style={{ flexShrink: 0 }} /> : <ChevronRight size={14} style={{ flexShrink: 0 }} />}
+        {icon}
+        {method && <span style={{ ...methodChip, color: method === 'GET' ? '#16a34a' : '#2563eb' }}>{method}</span>}
         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--color-text)' }}>{title}</span>
+        {path && <code style={pathChip}>{path}</code>}
       </div>
-      {children}
-    </div>
-  );
-}
-
-function Endpoint({ method, path, desc }: { method: string; path: string; desc: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', minWidth: 0 }}>
-      <span style={{ ...methodChip, color: method === 'GET' ? '#16a34a' : '#2563eb', borderColor: 'currentColor' }}>{method}</span>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: 'monospace', fontSize: 11.5, color: 'var(--color-text)', wordBreak: 'break-all' }}>{path}</div>
-        <div style={dim}>{desc}</div>
-      </div>
+      {open && <div style={{ padding: '0 12px 10px 12px' }}>{children}</div>}
     </div>
   );
 }
@@ -201,24 +206,23 @@ const panel: CSSProperties = {
   background: 'var(--color-bg-secondary)',
 };
 const card: CSSProperties = {
-  padding: '10px 12px', marginBottom: 10, borderRadius: 9,
+  marginBottom: 10, borderRadius: 9,
   border: '1px solid var(--color-border)', background: 'var(--color-bg)',
 };
-const cardTitle: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600,
-  color: 'var(--color-text)', marginBottom: 6,
-};
 const sectionHead: CSSProperties = {
-  fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase',
-  color: 'var(--color-text-secondary)', margin: '14px 2px 6px',
-};
-const stepBadge: CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, flexShrink: 0,
-  borderRadius: '50%', background: 'var(--color-primary)', color: '#fff', fontSize: 11.5, fontWeight: 700,
+  display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', cursor: 'pointer',
+  color: 'var(--color-text-secondary)', flexWrap: 'wrap',
 };
 const methodChip: CSSProperties = {
   flexShrink: 0, padding: '0 6px', fontSize: 10.5, fontWeight: 700, borderRadius: 5,
-  border: '1px solid', lineHeight: '16px',
+  border: '1px solid currentColor', lineHeight: '16px',
+};
+const pathChip: CSSProperties = {
+  fontFamily: 'monospace', fontSize: 10.5, color: 'var(--color-text-secondary)',
+  padding: '1px 6px', borderRadius: 5, background: 'var(--color-bg-tertiary)', wordBreak: 'break-all',
+};
+const stepLabel: CSSProperties = {
+  fontSize: 11, fontWeight: 700, color: 'var(--color-text)', margin: '10px 0 2px',
 };
 const dim: CSSProperties = { fontSize: 11.5, color: 'var(--color-text-secondary)', lineHeight: 1.55 };
 const notice: CSSProperties = {

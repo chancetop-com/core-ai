@@ -286,6 +286,7 @@ export default function WorkflowEditor() {
     setNodeRuns({});
     setSelectedId(null);
     setShowRun(false);
+    setShowApi(false);   // panels are mutually exclusive — closing Test must not resurrect a stale API panel
     setRunError('');
   };
 
@@ -304,7 +305,7 @@ export default function WorkflowEditor() {
         {msg && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginRight: 8 }}>{msg}</span>}
         <button onClick={() => { setSelectedId(null); setShowApi((v) => !v); }} disabled={busy || preview} style={showApi ? btnActive : btn}><Code2 size={15} /> API</button>
         <button onClick={publish} disabled={busy || preview} style={btn}><Rocket size={15} /> Publish</button>
-        <button onClick={() => setShowRun(true)} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
+        <button onClick={() => { setShowApi(false); setShowRun(true); }} disabled={busy || preview} style={btnPrimary}><FlaskConical size={15} /> Test</button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
