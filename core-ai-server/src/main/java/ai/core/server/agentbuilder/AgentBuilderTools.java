@@ -27,7 +27,8 @@ public class AgentBuilderTools {
     }
 
     public List<ToolCall> tools() {
-        var toolRef = ToolRef.of("builtin-agent-builder", ToolSourceType.BUILTIN);
-        return toolRegistryService.resolveToolRefs(List.of(toolRef));
+        var agentBuilderRef = ToolRef.of("builtin-agent-builder", ToolSourceType.BUILTIN);
+        var allToolsRef = ToolRef.of("builtin-all", ToolSourceType.BUILTIN);
+        return toolRegistryService.resolveToolRefs(List.of(agentBuilderRef, allToolsRef));
     }
 }

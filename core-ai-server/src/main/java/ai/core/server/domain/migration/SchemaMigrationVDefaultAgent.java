@@ -133,7 +133,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
 
     @Override
     public String version() {
-        return "20260521001";
+        return "20260611001";
     }
 
     @Override
@@ -206,11 +206,15 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
     private void createAgentBuilder(Mongo mongo, Date now) {
         var publishedConfig = new Document()
             .append("system_prompt", AGENT_BUILDER_SYSTEM_PROMPT)
-            .append("tools", List.of(new Document("id", "builtin-agent-builder").append("type", "BUILTIN")))
+            .append("tools", List.of(
+                new Document("id", "builtin-agent-builder").append("type", "BUILTIN"),
+                new Document("id", "builtin-all").append("type", "BUILTIN")))
             .append("max_turns", 50)
             .append("timeout_seconds", 600);
 
-        var toolRefs = List.of(new Document("id", "builtin-agent-builder").append("type", "BUILTIN"));
+        var toolRefs = List.of(
+            new Document("id", "builtin-agent-builder").append("type", "BUILTIN"),
+            new Document("id", "builtin-all").append("type", "BUILTIN"));
 
         var filter = new Document("_id", AGENT_BUILDER_ID);
         var update = new Document("$set", new Document()
