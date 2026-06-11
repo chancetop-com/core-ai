@@ -62,6 +62,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -164,21 +165,43 @@ public class AgentRunner {
 
         var runId = runEntity.id;
 
-        // Create sandbox with effective config (platform default + agent override)
-        var sandboxConfig = sandboxService.getEffectiveConfig(definition);
+        try {
+            // Create sandbox with effective config (platform default + agent override)
+            var sandboxConfig = sandboxService.getEffectiveConfig(definition);
 
-        var sandbox = sandboxService.createSandbox(sandboxConfig, runId, definition.userId);
-        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-            try {
-                execute(runEntity, definition, sandbox, resolvedVariables, traceContext);
-            } finally {
-                scheduleSandboxRelease(runId);
-            }
-        }, executorService);
-        runningFutures.put(runId, future);
-        future.whenComplete((result, error) -> runningFutures.remove(runId));
+            var sandbox = sandboxService.createSandbox(sandboxConfig, runId, definition.userId);
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    execute(runEntity, definition, sandbox, resolvedVariables, traceContext);
+                } finally {
+                    scheduleSandboxRelease(runId);
+                }
+            }, executorService);
+            runningFutures.put(runId, future);
+            future.whenComplete((result, error) -> {
+                runningFutures.remove(runId);
+                // backstop: anything escaping execute() (e.g. Error, or bugs outside its catches)
+                // must not leave the run stuck in RUNNING forever
+                if (error != null) markRunFailedIfUnfinished(runEntity, error);
+            });
+        } catch (Exception e) {
+            markRunFailedIfUnfinished(runEntity, e);
+            throw e;
+        }
 
         return runId;
+    }
+
+    private void markRunFailedIfUnfinished(AgentRun runEntity, Throwable error) {
+        var cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
+        LOGGER.error("agent run terminated unexpectedly, runId={}", runEntity.id, cause);
+        var latest = agentRunCollection.get(runEntity.id).orElse(runEntity);
+        if (latest.status != RunStatus.RUNNING && latest.status != RunStatus.PENDING) return;
+        updateRunStatus(latest, RunStatus.FAILED, null, errorMessage(cause), null);
+    }
+
+    private String errorMessage(Throwable error) {
+        return error.getMessage() != null ? error.getMessage() : error.toString();
     }
 
     private void scheduleSandboxRelease(String runId) {
@@ -232,16 +255,17 @@ public class AgentRunner {
     private void executeAgent(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,
                               WorkflowTraceContext traceContext) {
         var runId = runEntity.id;
-        var agent = buildAgent(runEntity, definition, sandbox, variables);
         var completed = new AtomicBoolean(false);
+        Agent agent = null;
         try {
+            agent = buildAgent(runEntity, definition, sandbox, variables);
             var config = definition.publishedConfig;
             var timeoutSeconds = config != null && config.timeoutSeconds != null ? config.timeoutSeconds
                 : definition.timeoutSeconds != null ? definition.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
             var timeout = scheduleTimeout(runEntity, agent, timeoutSeconds, completed);
             runWithTimeout(runEntity, agent, timeout, completed, definition, traceContext);
         } catch (Exception e) {
-            if (unwrapCause(e) instanceof MaxTurnsExceededException maxTurnsEx) {
+            if (agent != null && unwrapCause(e) instanceof MaxTurnsExceededException maxTurnsEx) {
                 LOGGER.warn("agent run exceeded max turns, runId={}, maxTurns={}", runId, maxTurnsEx.maxTurns);
                 if (completed.compareAndSet(false, true)) {
                     updateRunStatus(runEntity, RunStatus.COMPLETED, agent.getOutput(), "max turns reached: " + maxTurnsEx.maxTurns, agent);
@@ -250,7 +274,7 @@ public class AgentRunner {
             }
             LOGGER.error("agent run failed, runId={}", runId, e);
             if (completed.compareAndSet(false, true)) {
-                updateRunStatus(runEntity, RunStatus.FAILED, null, e.getMessage(), agent);
+                updateRunStatus(runEntity, RunStatus.FAILED, null, errorMessage(e), agent);
             }
         }
     }
@@ -258,8 +282,10 @@ public class AgentRunner {
     private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed,
                                 AgentDefinition definition, WorkflowTraceContext traceContext) {
         try {
+            var output = runAgentWithTrace(runEntity, definition, agent, traceContext);
+            // claim completion only after the run finishes, so the timeout callback
+            // can still fire and mark TIMEOUT while agent.run() is in flight
             if (completed.compareAndSet(false, true)) {
-                var output = runAgentWithTrace(runEntity, definition, agent, traceContext);
                 updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
                 extractDatasetRecords(output, definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
             }

@@ -65,7 +65,8 @@ public class ToolRefResolver {
         var entry = lookupBuiltinEntry(toolRef.id);
         if (entry != null) {
             var setName = entry.config != null ? entry.config.get("set") : null;
-            var builtinSet = ToolRegistryService.BUILTIN_TOOL_SETS.get(setName);
+            // BUILTIN_TOOL_SETS is an immutable Map.of() which throws NPE on get(null)
+            var builtinSet = setName != null ? ToolRegistryService.BUILTIN_TOOL_SETS.get(setName) : null;
             if (builtinSet != null) result.addAll(builtinSet);
             return;
         }
