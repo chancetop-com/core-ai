@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bot, User, Wrench, Settings, Zap, Clock, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Bot, User, Wrench, Settings, Zap, Clock, Copy, Check, Link } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentRunDetail, AgentDefinition, ToolRef } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -94,6 +94,13 @@ export default function RunDetail() {
             {inputTokens + outputTokens} tokens
             <span className="text-xs ml-1">({inputTokens} in / {outputTokens} out)</span>
           </span>
+          {run.trace_id && (
+            <a href={`/traces/${encodeURIComponent(run.trace_id)}`} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-mono hover:underline"
+              style={{ color: 'var(--color-primary)' }}>
+              <Link size={14} /> {run.trace_id.slice(0, 8)}
+            </a>
+          )}
           {run.started_at && <span>Started: {new Date(run.started_at).toLocaleString()}</span>}
         </div>
         {run.error && (

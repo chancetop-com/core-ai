@@ -38,6 +38,9 @@ public class AgentRunView {
     @Property(name = "token_usage")
     public Map<String, Long> tokenUsage;
 
+    @Property(name = "trace_id")
+    public String traceId;
+
     @Property(name = "started_at")
     public ZonedDateTime startedAt;
 

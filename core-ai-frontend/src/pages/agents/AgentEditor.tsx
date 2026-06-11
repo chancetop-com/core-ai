@@ -1792,19 +1792,20 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 {runs.map(r => (
                   <div key={r.id} className="rounded-lg border text-xs"
                     style={{ borderColor: 'var(--color-border)' }}>
-                    <button className="w-full p-2 text-left cursor-pointer flex items-center justify-between"
-                      onClick={() => toggleRunDetail(r.id)}>
-                      <div className="flex items-center gap-2">
+                    <div className="w-full p-2 flex items-center justify-between gap-2">
+                      <button className="min-w-0 flex-1 text-left cursor-pointer flex items-center gap-2"
+                        onClick={() => toggleRunDetail(r.id)}>
                         {expandedRunId === r.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                         <StatusBadge status={r.status} />
                         <span className="truncate max-w-32" style={{ color: 'var(--color-text-secondary)' }}>
                           {r.input || '-'}
                         </span>
+                      </button>
+                      <div className="shrink-0 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+                        {r.trace_id && <TraceLink traceId={r.trace_id} />}
+                        <span>{r.started_at ? new Date(r.started_at).toLocaleTimeString() : '-'}</span>
                       </div>
-                      <span style={{ color: 'var(--color-text-secondary)' }}>
-                        {r.started_at ? new Date(r.started_at).toLocaleTimeString() : '-'}
-                      </span>
-                    </button>
+                    </div>
                     {expandedRunId === r.id && (
                       <RunInlineDetail run={r} detail={expandedRunDetail} onViewFull={() => openRunModal(r.id)} />
                     )}
@@ -1854,6 +1855,7 @@ function RunDetailModal({ detail, onClose }: { detail: AgentRunDetail; onClose: 
             <div className="flex gap-4 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               {duration !== null && <span>{duration < 1 ? `${(duration * 1000).toFixed(0)}ms` : `${duration.toFixed(1)}s`}</span>}
               <span>{(detail.token_usage?.input || 0) + (detail.token_usage?.output || 0)} tokens</span>
+              {detail.trace_id && <TraceLink traceId={detail.trace_id} />}
             </div>
             <button onClick={onClose} className="cursor-pointer p-1 rounded hover:bg-[var(--color-bg-tertiary)]">
               <X size={18} />
@@ -2060,6 +2062,11 @@ function RunInlineDetail({ run, detail, onViewFull }: {
               Duration: {((new Date(detail.completed_at).getTime() - new Date(detail.started_at).getTime()) / 1000).toFixed(1)}s
             </span>
           )}
+          {detail.trace_id && (
+            <span className="ml-3">
+              <TraceLink traceId={detail.trace_id} />
+            </span>
+          )}
         </div>
       )}
       <button onClick={onViewFull}
@@ -2068,6 +2075,16 @@ function RunInlineDetail({ run, detail, onViewFull }: {
         View Full Detail →
       </button>
     </div>
+  );
+}
+
+function TraceLink({ traceId }: { traceId: string }) {
+  return (
+    <a href={`/traces/${encodeURIComponent(traceId)}`} target="_blank" rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 font-mono hover:underline"
+      style={{ color: 'var(--color-primary)' }}>
+      <Link size={11} /> {traceId.slice(0, 8)}
+    </a>
   );
 }
 

@@ -38,11 +38,17 @@ import ai.core.prompt.Prompts;
 import ai.core.prompt.SystemVariables;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.skill.SkillRegistry;
+import ai.core.telemetry.TelemetryConfig;
 import ai.core.tool.tools.ReadSkillResourceTool;
 import ai.core.tool.tools.InternalUrlResolver;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.StatusCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,6 +75,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class AgentRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentRunner.class);
+    private static final AttributeKey<String> LANGFUSE_OBSERVATION_TYPE = AttributeKey.stringKey("langfuse.observation.type");
+    private static final AttributeKey<String> GEN_AI_OPERATION_NAME = AttributeKey.stringKey("gen_ai.operation.name");
+    private static final AttributeKey<String> GEN_AI_AGENT_NAME = AttributeKey.stringKey("gen_ai.agent.name");
+    private static final AttributeKey<String> GEN_AI_AGENT_ID = AttributeKey.stringKey("gen_ai.agent.id");
+    private static final AttributeKey<String> INPUT_VALUE = AttributeKey.stringKey("gen_ai.prompt");
+    private static final AttributeKey<String> OUTPUT_VALUE = AttributeKey.stringKey("gen_ai.completion");
+    private static final AttributeKey<String> AGENT_STATUS = AttributeKey.stringKey("agent.status");
+    private static final AttributeKey<String> SESSION_ID = AttributeKey.stringKey("session.id");
+    private static final AttributeKey<String> USER_ID = AttributeKey.stringKey("user.id");
+    private static final AttributeKey<String> CLIENT_TYPE = AttributeKey.stringKey("client.type");
+    private static final AttributeKey<String> CORE_AI_RUN_ID = AttributeKey.stringKey("core_ai.run_id");
+    private static final AttributeKey<String> CORE_AI_SCHEDULE_ID = AttributeKey.stringKey("core_ai.schedule_id");
     private static final int MAX_CONCURRENT_RUNS = 10;
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
     private static final int SANDBOX_RELEASE_DELAY_SECONDS = 60;
@@ -119,6 +137,8 @@ public class AgentRunner {
 
     @Inject
     DatasetRecordService datasetRecordService;
+    @Inject
+    TelemetryConfig telemetryConfig;
 
     public String run(AgentDefinition definition, String input, TriggerType trigger) {
         return run(definition, input, trigger, null, null);
@@ -223,7 +243,7 @@ public class AgentRunner {
     private void runWithTimeout(AgentRun runEntity, Agent agent, ScheduledFuture<?> timeout, AtomicBoolean completed, AgentDefinition definition) {
         try {
             if (completed.compareAndSet(false, true)) {
-                var output = agent.run(runEntity.input);
+                var output = runAgentWithTrace(runEntity, definition, agent);
                 updateRunStatus(runEntity, RunStatus.COMPLETED, output, null, agent);
                 extractDatasetRecords(output, definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
             }
@@ -234,7 +254,7 @@ public class AgentRunner {
 
     private void executeLLMCall(AgentRun runEntity, AgentDefinition definition) {
         try {
-            var result = llmCallExecutor.execute(definition, runEntity.input);
+            var result = runLLMCallWithTrace(runEntity, definition);
 
             var tokenUsage = new TokenUsage();
             tokenUsage.input = result.inputTokens();
@@ -303,7 +323,7 @@ public class AgentRunner {
         if (sandbox != null) tools.add(SubmitArtifactsTool.create(definition.userId, fileService, new AgentRunArtifactSink(runEntity.id, agentRunCollection)));
         addDatasetTools(tools, config, definition, runEntity.id);
         var context = ExecutionContext.builder()
-            .sessionId("run:" + definition.id)
+            .sessionId("run:" + runEntity.id)
             .userId(definition.userId)
             .customVariables(variables)
             .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, SubmitArtifactsTool.publicUrl))
@@ -353,6 +373,84 @@ public class AgentRunner {
         return agent;
     }
 
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    private String runAgentWithTrace(AgentRun runEntity, AgentDefinition definition, Agent agent) {
+        return runWithTrace(runEntity, definition, "agent.run", span -> {
+            var output = agent.run(runEntity.input);
+            if (output != null) span.setAttribute(OUTPUT_VALUE, output);
+            if (agent.getNodeStatus() != null) span.setAttribute(AGENT_STATUS, agent.getNodeStatus().name());
+            return output;
+        });
+    }
+
+    private LLMCallExecutor.Result runLLMCallWithTrace(AgentRun runEntity, AgentDefinition definition) {
+        return runWithTrace(runEntity, definition, "llm_call.run", span -> {
+            var result = llmCallExecutor.execute(definition, runEntity.input);
+            if (result.output() != null) span.setAttribute(OUTPUT_VALUE, result.output());
+            return result;
+        });
+    }
+
+    @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
+    private <T> T runWithTrace(AgentRun runEntity, AgentDefinition definition, String spanName, TraceCallable<T> callable) {
+        var spanBuilder = telemetryConfig.getOpenTelemetry().getTracer("core-ai-server", "1.0.0")
+            .spanBuilder(spanName)
+            .setSpanKind(SpanKind.INTERNAL)
+            .setAttribute(LANGFUSE_OBSERVATION_TYPE, "agent")
+            .setAttribute(GEN_AI_OPERATION_NAME, "agent")
+            .setAttribute(SESSION_ID, "run:" + runEntity.id)
+            .setAttribute(CLIENT_TYPE, traceSource(triggerFor(runEntity)))
+            .setAttribute(CORE_AI_RUN_ID, runEntity.id);
+        if (definition.id != null) spanBuilder.setAttribute(GEN_AI_AGENT_ID, definition.id);
+        if (definition.name != null) spanBuilder.setAttribute(GEN_AI_AGENT_NAME, definition.name);
+        if (definition.userId != null) spanBuilder.setAttribute(USER_ID, definition.userId);
+        var span = spanBuilder.startSpan();
+        var spanContext = span.getSpanContext();
+        if (spanContext.isValid()) {
+            setRunTraceId(runEntity, spanContext.getTraceId());
+        }
+        if (runEntity.scheduleId != null) span.setAttribute(CORE_AI_SCHEDULE_ID, runEntity.scheduleId);
+        if (runEntity.input != null) span.setAttribute(INPUT_VALUE, runEntity.input);
+        try (var scope = span.makeCurrent()) {
+            return callable.call(span);
+        } catch (Exception e) {
+            span.setStatus(StatusCode.ERROR, e.getMessage());
+            span.recordException(e);
+            throw e;
+        } finally {
+            span.end();
+        }
+    }
+
+    private void setRunTraceId(AgentRun runEntity, String traceId) {
+        if (traceId == null || traceId.isBlank()) return;
+        runEntity.traceId = traceId;
+        agentRunCollection.update(
+            Filters.and(
+                Filters.eq("_id", runEntity.id),
+                Filters.or(Filters.exists("trace_id", false), Filters.eq("trace_id", null), Filters.eq("trace_id", ""))
+            ),
+            Updates.set("trace_id", traceId)
+        );
+    }
+
+    @FunctionalInterface
+    private interface TraceCallable<T> {
+        T call(Span span);
+    }
+
+    private TriggerType triggerFor(AgentRun runEntity) {
+        return runEntity.triggeredBy != null ? runEntity.triggeredBy : TriggerType.MANUAL;
+    }
+
+    private String traceSource(TriggerType trigger) {
+        return switch (trigger) {
+            case SCHEDULE -> "scheduled";
+            case WEBHOOK, API, MANUAL -> "api";
+            case WORKFLOW -> "workflow";
+        };
+    }
+
     private void addDatasetTools(List<ToolCall> tools, AgentPublishedConfig config, AgentDefinition definition, String runId) {
         var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
@@ -370,6 +468,9 @@ public class AgentRunner {
     private void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, Agent agent) {
         var latestRun = agentRunCollection.get(runEntity.id).orElse(runEntity);
         runEntity.artifacts = latestRun.artifacts;
+        if ((runEntity.traceId == null || runEntity.traceId.isBlank()) && latestRun.traceId != null && !latestRun.traceId.isBlank()) {
+            runEntity.traceId = latestRun.traceId;
+        }
         runEntity.status = status;
         runEntity.output = output;
         runEntity.error = error;

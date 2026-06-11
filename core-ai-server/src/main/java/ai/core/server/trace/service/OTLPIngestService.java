@@ -1,6 +1,7 @@
 package ai.core.server.trace.service;
 
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
 
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import ai.core.llm.LLMModelContextRegistry;
+import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
@@ -38,11 +40,14 @@ import java.util.concurrent.TimeUnit;
 public class OTLPIngestService {
     private static final Logger LOGGER = LoggerFactory.getLogger(OTLPIngestService.class);
     private static final String CORE_AI_CANCELLED = "core_ai.cancelled";
+    private static final String CORE_AI_RUN_ID = "core_ai.run_id";
 
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
+    @Inject
+    MongoCollection<AgentRun> agentRunCollection;
     @Inject
     MongoCollection<Span> spanCollection;
 
@@ -71,12 +76,25 @@ public class OTLPIngestService {
         var spanId = bytesToHex(protoSpan.getSpanId().toByteArray());
         var parentSpanId = protoSpan.getParentSpanId().isEmpty() ? null : bytesToHex(protoSpan.getParentSpanId().toByteArray());
         var attrs = extractAttributes(protoSpan.getAttributesList());
+        linkAgentRun(traceId, attrs);
         ensureTraceExists(traceId, protoSpan, attrs, resourceAttrs);
         saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs);
         if (parentSpanId == null) {
             upsertTrace(protoSpan, traceId, attrs, resourceAttrs);
             recalculateTraceTokens(traceId);
         }
+    }
+
+    private void linkAgentRun(String traceId, Map<String, String> attrs) {
+        var runId = attrs.get(CORE_AI_RUN_ID);
+        if (runId == null || runId.isBlank()) return;
+        agentRunCollection.update(
+            Filters.and(
+                Filters.eq("_id", runId),
+                Filters.or(Filters.exists("trace_id", false), Filters.eq("trace_id", null), Filters.eq("trace_id", ""))
+            ),
+            Updates.set("trace_id", traceId)
+        );
     }
 
     private void ensureTraceExists(String traceId, io.opentelemetry.proto.trace.v1.Span protoSpan,

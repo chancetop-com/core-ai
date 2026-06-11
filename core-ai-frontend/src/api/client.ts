@@ -357,6 +357,7 @@ export interface AgentRun {
   output: string;
   error: string;
   token_usage: Record<string, number>;
+  trace_id?: string;
   started_at: string;
   completed_at: string;
 }

@@ -53,6 +53,9 @@ public class AgentRun {
     @Field(name = "schedule_id")
     public String scheduleId;
 
+    @Field(name = "trace_id")
+    public String traceId;
+
     @NotNull
     @Field(name = "started_at")
     public ZonedDateTime startedAt;
