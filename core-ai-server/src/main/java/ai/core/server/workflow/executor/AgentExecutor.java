@@ -1,10 +1,14 @@
 package ai.core.server.workflow.executor;
 
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.AgentRunGateway;
 import ai.core.server.workflow.AgentRunResult;
+import ai.core.server.workflow.ArtifactStaging;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
+
+import java.util.List;
 
 /**
  * AGENT / LLM node: a DECOUPLED child run, not the agent loop inlined. Per the design's submit/await/collect
@@ -15,6 +19,11 @@ import ai.core.server.workflow.NodeOutcome;
  * <p>The node's input is an optional {@code input} template in the config, rendered over the variable pool (e.g.
  * {@code "{{ nodes.start.output }}"}) so a node can consume an upstream node's output; with no template the raw
  * run input is passed through. Forwarding a workflow cancel to the child run lands with the agent-stack wiring.
+ *
+ * <p>File flow (design §5.3.2): for a sandboxed AGENT node, upstream artifacts the input template references are
+ * staged into the child sandbox by the platform, and the template renders each artifact with its local
+ * {@code path} — the agent reads the file directly instead of fetching a URL. LLM nodes have no sandbox, so they
+ * keep the url-in-prompt fallback (plain render, no staging).
  *
  * @author Xander
  */
@@ -28,8 +37,17 @@ public class AgentExecutor implements NodeExecutor {
     @Override
     public NodeOutcome execute(NodeContext ctx) {
         Object template = ctx.node().config().get("input");
-        String input = template instanceof String s ? ctx.pool().render(s) : ctx.run().input;
-        String childRunId = gateway.startChildRun(ctx.run(), ctx.node(), input);
+        String input;
+        List<SandboxService.StagedFile> stagedFiles = List.of();
+        if (template instanceof String s) {
+            if ("AGENT".equals(ctx.node().type())) {
+                stagedFiles = ArtifactStaging.scanTemplate(s, ctx.pool());
+            }
+            input = (stagedFiles.isEmpty() ? ctx.pool() : ctx.pool().stagedView()).render(s);
+        } else {
+            input = ctx.run().input;
+        }
+        String childRunId = gateway.startChildRun(ctx.run(), ctx.node(), input, stagedFiles);
         AgentRunResult result = gateway.awaitResult(childRunId);
         return result.completed()
             ? new NodeOutcome.Normal(result.output(), childRunId, result.artifacts())

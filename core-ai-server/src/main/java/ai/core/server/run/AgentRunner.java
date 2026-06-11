@@ -155,7 +155,7 @@ public class AgentRunner {
     }
 
     public String run(AgentDefinition definition, String input, TriggerType trigger, String scheduleId,
-                      Map<String, String> runtimeVariables, WorkflowTraceContext traceContext) {
+                      Map<String, String> runtimeVariables, WorkflowRunContext workflowContext) {
         var resolvedVariables = new HashMap<String, Object>();
         if (runtimeVariables != null) {
             resolvedVariables.putAll(runtimeVariables);
@@ -164,14 +164,28 @@ public class AgentRunner {
         agentRunCollection.insert(runEntity);
 
         var runId = runEntity.id;
+        var traceContext = workflowContext == null ? null : workflowContext.trace();
+        var stagedFiles = workflowContext == null ? List.<SandboxService.StagedFile>of() : workflowContext.stagedFiles();
 
         try {
             // Create sandbox with effective config (platform default + agent override)
             var sandboxConfig = sandboxService.getEffectiveConfig(definition);
 
+            // queue staged workflow input files BEFORE the sandbox exists, so they land on materialization
+            boolean staged = stagedFiles != null && !stagedFiles.isEmpty();
+            if (staged) {
+                for (var file : stagedFiles) {
+                    sandboxService.addStagedFile(runId, file);
+                }
+            }
             var sandbox = sandboxService.createSandbox(sandboxConfig, runId, definition.userId);
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 try {
+                    // staged files must be in place before the agent loop starts; a staging failure is
+                    // deterministic (fails the run) instead of letting the agent run with missing inputs
+                    if (staged && sandbox != null) {
+                        sandboxService.ensurePendingFilesUploaded(runId);
+                    }
                     execute(runEntity, definition, sandbox, resolvedVariables, traceContext);
                 } finally {
                     scheduleSandboxRelease(runId);
@@ -241,6 +255,14 @@ public class AgentRunner {
     }
 
     public record WorkflowTraceContext(String workflowId, String workflowRunId, String workflowNodeId, String workflowNodeType) {
+    }
+
+    /** Everything a workflow-origin run carries beyond the plain agent run: the trace linkage and the upstream
+     *  artifact files the platform stages into the child sandbox before the agent loop starts. */
+    public record WorkflowRunContext(WorkflowTraceContext trace, List<SandboxService.StagedFile> stagedFiles) {
+        public WorkflowRunContext {
+            stagedFiles = stagedFiles == null ? List.of() : List.copyOf(stagedFiles);
+        }
     }
 
     private void execute(AgentRun runEntity, AgentDefinition definition, Sandbox sandbox, Map<String, Object> variables,

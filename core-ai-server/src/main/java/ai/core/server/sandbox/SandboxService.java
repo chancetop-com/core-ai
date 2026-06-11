@@ -5,6 +5,7 @@ import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.file.FileService;
 import ai.core.sandbox.Sandbox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,7 @@ public class SandboxService {
 
     private final boolean enabled;
     private ObjectStorageService storageService;
+    private FileService fileService;
 
     public SandboxService() {
         this.sandboxManager = null;
@@ -69,6 +71,10 @@ public class SandboxService {
 
     public void setStorageService(ObjectStorageService storageService) {
         this.storageService = storageService;
+    }
+
+    public void setFileService(FileService fileService) {
+        this.fileService = fileService;
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
@@ -116,6 +122,13 @@ public class SandboxService {
                 sessionId, fileName, container, blobName, pendingFiles.get(sessionId).size());
     }
 
+    /** Queue a workflow input file (a FileRecord) to be staged at {@code targetPath} in the session's sandbox. */
+    public void addStagedFile(String sessionId, StagedFile file) {
+        pendingFiles.computeIfAbsent(sessionId, k -> Collections.synchronizedList(new ArrayList<>()))
+                .add(new PendingFile(file.fileName(), null, null, file.fileId(), file.targetPath()));
+        LOGGER.info("staged file queued: session={}, file={}, target={}", sessionId, file.fileName(), file.targetPath());
+    }
+
     public void ensurePendingFilesUploaded(String sessionId) {
         var files = pendingFiles.get(sessionId);
         if (files == null || files.isEmpty()) {
@@ -151,26 +164,49 @@ public class SandboxService {
             return;
         }
 
-        if (storageService == null) {
-            LOGGER.warn("storageService not configured, cannot upload pending files for session {}", sessionId);
-            return;
-        }
-
         LOGGER.info("[UPLOAD] uploading {} files for sessionId={}, sandboxId={}", files.size(), sessionId, sandbox.getId());
         for (var file : files) {
-            try {
-                LOGGER.info("[UPLOAD] downloading blob: container={}, blobName={}", file.container, file.blobName);
-                var data = storageService.downloadObject(file.container, file.blobName);
-                LOGGER.info("[UPLOAD] blob downloaded: size={} bytes, uploading to /tmp/{}", data.length, file.fileName);
-                sandbox.uploadFile("/tmp/" + file.fileName, data);
-                LOGGER.info("pending file uploaded: session={}, file={}", sessionId, file.fileName);
-            } catch (Exception e) {
-                LOGGER.error("failed to upload pending file to sandbox: session={}, file={}", sessionId, file.fileName, e);
-                return;
+            if (file.fileId() != null) {
+                // workflow artifact staging: a failure here must be deterministic for the consumer, so it throws
+                // (the caller — ensurePendingFilesUploaded before the agent loop / CODE executor — fails the run)
+                stageFileRecord(sandbox, sessionId, file);
+            } else if (!uploadBlobFile(sandbox, sessionId, file)) {
+                return;   // chat upload path keeps its original behavior: abort, keep the queue, retry on next trigger
             }
         }
         pendingFiles.remove(sessionId);
         LOGGER.info("[UPLOAD] all {} files uploaded and removed from queue, sessionId={}", files.size(), sessionId);
+    }
+
+    private void stageFileRecord(Sandbox sandbox, String sessionId, PendingFile file) {
+        if (fileService == null) {
+            throw new IllegalStateException("fileService not configured, cannot stage input file " + file.fileName());
+        }
+        try {
+            var data = fileService.getBytes(fileService.get(file.fileId()));
+            sandbox.uploadFile(file.targetPath(), data);
+            LOGGER.info("staged file uploaded: session={}, target={}, size={}", sessionId, file.targetPath(), data.length);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("failed to stage input file " + file.fileName() + " into sandbox: " + e.getMessage(), e);
+        }
+    }
+
+    private boolean uploadBlobFile(Sandbox sandbox, String sessionId, PendingFile file) {
+        if (storageService == null) {
+            LOGGER.warn("storageService not configured, cannot upload pending files for session {}", sessionId);
+            return false;
+        }
+        try {
+            LOGGER.info("[UPLOAD] downloading blob: container={}, blobName={}", file.container, file.blobName);
+            var data = storageService.downloadObject(file.container, file.blobName);
+            LOGGER.info("[UPLOAD] blob downloaded: size={} bytes, uploading to /tmp/{}", data.length, file.fileName);
+            sandbox.uploadFile("/tmp/" + file.fileName, data);
+            LOGGER.info("pending file uploaded: session={}, file={}", sessionId, file.fileName);
+            return true;
+        } catch (Exception e) {
+            LOGGER.error("failed to upload pending file to sandbox: session={}, file={}", sessionId, file.fileName, e);
+            return false;
+        }
     }
 
     public Sandbox getSandbox(String sessionId) {
@@ -269,6 +305,16 @@ public class SandboxService {
         LOGGER.info("sandbox service shutdown complete");
     }
 
-    public record PendingFile(String fileName, String container, String blobName) {
+    /** A file queued for upload into a session's sandbox once it materializes: either a blob-storage object
+     *  landing at {@code /tmp/<fileName>} (chat uploads), or a staged FileRecord landing at {@code targetPath}
+     *  (workflow artifact staging — see addStagedFile). */
+    public record PendingFile(String fileName, String container, String blobName, String fileId, String targetPath) {
+        public PendingFile(String fileName, String container, String blobName) {
+            this(fileName, container, blobName, null, null);
+        }
+    }
+
+    /** A workflow input file to stage into a consumer sandbox at a deterministic path before it starts. */
+    public record StagedFile(String fileId, String fileName, String targetPath) {
     }
 }

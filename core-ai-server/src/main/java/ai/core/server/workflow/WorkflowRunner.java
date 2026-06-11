@@ -16,7 +16,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -102,8 +101,10 @@ public class WorkflowRunner {
                 return true;
             }
             boolean completed = status == RunStatus.COMPLETED;
+            WorkflowNodeRun endRun = completed ? endNodeRun(runId) : null;
             terminate(runId, status, status == RunStatus.FAILED ? failureSummary(runId) : null,
-                completed ? endOutput(runId) : null, completed ? collectArtifacts(runId) : List.of());
+                endRun != null ? endRun.output : null,
+                endRun != null && endRun.artifacts != null ? endRun.artifacts : List.of());
             return true;
         } catch (RuntimeException e) {
             if (lostLease.get()) {
@@ -250,34 +251,16 @@ public class WorkflowRunner {
             : prefix;
     }
 
-    // The run's output = the single COMPLETED END node-run's output (single-END is enforced at publish).
-    private String endOutput(String runId) {
+    // The run's output and delivered files both come from the single COMPLETED END node-run (single-END is
+    // enforced at publish). END declares the deliverables (EndExecutor.composeDeliverables); intermediate nodes'
+    // files stay visible per node-run in the trace but are not lifted to the run result.
+    private WorkflowNodeRun endNodeRun(String runId) {
         for (WorkflowNodeRun nodeRun : nodeRunCollection.find(Filters.and(
             Filters.eq("run_id", runId),
             Filters.eq("node_type", "END"),
             Filters.eq("status", NodeRunStatus.COMPLETED)))) {
-            return nodeRun.output;
+            return nodeRun;
         }
         return null;
-    }
-
-    // The run's delivered files = union (by file_id) of every COMPLETED node-run's artifacts. Skipped-branch
-    // nodes have no COMPLETED node-run, so they are naturally excluded — only files on the live path are delivered.
-    private List<ArtifactRef> collectArtifacts(String runId) {
-        var seen = new LinkedHashSet<String>();
-        var merged = new ArrayList<ArtifactRef>();
-        for (WorkflowNodeRun nodeRun : nodeRunCollection.find(Filters.and(
-            Filters.eq("run_id", runId),
-            Filters.eq("status", NodeRunStatus.COMPLETED)))) {
-            if (nodeRun.artifacts == null) {
-                continue;
-            }
-            for (ArtifactRef ref : nodeRun.artifacts) {
-                if (ref.fileId == null || seen.add(ref.fileId)) {
-                    merged.add(ref);
-                }
-            }
-        }
-        return merged;
     }
 }

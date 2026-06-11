@@ -1,7 +1,10 @@
 package ai.core.server.workflow;
 
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.engine.WorkflowNode;
+
+import java.util.List;
 
 /**
  * The seam between an AGENT/LLM node and the existing agent run subsystem. It hides AgentRunner, the agent_runs
@@ -12,8 +15,9 @@ import ai.core.server.workflow.engine.WorkflowNode;
  * @author Xander
  */
 public interface AgentRunGateway {
-    /** Start a decoupled child AgentRun from the node's embedded published snapshot; returns its run id. */
-    String startChildRun(WorkflowRun run, WorkflowNode node, String input);
+    /** Start a decoupled child AgentRun from the node's embedded published snapshot; returns its run id.
+     *  {@code stagedFiles} are upstream artifacts the platform stages into the child's sandbox before its loop starts. */
+    String startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles);
 
     /** Block until the child AgentRun reaches a terminal status, then return its result. */
     AgentRunResult awaitResult(String childRunId);

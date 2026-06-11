@@ -1,9 +1,9 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, ChevronDown, ExternalLink, FileDown } from 'lucide-react';
+import { ChevronRight, ChevronDown, Download, ExternalLink, FileDown, FileText } from 'lucide-react';
 import { RUN_STATUS_COLOR, TERMINAL_RUN_STATUS, type WorkflowRFNode } from './graph';
 import { type InputVar } from './configWidgets';
-import type { WorkflowNodeRunView } from '../../api/client';
+import type { WorkflowArtifactView, WorkflowNodeRunView } from '../../api/client';
 
 export interface ResumeBody { approve?: boolean; input?: string }
 
@@ -26,7 +26,10 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
   const nameOf = (id: string) => nodes.find((n) => n.id === id)?.data.name ?? id;
   const typeOf = (id: string) => nodes.find((n) => n.id === id)?.data.nodeType ?? '';
   const runs = Object.values(nodeRuns).sort((a, b) => (a.started_at ?? '').localeCompare(b.started_at ?? ''));
-  const result = runs.find((r) => (typeOf(r.node_id) === 'END' || typeOf(r.node_id) === 'ANSWER') && r.output)?.output;
+  // the END node-run carries the run's result AND its deliverable files (per-node artifacts above are trace-level)
+  const endRun = runs.find((r) => (typeOf(r.node_id) === 'END' || typeOf(r.node_id) === 'ANSWER') && (r.output || (r.artifacts?.length ?? 0) > 0));
+  const result = endRun?.output;
+  const deliverables = endRun?.artifacts ?? [];
   const toggle = (id: string) => setExpanded((s) => {
     const next = new Set(s);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -82,14 +85,49 @@ export default function RunTrace({ nodes, runStatus, runError, nodeRuns, focusNo
         );
       })}
 
-      {result && (
+      {(result || deliverables.length > 0) && (
         <>
           <label style={label}>Result</label>
-          <pre style={pre}>{fmt(result)}</pre>
+          {result && <pre style={pre}>{fmt(result)}</pre>}
+          {deliverables.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: result ? 6 : 0 }}>
+              {deliverables.map((a, i) => <ArtifactCard key={a.file_id ?? i} artifact={a} />)}
+            </div>
+          )}
         </>
       )}
     </>
   );
+}
+
+/** A deliverable file of the run: type icon (inline preview for images), name, size, download link. */
+function ArtifactCard({ artifact }: { artifact: WorkflowArtifactView }) {
+  const isImage = (artifact.content_type ?? '').startsWith('image/') && !!artifact.url;
+  const name = artifact.file_name || artifact.title || artifact.file_id || 'file';
+  const meta = [artifact.content_type, fmtSize(artifact.size)].filter(Boolean).join(' · ');
+  return (
+    <div style={artifactCard} title={artifact.description || artifact.title || name}>
+      {isImage
+        ? <img src={artifact.url} alt={name} style={artifactThumb} />
+        : <span style={artifactIcon}><FileText size={18} /></span>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+        {meta && <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{meta}</div>}
+      </div>
+      {artifact.url && (
+        <a href={artifact.url} target="_blank" rel="noopener noreferrer" style={artifactDownload} title="Download">
+          <Download size={14} />
+        </a>
+      )}
+    </div>
+  );
+}
+
+function fmtSize(size?: number): string {
+  if (size === undefined || size === null || size < 0) return '';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function Field({ title, body, danger }: { title: string; body?: string; danger?: boolean }) {
@@ -210,3 +248,16 @@ const rejectBtn: CSSProperties = {
   border: '1px solid #fecaca', background: 'transparent', color: '#dc2626', cursor: 'pointer',
 };
 const artifactLink: CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-primary)', textDecoration: 'none', marginBottom: 3, wordBreak: 'break-all' };
+const artifactCard: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 9, padding: '7px 9px',
+  border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-bg-secondary)',
+};
+const artifactIcon: CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, flexShrink: 0,
+  borderRadius: 6, background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)',
+};
+const artifactThumb: CSSProperties = { width: 34, height: 34, flexShrink: 0, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--color-border)' };
+const artifactDownload: CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, flexShrink: 0,
+  borderRadius: 6, color: 'var(--color-primary)', textDecoration: 'none',
+};

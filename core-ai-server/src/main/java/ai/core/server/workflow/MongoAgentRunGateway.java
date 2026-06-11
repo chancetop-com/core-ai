@@ -13,6 +13,7 @@ import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.file.FileService;
 import ai.core.server.run.AgentRunner;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.workflow.engine.WorkflowNode;
 import core.framework.inject.Inject;
@@ -53,11 +54,11 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     FileService fileService;
 
     @Override
-    public String startChildRun(WorkflowRun run, WorkflowNode node, String input) {
+    public String startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
         AgentPublishedConfig snapshot = loadSnapshot(run.versionId, node.id());
         AgentDefinition definition = transientDefinition(node, run.userId, snapshot);
         var traceContext = new AgentRunner.WorkflowTraceContext(run.workflowId, run.id, node.id(), node.type());
-        return agentRunner.run(definition, input, TriggerType.WORKFLOW, null, null, traceContext);
+        return agentRunner.run(definition, input, TriggerType.WORKFLOW, null, null, new AgentRunner.WorkflowRunContext(traceContext, stagedFiles));
     }
 
     @Override

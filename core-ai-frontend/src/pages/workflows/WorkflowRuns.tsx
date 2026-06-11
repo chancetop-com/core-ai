@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronRight, ChevronDown, RefreshCw, History } from 'lucide-react';
+import { ArrowLeft, ChevronRight, ChevronDown, Paperclip, RefreshCw, History } from 'lucide-react';
 import { api, type WorkflowRunView, type WorkflowNodeRunView } from '../../api/client';
 import { RUN_STATUS_COLOR, toReactFlow, type WorkflowGraph, type WorkflowRFNode } from './graph';
 import RunTrace from './RunTrace';
@@ -87,6 +87,11 @@ export default function WorkflowRuns() {
                   <span style={{ fontWeight: 500, color: 'var(--color-text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {run.status || 'PENDING'}
                   </span>
+                  {(run.artifacts?.length ?? 0) > 0 && (
+                    <span style={fileBadge} title={`${run.artifacts!.length} deliverable file(s)`}>
+                      <Paperclip size={11} /> {run.artifacts!.length}
+                    </span>
+                  )}
                   <span style={dim}>{duration(run)}</span>
                   <span style={{ ...dim, marginLeft: 10 }}>{when(run.started_at)}</span>
                 </div>
@@ -132,6 +137,10 @@ const runError: CSSProperties = {
   overflowWrap: 'anywhere',
 };
 const dim: CSSProperties = { fontSize: 12, color: 'var(--color-text-secondary)' };
+const fileBadge: CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', fontSize: 11,
+  borderRadius: 999, border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
+};
 const errText: CSSProperties = { color: '#dc2626', fontSize: 12, marginBottom: 8 };
 const iconBtn: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32,

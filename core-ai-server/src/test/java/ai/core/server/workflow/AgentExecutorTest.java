@@ -5,6 +5,7 @@ import ai.core.server.domain.ArtifactRef;
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import ai.core.server.workflow.executor.AgentExecutor;
@@ -112,7 +113,7 @@ class AgentExecutorTest {
         }
 
         @Override
-        public String startChildRun(WorkflowRun run, WorkflowNode node, String input) {
+        public String startChildRun(WorkflowRun run, WorkflowNode node, String input, List<SandboxService.StagedFile> stagedFiles) {
             return "agentrun-1";
         }
 

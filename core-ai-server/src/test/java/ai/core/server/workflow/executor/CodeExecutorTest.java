@@ -75,7 +75,7 @@ class CodeExecutorTest {
     @Test
     void missingCodeFailsBeforeTouchingSandbox() {
         var node = new WorkflowNode("c", "CODE");   // no config
-        var outcome = new CodeExecutor(null).execute(ctx(node));
+        var outcome = new CodeExecutor(null, null).execute(ctx(node));
         var fail = assertInstanceOf(NodeOutcome.Fail.class, outcome);
         assertTrue(fail.error().contains("no code"));
     }
@@ -83,7 +83,7 @@ class CodeExecutorTest {
     @Test
     void absentSandboxServiceFailsClearly() {
         var node = new WorkflowNode("c", "CODE", List.of(), Map.of("code", "print(1)"));
-        var outcome = new CodeExecutor(null).execute(ctx(node));
+        var outcome = new CodeExecutor(null, null).execute(ctx(node));
         var fail = assertInstanceOf(NodeOutcome.Fail.class, outcome);
         assertTrue(fail.error().contains("sandbox"));
     }

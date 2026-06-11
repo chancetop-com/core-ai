@@ -9,6 +9,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Shared output composition for the terminal (END) and mid-graph (AGGREGATOR) nodes — the same operation in two
@@ -26,6 +29,8 @@ import java.util.Map;
  * @author Xander
  */
 public final class OutputComposer {
+    private static final Pattern ARTIFACTS_SELECTOR = Pattern.compile("(?:\\{\\{\\s*)?nodes\\.([A-Za-z_][A-Za-z0-9_]*)\\.artifacts(?:\\s*}})?");
+
     private OutputComposer() {
     }
 
@@ -61,6 +66,33 @@ public final class OutputComposer {
             lists.add(ctx.pool().artifactsOf(predId));
         }
         return ArtifactRef.union(lists);
+    }
+
+    /**
+     * The deliverable files of a terminal node: an explicit {@code artifacts} selector list in the config
+     * (each entry {@code nodes.<id>.artifacts}) declares them, mirroring how an {@code output} template
+     * overrides the pass-through; with no declaration, default to the predecessor union of
+     * {@link #composeArtifacts}. Non-artifact selector entries are ignored — the dominator check already
+     * rejected unreadable nodes at publish time.
+     */
+    public static List<ArtifactRef> composeDeliverables(NodeContext ctx) {
+        Object declared = ctx.node().config().get("artifacts");
+        if (!(declared instanceof List<?> selectors) || selectors.isEmpty()) {
+            return composeArtifacts(ctx);
+        }
+        var lists = new ArrayList<List<ArtifactRef>>();
+        for (Object entry : selectors) {
+            if (entry instanceof String selector) {
+                artifactsNodeId(selector).ifPresent(nodeId -> lists.add(ctx.pool().artifactsOf(nodeId)));
+            }
+        }
+        return ArtifactRef.union(lists);
+    }
+
+    // "nodes.<id>.artifacts" (with optional surrounding {{ }} the editor may emit) -> the source node id.
+    private static Optional<String> artifactsNodeId(String selector) {
+        Matcher matcher = ARTIFACTS_SELECTOR.matcher(selector.trim());
+        return matcher.matches() ? Optional.of(matcher.group(1)) : Optional.empty();
     }
 
     private static List<String> predecessorIds(NodeContext ctx) {

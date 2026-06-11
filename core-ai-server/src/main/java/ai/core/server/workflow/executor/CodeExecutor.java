@@ -2,16 +2,21 @@ package ai.core.server.workflow.executor;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
+import ai.core.server.file.FileService;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.workflow.ArtifactStaging;
 import ai.core.server.workflow.NodeContext;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeOutcome;
+import ai.core.server.workflow.VariablePool;
 import ai.core.tool.ToolCallResult;
 import core.framework.json.JSON;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -20,6 +25,11 @@ import java.util.Map;
  * the config, resolved over the variable pool and injected as an {@code inputs} dict the script reads; data only
  * flows through the pool, never the sandbox FS (per the Dify model). A fresh sandbox is created and closed per
  * run; provider (k8s/docker) is chosen by the platform.
+ *
+ * <p>File flow (design §5.3.2): artifacts an input selector references are staged by the platform into the
+ * sandbox at their deterministic path before the script runs, and the resolved artifact objects carry that
+ * {@code path} — the script reads the file locally, no network access required. Staged inputs are part of the
+ * invocation (like the inputs dict), so the stateless contract is unchanged.
  *
  * <p>Output contract: if the script assigns a {@code result} variable, its JSON form is the node output and any
  * stdout before it is debug-only (the appended epilogue prints it behind a sentinel line this executor splits
@@ -42,9 +52,11 @@ public class CodeExecutor implements NodeExecutor {
         """.formatted(RESULT_SENTINEL);
 
     private final SandboxService sandboxService;
+    private final FileService fileService;
 
-    public CodeExecutor(SandboxService sandboxService) {
+    public CodeExecutor(SandboxService sandboxService, FileService fileService) {
         this.sandboxService = sandboxService;
+        this.fileService = fileService;
     }
 
     @Override
@@ -56,19 +68,50 @@ public class CodeExecutor implements NodeExecutor {
         if (sandboxService == null) {
             return new NodeOutcome.Fail("sandbox is not configured (set sys.sandbox.provider)", false);
         }
-        String script = buildScript(code, resolveInputs(ctx));
+        List<SandboxService.StagedFile> stagedFiles = stagedInputFiles(ctx);
+        String script = buildScript(code, resolveInputs(ctx, stagedFiles.isEmpty() ? ctx.pool() : ctx.pool().stagedView()));
         // One sandbox per workflow RUN, shared by every CODE node (created lazily on first use, reused thereafter,
         // and released by WorkflowRunner when the run ends). Amortizes container cold-start. Each script still
         // reads inputs / writes result via the variable pool — the shared container is a cost optimization, NOT a
         // data channel: scripts must not rely on files persisting across nodes (recovery/handoff loses them).
+        // Staged input files are the one sanctioned FS input: deterministic per-node paths, written before the run.
         String sessionId = "wf-code:" + ctx.run().id;
         Sandbox sandbox = sandboxService.getOrCreateSandbox(SandboxService.createDefaultConfig(), sessionId, ctx.run().userId);
         if (sandbox == null) {
             return new NodeOutcome.Fail("sandbox is disabled", false);
         }
+        for (SandboxService.StagedFile file : stagedFiles) {
+            try {
+                sandbox.uploadFile(file.targetPath(), fileService.getBytes(fileService.get(file.fileId())));
+            } catch (RuntimeException e) {
+                // deterministic, retryable: failing fast beats running the script against a missing input file
+                return new NodeOutcome.Fail("failed to stage input file " + file.fileName() + ": " + e.getMessage(), true);
+            }
+        }
         var exec = ExecutionContext.builder().sessionId(sessionId).userId(ctx.run().userId).sandbox(sandbox).build();
         ToolCallResult result = sandbox.execute(PYTHON_TOOL, JSON.toJSON(Map.of("code", script)), exec);
         return toOutcome(result);
+    }
+
+    // Union of the staging sets of every input selector (a selector referencing artifacts whole / by index /
+    // by .path stages the file; metadata-only references don't — same rule as AGENT templates).
+    private static List<SandboxService.StagedFile> stagedInputFiles(NodeContext ctx) {
+        Object inputs = ctx.node().config().get("inputs");
+        if (!(inputs instanceof Map<?, ?> map)) {
+            return List.of();
+        }
+        var seen = new LinkedHashSet<String>();
+        var staged = new ArrayList<SandboxService.StagedFile>();
+        for (Object value : map.values()) {
+            if (value instanceof String selector) {
+                for (SandboxService.StagedFile file : ArtifactStaging.scanSelector(selector, ctx.pool())) {
+                    if (seen.add(file.targetPath())) {
+                        staged.add(file);
+                    }
+                }
+            }
+        }
+        return staged;
     }
 
     /** A completed run's output: the {@code result} JSON after the sentinel when the script assigned one,
@@ -97,7 +140,7 @@ public class CodeExecutor implements NodeExecutor {
             + code + RESULT_EPILOGUE;
     }
 
-    private static Map<String, Object> resolveInputs(NodeContext ctx) {
+    private static Map<String, Object> resolveInputs(NodeContext ctx, VariablePool pool) {
         Object inputs = ctx.node().config().get("inputs");
         if (!(inputs instanceof Map<?, ?> map)) {
             return Map.of();
@@ -105,7 +148,7 @@ public class CodeExecutor implements NodeExecutor {
         var resolved = new LinkedHashMap<String, Object>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             if (entry.getValue() instanceof String selector) {
-                Object value = ctx.pool().resolve(selector).orElse(null);
+                Object value = pool.resolve(selector).orElse(null);
                 if (value != null) {
                     resolved.put(String.valueOf(entry.getKey()), coerce(value));
                 }

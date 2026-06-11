@@ -397,7 +397,7 @@ return s == RunStatus.COMPLETED ? new Normal(collect(child)) : new Fail(child.er
 
 ### 5.3 Agent 产物（artifact）交给下游
 
-> **实现状态：L1 + L2 已落地。** `ArtifactRef`（domain）/ `AgentRunResult.artifacts` / `MongoAgentRunGateway` 映射 / `NodeOutcome.Normal.artifacts` / `WorkflowNodeRun.artifacts` / `VariablePool` 的 `nodes.<id>.artifacts` 通道 + List 下标 / `OutputComposer.composeArtifacts` + AGGREGATOR 并集 / `WorkflowRunner.collectArtifacts` → `WorkflowRun.artifacts` / 前端 `ArtifactView` + 变量选择器 + RunTrace 下载链接，均已实现并有测试。L3 不做（见下三决策）。
+> **实现状态：L1 + L2 已落地。** `ArtifactRef`（domain）/ `AgentRunResult.artifacts` / `MongoAgentRunGateway` 映射 / `NodeOutcome.Normal.artifacts` / `WorkflowNodeRun.artifacts` / `VariablePool` 的 `nodes.<id>.artifacts` 通道 + List 下标 / `OutputComposer.composeArtifacts` + AGGREGATOR 并集 / `WorkflowRunner.collectArtifacts` → `WorkflowRun.artifacts` / 前端 `ArtifactView` + 变量选择器 + RunTrace 下载链接，均已实现并有测试。L3 不做（见下三决策）。**→ 2026-06 修订：入向消费与 END 交付物两处决策被 §5.3.2 推翻/收紧，以 §5.3.2 为准。**
 
 **断点（现状）**：artifact 产出链已完整——agent 在沙箱生成文件 → `submit_artifacts` → `FileService.upload` 得 `file_id` → 组 `AgentRunArtifact`(file_id/file_name/content_type/size/source_path/title/description) → append 到**子 `AgentRun.artifacts`**。但 workflow 层断了：`MongoAgentRunGateway.awaitResult` 手握整个 `child` 却只 `return child.output`；`AgentRunResult` 只带 (completed/output/error)；于是 `NodeOutcome.Normal(output)` → `WorkflowNodeRun.output`（String）→ 池只有 `nodes.<id>.output`。**artifact 从未被抬到节点层，下游不可见。** 要交给下游，本质是补这条「抬升 + 暴露」链路。
 
@@ -438,7 +438,7 @@ class VariablePool {
 
 **L2 传到 workflow 输出**（用户可见价值最高）：END / `OutputComposer` 汇总时把沿活路径 COMPLETED 节点的 artifacts **并集**挂到 run 结果（新增 `WorkflowRun.artifacts`，形态同 `ArtifactRef`），API/chat/A2A 调用方才真正拿到下载链接。去重键 = `file_id`（同一文件被多节点引用只交付一份），顺序按节点完成序。
 
-**L3 沙箱落地——已决定不做**：三个开放问题（见 §5.3.1）已拍板全走引用/URL，不引入「预拉文件进消费方沙箱按 path 读」。理由：与 §5.2「CODE 无状态、文件走引用」的北极星一致，且引用通道已覆盖全部下游类型。`stage_artifacts` 之类的预拉配置作为已知逃生舱**记录在案但不实现**，仅当将来出现引用通道确实解不了的文件加工流水线再回头评估。
+**L3 沙箱落地——已决定不做**：三个开放问题（见 §5.3.1）已拍板全走引用/URL，不引入「预拉文件进消费方沙箱按 path 读」。理由：与 §5.2「CODE 无状态、文件走引用」的北极星一致，且引用通道已覆盖全部下游类型。`stage_artifacts` 之类的预拉配置作为已知逃生舱**记录在案但不实现**，仅当将来出现引用通道确实解不了的文件加工流水线再回头评估。**→ 2026-06：该逃生舱被行使，但形态比 `stage_artifacts` 配置更收敛——按引用自动推导的平台 staging，见 §5.3.2。**
 
 ### 5.3.1 下游消费矩阵（三决策已定）
 
@@ -454,10 +454,10 @@ class VariablePool {
 | **CODE** | 脚本处理文件 | map url → 脚本内 `urllib` fetch | ✅ **决策③：靠沙箱出网取 url** | 要求 CODE 沙箱 `networkEnabled` 且可达 FileService 域；落到 §5.2 SSRF 出口边界 |
 | **AGENT / LLM** | 下游 agent 读/再加工文件 | **决策①：prompt 内嵌 url**（<code v-pre>处理文件：{{ nodes.a.artifacts.0.url }}</code>），下游 agent 用自带 fetch/browse 工具去取 | ✅ url-in-prompt | 前提下游 agent 具备取文件能力；agent 入参仍是纯 string prompt，不新增「文件入口」 |
 
-**三决策（已拍）**：
-1. **Agent 收文件 = URL-in-prompt**：把取文件交给下游 agent 的工具能力，agent 入参维持纯 prompt，不做沙箱预拉。
-2. **HTTP = 投递链接**：模板传 url/file_id；「multipart 上传文件本体」不属 artifact 模型，单列为后续 HTTP 节点增强。
-3. **CODE/agent 取文件 = 沙箱出网**：消费方沙箱开 `networkEnabled` 用 url 取，统一落到 §5.2 的 SSRF 出口策略，而非 L3 落地。
+**三决策（已拍；2026-06 修订见 §5.3.2）**：
+1. **Agent 收文件 = URL-in-prompt**：把取文件交给下游 agent 的工具能力，agent 入参维持纯 prompt，不做沙箱预拉。**→ §5.3.2 修订为平台 staging + path-in-prompt；url-in-prompt 降级为无沙箱 LLM 节点的回退路径。**
+2. **HTTP = 投递链接**：模板传 url/file_id；「multipart 上传文件本体」不属 artifact 模型，单列为后续 HTTP 节点增强。**（保留不变）**
+3. **CODE/agent 取文件 = 沙箱出网**：消费方沙箱开 `networkEnabled` 用 url 取，统一落到 §5.2 的 SSRF 出口策略，而非 L3 落地。**→ §5.3.2 修订为 staging 进 CODE 沙箱，出网前提随之消解。**
 
 **共同含义**：三决策一致把文件流压成「引用 + 消费方自取」，于是 **L3 整体不需要**；artifact 模型边界清晰——平台只负责把**引用**抬进池/输出，**取字节是消费方（agent 工具 / CODE urllib / 第三方）的事**。唯一新增的平台侧前提是消费方沙箱出网（决策③）需要 §5.2 SSRF 边界覆盖到 FileService 域。
 
@@ -467,9 +467,66 @@ class VariablePool {
 
 **测试要点**：(a) gateway 把 `child.artifacts` 映射进 result；(b) 池解析 `nodes.x.artifacts` 整取与 `.0.url` 下标；(c) 多 artifact 顺序与 `file_id` 去重；(d) L2 并集到 `WorkflowRun`；(e) 无 artifact 时 `.artifacts`=`[]`、`.output` 不变（兼容回归）。
 
-**已定决策**：① `WorkflowNodeRun.artifacts` 独立字段 vs 复用 output JSON 嵌字段 → 独立（兼容、对称）；② `ArtifactRef` 新建 lean record vs 直接复用 `AgentRunArtifact`（缺 url 需补算）→ lean record + 映射；③ L2 去重键 `file_id` vs `(node_id,file_id)` → `file_id`；④ Agent 收文件 → URL-in-prompt；⑤ HTTP → 投递链接（不做 multipart 字节上传）；⑥ CODE/agent 取文件 → 沙箱出网（§5.2 SSRF 边界覆盖 FileService 域），不做 L3 沙箱落地。
+**已定决策**：① `WorkflowNodeRun.artifacts` 独立字段 vs 复用 output JSON 嵌字段 → 独立（兼容、对称）；② `ArtifactRef` 新建 lean record vs 直接复用 `AgentRunArtifact`（缺 url 需补算）→ lean record + 映射；③ L2 去重键 `file_id` vs `(node_id,file_id)` → `file_id`；④ Agent 收文件 → URL-in-prompt（**§5.3.2 修订**）；⑤ HTTP → 投递链接（不做 multipart 字节上传）；⑥ CODE/agent 取文件 → 沙箱出网（§5.2 SSRF 边界覆盖 FileService 域），不做 L3 沙箱落地（**§5.3.2 修订**）。
 
-**唯一未决**：决策⑥意味着 CODE 沙箱默认是否 `networkEnabled`、以及 SSRF allowlist 是否需放行 FileService 内网域名——留到实现 CODE/HTTP 出口策略时一并定。
+**唯一未决**：决策⑥意味着 CODE 沙箱默认是否 `networkEnabled`、以及 SSRF allowlist 是否需放行 FileService 内网域名——留到实现 CODE/HTTP 出口策略时一并定。**→ 2026-06：随 §5.3.2 的 staging 修订，文件读取不再依赖沙箱出网，此未决项对文件流转已消解（HTTP 节点自身的 SSRF 出口策略仍按 §5.2 推进）。**
+
+### 5.3.2 文件流转 v2（2026-06 修订）：入向 staging + END 交付物
+
+> **实现状态：A + B 已落地（2026-06-11）。** A：`ArtifactStaging`（引用闭包推导 + 路径约定 + 文件名消毒）/ `VariablePool.stagedView()` 注入瞬态 `path` / `SandboxService.addStagedFile` + `PendingFile` 双源（blob / FileRecord）/ `AgentRunner.WorkflowRunContext`（trace + stagedFiles，agent loop 前 `ensurePendingFilesUploaded` 同步确保、失败即 run FAILED）/ `AgentExecutor`（AGENT 节点 staging + path 渲染，LLM 回退 url）/ `CodeExecutor`（同通道，执行前 uploadFile，失败 Fail(retryable)）。B：`EndExecutor` 调 `OutputComposer.composeDeliverables`（默认前驱并集 + 显式 `artifacts` 选择器覆盖）/ `WorkflowRunner` 改取 END node-run 的 output+artifacts（删除全图 union `collectArtifacts`）/ 前端 RunTrace 交付物卡片（图标/大小/下载/图片预览）+ WorkflowRuns 文件数徽标。测试：`ArtifactStagingTest`（8）+ `EndExecutorTest`（4）。注意：staging 失败的确定性依赖 `ensurePendingFilesUploaded` 的同步调用路径——`LazySandbox.runPostAcquireHook` 会吞异常，不能只靠 onReady 钩子。
+
+**修订动机（两处实践暴露的问题）**：
+
+1. **「消费方自取」把确定性管道交给了概率组件。** 决策①/③ 让下游 agent 用工具 fetch URL、CODE 脚本 `urllib` 拉文件——每个文件多花 1–2 轮 tool call 的 token 与延迟，且可能失败/跳过/写错路径；同时强依赖「消费方沙箱可出网达 FileService 域」这一始终未验证的前提（§5.3.1 唯一未决项）。原则修正：**确定性搬运归平台，LLM 只做决策**。引用进池的北极星不变（§4/§5.2 全保留），修订的只是最后一公里——**引用→字节的物化，从消费方 LLM 的责任改为平台的责任**。这正是 §5.3 预留的逃生舱首次行使，但形态更收敛：不是 `stage_artifacts` 手工配置，而是**按引用自动推导**。
+2. **END 缺「交付物」概念。** 现状两处不一致：`EndExecutor` 只调 `compose()` 不调 `composeArtifacts()`——与 §5.3.1「END/AGGREGATOR 同一操作两个位置」的自我声明矛盾；run 级 `collectArtifacts` 做**全图** union——中间节点的草稿/临时文件全部混进最终交付，调用方无法区分「过程产物」与「结果」。
+
+#### A. 入向 staging（修订决策①③⑥）
+
+一个平台组件、两类消费者：
+
+```java
+// ArtifactStager（平台侧，确定性；与 SandboxService.uploadPendingFiles 同构——chat 文件上传已验证此模式）
+// 输入：消费方节点 input 渲染中引用到的 ArtifactRef 集合
+// 动作：FileService 取字节 -> sandbox.uploadFile("/tmp/inputs/<srcNodeId>/<fileName>", bytes)
+// 时机：sandbox 就绪后、首轮执行前（复用 pendingFiles 的延迟队列时序，兼容 LazySandbox）
+```
+
+- **staging 集合 = 显式引用闭包**：发布期 `SelectorScanner` 已扫描 input 模板中的 `nodes.*.artifacts` 选择器（支配校验同款扫描），运行期把这些选择器命中的 `ArtifactRef` 作为 staging 集。**不引用不搬**——意图由 wiring 表达，集合有界且确定。引用粒度细化规则：引用**整数组/整对象/`.path` 字段** → stage；仅引用 `.url`/元数据字段 → 不 stage（意图是转发链接，非本地消费）。
+- **路径约定**：`/tmp/inputs/<sourceNodeId>/<fileName>`——按源节点分目录防同名冲突；路径是纯函数（不依赖沙箱已存在），故渲染 prompt 时即可算出，无需等沙箱就绪。
+- **渲染形态**：`nodes.<id>.artifacts` 在**有沙箱的消费方**上下文渲染时，每个 artifact 对象注入 `"path"` 字段（`url` 等保留）。`path` 是 per-consumer 瞬态字段，**不落库**——`ArtifactRef`/Mongo 形态不变。
+- **消费方矩阵更新**：
+
+  | 消费方 | v2 行为 | 原决策处置 |
+  |---|---|---|
+  | AGENT（有沙箱） | staging + **path-in-prompt**（`处理文件：{{ nodes.a.artifacts.0.path }}`），agent 直接读本地文件，内容不灌 context | 决策①修订；url-in-prompt 降级为回退 |
+  | LLM（无沙箱） | url-in-prompt（原决策①原样保留为回退路径） | 不变 |
+  | CODE | staging 进 CODE 沙箱，脚本按 path 读。**不破坏「CODE 无状态」**：staged 文件是调用入参的一部分（同 JSON 入参），执行间不残留状态，契约仍是 JSON 进/出。**收益：CODE 取文件不再要求 `networkEnabled`/SSRF 放行 FileService——§5.3.1 唯一未决项消解** | 决策③⑥修订 |
+  | HTTP / MCP_TOOL / API_TOOL | 传 url/file_id，不变 | 决策②保留 |
+  | END / AGGREGATOR / IF | JVM 内纯计算，无沙箱无 staging | 不变 |
+
+- **失败语义**：staging 失败 = 节点失败（`retryable=true`，走 `RetryingNodeExecutor`）——确定性失败优于 agent 缺文件半瞎跑。
+- **尺寸护栏**：staging 经 server 中转字节；当前 FileService = Mongo base64，本身有 16MB/doc 上限，v2 不引入新瓶颈。预留每节点 staging 总量上限配置（超限 fail-fast 并提示改走 url 转发），FileService 将来换 blob 存储时该护栏才真正承压。
+- **出向不变**：agent 产文件仍走 `submit_artifacts` → `FileService.upload` → `ArtifactRef` 抬升；staging 只管**入向**。两条方向合起来：**平台负责字节的进出，池只走引用**——§5.2 原则未破，反而更彻底（消费方连 fetch 都不用做了）。
+
+#### B. END 交付物（出口修订）
+
+两层产物模型：
+
+- **过程产物（trace 层）**：`WorkflowNodeRun.artifacts`，节点详情展示，调试/审计用——不变。
+- **交付产物（result 层）**：END 节点的 artifacts 即交付物。
+  1. `EndExecutor` 补调 `OutputComposer.composeArtifacts(ctx)`（默认 = 直接前驱 artifacts 的 `file_id` 去重并集，与 `compose` 的输出语义镜像，修掉与 AGGREGATOR 的不对称）；
+  2. END config 支持可选 `artifacts` 选择器列表（如 `["nodes.report.artifacts"]`）显式声明交付物，覆盖默认并集——与 `output` 模板覆盖 pass-through 同构；
+  3. `WorkflowRun.artifacts` 改为 = END node-run 的 artifacts，**取代** `collectArtifacts` 的全图 union。全图信息不丢——trace 层逐节点已有，只是不再冒充交付物。
+
+**前端联动**：run 结果面板（RunPanel/RunTrace）在 output 文本下方渲染 artifact 卡片——按 `content_type` 的文件图标、文件名、大小、下载按钮，`image/*` 内联缩略预览；WorkflowRuns 列表卡片加文件数徽标；节点详情继续展示该节点自己的过程产物，与结果面板区分。
+
+#### C. 对称缺口（记录在案，本次不做）
+
+workflow 的**文件输入**：`WorkflowRun.input` 是纯 string，START 节点无文件入口（agent run 经 job 创建已支持文件，workflow 不对称）。将来点亮时直接复用本节机制：启动载荷带文件 → 挂为 `nodes.start.artifacts` → 同一 staging 通道进首个消费节点，零新概念。待有真实场景再做。
+
+**测试要点（v2 增量）**：(a) `SelectorScanner` 提取 artifacts 选择器 → staging 集正确（含 `.0.path` 单文件、整数组、`.url`-only 不 stage 三种粒度）；(b) staged path 渲染与实际上传路径一致（纯函数性）；(c) staging 失败 → 节点 `FAILED_RETRYABLE`；(d) 无沙箱 LLM 节点回退 url 渲染（无 `path` 字段）；(e) END 默认并集 = 直接前驱、显式 `artifacts` 选择器覆盖；(f) `run.artifacts` = END artifacts，中间文件不再泄漏进交付物；(g) CODE 沙箱关网时仍能读 staged 文件。
+
+**已定决策（v2）**：⑦ Agent 收文件 → 平台 staging + path-in-prompt（无沙箱回退 url）；⑧ CODE 收文件 → 同一 staging 通道（无状态契约不破）；⑨ staging 集 → 按引用自动推导（非手工 `stage_artifacts` 配置）；⑩ 交付物 → END 声明（默认前驱并集 + 可选显式选择器），`WorkflowRun.artifacts` 不再全图 union；⑪ `path` 为渲染期瞬态字段，不落库。
 
 ---
 

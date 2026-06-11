@@ -160,6 +160,7 @@ public class ServerModule extends Module {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerModule.class);
     private SandboxService sandboxService;
     private ToolRegistryService toolRegistryService;   // shared with bindWorkflow() for the tool node executors
+    private FileService fileService;                   // shared with bindWorkflow() (CODE staging) and sandbox staging
 
     @Override
     protected void initialize() {
@@ -181,6 +182,9 @@ public class ServerModule extends Module {
         SandboxModule sandboxModule = new SandboxModule();
         load(sandboxModule);
         this.sandboxService = sandboxModule.sandboxService;
+        if (sandboxService != null) {
+            sandboxService.setFileService(fileService);   // workflow artifact staging pulls bytes from FileRecord
+        }
 
         // ChannelRegistry and adapters must be bound before bindService() because
         // AgentSessionManager injects ChannelRegistry for bridge cleanup.
@@ -308,7 +312,7 @@ public class ServerModule extends Module {
             Map.entry(NodeType.AGGREGATOR, new AggregatorExecutor()),
             Map.entry(NodeType.TEMPLATE, new TemplateExecutor()),
             Map.entry(NodeType.HUMAN_INPUT, new HumanInputExecutor()),
-            Map.entry(NodeType.CODE, new CodeExecutor(sandboxService))));
+            Map.entry(NodeType.CODE, new CodeExecutor(sandboxService, fileService))));
         bind(NodeExecutor.class, registry);
 
         bind(WorkflowPublishService.class);
@@ -466,7 +470,7 @@ public class ServerModule extends Module {
         http().route(HTTPMethod.GET, "/settings/api-keys", controller::serve);
     }
     private void registerFile() {
-        bind(FileService.class);
+        this.fileService = bind(FileService.class);
         api().service(FileWebService.class, bind(FileWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/files", bind(FileUploadController.class));
         http().route(HTTPMethod.GET, "/api/files/:id/content", bind(FileDownloadController.class));

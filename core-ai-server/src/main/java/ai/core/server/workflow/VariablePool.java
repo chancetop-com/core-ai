@@ -47,17 +47,30 @@ public final class VariablePool {
     private final Map<String, String> nodeOutputs;
     private final Map<String, List<ArtifactRef>> nodeArtifacts;
     private final String runInput;
+    // staged view: artifact objects additionally carry the transient "path" field (the deterministic in-sandbox
+    // staging location) — only meaningful for consumers the platform stages files into; never persisted
+    private final boolean stagedPaths;
 
     public VariablePool(Map<String, String> nodeOutputs, String runInput) {
         this(nodeOutputs, Map.of(), runInput);
     }
 
     public VariablePool(Map<String, String> nodeOutputs, Map<String, List<ArtifactRef>> nodeArtifacts, String runInput) {
+        this(nodeOutputs, nodeArtifacts, runInput, false);
+    }
+
+    private VariablePool(Map<String, String> nodeOutputs, Map<String, List<ArtifactRef>> nodeArtifacts, String runInput, boolean stagedPaths) {
         this.nodeOutputs = Map.copyOf(nodeOutputs);
         var copy = new LinkedHashMap<String, List<ArtifactRef>>();
         nodeArtifacts.forEach((id, refs) -> copy.put(id, List.copyOf(refs)));
         this.nodeArtifacts = Map.copyOf(copy);
         this.runInput = runInput == null ? "{}" : runInput;
+        this.stagedPaths = stagedPaths;
+    }
+
+    /** A view of this pool whose artifact objects include the staged {@code path} field (see ArtifactStaging). */
+    public VariablePool stagedView() {
+        return stagedPaths ? this : new VariablePool(nodeOutputs, nodeArtifacts, runInput, true);
     }
 
     /** The artifact references an upstream node produced — for output composition (e.g. AGGREGATOR union). */
@@ -75,7 +88,7 @@ public final class VariablePool {
             pathStart = 3;
         } else if ("nodes".equals(parts[0]) && parts.length >= 3 && "artifacts".equals(parts[2])) {
             List<ArtifactRef> refs = nodeArtifacts.get(parts[1]);
-            baseJson = refs == null ? null : artifactsToJson(refs);
+            baseJson = refs == null ? null : artifactsToJson(parts[1], refs);
             pathStart = 3;
         } else if ("sys".equals(parts[0]) && parts.length >= 2 && "input".equals(parts[1])) {
             baseJson = runInput;
@@ -141,7 +154,8 @@ public final class VariablePool {
 
     // Serialize artifact references to a snake_case JSON array string the selector path navigates into — no bean
     // annotations needed since it goes through plain Map/List, decoupling the pool from ArtifactRef's mapping.
-    private static String artifactsToJson(List<ArtifactRef> refs) {
+    // In the staged view each object also carries "path", the deterministic in-sandbox staging location.
+    private String artifactsToJson(String nodeId, List<ArtifactRef> refs) {
         var list = new ArrayList<Map<String, Object>>(refs.size());
         for (ArtifactRef ref : refs) {
             var map = new LinkedHashMap<String, Object>();
@@ -152,6 +166,9 @@ public final class VariablePool {
             map.put("url", ref.url);
             map.put("title", ref.title);
             map.put("description", ref.description);
+            if (stagedPaths && ref.fileName != null && !ref.fileName.isBlank()) {
+                map.put("path", ArtifactStaging.pathOf(nodeId, ref.fileName));
+            }
             list.add(map);
         }
         return JSON.toJSON(list);
