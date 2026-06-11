@@ -24,9 +24,6 @@ RUN pip install --no-cache-dir \
     scikit-learn statsmodels \
     pillow openpyxl nodriver weasyprint
 
-# npm installs/updates packages at runtime via npx; skip fchown (container may run non-root)
-RUN npm config set unsafe-perm true
-
 # npm-installed node-gyp bundles its own gyp; replace Debian's hardcoded path
 RUN npm install -g node-gyp && \
     rm -rf /usr/share/nodejs/node-gyp && \
@@ -43,6 +40,15 @@ COPY --from=builder /core-ai-sandbox-runtime /usr/local/bin/core-ai-sandbox-runt
 
 # python:3.12-slim has pyvenv.cfg which makes pip refuse --user installs
 RUN rm -f /usr/local/pyvenv.cfg
+
+# npm runs at runtime via npx; suppress harmless fchown/fund/audit WARNs
+ENV NPM_CONFIG_LOGLEVEL=error
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NPM_CONFIG_FUND=false
+ENV NPM_CONFIG_AUDIT=false
+ENV NPM_CONFIG_PREFER_IPV4=true
+ENV NPM_CONFIG_FETCH_TIMEOUT=120000
+ENV NPM_CONFIG_FETCH_RETRIES=3
 
 # xvfb display for non-headless browser automation
 ENV DISPLAY=:99
