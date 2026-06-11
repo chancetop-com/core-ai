@@ -126,7 +126,8 @@ public class SessionSubAgentManager {
     public Agent buildAgent(SessionConfig config, List<ToolCall> tools, ExecutionContext context, String agentName, Map<String, Object> extraSystemVars) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
-                .name(agentName != null ? agentName.replaceAll("\\s+", "-") : "assistant")
+                // same sanitization as AgentRunner.safeNodeName: node names must be tool-name-safe (^[^\s<|\\/>]+$)
+                .name(agentName != null && !agentName.isBlank() ? agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
                 .llmProvider(llmProvider)
                 .toolCalls(tools != null && !tools.isEmpty() ? tools : BuiltinTools.ALL)
                 .temperature(config != null && config.temperature != null ? config.temperature : 0.8);

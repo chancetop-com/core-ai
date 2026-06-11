@@ -9,6 +9,7 @@ import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
+import ai.core.server.domain.ArtifactRef;
 import ai.core.server.memory.AgentMemory;
 import ai.core.server.memory.AgentMemoryExtractionCursor;
 import ai.core.server.domain.ChatMessage;
@@ -99,6 +100,9 @@ public class ServerApp extends App {
         mongo.collection(WorkflowPublishedVersion.class);
         mongo.collection(WorkflowRun.class);
         mongo.collection(WorkflowNodeRun.class);
+        // registered as a view so the raw driver codec registry can encode it inside Updates.set("artifacts", ...)
+        // on run finalize — nested entity encoding only covers full replace(), not partial update values
+        mongo.view(ArtifactRef.class);
 
         // memory collections
         mongo.collection(AgentMemory.class);

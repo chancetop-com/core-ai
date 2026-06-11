@@ -412,7 +412,7 @@ public class AgentRunner {
             tools.add(ReadSkillResourceTool.builder().registry(skillRegistry).build());
         }
         var builder = Agent.builder()
-            .name(definition.name)
+            .name(safeNodeName(definition))
             .id(definition.id)
             .description(definition.description != null ? definition.description : definition.name)
             .llmProvider(llmProviders.getProvider())
@@ -435,6 +435,14 @@ public class AgentRunner {
         var agent = builder.build();
         agent.setAuthenticated(true);
         return agent;
+    }
+
+    // The display name is user-facing and may contain spaces; the framework node name must be tool-name-safe
+    // (it becomes an LLM function name, Node enforces ^[^\s<|\\/>]+$). Sanitize at this boundary instead of
+    // constraining what users may call their agents; null-safe for workflow transient definitions (no name).
+    static String safeNodeName(AgentDefinition definition) {
+        var name = definition.name != null && !definition.name.isBlank() ? definition.name : "agent-" + definition.id;
+        return name.trim().replaceAll("[\\s<|\\\\/>]+", "-");
     }
 
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
