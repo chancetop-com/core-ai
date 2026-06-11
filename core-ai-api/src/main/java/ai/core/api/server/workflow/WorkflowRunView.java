@@ -35,4 +35,9 @@ public class WorkflowRunView {
 
     @Property(name = "completed_at")
     public ZonedDateTime completedAt;
+
+    // present only when status is PAUSED on single-run reads: the human waits blocking the run, with the
+    // contract needed to resume each (mode, prompt, fields)
+    @Property(name = "pending_inputs")
+    public List<PendingInputView> pendingInputs;
 }

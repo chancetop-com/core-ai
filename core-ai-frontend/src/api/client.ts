@@ -684,6 +684,21 @@ export interface WorkflowArtifactView {
   description?: string;
 }
 
+export interface PendingInputFieldView {
+  name?: string;
+  type?: string;
+  label?: string;
+  required?: boolean;
+}
+
+// present on single-run reads when status is PAUSED: the human waits blocking the run and how to resume each
+export interface PendingInputView {
+  node_id?: string;
+  mode?: string;
+  prompt?: string;
+  fields?: PendingInputFieldView[];
+}
+
 export interface WorkflowRunView {
   id: string;
   workflow_id?: string;
@@ -694,6 +709,7 @@ export interface WorkflowRunView {
   error?: string;
   started_at?: string;
   completed_at?: string;
+  pending_inputs?: PendingInputView[];
 }
 
 export interface ListWorkflowRunsResponse {

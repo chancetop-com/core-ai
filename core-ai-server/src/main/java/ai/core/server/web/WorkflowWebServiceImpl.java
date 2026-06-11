@@ -137,7 +137,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
                 break;
             }
         }
-        return toRunView(latest);
+        return toRunViewWithPending(latest);
     }
 
     @Override
@@ -163,7 +163,17 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     @Override
     public WorkflowRunView getRun(String runId) {
         var userId = AuthContext.userId(webContext);
-        return toRunView(runService.getRun(runId, userId));
+        return toRunViewWithPending(runService.getRun(runId, userId));
+    }
+
+    // single-run reads attach the resume contract of a PAUSED run; list endpoints stay cheap (no node-run query)
+    private WorkflowRunView toRunViewWithPending(WorkflowRun run) {
+        WorkflowRunView view = toRunView(run);
+        var pending = runService.pendingInputs(run);
+        if (!pending.isEmpty()) {
+            view.pendingInputs = pending;
+        }
+        return view;
     }
 
     @Override

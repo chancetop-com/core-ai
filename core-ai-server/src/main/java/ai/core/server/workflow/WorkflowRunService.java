@@ -1,5 +1,6 @@
 package ai.core.server.workflow;
 
+import ai.core.api.server.workflow.PendingInputView;
 import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
@@ -14,6 +15,7 @@ import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
+import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.conversions.Bson;
@@ -120,19 +122,34 @@ public class WorkflowRunService {
     public void resume(String runId, String nodeId, Boolean approve, String input, String userId) {
         WorkflowRun run = getRun(runId, userId);   // ownership
         if (run.status != RunStatus.PAUSED) {
-            throw new BadRequestException("workflow run is not paused: " + runId);
+            throw new ConflictException("workflow run is not paused: " + runId);
         }
         WorkflowNode node = resolveHumanNode(run, nodeId);
+        HumanInputProtocol.validate(node, approve, input);   // mode + form schema enforced before settling
         long settled = nodeRunCollection.update(
             Filters.and(Filters.eq("run_id", runId), Filters.eq("node_id", nodeId), Filters.eq("status", NodeRunStatus.WAITING)),
             settleHumanNode(node, approve, input));
         if (settled == 0) {
-            throw new BadRequestException("node is not awaiting human input: " + nodeId);
+            throw new ConflictException("node is not awaiting human input (already settled by a concurrent resume?): " + nodeId);
         }
         // wake: PAUSED -> PENDING, claimable now (guarded on PAUSED so a concurrent resume only wakes once)
         runCollection.update(
             Filters.and(Filters.eq("_id", runId), Filters.eq("status", RunStatus.PAUSED)),
             Updates.combine(Updates.set("status", RunStatus.PENDING), Updates.set("lease_until", ZonedDateTime.now())));
+    }
+
+    /** The self-describing waits of a PAUSED run, so a single GET tells an API caller how to resume. */
+    public List<PendingInputView> pendingInputs(WorkflowRun run) {
+        if (run.status != RunStatus.PAUSED) {
+            return List.of();
+        }
+        List<WorkflowNodeRun> waiting = nodeRunCollection.find(Filters.and(
+            Filters.eq("run_id", run.id), Filters.eq("status", NodeRunStatus.WAITING)));
+        if (waiting.isEmpty()) {
+            return List.of();
+        }
+        var graph = graphLoader.load(run.versionId);
+        return waiting.stream().map(nodeRun -> HumanInputProtocol.describe(graph.node(nodeRun.nodeId), nodeRun)).toList();
     }
 
     private WorkflowNode resolveHumanNode(WorkflowRun run, String nodeId) {

@@ -16,6 +16,7 @@ export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: P
   const origin = window.location.origin;
   const published = status === 'PUBLISHED';
   const vars = startInputVars(nodes).filter((v) => v.name);
+  const humanNodes = nodes.filter((n) => n.data.nodeType === 'HUMAN_INPUT');
   const inputObj: Record<string, unknown> | null = vars.length
     ? Object.fromEntries(vars.map((v) => [v.name, sampleValue(v.type)]))
     : null;
@@ -68,8 +69,54 @@ export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: P
       <Code text={`POST ${origin}/api/workflows/${workflowId}/runs   → { "runId": "…", "status": "PENDING" }
 GET  ${origin}/api/workflow-runs/{runId}   → poll until status COMPLETED, read .output`} />
 
-      <div style={{ ...dim, marginTop: 12 }}>Response: <code>status</code> (COMPLETED / FAILED / TIMEOUT), <code>output</code>, <code>error</code>.</div>
+      {humanNodes.length > 0 && <HumanInputSection origin={origin} humanNodes={humanNodes} />}
+
+      <div style={{ ...dim, marginTop: 12 }}>
+        Response: <code>status</code> (COMPLETED / FAILED / TIMEOUT{humanNodes.length > 0 ? ' / PAUSED' : ''}), <code>output</code>, <code>error</code>
+        {humanNodes.length > 0 ? <>, <code>pending_inputs</code></> : null}.
+      </div>
     </div>
+  );
+}
+
+/** Shown only when the graph contains HUMAN_INPUT nodes: the pause → pending_inputs → resume protocol,
+ *  with resume examples derived from the actual nodes' mode and form schema. */
+function HumanInputSection({ origin, humanNodes }: { origin: string; humanNodes: WorkflowRFNode[] }) {
+  const sample = (node: WorkflowRFNode) => {
+    const config = (node.data.config ?? {}) as Record<string, unknown>;
+    const mode = config.mode === 'input' ? 'input' : 'approval';
+    if (mode === 'approval') return JSON.stringify({ node_id: node.id, approve: true });
+    const fields = Array.isArray(config.fields) ? (config.fields as { name?: string; type?: string }[]) : [];
+    const values = Object.fromEntries(fields.filter((f) => f.name).map((f) => [f.name!, sampleValue(f.type ?? 'text')]));
+    return JSON.stringify({ node_id: node.id, input: JSON.stringify(values) });
+  };
+  return (
+    <>
+      <label style={label}>Human input</label>
+      <div style={dim}>
+        This workflow contains human-input node(s). When a run reaches one it pauses — <code>run-sync</code> returns
+        immediately with <code>status: "PAUSED"</code> (not an error) and <code>pending_inputs</code> describing what
+        is being asked. Submit the answer via the resume endpoint, then poll again until COMPLETED.
+      </div>
+      <Code text={`GET ${origin}/api/workflow-runs/{runId}
+→ { "status": "PAUSED",
+    "pending_inputs": [ { "node_id": "…", "mode": "approval" | "input",
+                          "prompt": "…", "fields": [ { "name", "type", "required" } ] } ] }`} />
+      {humanNodes.map((node) => {
+        const mode = (node.data.config as Record<string, unknown> | undefined)?.mode === 'input' ? 'input' : 'approval';
+        return (
+          <div key={node.id}>
+            <div style={{ ...dim, margin: '8px 0 4px' }}>
+              Resume <code>{node.data.name || node.id}</code> ({mode === 'approval' ? 'approval: approve=true / false picks the branch' : 'input: the JSON-encoded form values become the node output'})
+            </div>
+            <Code text={`curl -X POST ${origin}/api/workflow-runs/{runId}/resume \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '${sample(node)}'`} />
+          </div>
+        );
+      })}
+    </>
   );
 }
 
