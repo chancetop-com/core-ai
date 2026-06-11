@@ -136,10 +136,16 @@ public class WorkflowRunner {
             Updates.combine(
                 Updates.set("claimed_by", workerId),
                 Updates.set("status", RunStatus.RUNNING),
-                Updates.set("lease_until", now.plusSeconds(LEASE_SECONDS)),
-                // $min: stamps the first claim and is a no-op on re-claims (resume / lease takeover keep the original)
-                Updates.min("started_at", now)));
-        return updated == 1;
+                Updates.set("lease_until", now.plusSeconds(LEASE_SECONDS))));
+        if (updated != 1) {
+            return false;
+        }
+        // stamp the first claim only; guarded on null because insert writes started_at as an explicit null,
+        // which $min would keep (null sorts below dates in BSON) — re-claims (resume / lease takeover) no-op
+        runCollection.update(
+            Filters.and(Filters.eq("_id", runId), Filters.eq("started_at", null)),
+            Updates.set("started_at", now));
+        return true;
     }
 
     // Independent of node completion: a slow node must never let the lease expire. Renew only while we still own
