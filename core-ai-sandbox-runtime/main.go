@@ -174,6 +174,9 @@ func main() {
 	http.HandleFunc("/files/content", handleFileContent)
 	http.HandleFunc("/files/upload", handleFileUpload)
 	http.HandleFunc("/skills/", handleSkillMaterialize)
+	http.HandleFunc("/mcp/start", handleMcpStart)
+	http.HandleFunc("/mcp/stop", handleMcpStop)
+	http.HandleFunc("/mcp", handleMcp)
 
 	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d", port, workspaceDir, maxAsync)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
