@@ -19,6 +19,9 @@ public interface WorkflowJournal {
     /** Insert a RUNNING node-run; false if one already exists at this (run, node, scope) — race-safe. */
     boolean appendRunning(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath);
 
+    /** Persist the resolved input snapshot shown in run traces. Best-effort observability, not control flow. */
+    void recordInput(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, String inputJson);
+
     /** Settle the existing node-run with the executor's outcome (COMPLETED / FAILED_RETRYABLE). */
     void recordOutcome(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, NodeOutcome outcome);
 

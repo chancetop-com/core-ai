@@ -33,7 +33,7 @@ public final class SubmitArtifactsTool extends ToolCall {
         `/tmp` or `/workspace`, with concise names and content types when known.
 
         The tool returns each submitted artifact's `file_id` and a `download_url` (a fully-qualified
-        absolute URL, e.g. `https://core-ai.example.com/api/files/<file_id>/content`). If you reference
+        absolute URL, typically under `/api/public/artifacts/.../content`). If you reference
         any submitted file in your final markdown reply (especially images), you MUST copy that exact
         `download_url` from the tool result — never a sandbox relative path such as `chart.png` or
         `/workspace/chart.png`, because the browser cannot resolve those and the image will appear broken.
@@ -91,9 +91,15 @@ public final class SubmitArtifactsTool extends ToolCall {
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
-    /** The caller-resolvable download URL for a stored file — the single source of truth for this URL shape. */
+    /** The authenticated download URL for a stored file. Prefer {@link #sharedDownloadUrl(String)} for artifacts
+     *  that are handed to browsers or external workflow callers. */
     public static String downloadUrl(String fileId) {
         return baseUrl() + "/api/files/" + fileId + "/content";
+    }
+
+    /** Public artifact-content URL backed by a share token, safe to hand to workflow callers and opened tabs. */
+    public static String sharedDownloadUrl(String shareToken) {
+        return baseUrl() + "/api/public/artifacts/" + shareToken + "/content";
     }
 
     static String normalizeArguments(String arguments) {
@@ -195,11 +201,12 @@ public final class SubmitArtifactsTool extends ToolCall {
             artifact.createdAt = ZonedDateTime.now();
             sink.append(artifact);
 
+            var shared = fileService.share(record.id, userId);
             submitted.add(Map.of(
                 "path", item.path,
                 "file_id", record.id,
                 "file_name", record.fileName,
-                "download_url", downloadUrl(record.id)
+                "download_url", sharedDownloadUrl(shared.shareToken)
             ));
         } catch (Exception e) {
             failed.add(Map.of("path", item.path, "error", errorMessage(e)));

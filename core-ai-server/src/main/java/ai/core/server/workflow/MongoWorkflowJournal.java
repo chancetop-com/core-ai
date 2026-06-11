@@ -48,6 +48,14 @@ public class MongoWorkflowJournal implements WorkflowJournal {
     }
 
     @Override
+    public void recordInput(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, String inputJson) {
+        String id = nodeRunId(run.id, node.id(), scopePath);
+        WorkflowNodeRun nodeRun = collection.get(id).orElseThrow(() -> new IllegalStateException("node-run not found: " + id));
+        nodeRun.inputJson = inputJson;
+        collection.replace(nodeRun);
+    }
+
+    @Override
     public void recordOutcome(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, NodeOutcome outcome) {
         String id = nodeRunId(run.id, node.id(), scopePath);
         WorkflowNodeRun nodeRun = collection.get(id).orElseThrow(() -> new IllegalStateException("node-run not found: " + id));

@@ -6,6 +6,7 @@ import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.WorkflowEdge;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
+import ai.core.server.workflow.executor.StartExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -41,6 +42,26 @@ class WorkflowAdvancerTest {
         assertEquals(RunStatus.COMPLETED, status);
         assertEquals(List.of("start", "a", "end"), executor.executed);
         assertEquals(NodeRunStatus.COMPLETED, journal.status("run-1", "end"));
+    }
+
+    @Test
+    void recordsResolvedInputSnapshotForTrace() {
+        WorkflowNode agent = new WorkflowNode("agent", "AGENT", List.of(),
+            Map.of("input", "Hello {{ nodes.start.output.name }}"));
+        WorkflowGraph graph = graph(
+            List.of(new WorkflowNode("start", "START"), agent, new WorkflowNode("end", "END")),
+            List.of(edge("e0", "start", "agent"), edge("e1", "agent", "end")));
+        var journal = new InMemoryWorkflowJournal();
+        NodeExecutor executor = ctx -> "START".equals(ctx.node().type())
+            ? new StartExecutor().execute(ctx)
+            : new NodeOutcome.Normal("{}");
+
+        RunStatus status = WorkflowAdvancer.drive(
+            graph, run("{\"name\":\"Ada\"}"), journal, executor, SAME_THREAD, () -> false);
+
+        assertEquals(RunStatus.COMPLETED, status);
+        assertEquals("{\"name\":\"Ada\"}", journal.inputJson("run-1", "start"));
+        assertTrue(journal.inputJson("run-1", "agent").contains("\"input\":\"Hello Ada\""));
     }
 
     @Test
@@ -275,9 +296,14 @@ class WorkflowAdvancerTest {
     }
 
     private static WorkflowRun run() {
+        return run(null);
+    }
+
+    private static WorkflowRun run(String input) {
         var run = new WorkflowRun();
         run.id = "run-1";
         run.workflowId = "wf-1";
+        run.input = input;
         return run;
     }
 

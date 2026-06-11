@@ -110,6 +110,7 @@ public final class WorkflowAdvancer {
             try {
                 VariablePool vars = VariablePool.fromNodeRuns(journal.nodeRuns(run.id), ROOT_SCOPE_KEY, run.input);
                 NodeContext ctx = new NodeContext(graph, run, node, List.of(), vars);
+                recordInput(journal, run, node, ctx);
                 NodeOutcome outcome = executor.execute(ctx);
                 commit(journal, run, node, outcome, leaseHeld);
             } catch (Throwable e) {
@@ -123,6 +124,14 @@ public final class WorkflowAdvancer {
                 done.complete(null);
             }
         });
+    }
+
+    private static void recordInput(WorkflowJournal journal, WorkflowRun run, WorkflowNode node, NodeContext ctx) {
+        try {
+            journal.recordInput(run, node, List.of(), NodeInputSnapshot.capture(ctx));
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to record workflow node input snapshot, runId={}, nodeId={}", run.id, node.id(), e);
+        }
     }
 
     // Record the outcome, but only while this worker still holds the lease — once the lease is lost the new owner

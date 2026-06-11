@@ -30,6 +30,14 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
     }
 
     @Override
+    public void recordInput(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, String inputJson) {
+        WorkflowNodeRun nodeRun = byId.get(key(run.id, node.id()));
+        if (nodeRun != null) {
+            nodeRun.inputJson = inputJson;
+        }
+    }
+
+    @Override
     public void recordOutcome(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, NodeOutcome outcome) {
         WorkflowNodeRun nodeRun = byId.get(key(run.id, node.id()));
         switch (outcome) {
@@ -72,6 +80,11 @@ final class InMemoryWorkflowJournal implements WorkflowJournal {
     String childRunId(String runId, String nodeId) {
         WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
         return nodeRun == null ? null : nodeRun.childRunId;
+    }
+
+    String inputJson(String runId, String nodeId) {
+        WorkflowNodeRun nodeRun = byId.get(key(runId, nodeId));
+        return nodeRun == null ? null : nodeRun.inputJson;
     }
 
     private static String key(String runId, String nodeId) {

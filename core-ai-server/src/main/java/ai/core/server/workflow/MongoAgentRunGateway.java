@@ -11,6 +11,7 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.file.FileService;
 import ai.core.server.run.AgentRunner;
 import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.server.workflow.engine.WorkflowNode;
@@ -48,6 +49,9 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     @Inject
     MongoCollection<WorkflowPublishedVersion> versionCollection;
 
+    @Inject
+    FileService fileService;
+
     @Override
     public String startChildRun(WorkflowRun run, WorkflowNode node, String input) {
         AgentPublishedConfig snapshot = loadSnapshot(run.versionId, node.id());
@@ -82,13 +86,14 @@ public class MongoAgentRunGateway implements AgentRunGateway {
 
     // Lift the child run's submitted artifacts to downstream references (file_id + absolute url + metadata,
     // never bytes), reusing the platform's single download-URL source of truth.
-    private static List<ArtifactRef> artifactRefs(AgentRun child) {
+    private List<ArtifactRef> artifactRefs(AgentRun child) {
         if (child.artifacts == null || child.artifacts.isEmpty()) {
             return List.of();
         }
         var refs = new ArrayList<ArtifactRef>(child.artifacts.size());
         for (AgentRunArtifact artifact : child.artifacts) {
-            refs.add(ArtifactRef.of(artifact, SubmitArtifactsTool.downloadUrl(artifact.fileId)));
+            var shared = fileService.share(artifact.fileId, child.userId);
+            refs.add(ArtifactRef.of(artifact, SubmitArtifactsTool.sharedDownloadUrl(shared.shareToken)));
         }
         return refs;
     }

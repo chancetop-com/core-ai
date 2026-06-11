@@ -15,6 +15,7 @@ import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
+import ai.core.server.file.FileService;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -35,6 +36,8 @@ public class AgentRunService {
     MongoCollection<AgentDefinition> agentDefinitionCollection;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
+    @Inject
+    FileService fileService;
 
     public TriggerRunResponse trigger(String agentId, TriggerRunRequest request) {
         var definition = agentDefinitionCollection.get(agentId)
@@ -151,6 +154,7 @@ public class AgentRunService {
         view.input = entity.input;
         view.output = entity.output;
         view.error = entity.error;
+        view.traceId = entity.traceId;
         view.startedAt = entity.startedAt;
         view.completedAt = entity.completedAt;
         if (entity.tokenUsage != null) {
@@ -171,6 +175,7 @@ public class AgentRunService {
         view.input = entity.input;
         view.output = entity.output;
         view.error = entity.error;
+        view.traceId = entity.traceId;
         view.startedAt = entity.startedAt;
         view.completedAt = entity.completedAt;
         if (entity.tokenUsage != null) {
@@ -202,7 +207,8 @@ public class AgentRunService {
                 artifact.sourcePath = a.sourcePath;
                 artifact.title = a.title;
                 artifact.description = a.description;
-                artifact.downloadUrl = "/api/files/" + a.fileId + "/content";
+                var shared = fileService.share(a.fileId, entity.userId);
+                artifact.downloadUrl = SubmitArtifactsTool.sharedDownloadUrl(shared.shareToken);
                 artifact.createdAt = a.createdAt;
                 return artifact;
             }).toList();
