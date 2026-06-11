@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir \
     scikit-learn statsmodels \
     pillow openpyxl nodriver weasyprint
 
+# npm installs/updates packages at runtime via npx; skip fchown (container may run non-root)
+RUN npm config set unsafe-perm true
+
 # npm-installed node-gyp bundles its own gyp; replace Debian's hardcoded path
 RUN npm install -g node-gyp && \
     rm -rf /usr/share/nodejs/node-gyp && \
