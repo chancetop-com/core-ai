@@ -9,7 +9,6 @@ FROM python:3.12-slim
 # Layer 1: system packages (rarely changes, heavy but cacheable)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash coreutils findutils grep git curl jq \
-    nodejs npm \
     gcc g++ make python3-dev gyp \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
     libgobject-2.0-0 libgdk-pixbuf-2.0-0 libffi-dev \
@@ -17,7 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium xvfb xauth libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2 && \
     rm -rf /var/lib/apt/lists/*
 
-# Layer 2: python deps (changes occasionally)
+# Layer 2: Node.js 22 (mongodb-mcp-server requires Node >= 22.13)
+RUN curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.gz -o /tmp/node.tar.gz && \
+    tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 --no-same-owner && \
+    rm /tmp/node.tar.gz
+
+# Layer 3: python deps (changes occasionally)
 RUN pip install --no-cache-dir \
     numpy pandas scipy sympy \
     matplotlib seaborn plotly kaleido \
@@ -29,7 +33,7 @@ RUN npm install -g node-gyp && \
     rm -rf /usr/share/nodejs/node-gyp && \
     ln -s /usr/local/lib/node_modules/node-gyp /usr/share/nodejs/node-gyp
 
-# Layer 3: gh CLI (version bumps only)
+# Layer 4: gh CLI (version bumps only)
 RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_linux_amd64.tar.gz -o /tmp/gh.tar.gz && \
     tar xzf /tmp/gh.tar.gz -C /tmp && \
     mv /tmp/gh_2.92.0_linux_amd64/bin/gh /usr/local/bin/gh && \
@@ -47,7 +51,8 @@ ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 ENV NPM_CONFIG_FUND=false
 ENV NPM_CONFIG_AUDIT=false
 ENV NPM_CONFIG_PREFER_IPV4=true
-ENV NPM_CONFIG_FETCH_TIMEOUT=120000
+ENV NPM_CONFIG_TIMEOUT=180000
+ENV NPM_CONFIG_FETCH_TIMEOUT=300000
 ENV NPM_CONFIG_FETCH_RETRIES=3
 
 # xvfb display for non-headless browser automation
