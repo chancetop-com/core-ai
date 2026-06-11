@@ -401,7 +401,7 @@ return s == RunStatus.COMPLETED ? new Normal(collect(child)) : new Fail(child.er
 
 **断点（现状）**：artifact 产出链已完整——agent 在沙箱生成文件 → `submit_artifacts` → `FileService.upload` 得 `file_id` → 组 `AgentRunArtifact`(file_id/file_name/content_type/size/source_path/title/description) → append 到**子 `AgentRun.artifacts`**。但 workflow 层断了：`MongoAgentRunGateway.awaitResult` 手握整个 `child` 却只 `return child.output`；`AgentRunResult` 只带 (completed/output/error)；于是 `NodeOutcome.Normal(output)` → `WorkflowNodeRun.output`（String）→ 池只有 `nodes.<id>.output`。**artifact 从未被抬到节点层，下游不可见。** 要交给下游，本质是补这条「抬升 + 暴露」链路。
 
-**模型决策（对齐 §4 / §5.2）**：文件以**引用**进池、不进沙箱 FS——这正是 §4 `VarType.FILE` 走 `FileRecord`、§5.2「数据含文件只走池」的落地。给 AGENT 输出开**独立 `nodes.<id>.artifacts` 通道**，而非把 output 改成 `{text,artifacts}` 信封：保 `{{ nodes.x.output }}` = 文本回复的现有契约不破，且与 agent 自身 (reply 文本 / artifact list) 的天然二分对称，并能泛化给将来产文件的 HTTP/CODE。绝不把字节塞进池。
+**模型决策（对齐 §4 / §5.2）**：文件以**引用**进池、不进沙箱 FS——这正是 §4 `VarType.FILE` 走 `FileRecord`、§5.2「数据含文件只走池」的落地。给 AGENT 输出开**独立 `nodes.<id>.artifacts` 通道**，而非把 output 改成 `{text,artifacts}` 信封：保 <code v-pre>{{ nodes.x.output }}</code> = 文本回复的现有契约不破，且与 agent 自身 (reply 文本 / artifact list) 的天然二分对称，并能泛化给将来产文件的 HTTP/CODE。绝不把字节塞进池。
 
 池中引用形态（JSON 数组）：
 ```json
@@ -446,13 +446,13 @@ class VariablePool {
 
 | 下游节点 | 要 agent 的什么 | 形态 | L1+L2 后 | 缺口 / 特判 |
 |---|---|---|---|---|
-| **END** | 文本 + 把文件交付调用方 | `output` 文本 + `artifacts` 引用 | ✅ `{{nodes.a.output}}` + `WorkflowRun.artifacts` 并集 | 无——L2 即为它 |
+| **END** | 文本 + 把文件交付调用方 | `output` 文本 + `artifacts` 引用 | ✅ <code v-pre>{{nodes.a.output}}</code> + `WorkflowRun.artifacts` 并集 | 无——L2 即为它 |
 | **AGGREGATOR** | 多并行分支（含 agent）合并 | 输出合并 + **artifacts 并集** | ⚠️ 现仅合并 output | **L1 同步补**：`file_id` 去重并集（见上） |
 | **IF_ELSE** | 读 agent 文本/字段判路由 | 条件读 `nodes.a.output.<field>` | ✅ 文本条件可用 | 不消费文件；跨分支读 `artifacts` 同受**支配校验**——artifact 选择器要纳入 `referencedNodeSelectors` 扫描 |
 | **HTTP** | 转发/投递文件 | url/file_id 模板进 url\|header\|body | ✅ 引用模板（VariableChipField 已支持） | **决策②：只投递链接**，不做「从 url 取流再 multipart 上传字节」（如需另列独立特性） |
 | **MCP_TOOL / API_TOOL** | 工具消费文件 | 参数 = url 或 file_id（VariableMapEditor 映射） | ✅ 工具接 url/id 即可 | 工具若要 path/bytes 看工具契约；多数接 url/id |
 | **CODE** | 脚本处理文件 | map url → 脚本内 `urllib` fetch | ✅ **决策③：靠沙箱出网取 url** | 要求 CODE 沙箱 `networkEnabled` 且可达 FileService 域；落到 §5.2 SSRF 出口边界 |
-| **AGENT / LLM** | 下游 agent 读/再加工文件 | **决策①：prompt 内嵌 url**（`处理文件：{{ nodes.a.artifacts.0.url }}`），下游 agent 用自带 fetch/browse 工具去取 | ✅ url-in-prompt | 前提下游 agent 具备取文件能力；agent 入参仍是纯 string prompt，不新增「文件入口」 |
+| **AGENT / LLM** | 下游 agent 读/再加工文件 | **决策①：prompt 内嵌 url**（<code v-pre>处理文件：{{ nodes.a.artifacts.0.url }}</code>），下游 agent 用自带 fetch/browse 工具去取 | ✅ url-in-prompt | 前提下游 agent 具备取文件能力；agent 入参仍是纯 string prompt，不新增「文件入口」 |
 
 **三决策（已拍）**：
 1. **Agent 收文件 = URL-in-prompt**：把取文件交给下游 agent 的工具能力，agent 入参维持纯 prompt，不做沙箱预拉。
@@ -463,7 +463,7 @@ class VariablePool {
 
 **前端联动（小，接变量选择器）**：`variables.ts` 的 `nodeOutputFields` 给 AGENT/LLM 增 `{ selector: nodes.<id>.artifacts, label:'artifacts', type:'array' }`，选择器/芯片即可直接选到。
 
-**推演**：`reportAgent(AGENT)` 产 `report.pdf` → node-run.artifacts=[{file_id,…,url}] → END `output` 模板可写 `报告：{{ nodes.reportAgent.artifacts.0.url }}`，或 workflow 输出直接带 artifacts 数组；HTTP 节点 body 模板 `{ "file": "{{ nodes.reportAgent.artifacts.0.url }}" }` 转发。
+**推演**：`reportAgent(AGENT)` 产 `report.pdf` → node-run.artifacts=[{file_id,…,url}] → END `output` 模板可写 <code v-pre>报告：{{ nodes.reportAgent.artifacts.0.url }}</code>，或 workflow 输出直接带 artifacts 数组；HTTP 节点 body 模板 <code v-pre>{ "file": "{{ nodes.reportAgent.artifacts.0.url }}" }</code> 转发。
 
 **测试要点**：(a) gateway 把 `child.artifacts` 映射进 result；(b) 池解析 `nodes.x.artifacts` 整取与 `.0.url` 下标；(c) 多 artifact 顺序与 `file_id` 去重；(d) L2 并集到 `WorkflowRun`；(e) 无 artifact 时 `.artifacts`=`[]`、`.output` 不变（兼容回归）。
 
