@@ -194,26 +194,59 @@ export default function AgentEditor() {
   };
 
   const handleGeneratePrompt = async () => {
-    if (!agent.name && !agent.description) return;
+    if (!agent.name && !agent.description && !agent.system_prompt?.trim()) return;
     setGeneratingPrompt(true);
     try {
-      const res = await api.utils.generate({
-        system_prompt: `You are a system prompt generator for AI agents. Your task is to generate effective, well-structured system prompts based on the agent's name and description.
+      const hasExistingPrompt = agent.system_prompt && agent.system_prompt.trim().length > 0;
+
+      const systemPrompt = hasExistingPrompt
+        ? `You are an expert system prompt optimizer for AI agents. Your task is to take an existing system prompt and improve it significantly.
+
+Optimization guidelines:
+- Preserve the core role, personality, and intent of the original prompt
+- Improve clarity, structure, and specificity
+- Add missing constraints, behavioral guidelines, or output formatting rules where appropriate
+- Make language more precise and actionable
+- Ensure the prompt is comprehensive yet concise
+- Fix any inconsistencies, ambiguities, or contradictions
+- Enhance the agent's persona and behavior definition
+
+Return ONLY the optimized system prompt text without any additional commentary, markdown formatting, or labels.`
+        : `You are a system prompt generator for AI agents. Your task is to generate effective, well-structured system prompts based on the agent's name and description.
 
 Generate a system prompt that:
 - Defines the agent's role and personality clearly
 - Specifies how the agent should behave and respond
-- Includes any relevant constraints or guidelines
+- Includes relevant constraints or guidelines
 - Uses clear, actionable language
 - Is concise but comprehensive
+- Follows best practices for AI system prompts
 
-Return ONLY the system prompt text without any additional commentary, markdown formatting, or labels.`,
-        user_prompt: `Generate a system prompt for an AI agent with the following details:
+Return ONLY the system prompt text without any additional commentary, markdown formatting, or labels.`;
+
+      const userPrompt = hasExistingPrompt
+        ? `Please optimize the following system prompt for an AI agent.
+
+Agent context:
+- Name: ${agent.name || 'N/A'}
+- Description: ${agent.description || 'N/A'}
+
+Current system prompt to optimize:
+---
+${agent.system_prompt}
+---
+
+Keep the same overall role and purpose, but make it better structured, more specific, and more effective.`
+        : `Generate a system prompt for an AI agent with the following details:
 
 Name: ${agent.name || 'N/A'}
 Description: ${agent.description || 'N/A'}
 
-The system prompt should define how this agent behaves, its capabilities, and its constraints.`,
+The system prompt should define how this agent behaves, its capabilities, and its constraints.`;
+
+      const res = await api.utils.generate({
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
       });
       if (res.output) {
         update('system_prompt', res.output);
@@ -855,13 +888,13 @@ The system prompt should define how this agent behaves, its capabilities, and it
                   </div>
                   <div className="flex items-center gap-2 mb-2">
                     <button onClick={handleGeneratePrompt}
-                      disabled={generatingPrompt || (!agent.name && !agent.description)}
+                      disabled={generatingPrompt || (!agent.name && !agent.description && !agent.system_prompt?.trim())}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-50"
                       style={{ background: 'var(--color-primary)' }}>
-                      {generatingPrompt ? <><Loader2 size={12} className="animate-spin" /> Generating...</> : <><Sparkles size={12} /> AI Generate</>}
+                      {generatingPrompt ? <><Loader2 size={12} className="animate-spin" /> Generating...</> : <><Sparkles size={12} /> {agent.system_prompt?.trim() ? 'AI Optimize' : 'AI Generate'}</>}
                     </button>
-                    {(!agent.name && !agent.description) && (
-                      <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Enter name or description to generate</span>
+                    {(!agent.name && !agent.description && !agent.system_prompt?.trim()) && (
+                      <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Enter name, description, or prompt to generate</span>
                     )}
                   </div>
                   <textarea value={agent.system_prompt || ''}
