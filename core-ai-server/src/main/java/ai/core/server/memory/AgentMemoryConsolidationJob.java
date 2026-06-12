@@ -44,10 +44,11 @@ public class AgentMemoryConsolidationJob implements Job {
     private static final int IDLE_THRESHOLD_HOURS = 1;
     // Filter out trivial interactions (e.g. "test", "hello") by requiring either:
     // - at least 3 user turns (some back-and-forth), or
-    // - at least 1 tool call (agent actually did work).
+    // - at least 5 tool calls in a single-turn session (real work was done).
     // This prevents memory bloat from meaningless sessions while preserving
     // deep single-run interactions that are the primary extraction target.
     private static final int MIN_MEANINGFUL_USER_TURNS = 3;
+    private static final int MIN_TOOL_CALLS_FOR_SHORT_SESSION = 5;
     private static final String EXTRACTION_MODEL = "deepseek/deepseek-v4-flash";
     private static final String EXTRACTION_PROMPT = """
             You maintain an agent's memory — a concise, stable set of reusable
@@ -311,12 +312,18 @@ public class AgentMemoryConsolidationJob implements Job {
                 .filter(m -> "user".equals(m.role))
                 .count();
 
-        // Check if any agent response involved tool calls (actual work was done)
-        var hasToolCalls = messages.stream()
+        // Count tool calls in agent responses (actual work done)
+        var toolCalls = messages.stream()
                 .filter(m -> "agent".equals(m.role))
-                .anyMatch(m -> m.tools != null && !m.tools.isEmpty());
+                .filter(m -> m.tools != null)
+                .mapToLong(m -> m.tools.size())
+                .sum();
 
-        return userTurns >= MIN_MEANINGFUL_USER_TURNS || hasToolCalls;
+        // Multiple user turns → meaningful conversation
+        if (userTurns >= MIN_MEANINGFUL_USER_TURNS) return true;
+
+        // Single-turn session with deep tool orchestration → real work
+        return toolCalls >= MIN_TOOL_CALLS_FOR_SHORT_SESSION;
     }
 
     private String formatSessionLog(String sessionId, List<ChatMessage> messages) {
