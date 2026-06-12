@@ -31,6 +31,8 @@ class WorkflowGraphParserTest {
         assertNotNull(graph.node("end"));
         assertNull(graph.node("note1"));
         assertEquals("START", graph.node("start").type());
+        assertEquals("In", graph.node("start").name());
+        assertEquals("end", graph.node("end").name());
         assertEquals(1, graph.edges().size());
         assertEquals("start", graph.edges().get(0).source());
         assertEquals("end", graph.edges().get(0).target());

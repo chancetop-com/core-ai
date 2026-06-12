@@ -84,6 +84,15 @@ export interface WorkflowNodeData extends Record<string, unknown> {
 }
 export type WorkflowRFNode = Node<WorkflowNodeData>;
 
+export function uniqueNodeName(nodeType: string, nodes: WorkflowRFNode[]): string {
+  const base = nodeMeta(nodeType).label;
+  const used = new Set(nodes.map((n) => n.data.name.trim()).filter(Boolean));
+  if (!used.has(base)) return base;
+  let index = 2;
+  while (used.has(`${base}${index}`)) index += 1;
+  return `${base}${index}`;
+}
+
 // A one-line summary of a node's config, shown on its canvas card (the "develop" glance).
 export function nodeSummary(nodeType: string, config: Record<string, unknown>): string {
   const str = (v: unknown) => (typeof v === 'string' ? v : '');

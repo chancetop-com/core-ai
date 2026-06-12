@@ -16,7 +16,7 @@ import RunPanel from './RunPanel';
 import ApiAccessPanel from './ApiAccessPanel';
 import ResizablePanel from './ResizablePanel';
 import {
-  toReactFlow, fromReactFlow, newGraph, nodeMeta, defaultNodeConfig, ensureStart, ensureEnd,
+  toReactFlow, fromReactFlow, newGraph, uniqueNodeName, defaultNodeConfig, ensureStart, ensureEnd,
   branchLabel, edgeArrow, RUN_STATUS_COLOR, TERMINAL_RUN_STATUS,
   type WorkflowGraph, type WorkflowNodeData, type WorkflowRFNode,
 } from './graph';
@@ -133,7 +133,12 @@ export default function WorkflowEditor() {
     if (!type || !inst) return;
     const position = inst.screenToFlowPosition({ x: e.clientX, y: e.clientY });
     const nodeId = `n_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
-    setNodes((nds) => nds.concat({ id: nodeId, type: 'workflowNode', position, data: { nodeType: type, name: nodeMeta(type).label, config: defaultNodeConfig(type) } }));
+    setNodes((nds) => nds.concat({
+      id: nodeId,
+      type: 'workflowNode',
+      position,
+      data: { nodeType: type, name: uniqueNodeName(type, nds), config: defaultNodeConfig(type) },
+    }));
     setSelectedId(nodeId);
   }, [setNodes, runId]);
 

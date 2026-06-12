@@ -33,7 +33,8 @@ public final class WorkflowGraphParser {
             // referenced node ids feed the publish-time dominator check; scan the node's config/mapping selectors
             List<String> refs = SelectorScanner.referencedNodeIds(JSON.toJSON(node));
             Map<String, Object> config = asMap(node.get("config"));
-            nodes.add(new WorkflowNode(string(node.get("id")), type, refs, config));
+            String id = string(node.get("id"));
+            nodes.add(new WorkflowNode(id, type, string(node.get("name")), refs, config));
         }
         List<WorkflowEdge> edges = new ArrayList<>();
         for (Object raw : list(root.get("edges"))) {

@@ -86,20 +86,26 @@ public final class DominatorValidator {
                 if (x.equals(y.id())) {
                     continue;
                 }
-                if (graph.node(x) == null) {
-                    errors.add("node %s references unknown node %s".formatted(y.id(), x));
+                WorkflowNode referenced = graph.node(x);
+                if (referenced == null) {
+                    errors.add("Node \"%s\" references a missing node (%s). Remove that reference or choose an existing node."
+                        .formatted(nodeName(y), x));
                     continue;
                 }
                 if (dominanceExempt.contains(y.id())) {
                     continue;   // a join node may read a conditional branch output (renders empty if skipped)
                 }
                 if (!dom.getOrDefault(y.id(), Set.of()).contains(x)) {
-                    errors.add(("node %s reads %s but %s is not on every path to %s (a branch can skip it) — "
-                        + "join the branches with an Aggregator node and read that, or clear the reference")
-                        .formatted(y.id(), x, x, y.id()));
+                    errors.add(("Node \"%s\" reads \"%s\", but \"%s\" can be skipped by another branch before reaching \"%s\". "
+                        + "Add an Aggregator after the branches and read the Aggregator output instead, or remove that reference.")
+                        .formatted(nodeName(y), nodeName(referenced), nodeName(referenced), nodeName(y)));
                 }
             }
         }
         return errors;
+    }
+
+    private static String nodeName(WorkflowNode node) {
+        return node.name() == null || node.name().isBlank() ? node.id() : node.name();
     }
 }
