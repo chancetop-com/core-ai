@@ -48,66 +48,49 @@ var mcpManager = &McpProcessManager{
 	servers: make(map[string]*McpServerProcess),
 }
 
-const maxStartRetries = 3
-const startupGracePeriod = 90 * time.Second
-const retryBackoff = 5 * time.Second
+// crashDetectWindow is how long Start blocks to catch an immediate crash before
+// returning success to the caller. Kept short so HTTP responses don't stall —
+// longer survival monitoring is asynchronous (see exitWatcher).
+const crashDetectWindow = 3 * time.Second
 
 func (m *McpProcessManager) Start(req McpStartRequest) (*McpServerProcess, error) {
-	for attempt := 0; attempt <= maxStartRetries; attempt++ {
-		if attempt > 0 {
-			log.Printf("[mcp:%s] retrying start (attempt %d/%d) after %v...", req.ID, attempt, maxStartRetries, retryBackoff)
-			time.Sleep(retryBackoff)
-		}
-
-		proc, err := m.startOnce(req)
-		if err != nil {
-			return nil, err
-		}
-
-		// Wait a short period to see if the process dies during startup
-		// (e.g. npm download fails with ECONNRESET / ERR_SOCKET_TIMEOUT).
-		exitCh := make(chan error, 1)
-		go func() {
-			exitCh <- proc.Cmd.Wait()
-		}()
-
-		select {
-		case err := <-exitCh:
-			m.mu.Lock()
-			delete(m.servers, req.ID)
-			m.mu.Unlock()
-			if err != nil {
-				log.Printf("[mcp:%s] process exited on startup: %v", req.ID, err)
-			} else {
-				log.Printf("[mcp:%s] process exited cleanly on startup", req.ID)
-			}
-			if attempt < maxStartRetries {
-				continue
-			}
-			return nil, fmt.Errorf("mcp server exited immediately after %d attempts", maxStartRetries+1)
-
-		case <-time.After(startupGracePeriod):
-			// Process survived the grace period — startup successful.
-			// Transfer ownership to the normal exit-monitoring goroutine.
-		}
-
-		// Normal exit monitoring (after successful startup)
-		go func() {
-			err := <-exitCh
-			m.mu.Lock()
-			delete(m.servers, req.ID)
-			m.mu.Unlock()
-			if err != nil {
-				log.Printf("[mcp:%s] process exited: %v", req.ID, err)
-			} else {
-				log.Printf("[mcp:%s] process exited cleanly", req.ID)
-			}
-		}()
-
-		return proc, nil
+	proc, err := m.startOnce(req)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, fmt.Errorf("failed to start mcp server after %d attempts", maxStartRetries+1)
+	exitCh := make(chan error, 1)
+	go func() {
+		exitCh <- proc.Cmd.Wait()
+	}()
+
+	select {
+	case waitErr := <-exitCh:
+		m.mu.Lock()
+		delete(m.servers, req.ID)
+		m.mu.Unlock()
+		if waitErr != nil {
+			return nil, fmt.Errorf("mcp server exited immediately on startup: %w", waitErr)
+		}
+		return nil, fmt.Errorf("mcp server exited cleanly on startup before serving any request")
+	case <-time.After(crashDetectWindow):
+		// Process survived the short crash-detection window. Hand off to the
+		// async watcher so the HTTP response can return now.
+		go m.exitWatcher(req.ID, exitCh)
+		return proc, nil
+	}
+}
+
+func (m *McpProcessManager) exitWatcher(id string, exitCh <-chan error) {
+	err := <-exitCh
+	m.mu.Lock()
+	delete(m.servers, id)
+	m.mu.Unlock()
+	if err != nil {
+		log.Printf("[mcp:%s] process exited: %v", id, err)
+	} else {
+		log.Printf("[mcp:%s] process exited cleanly", id)
+	}
 }
 
 func (m *McpProcessManager) startOnce(req McpStartRequest) (*McpServerProcess, error) {
